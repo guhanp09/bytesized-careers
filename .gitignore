@@ -48,3 +48,5 @@ backend/*.db-journal
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+test-results/
+test_creatorjobs_backend.db
