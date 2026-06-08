@@ -4,7 +4,18 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +41,13 @@ class Job(Base):
     experience_level: Mapped[str | None] = mapped_column(String(64), nullable=True)
     platforms: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     start_timeframe: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    work_mode: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    contract_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    timezone_overlap: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    weekly_hours: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    application_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="internal", server_default="internal")
+    external_apply_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     about_channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     responsibilities: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
@@ -56,12 +74,25 @@ class Job(Base):
         nullable=True,
         index=True,
     )
+    hiring_identity_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("hiring_identities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    hiring_display_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    hiring_platform_snapshot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    hiring_verification_status_snapshot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    managed_by_agency_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     applicants: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     response_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", index=True)
+    featured_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(

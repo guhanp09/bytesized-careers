@@ -7,9 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
-
-JobStatus = Literal["draft", "published", "archived"]
+JobStatus = Literal["draft", "published", "paused", "closed", "archived"]
 BudgetUnit = Literal["per project", "per month"]
+ApplicationMode = Literal["internal", "external"]
 
 
 class JobReferenceVideo(BaseModel):
@@ -38,6 +38,13 @@ class JobBase(BaseModel):
     experience_level: str | None = Field(default=None, max_length=64)
     platforms: list[str] = Field(default_factory=list)
     start_timeframe: str | None = Field(default=None, max_length=32)
+    work_mode: str | None = Field(default=None, max_length=32)
+    contract_type: str | None = Field(default=None, max_length=64)
+    timezone_overlap: str | None = Field(default=None, max_length=128)
+    weekly_hours: str | None = Field(default=None, max_length=64)
+    application_mode: ApplicationMode = "internal"
+    external_apply_url: HttpUrl | None = None
+    deadline_at: datetime | None = None
 
     about_channel: str | None = None
     responsibilities: list[str] = Field(default_factory=list)
@@ -58,12 +65,16 @@ class JobBase(BaseModel):
     agency_profile_slug: str | None = Field(default=None, max_length=255)
     posted_platform: str | None = Field(default=None, max_length=32)
     posted_youtube_channel_id: str | None = Field(default=None, max_length=255)
+    hiring_identity_id: uuid.UUID | None = None
 
     views: int = Field(default=0, ge=0)
     applicants: int = Field(default=0, ge=0)
     response_rate: int = Field(default=0, ge=0, le=100)
 
     status: JobStatus = "draft"
+    featured_until: datetime | None = None
+    paused_at: datetime | None = None
+    closed_at: datetime | None = None
 
     @field_validator("budget_currency")
     @classmethod
@@ -76,7 +87,7 @@ class JobBase(BaseModel):
         return [item.strip() for item in value if item and item.strip()]
 
     @model_validator(mode="after")
-    def validate_budget_range(self) -> "JobBase":
+    def validate_budget_range(self) -> JobBase:
         if (
             self.budget_amount is not None
             and self.budget_max is not None
@@ -103,6 +114,13 @@ class JobUpdate(BaseModel):
     experience_level: str | None = Field(default=None, max_length=64)
     platforms: list[str] | None = None
     start_timeframe: str | None = Field(default=None, max_length=32)
+    work_mode: str | None = Field(default=None, max_length=32)
+    contract_type: str | None = Field(default=None, max_length=64)
+    timezone_overlap: str | None = Field(default=None, max_length=128)
+    weekly_hours: str | None = Field(default=None, max_length=64)
+    application_mode: ApplicationMode | None = None
+    external_apply_url: HttpUrl | None = None
+    deadline_at: datetime | None = None
 
     about_channel: str | None = None
     responsibilities: list[str] | None = None
@@ -123,12 +141,16 @@ class JobUpdate(BaseModel):
     agency_profile_slug: str | None = Field(default=None, max_length=255)
     posted_platform: str | None = Field(default=None, max_length=32)
     posted_youtube_channel_id: str | None = Field(default=None, max_length=255)
+    hiring_identity_id: uuid.UUID | None = None
 
     views: int | None = Field(default=None, ge=0)
     applicants: int | None = Field(default=None, ge=0)
     response_rate: int | None = Field(default=None, ge=0, le=100)
 
     status: JobStatus | None = None
+    featured_until: datetime | None = None
+    paused_at: datetime | None = None
+    closed_at: datetime | None = None
 
     @field_validator("budget_currency")
     @classmethod
@@ -138,7 +160,7 @@ class JobUpdate(BaseModel):
         return value.upper()
 
     @model_validator(mode="after")
-    def validate_budget_range(self) -> "JobUpdate":
+    def validate_budget_range(self) -> JobUpdate:
         if (
             self.budget_amount is not None
             and self.budget_max is not None
@@ -153,6 +175,10 @@ class JobRead(JobBase):
 
     id: uuid.UUID
     posted_by_user_id: uuid.UUID | None = None
+    hiring_display_name_snapshot: str | None = None
+    hiring_platform_snapshot: str | None = None
+    hiring_verification_status_snapshot: str | None = None
+    managed_by_agency_name_snapshot: str | None = None
     created_at: datetime
     updated_at: datetime
 

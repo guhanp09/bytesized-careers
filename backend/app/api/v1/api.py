@@ -1,0 +1,30 @@
+from fastapi import APIRouter
+
+from app.api.v1.routers.auth import router as auth_router
+from app.api.v1.routers.content_style import router as content_style_router
+from app.api.v1.routers.dev_emails import router as dev_emails_router
+from app.api.v1.routers.dev_seed import router as dev_seed_router
+from app.api.v1.routers.health import router as health_router
+from app.api.v1.routers.jobs import router as jobs_router
+from app.api.v1.routers.marketplace import router as marketplace_router
+from app.api.v1.routers.me import router as me_router
+from app.api.v1.routers.portfolio import router as portfolio_router
+from app.api.v1.routers.profile_completion import router as profile_completion_router
+from app.api.v1.routers.roles import router as roles_router
+from app.api.v1.routers.user_profile import router as user_profile_router
+from app.api.v1.routers.users import router as users_router
+
+api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(content_style_router)
+api_router.include_router(health_router)
+api_router.include_router(jobs_router)
+api_router.include_router(marketplace_router)
+api_router.include_router(me_router)
+api_router.include_router(portfolio_router)
+api_router.include_router(profile_completion_router)
+api_router.include_router(roles_router)
+api_router.include_router(user_profile_router)
+api_router.include_router(users_router)
+api_router.include_router(dev_emails_router)
+api_router.include_router(dev_seed_router)

@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id               String   @id @default(uuid())
+  title            String
+  category         String
+  budget           String
+  experience       String
+  location         String
+  postedShort      String?
+  views            Int      @default(0)
+  applicants       Int      @default(0)
+  responseRate     Int      @default(0)
+  platform         String?
+  startTimeframe   String
+  type             String?
+  about            String?
+  responsibilities String?
+  requirements     String?
+  howToApply       String?
+  tags             Json
+  referenceVideos  Json?
+  channelName      String
+  channelLogoUrl   String?
+  channelSubscribers Int?
+  channelVerified  Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

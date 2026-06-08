@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from uuid import UUID
 from typing import Any
+from uuid import UUID
 
-from app.models import Job
+from app.models import HiringIdentity, Job
 from app.repositories.job_repository import JobRepository
 from app.schemas import JobCreate, JobUpdate
 
@@ -64,7 +64,24 @@ class JobService:
             payload["reference_videos"] = normalized_reference_videos
         if "channel_logo_url" in payload and payload["channel_logo_url"] is not None:
             payload["channel_logo_url"] = str(payload["channel_logo_url"])
+        if "external_apply_url" in payload and payload["external_apply_url"] is not None:
+            payload["external_apply_url"] = str(payload["external_apply_url"])
         return payload
+
+    @staticmethod
+    def _apply_hiring_identity_snapshot(data: dict[str, Any], identity: HiringIdentity) -> None:
+        data["hiring_identity_id"] = identity.id
+        data["hiring_display_name_snapshot"] = identity.display_name
+        data["hiring_platform_snapshot"] = identity.platform
+        data["hiring_verification_status_snapshot"] = identity.verification_status
+        data["managed_by_agency_name_snapshot"] = (
+            identity.managed_by_agency_name if identity.is_agency_represented else None
+        )
+        data["channel_name"] = data.get("channel_name") or identity.display_name
+        data["channel_logo_url"] = data.get("channel_logo_url") or identity.avatar_url
+        data["posted_platform"] = identity.platform.lower()
+        data["posted_by_agency"] = bool(identity.is_agency_represented)
+        data["is_verified"] = identity.verification_status == "VERIFIED"
 
     async def list_jobs(
         self,
@@ -95,36 +112,49 @@ class JobService:
 
     async def create_job(self, payload: JobCreate, *, actor_user_id: UUID | None = None) -> Job:
         data = self._to_payload(payload.model_dump())
+        hiring_identity_id = data.get("hiring_identity_id")
+        selected_identity: HiringIdentity | None = None
+        if hiring_identity_id is not None:
+            if actor_user_id is None:
+                raise JobAuthRequiredError("Authentication required to post with a hiring identity")
+            selected_identity = await self.repository.get_hiring_identity_for_user(
+                user_id=actor_user_id,
+                identity_id=hiring_identity_id,
+            )
+            if selected_identity is None:
+                raise JobForbiddenError("Selected hiring identity does not belong to this user")
+            self._apply_hiring_identity_snapshot(data, selected_identity)
 
         platforms = [platform.strip().lower() for platform in data.get("platforms", []) if platform]
         posted_platform = (data.get("posted_platform") or "").strip().lower()
         is_youtube_post = "youtube" in platforms or posted_platform == "youtube"
 
-        if is_youtube_post:
+        if is_youtube_post and selected_identity is None:
             posted_youtube_channel_id = (data.get("posted_youtube_channel_id") or "").strip()
-            if not posted_youtube_channel_id:
-                logger.warning(
-                    "youtube_post_blocked_missing_channel_selection",
-                    extra={"actor_user_id": str(actor_user_id) if actor_user_id else None},
-                )
-                raise JobValidationError("posted_youtube_channel_id is required for YouTube jobs")
-            if actor_user_id is None:
-                logger.warning("youtube_post_blocked_auth_required")
-                raise JobAuthRequiredError("Authentication required to post as a YouTube channel")
-            owns_channel = await self.repository.user_has_youtube_channel(
-                user_id=actor_user_id, channel_id=posted_youtube_channel_id
-            )
-            if not owns_channel:
-                logger.warning(
-                    "youtube_post_blocked_channel_not_linked",
-                    extra={
-                        "actor_user_id": str(actor_user_id),
-                        "posted_youtube_channel_id": posted_youtube_channel_id,
-                    },
-                )
-                raise JobForbiddenError("Selected YouTube channel is not linked to this user")
             data["posted_platform"] = "youtube"
-            data["posted_by_user_id"] = actor_user_id
+            if posted_youtube_channel_id:
+                if actor_user_id is None:
+                    logger.warning("youtube_post_blocked_auth_required")
+                    raise JobAuthRequiredError("Authentication required to post as a YouTube channel")
+                owns_channel = await self.repository.user_has_youtube_channel(
+                    user_id=actor_user_id, channel_id=posted_youtube_channel_id
+                )
+                if not owns_channel:
+                    logger.warning(
+                        "youtube_post_blocked_channel_not_linked",
+                        extra={
+                            "actor_user_id": str(actor_user_id),
+                            "posted_youtube_channel_id": posted_youtube_channel_id,
+                        },
+                    )
+                    raise JobForbiddenError("Selected YouTube channel is not linked to this user")
+                data["posted_by_user_id"] = actor_user_id
+            elif actor_user_id is not None:
+                logger.info(
+                    "youtube_post_without_linked_channel",
+                    extra={"actor_user_id": str(actor_user_id)},
+                )
+                data["posted_by_user_id"] = actor_user_id
         elif actor_user_id is not None:
             data["posted_by_user_id"] = actor_user_id
 
@@ -139,7 +169,29 @@ class JobService:
 
     async def update_job(self, job_id: UUID, payload: JobUpdate) -> Job:
         job = await self.get_job(job_id)
+        return await self.update_job_record(job, payload)
+
+    async def update_job_record(
+        self, job: Job, payload: JobUpdate, *, actor_user_id: UUID | None = None
+    ) -> Job:
         updates = self._to_payload(payload.model_dump(exclude_unset=True))
+        if "hiring_identity_id" in updates:
+            hiring_identity_id = updates.get("hiring_identity_id")
+            if hiring_identity_id is None:
+                updates["hiring_display_name_snapshot"] = None
+                updates["hiring_platform_snapshot"] = None
+                updates["hiring_verification_status_snapshot"] = None
+                updates["managed_by_agency_name_snapshot"] = None
+            else:
+                if actor_user_id is None:
+                    raise JobAuthRequiredError("Authentication required to update hiring identity")
+                selected_identity = await self.repository.get_hiring_identity_for_user(
+                    user_id=actor_user_id,
+                    identity_id=hiring_identity_id,
+                )
+                if selected_identity is None:
+                    raise JobForbiddenError("Selected hiring identity does not belong to this user")
+                self._apply_hiring_identity_snapshot(updates, selected_identity)
         if updates:
             job = await self.repository.update(job, updates)
             await self.repository.session.commit()
@@ -147,6 +199,9 @@ class JobService:
 
     async def delete_job(self, job_id: UUID) -> Job:
         job = await self.get_job(job_id)
+        return await self.delete_job_record(job)
+
+    async def delete_job_record(self, job: Job) -> Job:
         job = await self.repository.soft_delete(job)
         await self.repository.session.commit()
         return job

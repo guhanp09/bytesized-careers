@@ -1,0 +1,738 @@
+[
+  {
+    "name": "Video Editor",
+    "popularity_score": 1000
+  },
+  {
+    "name": "Assistant Editor",
+    "popularity_score": 500
+  },
+  {
+    "name": "Motion Graphics Designer",
+    "popularity_score": 820
+  },
+  {
+    "name": "Graphic Designer",
+    "popularity_score": 860
+  },
+  {
+    "name": "Thumbnail Designer",
+    "popularity_score": 980
+  },
+  {
+    "name": "Scriptwriter",
+    "popularity_score": 930
+  },
+  {
+    "name": "Copywriter",
+    "popularity_score": 580
+  },
+  {
+    "name": "Content Writer",
+    "popularity_score": 620
+  },
+  {
+    "name": "Researcher",
+    "popularity_score": 620
+  },
+  {
+    "name": "Producer",
+    "popularity_score": 730
+  },
+  {
+    "name": "Creative Producer",
+    "popularity_score": 600
+  },
+  {
+    "name": "Executive Producer",
+    "popularity_score": 150
+  },
+  {
+    "name": "Line Producer",
+    "popularity_score": 130
+  },
+  {
+    "name": "Director",
+    "popularity_score": 260
+  },
+  {
+    "name": "Assistant Director",
+    "popularity_score": 100
+  },
+  {
+    "name": "Creative Director",
+    "popularity_score": 380
+  },
+  {
+    "name": "Art Director",
+    "popularity_score": 300
+  },
+  {
+    "name": "Storyboard Artist",
+    "popularity_score": 150
+  },
+  {
+    "name": "Cinematographer",
+    "popularity_score": 280
+  },
+  {
+    "name": "Videographer",
+    "popularity_score": 700
+  },
+  {
+    "name": "Camera Operator",
+    "popularity_score": 250
+  },
+  {
+    "name": "Drone Operator",
+    "popularity_score": 120
+  },
+  {
+    "name": "Photographer",
+    "popularity_score": 380
+  },
+  {
+    "name": "Photo Editor",
+    "popularity_score": 220
+  },
+  {
+    "name": "Colorist",
+    "popularity_score": 210
+  },
+  {
+    "name": "Lighting Technician",
+    "popularity_score": 120
+  },
+  {
+    "name": "Gaffer",
+    "popularity_score": 70
+  },
+  {
+    "name": "Sound Designer",
+    "popularity_score": 240
+  },
+  {
+    "name": "Audio Engineer",
+    "popularity_score": 260
+  },
+  {
+    "name": "Sound Mixer",
+    "popularity_score": 130
+  },
+  {
+    "name": "Dialogue Editor",
+    "popularity_score": 80
+  },
+  {
+    "name": "Music Producer",
+    "popularity_score": 180
+  },
+  {
+    "name": "Composer",
+    "popularity_score": 90
+  },
+  {
+    "name": "Podcast Producer",
+    "popularity_score": 460
+  },
+  {
+    "name": "Podcast Editor",
+    "popularity_score": 560
+  },
+  {
+    "name": "Podcast Host",
+    "popularity_score": 380
+  },
+  {
+    "name": "Podcast Booker",
+    "popularity_score": 110
+  },
+  {
+    "name": "Voice Over Artist",
+    "popularity_score": 340
+  },
+  {
+    "name": "Voice Actor",
+    "popularity_score": 240
+  },
+  {
+    "name": "Narrator",
+    "popularity_score": 200
+  },
+  {
+    "name": "Animator",
+    "popularity_score": 220
+  },
+  {
+    "name": "VFX Artist",
+    "popularity_score": 140
+  },
+  {
+    "name": "Illustrator",
+    "popularity_score": 220
+  },
+  {
+    "name": "Digital Artist",
+    "popularity_score": 170
+  },
+  {
+    "name": "Set Designer",
+    "popularity_score": 80
+  },
+  {
+    "name": "Production Designer",
+    "popularity_score": 120
+  },
+  {
+    "name": "Stylist",
+    "popularity_score": 160
+  },
+  {
+    "name": "Makeup Artist",
+    "popularity_score": 140
+  },
+  {
+    "name": "Hair Stylist",
+    "popularity_score": 90
+  },
+  {
+    "name": "Wardrobe Stylist",
+    "popularity_score": 100
+  },
+  {
+    "name": "Prop Manager",
+    "popularity_score": 50
+  },
+  {
+    "name": "Location Scout",
+    "popularity_score": 60
+  },
+  {
+    "name": "Casting Director",
+    "popularity_score": 70
+  },
+  {
+    "name": "On-Camera Host",
+    "popularity_score": 420
+  },
+  {
+    "name": "Social Media Manager",
+    "popularity_score": 880
+  },
+  {
+    "name": "Community Manager",
+    "popularity_score": 700
+  },
+  {
+    "name": "Community Moderator",
+    "popularity_score": 320
+  },
+  {
+    "name": "Channel Manager",
+    "popularity_score": 800
+  },
+  {
+    "name": "Content Strategist",
+    "popularity_score": 760
+  },
+  {
+    "name": "Content Planner",
+    "popularity_score": 520
+  },
+  {
+    "name": "Content Scheduler",
+    "popularity_score": 440
+  },
+  {
+    "name": "Content Marketer",
+    "popularity_score": 500
+  },
+  {
+    "name": "Digital Marketer",
+    "popularity_score": 480
+  },
+  {
+    "name": "Performance Marketer",
+    "popularity_score": 440
+  },
+  {
+    "name": "Paid Ads Manager",
+    "popularity_score": 420
+  },
+  {
+    "name": "Media Buyer",
+    "popularity_score": 320
+  },
+  {
+    "name": "Campaign Manager",
+    "popularity_score": 300
+  },
+  {
+    "name": "Launch Manager",
+    "popularity_score": 220
+  },
+  {
+    "name": "Marketing Manager",
+    "popularity_score": 320
+  },
+  {
+    "name": "Brand Manager",
+    "popularity_score": 360
+  },
+  {
+    "name": "Brand Strategist",
+    "popularity_score": 360
+  },
+  {
+    "name": "PR Manager",
+    "popularity_score": 220
+  },
+  {
+    "name": "Publicist",
+    "popularity_score": 150
+  },
+  {
+    "name": "Communications Manager",
+    "popularity_score": 180
+  },
+  {
+    "name": "Brand Partnerships Manager",
+    "popularity_score": 580
+  },
+  {
+    "name": "Sponsorship Manager",
+    "popularity_score": 600
+  },
+  {
+    "name": "Affiliate Manager",
+    "popularity_score": 420
+  },
+  {
+    "name": "Influencer Manager",
+    "popularity_score": 460
+  },
+  {
+    "name": "Talent Manager",
+    "popularity_score": 430
+  },
+  {
+    "name": "Agent",
+    "popularity_score": 250
+  },
+  {
+    "name": "Booking Agent",
+    "popularity_score": 170
+  },
+  {
+    "name": "Account Manager",
+    "popularity_score": 220
+  },
+  {
+    "name": "Account Executive",
+    "popularity_score": 160
+  },
+  {
+    "name": "Customer Success Manager",
+    "popularity_score": 100
+  },
+  {
+    "name": "Business Development Manager",
+    "popularity_score": 200
+  },
+  {
+    "name": "Sales Manager",
+    "popularity_score": 170
+  },
+  {
+    "name": "Sales Representative",
+    "popularity_score": 140
+  },
+  {
+    "name": "Operations Manager",
+    "popularity_score": 300
+  },
+  {
+    "name": "Project Manager",
+    "popularity_score": 340
+  },
+  {
+    "name": "Program Manager",
+    "popularity_score": 140
+  },
+  {
+    "name": "Workflow Manager",
+    "popularity_score": 220
+  },
+  {
+    "name": "Production Manager",
+    "popularity_score": 320
+  },
+  {
+    "name": "Production Coordinator",
+    "popularity_score": 300
+  },
+  {
+    "name": "Production Assistant",
+    "popularity_score": 260
+  },
+  {
+    "name": "Studio Manager",
+    "popularity_score": 180
+  },
+  {
+    "name": "Studio Coordinator",
+    "popularity_score": 170
+  },
+  {
+    "name": "Studio Technician",
+    "popularity_score": 130
+  },
+  {
+    "name": "Equipment Manager",
+    "popularity_score": 90
+  },
+  {
+    "name": "SEO Specialist",
+    "popularity_score": 500
+  },
+  {
+    "name": "Metadata Specialist",
+    "popularity_score": 460
+  },
+  {
+    "name": "Analytics Specialist",
+    "popularity_score": 400
+  },
+  {
+    "name": "Data Analyst",
+    "popularity_score": 220
+  },
+  {
+    "name": "Growth Strategist",
+    "popularity_score": 460
+  },
+  {
+    "name": "Audience Development Manager",
+    "popularity_score": 380
+  },
+  {
+    "name": "Conversion Specialist",
+    "popularity_score": 260
+  },
+  {
+    "name": "Funnel Strategist",
+    "popularity_score": 130
+  },
+  {
+    "name": "Distribution Strategist",
+    "popularity_score": 320
+  },
+  {
+    "name": "Optimization Consultant",
+    "popularity_score": 150
+  },
+  {
+    "name": "Trend Analyst",
+    "popularity_score": 280
+  },
+  {
+    "name": "Audience Researcher",
+    "popularity_score": 420
+  },
+  {
+    "name": "Algorithm Analyst",
+    "popularity_score": 110
+  },
+  {
+    "name": "Email Marketing Manager",
+    "popularity_score": 300
+  },
+  {
+    "name": "CRM Manager",
+    "popularity_score": 170
+  },
+  {
+    "name": "Newsletter Writer",
+    "popularity_score": 200
+  },
+  {
+    "name": "Newsletter Editor",
+    "popularity_score": 150
+  },
+  {
+    "name": "Subtitler",
+    "popularity_score": 260
+  },
+  {
+    "name": "Caption Editor",
+    "popularity_score": 300
+  },
+  {
+    "name": "Transcriber",
+    "popularity_score": 160
+  },
+  {
+    "name": "Translator",
+    "popularity_score": 170
+  },
+  {
+    "name": "Localization Specialist",
+    "popularity_score": 180
+  },
+  {
+    "name": "Web Designer",
+    "popularity_score": 170
+  },
+  {
+    "name": "Web Developer",
+    "popularity_score": 180
+  },
+  {
+    "name": "UI Designer",
+    "popularity_score": 160
+  },
+  {
+    "name": "UX Designer",
+    "popularity_score": 170
+  },
+  {
+    "name": "UX Researcher",
+    "popularity_score": 90
+  },
+  {
+    "name": "Product Designer",
+    "popularity_score": 120
+  },
+  {
+    "name": "Frontend Developer",
+    "popularity_score": 120
+  },
+  {
+    "name": "Backend Developer",
+    "popularity_score": 70
+  },
+  {
+    "name": "Full Stack Developer",
+    "popularity_score": 80
+  },
+  {
+    "name": "App Developer",
+    "popularity_score": 140
+  },
+  {
+    "name": "No-Code Developer",
+    "popularity_score": 150
+  },
+  {
+    "name": "Automation Specialist",
+    "popularity_score": 200
+  },
+  {
+    "name": "Systems Integrator",
+    "popularity_score": 90
+  },
+  {
+    "name": "Technical Consultant",
+    "popularity_score": 110
+  },
+  {
+    "name": "QA Tester",
+    "popularity_score": 70
+  },
+  {
+    "name": "Product Manager",
+    "popularity_score": 140
+  },
+  {
+    "name": "E-commerce Manager",
+    "popularity_score": 240
+  },
+  {
+    "name": "Merchandise Manager",
+    "popularity_score": 220
+  },
+  {
+    "name": "Merch Designer",
+    "popularity_score": 280
+  },
+  {
+    "name": "Store Manager",
+    "popularity_score": 170
+  },
+  {
+    "name": "Virtual Assistant",
+    "popularity_score": 660
+  },
+  {
+    "name": "Executive Assistant",
+    "popularity_score": 180
+  },
+  {
+    "name": "Administrative Assistant",
+    "popularity_score": 160
+  },
+  {
+    "name": "Bookkeeper",
+    "popularity_score": 200
+  },
+  {
+    "name": "Finance Manager",
+    "popularity_score": 110
+  },
+  {
+    "name": "Legal Advisor",
+    "popularity_score": 100
+  },
+  {
+    "name": "Contract Specialist",
+    "popularity_score": 160
+  },
+  {
+    "name": "Compliance Manager",
+    "popularity_score": 70
+  },
+  {
+    "name": "HR Manager",
+    "popularity_score": 70
+  },
+  {
+    "name": "Recruiter",
+    "popularity_score": 100
+  },
+  {
+    "name": "Customer Support Specialist",
+    "popularity_score": 200
+  },
+  {
+    "name": "Customer Experience Manager",
+    "popularity_score": 90
+  },
+  {
+    "name": "Creator Manager",
+    "popularity_score": 440
+  },
+  {
+    "name": "Creator Operations Manager",
+    "popularity_score": 250
+  },
+  {
+    "name": "Creator Support Specialist",
+    "popularity_score": 180
+  },
+  {
+    "name": "Influencer Coordinator",
+    "popularity_score": 280
+  },
+  {
+    "name": "Talent Coordinator",
+    "popularity_score": 250
+  },
+  {
+    "name": "Agency Manager",
+    "popularity_score": 260
+  },
+  {
+    "name": "Agency Owner",
+    "popularity_score": 40
+  },
+  {
+    "name": "Chief of Staff",
+    "popularity_score": 40
+  },
+  {
+    "name": "Business Manager",
+    "popularity_score": 240
+  },
+  {
+    "name": "General Manager",
+    "popularity_score": 80
+  },
+  {
+    "name": "Event Manager",
+    "popularity_score": 140
+  },
+  {
+    "name": "Event Coordinator",
+    "popularity_score": 110
+  },
+  {
+    "name": "Livestream Manager",
+    "popularity_score": 360
+  },
+  {
+    "name": "Stream Moderator",
+    "popularity_score": 260
+  },
+  {
+    "name": "Chat Moderator",
+    "popularity_score": 220
+  },
+  {
+    "name": "Presentation Designer",
+    "popularity_score": 100
+  },
+  {
+    "name": "Content QA Specialist",
+    "popularity_score": 160
+  },
+  {
+    "name": "Fact Checker",
+    "popularity_score": 150
+  },
+  {
+    "name": "Proofreader",
+    "popularity_score": 140
+  },
+  {
+    "name": "Story Editor",
+    "popularity_score": 170
+  },
+  {
+    "name": "Narrative Consultant",
+    "popularity_score": 70
+  },
+  {
+    "name": "Ad Operations Manager",
+    "popularity_score": 170
+  },
+  {
+    "name": "Revenue Manager",
+    "popularity_score": 140
+  },
+  {
+    "name": "Licensing Manager",
+    "popularity_score": 110
+  },
+  {
+    "name": "Rights Manager",
+    "popularity_score": 80
+  },
+  {
+    "name": "Publishing Manager",
+    "popularity_score": 90
+  },
+  {
+    "name": "Publisher",
+    "popularity_score": 40
+  },
+  {
+    "name": "Editorial Director",
+    "popularity_score": 80
+  },
+  {
+    "name": "Editorial Manager",
+    "popularity_score": 110
+  },
+  {
+    "name": "Content Librarian",
+    "popularity_score": 40
+  },
+  {
+    "name": "Asset Manager",
+    "popularity_score": 100
+  },
+  {
+    "name": "Brand Designer",
+    "popularity_score": 440
+  }
+]

@@ -1,0 +1,1775 @@
+from __future__ import annotations
+
+import base64
+import binascii
+import secrets
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+from uuid import UUID
+
+from app.core.account_types import is_admin
+from app.core.config import settings
+from app.models import HiringIdentity, PortfolioItem, User, YouTubeChannel
+from app.repositories.auth_repository import AuthRepository
+from app.schemas.creator_profile import (
+    ContentStyleNichesResponse,
+    ContentStyleRead,
+    ContentStyleUpsertRequest,
+    PortfolioYouTubeCreateRequest,
+    ProfileCompletionResponse,
+    RoleAnswerSummary,
+    RoleQuestionRead,
+    RoleQuestionsResponse,
+    RoleRead,
+    UserRoleAnswerRead,
+    UserRoleAnswersUpsertRequest,
+    UserRolesUpsertRequest,
+)
+from app.schemas.hiring_identity import (
+    HiringIdentityCreate,
+    HiringIdentityRead,
+    HiringIdentityUpdate,
+    HiringIdentityVerificationRequest,
+    HiringIdentityVerificationResponse,
+)
+from app.schemas.profile import (
+    AvatarUploadRequest,
+    CollaborationPreferences,
+    HiringInfo,
+    PortfolioItemCreate,
+    PortfolioItemRead,
+    PortfolioItemUpdate,
+    PortfolioYouTubePreviewResponse,
+    PrivacySettings,
+    PrivacyUpdateRequest,
+    ProfileExperienceItem,
+    ProfileRead,
+    ProfileStats,
+    ProfileUpdateRequest,
+    PublicJobItem,
+    PublicJobsListResponse,
+    PublicPortfolioListResponse,
+    PublicProfileResponse,
+    PublicTalentListingItem,
+    PublicYouTubeBadge,
+    ReviewsSummary,
+    SocialConnections,
+    SocialInstagramConnection,
+    SocialYouTubeConnection,
+)
+from app.schemas.profile_capabilities import ProfileCapabilities
+from app.services.profile_rules import (
+    DEFAULT_PRIVACY_SETTINGS,
+    can_change_username,
+    normalize_username,
+    validate_username_format,
+)
+from app.services.youtube_service import (
+    extract_video_id,
+    fetch_youtube_video_metadata,
+)
+
+PAST_JOB_STATUSES = {"archived", "closed", "filled", "expired"}
+CONTENT_STYLE_PRIMARY_NICHES = [
+    "Education",
+    "Business",
+    "Finance",
+    "Technology",
+    "Gaming",
+    "Lifestyle",
+    "Health",
+    "Productivity",
+    "Entertainment",
+    "Marketing",
+    "Career",
+]
+CONTENT_STYLE_FORMAT_OPTIONS = {"Shorts", "Long-form", "Podcast", "Hybrid"}
+CONTENT_STYLE_COMPLEXITY_OPTIONS = {"Light", "Moderate", "Advanced"}
+HIRING_TYPE_OPTIONS = {
+    "individual creator",
+    "creator agency",
+    "influencer marketing agency",
+    "social media agency",
+    "brand",
+    "production house",
+    "other",
+}
+HIRING_PRIMARY_PLATFORM_OPTIONS = {"YouTube", "Instagram", "Both"}
+HIRING_VERIFICATION_STATUS_OPTIONS = {"unverified", "verified", "rejected"}
+HIRING_IDENTITY_TYPE_OPTIONS = {"INDIVIDUAL_CHANNEL", "AGENCY_REPRESENTED_CHANNEL"}
+HIRING_IDENTITY_PLATFORM_OPTIONS = {"YOUTUBE", "INSTAGRAM"}
+AVATAR_UPLOAD_EXTENSIONS = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024
+
+
+class ProfileValidationError(Exception):
+    pass
+
+
+class ProfileNotFoundError(Exception):
+    pass
+
+
+class PortfolioItemNotFoundError(Exception):
+    pass
+
+
+def _clean_str_list(values: list[str] | None) -> list[str] | None:
+    if values is None:
+        return None
+    return [entry.strip() for entry in values if isinstance(entry, str) and entry.strip()]
+
+
+def _normalize_unique_list(values: list[str] | None) -> list[str]:
+    cleaned = _clean_str_list(values) or []
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in cleaned:
+        key = value.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(value)
+    return unique
+
+
+def _merge_privacy_settings(raw: dict[str, bool] | None) -> dict[str, bool]:
+    merged = dict(DEFAULT_PRIVACY_SETTINGS)
+    if isinstance(raw, dict):
+        for key in merged:
+            if key in raw:
+                merged[key] = bool(raw[key])
+    return merged
+
+
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    return (value or "").strip() or None
+
+
+def _is_http_url(value: str) -> bool:
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _normalize_profile_experience(
+    raw: Any,
+    *,
+    validate_urls: bool = False,
+) -> list[ProfileExperienceItem]:
+    if not isinstance(raw, list):
+        return []
+
+    normalized: list[ProfileExperienceItem] = []
+    for index, item in enumerate(raw[:25]):
+        if isinstance(item, ProfileExperienceItem):
+            data = item.model_dump()
+        elif isinstance(item, dict):
+            data = dict(item)
+        else:
+            continue
+
+        role = _clean_optional_text(data.get("role"))
+        organization_name = _clean_optional_text(
+            data.get("organization_name") or data.get("organizationName")
+        )
+        if not role or not organization_name:
+            continue
+
+        organization_url = _clean_optional_text(
+            data.get("organization_url") or data.get("organizationUrl")
+        )
+        organization_logo_url = _clean_optional_text(
+            data.get("organization_logo_url") or data.get("organizationLogoUrl")
+        )
+        if validate_urls:
+            if organization_url and not _is_http_url(organization_url):
+                raise ProfileValidationError("Experience organization URL must be a valid http(s) URL.")
+            if organization_logo_url and not _is_http_url(organization_logo_url):
+                raise ProfileValidationError("Experience logo URL must be a valid http(s) URL.")
+        else:
+            if organization_url and not _is_http_url(organization_url):
+                organization_url = None
+            if organization_logo_url and not _is_http_url(organization_logo_url):
+                organization_logo_url = None
+
+        item_id = _clean_optional_text(data.get("id")) or f"experience-{index + 1}"
+        normalized.append(
+            ProfileExperienceItem(
+                id=item_id[:120],
+                role=role,
+                organization_name=organization_name,
+                organization_url=organization_url,
+                organization_logo_url=organization_logo_url,
+                platform=_clean_optional_text(data.get("platform")),
+                work_type=_clean_optional_text(data.get("work_type") or data.get("workType")),
+                work_mode=_clean_optional_text(data.get("work_mode") or data.get("workMode")),
+                start_month=_clean_optional_text(data.get("start_month") or data.get("startMonth")),
+                start_year=_clean_optional_text(data.get("start_year") or data.get("startYear")),
+                end_month=_clean_optional_text(data.get("end_month") or data.get("endMonth")),
+                end_year=_clean_optional_text(data.get("end_year") or data.get("endYear")),
+                is_current=bool(data.get("is_current") or data.get("isCurrent")),
+                description=_clean_optional_text(data.get("description")),
+                tools=_normalize_unique_list(data.get("tools") if isinstance(data.get("tools"), list) else []),
+            )
+        )
+    return normalized
+
+
+def _is_answer_present(answer: Any) -> bool:
+    if answer is None:
+        return False
+    if isinstance(answer, str):
+        return bool(answer.strip())
+    if isinstance(answer, (list, tuple, set)):
+        return len(answer) > 0
+    if isinstance(answer, dict):
+        return len(answer) > 0
+    return True
+
+
+def _normalize_instagram_handle(value: str | None) -> str | None:
+    cleaned = (value or "").strip().lstrip("@").strip()
+    return cleaned or None
+
+
+def _status_from_portfolio_input(status: str | None, timeframe: str | None) -> str:
+    normalized_status = (status or "").strip().lower()
+    normalized_timeframe = (timeframe or "").strip().lower()
+    if normalized_status in {"now", "past"}:
+        return normalized_status
+    if normalized_timeframe in {"now", "past"}:
+        return normalized_timeframe
+    return "now"
+
+
+def _visibility_from_input(visibility: str | None, is_public: bool | None) -> str:
+    normalized = (visibility or "").strip().lower()
+    if normalized in {"public", "private"}:
+        return normalized
+    if is_public is None:
+        return "public"
+    return "public" if is_public else "private"
+
+
+def _is_public_from_visibility(visibility: str | None, is_public: bool | None) -> bool:
+    normalized = (visibility or "").strip().lower()
+    if normalized == "private":
+        return False
+    if normalized == "public":
+        return True
+    return True if is_public is None else bool(is_public)
+
+
+def _publish_status_from_input(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"draft", "published"}:
+        return normalized
+    return "published"
+
+
+def _clean_thumbnail_options(values: Any) -> list[dict[str, Any]]:
+    if not isinstance(values, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for entry in values:
+        if not isinstance(entry, dict):
+            continue
+        url = _clean_optional_text(str(entry.get("url") or ""))
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        option: dict[str, Any] = {"url": url}
+        quality = _clean_optional_text(str(entry.get("quality") or ""))
+        if quality:
+            option["quality"] = quality
+        for dimension in ("width", "height"):
+            number = _clean_metric_number(entry.get(dimension), field=dimension, minimum=0)
+            if number is not None:
+                option[dimension] = number
+        cleaned.append(option)
+    return cleaned
+
+
+def _validate_publishable_portfolio_item(data: dict[str, Any]) -> None:
+    if _publish_status_from_input(data.get("publish_status")) != "published":
+        return
+    if not _clean_optional_text(data.get("title")):
+        raise ProfileValidationError("Project title is required before publishing.")
+    if not _clean_optional_text(data.get("thumbnail_url")):
+        raise ProfileValidationError("Choose a cover image before publishing.")
+    if not _clean_optional_text(data.get("role_name")):
+        raise ProfileValidationError("Select your exact role before publishing.")
+    if not data.get("visibility"):
+        raise ProfileValidationError("Choose project visibility before publishing.")
+    if not _clean_optional_text(data.get("source_url")) and not _clean_optional_text(data.get("description")):
+        raise ProfileValidationError("Add a proof URL or contribution summary before publishing.")
+
+
+def _clean_metric_number(value: Any, *, field: str, minimum: float | None = None, maximum: float | None = None) -> int | float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ProfileValidationError(f"{field} must be numeric.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProfileValidationError(f"{field} must be numeric.") from exc
+    if minimum is not None and number < minimum:
+        raise ProfileValidationError(f"{field} must be at least {minimum}.")
+    if maximum is not None and number > maximum:
+        raise ProfileValidationError(f"{field} must be at most {maximum}.")
+    return int(number) if number.is_integer() else number
+
+
+def _clean_metrics(raw: dict[str, Any] | None, *, manual: bool) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: dict[str, Any] = {}
+    bounds = {
+        "views": (0, None),
+        "likes": (0, None),
+        "comments": (0, None),
+        "retention_percent": (0, 100),
+        "ctr_percent": (0, 100),
+        "turnaround_days": (0, None),
+        "subscribers_gained": (0, None),
+        "conversions": (0, None),
+    }
+    for key, value in raw.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        if normalized_key in bounds:
+            minimum, maximum = bounds[normalized_key]
+            number = _clean_metric_number(value, field=normalized_key, minimum=minimum, maximum=maximum)
+            if number is not None:
+                cleaned[normalized_key] = number
+            continue
+        if normalized_key in {"duration", "notes"}:
+            text = str(value).strip() if value is not None else ""
+            if text:
+                cleaned[normalized_key] = text
+            continue
+        if not manual:
+            cleaned[normalized_key] = value
+    return cleaned
+
+
+class ProfileService:
+    def __init__(self, repository: AuthRepository):
+        self.repository = repository
+
+    async def list_roles(self) -> list[RoleRead]:
+        rows = await self.repository.list_roles()
+        return [RoleRead.model_validate(row) for row in rows]
+
+    async def _list_role_questions_with_options(self, *, role_id: UUID) -> list[RoleQuestionRead]:
+        questions = await self.repository.list_role_questions_for_role(role_id=role_id)
+        question_ids = [question.id for question in questions]
+        options = await self.repository.list_role_question_options_for_questions(
+            question_ids=question_ids
+        )
+        options_by_question: dict[UUID, list[dict[str, Any]]] = {}
+        for option in options:
+            options_by_question.setdefault(option.question_id, []).append(
+                {"id": option.id, "value": option.value}
+            )
+
+        return [
+            RoleQuestionRead(
+                id=question.id,
+                role_id=question.role_id,
+                label=question.label,
+                help_text=question.help_text,
+                type=question.type,
+                required=bool(question.required),
+                options=options_by_question.get(question.id, []),
+            )
+            for question in questions
+        ]
+
+    async def list_role_questions(self, *, role_id: UUID) -> RoleQuestionsResponse:
+        role = await self.repository.get_role_by_id(role_id)
+        if role is None:
+            raise ProfileNotFoundError("Role not found")
+        items = await self._list_role_questions_with_options(role_id=role_id)
+        return RoleQuestionsResponse(role_id=role_id, items=items)
+
+    async def _load_selected_roles_for_user(self, *, user_id: UUID) -> list[RoleRead]:
+        selected_links = await self.repository.list_user_roles(user_id=user_id)
+        if not selected_links:
+            return []
+        all_roles = await self.repository.list_roles()
+        role_map = {role.id: role for role in all_roles}
+        selected_roles: list[RoleRead] = []
+        for link in selected_links:
+            role = role_map.get(link.role_id)
+            if role is None:
+                continue
+            selected_roles.append(RoleRead.model_validate(role))
+        return selected_roles
+
+    async def set_user_roles(self, user: User, payload: UserRolesUpsertRequest) -> list[RoleRead]:
+        requested_ids: list[UUID] = []
+        seen: set[UUID] = set()
+        for role_id in payload.role_ids:
+            if role_id in seen:
+                continue
+            seen.add(role_id)
+            requested_ids.append(role_id)
+
+        available_roles = await self.repository.list_roles()
+        role_map = {role.id: role for role in available_roles}
+        unknown = [str(role_id) for role_id in requested_ids if role_id not in role_map]
+        if unknown:
+            raise ProfileValidationError(f"Unknown role ids: {', '.join(unknown)}")
+
+        await self.repository.replace_user_roles(user_id=user.id, role_ids=requested_ids)
+        selected_questions = await self.repository.list_role_questions_for_roles(role_ids=requested_ids)
+        await self.repository.delete_user_role_answers_not_in_questions(
+            user_id=user.id,
+            question_ids=[question.id for question in selected_questions],
+        )
+        await self.repository.commit()
+
+        return [RoleRead.model_validate(role_map[role_id]) for role_id in requested_ids]
+
+    async def get_user_roles(self, user: User) -> list[RoleRead]:
+        return await self._load_selected_roles_for_user(user_id=user.id)
+
+    @staticmethod
+    def _normalize_answer_for_question(*, question_type: str, answer: Any) -> Any:
+        if answer is None:
+            return None
+        if question_type == "single_select":
+            if not isinstance(answer, str):
+                raise ProfileValidationError("single_select answers must be a string")
+            return answer.strip() or None
+        if question_type == "multi_select":
+            if isinstance(answer, str):
+                values = [answer]
+            elif isinstance(answer, list):
+                values = [value for value in answer if isinstance(value, str)]
+            else:
+                raise ProfileValidationError("multi_select answers must be a list of strings")
+            return _normalize_unique_list(values)
+        if question_type == "text":
+            if not isinstance(answer, str):
+                raise ProfileValidationError("text answers must be a string")
+            return answer.strip() or None
+        if question_type == "number":
+            if isinstance(answer, (int, float)):
+                return answer
+            if isinstance(answer, str):
+                candidate = answer.strip()
+                if not candidate:
+                    return None
+                try:
+                    return float(candidate)
+                except ValueError as exc:
+                    raise ProfileValidationError("number answers must be numeric") from exc
+            raise ProfileValidationError("number answers must be numeric")
+        raise ProfileValidationError("Unknown role question type")
+
+    async def upsert_user_role_answers(
+        self, user: User, payload: UserRoleAnswersUpsertRequest
+    ) -> list[UserRoleAnswerRead]:
+        selected_roles = await self.repository.list_user_roles(user_id=user.id)
+        selected_role_ids = [item.role_id for item in selected_roles]
+        if not selected_role_ids:
+            raise ProfileValidationError("Select at least one role before answering questions.")
+
+        selected_questions = await self.repository.list_role_questions_for_roles(role_ids=selected_role_ids)
+        question_map = {question.id: question for question in selected_questions}
+        question_options = await self.repository.list_role_question_options_for_questions(
+            question_ids=list(question_map.keys())
+        )
+        options_by_question: dict[UUID, set[str]] = {}
+        for option in question_options:
+            options_by_question.setdefault(option.question_id, set()).add(option.value)
+
+        for entry in payload.answers:
+            question = question_map.get(entry.role_question_id)
+            if question is None:
+                raise ProfileValidationError("Question does not belong to selected roles.")
+            normalized_answer = self._normalize_answer_for_question(
+                question_type=question.type,
+                answer=entry.answer,
+            )
+            allowed_options = options_by_question.get(question.id, set())
+            if question.type == "single_select" and normalized_answer is not None and allowed_options:
+                if normalized_answer not in allowed_options:
+                    raise ProfileValidationError("Invalid option for single_select question.")
+            if question.type == "multi_select" and isinstance(normalized_answer, list) and allowed_options:
+                invalid_values = [value for value in normalized_answer if value not in allowed_options]
+                if invalid_values:
+                    raise ProfileValidationError("Invalid option for multi_select question.")
+
+            await self.repository.upsert_user_role_answer(
+                user_id=user.id,
+                role_question_id=question.id,
+                answer=normalized_answer,
+            )
+
+        await self.repository.commit()
+        answer_rows = await self.repository.list_user_role_answers(user_id=user.id)
+        return [
+            UserRoleAnswerRead(role_question_id=row.role_question_id, answer=row.answer)
+            for row in answer_rows
+        ]
+
+    async def get_user_role_answers(self, user: User) -> list[UserRoleAnswerRead]:
+        rows = await self.repository.list_user_role_answers(user_id=user.id)
+        return [UserRoleAnswerRead(role_question_id=row.role_question_id, answer=row.answer) for row in rows]
+
+    async def get_user_content_style(self, user: User) -> ContentStyleRead:
+        row = await self.repository.get_user_content_style(user_id=user.id)
+        if row is None:
+            return ContentStyleRead()
+        return ContentStyleRead.model_validate(row)
+
+    async def upsert_user_content_style(
+        self, user: User, payload: ContentStyleUpsertRequest
+    ) -> ContentStyleRead:
+        cleaned_format = _normalize_unique_list(payload.format)
+        cleaned_tone = _normalize_unique_list(payload.tone)
+        cleaned_niche = _clean_optional_text(payload.primary_niche)
+        cleaned_target_audience = _clean_optional_text(payload.target_audience)
+        cleaned_complexity = _clean_optional_text(payload.editing_complexity)
+
+        for item in cleaned_format:
+            if item not in CONTENT_STYLE_FORMAT_OPTIONS:
+                raise ProfileValidationError(
+                    f"Invalid format '{item}'. Allowed: {', '.join(sorted(CONTENT_STYLE_FORMAT_OPTIONS))}"
+                )
+        if cleaned_complexity and cleaned_complexity not in CONTENT_STYLE_COMPLEXITY_OPTIONS:
+            raise ProfileValidationError(
+                f"Invalid editing complexity '{cleaned_complexity}'. Allowed: {', '.join(sorted(CONTENT_STYLE_COMPLEXITY_OPTIONS))}"
+            )
+
+        row = await self.repository.upsert_user_content_style(
+            user_id=user.id,
+            data={
+                "primary_niche": cleaned_niche,
+                "format": cleaned_format,
+                "tone": cleaned_tone,
+                "target_audience": cleaned_target_audience,
+                "editing_complexity": cleaned_complexity,
+            },
+        )
+        await self.repository.commit()
+        return ContentStyleRead.model_validate(row)
+
+    @staticmethod
+    def get_content_style_niches() -> ContentStyleNichesResponse:
+        return ContentStyleNichesResponse(items=CONTENT_STYLE_PRIMARY_NICHES)
+
+    async def _build_role_answer_summary(self, *, user_id: UUID) -> list[RoleAnswerSummary]:
+        selected_roles = await self._load_selected_roles_for_user(user_id=user_id)
+        role_name_by_id = {role.id: role.name for role in selected_roles}
+        if not role_name_by_id:
+            return []
+
+        answer_rows = await self.repository.list_user_role_answers(user_id=user_id)
+        question_ids = [row.role_question_id for row in answer_rows]
+        question_rows = await self.repository.list_role_questions_by_ids(question_ids=question_ids)
+        question_map = {question.id: question for question in question_rows}
+
+        summary: list[RoleAnswerSummary] = []
+        for row in answer_rows:
+            question = question_map.get(row.role_question_id)
+            if question is None:
+                continue
+            role_name = role_name_by_id.get(question.role_id)
+            if not role_name:
+                continue
+            summary.append(
+                RoleAnswerSummary(
+                    role_question_id=question.id,
+                    role_name=role_name,
+                    question_label=question.label,
+                    answer=row.answer,
+                )
+            )
+
+        summary.sort(key=lambda item: (item.role_name.lower(), item.question_label.lower()))
+        return summary
+
+    async def _resolve_content_style_for_user(self, *, user_id: UUID) -> ContentStyleRead:
+        row = await self.repository.get_user_content_style(user_id=user_id)
+        if row is None:
+            return ContentStyleRead()
+        return ContentStyleRead.model_validate(row)
+
+    async def get_profile_completion(self, user: User) -> ProfileCompletionResponse:
+        missing: list[str] = []
+
+        selected_roles = await self.repository.list_user_roles(user_id=user.id)
+        selected_role_ids = [row.role_id for row in selected_roles]
+        has_roles = len(selected_role_ids) > 0
+        if not has_roles:
+            missing.append("Select at least one role")
+
+        required_answer_complete = False
+        if has_roles:
+            questions = await self.repository.list_role_questions_for_roles(role_ids=selected_role_ids)
+            required_questions = [question for question in questions if question.required]
+            if not required_questions:
+                required_answer_complete = True
+            else:
+                answers = await self.repository.list_user_role_answers(user_id=user.id)
+                answer_map = {entry.role_question_id: entry.answer for entry in answers}
+                required_answer_complete = all(
+                    _is_answer_present(answer_map.get(question.id)) for question in required_questions
+                )
+            if not required_answer_complete:
+                missing.append("Answer required role questions")
+        else:
+            missing.append("Answer required role questions")
+
+        content_style = await self.repository.get_user_content_style(user_id=user.id)
+        content_style_complete = bool(
+            content_style
+            and _clean_optional_text(content_style.primary_niche)
+            and len(_normalize_unique_list(content_style.format)) > 0
+            and len(_normalize_unique_list(content_style.tone)) > 0
+            and _clean_optional_text(content_style.target_audience)
+        )
+        if not content_style_complete:
+            missing.append("Complete content style")
+
+        portfolio_items = await self.repository.list_portfolio_items_for_user(user_id=user.id)
+        has_portfolio = len(portfolio_items) > 0
+        if not has_portfolio:
+            missing.append("Add at least one portfolio item")
+
+        checks = [has_roles, required_answer_complete, content_style_complete, has_portfolio]
+        completion_percent = int(round((sum(1 for done in checks if done) / len(checks)) * 100))
+        return ProfileCompletionResponse(
+            completion_percent=completion_percent,
+            missing_required_sections=missing,
+        )
+
+    async def create_portfolio_from_youtube(
+        self,
+        user: User,
+        *,
+        payload: PortfolioYouTubeCreateRequest,
+    ) -> PortfolioItem:
+        parsed_video_id = extract_video_id(payload.youtube_url)
+        if not parsed_video_id:
+            raise ProfileValidationError("Invalid YouTube URL")
+
+        metadata = await fetch_youtube_video_metadata(parsed_video_id)
+        public_metrics = {
+            key: value
+            for key, value in {
+                "views": metadata.view_count,
+                "likes": metadata.like_count,
+                "comments": metadata.comment_count,
+                "duration_iso": metadata.duration_iso,
+                "duration_label": metadata.duration_label,
+                "channel_name": metadata.channel_name,
+                "channel_id": metadata.channel_id,
+                "published_at": metadata.published_date.isoformat() if metadata.published_date else None,
+            }.items()
+            if value is not None
+        }
+        manual_metrics = _clean_metrics({"retention_percent": payload.retention_percent}, manual=True)
+        data = {
+            "source_type": "youtube",
+            "source_url": metadata.video_url,
+            "title": metadata.title,
+            "description": metadata.description,
+            "contribution_summary": None,
+            "role_name": _clean_optional_text(payload.user_role_in_project),
+            "role": _clean_optional_text(payload.user_role_in_project),
+            "user_role_in_project": _clean_optional_text(payload.user_role_in_project),
+            "media_url": metadata.video_url,
+            "metrics": None,
+            "youtube_url": metadata.video_url,
+            "thumbnail_url": metadata.thumbnail_url,
+            "thumbnail_options": metadata.thumbnail_options,
+            "channel_name": metadata.channel_name,
+            "channel_id": metadata.channel_id,
+            "views": metadata.view_count,
+            "published_date": metadata.published_date,
+            "published_at": metadata.published_date,
+            "duration": metadata.duration,
+            "retention_percent": manual_metrics.get("retention_percent"),
+            "links": [metadata.video_url],
+            "tags": ["YouTube"],
+            "contribution_tags": [],
+            "tools": [],
+            "public_metrics": public_metrics,
+            "manual_metrics": manual_metrics,
+            "verification_status": "youtube_metadata_verified",
+            "visibility": "public" if payload.is_public else "private",
+            "publish_status": "published",
+            "portfolio_status": payload.status,
+            "is_featured": False,
+            "status": payload.status,
+            "is_public": payload.is_public,
+        }
+        row = await self.repository.create_portfolio_item(user_id=user.id, data=data)
+        await self.repository.commit()
+        return row
+
+    async def preview_portfolio_youtube(self, *, url: str) -> PortfolioYouTubePreviewResponse:
+        parsed_video_id = extract_video_id(url)
+        if not parsed_video_id:
+            raise ProfileValidationError("Enter a valid YouTube video URL.")
+        metadata = await fetch_youtube_video_metadata(parsed_video_id)
+        public_metrics = {
+            key: value
+            for key, value in {
+                "views": metadata.view_count,
+                "likes": metadata.like_count,
+                "comments": metadata.comment_count,
+                "duration_iso": metadata.duration_iso,
+                "duration_label": metadata.duration_label,
+                "channel_name": metadata.channel_name,
+                "channel_id": metadata.channel_id,
+                "published_at": metadata.published_date.isoformat() if metadata.published_date else None,
+            }.items()
+            if value is not None
+        }
+        return PortfolioYouTubePreviewResponse(
+            source_url=metadata.video_url,
+            video_id=metadata.video_id,
+            title=metadata.title,
+            description=metadata.description,
+            description_snippet=metadata.description,
+            thumbnail_url=metadata.thumbnail_url,
+            thumbnail_options=metadata.thumbnail_options,
+            channel_name=metadata.channel_name,
+            channel_id=metadata.channel_id,
+            published_at=metadata.published_date,
+            view_count=metadata.view_count,
+            like_count=metadata.like_count,
+            comment_count=metadata.comment_count,
+            duration_iso=metadata.duration_iso,
+            duration_label=metadata.duration_label,
+            public_metrics=public_metrics,
+        )
+
+    async def list_portfolio_by_user(self, *, user_id: UUID, include_private: bool = False) -> list[PortfolioItem]:
+        if include_private:
+            return await self.repository.list_portfolio_items_for_user(user_id=user_id)
+        return await self.repository.list_public_portfolio_items_for_user(user_id=user_id)
+
+    @staticmethod
+    def _build_collaboration_preferences(user: User) -> CollaborationPreferences:
+        return CollaborationPreferences(
+            project_type_preference=user.project_type_preference,
+            turnaround=user.collaboration_turnaround,
+            revisions=user.collaboration_revisions,
+            working_hours=user.collaboration_working_hours,
+            tools=user.collaboration_tools,
+        )
+
+    @staticmethod
+    def _build_hiring_info(user: User) -> HiringInfo:
+        verification_status = _clean_optional_text(user.hiring_verification_status) or "unverified"
+        if verification_status not in HIRING_VERIFICATION_STATUS_OPTIONS:
+            verification_status = "unverified"
+        return HiringInfo(
+            hiring_type=user.hiring_type if user.hiring_type in HIRING_TYPE_OPTIONS else None,
+            website_or_social_url=_clean_optional_text(user.hiring_website_or_social_url),
+            primary_platform=(
+                user.hiring_primary_platform
+                if user.hiring_primary_platform in HIRING_PRIMARY_PLATFORM_OPTIONS
+                else None
+            ),
+            channels_or_pages_managed=_clean_optional_text(user.hiring_channels_or_pages_managed),
+            verification_status=verification_status,
+        )
+
+    @staticmethod
+    def _build_stats(*, jobs: list[object], projects_count: int) -> ProfileStats:
+        jobs_completed_count = sum(
+            1
+            for job in jobs
+            if getattr(job, "deleted_at", None) is not None
+            or (str(getattr(job, "status", "") or "").lower() in PAST_JOB_STATUSES)
+        )
+        return ProfileStats(
+            jobs_posted_count=len(jobs),
+            jobs_completed_count=jobs_completed_count,
+            projects_count=projects_count,
+            reviews_count=0,
+        )
+
+    @staticmethod
+    def _build_profile_capabilities(
+        *,
+        user: User,
+        channels: list[YouTubeChannel],
+        portfolio_rows: list[PortfolioItem],
+        selected_roles: list[RoleRead],
+        hiring_identities: list[HiringIdentity] | None = None,
+    ) -> ProfileCapabilities:
+        has_public_profile = bool(_clean_optional_text(user.username))
+        has_portfolio = len(portfolio_rows) > 0
+        hiring_identity_rows = hiring_identities or []
+        has_hiring_identity_record = len(hiring_identity_rows) > 0
+        has_hiring_identity_trust = any(
+            _clean_optional_text(identity.url)
+            or _clean_optional_text(identity.handle)
+            for identity in hiring_identity_rows
+        )
+        has_verified_hiring_identity = any(
+            identity.verification_status == "VERIFIED" for identity in hiring_identity_rows
+        )
+        has_verified_social_or_channel = len(channels) > 0 or has_verified_hiring_identity
+        has_existing_trust_link = bool(
+            _clean_optional_text(user.hiring_website_or_social_url)
+            or len(_normalize_unique_list(user.public_links or [])) > 0
+            or _clean_optional_text(user.instagram_handle)
+            or _clean_optional_text(user.instagram_url)
+            or has_verified_social_or_channel
+            or has_hiring_identity_trust
+        )
+        has_talent_signal = (
+            len(selected_roles) > 0
+            or len(_normalize_unique_list(user.skills or [])) > 0
+            or has_portfolio
+        )
+        has_hiring_identity = bool(
+            _clean_optional_text(user.display_name)
+            and _clean_optional_text(user.hiring_type)
+            and _clean_optional_text(user.location)
+            and has_hiring_identity_record
+            and has_existing_trust_link
+        )
+
+        apply_missing_sections: list[str] = []
+        if not has_public_profile:
+            apply_missing_sections.append("Create public username")
+        if not has_talent_signal:
+            apply_missing_sections.append("Add roles, skills, or portfolio proof")
+
+        post_missing_sections: list[str] = []
+        if not _clean_optional_text(user.display_name):
+            post_missing_sections.append("Add display name")
+        if not _clean_optional_text(user.hiring_type):
+            post_missing_sections.append("Choose hiring type")
+        if not _clean_optional_text(user.location):
+            post_missing_sections.append("Add location")
+        if not has_hiring_identity_record:
+            post_missing_sections.append("Add a YouTube channel or Instagram page you hire for")
+        if not has_existing_trust_link:
+            post_missing_sections.append("Add website, social link, Instagram, or verified YouTube channel")
+
+        return ProfileCapabilities(
+            can_apply_to_jobs=has_public_profile and has_talent_signal,
+            can_post_jobs=has_hiring_identity,
+            has_portfolio=has_portfolio,
+            has_public_profile=has_public_profile,
+            has_hiring_identity=has_hiring_identity,
+            has_verified_social_or_channel=has_verified_social_or_channel,
+            is_admin=is_admin(user),
+            apply_missing_sections=apply_missing_sections,
+            post_missing_sections=post_missing_sections,
+            missing_hiring_fields=post_missing_sections,
+        )
+
+    def _build_social_connections(
+        self,
+        *,
+        user: User,
+        channels: list[YouTubeChannel],
+        show_youtube: bool,
+    ) -> SocialConnections:
+        youtube = SocialYouTubeConnection(connected=False)
+        if channels and show_youtube:
+            first = channels[0]
+            youtube = SocialYouTubeConnection(
+                connected=True,
+                channel_id=first.channel_id,
+                channel_title=first.title,
+                channel_handle=None,
+                channel_avatar_url=first.thumbnail_url,
+                channel_url=f"https://www.youtube.com/channel/{first.channel_id}",
+            )
+
+        instagram_handle = _normalize_instagram_handle(user.instagram_handle)
+        instagram_url = _clean_optional_text(user.instagram_url)
+        if instagram_handle and not instagram_url:
+            instagram_url = f"https://www.instagram.com/{instagram_handle}"
+        instagram = SocialInstagramConnection(
+            connected=bool(instagram_handle or instagram_url),
+            handle=instagram_handle,
+            url=instagram_url,
+        )
+
+        return SocialConnections(youtube=youtube, instagram=instagram)
+
+    @staticmethod
+    def _portfolio_to_read(item: PortfolioItem) -> PortfolioItemRead:
+        parsed = PortfolioItemRead.model_validate(item)
+        if parsed.timeframe is None:
+            parsed = parsed.model_copy(update={"timeframe": parsed.status})
+        return parsed
+
+    async def _resolve_avatar_url(
+        self,
+        *,
+        user: User,
+        channels: list[YouTubeChannel] | None = None,
+    ) -> str | None:
+        linked_channels = channels
+        if linked_channels is None:
+            linked_channels = await self.repository.list_user_youtube_channels(user_id=user.id)
+
+        if user.avatar_mode == "youtube_channel" and user.avatar_youtube_channel_id:
+            selected = next(
+                (ch for ch in linked_channels if ch.channel_id == user.avatar_youtube_channel_id),
+                None,
+            )
+            if selected and selected.thumbnail_url:
+                return selected.thumbnail_url
+        return user.avatar_url
+
+    async def _build_profile_read(self, user: User) -> ProfileRead:
+        privacy = _merge_privacy_settings(user.privacy_settings)
+        now = datetime.now(UTC)
+        can_change, next_change_at = can_change_username(
+            username_change_count=user.username_change_count,
+            username_last_changed_at=user.username_last_changed_at,
+            now=now,
+        )
+        channels = await self.repository.list_user_youtube_channels(user_id=user.id)
+        avatar_url = await self._resolve_avatar_url(user=user, channels=channels)
+        jobs = await self.repository.list_jobs_for_user_public(user_id=user.id)
+        portfolio_rows = await self.repository.list_portfolio_items_for_user(user_id=user.id)
+        selected_roles = await self._load_selected_roles_for_user(user_id=user.id)
+        hiring_identities = await self.repository.list_hiring_identities_for_user(user_id=user.id)
+        role_answers_summary = await self._build_role_answer_summary(user_id=user.id)
+        content_style = await self._resolve_content_style_for_user(user_id=user.id)
+
+        social_connections = self._build_social_connections(
+            user=user,
+            channels=channels,
+            show_youtube=True,
+        )
+
+        return ProfileRead(
+            id=user.id,
+            email=user.email,
+            account_type=user.account_type,
+            account_type_selected_at=user.account_type_selected_at,
+            onboarding_intent=user.onboarding_intent,
+            onboarding_intent_selected_at=user.onboarding_intent_selected_at,
+            username=user.username,
+            username_change_count=user.username_change_count,
+            username_last_changed_at=user.username_last_changed_at,
+            display_name=user.display_name,
+            headline=user.headline,
+            skills=list(user.skills or []),
+            public_links=list(user.public_links or []),
+            experience=_normalize_profile_experience(user.profile_experience),
+            availability_status=(
+                user.availability_status
+                if user.availability_status in {"available", "selective", "unavailable"}
+                else "selective"
+            ),
+            location=user.location,
+            timezone=user.timezone,
+            avatar_mode="youtube_channel" if user.avatar_mode == "youtube_channel" else "generic",
+            avatar_url=avatar_url,
+            avatar_youtube_channel_id=user.avatar_youtube_channel_id,
+            social_connections=social_connections,
+            stats=self._build_stats(jobs=jobs, projects_count=len(portfolio_rows)),
+            reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
+            collaboration_preferences=self._build_collaboration_preferences(user),
+            hiring_info=self._build_hiring_info(user),
+            roles=selected_roles,
+            role_answers_summary=role_answers_summary,
+            content_style=content_style,
+            privacy_settings=PrivacySettings(**privacy),
+            profile_capabilities=self._build_profile_capabilities(
+                user=user,
+                channels=channels,
+                portfolio_rows=portfolio_rows,
+                selected_roles=selected_roles,
+                hiring_identities=hiring_identities,
+            ),
+            can_change_username=can_change,
+            username_next_change_at=next_change_at,
+        )
+
+    async def get_my_profile(self, user: User) -> ProfileRead:
+        return await self._build_profile_read(user)
+
+    async def get_profile_capabilities(self, user: User) -> ProfileCapabilities:
+        channels = await self.repository.list_user_youtube_channels(user_id=user.id)
+        portfolio_rows = await self.repository.list_portfolio_items_for_user(user_id=user.id)
+        selected_roles = await self._load_selected_roles_for_user(user_id=user.id)
+        hiring_identities = await self.repository.list_hiring_identities_for_user(user_id=user.id)
+        return self._build_profile_capabilities(
+            user=user,
+            channels=channels,
+            portfolio_rows=portfolio_rows,
+            selected_roles=selected_roles,
+            hiring_identities=hiring_identities,
+        )
+
+    @staticmethod
+    def _stringify_url(value: Any) -> str | None:
+        if value is None:
+            return None
+        return _clean_optional_text(str(value))
+
+    def _normalize_hiring_identity_data(
+        self,
+        user: User,
+        data: dict[str, Any],
+        *,
+        current: HiringIdentity | None = None,
+    ) -> dict[str, Any]:
+        next_data = dict(data)
+        identity_type = next_data.get("type") or (current.type if current is not None else None)
+        if identity_type not in HIRING_IDENTITY_TYPE_OPTIONS:
+            raise ProfileValidationError("Choose whether this is your own channel/page or represented by you.")
+        next_data["type"] = identity_type
+        next_data["is_agency_represented"] = identity_type == "AGENCY_REPRESENTED_CHANNEL"
+
+        platform = next_data.get("platform") or (current.platform if current is not None else None)
+        if platform not in HIRING_IDENTITY_PLATFORM_OPTIONS:
+            raise ProfileValidationError("Choose YouTube or Instagram for this channel/page.")
+        next_data["platform"] = platform
+
+        if "display_name" in next_data:
+            display_name = _clean_optional_text(next_data.get("display_name"))
+            if not display_name:
+                raise ProfileValidationError("Channel/page name is required.")
+            next_data["display_name"] = display_name
+
+        for field in ("handle", "description", "managed_by_agency_name"):
+            if field in next_data:
+                next_data[field] = _clean_optional_text(next_data.get(field))
+
+        for field in ("url", "avatar_url", "proof_url"):
+            if field in next_data:
+                url = self._stringify_url(next_data.get(field))
+                if url and not _is_http_url(url):
+                    raise ProfileValidationError("Channel/page URLs must be valid http(s) URLs.")
+                next_data[field] = url
+
+        next_handle = (
+            _clean_optional_text(next_data.get("handle"))
+            if "handle" in next_data
+            else _clean_optional_text(current.handle) if current is not None else None
+        )
+        next_url = (
+            _clean_optional_text(next_data.get("url"))
+            if "url" in next_data
+            else _clean_optional_text(current.url) if current is not None else None
+        )
+        if not next_handle and not next_url:
+            raise ProfileValidationError("Add a channel/page handle or URL.")
+
+        if next_data["type"] == "AGENCY_REPRESENTED_CHANNEL":
+            agency_name = _clean_optional_text(next_data.get("managed_by_agency_name"))
+            if not agency_name:
+                agency_name = _clean_optional_text(user.display_name) or _clean_optional_text(user.username)
+            next_data["managed_by_agency_name"] = agency_name
+        else:
+            next_data["managed_by_agency_name"] = None
+
+        return next_data
+
+    @staticmethod
+    def _hiring_identity_identity_fields_changed(updates: dict[str, Any]) -> bool:
+        return any(
+            field in updates
+            for field in (
+                "type",
+                "platform",
+                "display_name",
+                "handle",
+                "url",
+                "managed_by_agency_name",
+                "is_agency_represented",
+            )
+        )
+
+    @staticmethod
+    def _matches_linked_youtube_channel(
+        identity: HiringIdentity, channels: list[YouTubeChannel]
+    ) -> bool:
+        candidates = {
+            _clean_optional_text(identity.display_name or "") or "",
+            (_clean_optional_text(identity.handle or "") or "").lstrip("@"),
+        }
+        url = _clean_optional_text(identity.url)
+        for channel in channels:
+            title = _clean_optional_text(channel.title) or ""
+            channel_id = _clean_optional_text(channel.channel_id) or ""
+            if title and title.lower() in {candidate.lower() for candidate in candidates if candidate}:
+                return True
+            if channel_id and channel_id.lower() in {candidate.lower() for candidate in candidates if candidate}:
+                return True
+            if url and channel_id and channel_id.lower() in url.lower():
+                return True
+        return False
+
+    async def list_my_hiring_identities(self, user: User) -> list[HiringIdentity]:
+        return await self.repository.list_hiring_identities_for_user(user_id=user.id)
+
+    async def create_my_hiring_identity(
+        self, user: User, payload: HiringIdentityCreate
+    ) -> HiringIdentity:
+        data = payload.model_dump()
+        data = self._normalize_hiring_identity_data(user, data)
+        for key in ("url", "avatar_url", "proof_url"):
+            if data.get(key) is not None:
+                data[key] = str(data[key])
+        data["verification_status"] = "UNVERIFIED"
+        data["verification_method"] = "NONE"
+        data["verification_code"] = None
+        data["verified_at"] = None
+        row = await self.repository.create_hiring_identity(user_id=user.id, data=data)
+        await self.repository.commit()
+        return row
+
+    async def update_my_hiring_identity(
+        self,
+        user: User,
+        *,
+        identity_id: UUID,
+        payload: HiringIdentityUpdate,
+    ) -> HiringIdentity:
+        row = await self.repository.get_hiring_identity_for_user(
+            user_id=user.id, identity_id=identity_id
+        )
+        if row is None:
+            raise ProfileNotFoundError("Hiring identity not found")
+        updates = payload.model_dump(exclude_unset=True)
+        updates = self._normalize_hiring_identity_data(user, updates, current=row)
+        for key in ("url", "avatar_url", "proof_url"):
+            if updates.get(key) is not None:
+                updates[key] = str(updates[key])
+        if self._hiring_identity_identity_fields_changed(updates):
+            updates["verification_status"] = "UNVERIFIED"
+            updates["verification_method"] = "NONE"
+            updates["verification_code"] = None
+            updates["verified_at"] = None
+        self.repository.update_values(row, **updates)
+        await self.repository.session.flush()
+        await self.repository.session.refresh(row)
+        await self.repository.commit()
+        return row
+
+    async def request_hiring_identity_verification(
+        self,
+        user: User,
+        *,
+        identity_id: UUID,
+        payload: HiringIdentityVerificationRequest,
+    ) -> HiringIdentityVerificationResponse:
+        row = await self.repository.get_hiring_identity_for_user(
+            user_id=user.id, identity_id=identity_id
+        )
+        if row is None:
+            raise ProfileNotFoundError("Hiring identity not found")
+
+        proof_url = self._stringify_url(payload.proof_url)
+        if proof_url and not _is_http_url(proof_url):
+            raise ProfileValidationError("Proof URL must be a valid http(s) URL.")
+        row.proof_url = proof_url or row.proof_url
+
+        if row.platform == "YOUTUBE":
+            linked_channels = await self.repository.list_user_youtube_channels(user_id=user.id)
+            if self._matches_linked_youtube_channel(row, linked_channels):
+                row.verification_status = "VERIFIED"
+                row.verification_method = "YOUTUBE_OAUTH"
+                row.verification_code = None
+                row.verified_at = datetime.now(UTC)
+                message = "This YouTube channel matches a linked account and is verified."
+            else:
+                row.verification_status = "PENDING"
+                row.verification_method = "VERIFICATION_CODE"
+                row.verification_code = row.verification_code or f"CJ-{secrets.token_hex(4).upper()}"
+                row.verified_at = None
+                message = (
+                    "Add this verification code to the channel description or submit proof "
+                    "for manual review."
+                )
+        else:
+            row.verification_status = "PENDING"
+            row.verification_method = "INSTAGRAM_LINK_IN_BIO"
+            row.verification_code = row.verification_code or f"CJ-{secrets.token_hex(4).upper()}"
+            row.verified_at = None
+            message = "Add this verification code to the Instagram bio or link-in-bio, then submit proof."
+
+        await self.repository.session.flush()
+        await self.repository.session.refresh(row)
+        await self.repository.commit()
+        return HiringIdentityVerificationResponse(
+            identity=HiringIdentityRead.model_validate(row),
+            message=message,
+        )
+
+    async def update_my_profile(self, user: User, payload: ProfileUpdateRequest) -> ProfileRead:
+        updates = payload.model_dump(exclude_unset=True)
+        now = datetime.now(UTC)
+
+        if "username" in updates:
+            raw_username = updates.get("username")
+            if raw_username is not None:
+                requested_username = normalize_username(raw_username)
+                if not validate_username_format(requested_username):
+                    raise ProfileValidationError(
+                        "Username must be 3-20 characters, use lowercase letters/numbers/underscore, and cannot start with underscore."
+                    )
+
+                if user.username is None:
+                    existing = await self.repository.get_user_by_username(requested_username)
+                    if existing and existing.id != user.id:
+                        raise ProfileValidationError("Username is already taken")
+                    user.username = requested_username
+                elif requested_username != user.username:
+                    allowed, next_change_at = can_change_username(
+                        username_change_count=user.username_change_count,
+                        username_last_changed_at=user.username_last_changed_at,
+                        now=now,
+                    )
+                    if not allowed:
+                        if user.username_change_count >= 2:
+                            raise ProfileValidationError("Username change limit reached.")
+                        if next_change_at:
+                            raise ProfileValidationError(
+                                f"Username can be changed again after {next_change_at.isoformat()}."
+                            )
+                        raise ProfileValidationError("Username cannot be changed right now.")
+
+                    existing = await self.repository.get_user_by_username(requested_username)
+                    if existing and existing.id != user.id:
+                        raise ProfileValidationError("Username is already taken")
+
+                    if user.username:
+                        await self.repository.create_username_history_entry(
+                            user_id=user.id,
+                            old_username=user.username,
+                        )
+                    user.username = requested_username
+                    user.username_change_count = int(user.username_change_count) + 1
+                    user.username_last_changed_at = now
+
+        if "display_name" in updates:
+            user.display_name = _clean_optional_text(updates.get("display_name"))
+        if "headline" in updates:
+            user.headline = _clean_optional_text(updates.get("headline"))
+        if "availability_status" in updates:
+            availability_status = updates.get("availability_status")
+            if availability_status not in {"available", "selective", "unavailable"}:
+                raise ProfileValidationError("Invalid availability status.")
+            user.availability_status = availability_status
+        if "location" in updates:
+            user.location = _clean_optional_text(updates.get("location"))
+        if "timezone" in updates:
+            user.timezone = _clean_optional_text(updates.get("timezone"))
+        if "skills" in updates:
+            user.skills = _clean_str_list(updates.get("skills")) or []
+        if "public_links" in updates:
+            user.public_links = _clean_str_list(updates.get("public_links")) or []
+        if "experience" in updates:
+            user.profile_experience = [
+                item.model_dump()
+                for item in _normalize_profile_experience(
+                    updates.get("experience"),
+                    validate_urls=True,
+                )
+            ]
+        if "avatar_url" in updates:
+            user.avatar_url = _clean_optional_text(updates.get("avatar_url"))
+
+        if "instagram_handle" in updates:
+            user.instagram_handle = _normalize_instagram_handle(updates.get("instagram_handle"))
+        if "instagram_url" in updates:
+            user.instagram_url = _clean_optional_text(updates.get("instagram_url"))
+
+        if "project_type_preference" in updates:
+            project_type_preference = updates.get("project_type_preference")
+            if project_type_preference not in {None, "oneOff", "retainer", "either"}:
+                raise ProfileValidationError("Invalid project type preference.")
+            user.project_type_preference = project_type_preference
+        if "collaboration_turnaround" in updates:
+            user.collaboration_turnaround = _clean_optional_text(updates.get("collaboration_turnaround"))
+        if "collaboration_revisions" in updates:
+            user.collaboration_revisions = _clean_optional_text(updates.get("collaboration_revisions"))
+        if "collaboration_working_hours" in updates:
+            user.collaboration_working_hours = _clean_optional_text(
+                updates.get("collaboration_working_hours")
+            )
+        if "collaboration_tools" in updates:
+            user.collaboration_tools = _clean_optional_text(updates.get("collaboration_tools"))
+        if "hiring_type" in updates:
+            hiring_type = updates.get("hiring_type")
+            if hiring_type is not None and hiring_type not in HIRING_TYPE_OPTIONS:
+                raise ProfileValidationError("Invalid hiring type.")
+            user.hiring_type = hiring_type
+        if "hiring_website_or_social_url" in updates:
+            hiring_url = _clean_optional_text(updates.get("hiring_website_or_social_url"))
+            if hiring_url and not _is_http_url(hiring_url):
+                raise ProfileValidationError("Hiring website or social URL must be a valid http(s) URL.")
+            user.hiring_website_or_social_url = hiring_url
+        if "hiring_primary_platform" in updates:
+            primary_platform = updates.get("hiring_primary_platform")
+            if primary_platform is not None and primary_platform not in HIRING_PRIMARY_PLATFORM_OPTIONS:
+                raise ProfileValidationError("Invalid hiring primary platform.")
+            user.hiring_primary_platform = primary_platform
+        if "hiring_channels_or_pages_managed" in updates:
+            user.hiring_channels_or_pages_managed = _clean_optional_text(
+                updates.get("hiring_channels_or_pages_managed")
+            )
+
+        if "avatar_mode" in updates:
+            requested_mode = updates.get("avatar_mode")
+            if requested_mode not in {"generic", "youtube_channel"}:
+                raise ProfileValidationError("Invalid avatar mode.")
+            user.avatar_mode = requested_mode
+
+            if requested_mode == "generic":
+                user.avatar_youtube_channel_id = None
+            else:
+                selected_channel_id = (updates.get("avatar_youtube_channel_id") or "").strip()
+                if not selected_channel_id:
+                    selected_channel_id = user.avatar_youtube_channel_id or ""
+                if not selected_channel_id:
+                    raise ProfileValidationError(
+                        "Select a linked YouTube channel for channel-avatar mode."
+                    )
+
+                channel = await self.repository.get_user_youtube_channel_by_channel_id(
+                    user_id=user.id,
+                    channel_id=selected_channel_id,
+                )
+                if channel is None:
+                    raise ProfileValidationError("Selected channel is not linked to your account.")
+                user.avatar_youtube_channel_id = selected_channel_id
+
+        elif "avatar_youtube_channel_id" in updates and user.avatar_mode == "youtube_channel":
+            selected_channel_id = (updates.get("avatar_youtube_channel_id") or "").strip()
+            if selected_channel_id:
+                channel = await self.repository.get_user_youtube_channel_by_channel_id(
+                    user_id=user.id,
+                    channel_id=selected_channel_id,
+                )
+                if channel is None:
+                    raise ProfileValidationError("Selected channel is not linked to your account.")
+                user.avatar_youtube_channel_id = selected_channel_id
+
+        await self.repository.commit()
+        await self.repository.session.refresh(user)
+        return await self._build_profile_read(user)
+
+    async def upload_my_avatar(
+        self,
+        user: User,
+        payload: AvatarUploadRequest,
+        *,
+        public_base_url: str,
+    ) -> ProfileRead:
+        content_type = payload.content_type.strip().lower()
+        data_url = payload.data_url.strip()
+        encoded = data_url
+
+        if data_url.startswith("data:"):
+            header, separator, encoded_body = data_url.partition(",")
+            if separator != ",":
+                raise ProfileValidationError("Invalid avatar image data.")
+            header_content_type = header.removeprefix("data:").split(";", 1)[0].strip().lower()
+            if header_content_type:
+                content_type = header_content_type
+            encoded = encoded_body
+
+        extension = AVATAR_UPLOAD_EXTENSIONS.get(content_type)
+        if not extension:
+            raise ProfileValidationError("Avatar must be a PNG, JPG, WEBP, or GIF image.")
+
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ProfileValidationError("Invalid avatar image data.") from exc
+
+        if not image_bytes:
+            raise ProfileValidationError("Avatar image is empty.")
+        if len(image_bytes) > MAX_AVATAR_UPLOAD_BYTES:
+            raise ProfileValidationError("Avatar image must be 5 MB or smaller.")
+
+        avatars_dir = Path(settings.media_root) / "avatars"
+        avatars_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"{user.id}-{secrets.token_urlsafe(12)}.{extension}"
+        file_path = avatars_dir / file_name
+        file_path.write_bytes(image_bytes)
+
+        media_base_path = f"/{settings.media_base_path.strip('/')}"
+        user.avatar_mode = "generic"
+        user.avatar_youtube_channel_id = None
+        user.avatar_url = f"{public_base_url.rstrip('/')}{media_base_path}/avatars/{file_name}"
+
+        await self.repository.commit()
+        await self.repository.session.refresh(user)
+        return await self._build_profile_read(user)
+
+    async def update_my_privacy(self, user: User, payload: PrivacyUpdateRequest) -> ProfileRead:
+        current = _merge_privacy_settings(user.privacy_settings)
+        updates = payload.model_dump(exclude_unset=True)
+        for key, value in updates.items():
+            if key in current and value is not None:
+                current[key] = bool(value)
+        user.privacy_settings = current
+        await self.repository.commit()
+        await self.repository.session.refresh(user)
+        return await self._build_profile_read(user)
+
+    async def list_my_portfolio(self, user: User) -> list[PortfolioItem]:
+        return await self.repository.list_portfolio_items_for_user(user_id=user.id)
+
+    async def create_my_portfolio_item(
+        self, user: User, payload: PortfolioItemCreate
+    ) -> PortfolioItem:
+        explicit_publish_status = "publish_status" in payload.model_fields_set
+        data = payload.model_dump()
+        data["status"] = _status_from_portfolio_input(
+            data.get("portfolio_status") or data.get("status"), data.get("timeframe")
+        )
+        data["portfolio_status"] = data["status"]
+        data["publish_status"] = _publish_status_from_input(data.get("publish_status"))
+        data.pop("timeframe", None)
+        data["visibility"] = _visibility_from_input(data.get("visibility"), data.get("is_public"))
+        data["is_public"] = _is_public_from_visibility(data.get("visibility"), data.get("is_public"))
+        data["links"] = _clean_str_list(data.get("links")) or []
+        data["tags"] = _clean_str_list(data.get("tags")) or []
+        data["contribution_tags"] = _normalize_unique_list(data.get("contribution_tags"))
+        data["tools"] = _clean_str_list(data.get("tools")) or []
+        data["thumbnail_options"] = _clean_thumbnail_options(data.get("thumbnail_options"))
+        data["role_name"] = _clean_optional_text(data.get("role_name")) or _clean_optional_text(data.get("role")) or _clean_optional_text(data.get("user_role_in_project"))
+        data["role"] = data["role_name"]
+        data["user_role_in_project"] = data["role_name"]
+        data["contribution_summary"] = _clean_optional_text(data.get("contribution_summary")) or _clean_optional_text(data.get("description"))
+        data["description"] = _clean_optional_text(data.get("description")) or data["contribution_summary"]
+        data["source_type"] = (data.get("source_type") or ("youtube" if data.get("youtube_url") else "custom")).strip().lower()
+        data["source_url"] = _clean_optional_text(data.get("source_url")) or _clean_optional_text(data.get("youtube_url")) or _clean_optional_text(data.get("media_url")) or (data["links"][0] if data["links"] else None)
+        data["media_url"] = _clean_optional_text(data.get("media_url")) or data["source_url"]
+        if data["source_type"] == "youtube":
+            data["youtube_url"] = _clean_optional_text(data.get("youtube_url")) or data["source_url"]
+            data["verification_status"] = data.get("verification_status") or "youtube_metadata_verified"
+        else:
+            data["verification_status"] = data.get("verification_status") or "manual"
+        if not data["source_url"] and not data["description"]:
+            raise ProfileValidationError("Add either a media URL or a contribution summary.")
+        data["public_metrics"] = _clean_metrics(data.get("public_metrics"), manual=False)
+        if data.get("views") is not None and "views" not in data["public_metrics"]:
+            data["public_metrics"]["views"] = _clean_metric_number(data.get("views"), field="views", minimum=0)
+        if data.get("duration") and "duration" not in data["public_metrics"]:
+            data["public_metrics"]["duration"] = data.get("duration")
+        manual_metrics = dict(data.get("manual_metrics") or {})
+        if data.get("retention_percent") is not None:
+            manual_metrics["retention_percent"] = data.get("retention_percent")
+        data["manual_metrics"] = _clean_metrics(manual_metrics, manual=True)
+        data["retention_percent"] = data["manual_metrics"].get("retention_percent")
+        data["views"] = data["public_metrics"].get("views") if isinstance(data["public_metrics"].get("views"), int) else data.get("views")
+        data["published_date"] = data.get("published_date") or data.get("published_at")
+        data["published_at"] = data.get("published_at") or data.get("published_date")
+        if explicit_publish_status:
+            _validate_publishable_portfolio_item(data)
+        row = await self.repository.create_portfolio_item(user_id=user.id, data=data)
+        await self.repository.commit()
+        return row
+
+    async def update_my_portfolio_item(
+        self,
+        user: User,
+        *,
+        item_id: UUID,
+        payload: PortfolioItemUpdate,
+    ) -> PortfolioItem:
+        row = await self.repository.get_portfolio_item_for_user(user_id=user.id, item_id=item_id)
+        if row is None:
+            raise PortfolioItemNotFoundError("Portfolio item not found")
+
+        updates = payload.model_dump(exclude_unset=True)
+        explicit_publish_status = "publish_status" in payload.model_fields_set
+        if "publish_status" in updates:
+            updates["publish_status"] = _publish_status_from_input(updates.get("publish_status"))
+        status_candidate = (
+            updates.get("portfolio_status") or updates.get("status")
+            if "status" in updates or "portfolio_status" in updates
+            else None
+        )
+        next_status = _status_from_portfolio_input(
+            status_candidate,
+            updates.get("timeframe") if "timeframe" in updates else None,
+        )
+        if "status" in updates or "portfolio_status" in updates or "timeframe" in updates:
+            updates["status"] = next_status
+            updates["portfolio_status"] = next_status
+        updates.pop("timeframe", None)
+        if "visibility" in updates or "is_public" in updates:
+            updates["visibility"] = _visibility_from_input(updates.get("visibility"), updates.get("is_public"))
+            updates["is_public"] = _is_public_from_visibility(updates.get("visibility"), updates.get("is_public"))
+        if "links" in updates:
+            updates["links"] = _clean_str_list(updates.get("links")) or []
+        if "tags" in updates:
+            updates["tags"] = _clean_str_list(updates.get("tags")) or []
+        if "contribution_tags" in updates:
+            updates["contribution_tags"] = _normalize_unique_list(updates.get("contribution_tags"))
+        if "tools" in updates:
+            updates["tools"] = _clean_str_list(updates.get("tools")) or []
+        if "thumbnail_options" in updates:
+            updates["thumbnail_options"] = _clean_thumbnail_options(updates.get("thumbnail_options"))
+        if any(key in updates for key in ("role_name", "role", "user_role_in_project")):
+            role_name = _clean_optional_text(updates.get("role_name")) or _clean_optional_text(updates.get("role")) or _clean_optional_text(updates.get("user_role_in_project"))
+            updates["role_name"] = role_name
+            updates["role"] = role_name
+            updates["user_role_in_project"] = role_name
+        if "contribution_summary" in updates or "description" in updates:
+            summary = _clean_optional_text(updates.get("contribution_summary")) or _clean_optional_text(updates.get("description"))
+            updates["contribution_summary"] = summary
+            updates["description"] = _clean_optional_text(updates.get("description")) or summary
+        if any(key in updates for key in ("source_url", "youtube_url", "media_url", "links", "source_type")):
+            source_url = _clean_optional_text(updates.get("source_url")) or _clean_optional_text(updates.get("youtube_url")) or _clean_optional_text(updates.get("media_url")) or (updates.get("links") or [None])[0]
+            if source_url:
+                updates["source_url"] = source_url
+                updates["media_url"] = _clean_optional_text(updates.get("media_url")) or source_url
+            if updates.get("source_type") == "youtube":
+                updates["youtube_url"] = _clean_optional_text(updates.get("youtube_url")) or source_url
+        if "verification_status" not in updates and updates.get("source_type") == "youtube":
+            updates["verification_status"] = "youtube_metadata_verified"
+        if "public_metrics" in updates:
+            updates["public_metrics"] = _clean_metrics(updates.get("public_metrics"), manual=False)
+        if "manual_metrics" in updates or "retention_percent" in updates:
+            manual_metrics = dict(updates.get("manual_metrics") or {})
+            if updates.get("retention_percent") is not None:
+                manual_metrics["retention_percent"] = updates.get("retention_percent")
+            updates["manual_metrics"] = _clean_metrics(manual_metrics, manual=True)
+            updates["retention_percent"] = updates["manual_metrics"].get("retention_percent")
+        if "published_at" in updates and "published_date" not in updates:
+            updates["published_date"] = updates.get("published_at")
+        if "published_date" in updates and "published_at" not in updates:
+            updates["published_at"] = updates.get("published_date")
+
+        if explicit_publish_status and updates.get("publish_status") == "published":
+            merged = {
+                "title": row.title,
+                "thumbnail_url": row.thumbnail_url,
+                "role_name": row.role_name,
+                "visibility": row.visibility,
+                "source_url": row.source_url,
+                "description": row.description,
+                "publish_status": row.publish_status,
+            }
+            merged.update(updates)
+            _validate_publishable_portfolio_item(merged)
+
+        self.repository.update_values(row, **updates)
+        await self.repository.session.flush()
+        await self.repository.session.refresh(row)
+        await self.repository.commit()
+        return row
+
+    async def delete_my_portfolio_item(self, user: User, *, item_id: UUID) -> None:
+        deleted = await self.repository.delete_portfolio_item_for_user(user_id=user.id, item_id=item_id)
+        if not deleted:
+            raise PortfolioItemNotFoundError("Portfolio item not found")
+        await self.repository.commit()
+
+    async def _resolve_user_for_public_lookup(
+        self, username: str
+    ) -> tuple[User | None, str | None, str]:
+        normalized_username = normalize_username(username)
+        if not validate_username_format(normalized_username):
+            raise ProfileNotFoundError("Profile not found")
+
+        user = await self.repository.get_user_by_username(normalized_username)
+        if user is not None:
+            return user, None, normalized_username
+
+        history = await self.repository.get_username_history(normalized_username)
+        if history is None:
+            raise ProfileNotFoundError("Profile not found")
+        moved_user = await self.repository.get_user_by_id(history.user_id)
+        if moved_user is None or not moved_user.username:
+            raise ProfileNotFoundError("Profile not found")
+        return moved_user, moved_user.username, normalized_username
+
+    @staticmethod
+    def _split_public_jobs(jobs: list[object]) -> tuple[list[PublicJobItem], list[PublicJobItem]]:
+        jobs_active: list[PublicJobItem] = []
+        jobs_past: list[PublicJobItem] = []
+        for job in jobs:
+            row = PublicJobItem(
+                id=job.id,
+                title=job.title,
+                category=job.category,
+                location=job.location,
+                status=job.status,
+                created_at=job.created_at,
+                channel_name=job.channel_name,
+            )
+            if job.deleted_at is not None or (job.status or "").lower() in PAST_JOB_STATUSES:
+                jobs_past.append(row)
+            else:
+                jobs_active.append(row)
+        return jobs_active, jobs_past
+
+    @staticmethod
+    def _public_talent_listing_item(listing: object) -> PublicTalentListingItem:
+        return PublicTalentListingItem(
+            id=listing.id,
+            title=listing.title,
+            primary_role=listing.primary_role,
+            location=listing.location,
+            timezone=listing.timezone,
+            status=listing.status,
+            is_featured=bool(listing.is_featured),
+            created_at=listing.created_at,
+        )
+
+    async def get_public_profile(self, username: str) -> PublicProfileResponse:
+        user, moved_to_username, normalized_username = await self._resolve_user_for_public_lookup(username)
+        if user is None:
+            raise ProfileNotFoundError("Profile not found")
+
+        if moved_to_username:
+            return PublicProfileResponse(
+                username=normalized_username,
+                display_name=normalized_username,
+                moved_to_username=moved_to_username,
+            )
+
+        privacy = _merge_privacy_settings(user.privacy_settings)
+        channels = await self.repository.list_user_youtube_channels(user_id=user.id)
+        avatar_url = await self._resolve_avatar_url(user=user, channels=channels)
+
+        social_connections = self._build_social_connections(
+            user=user,
+            channels=channels,
+            show_youtube=privacy["show_youtube_badge"],
+        )
+
+        badge: PublicYouTubeBadge | None = None
+        if privacy["show_youtube_badge"] and channels:
+            first = channels[0]
+            badge = PublicYouTubeBadge(
+                channel_id=first.channel_id,
+                title=first.title,
+                thumbnail_url=first.thumbnail_url,
+            )
+
+        jobs = await self.repository.list_jobs_for_user_public(user_id=user.id)
+        jobs_active, jobs_past = self._split_public_jobs(jobs)
+        selected_roles = await self._load_selected_roles_for_user(user_id=user.id)
+        role_answers_summary = await self._build_role_answer_summary(user_id=user.id)
+        content_style = await self._resolve_content_style_for_user(user_id=user.id)
+
+        portfolio_rows = await self.repository.list_public_portfolio_items_for_user(user_id=user.id)
+        talent_listing_rows = await self.repository.list_talent_listings_for_user_public(user_id=user.id)
+        talent_listings_active = [
+            self._public_talent_listing_item(listing) for listing in talent_listing_rows
+        ]
+        portfolio_now = [
+            self._portfolio_to_read(item)
+            for item in portfolio_rows
+            if (item.status or "now") == "now"
+        ]
+        portfolio_past = [
+            self._portfolio_to_read(item)
+            for item in portfolio_rows
+            if (item.status or "now") == "past"
+        ]
+
+        jobs_preview = (jobs_active + jobs_past)[:2]
+        portfolio_preview = (portfolio_now + portfolio_past)[:2]
+        talent_listings_preview = talent_listings_active[:2]
+
+        return PublicProfileResponse(
+            username=user.username or normalized_username,
+            display_name=user.display_name or (user.username or normalized_username),
+            headline=user.headline,
+            avatar_url=avatar_url,
+            avatar_mode="youtube_channel" if user.avatar_mode == "youtube_channel" else "generic",
+            skills=list(user.skills or []),
+            public_links=list(user.public_links or []) if privacy["show_links"] else [],
+            experience=_normalize_profile_experience(user.profile_experience),
+            availability_status=(
+                user.availability_status
+                if user.availability_status in {"available", "selective", "unavailable"}
+                else "selective"
+            ),
+            location=user.location,
+            timezone=user.timezone,
+            social_connections=social_connections,
+            stats=self._build_stats(jobs=jobs, projects_count=len(portfolio_rows)),
+            reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
+            collaboration_preferences=self._build_collaboration_preferences(user),
+            hiring_info=self._build_hiring_info(user),
+            roles=selected_roles,
+            role_answers_summary=role_answers_summary,
+            content_style=content_style,
+            youtube_badge=badge,
+            jobs_active=jobs_active,
+            jobs_past=jobs_past,
+            portfolio_now=portfolio_now,
+            portfolio_past=portfolio_past,
+            jobs_preview=jobs_preview,
+            portfolio_preview=portfolio_preview,
+            talent_listings_active=talent_listings_active,
+            talent_listings_preview=talent_listings_preview,
+            moved_to_username=None,
+        )
+
+    async def list_public_jobs(self, username: str, tab: str) -> PublicJobsListResponse:
+        user, _, _ = await self._resolve_user_for_public_lookup(username)
+        if user is None:
+            raise ProfileNotFoundError("Profile not found")
+
+        normalized_tab = (tab or "active").lower()
+        if normalized_tab not in {"active", "past"}:
+            raise ProfileValidationError("tab must be active or past")
+
+        jobs = await self.repository.list_jobs_for_user_public(user_id=user.id)
+        jobs_active, jobs_past = self._split_public_jobs(jobs)
+        return PublicJobsListResponse(
+            username=user.username or normalize_username(username),
+            tab="active" if normalized_tab == "active" else "past",
+            items=jobs_active if normalized_tab == "active" else jobs_past,
+        )
+
+    async def list_public_portfolio(self, username: str, tab: str) -> PublicPortfolioListResponse:
+        user, _, _ = await self._resolve_user_for_public_lookup(username)
+        if user is None:
+            raise ProfileNotFoundError("Profile not found")
+
+        normalized_tab = (tab or "now").lower()
+        if normalized_tab not in {"now", "past"}:
+            raise ProfileValidationError("tab must be now or past")
+
+        portfolio_rows = await self.repository.list_public_portfolio_items_for_user(user_id=user.id)
+        items = [
+            self._portfolio_to_read(item)
+            for item in portfolio_rows
+            if (item.status or "now") == normalized_tab
+        ]
+
+        return PublicPortfolioListResponse(
+            username=user.username or normalize_username(username),
+            tab="now" if normalized_tab == "now" else "past",
+            items=items,
+        )

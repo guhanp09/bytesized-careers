@@ -24,3 +24,211 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+[data-profile-scope] button:not(:disabled),
+[data-profile-scope] a,
+[data-profile-scope] [role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+[data-profile-scope] button:disabled,
+[data-profile-scope] [aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-ambient {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-10px, 8px, 0) scale(1.035);
+  }
+}
+
+@keyframes market-signal-gradient {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate3d(-22px, 16px, 0) scale(1.035);
+    opacity: 0.86;
+  }
+}
+
+@keyframes market-signal-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes market-signal-pulse {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.45);
+  }
+}
+
+@keyframes market-signal-scene-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.home-rise {
+  animation: home-rise 640ms ease-out both;
+}
+
+.home-rise-delay-actions {
+  animation-delay: 130ms;
+}
+
+.home-rise-delay-jobs {
+  animation-delay: 240ms;
+}
+
+.home-rise-delay-talent {
+  animation-delay: 340ms;
+}
+
+.home-ambient {
+  animation: home-ambient 18s ease-in-out infinite;
+}
+
+.home-ambient-delayed {
+  animation: home-ambient 22s ease-in-out infinite reverse;
+}
+
+.market-signal-hero {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.1), transparent 30%),
+    radial-gradient(circle at 72% 50%, rgba(255, 255, 255, 0.075), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012) 58%, rgba(0, 0, 0, 0.38));
+}
+
+.market-signal-gradient {
+  background:
+    radial-gradient(circle at 72% 46%, rgba(255, 255, 255, 0.14), transparent 22%),
+    radial-gradient(circle at 28% 78%, rgba(255, 255, 255, 0.08), transparent 30%);
+  animation: market-signal-gradient 16s ease-in-out infinite;
+}
+
+.market-signal-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.16;
+  mask-image: radial-gradient(circle at 72% 50%, black 0%, transparent 68%);
+}
+
+.market-signal-vignette {
+  background:
+    linear-gradient(180deg, rgba(11, 11, 15, 0.08), rgba(11, 11, 15, 0.42)),
+    radial-gradient(circle at 50% 50%, transparent 0%, rgba(11, 11, 15, 0.58) 84%);
+}
+
+.market-signal-orbit {
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  animation: market-signal-orbit 36s linear infinite;
+}
+
+.market-signal-orbit::before,
+.market-signal-orbit::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.market-signal-orbit::before {
+  inset: 16%;
+}
+
+.market-signal-orbit::after {
+  inset: 34%;
+  border-left-color: transparent;
+  border-bottom-color: transparent;
+}
+
+.market-signal-orbit-two {
+  animation-duration: 52s;
+  animation-direction: reverse;
+  opacity: 0.62;
+}
+
+.market-signal-line {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.13), transparent);
+}
+
+.market-signal-line-soft {
+  opacity: 0.7;
+}
+
+.market-signal-pulse {
+  animation: market-signal-pulse 3.8s ease-in-out infinite;
+  box-shadow: 0 0 34px rgba(255, 255, 255, 0.18);
+}
+
+.market-signal-pulse-delay {
+  animation-delay: 1.3s;
+}
+
+.market-signal-pulse-slow {
+  animation-duration: 5.5s;
+  animation-delay: 0.4s;
+}
+
+.market-signal-scene {
+  animation: market-signal-scene-enter 680ms ease-out both;
+  pointer-events: none;
+}
+
+.market-signal-stat-number {
+  font-size: clamp(3.4rem, 7.8vw, 7.75rem);
+  line-height: 0.9;
+  letter-spacing: -0.052em;
+}
+
+.market-signal-stat-glow {
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.13), transparent 68%);
+  filter: blur(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-rise,
+  .home-ambient,
+  .home-ambient-delayed,
+  .market-signal-gradient,
+  .market-signal-orbit,
+  .market-signal-pulse,
+  .market-signal-scene {
+    animation: none;
+  }
+}

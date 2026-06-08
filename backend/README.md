@@ -1,0 +1,176 @@
+# CreatorJobs Backend (FastAPI)
+
+Standalone, production-oriented backend service for CreatorJobs.
+
+## Stack
+- FastAPI
+- SQLAlchemy 2.0 (async engine)
+- Alembic migrations
+- PostgreSQL (primary runtime DB)
+- Pydantic v2
+- Pytest + HTTPX
+- Docker + docker-compose
+
+## Project Structure
+- `app/main.py`: FastAPI app/bootstrap
+- `app/core/`: config, logging, security, error handling
+- `app/db/`: base + async session
+- `app/models/`: SQLAlchemy models
+- `app/schemas/`: Pydantic schemas
+- `app/repositories/`: persistence layer
+- `app/services/`: business logic
+- `app/api/v1/routers/`: versioned API routers
+- `app/health/`: health checks
+- `alembic/`: DB migrations
+- `tests/`: pytest tests
+
+## Environment
+1. Copy env file:
+```bash
+cp .env.example .env
+```
+2. Edit variables as needed.
+
+Key vars:
+- `APP_ENV`
+- `EMAIL_MODE`
+- `DATABASE_URL`
+- `CORS_ORIGINS`
+- `LOG_LEVEL`
+- `JWT_SECRET`
+- `YOUTUBE_API_KEY` (server-side YouTube Data API v3 key for portfolio metadata import)
+
+## Local Development (uv)
+Install dependencies:
+```bash
+uv sync --all-groups
+```
+
+Run migrations:
+```bash
+uv run alembic upgrade head
+```
+
+Run dev server:
+```bash
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Docs:
+- Swagger: `http://localhost:8000/api/v1/docs`
+- OpenAPI: `http://localhost:8000/api/v1/openapi.json`
+
+## Docker Development
+From `backend/`:
+```bash
+docker compose up --build
+```
+
+Apply migrations inside container:
+```bash
+docker compose exec backend uv run alembic upgrade head
+```
+
+Seed sample jobs (development only):
+```bash
+curl -X POST http://localhost:8000/api/v1/dev/seed/jobs
+```
+
+The seed endpoint is idempotent and only works when `APP_ENV=development`.
+
+## Tests
+Tests use SQLite (`aiosqlite`) for fast isolated execution.
+
+Run tests:
+```bash
+uv run pytest
+```
+
+## Lint / Format
+Lint:
+```bash
+uv run ruff check .
+```
+
+Format:
+```bash
+uv run ruff format .
+```
+
+## Migration Commands
+Generate migration:
+```bash
+uv run alembic revision --autogenerate -m "describe_change"
+```
+
+Apply migration:
+```bash
+uv run alembic upgrade head
+```
+
+Migration safety note:
+- `0003_profile_username` upgrades `alembic_version.version_num` to `VARCHAR(64)` on PostgreSQL to avoid revision-id length issues.
+
+Rollback one step:
+```bash
+uv run alembic downgrade -1
+```
+
+## API Endpoints
+Base prefix: `/api/v1`
+
+- `GET /health`
+- `GET /health/db`
+- `GET /jobs`
+- `GET /jobs/{id}`
+- `POST /jobs`
+- `PATCH /jobs/{id}`
+- `DELETE /jobs/{id}` (soft delete: archives + sets `deleted_at`)
+- `POST /auth/register`
+- `POST /auth/verify-email`
+- `POST /auth/resend-verification`
+- `POST /auth/login`
+- `POST /auth/oauth/google`
+- `GET /me`
+- `GET /me/profile`
+- `PATCH /me/profile`
+- `PATCH /me/privacy`
+- `GET /me/portfolio`
+- `POST /me/portfolio`
+- `PATCH /me/portfolio/{id}`
+- `DELETE /me/portfolio/{id}`
+- `POST /portfolio/youtube/preview`
+- `POST /portfolio/items`
+- `GET /portfolio/items?user_id=me`
+- `GET /portfolio/items?user_id={user_id}`
+- `PATCH /portfolio/items/{id}`
+- `DELETE /portfolio/items/{id}`
+- `GET /portfolio/{user_id}`
+- `GET /users/{username}/public-profile`
+- `POST /me/oauth/google/upsert`
+- `POST /me/youtube/refresh`
+- `GET /me/youtube/channels`
+- `POST /dev/seed/jobs` (development only, idempotent)
+
+## Auth + Channel Verification (MVP)
+- Register with `POST /auth/register` (development logs verification URL to backend logs).
+  - `username` is required and becomes public profile URL `/u/{username}`.
+- Verify email with `POST /auth/verify-email`.
+- Resend verification link with `POST /auth/resend-verification` (always returns generic success).
+- Login with `POST /auth/login` to obtain bearer token.
+- Link Google OAuth credentials to the current user with `POST /me/oauth/google/upsert`.
+- Refresh and persist linked YouTube channels with `POST /me/youtube/refresh`.
+- Read persisted linked channels with `GET /me/youtube/channels`.
+- Manage profile/privacy with `GET/PATCH /me/profile` and `PATCH /me/privacy`.
+- Manage portfolio items with `/me/portfolio` CRUD endpoints.
+- Public profile (privacy-applied, read-only) is available at `GET /users/{username}/public-profile`.
+
+When creating YouTube jobs (`platforms` contains `youtube` or `posted_platform=youtube`):
+- `posted_youtube_channel_id` is required.
+- Caller must be authenticated.
+- Channel must already be linked to the authenticated user via `user_youtube_channels`.
+
+Resend verification testing:
+- Call `POST /api/v1/auth/resend-verification` with `{ "email": "you@example.com" }`.
+- For unverified accounts in local/dev, backend prints a plain line in container logs:
+  `[auth] Email verification link: http://localhost:3000/auth/verify?token=...`

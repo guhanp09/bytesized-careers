@@ -1,15 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import {
   BackendCreateJobPayload,
+  BackendHiringIdentity,
   BackendMeYouTubeChannel,
+  completeLaunchFreeCheckout,
   createJob,
+  exchangeGoogleOAuthForBackend,
+  listMyBackendJobs,
+  isBackendAuthError,
   isLocalMocksEnabled,
+  listMyHiringIdentities,
   listMyYouTubeChannels,
   refreshMyYouTubeChannels,
+  updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
 import { Job, ReferenceVideo, StartTimeframe } from "../lib/types";
@@ -19,8 +27,7 @@ import PostJobForm from "./post-job/PostJobForm";
 import PreviewCard from "./post-job/PreviewCard";
 import PostJobSafety from "./post-job/PostJobSafety";
 import { IdentityPlatform, VerifiedIdentity } from "../lib/identity/types";
-
-const SECONDARY_BTN_BRIGHTNESS = 0.88; // 👈 tweak anytime (0.75–0.95)
+import { PageLoading } from "./ui";
 
 type WorkMode = "Remote" | "Hybrid" | "On-site";
 type TurnaroundUnit = "hours" | "days" | "weeks";
@@ -96,6 +103,13 @@ const splitLines = (value: string) =>
     .map((line) => line.replace(/^\s*[-•]\s*/, "").trim())
     .filter(Boolean);
 
+const isBackendUnavailable = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("Could not reach backend") ||
+    error.message.includes("missing backend auth") ||
+    error.message.includes("Failed to fetch") ||
+    error.message.includes("fetch failed"));
+
 const parseWholeNumber = (value: string) => {
   const normalized = value.replace(/,/g, "").trim();
   if (!normalized) return null;
@@ -109,7 +123,9 @@ export default function PostJobPage() {
   const searchParams = useSearchParams();
   const { data: session, status: sessionStatus } = useSession();
   const connectParam = searchParams.get("yt_connect");
+  const draftId = searchParams.get("draftId") || "";
   const autoConnectHandledRef = useRef(false);
+  const tokenRecoveryPromiseRef = useRef<Promise<string | null> | null>(null);
   const [step, setStep] = useState<Step>("basics");
   const [direction, setDirection] = useState<"forward" | "back">("forward");
 
@@ -187,9 +203,13 @@ export default function PostJobPage() {
   const [contentErrors, setContentErrors] = useState<{ about?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
   const [basicsErrors, setBasicsErrors] = useState<
     Array<"title" | "city" | "cityInvalid" | "budgetRange" | "identity" | "platform">
   >([]);
+  const [hiringIdentities, setHiringIdentities] = useState<BackendHiringIdentity[]>([]);
+  const [selectedHiringIdentityId, setSelectedHiringIdentityId] = useState<string>("");
+  const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
   const [previewBudgetText, setPreviewBudgetText] = useState("");
   const [previewExperienceText, setPreviewExperienceText] = useState("");
   const [previewLocationText, setPreviewLocationText] = useState("Remote");
@@ -222,11 +242,244 @@ export default function PostJobPage() {
   const isCityRequired = workMode === "Hybrid" || workMode === "On-site";
   const requiresYouTubeChannel = platform === "youtube";
   const backendAccessToken = session?.backendAccessToken;
+  const activeBackendAccessToken = resolvedBackendAccessToken || backendAccessToken;
   const oauthProviderAccountId = session?.user?.providerAccountId;
   const oauthAccessToken = session?.user?.accessToken;
   const oauthRefreshToken = session?.user?.refreshToken;
   const oauthExpiresAt = session?.user?.oauthExpiresAt;
   const oauthScope = session?.user?.oauthScope;
+  const oauthEmail =
+    session?.user?.email ||
+    (typeof session?.user?.profile?.email === "string" ? session.user.profile.email : undefined);
+
+  React.useEffect(() => {
+    if (backendAccessToken) {
+      setResolvedBackendAccessToken(backendAccessToken);
+    }
+  }, [backendAccessToken]);
+
+  const exchangeBackendTokenFromOAuth = useCallback(async (): Promise<string | null> => {
+    if (tokenRecoveryPromiseRef.current) {
+      return tokenRecoveryPromiseRef.current;
+    }
+    if (sessionStatus !== "authenticated" || !oauthEmail || !oauthProviderAccountId) {
+      return null;
+    }
+
+    const recoveryPromise = (async () => {
+      try {
+        const result = await exchangeGoogleOAuthForBackend({
+          email: oauthEmail,
+          provider_account_id: oauthProviderAccountId,
+          display_name: session?.user?.name || undefined,
+          access_token: oauthAccessToken || null,
+          refresh_token: oauthRefreshToken || null,
+          expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
+          scope: typeof oauthScope === "string" ? oauthScope : null,
+        });
+        const nextToken = result.access_token?.trim();
+        if (!nextToken) {
+          return null;
+        }
+        setResolvedBackendAccessToken(nextToken);
+        return nextToken;
+      } catch {
+        return null;
+      } finally {
+        tokenRecoveryPromiseRef.current = null;
+      }
+    })();
+
+    tokenRecoveryPromiseRef.current = recoveryPromise;
+    return recoveryPromise;
+  }, [
+    oauthAccessToken,
+    oauthEmail,
+    oauthExpiresAt,
+    oauthProviderAccountId,
+    oauthRefreshToken,
+    oauthScope,
+    session?.user?.name,
+    sessionStatus,
+  ]);
+
+  const withFreshBackendToken = useCallback(
+    async <T,>(request: (token: string) => Promise<T>): Promise<T> => {
+      let token: string | null | undefined = activeBackendAccessToken;
+      if (!token) {
+        token = await exchangeBackendTokenFromOAuth();
+      }
+      if (!token) {
+        throw new Error("Your session is missing backend auth. Log in again.");
+      }
+
+      try {
+        return await request(token);
+      } catch (err) {
+        if (!isBackendAuthError(err)) {
+          throw err;
+        }
+        const recoveredToken = await exchangeBackendTokenFromOAuth();
+        if (!recoveredToken) {
+          throw err;
+        }
+        return await request(recoveredToken);
+      }
+    },
+    [activeBackendAccessToken, exchangeBackendTokenFromOAuth]
+  );
+
+  React.useEffect(() => {
+    if (!draftId || sessionStatus !== "authenticated") return;
+    let cancelled = false;
+    const wholeNumberString = (value: unknown) => {
+      if (typeof value === "number" && Number.isFinite(value)) return String(Math.round(value));
+      if (typeof value === "string" && value.trim()) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? String(Math.round(parsed)) : "";
+      }
+      return "";
+    };
+    const normalizeWorkMode = (value: unknown): WorkMode => {
+      const normalized = typeof value === "string" ? value.toLowerCase() : "";
+      if (normalized.includes("hybrid")) return "Hybrid";
+      if (normalized.includes("onsite") || normalized.includes("on-site")) return "On-site";
+      return "Remote";
+    };
+    const experienceParts = (value: unknown) => {
+      const normalized = typeof value === "string" ? value : "";
+      const match = normalized.match(/(\d+)\s*[–-]\s*(\d+)/);
+      if (match) return { min: match[1], max: match[2] };
+      const single = normalized.match(/(\d+)\+?/);
+      if (single) return { min: single[1], max: single[1] };
+      return { min: "", max: "" };
+    };
+    const refsFrom = (value: unknown): ReferenceVideo[] => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((entry) => {
+          if (typeof entry === "string") return { url: entry };
+          if (!entry || typeof entry !== "object") return null;
+          const record = entry as { title?: unknown; url?: unknown };
+          return typeof record.url === "string"
+            ? { title: typeof record.title === "string" ? record.title : undefined, url: record.url }
+            : null;
+        })
+        .filter((entry): entry is ReferenceVideo => Boolean(entry));
+    };
+
+    setDraftLoading(true);
+    void withFreshBackendToken((token) => listMyBackendJobs(token))
+      .then((jobs) => {
+        if (cancelled) return;
+        const draft = jobs.find((job) => String(job.id) === draftId);
+        if (!draft) {
+          setSubmitError("This job draft could not be found.");
+          return;
+        }
+        const budgetMinValue = wholeNumberString(draft.budget_amount ?? draft.budget_min);
+        const budgetMaxValue = wholeNumberString(draft.budget_max);
+        const experience = experienceParts(draft.experience_level);
+        const nextWorkMode = normalizeWorkMode(draft.work_mode);
+        const nextLocation = typeof draft.location === "string" ? draft.location : "";
+        const nextPlatform = draft.platforms?.[0] === "instagram" ? "instagram" : "youtube";
+
+        setTitle(draft.title || "");
+        setBudgetMin(budgetMinValue);
+        setBudgetMax(budgetMaxValue);
+        setBudgetUnit(draft.budget_unit === "per month" ? "per month" : "per project");
+        setWorkMode(nextWorkMode);
+        setCity(nextWorkMode === "Remote" ? "" : nextLocation);
+        setExpMin(experience.min);
+        setExpMax(experience.max);
+        setStartWithin((draft.start_timeframe as StartTimeframe) || "Flexible");
+        setPlatform(nextPlatform);
+        setPlatformName(draft.channel_name || "");
+        setPlatformAudience(draft.channel_subscribers != null ? String(draft.channel_subscribers) : "");
+        setVerified(Boolean(draft.is_verified));
+        setAbout(draft.about_channel || "");
+        setResponsibilities((draft.responsibilities || []).join("\n"));
+        setRequirements((draft.requirements || []).join("\n"));
+        setHowToApply(draft.how_to_apply || "");
+        setTags(draft.tags || []);
+        setRefVideos(refsFrom(draft.reference_videos));
+        setSelectedHiringIdentityId(typeof draft.hiring_identity_id === "string" ? draft.hiring_identity_id : "");
+        setPreviewBudgetText(formatBudgetPreview(budgetMinValue, budgetMaxValue, draft.budget_unit === "per month" ? "per month" : "per project"));
+        setPreviewExperienceText(
+          experience.min && experience.max ? formatExperiencePreview(experience.min, experience.max) : draft.experience_level || ""
+        );
+        setPreviewLocationText(nextLocation || "Remote");
+      })
+      .catch(() => {
+        if (!cancelled) setSubmitError("Couldn’t load this job draft.");
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftId, sessionStatus, withFreshBackendToken]);
+
+  React.useEffect(() => {
+    if (sessionStatus !== "authenticated") {
+      setHiringIdentities([]);
+      return;
+    }
+
+    let cancelled = false;
+    void withFreshBackendToken((token) => listMyHiringIdentities(token))
+      .then((identities) => {
+        if (cancelled) return;
+        const items = identities.items || [];
+        setHiringIdentities(items);
+        const preferred = items[0];
+        if (preferred && !selectedHiringIdentityId) {
+          setSelectedHiringIdentityId(preferred.id);
+          setPlatform(preferred.platform === "INSTAGRAM" ? "instagram" : "youtube");
+          setPlatformName(preferred.display_name);
+          setVerified(preferred.verification_status === "VERIFIED");
+          setIdentity({
+            platform: preferred.platform === "INSTAGRAM" ? "instagram" : "youtube",
+            brandId: preferred.id,
+            name: preferred.display_name,
+            imageUrl: preferred.avatar_url || null,
+            followersCount: null,
+            handle: preferred.handle || null,
+            verifiedAt: preferred.verified_at || new Date().toISOString(),
+          });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHiringIdentities([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedHiringIdentityId, sessionStatus, withFreshBackendToken]);
+
+  const selectedHiringIdentity = useMemo(
+    () => hiringIdentities.find((item) => item.id === selectedHiringIdentityId) || null,
+    [hiringIdentities, selectedHiringIdentityId]
+  );
+
+  const selectHiringIdentity = useCallback((nextIdentity: BackendHiringIdentity) => {
+    setSelectedHiringIdentityId(nextIdentity.id);
+    setPlatform(nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube");
+    setPlatformName(nextIdentity.display_name);
+    setVerified(nextIdentity.verification_status === "VERIFIED");
+    setIdentity({
+      platform: nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube",
+      brandId: nextIdentity.id,
+      name: nextIdentity.display_name,
+      imageUrl: nextIdentity.avatar_url || null,
+      followersCount: null,
+      handle: nextIdentity.handle || null,
+      verifiedAt: nextIdentity.verified_at || new Date().toISOString(),
+    });
+  }, []);
 
   const applyVerifiedChannels = useCallback(
     (channels: BackendMeYouTubeChannel[], preferredChannelId?: string | null) => {
@@ -249,7 +502,6 @@ export default function PostJobPage() {
     const errors: Array<"title" | "city" | "cityInvalid" | "budgetRange" | "identity" | "platform"> = [];
     if (title.trim().length < 3) errors.push("title");
     if (!platform) errors.push("platform");
-    if (requiresYouTubeChannel && !identity) errors.push("identity");
     if (isCityRequired && !city.trim()) errors.push("city");
     if (isCityRequired && city.trim() && !matchedCity) errors.push("cityInvalid");
     const minNum = Number(budgetMin);
@@ -269,7 +521,7 @@ export default function PostJobPage() {
   const isBasicsErrorActive = useCallback(
     (key: "title" | "city" | "cityInvalid" | "budgetRange" | "identity" | "platform") => {
       if (key === "title") return title.trim().length < 3;
-      if (key === "identity") return requiresYouTubeChannel && !identity;
+      if (key === "identity") return false;
       if (key === "platform") return !platform;
       if (key === "city") return isCityRequired && !city.trim();
       if (key === "cityInvalid") return isCityRequired && city.trim() && !matchedCity;
@@ -283,7 +535,7 @@ export default function PostJobPage() {
         maxNum < minNum
       );
     },
-    [title, requiresYouTubeChannel, identity, platform, isCityRequired, city, matchedCity, budgetMin, budgetMax]
+    [title, platform, isCityRequired, city, matchedCity, budgetMin, budgetMax]
   );
 
   const getBasicsErrorMessage = (
@@ -342,11 +594,15 @@ export default function PostJobPage() {
   }, [identity]);
 
   React.useEffect(() => {
+    if (selectedHiringIdentity) {
+      setVerified(selectedHiringIdentity.verification_status === "VERIFIED");
+      return;
+    }
     setVerified(Boolean(identity) && platform === "youtube");
-  }, [identity, platform]);
+  }, [identity, platform, selectedHiringIdentity]);
 
   const loadLinkedYouTubeChannels = useCallback(async () => {
-    if (!backendAccessToken) {
+    if (!activeBackendAccessToken) {
       setIdentityOptions([]);
       setIdentity(null);
       return;
@@ -355,7 +611,7 @@ export default function PostJobPage() {
     setIdentityLoading(true);
     setIdentityError(null);
     try {
-      const data = await listMyYouTubeChannels(backendAccessToken);
+      const data = await withFreshBackendToken((token) => listMyYouTubeChannels(token));
       applyVerifiedChannels(data.channels);
     } catch (err) {
       setIdentityOptions([]);
@@ -364,7 +620,7 @@ export default function PostJobPage() {
     } finally {
       setIdentityLoading(false);
     }
-  }, [applyVerifiedChannels, backendAccessToken]);
+  }, [activeBackendAccessToken, applyVerifiedChannels, withFreshBackendToken]);
 
   const refreshYouTubeVerification = useCallback(async () => {
     if (sessionStatus !== "authenticated") {
@@ -375,7 +631,7 @@ export default function PostJobPage() {
       return;
     }
 
-    if (!backendAccessToken) {
+    if (!activeBackendAccessToken) {
       setIdentityError("Your session is missing backend auth. Log in again.");
       return;
     }
@@ -391,14 +647,14 @@ export default function PostJobPage() {
     setIdentityLoading(true);
     setIdentityError(null);
     try {
-      await upsertGoogleOAuthForMe(backendAccessToken, {
+      await withFreshBackendToken((token) => upsertGoogleOAuthForMe(token, {
         provider_account_id: oauthProviderAccountId,
         access_token: oauthAccessToken,
         refresh_token: oauthRefreshToken || null,
         expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
         scope: typeof oauthScope === "string" ? oauthScope : null,
-      });
-      const refreshed = await refreshMyYouTubeChannels(backendAccessToken);
+      }));
+      const refreshed = await withFreshBackendToken((token) => refreshMyYouTubeChannels(token));
       applyVerifiedChannels(refreshed.channels);
       if (!refreshed.channels.length) {
         setIdentityError("No YouTube channels were returned for this Google account.");
@@ -419,26 +675,30 @@ export default function PostJobPage() {
     }
   }, [
     applyVerifiedChannels,
-    backendAccessToken,
+    activeBackendAccessToken,
     oauthAccessToken,
     oauthExpiresAt,
     oauthProviderAccountId,
     oauthRefreshToken,
     oauthScope,
     sessionStatus,
+    withFreshBackendToken,
   ]);
 
   React.useEffect(() => {
+    if (selectedHiringIdentity) {
+      return;
+    }
     if (!requiresYouTubeChannel) {
       return;
     }
-    if (sessionStatus !== "authenticated" || !backendAccessToken) {
+    if (sessionStatus !== "authenticated" || !activeBackendAccessToken) {
       setIdentityOptions([]);
       setIdentity(null);
       return;
     }
     void loadLinkedYouTubeChannels();
-  }, [backendAccessToken, loadLinkedYouTubeChannels, requiresYouTubeChannel, sessionStatus]);
+  }, [activeBackendAccessToken, loadLinkedYouTubeChannels, requiresYouTubeChannel, selectedHiringIdentity, sessionStatus]);
 
   React.useEffect(() => {
     if (connectParam !== "1") {
@@ -571,6 +831,23 @@ export default function PostJobPage() {
     setRefVideos((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const createLocalJob = async (job: Job) => {
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job }),
+    });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error || "Failed to create job.");
+    }
+    const data = (await res.json()) as { id?: string };
+    if (!data?.id) {
+      throw new Error("The local job store did not return a created id.");
+    }
+    return data.id;
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -598,16 +875,18 @@ export default function PostJobPage() {
     const normalizedLocation = previewLocationText || locationText || "Remote";
     const normalizedExperience = previewExperienceText || experienceText || "Any";
     const normalizedBudgetText = previewBudgetText || budgetText || "Flexible";
-    const selectedYouTubeChannelId = requiresYouTubeChannel ? identity?.brandId : undefined;
+    const selectedYouTubeChannelId =
+      requiresYouTubeChannel && !selectedHiringIdentity ? identity?.brandId : undefined;
     const normalizedChannelName =
+      selectedHiringIdentity?.display_name ||
       identity?.name ||
       platformName.trim() ||
       session?.user?.name ||
       session?.user?.username ||
-      "Creator";
+      "Content creator";
     const normalizedChannelSubscribers =
       identity?.followersCount ?? parseWholeNumber(platformAudience);
-    const normalizedChannelLogoUrl = identity?.imageUrl || null;
+    const normalizedChannelLogoUrl = selectedHiringIdentity?.avatar_url || identity?.imageUrl || null;
     const budgetAmountValue = parseWholeNumber(budgetMin);
     const budgetMaxValue = parseWholeNumber(budgetMax);
     const hasPersistedBudget =
@@ -642,6 +921,11 @@ export default function PostJobPage() {
       howToApply: normalizedHowToApply,
       postedPlatform: platform,
       postedYoutubeChannelId: selectedYouTubeChannelId,
+      hiringIdentityId: selectedHiringIdentityId || undefined,
+      hiringDisplayName: selectedHiringIdentity?.display_name,
+      hiringPlatform: selectedHiringIdentity?.platform,
+      hiringVerificationStatus: selectedHiringIdentity?.verification_status,
+      managedByAgencyName: selectedHiringIdentity?.managed_by_agency_name || undefined,
     };
 
     const backendPayload: BackendCreateJobPayload = {
@@ -655,6 +939,11 @@ export default function PostJobPage() {
       experience_level: normalizedExperience,
       platforms: [platform],
       start_timeframe: startWithin || "Flexible",
+      work_mode: workMode.toLowerCase().replace("on-site", "onsite"),
+      contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
+      timezone_overlap: null,
+      weekly_hours: turnaround ? `${turnaround.value} ${turnaround.unit}` : null,
+      application_mode: "internal",
       about_channel: normalizedAbout,
       responsibilities: splitLines(normalizedResponsibilities),
       requirements: splitLines(normalizedRequirements),
@@ -671,25 +960,39 @@ export default function PostJobPage() {
       channel_subscribers: normalizedChannelSubscribers,
       posted_platform: platform,
       posted_youtube_channel_id: selectedYouTubeChannelId || null,
+      hiring_identity_id: selectedHiringIdentityId || null,
       status: "published",
     };
 
     if (!isLocalMocksEnabled()) {
-      if (sessionStatus !== "authenticated" || !backendAccessToken) {
+      if (sessionStatus !== "authenticated") {
         setSubmitError("Sign in before posting a job.");
         return;
       }
 
       setIsSubmitting(true);
       try {
-        const created = await createJob(backendPayload, { accessToken: backendAccessToken });
+        const created = await withFreshBackendToken(async (token) => {
+          await completeLaunchFreeCheckout(token, { kind: "job_post", target_type: "job" });
+          return draftId ? updateJob(token, draftId, backendPayload) : createJob(backendPayload, { accessToken: token });
+        });
         if (created?.id) {
-          window.location.assign("/?posted=1");
+          window.location.assign("/jobs?posted=1");
           return;
         }
         setSubmitError("The job was created, but the response was incomplete.");
         return;
       } catch (error) {
+        if (isBackendUnavailable(error)) {
+          try {
+            await createLocalJob(jobToCreate);
+            window.location.assign("/jobs?posted=1");
+            return;
+          } catch (localError) {
+            setSubmitError(localError instanceof Error ? localError.message : "Failed to create job.");
+            return;
+          }
+        }
         setSubmitError(error instanceof Error ? error.message : "Failed to post job to backend.");
         console.error("External backend create failed", error);
         return;
@@ -700,24 +1003,89 @@ export default function PostJobPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job: jobToCreate }),
-      });
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-        setSubmitError(payload?.error || "Failed to create job.");
-        return;
-      }
-      const data = (await res.json()) as { id?: string };
-      if (data?.id) {
-        window.location.assign("/?posted=1");
-        return;
-      }
-      setSubmitError("The local job store did not return a created id.");
+      await createLocalJob(jobToCreate);
+      window.location.assign("/jobs?posted=1");
+      return;
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to create job.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onSaveDraft = async () => {
+    if (isSubmitting) return;
+    if (isLocalMocksEnabled()) {
+      setSubmitError("Job drafts require backend sign-in so they can be resumed later.");
+      return;
+    }
+    if (sessionStatus !== "authenticated") {
+      setSubmitError("Sign in before saving a job draft.");
+      return;
+    }
+
+    const normalizedTitle = title.trim() || "Untitled job draft";
+    const normalizedLocation = previewLocationText || locationText || "Remote";
+    const selectedYouTubeChannelId =
+      requiresYouTubeChannel && !selectedHiringIdentity ? identity?.brandId : undefined;
+    const normalizedChannelName =
+      selectedHiringIdentity?.display_name ||
+      identity?.name ||
+      platformName.trim() ||
+      session?.user?.name ||
+      session?.user?.username ||
+      "Content creator";
+    const normalizedChannelSubscribers =
+      identity?.followersCount ?? parseWholeNumber(platformAudience);
+    const normalizedChannelLogoUrl = selectedHiringIdentity?.avatar_url || identity?.imageUrl || null;
+    const budgetAmountValue = parseWholeNumber(budgetMin);
+    const budgetMaxValue = parseWholeNumber(budgetMax);
+    const hasPersistedBudget =
+      budgetAmountValue != null &&
+      budgetMaxValue != null &&
+      budgetMaxValue >= budgetAmountValue;
+
+    const backendPayload: BackendCreateJobPayload = {
+      title: normalizedTitle,
+      category: "Editing",
+      location: normalizedLocation,
+      budget_amount: hasPersistedBudget ? budgetAmountValue : null,
+      budget_max: hasPersistedBudget ? budgetMaxValue : null,
+      budget_currency: "INR",
+      budget_unit: budgetUnit,
+      experience_level: previewExperienceText || experienceText || null,
+      platforms: [platform],
+      start_timeframe: startWithin || "Flexible",
+      work_mode: workMode.toLowerCase().replace("on-site", "onsite"),
+      contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
+      weekly_hours: turnaround ? `${turnaround.value} ${turnaround.unit}` : null,
+      application_mode: "internal",
+      about_channel: about.trim() || null,
+      responsibilities: splitLines(responsibilities),
+      requirements: splitLines(requirements),
+      how_to_apply: howToApply.trim() || null,
+      reference_videos: refVideos.map((video) => ({ title: video.title?.trim() || null, url: video.url })),
+      tags,
+      youtube_channel_id: selectedYouTubeChannelId || null,
+      is_verified: verified,
+      channel_name: normalizedChannelName,
+      channel_logo_url: normalizedChannelLogoUrl,
+      channel_subscribers: normalizedChannelSubscribers,
+      posted_platform: platform,
+      posted_youtube_channel_id: selectedYouTubeChannelId || null,
+      hiring_identity_id: selectedHiringIdentityId || null,
+      status: "draft",
+    };
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await withFreshBackendToken((token) =>
+        draftId ? updateJob(token, draftId, backendPayload) : createJob(backendPayload, { accessToken: token })
+      );
+      window.location.assign("/activity?tab=drafts");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Failed to save job draft.");
     } finally {
       setIsSubmitting(false);
     }
@@ -851,9 +1219,9 @@ export default function PostJobPage() {
   const hasBack = STEPS.indexOf(step) > 0;
   const stepIndex = STEPS.indexOf(step);
 
-    const goNext = (current: Step) => {
-      const idx = STEPS.indexOf(current);
-      if (idx >= STEPS.length - 1) return;
+  const goNext = (current: Step) => {
+    const idx = STEPS.indexOf(current);
+    if (idx >= STEPS.length - 1) return;
     if (current === "referenceVideos") {
       const error = getRefUrlError();
       if (error) {
@@ -890,98 +1258,206 @@ export default function PostJobPage() {
     setStep(STEPS[idx - 1]);
   };
 
+  if (sessionStatus === "loading" || draftLoading) {
+    return <PageLoading blocks={4} />;
+  }
+
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
       <div className="px-4 sm:px-6 py-8">
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[1fr_420px] items-start">
-          <PostJobForm
-            step={step}
-            direction={direction}
-            currentStepNumber={stepIndex + 1}
-            totalSteps={STEPS.length}
-            hasNext={hasNext}
-            hasBack={hasBack}
-            onNext={goNext}
-            onBack={goBack}
-            basicsErrors={basicsErrorMap}
-            title={title}
-            onTitleChange={setTitle}
-            workMode={workMode}
-            onWorkModeChange={setWorkMode}
-            city={city}
-            onCityChange={setCity}
-            budgetMin={budgetMin}
-            budgetMax={budgetMax}
-            budgetUnit={budgetUnit}
-            onBudgetMinChange={setBudgetMin}
-            onBudgetMaxChange={setBudgetMax}
-            onBudgetUnitChange={setBudgetUnit}
-            expMin={expMin}
-            expMax={expMax}
-            onExpMinChange={setExpMin}
-            onExpMaxChange={setExpMax}
-            startWithin={startWithin}
-            onStartWithinChange={setStartWithin}
-            platform={platform}
-            onPlatformChange={setPlatformSelection}
-            identity={identity}
-            identityLoading={identityLoading}
-            identityError={identityError}
-            identityOptions={identityOptions}
-            identityPickerOpen={identityPickerOpen}
-            onIdentitySelect={selectIdentity}
-            onIdentityConnect={startIdentityConnect}
-            onIdentityChange={disconnectIdentity}
-            onIdentityPickerClose={() => setIdentityPickerOpen(false)}
-            styles={styles}
-            onStylesChange={setStyles}
-            turnaround={turnaround}
-            onTurnaroundChange={setTurnaround}
-            tools={tools}
-            toolInput={toolInput}
-            onToolInputChange={setToolInput}
-            onAddTool={addTool}
-            onRemoveTool={removeTool}
-            about={about}
-            responsibilities={responsibilities}
-            requirements={requirements}
-            howToApply={howToApply}
-            onAboutChange={setAbout}
-            onResponsibilitiesChange={setResponsibilities}
-            onRequirementsChange={setRequirements}
-            onHowToApplyChange={setHowToApply}
-            tagInput={tagInput}
-            tags={tags}
-            onTagInputChange={setTagInput}
-            onAddTag={addTag}
-            onRemoveTag={removeTag}
-            refTitle={refTitle}
-            refUrl={refUrl}
-            refUrlError={refUrlError || undefined}
-            refVideos={refVideos}
-            onRefTitleChange={setRefTitle}
-            onRefUrlChange={setRefUrl}
-            onAddRefVideo={addRefVideo}
-            onRemoveRefVideo={removeRefVideo}
-            onSubmit={onSubmit}
-            secondaryBtnBrightness={SECONDARY_BTN_BRIGHTNESS}
-            onSaveBasics={onSaveBasics}
-            onSaveContent={onSaveContent}
-            onSaveTags={onSaveTags}
-            onSaveReferenceVideos={onSaveReferenceVideos}
-            canSaveBasics={canSaveBasics}
-            canSaveContent={canSaveContent}
-            canSaveTags={canSaveTags}
-            canSaveReferenceVideos={canSaveReferenceVideos}
-            contentErrors={contentErrors}
-            submitError={submitError}
-            isSubmitting={isSubmitting}
-          />
+          <div className="space-y-6">
+            <section className="rounded-3xl border border-white/[0.08] bg-white/[0.06] p-5 shadow-[0_18px_55px_-32px_rgba(0,0,0,0.95)] sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
+                    Hiring identity
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-white">Who are you hiring for?</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-white/65">
+                    Select the channel or page this job represents. Talent will see the verification status on the job.
+                  </p>
+                  {draftId ? <p className="mt-2 text-xs text-white/42">You are editing a saved job draft.</p> : null}
+                </div>
+                <Link
+                  href="/you?tab=overview&section=hiring-info&returnTo=/post-job"
+                  className="inline-flex h-9 w-fit items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 text-xs font-semibold text-white/85 transition-colors hover:bg-white/[0.08]"
+                >
+                  Add new channel/page
+                </Link>
+              </div>
+
+              {hiringIdentities.length ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {hiringIdentities.map((item) => {
+                    const selected = item.id === selectedHiringIdentityId;
+                    const badgeClass =
+                      item.verification_status === "VERIFIED"
+                        ? "border-emerald-200/25 bg-emerald-200/10 text-emerald-100"
+                        : item.verification_status === "PENDING"
+                          ? "border-amber-200/25 bg-amber-200/10 text-amber-100"
+                          : item.verification_status === "REJECTED"
+                            ? "border-red-200/25 bg-red-200/10 text-red-100"
+                            : "border-white/15 bg-white/[0.05] text-white/65";
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => selectHiringIdentity(item)}
+                        className={[
+                          "rounded-2xl border p-4 text-left transition-colors cursor-pointer",
+                          selected
+                            ? "border-white/35 bg-white/[0.1]"
+                            : "border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08]",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white/90">
+                              {item.display_name}
+                            </p>
+                            <p className="mt-1 text-xs text-white/55">
+                              {item.platform === "YOUTUBE" ? "YouTube channel" : "Instagram page"}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeClass}`}>
+                            {item.verification_status === "VERIFIED"
+                              ? "Verified"
+                              : item.verification_status === "PENDING"
+                                ? "Pending"
+                                : item.verification_status === "REJECTED"
+                                  ? "Rejected"
+                                  : "Not verified yet"}
+                          </span>
+                        </div>
+                        {item.is_agency_represented ? (
+                          <p className="mt-3 text-xs text-white/60">
+                            Managed by {item.managed_by_agency_name || session?.user?.name || "your profile"}
+                          </p>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
+                  <p className="text-sm font-semibold text-white/85">
+                    Hiring identity is optional.
+                  </p>
+                  <p className="mt-1 text-sm text-white/58">
+                    You can publish now and add a channel or Instagram page later.
+                  </p>
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white/84">
+                  {draftId ? "Editing a saved job draft" : "Need to finish later?"}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/50">
+                  Save a draft now and resume it later from Activity.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void onSaveDraft()}
+                disabled={isSubmitting || draftLoading}
+                className="h-10 w-fit cursor-pointer rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/76 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? "Saving..." : "Save draft"}
+              </button>
+            </section>
+
+            <PostJobForm
+              step={step}
+              direction={direction}
+              currentStepNumber={stepIndex + 1}
+              totalSteps={STEPS.length}
+              hasNext={hasNext}
+              hasBack={hasBack}
+              onNext={goNext}
+              onBack={goBack}
+              basicsErrors={basicsErrorMap}
+              title={title}
+              onTitleChange={setTitle}
+              workMode={workMode}
+              onWorkModeChange={setWorkMode}
+              city={city}
+              onCityChange={setCity}
+              budgetMin={budgetMin}
+              budgetMax={budgetMax}
+              budgetUnit={budgetUnit}
+              onBudgetMinChange={setBudgetMin}
+              onBudgetMaxChange={setBudgetMax}
+              onBudgetUnitChange={setBudgetUnit}
+              expMin={expMin}
+              expMax={expMax}
+              onExpMinChange={setExpMin}
+              onExpMaxChange={setExpMax}
+              startWithin={startWithin}
+              onStartWithinChange={setStartWithin}
+              platform={platform}
+              onPlatformChange={setPlatformSelection}
+              identity={identity}
+              identityLoading={identityLoading}
+              identityError={identityError}
+              identityOptions={identityOptions}
+              identityPickerOpen={identityPickerOpen}
+              onIdentitySelect={selectIdentity}
+              onIdentityConnect={startIdentityConnect}
+              onIdentityChange={disconnectIdentity}
+              onIdentityPickerClose={() => setIdentityPickerOpen(false)}
+              styles={styles}
+              onStylesChange={setStyles}
+              turnaround={turnaround}
+              onTurnaroundChange={setTurnaround}
+              tools={tools}
+              toolInput={toolInput}
+              onToolInputChange={setToolInput}
+              onAddTool={addTool}
+              onRemoveTool={removeTool}
+              about={about}
+              responsibilities={responsibilities}
+              requirements={requirements}
+              howToApply={howToApply}
+              onAboutChange={setAbout}
+              onResponsibilitiesChange={setResponsibilities}
+              onRequirementsChange={setRequirements}
+              onHowToApplyChange={setHowToApply}
+              tagInput={tagInput}
+              tags={tags}
+              onTagInputChange={setTagInput}
+              onAddTag={addTag}
+              onRemoveTag={removeTag}
+              refTitle={refTitle}
+              refUrl={refUrl}
+              refUrlError={refUrlError || undefined}
+              refVideos={refVideos}
+              onRefTitleChange={setRefTitle}
+              onRefUrlChange={setRefUrl}
+              onAddRefVideo={addRefVideo}
+              onRemoveRefVideo={removeRefVideo}
+              onSubmit={onSubmit}
+              onSaveBasics={onSaveBasics}
+              onSaveContent={onSaveContent}
+              onSaveTags={onSaveTags}
+              onSaveReferenceVideos={onSaveReferenceVideos}
+              canSaveBasics={canSaveBasics}
+              canSaveContent={canSaveContent}
+              canSaveTags={canSaveTags}
+              canSaveReferenceVideos={canSaveReferenceVideos}
+              contentErrors={contentErrors}
+              submitError={submitError}
+              isSubmitting={isSubmitting}
+            />
+          </div>
 
           <div className="space-y-6">
             <PreviewCard
               title={title}
-              channelName={identity?.name || platformName || "Creator"}
+              channelName={identity?.name || platformName || "Content creator team"}
               verified={verified}
               subsText={subsText}
               budgetText={previewBudgetText}

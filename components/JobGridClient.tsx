@@ -19,7 +19,7 @@ function Chip({
     <button
       onClick={onClick}
       className={[
-        "px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
+        "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
         active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
       ].join(" ")}
     >
@@ -74,10 +74,10 @@ export default function JobGridClient({
             <button
               onClick={() => setStartOpen((v) => !v)}
               className={[
-                "px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
+                "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
                 "bg-white/10 text-white hover:bg-white/15",
                 "border border-transparent",
-                startOpen ? "ring-2 ring-blue-500/70" : "",
+                startOpen ? "bg-white/15 text-white" : "",
               ].join(" ")}
             >
               <span className="inline-flex items-center gap-2">

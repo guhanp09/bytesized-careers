@@ -1,7 +1,104 @@
 import type { NextConfig } from "next";
 
+const unsafeSecretValues = new Set([
+  "",
+  "change-me",
+  "change-me-please",
+  "changeme",
+  "secret",
+  "dev-secret",
+  "insecure",
+  "replace-me",
+]);
+
+const isStrictProductionEnv = () =>
+  process.env.APP_ENV === "production" ||
+  process.env.NEXT_PUBLIC_APP_ENV === "production" ||
+  process.env.VERCEL_ENV === "production";
+
+const requireProductionEnv = () => {
+  if (!isStrictProductionEnv()) return;
+
+  const failures: string[] = [];
+  const requireSafeSecret = (name: string) => {
+    const value = (process.env[name] || "").trim();
+    if (unsafeSecretValues.has(value.toLowerCase())) {
+      failures.push(`${name} must be set to a strong non-placeholder value.`);
+    }
+  };
+  const requireValue = (name: string) => {
+    if (!(process.env[name] || "").trim()) {
+      failures.push(`${name} is required in production.`);
+    }
+  };
+
+  requireSafeSecret("NEXTAUTH_SECRET");
+  requireValue("NEXTAUTH_URL");
+  requireValue("NEXT_PUBLIC_SITE_URL");
+  requireValue("GOOGLE_CLIENT_ID");
+  requireSafeSecret("GOOGLE_CLIENT_SECRET");
+
+  const nextAuthUrl = (process.env.NEXTAUTH_URL || "").trim();
+  if (/localhost|127\.0\.0\.1/.test(nextAuthUrl)) {
+    failures.push("NEXTAUTH_URL must not point to localhost in production.");
+  }
+
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
+  if (/localhost|127\.0\.0\.1/.test(siteUrl)) {
+    failures.push("NEXT_PUBLIC_SITE_URL must not point to localhost in production.");
+  }
+
+  const publicBackendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim();
+  if (!publicBackendUrl) {
+    failures.push("NEXT_PUBLIC_BACKEND_URL is required in production for browser API calls.");
+  }
+  if (/localhost|127\.0\.0\.1/.test(publicBackendUrl)) {
+    failures.push("NEXT_PUBLIC_BACKEND_URL must not point to localhost in production.");
+  }
+
+  const serverBackendUrl = (process.env.BACKEND_URL || process.env.INTERNAL_BACKEND_URL || publicBackendUrl).trim();
+  if (!serverBackendUrl) {
+    failures.push("BACKEND_URL or INTERNAL_BACKEND_URL is required in production.");
+  }
+  if (/localhost|127\.0\.0\.1/.test(serverBackendUrl)) {
+    failures.push("Production backend URL must not point to localhost.");
+  }
+
+  if (process.env.NEXT_PUBLIC_USE_LOCAL_MOCKS === "true") {
+    failures.push("NEXT_PUBLIC_USE_LOCAL_MOCKS must not be true in production.");
+  }
+
+  if (failures.length) {
+    throw new Error(`Unsafe production frontend configuration: ${failures.join(" ")}`);
+  }
+};
+
+requireProductionEnv();
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  async headers() {
+    const productionHeaders = isStrictProductionEnv()
+      ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]
+      : [];
+
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-DNS-Prefetch-Control", value: "on" },
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), payment=()",
+          },
+          ...productionHeaders,
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

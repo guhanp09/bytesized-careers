@@ -2,17 +2,12 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-const nextAuthBaseUrl = process.env.NEXTAUTH_URL?.replace(/\/+$/, "");
-const googleRedirectUri = nextAuthBaseUrl
-  ? `${nextAuthBaseUrl}/api/auth/callback/google`
-  : undefined;
-
-if (!nextAuthBaseUrl && process.env.NODE_ENV !== "test") {
-  console.warn("[auth] NEXTAUTH_URL is missing; OAuth redirects may be unstable.");
-}
-
 const getBackendBaseUrl = () => {
-  const raw = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000/api/v1";
+  const raw =
+    process.env.BACKEND_URL ||
+    process.env.INTERNAL_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "http://localhost:8000/api/v1";
   const normalized = raw.replace(/\/+$/, "");
   return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 };
@@ -22,7 +17,25 @@ type BackendAuthUser = {
   email: string;
   username?: string | null;
   display_name?: string | null;
+  account_type?: "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN";
+  account_type_selected_at?: string | null;
+  onboarding_intent?: "LOOKING_FOR_WORK" | "HIRING_CREATOR_TALENT" | "BOTH" | "DECIDE_LATER";
+  onboarding_intent_selected_at?: string | null;
 };
+
+type CreatorJobsAccountType = NonNullable<BackendAuthUser["account_type"]>;
+type CreatorJobsOnboardingIntent = NonNullable<BackendAuthUser["onboarding_intent"]>;
+
+const isCreatorJobsAccountType = (value: unknown): value is CreatorJobsAccountType =>
+  value === "TALENT" || value === "EMPLOYER" || value === "BOTH" || value === "ADMIN";
+
+const isCreatorJobsOnboardingIntent = (
+  value: unknown
+): value is CreatorJobsOnboardingIntent =>
+  value === "LOOKING_FOR_WORK" ||
+  value === "HIRING_CREATOR_TALENT" ||
+  value === "BOTH" ||
+  value === "DECIDE_LATER";
 
 type BackendLoginResponse = {
   access_token: string;
@@ -36,6 +49,10 @@ type CredentialsAuthUser = {
   name?: string | null;
   username?: string | null;
   displayName?: string | null;
+  accountType?: "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN";
+  accountTypeSelectedAt?: string | null;
+  onboardingIntent?: "LOOKING_FOR_WORK" | "HIRING_CREATOR_TALENT" | "BOTH" | "DECIDE_LATER";
+  onboardingIntentSelectedAt?: string | null;
   backendAccessToken: string;
   backendTokenType: string;
   backendUserId: string;
@@ -68,32 +85,38 @@ const exchangeGoogleOAuthForBackendToken = async (params: {
   expiresAt?: number;
   scope?: string;
 }): Promise<BackendLoginResponse | null> => {
-  const response = await fetch(`${getBackendBaseUrl()}/auth/oauth/google`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({
-      email: params.email,
-      provider_account_id: params.providerAccountId,
-      display_name: params.displayName || null,
-      youtube_handle: params.youtubeHandle || null,
-      youtube_channel_title: params.youtubeChannelTitle || null,
-      access_token: params.accessToken || null,
-      refresh_token: params.refreshToken || null,
-      expires_at: params.expiresAt ?? null,
-      scope: params.scope || null,
-    }),
-  });
-  if (!response.ok) {
+  try {
+    const response = await fetch(`${getBackendBaseUrl()}/auth/oauth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        email: params.email,
+        provider_account_id: params.providerAccountId,
+        display_name: params.displayName || null,
+        youtube_handle: params.youtubeHandle || null,
+        youtube_channel_title: params.youtubeChannelTitle || null,
+        access_token: params.accessToken || null,
+        refresh_token: params.refreshToken || null,
+        expires_at: params.expiresAt ?? null,
+        scope: params.scope || null,
+      }),
+    });
+    if (!response.ok) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn(`[auth] Backend Google OAuth exchange failed with ${response.status}`);
+      }
+      return null;
+    }
+    return (await response.json()) as BackendLoginResponse;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[auth] Backend Google OAuth exchange unreachable: ${message}`);
+    }
     return null;
   }
-  return (await response.json()) as BackendLoginResponse;
 };
-
-if (process.env.NODE_ENV === "development" && googleRedirectUri) {
-  // This URI must match Google OAuth client settings exactly.
-  console.info(`[auth] Google redirect URI: ${googleRedirectUri}`);
-}
 
 const providers = [
   GoogleProvider({
@@ -104,7 +127,6 @@ const providers = [
         scope: "openid email profile https://www.googleapis.com/auth/youtube.readonly",
         access_type: "offline",
         prompt: "consent",
-        ...(googleRedirectUri ? { redirect_uri: googleRedirectUri } : {}),
       },
     },
   }),
@@ -127,6 +149,10 @@ const providers = [
           name: payload.user.display_name || payload.user.username || payload.user.email,
           username: payload.user.username || undefined,
           displayName: payload.user.display_name || undefined,
+          accountType: payload.user.account_type || "TALENT",
+          accountTypeSelectedAt: payload.user.account_type_selected_at || null,
+          onboardingIntent: payload.user.onboarding_intent || "DECIDE_LATER",
+          onboardingIntentSelectedAt: payload.user.onboarding_intent_selected_at || null,
           backendAccessToken: payload.access_token,
           backendTokenType: payload.token_type,
           backendUserId: payload.user.id,
@@ -141,9 +167,13 @@ const providers = [
 export const authOptions: NextAuthOptions = {
   providers,
   session: { strategy: "jwt" },
-  debug: false,
+  debug: process.env.NODE_ENV === "development",
+  pages: {
+    signIn: "/auth",
+    error: "/auth",
+  },
   callbacks: {
-    async jwt({ token, account, profile, user }) {
+    async jwt({ token, account, profile, user, trigger, session }) {
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
@@ -156,6 +186,28 @@ export const authOptions: NextAuthOptions = {
       }
       if (profile) {
         token.profile = profile as Record<string, unknown>;
+      }
+
+      // Keep the JWT in sync when client-side onboarding updates account type.
+      if (trigger === "update" && session?.user) {
+        if (isCreatorJobsAccountType(session.user.accountType)) {
+          token.accountType = session.user.accountType;
+        }
+        if (isCreatorJobsOnboardingIntent(session.user.onboardingIntent)) {
+          token.onboardingIntent = session.user.onboardingIntent;
+        }
+        if ("accountTypeSelectedAt" in session.user) {
+          token.accountTypeSelectedAt =
+            typeof session.user.accountTypeSelectedAt === "string"
+              ? session.user.accountTypeSelectedAt
+              : null;
+        }
+        if ("onboardingIntentSelectedAt" in session.user) {
+          token.onboardingIntentSelectedAt =
+            typeof session.user.onboardingIntentSelectedAt === "string"
+              ? session.user.onboardingIntentSelectedAt
+              : null;
+        }
       }
 
       // Credentials login path: backend token is returned directly.
@@ -177,6 +229,22 @@ export const authOptions: NextAuthOptions = {
           "displayName" in user && typeof user.displayName === "string"
             ? user.displayName
             : undefined;
+        token.accountType =
+          "accountType" in user && isCreatorJobsAccountType(user.accountType)
+            ? user.accountType
+            : "TALENT";
+        token.accountTypeSelectedAt =
+          "accountTypeSelectedAt" in user && typeof user.accountTypeSelectedAt === "string"
+            ? user.accountTypeSelectedAt
+            : null;
+        token.onboardingIntent =
+          "onboardingIntent" in user && isCreatorJobsOnboardingIntent(user.onboardingIntent)
+            ? user.onboardingIntent
+            : "DECIDE_LATER";
+        token.onboardingIntentSelectedAt =
+          "onboardingIntentSelectedAt" in user && typeof user.onboardingIntentSelectedAt === "string"
+            ? user.onboardingIntentSelectedAt
+            : null;
       }
 
       // Google login path: exchange provider identity for backend JWT.
@@ -226,6 +294,10 @@ export const authOptions: NextAuthOptions = {
             token.backendUserId = exchange.user.id;
             if (exchange.user.username) token.username = exchange.user.username;
             if (exchange.user.display_name) token.displayName = exchange.user.display_name;
+            token.accountType = exchange.user.account_type || "TALENT";
+            token.accountTypeSelectedAt = exchange.user.account_type_selected_at || null;
+            token.onboardingIntent = exchange.user.onboarding_intent || "DECIDE_LATER";
+            token.onboardingIntentSelectedAt = exchange.user.onboarding_intent_selected_at || null;
           }
         }
       }
@@ -247,6 +319,15 @@ export const authOptions: NextAuthOptions = {
         userId: token.sub as string | undefined,
         backendUserId: token.backendUserId as string | undefined,
         username: token.username as string | undefined,
+        accountType: token.accountType as "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN" | undefined,
+        accountTypeSelectedAt: token.accountTypeSelectedAt as string | null | undefined,
+        onboardingIntent: token.onboardingIntent as
+          | "LOOKING_FOR_WORK"
+          | "HIRING_CREATOR_TALENT"
+          | "BOTH"
+          | "DECIDE_LATER"
+          | undefined,
+        onboardingIntentSelectedAt: token.onboardingIntentSelectedAt as string | null | undefined,
         name: (token.displayName as string | undefined) || session.user?.name || undefined,
       };
       return session;

@@ -1,8 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useIsPresent } from "framer-motion";
-import Link from "next/link";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { StartTimeframe } from "../../lib/types";
 import { VerifiedIdentity } from "../../lib/identity/types";
 import { formatCompactNumber, formatStartLabel, onlyDigits } from "../../lib/format";
@@ -92,15 +91,6 @@ const selectBase =
 const ghostInputBase =
   "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm outline-none focus:border-white/25 focus:bg-white/7 transition-colors text-transparent caret-white";
 
-const applyAutoCaps = (value: string) => {
-  let next = value.replace(/\.([a-z])/g, (_m, c) => `. ${c.toUpperCase()}`);
-  next = next.replace(/(^|\n)([a-z])/g, (_m, p1, c) => `${p1}${c.toUpperCase()}`);
-  return next;
-};
-
-const applyBulletCaps = (value: string) =>
-  value.replace(/(^|\n-\s)([a-z])/g, (_m, p1, p2) => `${p1}${p2.toUpperCase()}`);
-
 const normalizeBulletLines = (value: string) => {
   const lines = value
     .split("\n")
@@ -126,10 +116,10 @@ function BulletListEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isFocused, setIsFocused] = useState(false);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useLayoutEffect(() => {
     const next = normalizeBulletLines(value);
-    setLines(next); // eslint-disable-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLines(next);
   }, [value]);
 
   const updateLines = (next: string[]) => {
@@ -247,16 +237,6 @@ function BulletListEditor({
     </div>
   );
 }
-
-const preserveCursor = (
-  el: HTMLTextAreaElement | HTMLInputElement,
-  pos: number
-) => {
-  requestAnimationFrame(() => {
-    el.selectionStart = pos;
-    el.selectionEnd = pos;
-  });
-};
 
 const TOOL_SUGGESTIONS = [
   "Premiere Pro",
@@ -580,7 +560,6 @@ export default function PostJobForm({
   onAddRefVideo,
   onRemoveRefVideo,
   onSubmit,
-  secondaryBtnBrightness,
   onSaveBasics,
   onSaveContent,
   onSaveTags,
@@ -664,7 +643,6 @@ export default function PostJobForm({
   onAddRefVideo: () => void;
   onRemoveRefVideo: (idx: number) => void;
   onSubmit: (e: React.FormEvent) => void;
-  secondaryBtnBrightness: number;
   onSaveBasics: () => boolean | void;
   onSaveContent?: () => boolean | void;
   onSaveTags?: () => boolean | void;
@@ -701,9 +679,11 @@ export default function PostJobForm({
     return [...starts, ...contains].slice(0, 8);
   }, [city, cityOpen]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useLayoutEffect(() => {
-    if (workMode === "Remote") setCityOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
+    if (workMode === "Remote") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCityOpen(false);
+    }
   }, [workMode]);
 
   const toolGhost = ghostMatch(toolInput, TOOL_SUGGESTIONS.filter((t) => !tools.includes(t)));
@@ -987,7 +967,7 @@ export default function PostJobForm({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-white/80 inline-flex items-center gap-1">
-                    Verify your creator account <span className="text-white/50">*</span>
+                    Verify your content creator account <span className="text-white/40">(optional)</span>
                   </div>
                 {identityErrorMessage ? (
                   <div className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
@@ -1000,10 +980,10 @@ export default function PostJobForm({
               {!identity ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
                   <div className="text-sm font-semibold text-white/90 inline-flex items-center gap-1">
-                    Verify your creator account <span className="text-white/50">*</span>
+                    Verify your content creator account <span className="text-white/40">(optional)</span>
                   </div>
                   <div className="mt-1 text-[11px] text-white/50">
-                    To prevent impersonation, we verify the channel/page directly from the platform.
+                    Add verification when you want a trusted channel/page badge on the job.
                   </div>
                   {identityError ? (
                     <div className="mt-2 text-[11px] text-amber-200/90">{identityError}</div>
