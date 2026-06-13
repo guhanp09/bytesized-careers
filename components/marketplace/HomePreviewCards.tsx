@@ -102,6 +102,25 @@ const uniq = (values: Array<string | null | undefined>) => {
     });
 };
 
+function useCardSheen() {
+  const rectRef = React.useRef<DOMRect | null>(null);
+
+  const onPointerEnter = (event: React.PointerEvent<HTMLElement>) => {
+    rectRef.current = event.currentTarget.getBoundingClientRect();
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const rect = rectRef.current ?? event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--mx", `${event.clientX - rect.left}px`);
+    event.currentTarget.style.setProperty("--my", `${event.clientY - rect.top}px`);
+  };
+
+  return { onPointerEnter, onPointerMove };
+}
+
+const PREVIEW_CARD_CLASSES =
+  "group relative isolate flex h-full min-h-[260px] cursor-pointer flex-col rounded-[26px] border border-white/[0.08] bg-white/[0.045] p-5 transition-all duration-200 hover:-translate-y-1 hover:border-white/18 hover:bg-white/[0.065] hover:shadow-[0_24px_48px_-28px_rgba(0,0,0,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 motion-reduce:hover:translate-y-0";
+
 function PreviewIconButton({
   label,
   onClick,
@@ -128,6 +147,7 @@ function PreviewIconButton({
 export function HomeJobPreviewCard({ job }: { job: Job }) {
   const router = useRouter();
   const { data: session } = useSession();
+  const sheen = useCardSheen();
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -151,8 +171,10 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") open();
       }}
-      className="group flex min-h-[260px] cursor-pointer flex-col rounded-[26px] border border-white/[0.08] bg-white/[0.045] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.065] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      {...sheen}
+      className={PREVIEW_CARD_CLASSES}
     >
+      <div aria-hidden="true" className="home-card-sheen -z-10" />
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.10] bg-white/[0.07] text-xs font-bold text-white/72">
           {initials(job.channel.name) || <Icon name="briefcase" className="h-4 w-4" />}
@@ -209,6 +231,7 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
 export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) {
   const router = useRouter();
   const { data: session } = useSession();
+  const sheen = useCardSheen();
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -242,8 +265,10 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
           open();
         }
       }}
-      className="group flex min-h-[260px] cursor-pointer flex-col rounded-[26px] border border-white/[0.08] bg-white/[0.045] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.065] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      {...sheen}
+      className={PREVIEW_CARD_CLASSES}
     >
+      <div aria-hidden="true" className="home-card-sheen -z-10" />
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {item.owner_avatar_url ? (

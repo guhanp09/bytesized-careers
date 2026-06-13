@@ -76,6 +76,7 @@ const requireProductionEnv = () => {
 requireProductionEnv();
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
   async headers() {
     const productionHeaders = isStrictProductionEnv()
       ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]

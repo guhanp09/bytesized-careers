@@ -29,9 +29,7 @@ const formatFollowerText = (raw: string, platform?: string) => {
   const trimmed = raw.trim();
   const base = trimmed.replace(/\bsubs\b/i, "").trim();
   const isYoutube = getPlatform(platform) === "youtube";
-  if (!base) {
-    return isYoutube ? "Subscribers hidden" : "Followers hidden";
-  }
+  if (!base) return "";
   return `${base} ${isYoutube ? "subscribers" : "followers"}`.trim();
 };
 
@@ -68,6 +66,8 @@ export default function PreviewCard({
   platform,
   postedShort,
   profileImageUrl,
+  authorizationStatus,
+  managedByName,
 }: {
   title: string;
   channelName: string;
@@ -81,9 +81,11 @@ export default function PreviewCard({
   platform?: string;
   postedShort?: string;
   profileImageUrl?: string | null;
+  authorizationStatus?: string | null;
+  managedByName?: string | null;
 }) {
   const showChannelName = channelName.trim() || "Finance Channel";
-  const showSubs = subsText.trim() || "128K subs";
+  const showSubs = subsText.trim();
   const showTitle = title.trim() || "Your job title goes here";
 
   const showBudget = budgetText.trim();
@@ -128,9 +130,23 @@ export default function PreviewCard({
 
               <p className="text-xs text-white/55 truncate inline-flex items-center gap-1.5">
                 <Icon name={getPlatformIcon(platform)} className="w-3.5 h-3.5" />
-                <span>{formatFollowerText(showSubs, platform)}</span>
-                <span className="text-white/40">• {postedLabel}</span>
+                {formatFollowerText(showSubs, platform) ? (
+                  <>
+                    <span>{formatFollowerText(showSubs, platform)}</span>
+                    <span className="text-white/40">• {postedLabel}</span>
+                  </>
+                ) : (
+                  <span>{postedLabel}</span>
+                )}
               </p>
+              {authorizationStatus && authorizationStatus !== "Connected" ? (
+                <p className="mt-1 truncate text-[11px] text-white/42">
+                  {authorizationStatus}
+                  {managedByName ? ` · via ${managedByName}` : ""}
+                </p>
+              ) : managedByName ? (
+                <p className="mt-1 truncate text-[11px] text-white/42">via {managedByName}</p>
+              ) : null}
             </div>
           </div>
 

@@ -46,6 +46,14 @@ const formatFollowersLabel = (count: number | null, platform?: string) => {
   return `${base} ${isYoutube ? "subscribers" : "followers"}`;
 };
 
+const channelInitials = (value?: string | null) =>
+  (value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
 function TagRow({ tags }: { tags: string[] }) {
   const top = tags.slice(0, 3);
   const extra = tags.length - top.length;
@@ -130,11 +138,17 @@ export function JobCard({ job }: { job: Job }) {
         {/* Header row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={job.channel.logoUrl}
-              alt={job.channel.name}
-              className="h-12 w-12 rounded-full border border-white/15 bg-white/10 flex-shrink-0"
-            />
+            {job.channel.logoUrl ? (
+              <img
+                src={job.channel.logoUrl}
+                alt={job.channel.name}
+                className="h-12 w-12 rounded-full border border-white/15 bg-white/10 flex-shrink-0"
+              />
+            ) : (
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-semibold text-white/72">
+                {channelInitials(job.channel.name) || <Icon name="briefcase" className="h-4 w-4" />}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <ChannelAttribution

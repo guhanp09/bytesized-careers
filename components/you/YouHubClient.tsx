@@ -12,6 +12,7 @@ import {
   BackendHiringPrimaryPlatform,
   BackendHiringType,
   BackendProfileExperienceItem,
+  BackendProfileReviewItem,
   BackendProfileUpdatePayload,
   BackendProfileResponse,
   BackendRole,
@@ -41,6 +42,7 @@ import {
 } from "../../lib/backendClient";
 import { Job } from "../../lib/types";
 import { Icon } from "../Icons";
+import { JobCard } from "../JobCard";
 import RatingDisplay from "../RatingDisplay";
 import JobsEmptyState from "../jobs/JobsEmptyState";
 import PlatformLogosRow, {
@@ -49,8 +51,10 @@ import PlatformLogosRow, {
 } from "../profile/PlatformLogosRow";
 import ProfileExperienceEditor, { type ProfileExperienceDraft } from "../profile/ProfileExperienceEditor";
 import ProfileExperienceList from "../profile/ProfileExperienceList";
+import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "../profile/ProfileReviews";
 import SocialIconRow from "../profile/SocialIconRow";
 import { TagPill } from "../ui";
+import ApplicationsWorkspace from "./ApplicationsWorkspace";
 import PortfolioProjectWorkspace from "./PortfolioProjectWorkspace";
 import AddWorkSampleChoiceModal, { type WorkSampleAction, type WorkSampleSourceType } from "./AddWorkSampleChoiceModal";
 import ToolPicker, { formatToolString, parseToolString } from "./ToolPicker";
@@ -158,7 +162,7 @@ const buildOfflineProfile = (identity: OfflineProfileIdentity): BackendProfileRe
   username_next_change_at: null,
 });
 
-type TopTab = "overview" | "jobs" | "portfolio" | "applications" | "saved";
+type TopTab = "overview" | "jobs" | "portfolio" | "reviews" | "applications" | "saved";
 type OwnerProfileViewMode = "talent" | "hiring";
 type PortfolioSubTab = "now" | "past";
 type PortfolioLaunchSource = NonNullable<BackendPortfolioItem["source_type"]>;
@@ -175,6 +179,7 @@ type InlineField =
   | "display_name"
   | "headline"
   | "skills"
+  | "availability_status"
   | "location_timezone"
   | "preferences";
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -193,7 +198,17 @@ type ContentStyleDraft = {
   target_audience: string;
 };
 
-const ALL_TABS: TopTab[] = ["overview", "jobs", "portfolio", "applications", "saved"];
+type OwnerInlineEditorId =
+  | "bio"
+  | "specialization"
+  | "content-style"
+  | "platforms"
+  | "tools"
+  | "availability"
+  | "work-preferences"
+  | "work-model";
+
+const ALL_TABS: TopTab[] = ["overview", "jobs", "portfolio", "reviews", "applications", "saved"];
 const PAST_JOB_STATUSES = new Set(["archived", "closed", "filled", "expired"]);
 const PROJECT_TYPE_LABELS: Record<"oneOff" | "retainer" | "either", string> = {
   oneOff: "One-off",
@@ -229,6 +244,18 @@ const DEFAULT_WORKING_HOURS_START = "09:00";
 const DEFAULT_WORKING_HOURS_END = "18:00";
 const DEFAULT_WORKING_HOURS_TIMEZONE = "IST";
 const FLEXIBLE_WORKING_HOURS_LABEL = "Flexible working hours";
+const RECENT_HIRE_ROLE_LABELS: Record<string, string> = {
+  editing: "Video Editor",
+  design: "Designer",
+  writing: "Scriptwriter",
+  thumbnails: "Thumbnail Designer",
+  shorts: "Shorts Editor",
+  "motion graphics": "Motion Designer",
+  "channel manager": "Channel Manager",
+  research: "Researcher",
+  "voice over": "Voice Actor",
+  marketing: "Marketing Strategist",
+};
 
 const createEmptyExperienceForm = (): ProfileExperienceDraft => ({
   id: "",
@@ -449,6 +476,7 @@ function ProfileNavButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={[
         "group relative h-12 whitespace-nowrap px-2 text-left transition-colors cursor-pointer",
@@ -511,56 +539,242 @@ function OwnerProfileInfoSection({
   );
 }
 
-function OwnerProfileInfoRow({
+function OwnerInlineActionButton({
   label,
-  value,
-  children,
+  icon = "pencil",
+  onClick,
 }: {
   label: string;
-  value?: ReactNode;
-  children?: ReactNode;
+  icon?: "pencil" | "plus";
+  onClick: () => void;
 }) {
-  const content = children ?? value ?? "–";
   return (
-    <div className="grid gap-1.5 py-2 text-sm sm:grid-cols-[170px_minmax(0,1fr)] sm:gap-6">
-      <dt className="text-white/42">{label}</dt>
-      <dd className="min-w-0 text-white/78">{content}</dd>
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white"
+    >
+      <Icon name={icon} className="h-3.5 w-3.5" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function OwnerInlineGhostLink({
+  label,
+  href,
+}: {
+  label: string;
+  href: string;
+}) {
+  return (
+    <Link href={href} className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white">
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+function OwnerInlineEditorActions({
+  onCancel,
+  onSave,
+  saving,
+  saveLabel,
+}: {
+  onCancel: () => void;
+  onSave: () => void;
+  saving?: boolean;
+  saveLabel: string;
+}) {
+  return (
+    <div className="mt-4 flex items-center justify-end gap-3">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="cursor-pointer text-xs font-medium text-white/48 transition-colors hover:text-white"
+      >
+        Cancel
+      </button>
+      <SaveIconButton onClick={onSave} saving={saving} ariaLabel={saveLabel} disabled={saving} />
     </div>
   );
 }
 
-function OwnerOverviewSideSection({
-  title,
-  count,
-  actionLabel,
-  onAction,
-  children,
+function OwnerMetadataSidebar({
+  groups,
 }: {
-  title: string;
-  count: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  children?: ReactNode;
+  groups: Array<{
+    key: string;
+    label: string;
+    values: string[];
+    emptyLabel: string;
+    actions?: ReactNode;
+    editor?: ReactNode;
+  }>;
 }) {
   return (
-    <section className="border-t border-white/10 py-5 first:border-t-0 first:pt-0">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-semibold text-white/90">{title}</h3>
-          <p className="mt-1 text-xs text-white/45">{count}</p>
-        </div>
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            onClick={onAction}
-            className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
-          >
-            {actionLabel}
-          </button>
-        ) : null}
+    <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-8">
+      <div className="space-y-5">
+        {groups.map((group) => (
+          <div key={`owner-metadata-${group.key}`} className="space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{group.label}</h4>
+              {group.actions}
+            </div>
+            {group.editor ? (
+              group.editor
+            ) : group.values.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {group.values.slice(0, 8).map((value) => (
+                  <TagPill key={`owner-metadata-${group.key}-${value}`}>{value}</TagPill>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-white/46">{group.emptyLabel}</p>
+            )}
+          </div>
+        ))}
       </div>
-      {children ? <div className="mt-4 space-y-3">{children}</div> : null}
-    </section>
+    </aside>
+  );
+}
+
+function OwnerPortfolioPreviewList({ items }: { items: BackendPortfolioItem[] }) {
+  return (
+    <div className="overflow-hidden">
+      <div className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {items.map((item) => (
+        <Link
+          key={`owner-overview-project-${item.id}`}
+          href={`/you/projects/${encodeURIComponent(item.id)}`}
+          aria-label={`Open project detail: ${item.title}`}
+          className="group block min-w-[340px] snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:min-w-[360px] lg:min-w-[380px]"
+        >
+          <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
+            {item.thumbnail_url ? (
+              <img
+                src={item.thumbnail_url}
+                alt={item.title}
+                className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
+              />
+            ) : (
+              <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                <Icon name="image" className="h-8 w-8" />
+              </div>
+            )}
+          </div>
+          <div className="p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                {sourceLabel(item.source_type, item.public_metrics?.source_type)}
+              </span>
+              {item.verification_status === "youtube_metadata_verified" ? (
+                <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                  Verified
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
+            {cleanOwnerText(item.role_name || item.role || item.user_role_in_project) ? (
+              <p className="mt-1 text-sm font-medium text-white/72">
+                {cleanOwnerText(item.role_name || item.role || item.user_role_in_project)}
+              </p>
+            ) : null}
+            {(() => {
+              const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
+              const published = formatDateShort(item.published_at || item.published_date || item.created_at);
+              const sourceLine = [
+                item.channel_name,
+                views ? `${views} views` : null,
+                published,
+                item.duration,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
+            })()}
+            {item.contribution_summary || item.description ? (
+              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
+                {item.contribution_summary || item.description}
+              </p>
+            ) : null}
+            {(item.contribution_tags || []).length ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(item.contribution_tags || []).slice(0, 4).map((tag) => (
+                  <TagPill key={`${item.id}-owner-preview-contribution-${tag}`}>{tag}</TagPill>
+                ))}
+              </div>
+            ) : null}
+            {item.tools?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {item.tools.slice(0, 4).map((tool) => (
+                  <TagPill key={`${item.id}-owner-preview-tool-${tool}`}>{tool}</TagPill>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Link>
+      ))}
+      </div>
+    </div>
+  );
+}
+
+function OwnerJobsPreviewList({ items }: { items: Job[] }) {
+  return (
+    <div className="overflow-hidden">
+      <div
+        aria-label="Jobs preview"
+        className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {items.map((job) => (
+          <div
+            key={`owner-overview-job-${job.id}`}
+            className="min-w-[340px] snap-start sm:min-w-[360px] lg:min-w-[390px]"
+          >
+            <JobCard job={job} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OwnerHiringExperienceList({ items }: { items: Job[] }) {
+  return (
+    <div className="divide-y divide-white/[0.08]">
+      {items.map((job) => {
+        const orgName = job.channel.name.trim() || "Creator team";
+        const roleLabel = normalizeRecentHireRole(job.category || job.title);
+        const initials = orgName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part.charAt(0).toUpperCase())
+          .join("");
+        return (
+          <div key={`owner-hiring-experience-${job.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-4 first:pt-0 last:pb-0">
+            <div className="flex h-11 w-11 shrink-0 self-start items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/62">
+              {job.channel.logoUrl ? (
+                <img src={job.channel.logoUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                initials || "CJ"
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white/88">
+                {roleLabel} | {orgName}
+              </p>
+              <p className="mt-1 text-sm font-medium text-white/58">{job.type || job.contractType || "Engagement"}</p>
+              <p className="mt-1 text-xs text-white/45">
+                {[job.postedShort, job.workMode || job.location].filter(Boolean).join(" · ")}
+              </p>
+              {job.tags.length ? <p className="mt-1 text-xs text-white/45">{job.tags.slice(0, 4).join(" · ")}</p> : null}
+              <p className="mt-2 text-sm leading-6 text-white/62">{job.title}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -574,21 +788,23 @@ const cleanOwnerText = (value?: string | null) => {
   return text;
 };
 
+const normalizeRecentHireRole = (value?: string | null) => {
+  const text = cleanOwnerText(value);
+  if (!text) return "Creator Role";
+  const withoutPrefix = text.replace(/^hired\s+/i, "").trim();
+  return RECENT_HIRE_ROLE_LABELS[withoutPrefix.toLowerCase()] || withoutPrefix;
+};
+
 const formatOwnerTextValue = (value?: string | null) => cleanOwnerText(value) || "–";
 
-const formatOwnerListValue = (values?: (string | null | undefined)[]) => {
-  const cleaned = (values || []).map((value) => cleanOwnerText(value)).filter((item): item is string => Boolean(item));
-  return cleaned.length ? cleaned.join(", ") : "–";
-};
+const splitOwnerValues = (value?: string | null) =>
+  (value || "")
+    .split(/[·,]/)
+    .map((part) => cleanOwnerText(part))
+    .filter((part): part is string => Boolean(part));
 
-const formatOwnerHiringType = (value?: string | null) => {
-  const text = cleanOwnerText(value);
-  if (!text) return "–";
-  return text
-    .split(" ")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-};
+const cleanOwnerList = (values: Array<string | null | undefined>) =>
+  values.map((value) => cleanOwnerText(value)).filter((value): value is string => Boolean(value));
 
 const formatOwnerProjectType = (value?: string | null) => {
   if (value === "oneOff" || value === "retainer" || value === "either") {
@@ -596,9 +812,6 @@ const formatOwnerProjectType = (value?: string | null) => {
   }
   return formatOwnerTextValue(value);
 };
-
-const formatOwnerCountLabel = (count: number, singular: string, plural: string) =>
-  `${count} ${count === 1 ? singular : plural}`;
 
 function SaveIconButton({
   onClick,
@@ -719,6 +932,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [avatarUploadPreviewUrl, setAvatarUploadPreviewUrl] = useState<string | null>(null);
   const [activeEditorSection, setActiveEditorSection] = useState<EditorSectionId>("basics");
+  const [activeOwnerInlineEditor, setActiveOwnerInlineEditor] = useState<OwnerInlineEditorId | null>(null);
   const [workSampleChooserOpen, setWorkSampleChooserOpen] = useState(false);
   const [setupWidgetOpen, setSetupWidgetOpen] = useState(false);
 
@@ -746,6 +960,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [experienceCreateFocusNonce, setExperienceCreateFocusNonce] = useState(0);
   const experienceCreateEditorRef = useRef<HTMLDivElement | null>(null);
   const [draftLocation, setDraftLocation] = useState("");
+  const [draftAvailabilityStatus, setDraftAvailabilityStatus] =
+    useState<BackendProfileResponse["availability_status"]>("selective");
   const [workingHoursMode, setWorkingHoursMode] = useState<WorkingHoursMode>("flexible");
   const [workingHoursStart, setWorkingHoursStart] = useState(DEFAULT_WORKING_HOURS_START);
   const [workingHoursEnd, setWorkingHoursEnd] = useState(DEFAULT_WORKING_HOURS_END);
@@ -883,6 +1099,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
         : normalizeList(data.skills)
     );
     setDraftLocation(data.location || "");
+    setDraftAvailabilityStatus(data.availability_status || "selective");
     const parsedWorkingHours = parseWorkingHours(data.collaboration_preferences?.working_hours, data.timezone);
     setWorkingHoursMode(parsedWorkingHours.mode);
     setWorkingHoursStart(parsedWorkingHours.start);
@@ -1578,12 +1795,98 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     try {
       await persistContentStyle();
       router.refresh();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save content style.");
+      return false;
     } finally {
       setContentStyleSaving(false);
     }
   }, [persistContentStyle, router]);
+
+  const saveSelectedRoles = useCallback(async () => {
+    setRolesSaving(true);
+    setError(null);
+    try {
+      const updatedRoles = await withFreshBackendToken((token) => upsertMyRoles(token, selectedRoleIds));
+      const normalizedRoleIds = (updatedRoles.items || []).map((item) => item.id);
+      setSelectedRoleIds(normalizedRoleIds);
+      setProfile((prev) => (prev ? { ...prev, roles: updatedRoles.items || [] } : prev));
+      await refreshProfileCompletion();
+      router.refresh();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save selected roles.");
+      return false;
+    } finally {
+      setRolesSaving(false);
+    }
+  }, [refreshProfileCompletion, router, selectedRoleIds, withFreshBackendToken]);
+
+  const resetRoleDraft = useCallback(() => {
+    setSelectedRoleIds((profile?.roles || []).map((item) => item.id));
+  }, [profile?.roles]);
+
+  const resetContentStyleDraftToProfile = useCallback(() => {
+    setContentStyleDraft({
+      primary_niche: profile?.content_style?.primary_niche || "",
+      format: profile?.content_style?.format || [],
+      tone: profile?.content_style?.tone || [],
+      target_audience: profile?.content_style?.target_audience || "",
+    });
+  }, [profile?.content_style]);
+
+  const resetToolsDraft = useCallback(() => {
+    setSelectedTools(
+      parseToolString(profile?.collaboration_preferences?.tools).length
+        ? parseToolString(profile?.collaboration_preferences?.tools)
+        : normalizeList(profile?.skills)
+    );
+  }, [profile?.collaboration_preferences?.tools, profile?.skills]);
+
+  const resetLocationDraft = useCallback(() => {
+    setDraftLocation(profile?.location || "");
+    const parsedWorkingHours = parseWorkingHours(
+      profile?.collaboration_preferences?.working_hours,
+      profile?.timezone
+    );
+    setWorkingHoursMode(parsedWorkingHours.mode);
+    setWorkingHoursStart(parsedWorkingHours.start);
+    setWorkingHoursEnd(parsedWorkingHours.end);
+    setWorkingHoursTimezone(parsedWorkingHours.timezone);
+  }, [profile?.collaboration_preferences?.working_hours, profile?.location, profile?.timezone]);
+
+  const resetPreferencesDraft = useCallback(() => {
+    setDraftPreferenceProjectType(profile?.collaboration_preferences?.project_type_preference || "");
+    setDraftPreferenceTurnaround(profile?.collaboration_preferences?.turnaround || "");
+    setDraftPreferenceRevisions(profile?.collaboration_preferences?.revisions || "");
+    const parsedWorkingHours = parseWorkingHours(
+      profile?.collaboration_preferences?.working_hours,
+      profile?.timezone
+    );
+    setWorkingHoursMode(parsedWorkingHours.mode);
+    setWorkingHoursStart(parsedWorkingHours.start);
+    setWorkingHoursEnd(parsedWorkingHours.end);
+    setWorkingHoursTimezone(parsedWorkingHours.timezone);
+  }, [
+    profile?.collaboration_preferences?.project_type_preference,
+    profile?.collaboration_preferences?.revisions,
+    profile?.collaboration_preferences?.turnaround,
+    profile?.collaboration_preferences?.working_hours,
+    profile?.timezone,
+  ]);
+
+  const resetHiringInfoDraft = useCallback(() => {
+    setDraftHiringType(profile?.hiring_info?.hiring_type || "");
+    setDraftHiringWebsiteOrSocialUrl(profile?.hiring_info?.website_or_social_url || "");
+    setDraftHiringPrimaryPlatform(profile?.hiring_info?.primary_platform || "");
+    setDraftHiringChannelsOrPagesManaged(profile?.hiring_info?.channels_or_pages_managed || "");
+  }, [
+    profile?.hiring_info?.channels_or_pages_managed,
+    profile?.hiring_info?.hiring_type,
+    profile?.hiring_info?.primary_platform,
+    profile?.hiring_info?.website_or_social_url,
+  ]);
 
   const handleFetchYouTubePortfolioPreview = useCallback(async () => {
     const youtubeUrl = portfolioYouTubeUrl.trim();
@@ -1767,6 +2070,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       headline: draftHeadline.trim(),
       skills: selectedTools,
       experience: experienceDraft,
+      availability_status: draftAvailabilityStatus || "selective",
       location: draftLocation.trim(),
       timezone: workingHoursMode === "fixed" ? workingHoursTimezone.trim() : "",
       project_type_preference: draftPreferenceProjectType || null,
@@ -1787,6 +2091,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     [
       draftDisplayName,
       draftHeadline,
+      draftAvailabilityStatus,
       experienceDraft,
       draftHiringChannelsOrPagesManaged,
       draftHiringPrimaryPlatform,
@@ -1890,6 +2195,9 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
           : normalizeList(profile.skills);
         return !areListsEqual(selectedTools, storedTools);
       }
+      if (field === "availability_status") {
+        return (draftAvailabilityStatus || "selective") !== (profile.availability_status || "selective");
+      }
       if (field === "location_timezone") {
         return draftLocation.trim() !== (profile.location || "").trim();
       }
@@ -1906,12 +2214,12 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
           (profile.collaboration_preferences?.turnaround || "").trim() ||
         draftPreferenceRevisions.trim() !==
           (profile.collaboration_preferences?.revisions || "").trim() ||
-        workingHoursValue !== (profile.collaboration_preferences?.working_hours || "").trim() ||
-        formatToolString(selectedTools) !== (profile.collaboration_preferences?.tools || "").trim()
+        workingHoursValue !== (profile.collaboration_preferences?.working_hours || "").trim()
       );
     },
     [
       draftDisplayName,
+      draftAvailabilityStatus,
       draftHeadline,
       draftLocation,
       draftPreferenceProjectType,
@@ -1938,6 +2246,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
           ? { headline: draftHeadline.trim() }
           : field === "skills"
             ? { skills: selectedTools, collaboration_tools: formatToolString(selectedTools) }
+            : field === "availability_status"
+              ? { availability_status: draftAvailabilityStatus || "selective" }
             : field === "location_timezone"
               ? {
                   location: draftLocation.trim(),
@@ -1953,10 +2263,10 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     end: workingHoursEnd,
                     timezone: workingHoursTimezone,
                   }),
-                  collaboration_tools: formatToolString(selectedTools),
                 };
-    await patchProfile(payload, "Failed to save profile field.");
+    const saved = await patchProfile(payload, "Failed to save profile field.");
     setInlineSavingField(null);
+    return Boolean(saved);
   };
 
   const saveExperienceItems = useCallback(
@@ -2244,52 +2554,614 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const ownerRoleNames = selectedRoles.map((role) => role.name).filter(Boolean);
   const ownerFormatNames = normalizeList(contentStyleDraft.format);
   const ownerToneNames = normalizeList(contentStyleDraft.tone);
-  const ownerConnectedChannelNames = [
-    ...connectedAccounts.youtube.map((account) => `YouTube: ${account.displayName}`),
-    ...connectedAccounts.instagram.map((account) => `Instagram: ${account.displayName}`),
-  ];
-  const ownerOverviewRows = [
-    ["Roles", formatOwnerListValue(ownerRoleNames)],
-    ["Primary niche", formatOwnerTextValue(contentStyleDraft.primary_niche)],
-    ["Formats", formatOwnerListValue(ownerFormatNames)],
-    ["Tone", formatOwnerListValue(ownerToneNames)],
-    ["Target audience", formatOwnerTextValue(contentStyleDraft.target_audience)],
-  ].filter(([, value]) => value !== "–");
-  const ownerProfileDetailsRows = [
-    ["Primary platform", formatOwnerTextValue(profile?.hiring_info?.primary_platform)],
-    ["Connected channels/pages", formatOwnerListValue(ownerConnectedChannelNames)],
-    ["Website / social URL", formatOwnerTextValue(profile?.hiring_info?.website_or_social_url)],
-  ].filter(([, value]) => value !== "–");
-  const ownerRecruiterProfileRows = [
-    ["Hiring type", formatOwnerHiringType(profile?.hiring_info?.hiring_type)],
-    ["Primary platform", formatOwnerTextValue(profile?.hiring_info?.primary_platform)],
-    ["Channels/pages", formatOwnerTextValue(profile?.hiring_info?.channels_or_pages_managed) !== "–" ? formatOwnerTextValue(profile?.hiring_info?.channels_or_pages_managed) : formatOwnerListValue(ownerConnectedChannelNames)],
-    ["Typical roles", formatOwnerListValue(activeJobs.map((job) => job.category || job.title))],
-    ["Content niche", formatOwnerTextValue(contentStyleDraft.primary_niche)],
-  ].filter(([, value]) => value !== "–");
-  const ownerRecruiterDetailRows = [
-    ["Website / social URL", formatOwnerTextValue(profile?.hiring_info?.website_or_social_url)],
-    ["Channel or brand context", formatOwnerListValue(ownerConnectedChannelNames)],
-    ["Hiring context", formatOwnerTextValue(profile?.hiring_info?.channels_or_pages_managed)],
-  ].filter(([, value]) => value !== "–");
-  const ownerCollaborationRows = [
-    ["Project type preference", formatOwnerProjectType(profile?.collaboration_preferences?.project_type_preference)],
-    ["Turnaround", formatOwnerTextValue(profile?.collaboration_preferences?.turnaround)],
-    ["Revisions", formatOwnerTextValue(profile?.collaboration_preferences?.revisions)],
-    ["Working hours", formatOwnerTextValue(profile?.collaboration_preferences?.working_hours)],
-    ["Tools", formatOwnerTextValue(profile?.collaboration_preferences?.tools)],
-  ].filter(([, value]) => value !== "–");
-  const ownerRecruiterCollaborationRows = [
-    ["Project type preference", formatOwnerProjectType(profile?.collaboration_preferences?.project_type_preference)],
-    ["Typical turnaround", formatOwnerTextValue(profile?.collaboration_preferences?.turnaround)],
-    ["Revision expectations", formatOwnerTextValue(profile?.collaboration_preferences?.revisions)],
-    ["Working hours", formatOwnerTextValue(profile?.collaboration_preferences?.working_hours)],
-    ["Tools/workflow", formatOwnerTextValue(profile?.collaboration_preferences?.tools)],
-  ].filter(([, value]) => value !== "–");
+  const ownerConnectedPlatforms = [
+    connectedAccounts.youtube.length ? "YouTube" : null,
+    connectedAccounts.instagram.length ? "Instagram" : null,
+  ].filter((item): item is string => Boolean(item));
   const effectiveOwnerProfileMode: OwnerProfileViewMode = ownerProfileMode;
   const ownerExperienceItems = experienceDraft;
-  const ownerPortfolioPreview = (featuredPortfolio.length ? featuredPortfolio : portfolio).slice(0, 2);
-  const ownerJobsPreview = activeJobs.slice(0, 2);
+  const ownerBioText = cleanOwnerText(profile?.headline);
+  const ownerReviewItems = useMemo<BackendProfileReviewItem[]>(() => profile?.review_items || [], [profile?.review_items]);
+  const toggleRoleDraftSelection = (roleId: string) => {
+    setSelectedRoleIds((current) =>
+      current.includes(roleId) ? current.filter((id) => id !== roleId) : [...current, roleId]
+    );
+  };
+  const closeOwnerInlineEditor = () => setActiveOwnerInlineEditor(null);
+  const openPortfolioManager = () => {
+    setTab("portfolio");
+    setWorkSampleChooserOpen(true);
+  };
+  const handleSaveBioInline = async () => {
+    const saved = await saveInlineField("headline");
+    if (saved || !isFieldDirty("headline")) {
+      closeOwnerInlineEditor();
+    }
+  };
+  const handleSaveRolesInline = async () => {
+    const saved = await saveSelectedRoles();
+    if (saved) closeOwnerInlineEditor();
+  };
+  const handleSaveContentStyleInline = async () => {
+    const saved = await saveContentStyle();
+    if (saved) closeOwnerInlineEditor();
+  };
+  const handleSaveToolsInline = async () => {
+    const saved = await saveInlineField("skills");
+    if (saved || !isFieldDirty("skills")) {
+      closeOwnerInlineEditor();
+    }
+  };
+  const handleSaveAvailabilityInline = async () => {
+    const saved = await saveInlineField("availability_status");
+    if (saved || !isFieldDirty("availability_status")) {
+      closeOwnerInlineEditor();
+    }
+  };
+  const handleSavePreferencesInline = async () => {
+    const saved = await saveInlineField("preferences");
+    if (saved || !isFieldDirty("preferences")) {
+      closeOwnerInlineEditor();
+    }
+  };
+  const handleSaveWorkModelInline = async () => {
+    const saved = await saveInlineField("location_timezone");
+    if (saved || !isFieldDirty("location_timezone")) {
+      closeOwnerInlineEditor();
+    }
+  };
+  const handleSavePlatformsInline = async () => {
+    const saved = await saveHiringInfo();
+    if (saved) closeOwnerInlineEditor();
+  };
+  const pastOwnerJobs = jobs.filter((job) => PAST_JOB_STATUSES.has(String(job.status || "").toLowerCase()));
+  const ownerJobsSorted = [...activeJobs, ...pastOwnerJobs].sort((a, b) => {
+    const aActive = !PAST_JOB_STATUSES.has(String(a.status || "").toLowerCase());
+    const bActive = !PAST_JOB_STATUSES.has(String(b.status || "").toLowerCase());
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    return String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""));
+  });
+  const ownerPortfolioPreview = [...publishedPortfolio]
+    .sort((a, b) => {
+      const featuredDelta = Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured));
+      if (featuredDelta !== 0) return featuredDelta;
+      return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+    })
+    .slice(0, 3);
+  const ownerJobsPreview = ownerJobsSorted.slice(0, 3);
+  const ownerHiringExperiencePreview = pastOwnerJobs.slice(0, 3);
+  const ownerContentStyleEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <label className="block space-y-1.5">
+        <span className="text-xs text-white/55">Primary niche</span>
+        <input
+          list="content-style-niche-options"
+          value={contentStyleDraft.primary_niche}
+          onChange={(event) => setContentStyleDraft((prev) => ({ ...prev, primary_niche: event.target.value }))}
+          placeholder="Gaming, education, finance..."
+          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+        />
+      </label>
+      <div>
+        <p className="text-xs text-white/55">Content formats</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {CONTENT_STYLE_FORMAT_OPTIONS.map((value) => (
+            <button
+              key={`overview-format-${value}`}
+              type="button"
+              onClick={() => toggleContentStyleChip("format", value)}
+              className={[
+                "cursor-pointer rounded-lg border px-2.5 py-1 text-xs transition-colors",
+                contentStyleDraft.format.includes(value)
+                  ? "border-white/30 bg-white/[0.1] text-white"
+                  : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]",
+              ].join(" ")}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="text-xs text-white/55">Genres</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {CONTENT_STYLE_TONE_OPTIONS.map((value) => (
+            <button
+              key={`overview-tone-${value}`}
+              type="button"
+              onClick={() => toggleContentStyleChip("tone", value)}
+              className={[
+                "cursor-pointer rounded-lg border px-2.5 py-1 text-xs transition-colors",
+                contentStyleDraft.tone.includes(value)
+                  ? "border-white/30 bg-white/[0.1] text-white"
+                  : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]",
+              ].join(" ")}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block space-y-1.5">
+        <span className="text-xs text-white/55">Tags / audience</span>
+        <input
+          value={contentStyleDraft.target_audience}
+          onChange={(event) => setContentStyleDraft((prev) => ({ ...prev, target_audience: event.target.value }))}
+          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+          placeholder="Retention editing, creator ops, weekly publishing"
+        />
+      </label>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetContentStyleDraftToProfile();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSaveContentStyleInline()}
+        saving={contentStyleSaving}
+        saveLabel="Save content style"
+      />
+    </div>
+  );
+  const ownerPlatformsEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <PlatformLogosRow
+        isOwnerView={isOwnerView}
+        connectedAccounts={connectedAccounts}
+        onConnectAccount={connectPlatformAccount}
+        onRemoveAccount={removePlatformAccount}
+      />
+      <div className="grid gap-3">
+        <label className="space-y-1">
+          <span className="text-xs text-white/55">Primary platform</span>
+          <select
+            value={draftHiringPrimaryPlatform}
+            onChange={(event) => setDraftHiringPrimaryPlatform(event.target.value as BackendHiringPrimaryPlatform | "")}
+            className="h-10 w-full cursor-pointer rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+          >
+            <option value="">Choose platform</option>
+            {HIRING_PRIMARY_PLATFORM_OPTIONS.map((option) => (
+              <option key={`owner-inline-platform-${option}`} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs text-white/55">Website or social URL</span>
+          <input
+            value={draftHiringWebsiteOrSocialUrl}
+            onChange={(event) => setDraftHiringWebsiteOrSocialUrl(event.target.value)}
+            className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+            placeholder="https://youtube.com/@channel"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs text-white/55">Channel or hiring context</span>
+          <textarea
+            value={draftHiringChannelsOrPagesManaged}
+            onChange={(event) => setDraftHiringChannelsOrPagesManaged(event.target.value)}
+            className="min-h-[84px] w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35"
+            placeholder="Briefly describe the channels, pages, or publishing context you manage."
+          />
+        </label>
+      </div>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetHiringInfoDraft();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSavePlatformsInline()}
+        saving={hiringSaving}
+        saveLabel="Save platform details"
+      />
+    </div>
+  );
+  const ownerToolsEditor = (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <ToolPicker value={selectedTools} onChange={setSelectedTools} />
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetToolsDraft();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSaveToolsInline()}
+        saving={inlineSavingField === "skills"}
+        saveLabel="Save tools"
+      />
+    </div>
+  );
+  const ownerAvailabilityEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <label className="space-y-1">
+        <span className="text-xs text-white/55">Availability</span>
+        <select
+          value={draftAvailabilityStatus || "selective"}
+          onChange={(event) => setDraftAvailabilityStatus(event.target.value as BackendProfileResponse["availability_status"])}
+          className="h-10 w-full cursor-pointer rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+        >
+          <option value="available">Available</option>
+          <option value="selective">Selective</option>
+          <option value="unavailable">Unavailable</option>
+        </select>
+      </label>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          setDraftAvailabilityStatus(profile?.availability_status || "selective");
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSaveAvailabilityInline()}
+        saving={inlineSavingField === "availability_status"}
+        saveLabel="Save availability"
+      />
+    </div>
+  );
+  const ownerWorkPreferencesEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select
+          value={draftPreferenceProjectType}
+          onChange={(event) => setDraftPreferenceProjectType(event.target.value as "oneOff" | "retainer" | "either" | "")}
+          className="h-10 cursor-pointer rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+        >
+          <option value="">Project type preference</option>
+          <option value="oneOff">One-off</option>
+          <option value="retainer">Retainer</option>
+          <option value="either">Either</option>
+        </select>
+        <input
+          value={draftPreferenceTurnaround}
+          onChange={(event) => setDraftPreferenceTurnaround(event.target.value)}
+          className="h-10 rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+          placeholder="Turnaround"
+        />
+        <input
+          value={draftPreferenceRevisions}
+          onChange={(event) => setDraftPreferenceRevisions(event.target.value)}
+          className="h-10 rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 sm:col-span-2"
+          placeholder="Revisions or review rhythm"
+        />
+      </div>
+      <div className="space-y-3">
+        <p className="text-xs text-white/55">Working hours</p>
+        <div className="inline-flex rounded-full border border-white/12 bg-white/[0.035] p-1">
+          {[
+            ["flexible", "Flexible"],
+            ["fixed", "Set hours"],
+          ].map(([mode, label]) => (
+            <button
+              key={`overview-working-hours-mode-${mode}`}
+              type="button"
+              onClick={() => setWorkingHoursMode(mode as WorkingHoursMode)}
+              className={[
+                "h-8 cursor-pointer rounded-full px-3 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+                workingHoursMode === mode ? "bg-white text-black" : "text-white/56 hover:text-white",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {workingHoursMode === "fixed" ? (
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(120px,0.8fr)]">
+            <input
+              type="time"
+              value={workingHoursStart}
+              onChange={(event) => setWorkingHoursStart(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+            />
+            <input
+              type="time"
+              value={workingHoursEnd}
+              onChange={(event) => setWorkingHoursEnd(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+            />
+            <input
+              value={workingHoursTimezone}
+              onChange={(event) => setWorkingHoursTimezone(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+              placeholder="IST"
+            />
+          </div>
+        ) : null}
+      </div>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetPreferencesDraft();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSavePreferencesInline()}
+        saving={inlineSavingField === "preferences"}
+        saveLabel="Save work preferences"
+      />
+    </div>
+  );
+  const ownerWorkModelEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <label className="space-y-1">
+        <span className="text-xs text-white/55">Location</span>
+        <input
+          value={draftLocation}
+          onChange={(event) => setDraftLocation(event.target.value)}
+          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+          placeholder="Chennai, India"
+        />
+      </label>
+      <div className="space-y-3">
+        <p className="text-xs text-white/55">Working hours</p>
+        <div className="inline-flex rounded-full border border-white/12 bg-white/[0.035] p-1">
+          {[
+            ["flexible", "Flexible"],
+            ["fixed", "Set hours"],
+          ].map(([mode, label]) => (
+            <button
+              key={`overview-work-model-mode-${mode}`}
+              type="button"
+              onClick={() => setWorkingHoursMode(mode as WorkingHoursMode)}
+              className={[
+                "h-8 cursor-pointer rounded-full px-3 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15",
+                workingHoursMode === mode ? "bg-white text-black" : "text-white/56 hover:text-white",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {workingHoursMode === "fixed" ? (
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(120px,0.8fr)]">
+            <input
+              type="time"
+              value={workingHoursStart}
+              onChange={(event) => setWorkingHoursStart(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+            />
+            <input
+              type="time"
+              value={workingHoursEnd}
+              onChange={(event) => setWorkingHoursEnd(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white"
+            />
+            <input
+              value={workingHoursTimezone}
+              onChange={(event) => setWorkingHoursTimezone(event.target.value)}
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+              placeholder="IST"
+            />
+          </div>
+        ) : null}
+      </div>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetLocationDraft();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSaveWorkModelInline()}
+        saving={inlineSavingField === "location_timezone"}
+        saveLabel="Save work model"
+      />
+    </div>
+  );
+  const ownerRoleEditor = (
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+      <label className="block space-y-1.5">
+        <span className="text-xs text-white/55">Role search</span>
+        <input
+          value={roleSearch}
+          onChange={(event) => setRoleSearch(event.target.value)}
+          placeholder="Video editor, thumbnail designer..."
+          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+        />
+      </label>
+      {selectedRoles.length ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedRoles.map((role) => (
+            <button
+              key={`owner-inline-selected-role-${role.id}`}
+              type="button"
+              onClick={() => toggleRoleDraftSelection(role.id)}
+              className="cursor-pointer rounded-full border border-white/20 bg-white/[0.08] px-3 py-1 text-xs text-white/90 transition-colors hover:bg-white/[0.12]"
+            >
+              {role.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {filteredRoleSuggestions.slice(0, 8).map((role) => (
+          <button
+            key={`owner-inline-role-${role.id}`}
+            type="button"
+            onClick={() => toggleRoleDraftSelection(role.id)}
+            className={[
+              "rounded-xl border px-3 py-2 text-left transition-colors cursor-pointer",
+              selectedRoleIds.includes(role.id)
+                ? "border-white/30 bg-white/[0.09] text-white"
+                : "border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/[0.08]",
+            ].join(" ")}
+          >
+            <p className="text-sm font-semibold">{role.name}</p>
+            <p className="mt-1 text-xs text-white/55">{role.category}</p>
+          </button>
+        ))}
+      </div>
+      <OwnerInlineEditorActions
+        onCancel={() => {
+          resetRoleDraft();
+          closeOwnerInlineEditor();
+        }}
+        onSave={() => void handleSaveRolesInline()}
+        saving={rolesSaving}
+        saveLabel="Save specialization"
+      />
+    </div>
+  );
+  const ownerTalentMetadataGroups = [
+    {
+      key: "specialization",
+      label: "Specialization",
+      values: normalizeList(ownerRoleNames),
+      emptyLabel: "Add specialization",
+      actions: <OwnerInlineActionButton label={ownerRoleNames.length ? "Edit" : "Add"} onClick={() => setActiveOwnerInlineEditor("specialization")} />,
+      editor: activeOwnerInlineEditor === "specialization" ? ownerRoleEditor : null,
+    },
+    {
+      key: "niches",
+      label: "Niches",
+      values: splitOwnerValues(contentStyleDraft.primary_niche),
+      emptyLabel: "Add niches",
+      actions: <OwnerInlineActionButton label={splitOwnerValues(contentStyleDraft.primary_niche).length ? "Edit" : "Add"} onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "genres",
+      label: "Genres",
+      values: ownerToneNames,
+      emptyLabel: "Add genres",
+      actions: <OwnerInlineActionButton label={ownerToneNames.length ? "Edit" : "Add"} onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "formats",
+      label: "Content formats",
+      values: ownerFormatNames,
+      emptyLabel: "Add content formats",
+      actions: <OwnerInlineActionButton label={ownerFormatNames.length ? "Edit" : "Add"} onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "platforms",
+      label: "Platforms",
+      values: cleanOwnerList([profile?.hiring_info?.primary_platform, ...ownerConnectedPlatforms]),
+      emptyLabel: "Add platforms",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("platforms")} />,
+      editor: activeOwnerInlineEditor === "platforms" ? ownerPlatformsEditor : null,
+    },
+    {
+      key: "tools",
+      label: "Tools",
+      values: normalizeList([...selectedTools, ...splitOwnerValues(profile?.collaboration_preferences?.tools)]),
+      emptyLabel: "Add tools",
+      actions: <OwnerInlineActionButton label={selectedTools.length ? "Edit" : "Add"} onClick={() => setActiveOwnerInlineEditor("tools")} />,
+      editor: activeOwnerInlineEditor === "tools" ? ownerToolsEditor : null,
+    },
+    {
+      key: "availability",
+      label: "Availability",
+      values: profile?.availability_status ? [profile.availability_status] : [],
+      emptyLabel: "Add availability",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("availability")} />,
+      editor: activeOwnerInlineEditor === "availability" ? ownerAvailabilityEditor : null,
+    },
+    {
+      key: "preferences",
+      label: "Work preferences",
+      values: cleanOwnerList([
+        formatOwnerProjectType(profile?.collaboration_preferences?.project_type_preference),
+        profile?.collaboration_preferences?.turnaround,
+        profile?.collaboration_preferences?.working_hours,
+      ]).filter((value) => value !== "–"),
+      emptyLabel: "Add work preferences",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("work-preferences")} />,
+      editor: activeOwnerInlineEditor === "work-preferences" ? ownerWorkPreferencesEditor : null,
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      values: cleanOwnerList([contentStyleDraft.target_audience, ...ownerToneNames]).filter((value) => value !== "–"),
+      emptyLabel: "Add tags",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+  ];
+  const ownerRecruiterMetadataGroups = [
+    {
+      key: "hiring-focus",
+      label: "Hiring focus",
+      values: normalizeList([...activeJobs.map((job) => job.category), ...pastOwnerJobs.map((job) => job.category)]).slice(0, 6),
+      emptyLabel: "Post jobs to build hiring focus",
+      actions: (
+        <OwnerInlineActionButton
+          label={jobs.length ? "Manage" : "Post job"}
+          icon={jobs.length ? "pencil" : "plus"}
+          onClick={() => (jobs.length ? setTab("jobs") : router.push("/post-job"))}
+        />
+      ),
+    },
+    {
+      key: "content-niches",
+      label: "Content niches",
+      values: splitOwnerValues(contentStyleDraft.primary_niche),
+      emptyLabel: "Add content niches",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "genres",
+      label: "Genres",
+      values: ownerToneNames,
+      emptyLabel: "Add genres",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "formats",
+      label: "Formats hired for",
+      values: ownerFormatNames,
+      emptyLabel: "Add formats hired for",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("content-style")} />,
+      editor: activeOwnerInlineEditor === "content-style" ? ownerContentStyleEditor : null,
+    },
+    {
+      key: "platforms",
+      label: "Platforms",
+      values: cleanOwnerList([profile?.hiring_info?.primary_platform, ...ownerConnectedPlatforms]),
+      emptyLabel: "Add platforms",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("platforms")} />,
+      editor: activeOwnerInlineEditor === "platforms" ? ownerPlatformsEditor : null,
+    },
+    {
+      key: "collaboration-style",
+      label: "Collaboration style",
+      values: cleanOwnerList([
+        formatOwnerProjectType(profile?.collaboration_preferences?.project_type_preference),
+        profile?.collaboration_preferences?.turnaround,
+        profile?.collaboration_preferences?.revisions,
+      ]).filter((value) => value !== "–"),
+      emptyLabel: "Add collaboration style",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("work-preferences")} />,
+      editor: activeOwnerInlineEditor === "work-preferences" ? ownerWorkPreferencesEditor : null,
+    },
+    {
+      key: "work-model",
+      label: "Work model",
+      values: cleanOwnerList([
+        profile?.location,
+        profile?.timezone,
+        profile?.collaboration_preferences?.working_hours,
+      ]).filter((value) => value !== "–"),
+      emptyLabel: "Add work model",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("work-model")} />,
+      editor: activeOwnerInlineEditor === "work-model" ? ownerWorkModelEditor : null,
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      values: normalizeList([
+        ...activeJobs.flatMap((job) => job.tags),
+        ...splitOwnerValues(profile?.hiring_info?.channels_or_pages_managed),
+      ]).slice(0, 8),
+      emptyLabel: "Add tags",
+      actions: <OwnerInlineActionButton label="Edit" onClick={() => setActiveOwnerInlineEditor("platforms")} />,
+      editor: activeOwnerInlineEditor === "platforms" ? ownerPlatformsEditor : null,
+    },
+  ];
+
+  const visibleOwnerTab =
+    !isEditMode && effectiveOwnerProfileMode === "talent" && activeTab === "jobs"
+      ? "overview"
+      : !isEditMode && effectiveOwnerProfileMode === "hiring" && activeTab === "portfolio"
+        ? "overview"
+        : activeTab;
+
   const toPortfolioLaunchSource = (sourceType: WorkSampleSourceType): PortfolioLaunchSource => {
     if (
       sourceType === "youtube" ||
@@ -2421,16 +3293,26 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     setHiringSaving(true);
     setError(null);
     try {
-      await persistProfileUpdate(buildEditorProfilePayload());
+      await persistProfileUpdate({
+        hiring_type: draftHiringType || null,
+        hiring_website_or_social_url: draftHiringWebsiteOrSocialUrl.trim() || null,
+        hiring_primary_platform: draftHiringPrimaryPlatform || null,
+        hiring_channels_or_pages_managed: draftHiringChannelsOrPagesManaged.trim() || null,
+      });
       await refreshProfileCompletion();
       router.refresh();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save hiring info.");
+      return false;
     } finally {
       setHiringSaving(false);
     }
   }, [
-    buildEditorProfilePayload,
+    draftHiringChannelsOrPagesManaged,
+    draftHiringPrimaryPlatform,
+    draftHiringType,
+    draftHiringWebsiteOrSocialUrl,
     persistProfileUpdate,
     refreshProfileCompletion,
     router,
@@ -3234,15 +4116,16 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
         <div className="flex min-w-max items-end gap-8">
           {[
             { key: "overview" as TopTab, label: "Overview" },
-            { key: "portfolio" as TopTab, label: "Portfolio" },
-            { key: "jobs" as TopTab, label: "Jobs" },
+            ...(effectiveOwnerProfileMode === "talent" ? [{ key: "portfolio" as TopTab, label: "Portfolio" }] : []),
+            ...(effectiveOwnerProfileMode === "hiring" ? [{ key: "jobs" as TopTab, label: "Jobs" }] : []),
+            { key: "reviews" as TopTab, label: "Reviews" },
             { key: "applications" as TopTab, label: "Applications" },
             { key: "saved" as TopTab, label: "Saved" },
           ].map((item) => (
             <ProfileNavButton
               key={`profile-nav-${item.key}`}
               label={item.label}
-              active={activeTab === item.key}
+              active={visibleOwnerTab === item.key}
               onClick={() => setTab(item.key)}
             />
           ))}
@@ -3259,48 +4142,48 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
 
           <section className="min-w-0">
             <div className="min-w-0">
-          {activeTab === "overview" ? (
+          {visibleOwnerTab === "overview" ? (
             <div className="grid w-full max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
               <div className="min-w-0">
-                {effectiveOwnerProfileMode === "hiring" ? (
-                  <>
-                    <OwnerProfileInfoSection title="Hiring profile">
-                      {ownerRecruiterProfileRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerRecruiterProfileRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-hiring-profile-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="text-sm leading-6 text-white/50">No hiring profile details added yet.</p>
-                      )}
-                    </OwnerProfileInfoSection>
+                <OwnerProfileInfoSection
+                  title="Bio"
+                  actions={
+                    <OwnerInlineActionButton
+                      label={ownerBioText ? "Edit" : "Add"}
+                      icon={ownerBioText ? "pencil" : "plus"}
+                      onClick={() => setActiveOwnerInlineEditor("bio")}
+                    />
+                  }
+                >
+                  {activeOwnerInlineEditor === "bio" ? (
+                    <div className="max-w-3xl rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                      <textarea
+                        value={draftHeadline}
+                        onChange={(event) => setDraftHeadline(event.target.value)}
+                        autoFocus
+                        className="min-h-[124px] w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-white/15"
+                        placeholder="Add a short professional introduction so visitors understand what you do."
+                      />
+                      <OwnerInlineEditorActions
+                        onCancel={() => {
+                          setDraftHeadline(profile?.headline || "");
+                          closeOwnerInlineEditor();
+                        }}
+                        onSave={() => void handleSaveBioInline()}
+                        saving={inlineSavingField === "headline"}
+                        saveLabel="Save bio"
+                      />
+                    </div>
+                  ) : ownerBioText ? (
+                    <p className="max-w-3xl text-sm leading-6 text-white/68 sm:text-[15px]">{ownerBioText}</p>
+                  ) : (
+                    <p className="max-w-3xl text-sm leading-6 text-white/46 sm:text-[15px]">
+                      Add a short professional introduction so visitors understand what you do.
+                    </p>
+                  )}
+                </OwnerProfileInfoSection>
 
-                    <OwnerProfileInfoSection title="Recruiter details">
-                      {ownerRecruiterDetailRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerRecruiterDetailRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-recruiter-detail-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="text-sm leading-6 text-white/50">No recruiter details added yet.</p>
-                      )}
-                    </OwnerProfileInfoSection>
-
-                    <OwnerProfileInfoSection title="Collaboration">
-                      {ownerRecruiterCollaborationRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerRecruiterCollaborationRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-recruiter-collab-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="text-sm leading-6 text-white/50">No collaboration details added yet.</p>
-                      )}
-                    </OwnerProfileInfoSection>
-                  </>
-                ) : (
+                {effectiveOwnerProfileMode === "talent" ? (
                   <>
                     <OwnerProfileInfoSection
                       title="Experience"
@@ -3364,206 +4247,136 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       )}
                     </OwnerProfileInfoSection>
 
-                    <OwnerProfileInfoSection title="Roles & content">
-                      {ownerOverviewRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerOverviewRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-roles-content-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
+                    <OwnerProfileInfoSection
+                      title="Portfolio"
+                      actions={
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <OwnerInlineActionButton label="Add item" icon="plus" onClick={openPortfolioManager} />
+                          <button
+                            type="button"
+                            aria-label="View Full Portfolio"
+                            onClick={() => setTab("portfolio")}
+                            className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <span>View Full Portfolio</span>
+                              <span aria-hidden="true">→</span>
+                            </span>
+                          </button>
+                        </div>
+                      }
+                    >
+                      {ownerPortfolioPreview.length ? (
+                        <OwnerPortfolioPreviewList items={ownerPortfolioPreview} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/50">No role details added yet.</p>
+                        <p className="text-sm leading-6 text-white/46">
+                          Add a few strong projects so visitors can see the work exactly as it will appear publicly.
+                        </p>
                       )}
                     </OwnerProfileInfoSection>
 
-                    <OwnerProfileInfoSection title="Profile details">
-                      {ownerProfileDetailsRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerProfileDetailsRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-profile-detail-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
+                    <OwnerProfileInfoSection
+                      title="Reviews"
+                      actions={
+                        <button
+                          type="button"
+                          onClick={() => setTab("reviews")}
+                          className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                        >
+                          View All Reviews <span aria-hidden="true">→</span>
+                        </button>
+                      }
+                    >
+                      {ownerReviewItems.length ? (
+                        <ProfileReviewsPreviewRail items={ownerReviewItems} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/50">No profile details added yet.</p>
+                        <p className="text-sm leading-6 text-white/46">
+                          Reviews will appear here after collaborators leave feedback. They cannot be added from your profile.
+                        </p>
+                      )}
+                    </OwnerProfileInfoSection>
+                  </>
+                ) : (
+                  <>
+                    <OwnerProfileInfoSection
+                      title="Recent Hires"
+                      actions={
+                        jobs.length ? (
+                          <OwnerInlineActionButton label="Manage jobs" onClick={() => setTab("jobs")} />
+                        ) : (
+                          <OwnerInlineGhostLink label="Post job" href="/post-job" />
+                        )
+                      }
+                    >
+                      {ownerHiringExperiencePreview.length ? (
+                        <OwnerHiringExperienceList items={ownerHiringExperiencePreview} />
+                      ) : (
+                        <p className="text-sm leading-6 text-white/46">
+                          Closed or completed jobs will show up here once you have recruiter-side hiring history.
+                        </p>
                       )}
                     </OwnerProfileInfoSection>
 
-                    <OwnerProfileInfoSection title="Collaboration">
-                      {ownerCollaborationRows.length ? (
-                        <dl className="space-y-1">
-                          {ownerCollaborationRows.map(([rowLabel, value]) => (
-                            <OwnerProfileInfoRow key={`owner-collab-${rowLabel}`} label={rowLabel} value={value} />
-                          ))}
-                        </dl>
+                    <OwnerProfileInfoSection
+                      title="Jobs"
+                      actions={
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <OwnerInlineGhostLink label="Post job" href="/post-job" />
+                          <button
+                            type="button"
+                            onClick={() => setTab("jobs")}
+                            className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                          >
+                            View All Jobs <span aria-hidden="true">→</span>
+                          </button>
+                        </div>
+                      }
+                    >
+                      {ownerJobsPreview.length ? (
+                        <OwnerJobsPreviewList items={ownerJobsPreview} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/50">No collaboration details added yet.</p>
+                        <p className="text-sm leading-6 text-white/46">
+                          Posted jobs will appear here. Use your existing job posting flow to add or manage them.
+                        </p>
+                      )}
+                    </OwnerProfileInfoSection>
+
+                    <OwnerProfileInfoSection
+                      title="Reviews"
+                      actions={
+                        <button
+                          type="button"
+                          onClick={() => setTab("reviews")}
+                          className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                        >
+                          View All Reviews <span aria-hidden="true">→</span>
+                        </button>
+                      }
+                    >
+                      {ownerReviewItems.length ? (
+                        <ProfileReviewsPreviewRail items={ownerReviewItems} />
+                      ) : (
+                        <p className="text-sm leading-6 text-white/46">
+                          Reviews will appear here after talent leave feedback. They cannot be added from your profile.
+                        </p>
                       )}
                     </OwnerProfileInfoSection>
                   </>
                 )}
               </div>
 
-              <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-8">
-                {effectiveOwnerProfileMode === "hiring" ? (
-                  <OwnerOverviewSideSection
-                    title="Jobs"
-                    count={formatOwnerCountLabel(activeJobs.length, "open job", "open jobs")}
-                    actionLabel={activeJobs.length ? "View jobs →" : undefined}
-                    onAction={activeJobs.length ? () => setTab("jobs") : undefined}
-                  >
-                    {ownerJobsPreview.length ? (
-                      ownerJobsPreview.map((job) => (
-                        <Link
-                          key={`owner-overview-job-${job.id}`}
-                          href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                          className="group block cursor-pointer text-sm"
-                        >
-                          <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                            {job.title}
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-white/42">
-                            {[job.category, job.location].filter(Boolean).join(" · ") || "Open job"}
-                          </span>
-                        </Link>
-                      ))
-                    ) : (
-                      <p className="text-sm text-white/50">No open jobs.</p>
-                    )}
-                  </OwnerOverviewSideSection>
-                ) : (
-                  <OwnerOverviewSideSection
-                    title="Portfolio"
-                    count={formatOwnerCountLabel(publishedPortfolio.length, "project", "projects")}
-                    actionLabel={publishedPortfolio.length ? "View portfolio →" : undefined}
-                    onAction={publishedPortfolio.length ? () => setTab("portfolio") : undefined}
-                  >
-                    {ownerPortfolioPreview.length ? (
-                      ownerPortfolioPreview.map((item) => (
-                        <Link
-                          key={`owner-overview-project-${item.id}`}
-                          href={`/you/projects/${encodeURIComponent(item.id)}`}
-                          className="group block cursor-pointer text-sm"
-                        >
-                          <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                            {item.title}
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-white/42">
-                            {[item.role_name || item.role || item.user_role_in_project, item.channel_name]
-                              .filter(Boolean)
-                              .join(" · ") || "Work sample"}
-                          </span>
-                        </Link>
-                      ))
-                    ) : (
-                      <p className="text-sm text-white/50">No work samples added yet.</p>
-                    )}
-                  </OwnerOverviewSideSection>
-                )}
-
-                {effectiveOwnerProfileMode === "hiring" ? (
-                  <OwnerOverviewSideSection
-                    title="Portfolio"
-                    count={formatOwnerCountLabel(publishedPortfolio.length, "project", "projects")}
-                    actionLabel={publishedPortfolio.length ? "View portfolio →" : undefined}
-                    onAction={publishedPortfolio.length ? () => setTab("portfolio") : undefined}
-                  >
-                    {ownerPortfolioPreview.length ? (
-                      ownerPortfolioPreview.map((item) => (
-                        <Link
-                          key={`owner-overview-recruiter-project-${item.id}`}
-                          href={`/you/projects/${encodeURIComponent(item.id)}`}
-                          className="group block cursor-pointer text-sm"
-                        >
-                          <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                            {item.title}
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-white/42">
-                            {[item.role_name || item.role || item.user_role_in_project, item.channel_name]
-                              .filter(Boolean)
-                              .join(" · ") || "Work sample"}
-                          </span>
-                        </Link>
-                      ))
-                    ) : (
-                      <p className="text-sm text-white/50">No work samples added yet.</p>
-                    )}
-                  </OwnerOverviewSideSection>
-                ) : (
-                  <OwnerOverviewSideSection title="Talent listings" count="0 talent listings">
-                    <p className="text-sm text-white/50">No talent listings added yet.</p>
-                  </OwnerOverviewSideSection>
-                )}
-
-                <OwnerOverviewSideSection
-                  title={effectiveOwnerProfileMode === "hiring" ? "Talent listings" : "Jobs"}
-                  count={
-                    effectiveOwnerProfileMode === "hiring"
-                      ? "0 talent listings"
-                      : formatOwnerCountLabel(activeJobs.length, "open job", "open jobs")
-                  }
-                  actionLabel={effectiveOwnerProfileMode === "talent" && activeJobs.length ? "View jobs →" : undefined}
-                  onAction={effectiveOwnerProfileMode === "talent" && activeJobs.length ? () => setTab("jobs") : undefined}
-                >
-                  {effectiveOwnerProfileMode === "hiring" ? (
-                    <p className="text-sm text-white/50">No talent listings added yet.</p>
-                  ) : ownerJobsPreview.length ? (
-                    ownerJobsPreview.map((job) => (
-                      <Link
-                        key={`owner-overview-talent-job-${job.id}`}
-                        href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                        className="group block cursor-pointer text-sm"
-                      >
-                        <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                          {job.title}
-                        </span>
-                        <span className="mt-1 block truncate text-xs text-white/42">
-                          {[job.category, job.location].filter(Boolean).join(" · ") || "Open job"}
-                        </span>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-sm text-white/50">No open jobs.</p>
-                  )}
-                </OwnerOverviewSideSection>
-              </aside>
+              <OwnerMetadataSidebar
+                groups={effectiveOwnerProfileMode === "hiring" ? ownerRecruiterMetadataGroups : ownerTalentMetadataGroups}
+              />
             </div>
           ) : null}
 
-          {activeTab === "jobs" ? (
+          {effectiveOwnerProfileMode === "hiring" && visibleOwnerTab === "jobs" ? (
             <div className="space-y-5">
-              {activeJobs.length ? (
-                <div className="grid gap-3">
-                  {activeJobs.map((job) => (
-                    <Link
-                      key={job.id}
-                      href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                      className="group cursor-pointer rounded-3xl border border-white/[0.085] bg-white/[0.04] p-4 transition-colors hover:border-white/[0.16] hover:bg-white/[0.065] sm:p-5"
-                    >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-2.5 py-1 text-[11px] font-semibold text-white/58">
-                              Open
-                            </span>
-                            {job.channel.verified ? (
-                              <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-2.5 py-1 text-[11px] font-semibold text-white/58">
-                                Verified
-                              </span>
-                            ) : null}
-                          </div>
-                          <h3 className="mt-3 text-base font-semibold tracking-tight text-white/92 sm:text-lg">
-                            {job.title}
-                          </h3>
-                          <p className="mt-1 text-sm text-white/55">
-                            {[job.channel.name, job.location, job.budget].filter(Boolean).join(" · ")}
-                          </p>
-                        </div>
-                        <span className="inline-flex h-9 w-fit items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs font-semibold text-white/68 transition-colors group-hover:bg-white/[0.07] group-hover:text-white">
-                          View job
-                          <Icon name="external-link" className="h-3.5 w-3.5" />
-                        </span>
-                      </div>
-                    </Link>
+              {ownerJobsSorted.length ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {ownerJobsSorted.map((job) => (
+                    <JobCard key={job.id} job={job} />
                   ))}
                 </div>
               ) : (
@@ -3572,7 +4385,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             </div>
           ) : null}
 
-          {activeTab === "portfolio" ? (
+          {visibleOwnerTab === "reviews" ? (
+            <ProfileReviewsTabContent
+              items={ownerReviewItems}
+              averageRating={profile?.reviews?.avg_rating || 0}
+              reviewCount={profile?.reviews?.review_count || 0}
+            />
+          ) : null}
+
+          {effectiveOwnerProfileMode === "talent" && visibleOwnerTab === "portfolio" ? (
             <PortfolioProjectWorkspace
               portfolio={portfolio}
               rolesCatalog={rolesCatalog}
@@ -3592,7 +4413,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             />
           ) : null}
 
-          {showLegacyPortfolioEditor && activeTab === "portfolio" ? (
+          {showLegacyPortfolioEditor && effectiveOwnerProfileMode === "talent" && visibleOwnerTab === "portfolio" ? (
             <div className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -3950,20 +4771,14 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             </div>
           ) : null}
 
-          {activeTab === "applications" ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 text-center">
-              <p className="text-sm text-white/70">You haven&apos;t applied to any jobs yet.</p>
-              <Link
-                href="/"
-                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-black hover:bg-white/90 cursor-pointer"
-              >
-                <Icon name="search" className="h-4 w-4 mr-2" />
-                Browse jobs
-              </Link>
-            </div>
+          {visibleOwnerTab === "applications" ? (
+            <ApplicationsWorkspace
+              key={`applications-${effectiveOwnerProfileMode}`}
+              mode={effectiveOwnerProfileMode}
+            />
           ) : null}
 
-          {activeTab === "saved" ? (
+          {visibleOwnerTab === "saved" ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 text-center">
               <p className="text-sm text-white/70">No saved jobs yet.</p>
               <Link

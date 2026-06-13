@@ -305,6 +305,18 @@ export type BackendReviewsSummary = {
   review_count: number;
 };
 
+export type BackendProfileReviewItem = {
+  id: string;
+  reviewer_name: string;
+  reviewer_avatar_url?: string | null;
+  reviewer_role?: string | null;
+  relationship_label?: string | null;
+  rating: number;
+  body: string;
+  created_at: string;
+  verified?: boolean | null;
+};
+
 export type BackendProfileExperienceItem = {
   id: string;
   role: string;
@@ -392,6 +404,16 @@ export type BackendHiringIdentity = {
   verified_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type BackendRepresentedChannel = {
+  id: string;
+  name: string;
+  avatar_url?: string | null;
+  url?: string | null;
+  platform?: string | null;
+  authorization_status?: "verified" | "pending" | "rejected" | "revoked" | null;
+  is_self?: boolean | null;
 };
 
 export type BackendHiringIdentitiesResponse = {
@@ -510,6 +532,7 @@ export type BackendProfileResponse = {
   social_connections: BackendSocialConnections;
   stats: BackendProfileStats;
   reviews: BackendReviewsSummary;
+  review_items?: BackendProfileReviewItem[];
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info: BackendHiringInfo;
   roles: BackendRole[];
@@ -747,12 +770,14 @@ export type BackendPublicProfileResponse = {
   social_connections: BackendSocialConnections;
   stats: BackendProfileStats;
   reviews: BackendReviewsSummary;
+  review_items?: BackendProfileReviewItem[];
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info?: BackendHiringInfo | null;
   roles: BackendRole[];
   role_answers_summary: BackendRoleAnswerSummary[];
   content_style: BackendContentStyle;
   youtube_badge?: BackendPublicYouTubeBadge | null;
+  represented_channels?: BackendRepresentedChannel[];
   jobs_active: BackendPublicJobItem[];
   jobs_past: BackendPublicJobItem[];
   portfolio_now: BackendPortfolioItem[];

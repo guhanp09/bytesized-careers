@@ -2,6 +2,7 @@ import type {
   BackendPublicJobItem,
   BackendPortfolioItem,
   BackendProfileExperienceItem,
+  BackendProfileReviewItem,
   BackendPublicProfileResponse,
   BackendPublicTalentListingItem,
   BackendTalentListing,
@@ -10,6 +11,21 @@ import { JOBS } from "./jobs";
 import { MOCK_TALENT_LISTINGS, mockTalentProfileSlug } from "./mockTalentListings";
 
 const now = "2026-05-20T10:00:00.000Z";
+
+const reviewItem = (
+  id: string,
+  item: Omit<BackendProfileReviewItem, "id">
+): BackendProfileReviewItem => ({
+  id,
+  ...item,
+});
+
+const reviewSummary = (items: BackendProfileReviewItem[]) => ({
+  avg_rating: items.length
+    ? Number((items.reduce((sum, item) => sum + item.rating, 0) / items.length).toFixed(1))
+    : 0,
+  review_count: items.length,
+});
 
 const titleCase = (value?: string | null) =>
   value
@@ -65,6 +81,150 @@ const publicJobItem = (job: (typeof JOBS)[number]): BackendPublicJobItem => ({
   created_at: job.createdAt || now,
   channel_name: job.channel.name,
 });
+
+const pastHiringJobItem = (job: (typeof JOBS)[number], index: number): BackendPublicJobItem => ({
+  id: `${job.id}-past-hiring-${index + 1}`,
+  title:
+    index === 0
+      ? `Hired ${job.category.toLowerCase()} support for ${job.channel.name}`
+      : `${job.channel.name} creator production support`,
+  category: job.category,
+  location: index % 2 === 0 ? "Remote" : "Hybrid",
+  status: "closed",
+  created_at: index === 0 ? "2024-10-12T10:00:00.000Z" : "2024-02-18T10:00:00.000Z",
+  channel_name: job.channel.name,
+});
+
+const agencyRepresentedChannels = (agencySlug: string) =>
+  [
+    "Finance Channel",
+    "EduSpark",
+    "Indie Gaming Lab",
+    "Motion House",
+    "Creator Desk",
+    "Shorts Factory",
+    "Frame Theory",
+    "Startup Stories",
+    "Pixel Panda",
+    "Food Lab India",
+    "Fitness Shorts Studio",
+    "Study Sprint",
+  ].map((name, index) => ({
+    id: `${agencySlug}-represented-${index + 1}`,
+    name,
+    avatar_url: `https://picsum.photos/seed/${agencySlug}-${index + 1}/96/96`,
+    url: `https://example.com/${agencySlug}/represented/${index + 1}`,
+    platform: "YouTube",
+    authorization_status: "verified" as const,
+    is_self: false,
+  }));
+
+const mockReviewsBySlug: Record<string, BackendProfileReviewItem[]> = {
+  "aarav-mehta": [
+    reviewItem("aarav-review-1", {
+      reviewer_name: "Northstar Creator Agency",
+      reviewer_role: "Creator agency",
+      relationship_label: "Verified client",
+      rating: 5,
+      body:
+        "Aarav tightened our YouTube explainers without losing clarity. He was reliable on feedback loops and consistently delivered upload-ready exports.",
+      created_at: "2026-05-20T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("aarav-review-2", {
+      reviewer_name: "SaaS Founder Studio",
+      reviewer_role: "Founder-led channel",
+      relationship_label: "Verified client",
+      rating: 5,
+      body:
+        "Strong retention instincts, especially on intros and transition pacing. Communication stayed crisp even with fast weekly publishing.",
+      created_at: "2026-04-18T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("aarav-review-3", {
+      reviewer_name: "Finance Creator Team",
+      reviewer_role: "Creator team",
+      relationship_label: "Verified collaboration",
+      rating: 5,
+      body:
+        "He understood the creator workflow immediately and kept our edit handoff process much cleaner across thumbnails, captions, and final uploads.",
+      created_at: "2026-03-02T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("aarav-review-4", {
+      reviewer_name: "Podcast Production House",
+      reviewer_role: "Production house",
+      relationship_label: "Verified client",
+      rating: 4,
+      body:
+        "Dependable editor with good judgment on pacing and clean audio polish. Would have liked slightly faster turnaround on one sprint, but quality stayed high.",
+      created_at: "2026-02-11T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("aarav-review-5", {
+      reviewer_name: "Education Channel",
+      reviewer_role: "Education media team",
+      relationship_label: "Verified client",
+      rating: 4,
+      body:
+        "Clear communicator and easy to brief. Helped standardize our file structure and made recurring long-form edits much easier to review.",
+      created_at: "2026-01-16T10:00:00.000Z",
+      verified: true,
+    }),
+  ],
+  "finance-creator": [
+    reviewItem("finance-review-1", {
+      reviewer_name: "Mira Patel",
+      reviewer_role: "Video Editor",
+      relationship_label: "Verified hire",
+      rating: 5,
+      body:
+        "Briefs were clear, feedback was fast, and payment was exactly as promised. This was one of the smoother creator-team collaborations I have worked on.",
+      created_at: "2026-05-20T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("finance-review-2", {
+      reviewer_name: "Karan Sethi",
+      reviewer_role: "Researcher",
+      relationship_label: "Verified hire",
+      rating: 5,
+      body:
+        "Strong communication and a very practical review process. Expectations for claims, sourcing, and turnaround were unambiguous from day one.",
+      created_at: "2026-04-14T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("finance-review-3", {
+      reviewer_name: "Lina Thomas",
+      reviewer_role: "Thumbnail Designer",
+      relationship_label: "Verified collaboration",
+      rating: 4,
+      body:
+        "Good creative direction and clear CTR goals. A couple of rounds got compressed late in the week, but the team remained responsive and respectful.",
+      created_at: "2026-03-09T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("finance-review-4", {
+      reviewer_name: "Dev Khanna",
+      reviewer_role: "Motion Designer",
+      relationship_label: "Verified hire",
+      rating: 5,
+      body:
+        "Very creator-native workflow. Assets, notes, and delivery expectations were organized well enough that the project moved quickly without confusion.",
+      created_at: "2026-02-22T10:00:00.000Z",
+      verified: true,
+    }),
+    reviewItem("finance-review-5", {
+      reviewer_name: "Rhea Kapoor",
+      reviewer_role: "Channel Manager",
+      relationship_label: "Verified hire",
+      rating: 4,
+      body:
+        "Professional team with consistent cadence and useful feedback. I would happily work with them again on a retainer or repeat launch cycle.",
+      created_at: "2026-01-28T10:00:00.000Z",
+      verified: true,
+    }),
+  ],
+};
 
 const portfolioItem = (
   listing: BackendTalentListing,
@@ -651,6 +811,10 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
   if (!listing) {
     const firstJob = jobsForProfile[0];
     const activeJobs = jobsForProfile.map(publicJobItem);
+    const pastSourceJobs = jobsForProfile.length > 1 ? jobsForProfile.slice(0, 2) : [firstJob, firstJob];
+    const pastJobs = pastSourceJobs.map((job, index) => pastHiringJobItem(job, index));
+    const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
+    const reviews = reviewSummary(reviewItems);
     const roleNames = uniq(jobsForProfile.map((job) => job.category));
     const tools = uniq(jobsForProfile.flatMap((job) => job.tags || []));
     const isAgencyProfile = jobsForProfile.some((job) => job.agencyProfileSlug === normalizedSlug);
@@ -685,14 +849,12 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
       },
       stats: {
         jobs_posted_count: activeJobs.length,
-        jobs_completed_count: 0,
+        jobs_completed_count: pastJobs.length,
         projects_count: 0,
-        reviews_count: 0,
+        reviews_count: reviews.review_count,
       },
-      reviews: {
-        avg_rating: 0,
-        review_count: 0,
-      },
+      reviews,
+      review_items: reviewItems,
       collaboration_preferences: {
         project_type_preference: firstJob.type === "Monthly" ? "retainer" : "either",
         turnaround: null,
@@ -705,7 +867,7 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
         website_or_social_url: null,
         primary_platform: "YouTube",
         channels_or_pages_managed: uniq(jobsForProfile.map((job) => job.channel.name)).join(", "),
-        verification_status: "unverified",
+        verification_status: isAgencyProfile ? "verified" : "unverified",
       },
       roles: roleNames.map((role) => ({
         id: `mock-hiring-role-${normalizedSlug}-${role.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -722,11 +884,35 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
         editing_complexity: null,
       },
       youtube_badge: null,
+      represented_channels: isAgencyProfile
+        ? [
+            ...agencyRepresentedChannels(normalizedSlug),
+            {
+              id: `${normalizedSlug}-pending-channel`,
+              name: "Pending Creator Page",
+              avatar_url: null,
+              url: `https://example.com/${normalizedSlug}/pending`,
+              platform: "YouTube",
+              authorization_status: "pending",
+              is_self: false,
+            },
+          ]
+        : [
+            {
+              id: normalizedSlug,
+              name: firstJob.channel.name || titleCase(normalizedSlug),
+              avatar_url: firstJob.channel.logoUrl || null,
+              url: null,
+              platform: "YouTube",
+              authorization_status: "verified",
+              is_self: true,
+            },
+          ],
       jobs_active: activeJobs,
-      jobs_past: [],
+      jobs_past: pastJobs,
       portfolio_now: [],
       portfolio_past: [],
-      jobs_preview: activeJobs.slice(0, 2),
+      jobs_preview: [...activeJobs, ...pastJobs].slice(0, 3),
       portfolio_preview: [],
       talent_listings_active: [],
       talent_listings_preview: [],
@@ -736,6 +922,8 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
 
   const portfolio = portfolioFor(listing);
   const experience = experienceFor(listing);
+  const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
+  const reviews = reviewSummary(reviewItems);
   const role = listing.primary_role || listing.roles[0] || "Talent";
   const platforms = uniq(listing.platforms);
   const tools = uniq(listing.tools);
@@ -775,12 +963,10 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
       jobs_posted_count: 0,
       jobs_completed_count: 0,
       projects_count: portfolio.length,
-      reviews_count: 0,
+      reviews_count: reviews.review_count,
     },
-    reviews: {
-      avg_rating: 0,
-      review_count: 0,
-    },
+    reviews,
+    review_items: reviewItems,
     collaboration_preferences: {
       project_type_preference: "either",
       turnaround: listing.turnaround,
@@ -812,6 +998,7 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
       editing_complexity: "Moderate",
     },
     youtube_badge: null,
+    represented_channels: [],
     jobs_active: [],
     jobs_past: [],
     portfolio_now: portfolio,

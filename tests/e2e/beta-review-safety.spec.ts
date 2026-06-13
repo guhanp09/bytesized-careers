@@ -6,7 +6,7 @@ const coreRoutes = [
   "/jobs/1",
   "/talent",
   "/talent/mock-talent-retention-editor",
-  "/u/aarav-mehta",
+  "/u/anika-rao",
   "/post-job",
   "/post-talent",
   "/activity",
@@ -35,9 +35,9 @@ test.describe("beta review and trust-copy safety", () => {
   });
 
   test("talent public profiles show the honest zero-review rating state", async ({ page }) => {
-    await page.goto("/u/aarav-mehta", { waitUntil: "domcontentloaded" });
+    await page.goto("/u/anika-rao", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("heading", { name: "Aarav Mehta" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Anika Rao" })).toBeVisible();
     await expect(page.locator("body")).toContainText("☆☆☆☆☆ 0 reviews");
     await expect(page.locator("body")).not.toContainText(/★★★★★|4\.[5-9]|5\.0|[1-9][0-9]* reviews/i);
   });

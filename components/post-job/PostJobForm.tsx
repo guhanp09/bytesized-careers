@@ -399,6 +399,7 @@ type StepActionsProps = {
   nextLabel?: string;
   nextIcon?: React.ReactNode;
   nextType?: "button" | "submit";
+  nextDisabled?: boolean;
   isBusy?: boolean;
   savedSection: null | "basics" | "content" | "tags" | "refs";
   onSaveClick: (
@@ -418,6 +419,7 @@ function StepActions({
   nextLabel,
   nextIcon,
   nextType = "button",
+  nextDisabled = false,
   isBusy = false,
   savedSection,
   onSaveClick,
@@ -473,13 +475,15 @@ function StepActions({
             type={nextType}
             onClick={nextType === "submit" ? undefined : () => onNext(id)}
             className={[
-              "inline-flex items-center justify-center rounded-xl bg-white text-black border border-white hover:bg-white/90 transition-colors",
-              isBusy ? "cursor-not-allowed opacity-70" : "",
+              "inline-flex items-center justify-center rounded-xl border transition-colors",
+              nextDisabled || isBusy
+                ? "cursor-not-allowed border-white/10 bg-white/15 text-white/36"
+                : "cursor-pointer bg-white text-black border-white hover:bg-white/90",
               nextLabel ? "h-9 px-3 gap-2" : "h-9 w-9",
             ].join(" ")}
             aria-label="Next"
             title="Next"
-            disabled={isBusy}
+            disabled={isBusy || nextDisabled}
           >
             {nextContent}
           </button>
@@ -570,6 +574,7 @@ export default function PostJobForm({
   canSaveReferenceVideos,
   submitError,
   isSubmitting,
+  publishDisabled = false,
 }: {
   step: Step;
   direction: "forward" | "back";
@@ -653,6 +658,7 @@ export default function PostJobForm({
   canSaveReferenceVideos: boolean;
   submitError?: string | null;
   isSubmitting?: boolean;
+  publishDisabled?: boolean;
 }) {
   const [savedSection, setSavedSection] = useState<null | "basics" | "content" | "tags" | "refs">(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -1544,6 +1550,7 @@ export default function PostJobForm({
               nextType="submit"
               nextIcon={isSubmitting ? undefined : <Icon name="globe" className="w-4 h-4" />}
               nextLabel={isSubmitting ? "POSTING..." : "POST JOB"}
+              nextDisabled={publishDisabled}
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}

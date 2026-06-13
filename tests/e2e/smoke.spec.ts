@@ -65,23 +65,25 @@ test("homepage recent job cards use full-card navigation without redundant card 
   await expect(page.locator("body")).not.toContainText("Featured talent");
   const recentJobs = page.locator("section.home-rise-delay-jobs").first();
   const recentTalent = page.locator("section.home-rise-delay-talent").first();
+  await expect(recentTalent.getByText("Retention editor", { exact: false }).first()).toBeVisible();
+  await expect(recentTalent).not.toContainText("No recent talent listings yet.");
   await expect(recentJobs.getByRole("link", { name: /View jobs/i })).toBeVisible();
   await expect(recentTalent.getByRole("link", { name: /View talent/i })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/View role/i);
-  await expect(recentTalent).not.toContainText(/work samples/i);
+  await expect(recentTalent).toContainText(/work samples/i);
 
-  const firstCard = recentJobs.locator('article[role="link"]').first();
+  const firstCard = recentJobs.locator('div[role="link"]').first();
   const firstSave = firstCard.getByRole("button", { name: "Save" });
   await expect(firstSave).toBeVisible();
   await firstSave.click();
   await expect(page).toHaveURL(/\/auth\?mode=login/);
 
   await page.goto("/");
-  await recentJobs.locator('article[role="link"]').first().click();
+  await recentJobs.locator('div[role="link"]').first().click();
   await expect(page).toHaveURL(/\/jobs\//);
 
   await page.goto("/");
-  await recentTalent.locator('article[role="link"]').first().click();
+  await recentTalent.locator('div[role="link"]').first().click();
   await expect(page).toHaveURL(/\/talent\//);
 });
 

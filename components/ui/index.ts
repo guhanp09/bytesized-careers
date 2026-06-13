@@ -6,3 +6,4 @@ export { default as StatRow } from "./StatRow";
 export { default as PageHeader } from "./PageHeader";
 export { default as StateCard } from "./StateCard";
 export { default as PageLoading } from "./PageLoading";
+export { default as Reveal } from "./Reveal";

@@ -2,9 +2,19 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
-import { BackendPublicProfileResponse } from "../../lib/backendClient";
+import {
+  BackendPublicProfileResponse,
+  type BackendPortfolioItem,
+  type BackendPublicJobItem,
+  type BackendProfileReviewItem,
+  type BackendRepresentedChannel,
+} from "../../lib/backendClient";
+import { JOBS } from "../../lib/jobs";
+import type { Job } from "../../lib/types";
 import { Icon } from "../Icons";
+import { JobCard } from "../JobCard";
 import JobsEmptyState from "../jobs/JobsEmptyState";
+import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "./ProfileReviews";
 import { TagPill } from "../ui";
 import ProfileExperienceList from "./ProfileExperienceList";
 
@@ -14,7 +24,7 @@ type PublicProfileTabsProps = {
 };
 
 type ProfileViewMode = "talent" | "hiring";
-type TopTab = "overview" | "portfolio" | "jobs";
+type TopTab = "overview" | "portfolio" | "jobs" | "reviews";
 
 const sourceLabel = (source?: string | null, previewSource?: unknown) => {
   const preview = typeof previewSource === "string" ? previewSource.toLowerCase() : "";
@@ -65,18 +75,24 @@ const cleanText = (value?: string | null) => {
   return text;
 };
 
+const normalizedIdentityKey = (value?: string | null) =>
+  cleanText(value)
+    ?.toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/\/$/, "") || "";
+
+const initialsForHiringFor = (value?: string | null) =>
+  (value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
 const formatTextValue = (value?: string | null) => {
   const text = cleanText(value);
   return text || "–";
-};
-
-const formatHiringType = (value?: string | null) => {
-  const text = cleanText(value);
-  if (!text) return "–";
-  return text
-    .split(" ")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 };
 
 const formatProjectType = (value?: string | null) => {
@@ -98,6 +114,7 @@ function TabButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={[
         "relative h-11 px-1.5 text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer after:absolute after:inset-x-1.5 after:bottom-0 after:h-px after:rounded-full",
@@ -117,73 +134,377 @@ function cleanList(values: Array<string | null | undefined>) {
 
 function OverviewModule({
   title,
+  actions,
   children,
 }: {
   title: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <article className="border-b border-white/[0.08] py-7 first:pt-0 last:border-b-0 last:pb-0">
-      <h3 className="text-base font-semibold tracking-tight text-white/92">{title}</h3>
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-base font-semibold tracking-tight text-white/92">{title}</h3>
+        {actions}
+      </div>
       <div className="mt-4">{children}</div>
     </article>
   );
 }
 
-function OverviewRow({ label, value }: { label: string; value?: ReactNode }) {
-  if (!value) return null;
+function MetadataRail({
+  groups,
+}: {
+  groups: Array<{ label: string; values: string[] }>;
+}) {
+  const visibleGroups = groups.filter((group) => group.values.length);
+  if (!visibleGroups.length) return null;
+
   return (
-    <div className="grid gap-1.5 py-2 text-sm sm:grid-cols-[145px_minmax(0,1fr)] sm:gap-6">
-      <dt className="text-white/42">{label}</dt>
-      <dd className="min-w-0 text-white/78">{value}</dd>
+    <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-8">
+      <div className="space-y-5">
+        {visibleGroups.map((group) => (
+          <div key={`metadata-${group.label}`} className="space-y-2">
+            <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{group.label}</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {group.values.slice(0, 8).map((value) => (
+                <TagPill key={`metadata-${group.label}-${value}`}>{value}</TagPill>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+const splitCompactValues = (value?: string | null) =>
+  cleanList((value || "").split(/[·,]/).map((part) => part.trim()));
+
+const sortPortfolioPreview = (items: BackendPortfolioItem[]) =>
+  [...items]
+    .sort((a, b) => {
+      const featuredDelta = Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured));
+      if (featuredDelta !== 0) return featuredDelta;
+      const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+      const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+      return bTime - aTime;
+    })
+    .slice(0, 3);
+
+const sortJobsPreview = (activeJobs: BackendPublicJobItem[], pastJobs: BackendPublicJobItem[]) =>
+  [...activeJobs, ...pastJobs]
+    .sort((a, b) => {
+      const aActive = activeJobs.some((job) => job.id === a.id);
+      const bActive = activeJobs.some((job) => job.id === b.id);
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    })
+    .slice(0, 3);
+
+const sortProfileJobs = (activeJobs: BackendPublicJobItem[], pastJobs: BackendPublicJobItem[]) =>
+  [...activeJobs, ...pastJobs].sort((a, b) => {
+    const aActive = activeJobs.some((job) => job.id === a.id);
+    const bActive = activeJobs.some((job) => job.id === b.id);
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+
+const publicJobLookup = new Map(JOBS.map((job) => [String(job.id), job] as const));
+
+const basePublicJobId = (value: string) => value.split("-past-hiring-")[0];
+
+const RECENT_HIRE_ROLE_LABELS: Record<string, string> = {
+  editing: "Video Editor",
+  design: "Designer",
+  writing: "Scriptwriter",
+  thumbnails: "Thumbnail Designer",
+  shorts: "Shorts Editor",
+  "motion graphics": "Motion Designer",
+  "channel manager": "Channel Manager",
+  research: "Researcher",
+  "voice over": "Voice Actor",
+  marketing: "Marketing Strategist",
+};
+
+const normalizeRecentHireRole = (value?: string | null) => {
+  const text = cleanText(value);
+  if (!text) return "Creator Role";
+  const withoutPrefix = text.replace(/^hired\s+/i, "").trim();
+  const mapped = RECENT_HIRE_ROLE_LABELS[withoutPrefix.toLowerCase()];
+  return mapped || withoutPrefix;
+};
+
+const mapPublicJobToCanonical = (
+  item: BackendPublicJobItem,
+  fallbackChannelName?: string | null
+): Job => {
+  const lookupId = String(item.id || "");
+  const baseJob = publicJobLookup.get(lookupId) || publicJobLookup.get(basePublicJobId(lookupId));
+  const channelName = cleanText(item.channel_name) || baseJob?.channel.name || cleanText(fallbackChannelName) || "Creator profile";
+  const isClosed = String(item.status || "").toLowerCase() === "closed";
+
+  return {
+    ...(baseJob || {
+      id: lookupId,
+      title: cleanText(item.title) || "Job listing",
+      category: (cleanText(item.category) as Job["category"]) || "Editing",
+      budget: "",
+      experience: "",
+      location: cleanText(item.location) || "",
+      postedShort: "",
+      views: 0,
+      applicants: 0,
+      responseRate: 0,
+      channel: {
+        name: channelName,
+        logoUrl: "",
+        subscribers: null,
+        verified: false,
+      },
+      tags: [],
+      startTimeframe: "Flexible" as const,
+      type: "One-time" as const,
+    }),
+    id: baseJob?.id || lookupId,
+    title: cleanText(item.title) || baseJob?.title || "Job listing",
+    category: (cleanText(item.category) as Job["category"]) || baseJob?.category || "Editing",
+    location: cleanText(item.location) || baseJob?.location || "",
+    channel: {
+      name: channelName,
+      logoUrl: baseJob?.channel.logoUrl || "",
+      subscribers: baseJob?.channel.subscribers ?? null,
+      verified: baseJob?.channel.verified ?? false,
+    },
+    tags:
+      baseJob?.tags?.length
+        ? baseJob.tags
+        : cleanList([
+            cleanText(item.category),
+            cleanText(item.location),
+            isClosed ? "Closed" : "Open",
+          ]),
+    status: isClosed ? "closed" : baseJob?.status || "published",
+    createdAt: item.created_at || baseJob?.createdAt,
+    updatedAt: item.created_at || baseJob?.updatedAt,
+  };
+};
+
+function PortfolioPreviewList({
+  items,
+  username,
+}: {
+  items: BackendPortfolioItem[];
+  username: string;
+}) {
+  return (
+    <div className="overflow-hidden">
+      <div className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {items.map((item) => (
+        <Link
+          key={`overview-portfolio-preview-${item.id}`}
+          href={`/u/${encodeURIComponent(username)}/projects/${encodeURIComponent(item.id)}`}
+          aria-label={`Open project detail: ${item.title}`}
+          className="group block min-w-[340px] snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:min-w-[360px] lg:min-w-[380px]"
+        >
+          <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
+            {item.thumbnail_url ? (
+              <img
+                src={item.thumbnail_url}
+                alt={item.title}
+                className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
+              />
+            ) : (
+              <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                <Icon name="image" className="h-8 w-8" />
+              </div>
+            )}
+          </div>
+          <div className="p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                {sourceLabel(item.source_type, item.public_metrics?.source_type)}
+              </span>
+              {item.verification_status === "youtube_metadata_verified" ? (
+                <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                  Verified
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
+            {cleanText(item.role_name || item.role || item.user_role_in_project) ? (
+              <p className="mt-1 text-sm font-medium text-white/72">
+                {cleanText(item.role_name || item.role || item.user_role_in_project)}
+              </p>
+            ) : null}
+            {(() => {
+              const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
+              const published = formatDateShort(item.published_at || item.published_date || item.created_at);
+              const sourceLine = [
+                item.channel_name,
+                views ? `${views} views` : null,
+                published,
+                item.duration,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
+            })()}
+            {item.contribution_summary || item.description ? (
+              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
+                {item.contribution_summary || item.description}
+              </p>
+            ) : null}
+            {(item.contribution_tags || []).length ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(item.contribution_tags || []).slice(0, 4).map((tag) => (
+                  <TagPill key={`${item.id}-preview-contribution-${tag}`}>{tag}</TagPill>
+                ))}
+              </div>
+            ) : null}
+            {item.tools?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {item.tools.slice(0, 4).map((tool) => (
+                  <TagPill key={`${item.id}-preview-tool-${tool}`}>{tool}</TagPill>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Link>
+      ))}
+      </div>
     </div>
   );
 }
 
-function RailCard({
-  title,
-  count,
-  actionLabel,
-  actionHref,
-  onAction,
-  children,
-}: {
-  title: string;
-  count?: string;
-  actionLabel?: string;
-  actionHref?: string;
-  onAction?: () => void;
-  children: ReactNode;
-}) {
-  const actionClass = "shrink-0 cursor-pointer text-xs font-medium text-white/45 transition-colors hover:text-white";
+function JobsPreviewList({ items }: { items: Array<{ key: string; job: Job }> }) {
   return (
-    <section className="border-t border-white/10 py-5 first:border-t-0 first:pt-0">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-semibold text-white/90">{title}</h3>
-          {count ? <p className="mt-1 text-xs text-white/45">{count}</p> : null}
-        </div>
-        {actionLabel && actionHref ? (
-          <Link href={actionHref} className={actionClass}>
-            {actionLabel}
-          </Link>
-        ) : actionLabel && onAction ? (
-          <button type="button" onClick={onAction} className={actionClass}>
-            {actionLabel}
-          </button>
-        ) : null}
+    <div className="overflow-hidden">
+      <div
+        aria-label="Jobs preview"
+        className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {items.map(({ key, job }) => (
+          <div key={key} className="min-w-[340px] snap-start sm:min-w-[360px] lg:min-w-[390px]">
+            <JobCard job={job} />
+          </div>
+        ))}
       </div>
-      <div className="mt-4">{children}</div>
-    </section>
+    </div>
   );
 }
 
-function EmptyLine({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-white/52">{children}</p>;
+const authorizedRepresentedChannels = (
+  profile: BackendPublicProfileResponse
+): BackendRepresentedChannel[] => {
+  const profileNames = new Set([
+    normalizedIdentityKey(profile.display_name),
+    normalizedIdentityKey(profile.username),
+    normalizedIdentityKey(profile.hiring_info?.website_or_social_url),
+  ].filter(Boolean));
+
+  return (profile.represented_channels || []).filter((channel) => {
+    if (channel.authorization_status !== "verified") return false;
+    if (channel.is_self) return false;
+    const channelNames = [
+      normalizedIdentityKey(channel.id),
+      normalizedIdentityKey(channel.name),
+      normalizedIdentityKey(channel.url),
+    ].filter(Boolean);
+    return !channelNames.some((key) => profileNames.has(key));
+  });
+};
+
+function HiringForRail({ items }: { items: BackendRepresentedChannel[] }) {
+  if (!items.length) return null;
+
+  return (
+    <div className="overflow-hidden">
+      <div
+        aria-label="Hiring For channels"
+        className="flex snap-x snap-proximity gap-5 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,black_0,black_calc(100%-24px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {items.map((item) => {
+          const initials = initialsForHiringFor(item.name);
+          return (
+            <a
+              key={`hiring-for-${item.id}`}
+              href={item.url || undefined}
+              target={item.url ? "_blank" : undefined}
+              rel={item.url ? "noopener noreferrer" : undefined}
+              aria-label={item.url ? `Open ${item.name}` : item.name}
+              className={[
+                "group flex min-w-[126px] snap-start flex-col items-center gap-3 rounded-2xl px-2 py-2 text-center",
+                item.url
+                  ? "cursor-pointer transition-colors hover:bg-white/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                  : "cursor-default",
+              ].join(" ")}
+            >
+              <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-white/[0.045] text-sm font-semibold text-white/66 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                {item.avatar_url ? (
+                  <img src={item.avatar_url} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+                ) : initials ? (
+                  <span>{initials}</span>
+                ) : (
+                  <Icon name="briefcase" className="h-5 w-5" />
+                )}
+              </span>
+              <span className="flex max-w-[116px] items-start justify-center gap-1 text-sm font-semibold leading-snug text-white/76 group-hover:text-white">
+                <span className="line-clamp-2 min-w-0">{item.name}</span>
+                <Icon name="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/48" />
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
-const formatCountLabel = (count: number, singular: string, plural: string) =>
-  `${count} ${count === 1 ? singular : plural}`;
+function HiringExperienceList({ items }: { items: BackendPublicJobItem[] }) {
+  return (
+    <div className="divide-y divide-white/[0.08]">
+      {items.map((job) => {
+        const orgName = cleanText(job.channel_name) || "Creator team";
+        const roleLabel = normalizeRecentHireRole(job.category || job.title);
+        const roleText = roleLabel.toLowerCase();
+        const normalizedDescription = (() => {
+          const rawTitle = cleanText(job.title);
+          if (!rawTitle) {
+            return `Brought in ${roleText} support for creator-led publishing work.`;
+          }
+          if (/^hired\s+/i.test(rawTitle) || /creator production support/i.test(rawTitle)) {
+            return `Brought in ${roleText} support for creator-led publishing work.`;
+          }
+          return rawTitle;
+        })();
+        const initials = orgName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part.charAt(0).toUpperCase())
+          .join("");
+        return (
+          <div key={`hiring-experience-${job.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-4 first:pt-0 last:pb-0">
+            <div className="flex h-11 w-11 shrink-0 self-start items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/62">
+              {initials || "CJ"}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white/88">
+                {roleLabel} | {orgName}
+              </p>
+              <p className="mt-1 text-sm font-medium text-white/58">{job.status === "closed" ? "Completed engagement" : "Open engagement"}</p>
+              <p className="mt-1 text-xs text-white/45">
+                {[formatDateShort(job.created_at), job.location].filter(Boolean).join(" · ")}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/62">{normalizedDescription}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const hasTalentProfileData = (profile: BackendPublicProfileResponse) =>
   Boolean(
@@ -262,11 +583,28 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
         }
       : null,
   ].filter((row): row is { label: string; name: string } => Boolean(row));
-  const connectedChannelNames = channelRows.map((channel) => `${channel.label}: ${channel.name}`);
-  const websiteOrSocialUrl = cleanText(hiringInfo?.website_or_social_url);
-
-  const portfolioPreview = portfolioProjects.slice(0, 2);
-  const jobsPreview = activeJobs.slice(0, 2);
+  const pastJobs = useMemo(() => profile.jobs_past || [], [profile.jobs_past]);
+  const portfolioPreview = useMemo(() => sortPortfolioPreview(portfolioProjects), [portfolioProjects]);
+  const jobsPreview = useMemo(() => sortJobsPreview(activeJobs, pastJobs), [activeJobs, pastJobs]);
+  const recruiterJobs = useMemo(() => sortProfileJobs(activeJobs, pastJobs), [activeJobs, pastJobs]);
+  const recruiterPreviewJobs = useMemo(
+    () =>
+      jobsPreview.map((item) => ({
+        key: String(item.id),
+        job: mapPublicJobToCanonical(item, profile.display_name),
+      })),
+    [jobsPreview, profile.display_name]
+  );
+  const recruiterTabJobs = useMemo(
+    () =>
+      recruiterJobs.map((item) => ({
+        key: String(item.id),
+        job: mapPublicJobToCanonical(item, profile.display_name),
+      })),
+    [recruiterJobs, profile.display_name]
+  );
+  const hiringExperiencePreview = useMemo(() => pastJobs.slice(0, 3), [pastJobs]);
+  const hiringForChannels = useMemo(() => authorizedRepresentedChannels(profile), [profile]);
   const activeTalentListings = useMemo(
     () => profile.talent_listings_active || [],
     [profile.talent_listings_active]
@@ -281,261 +619,143 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
   );
   const activeTalentListing = talentListingsPreview[0] || activeTalentListings[0] || null;
   const activeRole = activeTalentListing?.primary_role || roleNames[0] || null;
+  const talentListingFormats = cleanList(talentListingsPreview.flatMap((listing) => [listing.primary_role]));
   const hiringRoles = cleanList([
     ...activeJobs.map((job) => job.category),
-    ...activeJobs.map((job) => job.title),
+    ...pastJobs.map((job) => job.category),
   ]).slice(0, 5);
-  const talentRows = [
-    ["Roles", roleNames.length ? roleNames.join(", ") : activeRole],
-    ["Primary niche", primaryNiche],
-    ["Formats", contentFormats.length ? contentFormats.join(", ") : null],
-    ["Tone", contentTones.length ? contentTones.join(", ") : null],
-    ["Target audience", targetAudience],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const profileDetailRows = [
-    ["Primary platform", cleanText(hiringInfo?.primary_platform) || (connectedChannelNames.length ? "YouTube" : null)],
-    ["Connected channels/pages", connectedChannelNames.length ? connectedChannelNames.join(", ") : null],
-    ["Website / social URL", websiteOrSocialUrl || "–"],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const collaborationRows = [
-    ["Project type preference", formatProjectType(profile.collaboration_preferences?.project_type_preference)],
-    ["Turnaround", cleanText(profile.collaboration_preferences?.turnaround)],
-    ["Revisions", cleanText(profile.collaboration_preferences?.revisions)],
-    ["Working hours", cleanText(profile.collaboration_preferences?.working_hours)],
-    ["Tools", cleanText(profile.collaboration_preferences?.tools)],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const recruiterProfileRows = [
-    ["Hiring type", formatHiringType(hiringInfo?.hiring_type) !== "–" ? formatHiringType(hiringInfo?.hiring_type) : null],
-    ["Primary platform", cleanText(hiringInfo?.primary_platform)],
-    ["Channels/pages", cleanText(hiringInfo?.channels_or_pages_managed) || (connectedChannelNames.length ? connectedChannelNames.join(", ") : null)],
-    ["Typical roles", hiringRoles.length ? hiringRoles.join(" · ") : null],
-    ["Content niche", primaryNiche],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const recruiterDetailRows = [
-    ["Website / social URL", websiteOrSocialUrl || "–"],
-    ["Channel or brand context", connectedChannelNames.length ? connectedChannelNames.join(", ") : null],
-    ["Hiring context", cleanText(hiringInfo?.channels_or_pages_managed)],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const recruiterCollaborationRows = [
-    ["Project type preference", formatProjectType(profile.collaboration_preferences?.project_type_preference)],
-    ["Typical turnaround", cleanText(profile.collaboration_preferences?.turnaround)],
-    ["Revision expectations", cleanText(profile.collaboration_preferences?.revisions)],
-    ["Working hours", cleanText(profile.collaboration_preferences?.working_hours)],
-    ["Tools/workflow", cleanText(profile.collaboration_preferences?.tools)],
-  ] satisfies Array<[string, string | null | undefined]>;
-  const mainSections = profileMode === "hiring"
-    ? [
-        { title: "Hiring profile", rows: recruiterProfileRows },
-        { title: "Recruiter details", rows: recruiterDetailRows },
-        { title: "Collaboration", rows: recruiterCollaborationRows },
-      ]
-    : [
-        { title: "Roles & content", rows: talentRows },
-        { title: "Profile details", rows: profileDetailRows },
-        { title: "Collaboration", rows: collaborationRows },
-      ];
+  const bioText = cleanText(profile.headline);
+  const reviewCount = profile.reviews?.review_count || 0;
+  const reviewAverage = profile.reviews?.avg_rating || 0;
+  const reviewItems = useMemo<BackendProfileReviewItem[]>(() => profile.review_items || [], [profile.review_items]);
+
+  const talentMetadataGroups = [
+    { label: "Specialization", values: cleanList([activeRole, ...roleNames]) },
+    { label: "Niches", values: splitCompactValues(primaryNiche) },
+    { label: "Genres", values: contentTones },
+    { label: "Content formats", values: contentFormats.length ? contentFormats : talentListingFormats },
+    { label: "Platforms", values: cleanList([cleanText(hiringInfo?.primary_platform), ...channelRows.map((row) => row.label)]) },
+    { label: "Tools", values: cleanList([...profile.skills, ...splitCompactValues(profile.collaboration_preferences?.tools)]) },
+    { label: "Availability", values: cleanList([profile.availability_status]) },
+    {
+      label: "Work preferences",
+      values: cleanList([
+        formatProjectType(profile.collaboration_preferences?.project_type_preference),
+        cleanText(profile.collaboration_preferences?.turnaround),
+        cleanText(profile.collaboration_preferences?.working_hours),
+      ]).filter((value) => value !== "–"),
+    },
+    { label: "Tags", values: cleanList([targetAudience, ...contentTones]).slice(0, 6) },
+  ];
+  const recruiterMetadataGroups = [
+    { label: "Hiring focus", values: hiringRoles },
+    { label: "Content niches", values: splitCompactValues(primaryNiche) },
+    { label: "Genres", values: contentTones },
+    { label: "Formats hired for", values: contentFormats },
+    { label: "Platforms", values: cleanList([cleanText(hiringInfo?.primary_platform), ...channelRows.map((row) => row.label)]) },
+    {
+      label: "Collaboration style",
+      values: cleanList([
+        formatProjectType(profile.collaboration_preferences?.project_type_preference),
+        cleanText(profile.collaboration_preferences?.turnaround),
+        cleanText(profile.collaboration_preferences?.revisions),
+      ]).filter((value) => value !== "–"),
+    },
+    { label: "Work model", values: cleanList([profile.location, profile.timezone, cleanText(profile.collaboration_preferences?.working_hours)]) },
+    { label: "Tags", values: cleanList([...hiringRoles, ...splitCompactValues(hiringInfo?.channels_or_pages_managed)]).slice(0, 6) },
+  ];
+
+  const visibleTopTab =
+    profileMode === "talent" && topTab === "jobs"
+      ? "overview"
+      : profileMode === "hiring" && topTab === "portfolio"
+        ? "overview"
+        : topTab;
 
   const overview = (
     <div className="grid w-full max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
       <div className="min-w-0">
+        {bioText ? (
+          <OverviewModule title="Bio">
+            <p className="max-w-3xl text-sm leading-6 text-white/68 sm:text-[15px]">{bioText}</p>
+          </OverviewModule>
+        ) : null}
+
         {profileMode === "talent" && profile.experience?.length ? (
           <OverviewModule title="Experience">
             <ProfileExperienceList items={profile.experience} />
           </OverviewModule>
         ) : null}
-        {mainSections.map((section) => {
-          const visibleRows = section.rows.filter(([, value]) => value !== null && value !== undefined && value !== "");
-          return (
-            <OverviewModule key={`overview-section-${profileMode}-${section.title}`} title={section.title}>
-              {visibleRows.length ? (
-                <dl className="space-y-1">
-                  {visibleRows.map(([label, value]) => (
-                    <OverviewRow key={`overview-row-${profileMode}-${section.title}-${label}`} label={label} value={value} />
-                  ))}
-                </dl>
-              ) : (
-                <EmptyLine>No details added yet.</EmptyLine>
-              )}
-            </OverviewModule>
-          );
-        })}
+
+        {profileMode === "talent" && portfolioPreview.length ? (
+          <OverviewModule
+            title="Portfolio"
+            actions={
+              <button
+                type="button"
+                aria-label="View Full Portfolio"
+                onClick={() => setTopTab("portfolio")}
+                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <span>View Full Portfolio</span>
+                  <span aria-hidden="true">→</span>
+                </span>
+              </button>
+            }
+          >
+            <PortfolioPreviewList items={portfolioPreview} username={profile.username} />
+          </OverviewModule>
+        ) : null}
+
+        {profileMode === "hiring" && hiringExperiencePreview.length ? (
+          <OverviewModule title="Recent Hires">
+            <HiringExperienceList items={hiringExperiencePreview} />
+          </OverviewModule>
+        ) : null}
+
+        {profileMode === "hiring" && hiringForChannels.length ? (
+          <OverviewModule title="Hiring For">
+            <HiringForRail items={hiringForChannels} />
+          </OverviewModule>
+        ) : null}
+
+        {profileMode === "hiring" && jobsPreview.length ? (
+          <OverviewModule
+            title="Jobs"
+            actions={
+              <button
+                type="button"
+                onClick={() => setTopTab("jobs")}
+                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+              >
+                View All Jobs <span aria-hidden="true">→</span>
+              </button>
+            }
+          >
+            <JobsPreviewList items={recruiterPreviewJobs} />
+          </OverviewModule>
+        ) : null}
+
+        {reviewItems.length ? (
+          <OverviewModule
+            title="Reviews"
+            actions={
+              <button
+                type="button"
+                onClick={() => setTopTab("reviews")}
+                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+              >
+                View All Reviews <span aria-hidden="true">→</span>
+              </button>
+            }
+          >
+            <ProfileReviewsPreviewRail items={reviewItems} />
+          </OverviewModule>
+        ) : null}
       </div>
 
-      <aside className="min-w-0 lg:border-l lg:border-white/[0.08] lg:pl-8">
-        {profileMode === "hiring" ? (
-          <RailCard
-            title="Jobs"
-            count={formatCountLabel(activeJobs.length, "open job", "open jobs")}
-            actionLabel={activeJobs.length ? "View jobs →" : undefined}
-            onAction={activeJobs.length ? () => setTopTab("jobs") : undefined}
-          >
-            {jobsPreview.length ? (
-              <div className="space-y-3">
-                {jobsPreview.map((job) => (
-                  <Link
-                    key={`overview-recruiter-job-${job.id}`}
-                    href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                    className="group block cursor-pointer text-sm"
-                  >
-                    <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                      {job.title}
-                    </span>
-                    <span className="mt-1 block truncate text-xs text-white/42">
-                      {[job.category, job.location].filter(Boolean).join(" · ") || "Open job"}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <EmptyLine>No open jobs right now.</EmptyLine>
-            )}
-          </RailCard>
-        ) : (
-          <RailCard
-            title="Portfolio"
-            count={formatCountLabel(portfolioProjects.length, "project", "projects")}
-            actionLabel={portfolioProjects.length ? "View portfolio →" : undefined}
-            onAction={portfolioProjects.length ? () => setTopTab("portfolio") : undefined}
-          >
-            {portfolioPreview.length ? (
-              <div className="space-y-3">
-                {portfolioPreview.map((item) => (
-                  <Link
-                    key={`overview-portfolio-${item.id}`}
-                    href={`/u/${encodeURIComponent(profile.username)}/projects/${encodeURIComponent(item.id)}`}
-                    className="group block cursor-pointer text-sm"
-                  >
-                    <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                      {item.title}
-                    </span>
-                    <span className="mt-1 block truncate text-xs text-white/42">
-                      {[item.role_name || item.role || item.user_role_in_project, item.channel_name]
-                        .filter(Boolean)
-                        .join(" · ") || "Work sample"}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <EmptyLine>No work samples added yet.</EmptyLine>
-            )}
-          </RailCard>
-        )}
-
-        {profileMode === "hiring" ? (
-          <RailCard
-            title="Portfolio"
-            count={formatCountLabel(portfolioProjects.length, "project", "projects")}
-            actionLabel={portfolioProjects.length ? "View portfolio →" : undefined}
-            onAction={portfolioProjects.length ? () => setTopTab("portfolio") : undefined}
-          >
-            {portfolioPreview.length ? (
-              <div className="space-y-3">
-                {portfolioPreview.slice(0, 2).map((item) => (
-                  <Link
-                    key={`overview-recruiter-portfolio-${item.id}`}
-                    href={`/u/${encodeURIComponent(profile.username)}/projects/${encodeURIComponent(item.id)}`}
-                    className="group block cursor-pointer text-sm"
-                  >
-                    <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                      {item.title}
-                    </span>
-                    <span className="mt-1 block truncate text-xs text-white/42">
-                      {[item.role_name || item.role || item.user_role_in_project, item.channel_name]
-                        .filter(Boolean)
-                        .join(" · ") || "Work sample"}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <EmptyLine>No work samples added yet.</EmptyLine>
-            )}
-          </RailCard>
-        ) : (
-          <RailCard
-            title="Talent listings"
-            count={formatCountLabel(activeTalentListings.length, "talent listing", "talent listings")}
-            actionLabel={activeTalentListing ? "View talent listing →" : undefined}
-            actionHref={activeTalentListing ? `/talent/${encodeURIComponent(String(activeTalentListing.id))}` : undefined}
-          >
-            {talentListingsPreview.length ? (
-              <div className="space-y-3">
-                {talentListingsPreview.map((listing) => (
-                  <Link
-                    key={`overview-talent-listing-${listing.id}`}
-                    href={`/talent/${encodeURIComponent(String(listing.id))}`}
-                    className="group block cursor-pointer text-sm"
-                  >
-                    <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                      {listing.title}
-                    </span>
-                    <span className="mt-1 block truncate text-xs text-white/42">
-                      {[listing.primary_role, listing.location, listing.timezone].filter(Boolean).join(" · ") || "Talent listing"}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <EmptyLine>No talent listings added yet.</EmptyLine>
-            )}
-          </RailCard>
-        )}
-
-        <RailCard
-          title={profileMode === "hiring" ? "Talent listings" : "Jobs"}
-          count={
-            profileMode === "hiring"
-              ? formatCountLabel(activeTalentListings.length, "talent listing", "talent listings")
-              : formatCountLabel(activeJobs.length, "open job", "open jobs")
-          }
-          actionLabel={
-            profileMode === "hiring"
-              ? activeTalentListing ? "View talent listing →" : undefined
-              : activeJobs.length ? "View jobs →" : undefined
-          }
-          actionHref={profileMode === "hiring" && activeTalentListing ? `/talent/${encodeURIComponent(String(activeTalentListing.id))}` : undefined}
-          onAction={profileMode === "talent" && activeJobs.length ? () => setTopTab("jobs") : undefined}
-        >
-          {profileMode === "hiring" && talentListingsPreview.length ? (
-            <div className="space-y-3">
-              {talentListingsPreview.map((listing) => (
-                <Link
-                  key={`overview-recruiter-talent-listing-${listing.id}`}
-                  href={`/talent/${encodeURIComponent(String(listing.id))}`}
-                  className="group block cursor-pointer text-sm"
-                >
-                  <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                    {listing.title}
-                  </span>
-                  <span className="mt-1 block truncate text-xs text-white/42">
-                    {[listing.primary_role, listing.location].filter(Boolean).join(" · ") || "Talent listing"}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : profileMode === "talent" && jobsPreview.length ? (
-            <div className="space-y-3">
-              {jobsPreview.map((job) => (
-                <Link
-                  key={`overview-talent-job-${job.id}`}
-                  href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                  className="group block cursor-pointer text-sm"
-                >
-                  <span className="block truncate font-medium text-white/78 transition-colors group-hover:text-white">
-                    {job.title}
-                  </span>
-                  <span className="mt-1 block truncate text-xs text-white/42">
-                    {[job.category, job.location].filter(Boolean).join(" · ") || "Open job"}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <EmptyLine>{profileMode === "hiring" ? "No talent listings added yet." : "No open jobs."}</EmptyLine>
-          )}
-        </RailCard>
-      </aside>
+      <MetadataRail groups={profileMode === "hiring" ? recruiterMetadataGroups : talentMetadataGroups} />
     </div>
   );
 
@@ -543,16 +763,21 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
     <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#141519] shadow-[0_24px_80px_-52px_rgba(0,0,0,1)]">
       <div className="overflow-x-auto border-b border-white/[0.08] px-5 pt-1 sm:px-8">
         <div className="flex min-w-max items-end gap-8">
-          <TabButton label="Overview" active={topTab === "overview"} onClick={() => setTopTab("overview")} />
-          <TabButton label="Portfolio" active={topTab === "portfolio"} onClick={() => setTopTab("portfolio")} />
-          <TabButton label="Jobs" active={topTab === "jobs"} onClick={() => setTopTab("jobs")} />
+          <TabButton label="Overview" active={visibleTopTab === "overview"} onClick={() => setTopTab("overview")} />
+          {profileMode === "talent" ? (
+            <TabButton label="Portfolio" active={visibleTopTab === "portfolio"} onClick={() => setTopTab("portfolio")} />
+          ) : null}
+          {profileMode === "hiring" ? (
+            <TabButton label="Jobs" active={visibleTopTab === "jobs"} onClick={() => setTopTab("jobs")} />
+          ) : null}
+          <TabButton label="Reviews" active={visibleTopTab === "reviews"} onClick={() => setTopTab("reviews")} />
         </div>
       </div>
 
       <div className="px-5 py-5 sm:px-8 sm:py-7">
-        {topTab === "overview" ? overview : null}
+        {visibleTopTab === "overview" ? overview : null}
 
-        {topTab === "portfolio" ? (
+        {profileMode === "talent" && visibleTopTab === "portfolio" ? (
           <div className="space-y-3">
             {portfolioProjects.length ? (
               <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
@@ -648,45 +873,26 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
           </div>
         ) : null}
 
-        {topTab === "jobs" ? (
+        {profileMode === "hiring" && visibleTopTab === "jobs" ? (
           <div className="space-y-5">
-            {activeJobs.length ? (
-              <div className="grid gap-3">
-                {activeJobs.map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/${encodeURIComponent(String(job.id))}`}
-                    className="group cursor-pointer rounded-3xl border border-white/[0.085] bg-white/[0.04] p-4 transition-colors hover:border-white/[0.16] hover:bg-white/[0.065] sm:p-5"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-2.5 py-1 text-[11px] font-semibold text-white/58">
-                            Open
-                          </span>
-                          <span className="rounded-full border border-white/[0.09] bg-white/[0.035] px-2.5 py-1 text-[11px] font-semibold text-white/58">
-                            {job.category}
-                          </span>
-                        </div>
-                        <h3 className="mt-3 text-base font-semibold tracking-tight text-white/92 sm:text-lg">
-                          {job.title}
-                        </h3>
-                        <p className="mt-1 text-sm text-white/55">
-                          {[job.channel_name || profile.display_name, job.location].filter(Boolean).join(" · ")}
-                        </p>
-                      </div>
-                      <span className="inline-flex h-9 w-fit items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs font-semibold text-white/68 transition-colors group-hover:bg-white/[0.07] group-hover:text-white">
-                        View job
-                        <Icon name="external-link" className="h-3.5 w-3.5" />
-                      </span>
-                    </div>
-                  </Link>
+            {recruiterTabJobs.length ? (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {recruiterTabJobs.map(({ key, job }) => (
+                  <JobCard key={key} job={job} />
                 ))}
               </div>
             ) : (
               <JobsEmptyState owner={false} />
             )}
           </div>
+        ) : null}
+
+        {visibleTopTab === "reviews" ? (
+          <ProfileReviewsTabContent
+            items={reviewItems}
+            averageRating={reviewAverage}
+            reviewCount={reviewCount}
+          />
         ) : null}
 
       </div>

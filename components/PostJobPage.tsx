@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import {
   BackendCreateJobPayload,
   BackendHiringIdentity,
+  BackendHiringIdentityPlatform,
   BackendMeYouTubeChannel,
   completeLaunchFreeCheckout,
+  createMyHiringIdentity,
   createJob,
   exchangeGoogleOAuthForBackend,
   listMyBackendJobs,
@@ -17,6 +18,7 @@ import {
   listMyHiringIdentities,
   listMyYouTubeChannels,
   refreshMyYouTubeChannels,
+  requestMyHiringIdentityVerification,
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
@@ -28,6 +30,7 @@ import PreviewCard from "./post-job/PreviewCard";
 import PostJobSafety from "./post-job/PostJobSafety";
 import { IdentityPlatform, VerifiedIdentity } from "../lib/identity/types";
 import { PageLoading } from "./ui";
+import { Icon } from "./Icons";
 
 type WorkMode = "Remote" | "Hybrid" | "On-site";
 type TurnaroundUnit = "hours" | "days" | "weeks";
@@ -87,6 +90,32 @@ type SavedRefs = {
   refUrl: string;
 };
 
+type HiringIdentityChoice =
+  | { source: "backend"; id: string }
+  | { source: "connected"; id: string };
+
+type ResolvedHiringIdentity = {
+  normalizedUrl: string;
+  platform: BackendHiringIdentityPlatform;
+  platformLabel: string;
+  name: string;
+  logoUrl: string | null;
+  handle: string | null;
+  followersText: string | null;
+};
+
+type LocalPendingHiringIdentity = {
+  id: string;
+  display_name: string;
+  platform: BackendHiringIdentityPlatform;
+  handle?: string | null;
+  url?: string | null;
+  avatar_url?: string | null;
+  verification_status: "PENDING";
+  is_agency_represented: true;
+  managed_by_agency_name?: string | null;
+};
+
 const mapBackendChannelToIdentity = (channel: BackendMeYouTubeChannel): VerifiedIdentity => ({
   platform: "youtube",
   brandId: channel.channel_id,
@@ -96,6 +125,59 @@ const mapBackendChannelToIdentity = (channel: BackendMeYouTubeChannel): Verified
   handle: null,
   verifiedAt: new Date().toISOString(),
 });
+
+const formatHiringPlatform = (platform?: string | null) =>
+  platform === "INSTAGRAM" || platform?.toLowerCase() === "instagram" ? "Instagram" : "YouTube";
+
+const initialsForIdentity = (value?: string | null) =>
+  (value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
+const normalizeIdentityMatchKey = (value?: string | null) =>
+  (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/\/$/, "");
+
+const inferHiringPlatform = (value?: string | null): BackendHiringIdentityPlatform | null => {
+  const normalized = (value || "").toLowerCase();
+  if (normalized.includes("youtube")) return "YOUTUBE";
+  if (normalized.includes("instagram")) return "INSTAGRAM";
+  return null;
+};
+
+function HiringIdentityAvatar({
+  name,
+  imageUrl,
+  platform,
+  className = "h-14 w-14",
+}: {
+  name: string;
+  imageUrl?: string | null;
+  platform?: string | null;
+  className?: string;
+}) {
+  const initials = initialsForIdentity(name);
+  return (
+    <span
+      className={`${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-white/[0.055] text-sm font-semibold text-white/72`}
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" aria-hidden="true" className="h-full w-full object-cover" />
+      ) : initials ? (
+        <span>{initials}</span>
+      ) : (
+        <Icon name={formatHiringPlatform(platform) === "Instagram" ? "instagram" : "youtube"} className="h-5 w-5" />
+      )}
+    </span>
+  );
+}
 
 const splitLines = (value: string) =>
   value
@@ -117,6 +199,422 @@ const parseWholeNumber = (value: string) => {
   if (!Number.isFinite(parsed)) return null;
   return parsed;
 };
+
+function HiringIdentityModal({
+  open,
+  onClose,
+  backendIdentities,
+  connectedIdentities,
+  selectedChoice,
+  onConfirmExisting,
+  onCreateRepresentedIdentity,
+  sessionDisplayName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  backendIdentities: BackendHiringIdentity[];
+  connectedIdentities: VerifiedIdentity[];
+  selectedChoice: HiringIdentityChoice | null;
+  onConfirmExisting: (choice: HiringIdentityChoice) => void;
+  onCreateRepresentedIdentity: (identity: ResolvedHiringIdentity) => Promise<void>;
+  sessionDisplayName?: string | null;
+}) {
+  const [step, setStep] = useState<"select" | "url" | "confirm" | "verify">("select");
+  const [draftChoice, setDraftChoice] = useState<HiringIdentityChoice | null>(selectedChoice);
+  const [url, setUrl] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolved, setResolved] = useState<ResolvedHiringIdentity | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setStep("select");
+    setDraftChoice(selectedChoice);
+    setUrl("");
+    setUrlError(null);
+    setResolveLoading(false);
+    setResolved(null);
+    setCreateLoading(false);
+    setNotice(null);
+  }, [open, selectedChoice]);
+
+  if (!open) return null;
+
+  const identityAlreadyExists = (candidate: ResolvedHiringIdentity) => {
+    const candidateKeys = [
+      normalizeIdentityMatchKey(candidate.normalizedUrl),
+      normalizeIdentityMatchKey(candidate.handle),
+      normalizeIdentityMatchKey(candidate.name),
+    ].filter(Boolean);
+    return backendIdentities.find((item) =>
+      [item.url, item.handle, item.display_name]
+        .map(normalizeIdentityMatchKey)
+        .filter(Boolean)
+        .some((key) => candidateKeys.includes(key))
+    );
+  };
+
+  const resolveUrl = async () => {
+    const trimmed = url.trim();
+    setNotice(null);
+    setResolved(null);
+    if (!trimmed) {
+      setUrlError("Enter a channel or page URL.");
+      return;
+    }
+    setResolveLoading(true);
+    setUrlError(null);
+    try {
+      const response = await fetch("/api/profile/organization-identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string | null;
+        normalizedUrl?: string | null;
+        canonicalUrl?: string | null;
+        platform?: string | null;
+        inferredName?: string | null;
+        logoUrl?: string | null;
+        faviconUrl?: string | null;
+        handle?: string | null;
+      } | null;
+
+      if (!response.ok || payload?.error) {
+        setUrlError(payload?.error || "We could not resolve that URL.");
+        return;
+      }
+
+      const platformValue = inferHiringPlatform(payload?.platform || payload?.normalizedUrl || payload?.canonicalUrl);
+      if (!platformValue) {
+        setUrlError("Use a YouTube channel or Instagram page URL.");
+        return;
+      }
+
+      const normalizedUrl = payload?.canonicalUrl || payload?.normalizedUrl || trimmed;
+      const name = payload?.inferredName?.trim() || payload?.handle?.trim() || "Channel/page";
+      const nextResolved: ResolvedHiringIdentity = {
+        normalizedUrl,
+        platform: platformValue,
+        platformLabel: formatHiringPlatform(platformValue),
+        name,
+        logoUrl: payload?.logoUrl || payload?.faviconUrl || null,
+        handle: payload?.handle || null,
+        followersText: null,
+      };
+      const duplicate = identityAlreadyExists(nextResolved);
+      if (duplicate) {
+        setDraftChoice({ source: "backend", id: duplicate.id });
+        setNotice("This channel/page is already saved. Select Confirm to use it.");
+        setStep("select");
+        return;
+      }
+      setResolved(nextResolved);
+      setStep("confirm");
+    } catch {
+      setUrlError("We could not resolve that URL. Check it and try again.");
+    } finally {
+      setResolveLoading(false);
+    }
+  };
+
+  const confirmExisting = () => {
+    if (!draftChoice) return;
+    onConfirmExisting(draftChoice);
+    onClose();
+  };
+
+  const continueDrafting = async () => {
+    if (!resolved || createLoading) return;
+    setCreateLoading(true);
+    setUrlError(null);
+    try {
+      await onCreateRepresentedIdentity(resolved);
+      onClose();
+    } catch (error) {
+      setUrlError(error instanceof Error ? error.message : "Could not save this hiring identity.");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const tileClass = (active: boolean) =>
+    [
+      "relative flex min-h-[156px] flex-col items-center justify-center gap-3 rounded-3xl border p-4 text-center transition-colors",
+      active
+        ? "border-white/38 bg-white/[0.1]"
+        : "border-white/[0.09] bg-white/[0.045] hover:border-white/18 hover:bg-white/[0.07]",
+      "cursor-pointer",
+    ].join(" ");
+
+  const savedTiles = backendIdentities.map((item) => ({
+    choice: { source: "backend", id: item.id } as HiringIdentityChoice,
+    name: item.display_name,
+    subline: [formatHiringPlatform(item.platform), item.handle].filter(Boolean).join(" · "),
+    imageUrl: item.avatar_url || null,
+    platform: item.platform,
+    status:
+      item.verification_status === "VERIFIED"
+        ? "Verified"
+        : item.verification_status === "PENDING"
+          ? "Authorization pending"
+          : item.verification_status === "REJECTED"
+            ? "Rejected"
+            : item.is_agency_represented
+              ? "Not verified yet"
+              : null,
+  }));
+
+  const connectedTiles = connectedIdentities
+    .filter((item) => !backendIdentities.some((saved) => saved.id === item.brandId))
+    .map((item) => ({
+      choice: { source: "connected", id: item.brandId } as HiringIdentityChoice,
+      name: item.name,
+      subline: [formatHiringPlatform(item.platform), item.handle].filter(Boolean).join(" · "),
+      imageUrl: item.imageUrl || null,
+      platform: item.platform,
+      status: "Connected",
+    }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hiring-identity-modal-title"
+        className="w-full max-w-[620px] overflow-hidden rounded-[28px] border border-white/[0.1] bg-[#101014] shadow-[0_34px_90px_-36px_rgba(0,0,0,1)]"
+      >
+        <div className="p-5 sm:p-6">
+          {step === "select" ? (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="hiring-identity-modal-title" className="text-xl font-semibold tracking-tight text-white">
+                    Who are you hiring for?
+                  </h2>
+                  <p className="mt-1 text-sm text-white/58">Choose the channel or page this job represents.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/60 transition-colors hover:bg-white/[0.06] hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {notice ? <p className="mt-4 text-sm text-amber-100/82">{notice}</p> : null}
+
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {[...savedTiles, ...connectedTiles].map((item) => {
+                  const active = draftChoice?.source === item.choice.source && draftChoice.id === item.choice.id;
+                  return (
+                    <button
+                      key={`${item.choice.source}-${item.choice.id}`}
+                      type="button"
+                      onClick={() => setDraftChoice(item.choice)}
+                      className={tileClass(active)}
+                    >
+                      {active ? (
+                        <span className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/18 bg-white text-black">
+                          <Icon name="check" className="h-3.5 w-3.5" />
+                        </span>
+                      ) : null}
+                      <HiringIdentityAvatar name={item.name} imageUrl={item.imageUrl} platform={item.platform} />
+                      <span className="max-w-full">
+                        <span className="line-clamp-2 text-sm font-semibold leading-snug text-white/88">{item.name}</span>
+                        {item.subline ? <span className="mt-1 block truncate text-xs text-white/48">{item.subline}</span> : null}
+                        {item.status ? <span className="mt-1 block text-[11px] text-white/42">{item.status}</span> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("url");
+                    setUrlError(null);
+                    setNotice(null);
+                  }}
+                  className={tileClass(false)}
+                >
+                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/12 bg-white/[0.055] text-white/75">
+                    <Icon name="plus" className="h-6 w-6" />
+                  </span>
+                  <span className="text-sm font-semibold text-white/82">Add channel/page</span>
+                </button>
+              </div>
+
+              {!savedTiles.length && !connectedTiles.length ? (
+                <p className="mt-4 text-sm text-white/48">Connect or add the channel/page this job represents.</p>
+              ) : null}
+
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-10 rounded-xl px-4 text-sm font-semibold text-white/58 transition-colors hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmExisting}
+                  disabled={!draftChoice}
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                >
+                  Confirm
+                </button>
+              </div>
+            </>
+          ) : step === "url" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setStep("select")}
+                className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-white/64 transition-colors hover:text-white cursor-pointer"
+              >
+                <span aria-hidden="true">←</span>
+                <span>Who are you hiring for?</span>
+              </button>
+              <p className="text-sm text-white/58">Enter the channel or page this job represents.</p>
+              <label className="mt-6 block text-xs font-semibold text-white/72" htmlFor="represented-channel-url">
+                Channel/page URL
+              </label>
+              <input
+                id="represented-channel-url"
+                value={url}
+                onChange={(event) => {
+                  setUrl(event.target.value);
+                  setUrlError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void resolveUrl();
+                  }
+                }}
+                placeholder="youtube.com/@channel, instagram.com/page..."
+                className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition-colors placeholder:text-white/32 focus:border-white/28 focus:bg-black/24"
+              />
+              {urlError ? <p className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep("select")}
+                  className="h-10 rounded-xl px-4 text-sm font-semibold text-white/58 transition-colors hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void resolveUrl()}
+                  disabled={resolveLoading || !url.trim()}
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                >
+                  {resolveLoading ? "Resolving..." : "Continue"}
+                </button>
+              </div>
+            </>
+          ) : step === "confirm" && resolved ? (
+            <>
+              <h2 id="hiring-identity-modal-title" className="text-xl font-semibold tracking-tight text-white">
+                Confirm channel/page
+              </h2>
+              <div className="mt-7 flex flex-col items-center text-center">
+                <HiringIdentityAvatar
+                  name={resolved.name}
+                  imageUrl={resolved.logoUrl}
+                  platform={resolved.platform}
+                  className="h-20 w-20"
+                />
+                <p className="mt-4 text-lg font-semibold text-white">{resolved.name}</p>
+                <p className="mt-1 text-sm text-white/54">
+                  {[resolved.platformLabel, resolved.handle || resolved.normalizedUrl].filter(Boolean).join(" · ")}
+                </p>
+                {resolved.followersText ? <p className="mt-1 text-sm text-white/44">{resolved.followersText}</p> : null}
+                <p className="mt-6 text-sm font-medium text-white/76">Is this who you are hiring for?</p>
+              </div>
+              <div className="mt-7 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep("url")}
+                  className="h-10 rounded-xl px-4 text-sm font-semibold text-white/58 transition-colors hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep("verify")}
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 cursor-pointer"
+                >
+                  Verify authorization
+                </button>
+              </div>
+            </>
+          ) : step === "verify" && resolved ? (
+            <>
+              <h2 id="hiring-identity-modal-title" className="text-xl font-semibold tracking-tight text-white">
+                Verify authorization
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-white/66">
+                To post live jobs for {resolved.name}, verify that you are authorized to hire for this channel/page.
+              </p>
+              <div className="mt-5 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => void continueDrafting()}
+                  disabled={createLoading}
+                  className="w-full rounded-2xl border border-white/[0.1] bg-white/[0.045] p-4 text-left transition-colors hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
+                >
+                  <span className="block text-sm font-semibold text-white/88">Continue with channel/page login</span>
+                  <span className="mt-1 block text-sm text-white/52">Verify by signing in as this channel/page.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void continueDrafting()}
+                  disabled={createLoading}
+                  className="w-full rounded-2xl border border-white/[0.1] bg-white/[0.045] p-4 text-left transition-colors hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
+                >
+                  <span className="block text-sm font-semibold text-white/88">Add code to public bio</span>
+                  <span className="mt-1 block text-sm text-white/52">We will give you a code to place temporarily.</span>
+                </button>
+              </div>
+              <p className="mt-5 text-sm leading-6 text-white/58">
+                You can continue drafting now. This job will not go live until authorization is verified.
+              </p>
+              {urlError ? <p className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep("confirm")}
+                  className="h-10 rounded-xl px-4 text-sm font-semibold text-white/58 transition-colors hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void continueDrafting()}
+                  disabled={createLoading}
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                >
+                  {createLoading ? "Saving..." : "Continue drafting"}
+                </button>
+              </div>
+              {sessionDisplayName ? (
+                <p className="mt-3 text-right text-[11px] text-white/34">Posting through {sessionDisplayName}</p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function PostJobPage() {
   const router = useRouter();
@@ -209,6 +707,9 @@ export default function PostJobPage() {
   >([]);
   const [hiringIdentities, setHiringIdentities] = useState<BackendHiringIdentity[]>([]);
   const [selectedHiringIdentityId, setSelectedHiringIdentityId] = useState<string>("");
+  const [localPendingHiringIdentity, setLocalPendingHiringIdentity] =
+    useState<LocalPendingHiringIdentity | null>(null);
+  const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(!draftId);
   const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
   const [previewBudgetText, setPreviewBudgetText] = useState("");
   const [previewExperienceText, setPreviewExperienceText] = useState("");
@@ -434,7 +935,7 @@ export default function PostJobPage() {
         const items = identities.items || [];
         setHiringIdentities(items);
         const preferred = items[0];
-        if (preferred && !selectedHiringIdentityId) {
+        if (preferred && !selectedHiringIdentityId && !localPendingHiringIdentity) {
           setSelectedHiringIdentityId(preferred.id);
           setPlatform(preferred.platform === "INSTAGRAM" ? "instagram" : "youtube");
           setPlatformName(preferred.display_name);
@@ -458,14 +959,29 @@ export default function PostJobPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedHiringIdentityId, sessionStatus, withFreshBackendToken]);
+  }, [localPendingHiringIdentity, selectedHiringIdentityId, sessionStatus, withFreshBackendToken]);
 
   const selectedHiringIdentity = useMemo(
     () => hiringIdentities.find((item) => item.id === selectedHiringIdentityId) || null,
     [hiringIdentities, selectedHiringIdentityId]
   );
 
+  const connectedHiringIdentityOptions = useMemo(() => {
+    const options = [...identityOptions];
+    if (identity && !options.some((item) => item.brandId === identity.brandId)) {
+      options.unshift(identity);
+    }
+    return options;
+  }, [identity, identityOptions]);
+
+  const selectedHiringChoice = useMemo<HiringIdentityChoice | null>(() => {
+    if (selectedHiringIdentityId) return { source: "backend", id: selectedHiringIdentityId };
+    if (identity?.brandId) return { source: "connected", id: identity.brandId };
+    return null;
+  }, [identity?.brandId, selectedHiringIdentityId]);
+
   const selectHiringIdentity = useCallback((nextIdentity: BackendHiringIdentity) => {
+    setLocalPendingHiringIdentity(null);
     setSelectedHiringIdentityId(nextIdentity.id);
     setPlatform(nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube");
     setPlatformName(nextIdentity.display_name);
@@ -480,6 +996,90 @@ export default function PostJobPage() {
       verifiedAt: nextIdentity.verified_at || new Date().toISOString(),
     });
   }, []);
+
+  const confirmHiringIdentityChoice = useCallback(
+    (choice: HiringIdentityChoice) => {
+      if (choice.source === "backend") {
+        const next = hiringIdentities.find((item) => item.id === choice.id);
+        if (next) selectHiringIdentity(next);
+        return;
+      }
+      const next = connectedHiringIdentityOptions.find((item) => item.brandId === choice.id);
+      if (!next) return;
+      setLocalPendingHiringIdentity(null);
+      setSelectedHiringIdentityId("");
+      setPlatform(next.platform);
+      setIdentity(next);
+      setVerified(true);
+      setIdentityError(null);
+    },
+    [connectedHiringIdentityOptions, hiringIdentities, selectHiringIdentity]
+  );
+
+  const createRepresentedHiringIdentity = useCallback(
+    async (nextIdentity: ResolvedHiringIdentity) => {
+      const localIdentity: LocalPendingHiringIdentity = {
+        id: `local-represented-${Date.now()}`,
+        display_name: nextIdentity.name,
+        platform: nextIdentity.platform,
+        handle: nextIdentity.handle,
+        url: nextIdentity.normalizedUrl,
+        avatar_url: nextIdentity.logoUrl,
+        verification_status: "PENDING",
+        is_agency_represented: true,
+        managed_by_agency_name: session?.user?.name || session?.user?.username || null,
+      };
+
+      const applyLocalPending = () => {
+        setLocalPendingHiringIdentity(localIdentity);
+        setSelectedHiringIdentityId("");
+        setPlatform(nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube");
+        setPlatformName(nextIdentity.name);
+        setPlatformAudience("");
+        setVerified(false);
+        setIdentity({
+          platform: nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube",
+          brandId: localIdentity.id,
+          name: nextIdentity.name,
+          imageUrl: nextIdentity.logoUrl,
+          followersCount: null,
+          handle: nextIdentity.handle,
+          verifiedAt: "",
+        });
+      };
+
+      if (sessionStatus !== "authenticated" || isLocalMocksEnabled()) {
+        applyLocalPending();
+        return;
+      }
+
+      try {
+        const saved = await withFreshBackendToken(async (token) => {
+          const created = await createMyHiringIdentity(token, {
+            type: "AGENCY_REPRESENTED_CHANNEL",
+            platform: nextIdentity.platform,
+            display_name: nextIdentity.name,
+            handle: nextIdentity.handle,
+            url: nextIdentity.normalizedUrl,
+            avatar_url: nextIdentity.logoUrl,
+            managed_by_agency_name: session?.user?.name || session?.user?.username || null,
+            is_agency_represented: true,
+          });
+          const verification = await requestMyHiringIdentityVerification(token, created.id);
+          return verification.identity;
+        });
+        setHiringIdentities((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        selectHiringIdentity(saved);
+      } catch (error) {
+        if (isBackendUnavailable(error)) {
+          applyLocalPending();
+          return;
+        }
+        throw error;
+      }
+    },
+    [selectHiringIdentity, session?.user?.name, session?.user?.username, sessionStatus, withFreshBackendToken]
+  );
 
   const applyVerifiedChannels = useCallback(
     (channels: BackendMeYouTubeChannel[], preferredChannelId?: string | null) => {
@@ -594,12 +1194,16 @@ export default function PostJobPage() {
   }, [identity]);
 
   React.useEffect(() => {
+    if (localPendingHiringIdentity) {
+      setVerified(false);
+      return;
+    }
     if (selectedHiringIdentity) {
       setVerified(selectedHiringIdentity.verification_status === "VERIFIED");
       return;
     }
     setVerified(Boolean(identity) && platform === "youtube");
-  }, [identity, platform, selectedHiringIdentity]);
+  }, [identity, localPendingHiringIdentity, platform, selectedHiringIdentity]);
 
   const loadLinkedYouTubeChannels = useCallback(async () => {
     if (!activeBackendAccessToken) {
@@ -831,6 +1435,45 @@ export default function PostJobPage() {
     setRefVideos((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const activeHiringIdentity = localPendingHiringIdentity || selectedHiringIdentity;
+  const activeHiringVerificationStatus = localPendingHiringIdentity
+    ? localPendingHiringIdentity.verification_status
+    : selectedHiringIdentity?.verification_status || null;
+  const activeHiringIsRepresented = Boolean(
+    localPendingHiringIdentity || selectedHiringIdentity?.is_agency_represented
+  );
+  const isHiringAuthorizationBlockingPublish =
+    activeHiringIsRepresented && activeHiringVerificationStatus !== "VERIFIED";
+  const activeHiringDisplayName =
+    activeHiringIdentity?.display_name ||
+    identity?.name ||
+    platformName.trim() ||
+    session?.user?.name ||
+    session?.user?.username ||
+    "Content creator";
+  const activeHiringAvatarUrl =
+    activeHiringIdentity?.avatar_url ||
+    identity?.imageUrl ||
+    null;
+  const activeHiringPlatform =
+    activeHiringIdentity?.platform ||
+    (platform === "instagram" ? "INSTAGRAM" : "YOUTUBE");
+  const activeHiringStatusLabel = localPendingHiringIdentity
+    ? "Authorization pending"
+    : selectedHiringIdentity?.verification_status === "VERIFIED"
+      ? selectedHiringIdentity.is_agency_represented
+        ? "Representation verified"
+        : "Verified"
+      : selectedHiringIdentity?.verification_status === "PENDING"
+        ? "Authorization pending"
+        : selectedHiringIdentity?.verification_status === "REJECTED"
+          ? "Authorization rejected"
+          : selectedHiringIdentity?.is_agency_represented
+            ? "Not verified yet"
+            : identity
+              ? "Connected"
+              : "Not selected";
+
   const createLocalJob = async (job: Job) => {
     const res = await fetch("/api/jobs", {
       method: "POST",
@@ -866,6 +1509,10 @@ export default function PostJobPage() {
       setStep("about");
       return;
     }
+    if (isHiringAuthorizationBlockingPublish) {
+      setSubmitError("This job can be completed as a draft, but it will not go live until authorization is verified.");
+      return;
+    }
 
     const normalizedTitle = title.trim();
     const normalizedAbout = about.trim();
@@ -876,17 +1523,11 @@ export default function PostJobPage() {
     const normalizedExperience = previewExperienceText || experienceText || "Any";
     const normalizedBudgetText = previewBudgetText || budgetText || "Flexible";
     const selectedYouTubeChannelId =
-      requiresYouTubeChannel && !selectedHiringIdentity ? identity?.brandId : undefined;
-    const normalizedChannelName =
-      selectedHiringIdentity?.display_name ||
-      identity?.name ||
-      platformName.trim() ||
-      session?.user?.name ||
-      session?.user?.username ||
-      "Content creator";
+      requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity ? identity?.brandId : undefined;
+    const normalizedChannelName = activeHiringDisplayName;
     const normalizedChannelSubscribers =
-      identity?.followersCount ?? parseWholeNumber(platformAudience);
-    const normalizedChannelLogoUrl = selectedHiringIdentity?.avatar_url || identity?.imageUrl || null;
+      localPendingHiringIdentity ? null : identity?.followersCount ?? parseWholeNumber(platformAudience);
+    const normalizedChannelLogoUrl = activeHiringAvatarUrl;
     const budgetAmountValue = parseWholeNumber(budgetMin);
     const budgetMaxValue = parseWholeNumber(budgetMax);
     const hasPersistedBudget =
@@ -922,10 +1563,10 @@ export default function PostJobPage() {
       postedPlatform: platform,
       postedYoutubeChannelId: selectedYouTubeChannelId,
       hiringIdentityId: selectedHiringIdentityId || undefined,
-      hiringDisplayName: selectedHiringIdentity?.display_name,
-      hiringPlatform: selectedHiringIdentity?.platform,
-      hiringVerificationStatus: selectedHiringIdentity?.verification_status,
-      managedByAgencyName: selectedHiringIdentity?.managed_by_agency_name || undefined,
+      hiringDisplayName: activeHiringIdentity?.display_name,
+      hiringPlatform: activeHiringPlatform,
+      hiringVerificationStatus: activeHiringVerificationStatus || undefined,
+      managedByAgencyName: activeHiringIdentity?.managed_by_agency_name || undefined,
     };
 
     const backendPayload: BackendCreateJobPayload = {
@@ -1027,17 +1668,11 @@ export default function PostJobPage() {
     const normalizedTitle = title.trim() || "Untitled job draft";
     const normalizedLocation = previewLocationText || locationText || "Remote";
     const selectedYouTubeChannelId =
-      requiresYouTubeChannel && !selectedHiringIdentity ? identity?.brandId : undefined;
-    const normalizedChannelName =
-      selectedHiringIdentity?.display_name ||
-      identity?.name ||
-      platformName.trim() ||
-      session?.user?.name ||
-      session?.user?.username ||
-      "Content creator";
+      requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity ? identity?.brandId : undefined;
+    const normalizedChannelName = activeHiringDisplayName;
     const normalizedChannelSubscribers =
-      identity?.followersCount ?? parseWholeNumber(platformAudience);
-    const normalizedChannelLogoUrl = selectedHiringIdentity?.avatar_url || identity?.imageUrl || null;
+      localPendingHiringIdentity ? null : identity?.followersCount ?? parseWholeNumber(platformAudience);
+    const normalizedChannelLogoUrl = activeHiringAvatarUrl;
     const budgetAmountValue = parseWholeNumber(budgetMin);
     const budgetMaxValue = parseWholeNumber(budgetMax);
     const hasPersistedBudget =
@@ -1264,110 +1899,63 @@ export default function PostJobPage() {
 
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
+      <HiringIdentityModal
+        open={hiringIdentityModalOpen}
+        onClose={() => setHiringIdentityModalOpen(false)}
+        backendIdentities={hiringIdentities}
+        connectedIdentities={connectedHiringIdentityOptions}
+        selectedChoice={selectedHiringChoice}
+        onConfirmExisting={confirmHiringIdentityChoice}
+        onCreateRepresentedIdentity={createRepresentedHiringIdentity}
+        sessionDisplayName={session?.user?.name || session?.user?.username || null}
+      />
       <div className="px-4 sm:px-6 py-8">
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[1fr_420px] items-start">
           <div className="space-y-6">
-            <section className="rounded-3xl border border-white/[0.08] bg-white/[0.06] p-5 shadow-[0_18px_55px_-32px_rgba(0,0,0,0.95)] sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
-                    Hiring identity
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold text-white">Who are you hiring for?</h2>
-                  <p className="mt-2 text-sm leading-relaxed text-white/65">
-                    Select the channel or page this job represents. Talent will see the verification status on the job.
-                  </p>
-                  {draftId ? <p className="mt-2 text-xs text-white/42">You are editing a saved job draft.</p> : null}
+            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <HiringIdentityAvatar
+                    name={activeHiringDisplayName}
+                    imageUrl={activeHiringAvatarUrl}
+                    platform={activeHiringPlatform}
+                    className="h-10 w-10"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.13em] text-white/36">Hiring for</p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-white/86">
+                      {activeHiringDisplayName}
+                      <span className="font-medium text-white/42"> · {activeHiringStatusLabel}</span>
+                    </p>
+                    {isHiringAuthorizationBlockingPublish ? (
+                      <p className="mt-1 text-xs text-amber-100/72">
+                        This job can be completed as a draft, but it will not go live until authorization is verified.
+                      </p>
+                    ) : draftId ? (
+                      <p className="mt-1 text-xs text-white/42">Editing job draft.</p>
+                    ) : null}
+                  </div>
                 </div>
-                <Link
-                  href="/you?tab=overview&section=hiring-info&returnTo=/post-job"
-                  className="inline-flex h-9 w-fit items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 text-xs font-semibold text-white/85 transition-colors hover:bg-white/[0.08]"
-                >
-                  Add new channel/page
-                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHiringIdentityModalOpen(true)}
+                    className="h-9 w-fit rounded-xl border border-white/[0.1] px-3 text-xs font-semibold text-white/74 transition-colors hover:bg-white/[0.07] hover:text-white cursor-pointer"
+                  >
+                    Change
+                  </button>
+                  {!isLocalMocksEnabled() ? (
+                    <button
+                      type="button"
+                      onClick={() => void onSaveDraft()}
+                      disabled={isSubmitting || draftLoading}
+                      className="h-9 w-fit rounded-xl border border-white/[0.1] px-3 text-xs font-semibold text-white/74 transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
+                    >
+                      {isSubmitting ? "Saving..." : "Save draft"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
-
-              {hiringIdentities.length ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {hiringIdentities.map((item) => {
-                    const selected = item.id === selectedHiringIdentityId;
-                    const badgeClass =
-                      item.verification_status === "VERIFIED"
-                        ? "border-emerald-200/25 bg-emerald-200/10 text-emerald-100"
-                        : item.verification_status === "PENDING"
-                          ? "border-amber-200/25 bg-amber-200/10 text-amber-100"
-                          : item.verification_status === "REJECTED"
-                            ? "border-red-200/25 bg-red-200/10 text-red-100"
-                            : "border-white/15 bg-white/[0.05] text-white/65";
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => selectHiringIdentity(item)}
-                        className={[
-                          "rounded-2xl border p-4 text-left transition-colors cursor-pointer",
-                          selected
-                            ? "border-white/35 bg-white/[0.1]"
-                            : "border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08]",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-white/90">
-                              {item.display_name}
-                            </p>
-                            <p className="mt-1 text-xs text-white/55">
-                              {item.platform === "YOUTUBE" ? "YouTube channel" : "Instagram page"}
-                            </p>
-                          </div>
-                          <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${badgeClass}`}>
-                            {item.verification_status === "VERIFIED"
-                              ? "Verified"
-                              : item.verification_status === "PENDING"
-                                ? "Pending"
-                                : item.verification_status === "REJECTED"
-                                  ? "Rejected"
-                                  : "Not verified yet"}
-                          </span>
-                        </div>
-                        {item.is_agency_represented ? (
-                          <p className="mt-3 text-xs text-white/60">
-                            Managed by {item.managed_by_agency_name || session?.user?.name || "your profile"}
-                          </p>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
-                  <p className="text-sm font-semibold text-white/85">
-                    Hiring identity is optional.
-                  </p>
-                  <p className="mt-1 text-sm text-white/58">
-                    You can publish now and add a channel or Instagram page later.
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-white/84">
-                  {draftId ? "Editing a saved job draft" : "Need to finish later?"}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-white/50">
-                  Save a draft now and resume it later from Activity.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void onSaveDraft()}
-                disabled={isSubmitting || draftLoading}
-                className="h-10 w-fit cursor-pointer rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/76 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting ? "Saving..." : "Save draft"}
-              </button>
             </section>
 
             <PostJobForm
@@ -1451,14 +2039,15 @@ export default function PostJobPage() {
               contentErrors={contentErrors}
               submitError={submitError}
               isSubmitting={isSubmitting}
+              publishDisabled={isHiringAuthorizationBlockingPublish}
             />
           </div>
 
           <div className="space-y-6">
             <PreviewCard
               title={title}
-              channelName={identity?.name || platformName || "Content creator team"}
-              verified={verified}
+              channelName={activeHiringDisplayName}
+              verified={verified && !isHiringAuthorizationBlockingPublish}
               subsText={subsText}
               budgetText={previewBudgetText}
               experienceText={previewExperienceText}
@@ -1466,7 +2055,9 @@ export default function PostJobPage() {
               tags={tags}
               startWithin={startWithin || undefined}
               platform={platform}
-              profileImageUrl={identity?.imageUrl || null}
+              profileImageUrl={activeHiringAvatarUrl}
+              authorizationStatus={activeHiringStatusLabel}
+              managedByName={activeHiringIdentity?.managed_by_agency_name || undefined}
             />
 
             <PostJobSafety />

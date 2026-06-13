@@ -30,11 +30,12 @@ test.describe("phase 3a polish surfaces", () => {
     await expect(page.locator("body")).not.toContainText(/\$|USD/);
   });
 
-  test("public profiles use working-hours and tools language", async ({ page }) => {
+  test("public profiles use structured metadata language", async ({ page }) => {
     await page.goto("/u/aarav-mehta");
 
-    await expect(page.locator("body")).toContainText("Working hours");
+    await expect(page.locator("body")).toContainText("Work preferences");
     await expect(page.locator("body")).toContainText("Tools");
-    await expect(page.locator("body")).not.toContainText(/Availability|Selective|Unavailable|Timezone/);
+    await expect(page.locator("body")).toContainText("Availability");
+    await expect(page.locator("body")).not.toContainText(/Proof|USD|\$[0-9]/);
   });
 });

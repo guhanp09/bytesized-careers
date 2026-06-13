@@ -9,7 +9,7 @@ test.describe("adaptive profile overview", () => {
     await expect(page.locator("body")).toContainText(/Sign in to open your workspace|You/);
   });
 
-  test("Talent view restores the old clean overview layout", async ({ page }) => {
+  test("Talent view uses the mode-specific overview layout", async ({ page }) => {
     await page.goto("/u/aarav-mehta?view=talent");
     const main = page.getByRole("main");
 
@@ -19,15 +19,18 @@ test.describe("adaptive profile overview", () => {
     await expect(main.getByRole("button", { name: "Hiring" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reviews" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toBeVisible();
+    await expect(page.locator("body")).toContainText("Bio");
     await expect(page.locator("body")).toContainText("Experience");
-    await expect(page.locator("body")).toContainText("Roles & content");
-    await expect(page.locator("body")).toContainText("Profile details");
-    await expect(page.locator("body")).toContainText("Collaboration");
     await expect(page.locator("body")).toContainText("Portfolio");
-    await expect(page.locator("body")).toContainText("Talent listings");
-    await expect(page.locator("body")).toContainText("Jobs");
+    await expect(page.locator("body")).toContainText("Reviews");
+    await expect(page.locator("body")).not.toContainText("Profile metadata");
+    await expect(page.locator("body")).not.toContainText("Roles & content");
+    await expect(page.locator("body")).not.toContainText("Profile details");
+    await expect(page.locator("body")).not.toContainText("Verified collaborations");
+    await expect(page.getByRole("heading", { name: "Collaboration", exact: true })).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("Work samples");
     await expect(page.locator("body")).toContainText(/\|\s+.*Creator/);
     await expect(page.locator("body")).toContainText("Present");
     await expect(page.locator("body")).toContainText("Premiere Pro");
@@ -46,13 +49,26 @@ test.describe("adaptive profile overview", () => {
     await expect(page.locator("body")).not.toContainText("Add experience");
     await expect(page.getByRole("link", { name: "Open YouTube" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open website" })).toBeVisible();
+    const bioY = (await page.getByRole("heading", { name: "Bio" }).boundingBox())?.y ?? 0;
     const experienceY = (await page.getByRole("heading", { name: "Experience" }).boundingBox())?.y ?? 0;
-    const rolesY = (await page.getByRole("heading", { name: "Roles & content" }).boundingBox())?.y ?? 0;
+    const portfolioY = (await page.getByRole("heading", { name: "Portfolio" }).last().boundingBox())?.y ?? 0;
+    const reviewsY = (await page.getByRole("heading", { name: "Reviews" }).boundingBox())?.y ?? 0;
     const presentY = (await page.getByText("Present").first().boundingBox())?.y ?? 0;
     const pastEntryY = (await page.getByText("Education Channel").first().boundingBox())?.y ?? 0;
-    expect(experienceY).toBeLessThan(rolesY);
+    expect(bioY).toBeLessThan(experienceY);
+    expect(experienceY).toBeLessThan(portfolioY);
+    expect(portfolioY).toBeLessThan(reviewsY);
     expect(presentY).toBeLessThan(pastEntryY);
-    await expect(page.locator("body")).not.toContainText(/Talent overview|Reviews as talent|Reviews as recruiter|Reviews as hirer|Reviews as hiring|Proof|★★★★★|4\.[5-9]|5\.0|USD|\$[0-9]/);
+    const reviewsPreview = page.getByLabel("Reviews preview");
+    await expect(reviewsPreview).toBeVisible();
+    expect(await reviewsPreview.locator(".snap-start").count()).toBeLessThanOrEqual(4);
+    await page.getByRole("button", { name: "View Full Portfolio" }).click();
+    await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.getByRole("button", { name: "View All Reviews" }).click();
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("body")).toContainText("out of 5");
+    await expect(page.locator("body")).not.toContainText(/Talent overview|Reviews as talent|Reviews as recruiter|Reviews as hirer|Reviews as hiring|Proof|USD|\$[0-9]/);
   });
 
   test("mock talent profiles expose multiple experience rows for scroll and list coverage", async ({ page }) => {
@@ -67,35 +83,97 @@ test.describe("adaptive profile overview", () => {
     await expect(page.locator("body")).toContainText("Contract");
   });
 
-  test("Recruiter view uses the same restored overview layout", async ({ page }) => {
+  test("Recruiter view uses the recruiter overview layout", async ({ page }) => {
     await page.goto("/u/finance-creator?view=hiring");
     const main = page.getByRole("main");
 
-    await expect(page.getByRole("heading", { name: "Finance Channel" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Finance Channel", exact: true })).toBeVisible();
     await expect(main.getByRole("button", { name: "Recruiter" })).toHaveAttribute("aria-pressed", "true");
     await expect(main.getByRole("button", { name: "Hiring" })).toHaveCount(0);
-    await expect(page.locator("body")).toContainText("Hiring profile");
-    await expect(page.locator("body")).toContainText("Recruiter details");
-    await expect(page.locator("body")).toContainText("Collaboration");
+    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toBeVisible();
+    await expect(page.locator("body")).toContainText("Bio");
+    await expect(page.locator("body")).toContainText("Recent Hires");
+    await expect(page.locator("body")).not.toContainText("Hiring For");
     await expect(page.locator("body")).toContainText("Jobs");
-    await expect(page.locator("body")).toContainText("Portfolio");
-    await expect(page.locator("body")).toContainText("Talent listings");
-    await expect(page.locator("body")).not.toContainText(/Recruiter overview|Talent overview|Reviews as talent|Reviews as recruiter|Reviews as hirer|Reviews as hiring|Candidate|Employee|Employer|Proof|★★★★★|4\.[5-9]|5\.0|USD|\$[0-9]/);
+    await expect(page.locator("body")).toContainText("Reviews");
+    await expect(page.locator("body")).not.toContainText("Profile metadata");
+    await expect(page.locator("body")).not.toContainText("Hiring profile");
+    await expect(page.locator("body")).not.toContainText("Recruiter details");
+    await expect(page.locator("body")).not.toContainText("Verified collaborations");
+    await expect(page.getByRole("heading", { name: "Collaboration", exact: true })).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("Portfolio");
+    const bioY = (await page.getByRole("heading", { name: "Bio" }).boundingBox())?.y ?? 0;
+    const hiringY = (await page.getByRole("heading", { name: "Recent Hires" }).boundingBox())?.y ?? 0;
+    const jobsY = (await page.getByRole("heading", { name: "Jobs" }).last().boundingBox())?.y ?? 0;
+    const reviewsY = (await page.getByRole("heading", { name: "Reviews" }).boundingBox())?.y ?? 0;
+    expect(bioY).toBeLessThan(hiringY);
+    expect(hiringY).toBeLessThan(jobsY);
+    expect(jobsY).toBeLessThan(reviewsY);
+    const recentHiresSection = page.locator("article").filter({
+      has: page.getByRole("heading", { name: "Recent Hires" }),
+    });
+    await expect(recentHiresSection).not.toContainText(/Hired [a-z]/i);
+    const jobsPreview = page.getByLabel("Jobs preview");
+    await expect(jobsPreview).toBeVisible();
+    expect(await jobsPreview.locator(".snap-start").count()).toBeLessThanOrEqual(3);
+    await page.getByRole("button", { name: "View All Jobs" }).click();
+    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Overview", exact: true }).click();
+    const recruiterReviewsPreview = page.getByLabel("Reviews preview");
+    await expect(recruiterReviewsPreview).toBeVisible();
+    expect(await recruiterReviewsPreview.locator(".snap-start").count()).toBeLessThanOrEqual(4);
+    await page.getByRole("button", { name: "View All Reviews" }).click();
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("body")).toContainText("out of 5");
+    await expect(page.locator("body")).not.toContainText(/Recruiter overview|Talent overview|Reviews as talent|Reviews as recruiter|Reviews as hirer|Reviews as hiring|Candidate|Employee|Employer|Proof|USD|\$[0-9]/);
+  });
+
+  test("agency recruiter overview shows Hiring For identity rail", async ({ page }) => {
+    await page.goto("/u/example-agency?view=hiring");
+
+    await expect(page.getByRole("heading", { name: "Example Creator Agency", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent Hires" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hiring For" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Jobs" }).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toHaveCount(0);
+
+    const recentHiresY = (await page.getByRole("heading", { name: "Recent Hires" }).boundingBox())?.y ?? 0;
+    const hiringForY = (await page.getByRole("heading", { name: "Hiring For" }).boundingBox())?.y ?? 0;
+    const jobsY = (await page.getByRole("heading", { name: "Jobs" }).last().boundingBox())?.y ?? 0;
+    expect(recentHiresY).toBeLessThan(hiringForY);
+    expect(hiringForY).toBeLessThan(jobsY);
+
+    const hiringForRail = page.getByLabel("Hiring For channels");
+    await expect(hiringForRail).toBeVisible();
+    expect(await hiringForRail.locator(".snap-start").count()).toBeGreaterThan(3);
+    await expect(hiringForRail).toContainText("Finance Channel");
+    await expect(hiringForRail).toContainText("Study Sprint");
+    await expect(hiringForRail).not.toContainText("Pending Creator Page");
+    await expect(hiringForRail).not.toContainText(/subscribers|followers|Verified/i);
   });
 
   test("switch changes overview content between Talent and Recruiter", async ({ page }) => {
     await page.goto("/u/aarav-mehta?view=talent");
 
-    await expect(page.locator("body")).toContainText("Roles & content");
+    await expect(page.locator("body")).toContainText("Experience");
+    await expect(page.locator("body")).not.toContainText("Hiring For");
+    await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toBeVisible();
     await page.getByRole("main").getByRole("button", { name: "Recruiter" }).click();
     await expect(page).toHaveURL(/\/u\/aarav-mehta\?view=hiring$/);
-    await expect(page.locator("body")).toContainText("Hiring profile");
-    await expect(page.locator("body")).toContainText("Recruiter details");
+    await expect(page.locator("body")).toContainText("Bio");
+    await expect(page.getByRole("button", { name: "Jobs", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Portfolio", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Reviews", exact: true })).toBeVisible();
 
     await page.getByRole("main").getByRole("button", { name: "Talent" }).click();
     await expect(page).toHaveURL(/\/u\/aarav-mehta\?view=talent$/);
-    await expect(page.locator("body")).toContainText("Roles & content");
-    await expect(page.locator("body")).toContainText("Profile details");
+    await expect(page.locator("body")).toContainText("Experience");
+    await expect(page.locator("body")).not.toContainText("Roles & content");
+    await expect(page.locator("body")).not.toContainText("Profile details");
   });
 
   test("talent and job entry points pass the intended profile view", async ({ page }) => {
