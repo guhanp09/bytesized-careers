@@ -19,6 +19,7 @@ from app.services.job_service import (
     JobNotFoundError,
     JobService,
     JobValidationError,
+    JobVerificationRequiredError,
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -91,6 +92,14 @@ async def create_job(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except JobAuthRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except JobVerificationRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "REPRESENTATION_VERIFICATION_REQUIRED",
+                "message": str(exc),
+            },
+        ) from exc
     except JobForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return JobRead.model_validate(job)
@@ -112,6 +121,14 @@ async def update_job(
         job = await service.update_job_record(owned_job, payload, actor_user_id=current_user.id)
     except JobAuthRequiredError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except JobVerificationRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "REPRESENTATION_VERIFICATION_REQUIRED",
+                "message": str(exc),
+            },
+        ) from exc
     except JobForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return JobRead.model_validate(job)

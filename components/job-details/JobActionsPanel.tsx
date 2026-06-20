@@ -3,10 +3,9 @@
 import Link from "next/link";
 import React from "react";
 import { Job } from "../../lib/types";
-import { formatCompactNumber, formatSubs } from "../../lib/format";
+import { formatCompactNumber } from "../../lib/format";
 import { Icon } from "../Icons";
 import { IconTooltip, Section } from "../ui";
-import ChannelAttribution from "../jobs/ChannelAttribution";
 
 const APPLY_NOTE_MAX_LENGTH = 600;
 const EMPTY_REVIEW_STARS = "☆☆☆☆☆";
@@ -26,13 +25,53 @@ const titleFromSlug = (value?: string | null) => {
     .join(" ");
 };
 
-const platformLabel = (platform?: string | null) => {
-  const normalized = cleanText(platform)?.toLowerCase();
-  if (normalized === "instagram") return "Page";
-  if (normalized === "tiktok") return "Page";
-  if (normalized === "podcast") return "Podcast";
-  return "Channel";
+const normalizeHttpUrl = (value?: string | null) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 };
+
+function InlineIdentityLink({
+  href,
+  external = false,
+  children,
+  ariaLabel,
+  className = "",
+}: {
+  href?: string | null;
+  external?: boolean;
+  children: React.ReactNode;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const baseClass = [
+    "underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+    className,
+  ].join(" ");
+
+  if (!href) {
+    return <span className={className}>{children}</span>;
+  }
+
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel} className={baseClass}>
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} aria-label={ariaLabel} className={baseClass}>
+      {children}
+    </Link>
+  );
+}
 
 function TileShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -52,17 +91,30 @@ function TileShell({ children, className = "" }: { children: React.ReactNode; cl
 }
 
 function StatTile({ icon, value, label }: { icon: "users" | "eye" | "bolt"; value: string; label: string }) {
+  const tooltipId = React.useId();
+  const anchorRef = React.useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+
   return (
     <div className="relative">
-      <div className="peer">
+      <div
+        tabIndex={0}
+        aria-describedby={open ? tooltipId : undefined}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="cursor-pointer focus-visible:outline-none"
+      >
         <TileShell className="h-[54px] flex items-center justify-center">
-          <div className="flex items-center justify-center gap-2 text-white/75 transition-colors duration-150 hover:text-white">
+          <div ref={anchorRef} className="flex items-center justify-center gap-2 text-white/75 transition-colors duration-150 hover:text-white">
             <Icon name={icon} className="w-4 h-4" />
             <span className="tabular-nums text-sm">{value}</span>
+            <span className="sr-only">{label}</span>
           </div>
         </TileShell>
       </div>
-      <IconTooltip label={label} className="-top-6" />
+      <IconTooltip label={label} anchorRef={anchorRef} open={open} id={tooltipId} sideOffset={4} />
     </div>
   );
 }
@@ -71,15 +123,17 @@ function PostedByCard({ job }: { job: Job }) {
   const isAgencyPost = Boolean(job.postedByAgency);
   const agencyName =
     cleanText(job.managedByAgencyName) ||
-    cleanText(job.hiringDisplayName) ||
     titleFromSlug(job.agencyProfileSlug) ||
+    cleanText(job.hiringDisplayName) ||
     "Creator agency";
   const agencyHref = job.agencyProfileSlug
     ? `/u/${encodeURIComponent(job.agencyProfileSlug)}?view=hiring`
     : null;
-  const channelType = platformLabel(job.platform);
-  const channelMeta = [channelType, formatSubs(job.channel.subscribers)].filter(Boolean).join(" · ");
-  const agencyMeta = ["Agency", `Hiring for ${job.channel.name}`].filter(Boolean).join(" · ");
+  const creatorHref = job.channelProfileSlug
+    ? `/u/${encodeURIComponent(job.channelProfileSlug)}?view=hiring`
+    : null;
+  const channelExternalHref = normalizeHttpUrl(job.channelExternalUrl);
+  const creatorMeta = "Creator";
 
   return (
     <section
@@ -102,32 +156,48 @@ function PostedByCard({ job }: { job: Job }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          {isAgencyPost ? (
-            agencyHref ? (
-              <Link
+          <p className="truncate text-sm font-semibold text-white/88">
+            {isAgencyPost ? (
+              <InlineIdentityLink
                 href={agencyHref}
-                className="block truncate text-sm font-semibold text-white/88 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                ariaLabel={`Open ${agencyName} CreatorJobs profile`}
+                className="block truncate"
               >
                 {agencyName}
-              </Link>
+              </InlineIdentityLink>
             ) : (
-              <p className="truncate text-sm font-semibold text-white/88">{agencyName}</p>
-            )
-          ) : (
-            <ChannelAttribution
-              channelName={job.channel.name}
-              channelProfileSlug={job.channelProfileSlug}
-              showAgencyBadge={false}
-              className="max-w-full text-sm font-semibold text-white/88"
-            />
-          )}
+              <InlineIdentityLink
+                href={creatorHref}
+                ariaLabel={`Open ${job.channel.name} CreatorJobs profile`}
+                className="block truncate"
+              >
+                {job.channel.name}
+              </InlineIdentityLink>
+            )}
+          </p>
 
-          <p className="mt-1 text-xs leading-5 text-white/50">{isAgencyPost ? agencyMeta : channelMeta}</p>
+          {isAgencyPost ? (
+            <p className="mt-1 text-xs leading-5 text-white/50">
+              <span>Agency</span>
+              <span aria-hidden="true"> · </span>
+              <span>Hiring for </span>
+              <InlineIdentityLink
+                href={channelExternalHref}
+                external
+                ariaLabel={`Open ${job.channel.name} channel or page`}
+                className="font-medium text-white/58"
+              >
+                {job.channel.name}
+              </InlineIdentityLink>
+            </p>
+          ) : (
+            <p className="mt-1 text-xs leading-5 text-white/50">{creatorMeta}</p>
+          )}
           <p
             className="mt-2 text-xs font-medium tracking-[0.04em] text-white/52"
-            aria-label={isAgencyPost ? "0 reviews as recruiter" : "0 reviews"}
+            aria-label="0 reviews as recruiter"
           >
-            {EMPTY_REVIEW_STARS} 0 reviews{isAgencyPost ? " as recruiter" : ""}
+            {EMPTY_REVIEW_STARS} 0 reviews as recruiter
           </p>
         </div>
       </div>
@@ -143,11 +213,14 @@ export default function JobActionsPanel({
   onReport,
   saveState = "idle",
   applyState = "idle",
+  applyError = null,
+  saveError = null,
   reportState = "idle",
   applyNote,
   onApplyNoteChange,
   secondaryBtnBrightness,
   shareState = "idle",
+  isOwner = false,
 }: {
   job: Job;
   onShare: () => void;
@@ -156,16 +229,21 @@ export default function JobActionsPanel({
   onReport: () => void;
   saveState?: "idle" | "saving" | "saved" | "error";
   applyState?: "idle" | "saving" | "sent" | "error";
+  applyError?: string | null;
+  saveError?: string | null;
   reportState?: "idle" | "sending" | "sent" | "error";
   applyNote: string;
   onApplyNoteChange: (value: string) => void;
   secondaryBtnBrightness: number;
   shareState?: "idle" | "copied";
+  isOwner?: boolean;
 }) {
   const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
+  const currentlyViewing = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
 
   return (
     <div className="space-y-6">
+      {isOwner ? null : (
       <section
         data-testid="job-apply-panel"
         className="rounded-3xl bg-white/[0.06] border border-white/[0.08] p-6 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]"
@@ -202,7 +280,9 @@ export default function JobActionsPanel({
           </span>
         </button>
         {applyState === "error" ? (
-          <p className="mt-2 text-xs text-white/52">Couldn’t send the application. Try again.</p>
+          <p className="mt-2 text-xs text-amber-200/80">
+            {applyError || "Couldn’t send the application. Try again."}
+          </p>
         ) : null}
 
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -225,15 +305,18 @@ export default function JobActionsPanel({
             {shareState === "copied" ? "Copied" : "Share"}
           </button>
         </div>
-        {saveState === "error" ? <p className="mt-2 text-xs text-white/45">Couldn’t save this job right now.</p> : null}
+        {saveState === "error" ? (
+          <p className="mt-2 text-xs text-amber-200/80">{saveError || "Couldn’t save this job right now."}</p>
+        ) : null}
         {shareState === "copied" ? <p className="mt-2 text-xs text-white/45">Link copied to your clipboard.</p> : null}
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           <StatTile icon="users" value={`${job.applicants}`} label="Applicants" />
-          <StatTile icon="eye" value={formatCompactNumber(job.views)} label="Currently viewing" />
+          <StatTile icon="eye" value={formatCompactNumber(currentlyViewing)} label="Currently viewing" />
           <StatTile icon="bolt" value={`${responseRate}%`} label="Response rate" />
         </div>
       </section>
+      )}
 
       <PostedByCard job={job} />
 
@@ -243,6 +326,7 @@ export default function JobActionsPanel({
         </Section>
       </div>
 
+      {isOwner ? null : (
       <div className="-mt-3 px-1">
         <button
           type="button"
@@ -257,6 +341,7 @@ export default function JobActionsPanel({
           <p className="mt-2 text-xs text-white/45">Couldn’t send the report. Try again.</p>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

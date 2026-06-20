@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { StartTimeframe } from "../../lib/types";
-import { formatPostedLabel, formatStartLabel } from "../../lib/format";
+import { formatPostedLabel } from "../../lib/format";
 import { Icon } from "../Icons";
 import { MetaRow, StatRow, TagPill } from "../ui";
+import ChannelAttribution from "../jobs/ChannelAttribution";
 
 const platformIconMap: Record<string, "youtube" | "instagram" | "tiktok" | "facebook" | "linkedin" | "x" | "podcast"> =
   {
@@ -56,33 +56,25 @@ function PreviewIconButton({
 export default function PreviewCard({
   title,
   channelName,
-  verified,
   subsText,
   budgetText,
   experienceText,
   locationText,
   tags,
-  startWithin,
   platform,
   postedShort,
   profileImageUrl,
-  authorizationStatus,
-  managedByName,
 }: {
   title: string;
   channelName: string;
-  verified: boolean;
   subsText: string;
   budgetText: string;
   experienceText: string;
   locationText: string;
   tags: string[];
-  startWithin?: StartTimeframe;
   platform?: string;
   postedShort?: string;
   profileImageUrl?: string | null;
-  authorizationStatus?: string | null;
-  managedByName?: string | null;
 }) {
   const showChannelName = channelName.trim() || "Finance Channel";
   const showSubs = subsText.trim();
@@ -100,11 +92,10 @@ export default function PreviewCard({
     <div className="select-none">
       <div
         className={[
-          "rounded-[26px] p-5",
-          "bg-white/[0.06] border border-white/[0.08]",
-          "shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]",
-          "h-[340px] grid",
-          "grid-rows-[56px_52px_78px_44px_1fr]",
+          "rounded-2xl p-5",
+          "bg-white/[0.06] border border-white/10",
+          "shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]",
+          "h-[340px] flex flex-col",
         ].join(" ")}
       >
         <div className="flex items-start justify-between gap-3">
@@ -118,14 +109,11 @@ export default function PreviewCard({
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{showChannelName}</p>
-
-                {verified ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/10 border border-white/10 text-white/80">
-                    Verified
-                  </span>
-                ) : null}
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <ChannelAttribution
+                  channelName={showChannelName}
+                  className="text-sm font-semibold text-white max-w-[170px]"
+                />
               </div>
 
               <p className="text-xs text-white/55 truncate inline-flex items-center gap-1.5">
@@ -139,29 +127,15 @@ export default function PreviewCard({
                   <span>{postedLabel}</span>
                 )}
               </p>
-              {authorizationStatus && authorizationStatus !== "Connected" ? (
-                <p className="mt-1 truncate text-[11px] text-white/42">
-                  {authorizationStatus}
-                  {managedByName ? ` · via ${managedByName}` : ""}
-                </p>
-              ) : managedByName ? (
-                <p className="mt-1 truncate text-[11px] text-white/42">via {managedByName}</p>
-              ) : null}
             </div>
           </div>
-
-          {startWithin ? (
-            <TagPill className="text-white/80 whitespace-nowrap">
-              {`Start: ${formatStartLabel(startWithin)}`}
-            </TagPill>
-          ) : null}
         </div>
 
-        <h3 className="text-[15px] font-extrabold leading-snug text-white uppercase line-clamp-2 h-[52px]">
+        <h3 className="mt-4 text-[15px] font-extrabold leading-snug text-white uppercase line-clamp-2 h-[52px]">
           {showTitle}
         </h3>
 
-        <div className="space-y-2">
+        <div className="mt-4 space-y-2">
           <MetaRow
             icon={showBudget.includes("per month") ? "briefcase" : "cash-stack"}
             text={showBudget ? `Budget: ${showBudget}` : "Budget:"}
@@ -170,25 +144,21 @@ export default function PreviewCard({
           <MetaRow icon="pin" text={showLocation || ""} />
         </div>
 
-        <div className="overflow-hidden pt-2">
-          <div className="flex flex-wrap gap-1.5">
-            {topTags.length ? (
-              topTags.map((t) => <TagPill key={t}>{t}</TagPill>)
-            ) : (
-              <>
-                {["tag1", "tag2", "tag3", "tag4", "tag5"].map((t) => (
-                  <TagPill key={t}>{t === "tag1" ? "Remote" : t === "tag2" ? "YouTube" : t === "tag3" ? "Editing" : t === "tag4" ? "Monthly" : "Creator-led media"}</TagPill>
-                ))}
-              </>
-            )}
+        {topTags.length ? (
+          <div className="mt-4 overflow-hidden">
+            <div className="flex flex-wrap gap-1.5">
+              {topTags.map((t) => (
+                <TagPill key={t}>{t}</TagPill>
+              ))}
 
-            {extra > 0 ? (
-              <span className="text-[11px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/55">
-                +{extra}
-              </span>
-            ) : null}
+              {extra > 0 ? (
+                <span className="text-[11px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/55">
+                  +{extra}
+                </span>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="mt-auto flex h-10 items-center justify-between gap-3">
           <div className="flex items-center gap-4">

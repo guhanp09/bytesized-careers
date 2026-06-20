@@ -1,6 +1,14 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
+import {
+  applyBackendLoginPayload,
+  buildSafeBackendSessionFields,
+  markBackendRefreshFailed,
+  refreshBackendAccessToken,
+  shouldRefreshBackendToken,
+  type BackendLoginPayload,
+} from "./backendTokenRefresh";
 
 const getBackendBaseUrl = () => {
   const raw =
@@ -37,7 +45,7 @@ const isCreatorJobsOnboardingIntent = (
   value === "BOTH" ||
   value === "DECIDE_LATER";
 
-type BackendLoginResponse = {
+type BackendLoginResponse = BackendLoginPayload & {
   access_token: string;
   token_type: string;
   user: BackendAuthUser;
@@ -55,6 +63,9 @@ type CredentialsAuthUser = {
   onboardingIntentSelectedAt?: string | null;
   backendAccessToken: string;
   backendTokenType: string;
+  backendRefreshToken?: string | null;
+  backendAccessTokenExpiresAt?: number | null;
+  backendRefreshTokenExpiresAt?: number | null;
   backendUserId: string;
 };
 
@@ -155,6 +166,9 @@ const providers = [
           onboardingIntentSelectedAt: payload.user.onboarding_intent_selected_at || null,
           backendAccessToken: payload.access_token,
           backendTokenType: payload.token_type,
+          backendRefreshToken: payload.refresh_token || null,
+          backendAccessTokenExpiresAt: payload.access_token_expires_at || null,
+          backendRefreshTokenExpiresAt: payload.refresh_token_expires_at || null,
           backendUserId: payload.user.id,
         } as CredentialsAuthUser;
       } catch {
@@ -212,7 +226,27 @@ export const authOptions: NextAuthOptions = {
 
       // Credentials login path: backend token is returned directly.
       if (user && "backendAccessToken" in user && typeof user.backendAccessToken === "string") {
-        token.backendAccessToken = user.backendAccessToken;
+        applyBackendLoginPayload(token, {
+          access_token: user.backendAccessToken,
+          token_type:
+            "backendTokenType" in user && typeof user.backendTokenType === "string"
+              ? user.backendTokenType
+              : "bearer",
+          refresh_token:
+            "backendRefreshToken" in user && typeof user.backendRefreshToken === "string"
+              ? user.backendRefreshToken
+              : null,
+          access_token_expires_at:
+            "backendAccessTokenExpiresAt" in user &&
+            typeof user.backendAccessTokenExpiresAt === "number"
+              ? user.backendAccessTokenExpiresAt
+              : null,
+          refresh_token_expires_at:
+            "backendRefreshTokenExpiresAt" in user &&
+            typeof user.backendRefreshTokenExpiresAt === "number"
+              ? user.backendRefreshTokenExpiresAt
+              : null,
+        });
         token.backendTokenType =
           "backendTokenType" in user && typeof user.backendTokenType === "string"
             ? user.backendTokenType
@@ -289,8 +323,7 @@ export const authOptions: NextAuthOptions = {
             scope: typeof account.scope === "string" ? account.scope : undefined,
           });
           if (exchange) {
-            token.backendAccessToken = exchange.access_token;
-            token.backendTokenType = exchange.token_type;
+            applyBackendLoginPayload(token, exchange);
             token.backendUserId = exchange.user.id;
             if (exchange.user.username) token.username = exchange.user.username;
             if (exchange.user.display_name) token.displayName = exchange.user.display_name;
@@ -301,12 +334,48 @@ export const authOptions: NextAuthOptions = {
           }
         }
       }
+
+      if (
+        token.backendRefreshToken &&
+        shouldRefreshBackendToken({
+          accessToken: token.backendAccessToken,
+          expiresAt: token.backendAccessTokenExpiresAt,
+        })
+      ) {
+        try {
+          const refreshed = await refreshBackendAccessToken({
+            backendBaseUrl: getBackendBaseUrl(),
+            refreshToken: token.backendRefreshToken,
+          });
+          applyBackendLoginPayload(token, refreshed);
+          if (refreshed.user?.id) token.backendUserId = refreshed.user.id;
+          if (refreshed.user?.username) token.username = refreshed.user.username;
+          if (refreshed.user?.display_name) token.displayName = refreshed.user.display_name;
+          if (isCreatorJobsAccountType(refreshed.user?.account_type)) {
+            token.accountType = refreshed.user.account_type;
+          }
+          token.accountTypeSelectedAt = refreshed.user?.account_type_selected_at || null;
+          if (isCreatorJobsOnboardingIntent(refreshed.user?.onboarding_intent)) {
+            token.onboardingIntent = refreshed.user.onboarding_intent;
+          }
+          token.onboardingIntentSelectedAt = refreshed.user?.onboarding_intent_selected_at || null;
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[auth] Backend token refresh failed: ${message}`);
+          }
+          markBackendRefreshFailed(token);
+        }
+      }
       return token;
     },
     async session({ session, token }) {
-      session.backendAccessToken = token.backendAccessToken as string | undefined;
-      session.backendTokenType = token.backendTokenType as string | undefined;
-      session.backendUserId = token.backendUserId as string | undefined;
+      const backendSession = buildSafeBackendSessionFields(token);
+      session.backendAccessToken = backendSession.backendAccessToken;
+      session.backendTokenType = backendSession.backendTokenType;
+      session.backendUserId = backendSession.backendUserId;
+      session.backendAccessTokenExpiresAt = backendSession.backendAccessTokenExpiresAt;
+      session.backendAuthError = backendSession.backendAuthError;
       session.user = {
         ...session.user,
         accessToken: token.accessToken as string | undefined,

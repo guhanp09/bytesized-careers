@@ -3,6 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Motion system — one ease-out for UI, one emphasized curve for entrances. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 130ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }
 
 @theme inline {
@@ -22,7 +29,50 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist is loaded as a CSS variable in layout.tsx; make it the base typeface
+     (previously the base fell back to Arial, undercutting the premium feel). */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Themed text selection — the default OS-blue reads as unfinished on a dark surface. */
+::selection {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* Thin, low-contrast scrollbars to match the dark, minimal surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+/* Baseline keyboard-focus ring. Components that opt into a custom ring set
+   `focus-visible:outline-none` (+ their own ring), so this only fills the gaps
+   for controls that currently have no focus treatment — no double rings. */
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 [data-profile-scope] button:not(:disabled),
@@ -34,6 +84,74 @@ body {
 [data-profile-scope] button:disabled,
 [data-profile-scope] [aria-disabled="true"] {
   cursor: not-allowed;
+}
+
+/* ----- Shared, reusable polish utilities (used app-wide, not just home) ----- */
+
+@keyframes ui-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Shimmer skeleton: a sweeping highlight instead of a flat opacity pulse. */
+.ui-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ui-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+  animation: ui-shimmer 1.6s var(--ease-out) infinite;
+}
+
+@keyframes ui-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Modal chrome: backdrop fades, panel scales+rises in. */
+.ui-modal-backdrop {
+  animation: ui-fade-in 180ms var(--ease-out) both;
+}
+.ui-modal-panel {
+  animation: ui-modal-in 200ms var(--ease-emphasized) both;
+}
+
+/* Crossfade for swapped detail content (Applications pane, profile tabs). */
+.ui-crossfade {
+  animation: ui-fade-in 220ms var(--ease-out) both;
+}
+
+/* Tactile press for interactive surfaces that opt in. */
+.ui-press {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.ui-press:active {
+  transform: scale(0.97);
 }
 
 @keyframes home-rise {
@@ -415,5 +533,18 @@ body {
 
   .roles-marquee ul[aria-hidden="true"] {
     display: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  .ui-skeleton::after,
+  .ui-modal-backdrop,
+  .ui-modal-panel,
+  .ui-crossfade,
+  .ui-press {
+    animation: none;
+    transition: none;
   }
 }

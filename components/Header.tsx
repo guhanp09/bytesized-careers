@@ -8,7 +8,49 @@ import { Icon } from "./Icons";
 import Sidebar from "./Sidebar";
 import BrandLogo from "./BrandLogo";
 import { PostMenu } from "./marketplace/PostMenu";
-import { getMyProfile, listNotifications, markAllNotificationsRead, type BackendNotification } from "../lib/backendClient";
+import {
+  getMyProfile,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type BackendNotification,
+} from "../lib/backendClient";
+
+type NotificationIconName = React.ComponentProps<typeof Icon>["name"];
+
+const formatNotificationTime = (value: string) => {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return "";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+  if (seconds < 60) return "Just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    month: "short",
+    day: "numeric",
+  }).format(parsed);
+};
+
+const notificationIconFor = (item: BackendNotification): NotificationIconName => {
+  const source = `${item.type} ${item.category || ""} ${item.resource_type || ""}`.toLowerCase();
+
+  if (source.includes("application") || source.includes("message") || source.includes("inbox")) return "mail";
+  if (source.includes("job") || source.includes("hire")) return "briefcase";
+  if (source.includes("talent") || source.includes("interest")) return "user-plus";
+  if (source.includes("draft")) return "file";
+  if (source.includes("save")) return "bookmark";
+  if (source.includes("verified") || source.includes("publish") || source.includes("live")) return "check";
+  return "bell";
+};
 
 export default function Header() {
   const router = useRouter();
@@ -122,6 +164,20 @@ export default function Header() {
     };
   }, [isAuthed, session?.backendAccessToken, bellOpen]);
 
+  const markNotificationSeen = (notificationId: string) => {
+    const token = session?.backendAccessToken;
+    if (!token) return;
+
+    setNotifications((items) =>
+      items.map((item) => (item.id === notificationId ? { ...item, read_at: item.read_at || new Date().toISOString() } : item))
+    );
+    setUnreadCount((count) => Math.max(0, count - 1));
+
+    void markNotificationRead(token, notificationId).catch(() => {
+      // Keep the dropdown responsive; the full notifications page exposes update errors.
+    });
+  };
+
   return (
     <>
       <Suspense fallback={null}>
@@ -198,7 +254,8 @@ export default function Header() {
                   className="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                   aria-label="Notifications"
                   aria-expanded={bellOpen}
-                  aria-haspopup="menu"
+                  aria-haspopup="dialog"
+                  aria-controls="notifications-popover"
                   onClick={() => setBellOpen((open) => !open)}
                 >
                   <Icon name="bell-yt" className="w-[20px] h-[20px]" />
@@ -211,20 +268,23 @@ export default function Header() {
 
                 {bellOpen ? (
                   <div
-                    role="menu"
+                    id="notifications-popover"
+                    role="dialog"
+                    aria-labelledby="notifications-popover-title"
                     className={[
-                      "absolute right-0 mt-2 w-80 rounded-xl",
-                      "bg-[#111216] border border-white/10",
-                      "shadow-[0_20px_60px_-25px_rgba(0,0,0,0.95)]",
-                      "p-3 text-xs text-white/70",
+                      "absolute right-0 mt-2 w-[min(calc(100vw-1rem),440px)] overflow-hidden rounded-[24px]",
+                      "border border-white/[0.12] bg-[#171719] text-white/72",
+                      "shadow-[0_32px_90px_-34px_rgba(0,0,0,1)]",
                     ].join(" ")}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-white/90">Notifications</p>
+                    <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
+                      <p id="notifications-popover-title" className="text-base font-semibold text-white/92">
+                        Notifications
+                      </p>
                       {unreadCount ? (
                         <button
                           type="button"
-                          className="cursor-pointer rounded-md text-[11px] font-semibold text-white/55 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          className="cursor-pointer rounded-full px-2.5 py-1 text-[11px] font-semibold text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                           onClick={async () => {
                             const token = session?.backendAccessToken;
                             if (!token) return;
@@ -239,23 +299,99 @@ export default function Header() {
                         </button>
                       ) : null}
                     </div>
-                    <div className="mt-3 space-y-2">
+                    <div className="max-h-[72vh] overflow-y-auto py-1">
                       {notifications.length ? (
-                        notifications.slice(0, 5).map((item) => (
-                          <div key={item.id} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
-                            <p className="text-xs font-semibold text-white/84">{item.title}</p>
-                            {item.body ? <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-white/52">{item.body}</p> : null}
-                          </div>
-                        ))
+                        notifications.slice(0, 8).map((item) => {
+                          const unread = !item.read_at;
+                          const iconName = notificationIconFor(item);
+                          const row = (
+                            <div
+                              data-testid="notification-row"
+                              className={[
+                                "group relative grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 py-2.5 pl-5 pr-2 text-left transition-colors",
+                                unread ? "bg-white/[0.032] hover:bg-white/[0.065]" : "hover:bg-white/[0.042]",
+                              ].join(" ")}
+                            >
+                              {unread ? (
+                                <span
+                                  data-testid="notification-unread-dot"
+                                  aria-hidden="true"
+                                  className="absolute left-1.5 top-[27px] h-2 w-2 rounded-full bg-white"
+                                />
+                              ) : null}
+                              <span className="sr-only">{unread ? "Unread notification" : "Read notification"}</span>
+                              <span
+                                aria-hidden="true"
+                                className={[
+                                  "mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-full border",
+                                  unread
+                                    ? "border-white/[0.18] bg-white/[0.12] text-white"
+                                    : "border-white/[0.1] bg-white/[0.06] text-white/52",
+                                ].join(" ")}
+                              >
+                                <Icon name={iconName} className="h-[18px] w-[18px]" />
+                              </span>
+                              <span className="min-w-0">
+                                <span
+                                  className={[
+                                    "block text-sm font-semibold leading-5",
+                                    unread ? "text-white/92" : "text-white/68",
+                                  ].join(" ")}
+                                >
+                                  {item.title}
+                                </span>
+                                {item.body ? (
+                                  <span className="mt-0.5 block line-clamp-2 text-[12px] leading-5 text-white/52">
+                                    {item.body}
+                                  </span>
+                                ) : null}
+                                <span className="mt-1.5 block text-[11px] font-medium text-white/38">
+                                  {formatNotificationTime(item.created_at)}
+                                </span>
+                              </span>
+                            </div>
+                          );
+
+                          if (item.action_url) {
+                            return (
+                              <Link
+                                key={item.id}
+                                href={item.action_url}
+                                className="block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+                                onClick={() => {
+                                  setBellOpen(false);
+                                  if (unread) markNotificationSeen(item.id);
+                                }}
+                              >
+                                {row}
+                              </Link>
+                            );
+                          }
+
+                          if (unread) {
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="block w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+                                onClick={() => markNotificationSeen(item.id)}
+                              >
+                                {row}
+                              </button>
+                            );
+                          }
+
+                          return <div key={item.id}>{row}</div>;
+                        })
                       ) : (
-                        <p className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-4 text-center text-xs text-white/50">
+                        <p className="px-4 py-8 text-center text-sm text-white/48">
                           No notifications yet.
                         </p>
                       )}
                     </div>
                     <Link
                       href="/notifications"
-                      className="mt-3 block cursor-pointer rounded-xl border border-white/10 px-3 py-2 text-center text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="block cursor-pointer border-t border-white/[0.08] px-4 py-2.5 text-center text-sm font-semibold text-white/72 transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
                       onClick={() => setBellOpen(false)}
                     >
                       View all notifications

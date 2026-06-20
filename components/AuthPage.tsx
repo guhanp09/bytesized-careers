@@ -5,41 +5,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Icon } from "../components/Icons";
-import type { BackendOnboardingIntent } from "../lib/backendClient";
 import { registerWithEmail, resendVerification } from "../lib/backendClient";
 import { shouldShowDevEmailInboxLink } from "../lib/devEmailInbox";
 
 type AuthMode = "login" | "signup";
-type IntentOption = BackendOnboardingIntent;
 
 const parseMode = (value: string | null): AuthMode => (value === "signup" ? "signup" : "login");
 const USERNAME_RE = /^[a-z0-9][a-z0-9_]{2,19}$/;
-const INTENT_OPTIONS: Array<{
-  value: IntentOption;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "LOOKING_FOR_WORK",
-    label: "I am looking for work",
-    description: "Build a profile and find creator-led team opportunities.",
-  },
-  {
-    value: "HIRING_CREATOR_TALENT",
-    label: "I am hiring content talent",
-    description: "Set up your profile to post roles and hire.",
-  },
-  {
-    value: "BOTH",
-    label: "I want to do both",
-    description: "Use one profile to hire and offer services.",
-  },
-  {
-    value: "DECIDE_LATER",
-    label: "I will decide later",
-    description: "Create the account now and choose next steps later.",
-  },
-];
 
 const getAuthErrorMessage = (value: string | null) => {
   switch (value) {
@@ -106,43 +78,6 @@ function getVerificationNotice(hasDirectLink = false) {
     : "Verification link created. Open the local development inbox.";
 }
 
-function IntentSelector({
-  value,
-  onChange,
-}: {
-  value: IntentOption;
-  onChange: (value: IntentOption) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold text-white/80">Initial intent</div>
-      <div className="grid gap-2">
-        {INTENT_OPTIONS.map((option) => {
-          const active = value === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={[
-                "rounded-xl border px-3 py-2 text-left transition-colors cursor-pointer",
-                active
-                  ? "border-white bg-white text-black"
-                  : "border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]",
-              ].join(" ")}
-            >
-              <span className="block text-sm font-semibold">{option.label}</span>
-              <span className={["mt-0.5 block text-xs", active ? "text-black/65" : "text-white/55"].join(" ")}>
-                {option.description}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -153,7 +88,6 @@ export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>(modeFromQuery);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
-  const [onboardingIntent, setOnboardingIntent] = useState<IntentOption>("LOOKING_FOR_WORK");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -257,12 +191,7 @@ export default function AuthPage() {
 
     setBusy(true);
     try {
-      const result = await registerWithEmail(
-        normalizedEmail,
-        password,
-        normalizedUsername,
-        onboardingIntent
-      );
+      const result = await registerWithEmail(normalizedEmail, password, normalizedUsername);
       const backendMessage = result.message || "";
       const isResentPath = backendMessage.toLowerCase().includes("isn't verified");
       const directVerificationUrl = result.verification_url || null;
@@ -294,7 +223,7 @@ export default function AuthPage() {
       await signIn(
         "google",
         {
-          callbackUrl: `/auth/onboarding-intent?next=${encodeURIComponent(nextAfterAuth)}`,
+          callbackUrl: nextAfterAuth,
         },
         {
           prompt: "consent select_account",
@@ -413,7 +342,6 @@ export default function AuthPage() {
           </form>
         ) : (
           <form className="mt-5 space-y-3" onSubmit={registerAccount}>
-            <IntentSelector value={onboardingIntent} onChange={setOnboardingIntent} />
             <input
               type="text"
               value={username}

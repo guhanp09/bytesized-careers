@@ -46,6 +46,7 @@ type PortfolioStatus = "now" | "past";
 type Visibility = "public" | "private";
 type PublishStatus = "draft" | "published";
 type ThumbnailOption = { quality?: string; url: string; width?: number; height?: number };
+const REQUIRED_ROLE_ERROR = "Enter your role before continuing.";
 
 type PortfolioDraft = {
   title: string;
@@ -665,18 +666,36 @@ export function AddWorkSampleCard({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="group flex h-full cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] text-left shadow-[0_18px_50px_-34px_rgba(0,0,0,0.95)] transition-colors hover:border-white/18 hover:bg-white/[0.055] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-white/10 disabled:hover:bg-white/[0.03]"
+      aria-label="Create portfolio project"
+      className="group flex h-full cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] text-left shadow-[0_18px_50px_-34px_rgba(0,0,0,0.95)] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.05] hover:shadow-[0_24px_60px_-34px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/20 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-white/10 disabled:hover:bg-white/[0.03] disabled:hover:shadow-[0_18px_50px_-34px_rgba(0,0,0,0.95)]"
     >
       <div className="flex w-full flex-col">
-        <div className="aspect-video bg-white/[0.032] p-4">
-          <div className="flex h-full items-center justify-center rounded-xl border border-white/10 bg-black/20 text-white/68 transition-colors group-hover:border-white/16 group-hover:bg-white/[0.045] group-hover:text-white">
-            <Icon name="plus" className="h-10 w-10" />
+        <div className="relative aspect-video overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.018))]">
+          <div className="absolute inset-0 bg-black/8 transition-colors duration-200 group-hover:bg-black/[0.03]" />
+          <div className="absolute inset-0 flex items-center justify-center text-white/52 transition-colors duration-200 group-hover:text-white/78">
+            <div className="flex flex-col items-center gap-3">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/12 bg-white/[0.035] shadow-[0_16px_40px_-26px_rgba(0,0,0,1)] transition-colors duration-200 group-hover:border-white/22 group-hover:bg-white/[0.06]">
+                <Icon name="plus" className="h-7 w-7 transition-colors duration-200 group-hover:text-white/92" />
+              </span>
+              <span className="text-[12px] font-semibold tracking-[0.16em] text-white/74 transition-colors duration-200 group-hover:text-white/92">
+                ADD PROJECT
+              </span>
+            </div>
           </div>
         </div>
+
         <div className="flex flex-1 flex-col p-4">
-          <h3 className="text-base font-semibold text-white/92">Add project</h3>
-          <p className="mt-1 text-sm text-white/56">Paste a link to start</p>
-          <p className="mt-auto pt-3 text-xs text-white/40">Link · role · tools · cover</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-white/48">
+              Platform
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <p className="text-[16px] font-semibold leading-snug text-white/86">Project title</p>
+            <p className="text-sm font-medium text-white/58">Role</p>
+            <p className="text-xs text-white/40">Source · date</p>
+          </div>
         </div>
       </div>
     </button>
@@ -1211,6 +1230,10 @@ export default function PortfolioProjectWorkspace({
       setLocalError("Keep a project link attached before continuing.");
       return;
     }
+    if (editorStep === 2 && !draft.roleName.trim()) {
+      setLocalError(REQUIRED_ROLE_ERROR);
+      return;
+    }
     if (editorStep === 0) {
       const normalizedUrl = normalizeProjectUrl(draft.sourceUrl);
       if (!normalizedUrl) {
@@ -1422,13 +1445,25 @@ export default function PortfolioProjectWorkspace({
               />
             </label>
             <label className="block">
-              <span className="text-xs font-semibold text-white/55">Your role</span>
+              <span className="text-xs font-semibold text-white/55">
+                Your role <span className="text-amber-200">*</span>
+              </span>
               <input
                 list="portfolio-project-role-options"
-                className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                aria-invalid={localError === REQUIRED_ROLE_ERROR}
+                className={`mt-2 h-11 w-full rounded-xl border bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 ${
+                  localError === REQUIRED_ROLE_ERROR
+                    ? "border-amber-200/50 focus:border-amber-200/70"
+                    : "border-white/10"
+                }`}
                 placeholder="e.g. Video Editor, Thumbnail Designer, Scriptwriter"
                 value={draft.roleName}
-                onChange={(event) => setDraft((prev) => ({ ...prev, roleName: event.target.value }))}
+                onChange={(event) => {
+                  setDraft((prev) => ({ ...prev, roleName: event.target.value }));
+                  if (localError === REQUIRED_ROLE_ERROR) {
+                    setLocalError(null);
+                  }
+                }}
               />
             </label>
             <label className="block">

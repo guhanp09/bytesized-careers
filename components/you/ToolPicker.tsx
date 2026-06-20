@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Icon } from "../Icons";
 
 type ToolPickerProps = {
   value: string[];
   onChange: (nextTools: string[]) => void;
+  label?: string;
+  placeholder?: string;
+  className?: string;
+  inputId?: string;
 };
 
 const TOOL_CATEGORIES = [
@@ -239,7 +243,16 @@ export function formatToolString(tools: string[]) {
   return cleanToolList(tools).join(", ");
 }
 
-export default function ToolPicker({ value, onChange }: ToolPickerProps) {
+export default function ToolPicker({
+  value,
+  onChange,
+  label = "Tools",
+  placeholder = "Premiere Pro, CapCut, Figma, YouTube Studio...",
+  className = "space-y-3 md:col-span-2",
+  inputId,
+}: ToolPickerProps) {
+  const fallbackId = useId();
+  const resolvedInputId = inputId || fallbackId;
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<(typeof TOOL_CATEGORIES)[number]["name"]>("Popular");
   const selectedKeys = useMemo(() => new Set(value.map(normalizeToolKey)), [value]);
@@ -299,21 +312,23 @@ export default function ToolPicker({ value, onChange }: ToolPickerProps) {
   };
 
   return (
-    <div className="space-y-3 md:col-span-2">
-      <label htmlFor="profile-tools-picker" className="text-xs text-white/55">
-        Tools
-      </label>
+    <div className={className}>
+      {label ? (
+        <label htmlFor={resolvedInputId} className="text-xs text-white/55">
+          {label}
+        </label>
+      ) : null}
 
       <div className="relative">
         <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
         <input
-          id="profile-tools-picker"
+          id={resolvedInputId}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] pl-9 pr-3 text-sm text-white placeholder:text-white/35 focus:border-white/28 focus:outline-none focus:ring-2 focus:ring-white/10"
-          placeholder="Premiere Pro, CapCut, Figma, YouTube Studio..."
+          placeholder={placeholder}
         />
       </div>
 

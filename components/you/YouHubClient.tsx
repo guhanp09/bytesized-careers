@@ -17,6 +17,7 @@ import {
   BackendProfileResponse,
   BackendRole,
   createMyPortfolioItem,
+  canUseLocalMockFallback,
   deleteMyPortfolioItem,
   exchangeGoogleOAuthForBackend,
   getMyContentStyle,
@@ -24,6 +25,7 @@ import {
   getMyProfile,
   getMyRoles,
   isBackendAuthError,
+  isProductionRuntime,
   listContentStyleNiches,
   listJobsWithMeta,
   listMyHiringIdentities,
@@ -37,6 +39,7 @@ import {
   upsertMyRoles,
   upsertGoogleOAuthForMe,
   uploadMyAvatar,
+  uploadMyBanner,
   updateMyPortfolioItem,
   updateMyProfile,
 } from "../../lib/backendClient";
@@ -54,12 +57,20 @@ import ProfileExperienceList from "../profile/ProfileExperienceList";
 import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "../profile/ProfileReviews";
 import SocialIconRow from "../profile/SocialIconRow";
 import { TagPill } from "../ui";
-import ApplicationsWorkspace from "./ApplicationsWorkspace";
+import OwnerSavedTab from "./OwnerSavedTab";
 import PortfolioProjectWorkspace from "./PortfolioProjectWorkspace";
 import AddWorkSampleChoiceModal, { type WorkSampleAction, type WorkSampleSourceType } from "./AddWorkSampleChoiceModal";
+import LocationAutocompleteField from "./LocationAutocompleteField";
 import ToolPicker, { formatToolString, parseToolString } from "./ToolPicker";
-import { buildSocialIconLinks } from "../../lib/profileSocialLinks";
+import {
+  buildSocialIconLinks,
+  normalizeSocialProfileUrl,
+  platformDisplayName,
+} from "../../lib/profileSocialLinks";
 import { inferExperienceFromUrl, sortExperienceItems } from "../../lib/profileExperience";
+import { findLocalLocationByDisplayName } from "../../lib/localLocations";
+import { getCustomLocationValidationError, normalizeCustomLocationInput } from "../../lib/locationValidation";
+import type { LocationDetails } from "../../lib/locationTypes";
 
 type YouHubClientProps = {
   backendAccessToken?: string;
@@ -106,6 +117,7 @@ const buildOfflineProfile = (identity: OfflineProfileIdentity): BackendProfileRe
   username_last_changed_at: null,
   display_name: identity.displayName,
   headline: null,
+  bio: null,
   skills: [],
   public_links: [],
   experience: [],
@@ -162,7 +174,7 @@ const buildOfflineProfile = (identity: OfflineProfileIdentity): BackendProfileRe
   username_next_change_at: null,
 });
 
-type TopTab = "overview" | "jobs" | "portfolio" | "reviews" | "applications" | "saved";
+type TopTab = "overview" | "jobs" | "portfolio" | "reviews" | "saved";
 type OwnerProfileViewMode = "talent" | "hiring";
 type PortfolioSubTab = "now" | "past";
 type PortfolioLaunchSource = NonNullable<BackendPortfolioItem["source_type"]>;
@@ -178,6 +190,7 @@ type PortfolioLaunchRequest = {
 type InlineField =
   | "display_name"
   | "headline"
+  | "bio"
   | "skills"
   | "availability_status"
   | "location_timezone"
@@ -208,7 +221,7 @@ type OwnerInlineEditorId =
   | "work-preferences"
   | "work-model";
 
-const ALL_TABS: TopTab[] = ["overview", "jobs", "portfolio", "reviews", "applications", "saved"];
+const ALL_TABS: TopTab[] = ["overview", "jobs", "portfolio", "reviews", "saved"];
 const PAST_JOB_STATUSES = new Set(["archived", "closed", "filled", "expired"]);
 const PROJECT_TYPE_LABELS: Record<"oneOff" | "retainer" | "either", string> = {
   oneOff: "One-off",
@@ -240,10 +253,32 @@ const HIRING_PRIMARY_PLATFORM_OPTIONS: BackendHiringPrimaryPlatform[] = [
   "Both",
 ];
 type WorkingHoursMode = "flexible" | "fixed";
+type BasicsSocialLinkDraft = {
+  id: string;
+  value: string;
+};
 const DEFAULT_WORKING_HOURS_START = "09:00";
 const DEFAULT_WORKING_HOURS_END = "18:00";
 const DEFAULT_WORKING_HOURS_TIMEZONE = "IST";
 const FLEXIBLE_WORKING_HOURS_LABEL = "Flexible working hours";
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const RESERVED_PROFILE_HANDLES = new Set([
+  "you",
+  "jobs",
+  "talent",
+  "post",
+  "admin",
+  "api",
+  "login",
+  "signup",
+  "settings",
+  "applications",
+  "reviews",
+  "portfolio",
+  "search",
+  "saved",
+]);
 const RECENT_HIRE_ROLE_LABELS: Record<string, string> = {
   editing: "Video Editor",
   design: "Designer",
@@ -486,8 +521,8 @@ function ProfileNavButton({
       <span className="block pt-3 text-[15px] font-semibold leading-none">{label}</span>
       <span
         className={[
-          "absolute inset-x-2 bottom-0 h-[2.5px] rounded-full transition-colors",
-          active ? "bg-white" : "bg-white/0 group-hover:bg-white/20",
+          "absolute inset-x-2 bottom-0 h-[2.5px] origin-center rounded-full bg-white transition-[transform,opacity] duration-300 ease-out",
+          active ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-30",
         ].join(" ")}
       />
     </button>
@@ -524,7 +559,7 @@ function OwnerProfileInfoSection({
   actions,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -536,6 +571,39 @@ function OwnerProfileInfoSection({
       </div>
       <div className="mt-4">{children}</div>
     </article>
+  );
+}
+
+function InlineHelpTooltip({
+  label,
+  tooltip,
+  tooltipId,
+}: {
+  label: string;
+  tooltip: string;
+  tooltipId: string;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span>{label}</span>
+      <span className="relative inline-flex">
+        <button
+          type="button"
+          aria-label={`${label} help`}
+          aria-describedby={tooltipId}
+          className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-white/45 transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
+        >
+          <Icon name="help" className="h-3.5 w-3.5" />
+        </button>
+        <span
+          id={tooltipId}
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-white/10 bg-[#111216] px-3 py-2 text-[11px] font-medium leading-5 text-white/76 opacity-0 shadow-[0_18px_40px_-24px_rgba(0,0,0,1)] transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+        >
+          {tooltip}
+        </span>
+      </span>
+    </span>
   );
 }
 
@@ -640,80 +708,83 @@ function OwnerMetadataSidebar({
 
 function OwnerPortfolioPreviewList({ items }: { items: BackendPortfolioItem[] }) {
   return (
-    <div className="overflow-hidden">
-      <div className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {items.map((item) => (
-        <Link
-          key={`owner-overview-project-${item.id}`}
-          href={`/you/projects/${encodeURIComponent(item.id)}`}
-          aria-label={`Open project detail: ${item.title}`}
-          className="group block min-w-[340px] snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:min-w-[360px] lg:min-w-[380px]"
-        >
-          <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
-            {item.thumbnail_url ? (
-              <img
-                src={item.thumbnail_url}
-                alt={item.title}
-                className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
-              />
-            ) : (
-              <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
-                <Icon name="image" className="h-8 w-8" />
-              </div>
-            )}
-          </div>
-          <div className="p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                {sourceLabel(item.source_type, item.public_metrics?.source_type)}
-              </span>
-              {item.verification_status === "youtube_metadata_verified" ? (
+    <div className="min-w-0">
+      <div
+        aria-label="Portfolio preview"
+        className="flex snap-x snap-proximity gap-4 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {items.map((item) => (
+          <Link
+            key={`owner-overview-project-${item.id}`}
+            href={`/you/projects/${encodeURIComponent(item.id)}`}
+            aria-label={`Open project detail: ${item.title}`}
+            className="group block w-[340px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:w-[360px] lg:w-[380px]"
+          >
+            <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
+              {item.thumbnail_url ? (
+                <img
+                  src={item.thumbnail_url}
+                  alt={item.title}
+                  className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
+                />
+              ) : (
+                <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                  <Icon name="image" className="h-8 w-8" />
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                  Verified
+                  {sourceLabel(item.source_type, item.public_metrics?.source_type)}
                 </span>
+                {item.verification_status === "youtube_metadata_verified" ? (
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                    Verified
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
+              {cleanOwnerText(item.role_name || item.role || item.user_role_in_project) ? (
+                <p className="mt-1 text-sm font-medium text-white/72">
+                  {cleanOwnerText(item.role_name || item.role || item.user_role_in_project)}
+                </p>
+              ) : null}
+              {(() => {
+                const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
+                const published = formatDateShort(item.published_at || item.published_date || item.created_at);
+                const sourceLine = [
+                  item.channel_name,
+                  views ? `${views} views` : null,
+                  published,
+                  item.duration,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
+              })()}
+              {item.contribution_summary || item.description ? (
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
+                  {item.contribution_summary || item.description}
+                </p>
+              ) : null}
+              {(item.contribution_tags || []).length ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {(item.contribution_tags || []).slice(0, 4).map((tag) => (
+                    <TagPill key={`${item.id}-owner-preview-contribution-${tag}`}>{tag}</TagPill>
+                  ))}
+                </div>
+              ) : null}
+              {item.tools?.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.tools.slice(0, 4).map((tool) => (
+                    <TagPill key={`${item.id}-owner-preview-tool-${tool}`}>{tool}</TagPill>
+                  ))}
+                </div>
               ) : null}
             </div>
-            <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
-            {cleanOwnerText(item.role_name || item.role || item.user_role_in_project) ? (
-              <p className="mt-1 text-sm font-medium text-white/72">
-                {cleanOwnerText(item.role_name || item.role || item.user_role_in_project)}
-              </p>
-            ) : null}
-            {(() => {
-              const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
-              const published = formatDateShort(item.published_at || item.published_date || item.created_at);
-              const sourceLine = [
-                item.channel_name,
-                views ? `${views} views` : null,
-                published,
-                item.duration,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
-            })()}
-            {item.contribution_summary || item.description ? (
-              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
-                {item.contribution_summary || item.description}
-              </p>
-            ) : null}
-            {(item.contribution_tags || []).length ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(item.contribution_tags || []).slice(0, 4).map((tag) => (
-                  <TagPill key={`${item.id}-owner-preview-contribution-${tag}`}>{tag}</TagPill>
-                ))}
-              </div>
-            ) : null}
-            {item.tools?.length ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {item.tools.slice(0, 4).map((tool) => (
-                  <TagPill key={`${item.id}-owner-preview-tool-${tool}`}>{tool}</TagPill>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </Link>
-      ))}
+          </Link>
+        ))}
       </div>
     </div>
   );
@@ -806,6 +877,58 @@ const splitOwnerValues = (value?: string | null) =>
 const cleanOwnerList = (values: Array<string | null | undefined>) =>
   values.map((value) => cleanOwnerText(value)).filter((value): value is string => Boolean(value));
 
+const createBasicsSocialLinkDraft = (value = ""): BasicsSocialLinkDraft => ({
+  id: `social-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  value,
+});
+
+const normalizeProfileHandle = (value: string) => value.trim().replace(/^@+/, "").toLowerCase();
+
+const validateBasicsDisplayName = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "Display name is required.";
+  if (trimmed.length < 2) return "Display name must be at least 2 characters.";
+  if (trimmed.length > 80) return "Display name is too long.";
+  if (/https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}/i.test(trimmed)) {
+    return "Use your name or brand name, not a URL.";
+  }
+  if (/\s{3,}/.test(trimmed)) return "Use normal spacing in your name.";
+  return null;
+};
+
+const validateBasicsUsername = (value: string) => {
+  const normalized = normalizeProfileHandle(value);
+  if (!normalized) return "Username is required.";
+  if (normalized.length < 3 || normalized.length > 20) return "Username must be 3-20 characters.";
+  if (/\s/.test(normalized)) return "Usernames cannot contain spaces.";
+  if (/[/.]/.test(normalized) || /https?:\/\/|www\./i.test(value)) {
+    return "Use your profile username, not a URL.";
+  }
+  if (!/^[a-z0-9][a-z0-9_]{2,19}$/.test(normalized)) {
+    return "Use only lowercase letters, numbers, or underscores.";
+  }
+  if (RESERVED_PROFILE_HANDLES.has(normalized)) return "This username is reserved.";
+  return null;
+};
+
+const normalizeBasicsSocialLinks = (drafts: BasicsSocialLinkDraft[]) => {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const draft of drafts) {
+    const raw = draft.value.trim();
+    if (!raw) continue;
+    const normalized = normalizeSocialProfileUrl(raw);
+    if (!normalized.ok) {
+      return { ok: false as const, error: normalized.error };
+    }
+    const key = normalized.url.toLowerCase().replace(/\/$/, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(normalized.url);
+  }
+  return { ok: true as const, urls };
+};
+
 const formatOwnerProjectType = (value?: string | null) => {
   if (value === "oneOff" || value === "retainer" || value === "either") {
     return PROJECT_TYPE_LABELS[value];
@@ -891,6 +1014,56 @@ const EDITOR_SECTIONS: Array<{ id: EditorSectionId; label: string }> = [
   { id: "visibility", label: "Visibility" },
 ];
 
+const HEADLINE_PLACEHOLDERS = [
+  "Video editor for tech reviewers",
+  "Videographer for food vloggers in Mumbai",
+  "Thumbnail designer for finance YouTubers",
+  "Script writer for Hindi comedy pages on Instagram",
+] as const;
+
+const HEADLINE_HELP_TOOLTIP =
+  "A one-line role statement shown under your name. Make it highly specific: your primary role + your niche/platform/location.";
+
+const OWNER_BIO_EMPTY_STATE = "Add a professional introduction.";
+const TALENT_BIO_HELP_TOOLTIP =
+  "Write a short professional introduction in your own voice. Highlight what sets you apart in your niche and the kind of opportunities you're looking for (as talent seeking job opportunities).";
+const RECRUITER_BIO_HELP_TOOLTIP =
+  "Write a short professional introduction in your own voice. Explain what you create or hire for, what makes your projects distinct, and the kind of talent you want to collaborate with (as a recruiter seeking collaboration with talent).";
+
+const resolveLocationDraftForSave = ({
+  draftLocation,
+  currentLocation,
+  selectedLocation,
+}: {
+  draftLocation: string;
+  currentLocation?: string | null;
+  selectedLocation: LocationDetails | null;
+}) => {
+  const nextLocation = normalizeCustomLocationInput(draftLocation);
+  if (!nextLocation) return { displayName: "" };
+
+  const storedLocation = (currentLocation || "").trim();
+  if (selectedLocation?.displayName === nextLocation) {
+    return { displayName: selectedLocation.displayName };
+  }
+
+  const knownLocalLocation = findLocalLocationByDisplayName(nextLocation);
+  if (knownLocalLocation) {
+    return { displayName: knownLocalLocation.displayName };
+  }
+
+  if (nextLocation === storedLocation && !selectedLocation) {
+    return { displayName: nextLocation };
+  }
+
+  const customLocationError = getCustomLocationValidationError(nextLocation);
+  if (customLocationError) {
+    return { error: customLocationError };
+  }
+
+  return { displayName: nextLocation };
+};
+
 export default function YouHubClient({ backendAccessToken, mode = "display" }: YouHubClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -898,6 +1071,10 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const avatarMenuRef = useRef<HTMLDivElement | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarObjectUrlRef = useRef<string | null>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bannerObjectUrlRef = useRef<string | null>(null);
+  const basicsEditorRef = useRef<HTMLDivElement | null>(null);
+  const basicsHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoConnectHandledRef = useRef(false);
   const loadRequestIdRef = useRef(0);
   const profileLoadedRef = useRef(false);
@@ -931,6 +1108,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [hiringSaving, setHiringSaving] = useState(false);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [avatarUploadPreviewUrl, setAvatarUploadPreviewUrl] = useState<string | null>(null);
+  const [bannerSaving, setBannerSaving] = useState(false);
+  const [bannerUploadPreviewUrl, setBannerUploadPreviewUrl] = useState<string | null>(null);
+  const [basicsEditorOpen, setBasicsEditorOpen] = useState(false);
+  const [basicsSaving, setBasicsSaving] = useState(false);
+  const [basicsError, setBasicsError] = useState<string | null>(null);
+  const [basicsEditorHighlighted, setBasicsEditorHighlighted] = useState(false);
+  const [headlineGhostExampleIndex, setHeadlineGhostExampleIndex] = useState(0);
+  const [headlineGhostText, setHeadlineGhostText] = useState("");
+  const [headlineGhostDeleting, setHeadlineGhostDeleting] = useState(false);
   const [activeEditorSection, setActiveEditorSection] = useState<EditorSectionId>("basics");
   const [activeOwnerInlineEditor, setActiveOwnerInlineEditor] = useState<OwnerInlineEditorId | null>(null);
   const [workSampleChooserOpen, setWorkSampleChooserOpen] = useState(false);
@@ -950,7 +1136,10 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [inlineSavingField, setInlineSavingField] = useState<InlineField | null>(null);
 
   const [draftDisplayName, setDraftDisplayName] = useState("");
+  const [draftUsername, setDraftUsername] = useState("");
   const [draftHeadline, setDraftHeadline] = useState("");
+  const [draftBio, setDraftBio] = useState("");
+  const [draftSocialLinks, setDraftSocialLinks] = useState<BasicsSocialLinkDraft[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [experienceDraft, setExperienceDraft] = useState<BackendProfileExperienceItem[]>([]);
   const [experienceForm, setExperienceForm] = useState<ProfileExperienceDraft>(() => createEmptyExperienceForm());
@@ -960,6 +1149,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [experienceCreateFocusNonce, setExperienceCreateFocusNonce] = useState(0);
   const experienceCreateEditorRef = useRef<HTMLDivElement | null>(null);
   const [draftLocation, setDraftLocation] = useState("");
+  const [draftLocationSelection, setDraftLocationSelection] = useState<LocationDetails | null>(null);
+  const [locationDraftError, setLocationDraftError] = useState<string | null>(null);
   const [draftAvailabilityStatus, setDraftAvailabilityStatus] =
     useState<BackendProfileResponse["availability_status"]>("selective");
   const [workingHoursMode, setWorkingHoursMode] = useState<WorkingHoursMode>("flexible");
@@ -1088,7 +1279,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
 
   const hydrateFromProfile = useCallback((data: BackendProfileResponse) => {
     setDraftDisplayName(data.display_name || "");
+    setDraftUsername(data.username || "");
     setDraftHeadline(data.headline || "");
+    setDraftBio(data.bio || "");
+    const publicLinks = data.public_links || [];
+    setDraftSocialLinks(
+      publicLinks.length
+        ? publicLinks.map((url) => createBasicsSocialLinkDraft(url))
+        : [createBasicsSocialLinkDraft("")]
+    );
     setExperienceDraft(data.experience || []);
     setExperienceForm(createEmptyExperienceForm());
     setEditingExperienceId(null);
@@ -1099,6 +1298,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
         : normalizeList(data.skills)
     );
     setDraftLocation(data.location || "");
+    setDraftLocationSelection(null);
+    setLocationDraftError(null);
     setDraftAvailabilityStatus(data.availability_status || "selective");
     const parsedWorkingHours = parseWorkingHours(data.collaboration_preferences?.working_hours, data.timezone);
     setWorkingHoursMode(parsedWorkingHours.mode);
@@ -1216,19 +1417,27 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       let myProfile: BackendProfileResponse | null = null;
       let profileError: unknown = null;
       let usingOfflineProfile = false;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          myProfile = await withFreshBackendToken((token) => getMyProfile(token));
-          break;
-        } catch (err) {
-          profileError = err;
-          if (attempt === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 350));
+      const canUseOfflineShell = !isProductionRuntime() || canUseLocalMockFallback();
+
+      if (!backendToken && canUseOfflineShell) {
+        myProfile = buildOfflineProfile(offlineProfileIdentity);
+        usingOfflineProfile = true;
+        setBackendPersistenceUnavailable(true);
+      } else {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            myProfile = await withFreshBackendToken((token) => getMyProfile(token));
+            break;
+          } catch (err) {
+            profileError = err;
+            if (attempt === 0) {
+              await new Promise((resolve) => setTimeout(resolve, 350));
+            }
           }
         }
       }
       if (!myProfile) {
-        if (isBackendUnavailableError(profileError)) {
+        if (canUseOfflineShell && (isBackendUnavailableError(profileError) || !backendToken)) {
           myProfile = buildOfflineProfile(offlineProfileIdentity);
           usingOfflineProfile = true;
           setBackendPersistenceUnavailable(true);
@@ -1245,9 +1454,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       hydrateFromProfile(myProfile);
 
       if (usingOfflineProfile) {
-        setError(
-          "Backend storage is offline. This profile shell is read-only; profile and project changes will not be saved until the backend is running."
-        );
+        setError(null);
         setPortfolio([]);
         setChannelOptions([]);
         setHiringIdentities([]);
@@ -1369,6 +1576,84 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   useEffect(() => {
     if (previewParam) setPreviewDismissed(false);
   }, [previewParam]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!basicsEditorOpen) return;
+
+    const panel = basicsEditorRef.current;
+    if (!panel) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const rect = panel.getBoundingClientRect();
+    const topMargin = 88;
+    const bottomMargin = 40;
+    const fullyVisible = rect.top >= topMargin && rect.bottom <= window.innerHeight - bottomMargin;
+
+    if (!fullyVisible) {
+      panel.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "center",
+      });
+    }
+
+    setBasicsEditorHighlighted(true);
+    if (basicsHighlightTimeoutRef.current) {
+      clearTimeout(basicsHighlightTimeoutRef.current);
+    }
+    basicsHighlightTimeoutRef.current = setTimeout(() => {
+      setBasicsEditorHighlighted(false);
+      basicsHighlightTimeoutRef.current = null;
+    }, prefersReducedMotion ? 900 : 1200);
+
+    return () => {
+      if (basicsHighlightTimeoutRef.current) {
+        clearTimeout(basicsHighlightTimeoutRef.current);
+        basicsHighlightTimeoutRef.current = null;
+      }
+    };
+  }, [basicsEditorOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!basicsEditorOpen || draftHeadline.trim()) {
+      setHeadlineGhostText("");
+      setHeadlineGhostDeleting(false);
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const example = HEADLINE_PLACEHOLDERS[headlineGhostExampleIndex];
+
+    if (prefersReducedMotion) {
+      setHeadlineGhostText(example);
+      setHeadlineGhostDeleting(false);
+      return;
+    }
+
+    let timeoutMs = 55;
+    let nextAction = () => {
+      setHeadlineGhostText((current) => current + example.charAt(current.length));
+    };
+
+    if (!headlineGhostDeleting && headlineGhostText.length >= example.length) {
+      timeoutMs = 1300;
+      nextAction = () => setHeadlineGhostDeleting(true);
+    } else if (headlineGhostDeleting && headlineGhostText.length > 0) {
+      timeoutMs = 28;
+      nextAction = () => setHeadlineGhostText((current) => current.slice(0, -1));
+    } else if (headlineGhostDeleting && headlineGhostText.length === 0) {
+      timeoutMs = 260;
+      nextAction = () => {
+        setHeadlineGhostDeleting(false);
+        setHeadlineGhostExampleIndex((current) => (current + 1) % HEADLINE_PLACEHOLDERS.length);
+      };
+    }
+
+    const timeoutId = window.setTimeout(nextAction, timeoutMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [basicsEditorOpen, draftHeadline, headlineGhostDeleting, headlineGhostExampleIndex, headlineGhostText]);
 
   useEffect(() => {
     if (loading || sectionParam !== "hiring-info") return;
@@ -1846,6 +2131,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
 
   const resetLocationDraft = useCallback(() => {
     setDraftLocation(profile?.location || "");
+    setDraftLocationSelection(null);
+    setLocationDraftError(null);
     const parsedWorkingHours = parseWorkingHours(
       profile?.collaboration_preferences?.working_hours,
       profile?.timezone
@@ -2071,7 +2358,12 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       skills: selectedTools,
       experience: experienceDraft,
       availability_status: draftAvailabilityStatus || "selective",
-      location: draftLocation.trim(),
+      location:
+        resolveLocationDraftForSave({
+          draftLocation,
+          currentLocation: profile?.location,
+          selectedLocation: draftLocationSelection,
+        }).displayName ?? draftLocation.trim(),
       timezone: workingHoursMode === "fixed" ? workingHoursTimezone.trim() : "",
       project_type_preference: draftPreferenceProjectType || null,
       collaboration_turnaround: draftPreferenceTurnaround.trim(),
@@ -2093,6 +2385,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       draftHeadline,
       draftAvailabilityStatus,
       experienceDraft,
+      draftLocationSelection,
       draftHiringChannelsOrPagesManaged,
       draftHiringPrimaryPlatform,
       draftHiringType,
@@ -2102,6 +2395,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       draftPreferenceRevisions,
       draftPreferenceTurnaround,
       selectedTools,
+      profile?.location,
       workingHoursEnd,
       workingHoursMode,
       workingHoursStart,
@@ -2141,8 +2435,13 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       event.target.value = "";
       if (!file) return;
 
-      if (!file.type.startsWith("image/")) {
-        setError("Choose an image file for your avatar.");
+      if (!file.type.startsWith("image/") || !ALLOWED_AVATAR_TYPES.has(file.type)) {
+        setError("Upload an image file.");
+        return;
+      }
+
+      if (file.size > AVATAR_MAX_BYTES) {
+        setError("Image is too large.");
         return;
       }
 
@@ -2172,9 +2471,53 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
         }
         setAvatarUploadPreviewUrl(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to upload avatar.");
+        setError(err instanceof Error ? err.message : "Could not update profile photo. Try again.");
       } finally {
         setAvatarSaving(false);
+      }
+    },
+    [applyProfileUpdate, withFreshBackendToken]
+  );
+
+  const handleBannerFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        setError("Choose an image file for your banner.");
+        return;
+      }
+
+      if (bannerObjectUrlRef.current) {
+        URL.revokeObjectURL(bannerObjectUrlRef.current);
+      }
+      const objectUrl = URL.createObjectURL(file);
+      bannerObjectUrlRef.current = objectUrl;
+      setBannerUploadPreviewUrl(objectUrl);
+      setBannerSaving(true);
+      setError(null);
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const updated = await withFreshBackendToken((token) =>
+          uploadMyBanner(token, {
+            file_name: file.name || "banner",
+            content_type: file.type,
+            data_url: dataUrl,
+          })
+        );
+        applyProfileUpdate(updated);
+        if (bannerObjectUrlRef.current) {
+          URL.revokeObjectURL(bannerObjectUrlRef.current);
+          bannerObjectUrlRef.current = null;
+        }
+        setBannerUploadPreviewUrl(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to upload banner.");
+      } finally {
+        setBannerSaving(false);
       }
     },
     [applyProfileUpdate, withFreshBackendToken]
@@ -2188,6 +2531,9 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       }
       if (field === "headline") {
         return draftHeadline.trim() !== (profile.headline || "").trim();
+      }
+      if (field === "bio") {
+        return draftBio.trim() !== (profile.bio || "").trim();
       }
       if (field === "skills") {
         const storedTools = parseToolString(profile.collaboration_preferences?.tools).length
@@ -2220,6 +2566,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     [
       draftDisplayName,
       draftAvailabilityStatus,
+      draftBio,
       draftHeadline,
       draftLocation,
       draftPreferenceProjectType,
@@ -2238,19 +2585,34 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     if (!isFieldDirty(field)) {
       return;
     }
+    if (field === "location_timezone") {
+      const locationError = validateLocationDraft();
+      if (locationError) {
+        setLocationDraftError(locationError);
+        setError(locationError);
+        return false;
+      }
+    }
     setInlineSavingField(field);
     const payload: BackendProfileUpdatePayload =
       field === "display_name"
         ? { display_name: draftDisplayName.trim() }
         : field === "headline"
           ? { headline: draftHeadline.trim() }
+          : field === "bio"
+            ? { bio: draftBio.trim() }
           : field === "skills"
             ? { skills: selectedTools, collaboration_tools: formatToolString(selectedTools) }
             : field === "availability_status"
               ? { availability_status: draftAvailabilityStatus || "selective" }
             : field === "location_timezone"
               ? {
-                  location: draftLocation.trim(),
+                  location:
+                    resolveLocationDraftForSave({
+                      draftLocation,
+                      currentLocation: profile?.location,
+                      selectedLocation: draftLocationSelection,
+                    }).displayName ?? draftLocation.trim(),
                   timezone: workingHoursMode === "fixed" ? workingHoursTimezone.trim() : "",
                 }
               : {
@@ -2531,6 +2893,11 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     return selected?.thumbnail_url || profile?.avatar_url || undefined;
   }, [avatarChannelId, avatarMode, avatarUploadPreviewUrl, channelOptions, profile?.avatar_url]);
 
+  const bannerPreviewUrl = useMemo<string | undefined>(
+    () => bannerUploadPreviewUrl || profile?.banner_url || undefined,
+    [bannerUploadPreviewUrl, profile?.banner_url]
+  );
+
   const primaryDisplayName = (
     profile?.social_connections?.youtube?.connected || primaryYouTubeChannel
       ? profile?.social_connections?.youtube?.channel_title || primaryYouTubeChannel?.title
@@ -2560,7 +2927,9 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   ].filter((item): item is string => Boolean(item));
   const effectiveOwnerProfileMode: OwnerProfileViewMode = ownerProfileMode;
   const ownerExperienceItems = experienceDraft;
-  const ownerBioText = cleanOwnerText(profile?.headline);
+  const ownerBioText = cleanOwnerText(profile?.bio);
+  const ownerBioTooltip =
+    effectiveOwnerProfileMode === "hiring" ? RECRUITER_BIO_HELP_TOOLTIP : TALENT_BIO_HELP_TOOLTIP;
   const ownerReviewItems = useMemo<BackendProfileReviewItem[]>(() => profile?.review_items || [], [profile?.review_items]);
   const toggleRoleDraftSelection = (roleId: string) => {
     setSelectedRoleIds((current) =>
@@ -2568,13 +2937,125 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     );
   };
   const closeOwnerInlineEditor = () => setActiveOwnerInlineEditor(null);
+  const updateDraftLocationValue = useCallback((value: string) => {
+    setDraftLocation(value);
+    setLocationDraftError(null);
+  }, []);
+  const updateDraftLocationSelection = useCallback((location: LocationDetails | null) => {
+    setDraftLocationSelection(location);
+    setLocationDraftError(null);
+  }, []);
+  const validateLocationDraft = useCallback(() => {
+    return (
+      resolveLocationDraftForSave({
+        draftLocation,
+        currentLocation: profile?.location,
+        selectedLocation: draftLocationSelection,
+      }).error || null
+    );
+  }, [draftLocation, draftLocationSelection, profile?.location]);
+  const resetBasicsDrafts = useCallback(() => {
+    if (!profile) return;
+    hydrateFromProfile(profile);
+    setBasicsError(null);
+    setLocationDraftError(null);
+  }, [hydrateFromProfile, profile]);
+  const openBasicsEditor = () => {
+    resetBasicsDrafts();
+    setActiveOwnerInlineEditor(null);
+    setBasicsEditorOpen(true);
+  };
+  const cancelBasicsEditor = () => {
+    resetBasicsDrafts();
+    setBasicsEditorHighlighted(false);
+    setBasicsEditorOpen(false);
+  };
+  const updateBasicsSocialLink = (id: string, value: string) => {
+    setDraftSocialLinks((current) =>
+      current.map((link) => (link.id === id ? { ...link, value } : link))
+    );
+  };
+  const addBasicsSocialLink = () => {
+    setDraftSocialLinks((current) => [...current, createBasicsSocialLinkDraft("")]);
+  };
+  const removeBasicsSocialLink = (id: string) => {
+    setDraftSocialLinks((current) => {
+      const next = current.filter((link) => link.id !== id);
+      return next.length ? next : [createBasicsSocialLinkDraft("")];
+    });
+  };
+  const handleSaveBasicsEditor = async () => {
+    if (!profile) return;
+
+    const displayNameError = validateBasicsDisplayName(draftDisplayName);
+    if (displayNameError) {
+      setBasicsError(displayNameError);
+      return;
+    }
+
+    const usernameError = validateBasicsUsername(draftUsername);
+    if (usernameError) {
+      setBasicsError(usernameError);
+      return;
+    }
+
+    const normalizedSocialLinks = normalizeBasicsSocialLinks(draftSocialLinks);
+    if (!normalizedSocialLinks.ok) {
+      setBasicsError(normalizedSocialLinks.error);
+      return;
+    }
+
+    const locationError = validateLocationDraft();
+    if (locationError) {
+      setLocationDraftError(locationError);
+      setBasicsError(locationError);
+      return;
+    }
+
+    setBasicsSaving(true);
+    setProfileSaving(true);
+    setBasicsError(null);
+    setError(null);
+    try {
+      const resolvedLocation = resolveLocationDraftForSave({
+        draftLocation,
+        currentLocation: profile.location,
+        selectedLocation: draftLocationSelection,
+      });
+      await persistProfileUpdate({
+        display_name: draftDisplayName.trim().replace(/\s{2,}/g, " "),
+        username: normalizeProfileHandle(draftUsername),
+        headline: draftHeadline.trim(),
+        skills: selectedTools,
+        public_links: normalizedSocialLinks.urls,
+        location: resolvedLocation.displayName ?? draftLocation.trim(),
+        timezone: workingHoursMode === "fixed" ? workingHoursTimezone.trim() : "",
+        collaboration_working_hours: formatWorkingHours({
+          mode: workingHoursMode,
+          start: workingHoursStart,
+          end: workingHoursEnd,
+          timezone: workingHoursTimezone,
+        }),
+        collaboration_tools: formatToolString(selectedTools),
+      });
+      setBasicsEditorHighlighted(false);
+      setBasicsEditorOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save profile basics. Try again.";
+      setBasicsError(message);
+      setError(message);
+    } finally {
+      setBasicsSaving(false);
+      setProfileSaving(false);
+    }
+  };
   const openPortfolioManager = () => {
     setTab("portfolio");
     setWorkSampleChooserOpen(true);
   };
   const handleSaveBioInline = async () => {
-    const saved = await saveInlineField("headline");
-    if (saved || !isFieldDirty("headline")) {
+    const saved = await saveInlineField("bio");
+    if (saved || !isFieldDirty("bio")) {
       closeOwnerInlineEditor();
     }
   };
@@ -2877,15 +3358,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   );
   const ownerWorkModelEditor = (
     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-      <label className="space-y-1">
-        <span className="text-xs text-white/55">Location</span>
-        <input
-          value={draftLocation}
-          onChange={(event) => setDraftLocation(event.target.value)}
-          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
-          placeholder="Chennai, India"
-        />
-      </label>
+      <LocationAutocompleteField
+        value={draftLocation}
+        selectedLocation={draftLocationSelection}
+        onValueChange={updateDraftLocationValue}
+        onSelectionChange={updateDraftLocationSelection}
+        error={locationDraftError}
+        onErrorChange={setLocationDraftError}
+        size="compact"
+      />
       <div className="space-y-3">
         <p className="text-xs text-white/55">Working hours</p>
         <div className="inline-flex rounded-full border border-white/12 bg-white/[0.035] p-1">
@@ -3338,6 +3819,13 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   if (!profile) return null;
 
   const saveDirtyEditorFields = async () => {
+    const locationError = validateLocationDraft();
+    if (locationError) {
+      setLocationDraftError(locationError);
+      setError(locationError);
+      return false;
+    }
+
     setProfileSaving(true);
     setError(null);
     try {
@@ -3477,6 +3965,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     ref={avatarFileInputRef}
                     type="file"
                     accept="image/*"
+                    data-testid="avatar-upload-input"
                     className="sr-only"
                     onChange={(event) => void handleAvatarFileChange(event)}
                   />
@@ -3520,15 +4009,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     placeholder="Video editor for creator-led channels"
                   />
                 </label>
-                <label className="space-y-1">
-                  <span className="text-xs text-white/55">Location</span>
-                  <input
-                    value={draftLocation}
-                    onChange={(event) => setDraftLocation(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
-                    placeholder="Chennai, India"
-                  />
-                </label>
+                <LocationAutocompleteField
+                  value={draftLocation}
+                  selectedLocation={draftLocationSelection}
+                  onValueChange={updateDraftLocationValue}
+                  onSelectionChange={updateDraftLocationSelection}
+                  error={locationDraftError}
+                  onErrorChange={setLocationDraftError}
+                  size="compact"
+                />
                 <div id="working-hours" className="scroll-mt-24 space-y-3 md:col-span-2">
                   <p className="text-xs text-white/55">Working hours</p>
                   <div className="inline-flex rounded-full border border-white/12 bg-white/[0.035] p-1">
@@ -3917,47 +4406,96 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
 
       <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#141519] shadow-[0_28px_90px_-52px_rgba(0,0,0,1)]">
         <div className="group/banner relative min-h-[150px] border-b border-white/10 bg-[#18191d] sm:min-h-[226px]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.16),transparent_30%),radial-gradient(circle_at_78%_6%,rgba(255,255,255,0.08),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.018)_48%,rgba(0,0,0,0.28))]" />
+          {bannerPreviewUrl ? (
+            <img
+              src={bannerPreviewUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.16),transparent_30%),radial-gradient(circle_at_78%_6%,rgba(255,255,255,0.08),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.018)_48%,rgba(0,0,0,0.28))]" />
+          )}
           <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#141519] to-transparent" />
           {isOwnerView ? (
-            <Link
-              href="/you/edit#banner"
-              title="Banner upload is not available yet"
-              className="pointer-events-none absolute inset-0 z-10 flex cursor-pointer items-center justify-center text-center opacity-0 transition-opacity duration-200 focus-within:pointer-events-auto focus-within:opacity-100 group-hover/banner:pointer-events-auto group-hover/banner:opacity-100"
-            >
-              <span className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-white/62 backdrop-blur-sm transition-colors hover:bg-black/28 hover:text-white/78">
-                <Icon name="image" className="mx-auto h-7 w-7" />
-                <span className="mt-2 block text-sm font-semibold">Add banner image</span>
-                <span className="mt-1 block text-xs text-white/42">Recommended 3200 × 410px</span>
-              </span>
-            </Link>
+            <>
+              <input
+                ref={bannerFileInputRef}
+                type="file"
+                accept="image/*"
+                data-testid="banner-upload-input"
+                className="sr-only"
+                onChange={(event) => void handleBannerFileChange(event)}
+              />
+              <button
+                type="button"
+                onClick={() => bannerFileInputRef.current?.click()}
+                disabled={bannerSaving}
+                aria-label={bannerPreviewUrl ? "Change banner image" : "Add banner image"}
+                className="group/bannerbtn absolute inset-0 z-10 flex cursor-pointer items-center justify-center text-center opacity-0 transition-opacity duration-200 hover:opacity-100 focus-visible:opacity-100 focus:outline-none disabled:cursor-not-allowed"
+              >
+                <span className="rounded-2xl border border-white/10 bg-black/30 px-5 py-4 text-white/72 backdrop-blur-sm transition-colors group-hover/bannerbtn:bg-black/40 group-hover/bannerbtn:text-white/90">
+                  <Icon name="image" className="mx-auto h-7 w-7" />
+                  <span className="mt-2 block text-sm font-semibold">
+                    {bannerSaving
+                      ? "Uploading…"
+                      : bannerPreviewUrl
+                        ? "Change banner image"
+                        : "Add banner image"}
+                  </span>
+                  <span className="mt-1 block text-xs text-white/42">Recommended 3200 × 410px</span>
+                </span>
+              </button>
+            </>
           ) : null}
         </div>
 
         <div className="px-5 pb-6 sm:px-8 sm:pb-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex flex-col gap-4 sm:flex-row sm:items-start">
-              <div ref={avatarMenuRef} className="relative z-10 -mt-8 shrink-0 sm:-mt-12">
+              <div ref={avatarMenuRef} className="group/avatarwrap relative z-10 -mt-8 shrink-0 sm:-mt-12">
+                <input
+                  ref={avatarFileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  data-testid="owner-avatar-upload-input"
+                  className="sr-only"
+                  onChange={(event) => void handleAvatarFileChange(event)}
+                />
                 <button
                   type="button"
                   onClick={() => setAvatarMenuOpen((prev) => !prev)}
-                  className="h-28 w-28 aspect-square overflow-hidden rounded-[28px] border border-white/20 bg-[#2a2b30] shadow-[0_24px_70px_-34px_rgba(0,0,0,1)] inline-flex items-center justify-center transition-colors hover:border-white/30 hover:bg-white/[0.12] sm:h-[136px] sm:w-[136px] cursor-pointer"
-                  aria-label="Select avatar mode"
+                  className="group/avatar relative h-28 w-28 aspect-square overflow-hidden rounded-[28px] border border-white/20 bg-[#2a2b30] shadow-[0_24px_70px_-34px_rgba(0,0,0,1)] inline-flex items-center justify-center transition-[border-color,box-shadow,background-color] hover:border-white/30 hover:bg-white/[0.09] focus:outline-none focus:ring-2 focus:ring-white/18 sm:h-[136px] sm:w-[136px] cursor-pointer"
+                  aria-label="Change profile photo"
                 >
                   {avatarPreviewUrl ? (
                     <img
                       src={avatarPreviewUrl}
                       alt={profile.display_name || profile.username || "Profile avatar"}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover transition duration-200 group-hover/avatar:brightness-[0.72] group-focus-visible/avatar:brightness-[0.72]"
                     />
                   ) : (
                     <GenericAvatar />
                   )}
+                  <span className="pointer-events-none absolute inset-0 bg-black/0 opacity-0 transition-[background-color,opacity] duration-200 group-hover/avatar:bg-black/24 group-hover/avatar:opacity-100 group-focus-visible/avatar:bg-black/24 group-focus-visible/avatar:opacity-100" />
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-[opacity,transform] duration-200 group-hover/avatar:scale-100 group-hover/avatar:opacity-100 group-focus-visible/avatar:scale-100 group-focus-visible/avatar:opacity-100">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/18 bg-black/42 text-white/88 shadow-[0_14px_30px_-18px_rgba(0,0,0,1)] backdrop-blur-md">
+                      <Icon name="image" className="h-4 w-4" />
+                    </span>
+                  </span>
                 </button>
 
                 {avatarMenuOpen ? (
                   <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-72 rounded-2xl border border-white/15 bg-[#111216] p-3 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.95)]">
                     <p className="text-xs text-white/55">Avatar source</p>
+                    <button
+                      type="button"
+                      onClick={() => avatarFileInputRef.current?.click()}
+                      disabled={avatarSaving || profileSaving}
+                      className="mt-2 w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60 inline-flex items-center justify-between"
+                    >
+                      <span>{avatarSaving ? "Uploading photo..." : "Upload image"}</span>
+                      <Icon name="image" className="h-4 w-4 text-white/58" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void updateAvatarMode("generic")}
@@ -4040,16 +4578,17 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <h1 className="max-w-full break-words text-[36px] font-semibold leading-[1.04] tracking-tight text-white sm:text-[46px] lg:text-[52px]">
                     {primaryDisplayName}
                   </h1>
-                  <Link
-                    href="/you/edit"
+                  <button
+                    type="button"
+                    onClick={openBasicsEditor}
                     aria-label="Edit profile"
                     className="group/action relative mt-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/[0.045] hover:text-white/86 focus:outline-none focus:ring-2 focus:ring-white/15"
                   >
                     <Icon name="pencil" className="h-4 w-4" />
                     <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-[#111216] px-2 py-1 text-[11px] font-semibold text-white/72 opacity-0 shadow-[0_14px_35px_-22px_rgba(0,0,0,1)] transition-opacity group-hover/action:opacity-100 group-focus-visible/action:opacity-100">
-                      Edit profile
+                      Edit basics
                     </span>
-                  </Link>
+                  </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[15px] font-medium text-white/55">
                   {heroMetadataParts.map((part, index) => (
@@ -4067,6 +4606,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <p className="text-sm leading-6 text-white/54 sm:text-[15px]">{heroToolsValue}</p>
                 </div>
 
+                <SocialIconRow links={ownerSocialIconLinks} />
+
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">
                   <RatingDisplay />
                   {profile.profile_capabilities?.hasVerifiedSocialOrChannel ? (
@@ -4080,8 +4621,6 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     </span>
                   ) : null}
                 </div>
-
-                <SocialIconRow links={ownerSocialIconLinks} />
               </div>
             </div>
 
@@ -4111,6 +4650,220 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
               </div>
             </div>
           </div>
+          {basicsEditorOpen ? (
+            <div
+              ref={basicsEditorRef}
+              data-testid="owner-basics-inline-editor"
+              aria-label="Edit profile basics"
+              className={[
+                "mt-6 rounded-2xl border bg-white/[0.035] p-4 transition-[border-color,box-shadow,background-color] duration-500 sm:p-5",
+                basicsEditorHighlighted
+                  ? "border-white/24 bg-white/[0.05] shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_60px_-38px_rgba(255,255,255,0.28)]"
+                  : "border-white/10",
+              ].join(" ")}
+            >
+              <span className="sr-only">Edit profile basics</span>
+
+              {basicsError ? (
+                <p className="rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs text-amber-100">
+                  {basicsError}
+                </p>
+              ) : null}
+
+              <div className={[basicsError ? "mt-4" : "mt-0", "grid gap-4 md:grid-cols-2"].join(" ")}>
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold text-white/55">Display name</span>
+                  <input
+                    value={draftDisplayName}
+                    onChange={(event) => setDraftDisplayName(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                    placeholder="Your name or brand"
+                    maxLength={80}
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold text-white/55">Username</span>
+                  <div className="flex h-11 items-center rounded-xl border border-white/10 bg-black/18 px-3 transition-colors focus-within:border-white/24">
+                    <span className="text-sm text-white/38">@</span>
+                    <input
+                      value={draftUsername}
+                      onChange={(event) => setDraftUsername(event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-white/28"
+                      placeholder="your_profile"
+                      maxLength={30}
+                    />
+                  </div>
+                </label>
+
+                <LocationAutocompleteField
+                  value={draftLocation}
+                  selectedLocation={draftLocationSelection}
+                  onValueChange={updateDraftLocationValue}
+                  onSelectionChange={updateDraftLocationSelection}
+                  error={locationDraftError}
+                  onErrorChange={setLocationDraftError}
+                  size="spacious"
+                />
+
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-white/55">Working hours</span>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      ["flexible", "Flexible"],
+                      ["fixed", "Set hours"],
+                    ] as const).map(([nextMode, label]) => (
+                      <button
+                        key={`basics-working-hours-${nextMode}`}
+                        type="button"
+                        aria-pressed={workingHoursMode === nextMode}
+                        onClick={() => setWorkingHoursMode(nextMode)}
+                        className={[
+                          "h-9 cursor-pointer rounded-xl border px-3 text-xs font-semibold transition-colors",
+                          workingHoursMode === nextMode
+                            ? "border-white bg-white text-black"
+                            : "border-white/10 bg-white/[0.03] text-white/58 hover:bg-white/[0.07] hover:text-white",
+                        ].join(" ")}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {workingHoursMode === "fixed" ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="time"
+                        value={workingHoursStart}
+                        onChange={(event) => setWorkingHoursStart(event.target.value)}
+                        className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none focus:border-white/24"
+                      />
+                      <input
+                        type="time"
+                        value={workingHoursEnd}
+                        onChange={(event) => setWorkingHoursEnd(event.target.value)}
+                        className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none focus:border-white/24"
+                      />
+                      <input
+                        value={workingHoursTimezone}
+                        onChange={(event) => setWorkingHoursTimezone(event.target.value)}
+                        className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                        placeholder="IST"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <label className="space-y-2 md:col-span-2">
+                  <span className="flex items-center gap-2 text-xs font-semibold text-white/55">
+                    <span>Headline</span>
+                    <span className="relative inline-flex">
+                      <button
+                        type="button"
+                        aria-label="Headline help"
+                        aria-describedby="headline-help-tooltip"
+                        className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-white/45 transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
+                      >
+                        <Icon name="help" className="h-3.5 w-3.5" />
+                      </button>
+                      <span
+                        id="headline-help-tooltip"
+                        role="tooltip"
+                        className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-white/10 bg-[#111216] px-3 py-2 text-[11px] font-medium leading-5 text-white/76 opacity-0 shadow-[0_18px_40px_-24px_rgba(0,0,0,1)] transition-opacity duration-150 peer-hover:opacity-100 peer-focus-visible:opacity-100"
+                      >
+                        {HEADLINE_HELP_TOOLTIP}
+                      </span>
+                    </span>
+                  </span>
+                  <div className="relative">
+                    <input
+                      value={draftHeadline}
+                      onChange={(event) => setDraftHeadline(event.target.value)}
+                      className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                      placeholder=""
+                      maxLength={160}
+                    />
+                    {!draftHeadline.trim() ? (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-3 right-3 flex items-center overflow-hidden whitespace-nowrap text-sm text-white/28"
+                      >
+                        <span className="truncate">{headlineGhostText}</span>
+                        <span className="ml-0.5 h-4 border-l border-white/35 motion-safe:animate-pulse" />
+                      </span>
+                    ) : null}
+                  </div>
+                </label>
+
+                <div className="space-y-2 md:col-span-2">
+                  <span className="text-xs font-semibold text-white/55">Tools</span>
+                  <ToolPicker value={selectedTools} onChange={setSelectedTools} />
+                </div>
+
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-white/55">Social links</span>
+                    <button
+                      type="button"
+                      onClick={addBasicsSocialLink}
+                      className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-white/54 transition-colors hover:text-white"
+                    >
+                      <Icon name="plus" className="h-3.5 w-3.5" />
+                      Add another link
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {draftSocialLinks.map((link) => {
+                      const normalized = normalizeSocialProfileUrl(link.value);
+                      const detection = normalized.ok ? normalized.detection : null;
+                      return (
+                        <div key={link.id} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
+                          <input
+                            value={link.value}
+                            onChange={(event) => updateBasicsSocialLink(link.id, event.target.value)}
+                            className="h-11 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                            placeholder="https://instagram.com/yourhandle"
+                          />
+                          <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.025] px-3 text-xs font-semibold text-white/58">
+                            <Icon name={detection?.icon || "globe"} className="h-3.5 w-3.5" />
+                            <span className="truncate">
+                              {detection ? `${platformDisplayName(detection.platform)} detected` : "Platform detected"}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeBasicsSocialLink(link.id)}
+                            aria-label="Remove social link"
+                            className="h-11 cursor-pointer rounded-xl border border-white/10 bg-white/[0.025] px-3 text-xs font-semibold text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={cancelBasicsEditor}
+                  disabled={basicsSaving}
+                  className="h-9 cursor-pointer rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-semibold text-white/62 transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveBasicsEditor()}
+                  disabled={basicsSaving || profileSaving || backendPersistenceUnavailable}
+                  className="h-9 cursor-pointer rounded-xl bg-white px-4 text-xs font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {basicsSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       <nav className="overflow-x-auto border-b border-white/[0.08] px-5 pt-1 sm:px-8">
         <div className="flex min-w-max items-end gap-8">
@@ -4119,7 +4872,6 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             ...(effectiveOwnerProfileMode === "talent" ? [{ key: "portfolio" as TopTab, label: "Portfolio" }] : []),
             ...(effectiveOwnerProfileMode === "hiring" ? [{ key: "jobs" as TopTab, label: "Jobs" }] : []),
             { key: "reviews" as TopTab, label: "Reviews" },
-            { key: "applications" as TopTab, label: "Applications" },
             { key: "saved" as TopTab, label: "Saved" },
           ].map((item) => (
             <ProfileNavButton
@@ -4146,7 +4898,13 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             <div className="grid w-full max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
               <div className="min-w-0">
                 <OwnerProfileInfoSection
-                  title="Bio"
+                  title={
+                    <InlineHelpTooltip
+                      label="Bio"
+                      tooltip={ownerBioTooltip}
+                      tooltipId={`owner-bio-help-${effectiveOwnerProfileMode}`}
+                    />
+                  }
                   actions={
                     <OwnerInlineActionButton
                       label={ownerBioText ? "Edit" : "Add"}
@@ -4158,19 +4916,20 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   {activeOwnerInlineEditor === "bio" ? (
                     <div className="max-w-3xl rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                       <textarea
-                        value={draftHeadline}
-                        onChange={(event) => setDraftHeadline(event.target.value)}
+                        value={draftBio}
+                        onChange={(event) => setDraftBio(event.target.value)}
                         autoFocus
                         className="min-h-[124px] w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-white/15"
-                        placeholder="Add a short professional introduction so visitors understand what you do."
+                        placeholder={OWNER_BIO_EMPTY_STATE}
+                        maxLength={1200}
                       />
                       <OwnerInlineEditorActions
                         onCancel={() => {
-                          setDraftHeadline(profile?.headline || "");
+                          setDraftBio(profile?.bio || "");
                           closeOwnerInlineEditor();
                         }}
                         onSave={() => void handleSaveBioInline()}
-                        saving={inlineSavingField === "headline"}
+                        saving={inlineSavingField === "bio"}
                         saveLabel="Save bio"
                       />
                     </div>
@@ -4178,7 +4937,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     <p className="max-w-3xl text-sm leading-6 text-white/68 sm:text-[15px]">{ownerBioText}</p>
                   ) : (
                     <p className="max-w-3xl text-sm leading-6 text-white/46 sm:text-[15px]">
-                      Add a short professional introduction so visitors understand what you do.
+                      {OWNER_BIO_EMPTY_STATE}
                     </p>
                   )}
                 </OwnerProfileInfoSection>
@@ -4771,24 +5530,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
             </div>
           ) : null}
 
-          {visibleOwnerTab === "applications" ? (
-            <ApplicationsWorkspace
-              key={`applications-${effectiveOwnerProfileMode}`}
-              mode={effectiveOwnerProfileMode}
-            />
-          ) : null}
-
           {visibleOwnerTab === "saved" ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-6 text-center">
-              <p className="text-sm text-white/70">No saved jobs yet.</p>
-              <Link
-                href="/"
-                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-black hover:bg-white/90 cursor-pointer"
-              >
-                <Icon name="search" className="h-4 w-4 mr-2" />
-                Browse jobs
-              </Link>
-            </div>
+            <OwnerSavedTab backendAccessToken={resolvedBackendAccessToken} />
           ) : null}
             </div>
           </section>

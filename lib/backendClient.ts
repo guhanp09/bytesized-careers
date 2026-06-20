@@ -78,6 +78,7 @@ export type BackendJob = {
   requirements?: string[] | null;
   how_to_apply?: string | null;
   howToApply?: string | null;
+  tools?: string[] | null;
   reference_videos?: unknown;
   referenceVideos?: unknown;
   tags?: string[] | null;
@@ -101,6 +102,7 @@ export type BackendJob = {
   hiring_display_name_snapshot?: string | null;
   hiring_platform_snapshot?: string | null;
   hiring_verification_status_snapshot?: string | null;
+  hiring_external_url_snapshot?: string | null;
   managed_by_agency_name_snapshot?: string | null;
   views?: number | null;
   applicants?: number | null;
@@ -128,7 +130,7 @@ type BackendListResponse = {
 };
 
 type BackendErrorShape = {
-  detail?: string;
+  detail?: string | { message?: string; code?: string };
   error?: {
     message?: string;
   };
@@ -156,6 +158,7 @@ export type BackendCreateJobPayload = {
   responsibilities?: string[];
   requirements?: string[];
   how_to_apply?: string | null;
+  tools?: string[];
   reference_videos?: Array<string | { title?: string | null; url: string }>;
   tags?: string[];
   youtube_channel_id?: string | null;
@@ -164,6 +167,7 @@ export type BackendCreateJobPayload = {
   channel_logo_url?: string | null;
   channel_subscribers?: number | null;
   channel_profile_slug?: string | null;
+  hiring_external_url_snapshot?: string | null;
   posted_by_agency?: boolean;
   agency_profile_slug?: string | null;
   posted_platform?: string | null;
@@ -221,6 +225,9 @@ export type BackendOAuthGoogleExchangePayload = {
 export type BackendLoginExchangeResponse = {
   access_token: string;
   token_type: string;
+  refresh_token?: string | null;
+  access_token_expires_at?: number | null;
+  refresh_token_expires_at?: number | null;
   user: {
     id: string;
     email: string;
@@ -400,6 +407,10 @@ export type BackendHiringIdentity = {
   verification_status: BackendHiringIdentityVerificationStatus;
   verification_method: BackendHiringIdentityVerificationMethod;
   verification_code?: string | null;
+  verification_code_expires_at?: string | null;
+  verification_attempt_count?: number | null;
+  verification_last_checked_at?: string | null;
+  verification_last_error?: string | null;
   proof_url?: string | null;
   verified_at?: string | null;
   created_at: string;
@@ -520,6 +531,7 @@ export type BackendProfileResponse = {
   username_last_changed_at?: string | null;
   display_name?: string | null;
   headline?: string | null;
+  bio?: string | null;
   skills: string[];
   public_links: string[];
   experience?: BackendProfileExperienceItem[];
@@ -529,6 +541,7 @@ export type BackendProfileResponse = {
   avatar_mode: "generic" | "youtube_channel";
   avatar_url?: string | null;
   avatar_youtube_channel_id?: string | null;
+  banner_url?: string | null;
   social_connections: BackendSocialConnections;
   stats: BackendProfileStats;
   reviews: BackendReviewsSummary;
@@ -548,6 +561,7 @@ export type BackendProfileUpdatePayload = {
   username?: string;
   display_name?: string;
   headline?: string;
+  bio?: string;
   skills?: string[];
   public_links?: string[];
   experience?: BackendProfileExperienceItem[];
@@ -759,8 +773,10 @@ export type BackendPublicProfileResponse = {
   username: string;
   display_name: string;
   headline?: string | null;
+  bio?: string | null;
   avatar_url?: string | null;
   avatar_mode: "generic" | "youtube_channel";
+  banner_url?: string | null;
   skills: string[];
   public_links: string[];
   experience?: BackendProfileExperienceItem[];
@@ -1161,6 +1177,7 @@ const toFrontendJob = (job: BackendJob): Job => {
   const createdAt = asString(job.created_at) ?? asString(job.createdAt);
   const updatedAt = asString(job.updated_at) ?? asString(job.updatedAt);
   const platforms = asStringArray(job.platforms);
+  const rawPlatform = platforms[0] || asString(job.platform);
   const channelName = asString(job.channel_name) ?? asString(job.channelName) ?? "Content creator";
   const channelLogo =
     asString(job.channel_logo_url) ??
@@ -1201,6 +1218,7 @@ const toFrontendJob = (job: BackendJob): Job => {
       verified: Boolean(asBoolean(job.is_verified)),
     },
     tags: asStringArray(job.tags),
+    tools: asStringArray(job.tools),
     startTimeframe: ensureStartTimeframe(startTimeframe),
     workMode: asString(job.work_mode),
     contractType: asString(job.contract_type),
@@ -1209,13 +1227,14 @@ const toFrontendJob = (job: BackendJob): Job => {
     applicationMode: asString(job.application_mode),
     externalApplyUrl: asString(job.external_apply_url),
     deadlineAt: asString(job.deadline_at),
-    platform: platforms[0] || asString(job.platform) || "youtube",
+    platform: rawPlatform || "youtube",
     referenceVideos: asReferenceVideos(job.reference_videos ?? job.referenceVideos),
     about: asString(job.about_channel) ?? asString(job.aboutChannel) ?? "",
     responsibilities: asStringArray(job.responsibilities).join("\n"),
     requirements: asStringArray(job.requirements).join("\n"),
     howToApply: asString(job.how_to_apply) ?? asString(job.howToApply) ?? "",
     channelProfileSlug: asString(job.channel_profile_slug),
+    channelExternalUrl: asString(job.hiring_external_url_snapshot),
     postedByAgency: Boolean(asBoolean(job.posted_by_agency)),
     agencyProfileSlug: asString(job.agency_profile_slug),
     postedPlatform: asString(job.posted_platform),
@@ -1232,6 +1251,22 @@ const toFrontendJob = (job: BackendJob): Job => {
     closedAt: asString(job.closed_at),
     createdAt,
     updatedAt,
+    draftCompletion: {
+      hasTitle: Boolean(asString(job.title)?.trim()),
+      hasBudget: budgetAmount !== undefined || budgetMax !== undefined,
+      hasPlatform: Boolean(rawPlatform),
+      hasWorkMode: Boolean(asString(job.work_mode)?.trim()),
+      hasChannel: Boolean(
+        asString(job.hiring_identity_id)?.trim() ||
+          asString(job.hiring_display_name_snapshot)?.trim() ||
+          asString(job.channel_name)?.trim()
+      ),
+      hasExperience: Boolean(experience && experience.trim() && experience.trim().toLowerCase() !== "any"),
+      hasTimeline: Boolean(
+        asString(job.weekly_hours)?.trim() ||
+          (startTimeframe && startTimeframe.trim().toLowerCase() !== "flexible")
+      ),
+    },
   };
 };
 
@@ -1283,6 +1318,14 @@ const getBackendErrorMessage = (status: number, text: string) => {
     const directDetail =
       typeof parsed.detail === "string" && parsed.detail.trim() ? parsed.detail : undefined;
     if (directDetail) return directDetail;
+    const structuredDetail =
+      typeof parsed.detail === "object" &&
+      parsed.detail !== null &&
+      typeof parsed.detail.message === "string" &&
+      parsed.detail.message.trim()
+        ? parsed.detail.message
+        : undefined;
+    if (structuredDetail) return structuredDetail;
     const nestedMessage =
       typeof parsed.error?.message === "string" && parsed.error.message.trim()
         ? parsed.error.message
@@ -1296,11 +1339,34 @@ const getBackendErrorMessage = (status: number, text: string) => {
 
 type RequestJsonOptions = RequestInit & {
   accessToken?: string;
+  timeoutMs?: number;
 };
 
-const BACKEND_REQUEST_TIMEOUT_MS = Number(
-  process.env.NEXT_PUBLIC_BACKEND_REQUEST_TIMEOUT_MS || 3500
+const parseTimeoutMs = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+// Keep writes generous, but fail fast for local read-only page loads when a
+// stale backend process is holding the port without serving the API.
+const BACKEND_REQUEST_TIMEOUT_MS = parseTimeoutMs(
+  process.env.NEXT_PUBLIC_BACKEND_REQUEST_TIMEOUT_MS,
+  8000
 );
+const LOCAL_BACKEND_READ_TIMEOUT_MS = parseTimeoutMs(
+  process.env.NEXT_PUBLIC_BACKEND_READ_TIMEOUT_MS,
+  2500
+);
+
+const getRequestTimeoutMs = (init?: RequestJsonOptions) => {
+  if (init?.timeoutMs) return init.timeoutMs;
+  const method = (init?.method || "GET").toUpperCase();
+  const isRead = method === "GET" || method === "HEAD";
+  if (process.env.NODE_ENV === "development" && isLocalBackendUrl() && isRead) {
+    return Math.min(BACKEND_REQUEST_TIMEOUT_MS, LOCAL_BACKEND_READ_TIMEOUT_MS);
+  }
+  return BACKEND_REQUEST_TIMEOUT_MS;
+};
 
 export class BackendRequestError extends Error {
   status: number;
@@ -1328,6 +1394,32 @@ export const isBackendAuthError = (error: unknown) => {
   );
 };
 
+/** True when the failure is the backend being unreachable (down/CORS/timeout). */
+export const isBackendUnreachableError = (error: unknown) =>
+  error instanceof BackendRequestError && error.status === 0;
+
+/**
+ * Turns a caught client-action error into a clear, user-facing message instead
+ * of a generic "try again". Surfaces the real backend reason (the message
+ * already carries the parsed `detail`/`error.message`), with friendlier copy for
+ * the two cases users actually hit: backend offline and expired session.
+ */
+export const describeActionError = (error: unknown, fallback = "Something went wrong. Try again."): string => {
+  if (isBackendUnreachableError(error)) {
+    return "Can’t reach the backend right now. Make sure it’s running (npm run dev:all), then reload and try again.";
+  }
+  if (isBackendAuthError(error)) {
+    return "Your session has expired. Please sign in again.";
+  }
+  if (error instanceof BackendRequestError && error.message) {
+    return error.message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
+
 async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<T> {
   const headers = new Headers(init?.headers);
   const hasBody = typeof init?.body !== "undefined";
@@ -1340,7 +1432,8 @@ async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<
 
   let response: Response;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BACKEND_REQUEST_TIMEOUT_MS);
+  const timeoutMs = getRequestTimeoutMs(init);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const externalSignal = init?.signal;
   if (externalSignal) {
     if (externalSignal.aborted) {
@@ -1352,6 +1445,7 @@ async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<
 
   const fetchInit: RequestInit = { ...(init || {}) };
   delete (fetchInit as RequestJsonOptions).accessToken;
+  delete (fetchInit as RequestJsonOptions).timeoutMs;
   delete fetchInit.signal;
   try {
     response = await fetch(`${getBackendBaseUrl()}${path}`, {
@@ -1363,7 +1457,7 @@ async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<
   } catch (error) {
     const reason =
       error instanceof Error && error.name === "AbortError"
-        ? `Request timed out after ${BACKEND_REQUEST_TIMEOUT_MS}ms`
+        ? `Request timed out after ${timeoutMs}ms`
         : error instanceof Error && error.message
           ? error.message
           : "Network request failed";
@@ -1378,6 +1472,10 @@ async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<
   if (!response.ok) {
     const text = await response.text();
     throw new BackendRequestError(response.status, getBackendErrorMessage(response.status, text));
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
@@ -1470,12 +1568,11 @@ export async function deleteJob(accessToken: string, jobId: string): Promise<Job
 export async function registerWithEmail(
   email: string,
   password: string,
-  username: string,
-  onboardingIntent: BackendOnboardingIntent = "DECIDE_LATER"
+  username: string
 ): Promise<BackendAuthStatusResponse> {
   return requestJson<BackendAuthStatusResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, username, onboarding_intent: onboardingIntent }),
+    body: JSON.stringify({ email, password, username }),
   });
 }
 
@@ -1536,17 +1633,6 @@ export async function updateMyAccountType(
   });
 }
 
-export async function updateMyOnboardingIntent(
-  accessToken: string,
-  onboardingIntent: BackendOnboardingIntent
-): Promise<BackendMeResponse> {
-  return requestJson<BackendMeResponse>("/me/onboarding-intent", {
-    method: "PATCH",
-    body: JSON.stringify({ onboarding_intent: onboardingIntent }),
-    accessToken,
-  });
-}
-
 export async function upsertGoogleOAuthForMe(
   accessToken: string,
   payload: BackendOAuthUpsertPayload
@@ -1601,6 +1687,17 @@ export async function uploadMyAvatar(
   });
 }
 
+export async function uploadMyBanner(
+  accessToken: string,
+  payload: BackendAvatarUploadPayload
+): Promise<BackendProfileResponse> {
+  return requestJson<BackendProfileResponse>("/me/banner", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
 export async function updateMyPrivacy(
   accessToken: string,
   payload: BackendPrivacyUpdatePayload
@@ -1644,6 +1741,16 @@ export async function updateMyHiringIdentity(
   );
 }
 
+export async function deleteMyHiringIdentity(
+  accessToken: string,
+  identityId: string
+): Promise<void> {
+  await requestJson<unknown>(`/me/hiring-identities/${encodeURIComponent(identityId)}`, {
+    method: "DELETE",
+    accessToken,
+  });
+}
+
 export async function requestMyHiringIdentityVerification(
   accessToken: string,
   identityId: string,
@@ -1654,6 +1761,20 @@ export async function requestMyHiringIdentityVerification(
     {
       method: "POST",
       body: JSON.stringify({ proof_url: proofUrl || null }),
+      accessToken,
+    }
+  );
+}
+
+export async function checkMyHiringIdentityVerification(
+  accessToken: string,
+  identityId: string
+): Promise<BackendHiringIdentityVerificationResponse> {
+  return requestJson<BackendHiringIdentityVerificationResponse>(
+    `/me/hiring-identities/${encodeURIComponent(identityId)}/check-verification`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
       accessToken,
     }
   );

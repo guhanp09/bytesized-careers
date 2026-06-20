@@ -21,7 +21,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   return (
     <div className="space-y-6">
       {aboutText ? (
-        <Section title="About the channel" bodyClassName={bodyClass}>
+        <Section title="About the brand" bodyClassName={bodyClass}>
           <p className="whitespace-pre-line">{aboutText}</p>
         </Section>
       ) : null}

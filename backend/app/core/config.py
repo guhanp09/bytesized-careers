@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
     smtp_from_email: str | None = Field(default=None, alias="SMTP_FROM_EMAIL")
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    # Master switch for delivering *notification* (non-auth) emails. Default off:
+    # notification emails are queued to the outbox and mocked, never sent, until a
+    # production domain + provider are ready. Auth emails keep using EMAIL_MODE.
+    email_delivery_enabled: bool = Field(default=False, alias="EMAIL_DELIVERY_ENABLED")
     debug: bool = Field(default=False, alias="DEBUG")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     rate_limit_backend: Literal["memory", "redis"] = Field(default="memory", alias="RATE_LIMIT_BACKEND")
@@ -42,6 +46,9 @@ class Settings(BaseSettings):
     jwt_access_token_expires_minutes: int = Field(
         default=60, alias="JWT_ACCESS_TOKEN_EXPIRES_MINUTES"
     )
+    jwt_refresh_token_expires_minutes: int = Field(
+        default=60 * 24 * 30, alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES"
+    )
     youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
     youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
     media_root: str = Field(default=".local-data/media", alias="MEDIA_ROOT")
@@ -61,6 +68,18 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS JSON value must be a list.")
             return [str(item).strip() for item in parsed if str(item).strip()]
         return [item.strip() for item in raw.split(",") if item.strip()]
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: bool | str | None) -> bool | None:
+        if value is None or isinstance(value, bool):
+            return value
+        raw = value.strip().lower()
+        if raw in {"1", "true", "yes", "on", "debug"}:
+            return True
+        if raw in {"", "0", "false", "no", "off", "release", "prod", "production"}:
+            return False
+        raise ValueError("DEBUG must be a boolean-like value.")
 
 
 @lru_cache

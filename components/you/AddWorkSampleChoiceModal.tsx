@@ -295,14 +295,14 @@ export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewL
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+    <div className="ui-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
         aria-label="Close add project dialog"
         onClick={onClose}
       />
-      <section className="relative w-full max-w-xl rounded-3xl border border-white/12 bg-[#18191d] p-5 shadow-[0_30px_110px_-42px_rgba(0,0,0,1)]">
+      <section className="ui-modal-panel relative w-full max-w-xl rounded-3xl border border-white/12 bg-[#18191d] p-5 shadow-[0_30px_110px_-42px_rgba(0,0,0,1)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold tracking-tight text-white">Add project</h2>

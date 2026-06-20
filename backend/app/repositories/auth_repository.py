@@ -298,6 +298,10 @@ class AuthRepository:
         await self.session.refresh(row)
         return row
 
+    async def delete_hiring_identity(self, row: HiringIdentity) -> None:
+        await self.session.delete(row)
+        await self.session.flush()
+
     async def get_user_youtube_channel_by_channel_id(
         self, *, user_id: UUID, channel_id: str
     ) -> YouTubeChannel | None:

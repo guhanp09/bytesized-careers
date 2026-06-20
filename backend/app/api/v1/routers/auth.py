@@ -13,6 +13,7 @@ from app.schemas import (
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     PasswordResetResponse,
+    RefreshTokenRequest,
     RegisterRequest,
     ResendVerificationRequest,
     ResendVerificationResponse,
@@ -33,6 +34,17 @@ from app.services.email_service import EmailDeliveryError
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _login_response(user, tokens) -> LoginResponse:
+    return LoginResponse(
+        access_token=tokens.access_token,
+        token_type="bearer",
+        refresh_token=tokens.refresh_token,
+        access_token_expires_at=tokens.access_token_expires_at,
+        refresh_token_expires_at=tokens.refresh_token_expires_at,
+        user=AuthUserRead.model_validate(user),
+    )
+
+
 @router.post(
     "/register",
     response_model=AuthStatusResponse,
@@ -48,6 +60,7 @@ async def register(
             email=payload.email,
             password=payload.password,
             username=payload.username,
+            display_name=payload.display_name,
             onboarding_intent=payload.onboarding_intent,
             account_type=payload.account_type,
         )
@@ -170,17 +183,30 @@ async def login(
     service: AuthService = Depends(get_auth_service),
 ) -> LoginResponse:
     try:
-        user, token = await service.login_with_password(email=payload.email, password=payload.password)
+        user, tokens = await service.login_with_password(email=payload.email, password=payload.password)
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except EmailNotVerifiedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
-    return LoginResponse(
-        access_token=token,
-        token_type="bearer",
-        user=AuthUserRead.model_validate(user),
-    )
+    return _login_response(user, tokens)
+
+
+@router.post(
+    "/refresh",
+    response_model=LoginResponse,
+    summary="Refresh backend session token",
+)
+async def refresh_backend_session(
+    payload: RefreshTokenRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> LoginResponse:
+    try:
+        user, tokens = await service.refresh_backend_session(payload.refresh_token)
+    except InvalidCredentialsError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    return _login_response(user, tokens)
 
 
 @router.post(
@@ -194,13 +220,9 @@ async def oauth_google_exchange(
     service: AuthService = Depends(get_auth_service),
 ) -> LoginResponse:
     try:
-        user, token = await service.exchange_google_oauth(payload)
+        user, tokens = await service.exchange_google_oauth(payload)
     except InvalidUsernameError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except UsernameAlreadyTakenError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return LoginResponse(
-        access_token=token,
-        token_type="bearer",
-        user=AuthUserRead.model_validate(user),
-    )
+    return _login_response(user, tokens)

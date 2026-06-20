@@ -61,6 +61,15 @@ const displayName = (listing: BackendTalentListing) =>
     .join(" ") ||
   "Talent profile";
 
+const bioForListing = (listing: BackendTalentListing) => {
+  const description = listing.description?.trim();
+  if (description) return description;
+
+  const role = listing.primary_role || listing.roles[0] || "creator talent";
+  const context = uniq([listing.niche, ...listing.platforms, ...listing.formats]).slice(0, 3).join(", ");
+  return `I help creator teams with ${role.toLowerCase()} work${context ? ` across ${context}` : ""}.`;
+};
+
 const publicTalentItem = (listing: BackendTalentListing): BackendPublicTalentListingItem => ({
   id: listing.id,
   title: listing.title,
@@ -797,6 +806,102 @@ const experienceFor = (listing: BackendTalentListing) => {
   return mockExperienceSets[ownerSlug(listing)] || defaultExperienceFor(listing);
 };
 
+export const buildMockPublicTalentProfileFromListing = (
+  listing: BackendTalentListing
+): BackendPublicProfileResponse => {
+  const normalizedSlug = ownerSlug(listing);
+  const portfolio = portfolioFor(listing);
+  const experience = experienceFor(listing);
+  const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
+  const reviews = reviewSummary(reviewItems);
+  const role = listing.primary_role || listing.roles[0] || "Talent";
+  const platforms = uniq(listing.platforms);
+  const tools = uniq(listing.tools);
+  const formats = uniq(listing.formats);
+  const talentListings = [publicTalentItem(listing)];
+
+  return {
+    username: normalizedSlug,
+    display_name: displayName(listing),
+    headline: listing.title,
+    bio: bioForListing(listing),
+    avatar_url: listing.owner_avatar_url,
+    avatar_mode: "generic",
+    skills: tools,
+    public_links: [`https://example.com/${normalizedSlug}/portfolio`],
+    experience,
+    availability_status: listing.availability_status,
+    location: listing.location,
+    timezone: listing.timezone,
+    social_connections: {
+      youtube: {
+        connected: platforms.some((platform) => platform.toLowerCase() === "youtube"),
+        channel_id: null,
+        channel_title: platforms.includes("YouTube") ? `${displayName(listing)} portfolio` : null,
+        channel_handle: null,
+        channel_avatar_url: null,
+        channel_url: platforms.includes("YouTube") ? `https://www.youtube.com/@${normalizedSlug}` : null,
+      },
+      instagram: {
+        connected: platforms.some((platform) => platform.toLowerCase().includes("instagram")),
+        handle: null,
+        url: platforms.some((platform) => platform.toLowerCase().includes("instagram"))
+          ? `https://www.instagram.com/${normalizedSlug.replace(/-/g, "")}`
+          : null,
+      },
+    },
+    stats: {
+      jobs_posted_count: 0,
+      jobs_completed_count: 0,
+      projects_count: portfolio.length,
+      reviews_count: reviews.review_count,
+    },
+    reviews,
+    review_items: reviewItems,
+    collaboration_preferences: {
+      project_type_preference: "either",
+      turnaround: listing.turnaround,
+      revisions: "2 rounds",
+      working_hours: listing.timezone ? `${listing.timezone} business hours` : null,
+      tools: tools.join(", "),
+    },
+    hiring_info: {
+      hiring_type: null,
+      website_or_social_url: null,
+      primary_platform: platforms.includes("Instagram") && !platforms.includes("YouTube") ? "Instagram" : "YouTube",
+      channels_or_pages_managed: null,
+      verification_status: "unverified",
+    },
+    roles: [
+      {
+        id: `mock-role-${normalizedSlug}`,
+        name: role,
+        category: "Talent",
+        description: listing.niche,
+      },
+    ],
+    role_answers_summary: [],
+    content_style: {
+      primary_niche: listing.niche,
+      format: formats,
+      tone: ["Sharp", "Creator-native"],
+      target_audience: listing.niche,
+      editing_complexity: "Moderate",
+    },
+    youtube_badge: null,
+    represented_channels: [],
+    jobs_active: [],
+    jobs_past: [],
+    portfolio_now: portfolio,
+    portfolio_past: [],
+    jobs_preview: [],
+    portfolio_preview: portfolio.slice(0, 2),
+    talent_listings_active: talentListings,
+    talent_listings_preview: talentListings,
+    moved_to_username: null,
+  };
+};
+
 export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileResponse | null => {
   const normalizedSlug = slug.trim().toLowerCase();
   const listing = MOCK_TALENT_LISTINGS.find((item) => ownerSlug(item) === normalizedSlug);
@@ -824,6 +929,9 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
       username: normalizedSlug,
       display_name: isAgencyProfile ? agencyDisplayName : firstJob.channel.name || titleCase(normalizedSlug),
       headline: isAgencyProfile ? "Creator agency hiring for creator-led channels" : "Creator-led hiring for content roles",
+      bio: isAgencyProfile
+        ? "We hire for creator-led channels and coordinate recurring freelance support across editing, thumbnails, and channel operations."
+        : "We publish creator-led content and hire specialists across editing, packaging, research, and channel operations.",
       avatar_url: firstJob.channel.logoUrl || null,
       avatar_mode: "generic",
       skills: tools.slice(0, 6),
@@ -920,95 +1028,7 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
     };
   }
 
-  const portfolio = portfolioFor(listing);
-  const experience = experienceFor(listing);
-  const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
-  const reviews = reviewSummary(reviewItems);
-  const role = listing.primary_role || listing.roles[0] || "Talent";
-  const platforms = uniq(listing.platforms);
-  const tools = uniq(listing.tools);
-  const formats = uniq(listing.formats);
-  const talentListings = [publicTalentItem(listing)];
-
-  return {
-    username: normalizedSlug,
-    display_name: displayName(listing),
-    headline: listing.title,
-    avatar_url: listing.owner_avatar_url,
-    avatar_mode: "generic",
-    skills: tools,
-    public_links: [`https://example.com/${normalizedSlug}/portfolio`],
-    experience,
-    availability_status: listing.availability_status,
-    location: listing.location,
-    timezone: listing.timezone,
-    social_connections: {
-      youtube: {
-        connected: platforms.some((platform) => platform.toLowerCase() === "youtube"),
-        channel_id: null,
-        channel_title: platforms.includes("YouTube") ? `${displayName(listing)} portfolio` : null,
-        channel_handle: null,
-        channel_avatar_url: null,
-        channel_url: platforms.includes("YouTube") ? `https://www.youtube.com/@${normalizedSlug}` : null,
-      },
-      instagram: {
-        connected: platforms.some((platform) => platform.toLowerCase().includes("instagram")),
-        handle: null,
-        url: platforms.some((platform) => platform.toLowerCase().includes("instagram"))
-          ? `https://www.instagram.com/${normalizedSlug.replace(/-/g, "")}`
-          : null,
-      },
-    },
-    stats: {
-      jobs_posted_count: 0,
-      jobs_completed_count: 0,
-      projects_count: portfolio.length,
-      reviews_count: reviews.review_count,
-    },
-    reviews,
-    review_items: reviewItems,
-    collaboration_preferences: {
-      project_type_preference: "either",
-      turnaround: listing.turnaround,
-      revisions: "2 rounds",
-      working_hours: listing.timezone ? `${listing.timezone} business hours` : null,
-      tools: tools.join(", "),
-    },
-    hiring_info: {
-      hiring_type: null,
-      website_or_social_url: null,
-      primary_platform: platforms.includes("Instagram") && !platforms.includes("YouTube") ? "Instagram" : "YouTube",
-      channels_or_pages_managed: null,
-      verification_status: "unverified",
-    },
-    roles: [
-      {
-        id: `mock-role-${normalizedSlug}`,
-        name: role,
-        category: "Talent",
-        description: listing.niche,
-      },
-    ],
-    role_answers_summary: [],
-    content_style: {
-      primary_niche: listing.niche,
-      format: formats,
-      tone: ["Sharp", "Creator-native"],
-      target_audience: listing.niche,
-      editing_complexity: "Moderate",
-    },
-    youtube_badge: null,
-    represented_channels: [],
-    jobs_active: [],
-    jobs_past: [],
-    portfolio_now: portfolio,
-    portfolio_past: [],
-    jobs_preview: [],
-    portfolio_preview: portfolio.slice(0, 2),
-    talent_listings_active: talentListings,
-    talent_listings_preview: talentListings,
-    moved_to_username: null,
-  };
+  return buildMockPublicTalentProfileFromListing(listing);
 };
 
 export const getMockPublicTalentProject = (slug: string, projectId: string) => {

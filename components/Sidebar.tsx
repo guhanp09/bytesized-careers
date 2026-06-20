@@ -5,6 +5,13 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Icon } from "./Icons";
 
+type NavItem = {
+  href: string;
+  label: string;
+  icon: Parameters<typeof Icon>[0]["name"];
+  auth?: boolean;
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { status } = useSession();
@@ -17,23 +24,35 @@ export default function Sidebar() {
       active ? "text-white" : "text-white/72 hover:text-white",
     ].join(" ");
 
-  const items: Array<{ href: string; label: string; icon: Parameters<typeof Icon>[0]["name"]; auth?: boolean }> = [
+  const items: NavItem[] = [
     { href: "/", label: "Home", icon: "home" },
     { href: "/jobs", label: "Jobs", icon: "briefcase" },
     { href: "/talent", label: "Talent", icon: "users" },
-    { href: "/activity", label: "Activity", icon: "send", auth: true },
-    { href: "/saved", label: "Saved", icon: "bookmark", auth: true },
     { href: "/you", label: "You", icon: "user" },
+    { href: "/applications", label: "Inbox", icon: "mail", auth: true },
+    { href: "/drafts", label: "Drafts", icon: "file", auth: true },
   ];
+
+  const isActive = (item: NavItem) => {
+    if (item.href === "/") return pathname === "/";
+    return pathname.startsWith(item.href);
+  };
 
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-20 flex-col items-center gap-6 bg-[#0b0b0f] pt-16">
       {items
         .filter((item) => !item.auth || isAuthed)
         .map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = isActive(item);
           return (
-            <Link key={item.href} href={item.href} className={navClass(active)}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={navClass(active)}
+              aria-label={item.label}
+              aria-current={active ? "page" : undefined}
+              title={item.label}
+            >
               <Icon name={item.icon} className="h-5 w-5" />
               <span>{item.label}</span>
             </Link>

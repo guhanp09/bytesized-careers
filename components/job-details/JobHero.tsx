@@ -12,20 +12,6 @@ const TITLE_BASE_PX = 44;
 const TITLE_MIN_PX = 20;
 const TITLE_STEP_PX = 1;
 
-const verificationLabel = (status?: string) => {
-  const normalized = (status || "").toUpperCase();
-  if (normalized === "VERIFIED") return "Verified Channel";
-  if (normalized === "PENDING") return "Pending Channel";
-  if (normalized === "REJECTED") return "Rejected Channel";
-  return null;
-};
-
-const platformLabel = (platform?: string) => {
-  const normalized = (platform || "").toUpperCase();
-  if (normalized === "INSTAGRAM") return "Instagram";
-  return "YouTube";
-};
-
 function TileShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
@@ -69,10 +55,12 @@ export default function JobHero({
   job,
   postedText,
   titleScale,
+  ownerControls,
 }: {
   job: Job;
   postedText: string;
   titleScale: number;
+  ownerControls?: React.ReactNode;
 }) {
   const { ref: titleRef, fontPx } = useFitTitle({
     text: job.title,
@@ -100,9 +88,15 @@ export default function JobHero({
 
   return (
     <section className="rounded-3xl bg-white/[0.06] border border-white/[0.08] p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
-      <h1 ref={titleRef} className="font-extrabold tracking-tight leading-[1.08] break-words uppercase">
-        {job.title}
-      </h1>
+      <div className="flex items-start gap-3">
+        <h1
+          ref={titleRef}
+          className="min-w-0 flex-1 font-extrabold tracking-tight leading-[1.08] break-words uppercase"
+        >
+          {job.title}
+        </h1>
+        {ownerControls ? <div className="shrink-0">{ownerControls}</div> : null}
+      </div>
 
       <div className={[titleBottomSpaceClass, "flex items-center gap-4"].join(" ")}>
         <img
@@ -115,34 +109,12 @@ export default function JobHero({
             <ChannelAttribution
               channelName={job.channel.name}
               channelProfileSlug={job.channelProfileSlug}
-              postedByAgency={job.postedByAgency}
+              channelExternalUrl={job.postedByAgency ? job.channelExternalUrl : undefined}
               className="text-lg font-semibold text-white max-w-[320px]"
             />
-            {job.channel.verified ? (
-              <span className="text-[11px] px-2 py-1 rounded-lg bg-white/8 border border-white/10 text-white/70">
-                Verified
-              </span>
-            ) : null}
           </div>
           <div className="text-white/55 text-sm">{formatSubs(job.channel.subscribers)}</div>
           <div className="text-white/45 text-sm">{postedText}</div>
-          {job.hiringDisplayName ? (
-            <div className="mt-3 rounded-2xl border border-white/[0.08] bg-black/15 px-3 py-3">
-              <p className="text-xs text-white/55">
-                Hiring for: <span className="font-semibold text-white/85">{job.hiringDisplayName}</span>
-              </p>
-              <p className="mt-1 text-xs text-white/55">
-                {[platformLabel(job.hiringPlatform), verificationLabel(job.hiringVerificationStatus)]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              {job.managedByAgencyName ? (
-                <p className="mt-1 text-xs text-white/55">
-                  Managed by: <span className="font-semibold text-white/80">{job.managedByAgencyName}</span>
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </div>
 

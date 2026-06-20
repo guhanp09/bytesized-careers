@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getServerSession } from "next-auth";
 import TalentListingActionsClient from "../../../components/TalentListingActionsClient";
 import OwnerListingControlsClient from "../../../components/OwnerListingControlsClient";
-import { Icon } from "../../../components/Icons";
+import TalentHero from "../../../components/talent-details/TalentHero";
 import { Section, StateCard, TagPill } from "../../../components/ui";
 import { authOptions } from "../../../lib/auth";
 import {
@@ -14,9 +13,13 @@ import {
   type BackendTalentListing,
 } from "../../../lib/backendClient";
 import { MOCK_TALENT_LISTINGS } from "../../../lib/mockTalentListings";
+import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
+import { formatTalentExperience } from "../../../lib/talentListing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const TITLE_SCALE = 0.58;
 
 type WorkSample = {
   id: string;
@@ -142,26 +145,6 @@ const rateLabel = (listing: BackendTalentListing) => {
   return "Rate flexible";
 };
 
-const experienceRange = (value?: string | null) => {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return "Not specified";
-  if (/0\s*[–-]\s*1|less than 1|entry|beginner/.test(normalized)) return "0–1 year";
-  if (/1\s*[–-]\s*2|junior/.test(normalized)) return "1–2 years";
-  if (/2\s*[–-]\s*4|mid/.test(normalized)) return "2–4 years";
-  if (/4\s*[–-]\s*6|senior/.test(normalized)) return "4–6 years";
-  if (/6\+|expert|lead|principal/.test(normalized)) return "6+ years";
-  const years = normalized.match(/(\d+)\s*\+?\s*years?/);
-  if (years) {
-    const count = Number(years[1]);
-    if (count <= 1) return "0–1 year";
-    if (count <= 2) return "1–2 years";
-    if (count <= 4) return "2–4 years";
-    if (count <= 6) return "4–6 years";
-    return "6+ years";
-  }
-  return "Not specified";
-};
-
 const displayName = (listing: BackendTalentListing) =>
   listing.owner_display_name ||
   listing.owner_username
@@ -178,6 +161,33 @@ const initials = (value: string) =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+
+const formatTalentPostedLabel = (value?: string | null) => {
+  if (!value) return "recently";
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return "recently";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+  if (seconds < 60) return "just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+
+  const years = Math.floor(days / 365);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+};
 
 async function getListing(id: string) {
   const backendListing = await getTalentListing(id).catch(() => null);
@@ -242,9 +252,7 @@ function metadataFor(listing: BackendTalentListing) {
 
 function collaborationRows(listing: BackendTalentListing) {
   return [
-    listing.work_mode ? { label: "Work mode", value: titleCase(listing.work_mode) } : null,
     listing.turnaround ? { label: "Turnaround", value: listing.turnaround } : null,
-    listing.rate_note || listing.rate_min ? { label: "Rate guidance", value: rateLabel(listing) } : null,
     listing.formats.length ? { label: "Project fit", value: listing.formats.slice(0, 4).join(" · ") } : null,
     listing.platforms.length ? { label: "Platform focus", value: listing.platforms.slice(0, 4).join(" · ") } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
@@ -302,9 +310,11 @@ export default async function TalentListingPage({
   }
 
   const name = displayName(listing);
-  const publicProfileHref = listing.owner_username ? `/u/${encodeURIComponent(listing.owner_username)}?view=talent` : null;
+  const publicProfileSlug = (listing.owner_username || publicProfileFallbackSlug(listing.owner_display_name || listing.id)).trim();
+  const publicProfileHref = publicProfileSlug ? `/u/${encodeURIComponent(publicProfileSlug)}?view=talent` : null;
   const role = listing.primary_role || listing.roles[0] || "Talent";
   const meta = metadataFor(listing);
+  const postedText = `Posted ${formatTalentPostedLabel(listing.created_at)}`;
   const workSamples = await getWorkSamples(listing);
   const sampleCount = workSamples.length || listing.portfolio_item_ids.length;
   const bestFitTags = uniq([...listing.platforms, ...listing.formats, listing.niche]).slice(0, 12);
@@ -315,8 +325,8 @@ export default async function TalentListingPage({
   const isOwner = Boolean(session?.backendUserId && listing.owner_user_id === session.backendUserId);
   const topStats = [
     { icon: "cash-stack" as const, label: "Rate", value: rateLabel(listing) },
-    { icon: "cap" as const, label: "Experience", value: experienceRange(listing.experience_level) },
-    { icon: "pin" as const, label: "Work mode", value: titleCase(listing.work_mode) || "Remote" },
+    { icon: "cap" as const, label: "Experience", value: formatTalentExperience(listing.experience_level) || "Not specified" },
+    { icon: "pin" as const, label: "Location", value: listing.location || titleCase(listing.work_mode) || "Remote" },
     { icon: "image" as const, label: "Work samples", value: sampleCount ? String(sampleCount) : "0" },
   ];
 
@@ -324,47 +334,17 @@ export default async function TalentListingPage({
     <main className="min-h-screen bg-[#0b0b0f] px-4 py-8 text-white sm:px-6">
       <div className="mx-auto grid max-w-6xl items-start gap-6 lg:grid-cols-[1fr_420px]">
         <div className="space-y-6">
-          <section className="rounded-3xl border border-white/[0.08] bg-white/[0.06] p-6 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)] sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <h1 className="max-w-4xl text-3xl font-extrabold uppercase leading-[1.08] tracking-tight text-white sm:text-4xl">
-                {listing.title}
-              </h1>
-              {listing.is_featured ? <TagPill className="shrink-0">Featured</TagPill> : null}
-            </div>
-
-            <div className="mt-6 flex items-center gap-4">
-              {listing.owner_avatar_url ? (
-                <div
-                  aria-label={name}
-                  className="h-12 w-12 flex-shrink-0 rounded-full border border-white/15 bg-white/10 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${listing.owner_avatar_url})` }}
-                />
-              ) : (
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-bold text-white/70">
-                  {initials(name) || <Icon name="user" className="h-5 w-5" />}
-                </div>
-              )}
-              <div className="min-w-0">
-                {publicProfileHref ? (
-                  <Link
-                    href={publicProfileHref}
-                    className="inline-block max-w-full cursor-pointer truncate rounded-sm text-lg font-semibold text-white transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                  >
-                    {name}
-                  </Link>
-                ) : (
-                  <p className="truncate text-lg font-semibold text-white">{name}</p>
-                )}
-                <p className="mt-1 text-sm text-white/55">{meta || role}</p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {topStats.map((stat) => (
-                <DetailTile key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} />
-              ))}
-            </div>
-          </section>
+          <TalentHero
+            title={listing.title}
+            name={name}
+            profileHref={publicProfileHref}
+            avatarUrl={listing.owner_avatar_url}
+            initials={initials(name)}
+            metaLine={meta || role}
+            postedText={postedText}
+            titleScale={TITLE_SCALE}
+            stats={topStats}
+          />
 
           <Section title="About this talent" bodyClassName="mt-3 text-sm leading-relaxed text-white/80">
             <p className="whitespace-pre-line">{aboutFor(listing)}</p>
@@ -432,40 +412,19 @@ export default async function TalentListingPage({
                 id={listing.id}
                 status={listing.status}
                 editHref={`/post-talent?draftId=${encodeURIComponent(listing.id)}`}
-                activityHref="/activity?tab=interests"
+                inboxHref="/applications?view=talent"
               />
             ) : null}
-            <TalentListingActionsClient
-              listingId={listing.id}
-              views={listing.views}
-              workSamplesCount={sampleCount}
-            />
+            {!isOwner ? (
+              <TalentListingActionsClient
+                listingId={listing.id}
+                views={listing.views}
+              />
+            ) : null}
           </div>
         </aside>
       </div>
     </main>
-  );
-}
-
-function DetailTile({
-  icon,
-  label,
-  value,
-}: {
-  icon: "cash-stack" | "cap" | "pin" | "image";
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex h-[108px] items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.045] px-4 py-3 shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]">
-      <div className="flex flex-col items-center justify-center gap-1 text-center">
-        <span className="text-white/70">
-          <Icon name={icon} className="h-4 w-4" />
-        </span>
-        <div className="text-[11px] leading-snug text-white/60">{label}</div>
-        <div className="text-sm font-medium leading-snug text-white/90">{value}</div>
-      </div>
-    </div>
   );
 }
 

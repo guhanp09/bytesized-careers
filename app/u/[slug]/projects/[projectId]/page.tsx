@@ -1,9 +1,8 @@
 import Link from "next/link";
 
 import ProjectDetailPage from "../../../../../components/project/ProjectDetailPage";
-import { canUseLocalMockFallback, getPublicProfile } from "../../../../../lib/backendClient";
 import type { BackendPortfolioItem, BackendPublicProfileResponse } from "../../../../../lib/backendClient";
-import { getMockPublicTalentProfile } from "../../../../../lib/mockPublicTalentProfiles";
+import { resolvePublicProfileWithTalentFallback } from "../../../../../lib/publicProfileFallback";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -46,16 +45,7 @@ export default async function PublicProjectPage({
   const username = decodeURIComponent(rawSlug || "").trim().toLowerCase();
   const projectId = decodeURIComponent(rawProjectId || "");
 
-  let profile: BackendPublicProfileResponse | null = null;
-  try {
-    profile = await getPublicProfile(username);
-  } catch {
-    profile = null;
-  }
-
-  if (!profile && canUseLocalMockFallback()) {
-    profile = getMockPublicTalentProfile(username);
-  }
+  const profile: BackendPublicProfileResponse | null = await resolvePublicProfileWithTalentFallback(username);
 
   if (!profile) {
     return (

@@ -1,14 +1,31 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("phase 3a polish surfaces", () => {
-  test("saved and activity unauth states stay calm and actionable", async ({ page }) => {
+  test("saved and applications unauth states stay calm and actionable", async ({ page }) => {
     await page.goto("/saved");
     await expect(page.getByRole("heading", { name: "Saved", exact: true })).toBeVisible();
     await expect(page.locator("body")).toContainText("Sign in to keep your shortlist together.");
 
+    await page.goto("/applications");
+    await expect(page.getByRole("heading", { name: "Applications", exact: true })).toBeVisible();
+    await expect(page.locator("body")).toContainText("Sign in to open your applications.");
+  });
+
+  test("legacy activity routes redirect to canonical destinations", async ({ page }) => {
     await page.goto("/activity");
-    await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
-    await expect(page.locator("body")).toContainText("Sign in to see your marketplace activity.");
+    await expect(page).toHaveURL(/\/applications$/);
+
+    await page.goto("/activity?tab=applications");
+    await expect(page).toHaveURL(/\/applications$/);
+
+    await page.goto("/activity?tab=applicants");
+    await expect(page).toHaveURL(/\/applications\?view=hiring$/);
+
+    await page.goto("/activity?tab=interests");
+    await expect(page).toHaveURL(/\/applications\?view=talent$/);
+
+    await page.goto("/activity?tab=updates");
+    await expect(page).toHaveURL(/\/auth\?mode=login&next=.*notifications/);
   });
 
   test("search handles empty and results states without placeholder copy", async ({ page }) => {

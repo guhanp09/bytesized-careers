@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { PageHeader, StateCard } from "../../components/ui";
 import { authOptions } from "../../lib/auth";
 import YouHubClient from "../../components/you/YouHubClient";
@@ -6,7 +7,22 @@ import YouHubClient from "../../components/you/YouHubClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function YouPage() {
+export default async function YouPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Applications and Drafts moved out of the /you profile tabs into their own
+  // standalone workspaces; preserve any old links/state that still point here.
+  const params = await searchParams;
+  const tabParam = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  if (tabParam === "applications") {
+    redirect("/applications");
+  }
+  if (tabParam === "drafts") {
+    redirect("/drafts");
+  }
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {

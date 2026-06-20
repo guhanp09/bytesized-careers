@@ -83,6 +83,7 @@ class Job(Base):
     hiring_display_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hiring_platform_snapshot: Mapped[str | None] = mapped_column(String(20), nullable=True)
     hiring_verification_status_snapshot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    hiring_external_url_snapshot: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     managed_by_agency_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

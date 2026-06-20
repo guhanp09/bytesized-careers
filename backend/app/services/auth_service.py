@@ -6,6 +6,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
+from uuid import UUID
 
 from app.core.account_types import PublicAccountType
 from app.core.config import settings
@@ -14,7 +15,15 @@ from app.core.onboarding_intent import (
     normalize_onboarding_intent,
     onboarding_intent_from_legacy_account_type,
 )
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    TokenError,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    get_token_expires_at,
+    hash_password,
+    verify_password,
+)
 from app.middleware.request_id import get_request_id
 from app.models import User
 from app.repositories.auth_repository import AuthRepository
@@ -62,6 +71,14 @@ class UsernameAlreadyTakenError(Exception):
 class RegisterResult:
     created_new_user: bool
     verification_url: str | None
+
+
+@dataclass(frozen=True)
+class AuthTokenPair:
+    access_token: str
+    refresh_token: str
+    access_token_expires_at: int | None
+    refresh_token_expires_at: int | None
 
 
 class AuthService:
@@ -296,6 +313,7 @@ class AuthService:
         email: str,
         password: str,
         username: str,
+        display_name: str | None = None,
         onboarding_intent: OnboardingIntent = "DECIDE_LATER",
         account_type: PublicAccountType | None = None,
     ) -> RegisterResult:
@@ -325,6 +343,7 @@ class AuthService:
         user = await self.repository.create_user(
             email=normalized_email,
             username=normalized_username,
+            display_name=(display_name or "").strip() or None,
             password_hash=hash_password(password),
             email_verified_at=None,
             account_type="TALENT",
@@ -425,7 +444,18 @@ class AuthService:
         await self.repository.commit()
         return user
 
-    async def login_with_password(self, *, email: str, password: str) -> tuple[User, str]:
+    def create_token_pair(self, user: User) -> AuthTokenPair:
+        subject = str(user.id)
+        access_token = create_access_token(subject=subject)
+        refresh_token = create_refresh_token(subject=subject)
+        return AuthTokenPair(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_token_expires_at=get_token_expires_at(access_token),
+            refresh_token_expires_at=get_token_expires_at(refresh_token),
+        )
+
+    async def login_with_password(self, *, email: str, password: str) -> tuple[User, AuthTokenPair]:
         normalized_email = self.normalize_email(email)
         user = await self.repository.get_user_by_email(normalized_email)
         if user is None or not user.password_hash:
@@ -435,10 +465,9 @@ class AuthService:
         if user.email_verified_at is None:
             raise EmailNotVerifiedError("Email is not verified")
 
-        token = create_access_token(subject=str(user.id))
-        return user, token
+        return user, self.create_token_pair(user)
 
-    async def exchange_google_oauth(self, payload: OAuthGoogleExchangeRequest) -> tuple[User, str]:
+    async def exchange_google_oauth(self, payload: OAuthGoogleExchangeRequest) -> tuple[User, AuthTokenPair]:
         email = self.normalize_email(payload.email)
         user = await self.repository.get_user_by_email(email)
         now = datetime.now(UTC)
@@ -487,7 +516,6 @@ class AuthService:
             scope=payload.scope,
         )
         await self.repository.commit()
-        token = create_access_token(subject=str(user.id))
         logger.info(
             "google_oauth_exchange_complete",
             extra={
@@ -496,4 +524,25 @@ class AuthService:
                 "youtube_channels_synced": synced_channel_count,
             },
         )
-        return user, token
+        return user, self.create_token_pair(user)
+
+    async def refresh_backend_session(self, refresh_token: str) -> tuple[User, AuthTokenPair]:
+        try:
+            payload = decode_refresh_token(refresh_token)
+        except TokenError as exc:
+            raise InvalidCredentialsError("Invalid or expired refresh token") from exc
+
+        subject = payload.get("sub")
+        if not isinstance(subject, str):
+            raise InvalidCredentialsError("Invalid refresh token subject")
+
+        try:
+            user_id = UUID(subject)
+        except ValueError as exc:
+            raise InvalidCredentialsError("Invalid refresh token subject") from exc
+
+        user = await self.repository.get_user_by_id(user_id)
+        if user is None:
+            raise InvalidCredentialsError("Invalid refresh token subject")
+
+        return user, self.create_token_pair(user)

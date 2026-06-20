@@ -52,6 +52,7 @@ const RAW_JOBS: Job[] = [
       { title: "Structure + story flow reference", url: "https://www.youtube.com/watch?v=9bZkp7q19f0" },
     ],
     channelProfileSlug: "finance-creator",
+    channelExternalUrl: "https://www.youtube.com/@financecreator",
     postedByAgency: true,
     agencyProfileSlug: "example-agency",
     managedByAgencyName: "Example Creator Agency",
@@ -81,6 +82,7 @@ const RAW_JOBS: Job[] = [
       { title: "Bold type + contrast reference", url: "https://www.youtube.com/watch?v=uelHwf8o7_U" },
     ],
     channelProfileSlug: "tech-channel",
+    channelExternalUrl: "https://www.youtube.com/@techchannel",
     postedByAgency: true,
     agencyProfileSlug: "northstar-creator-agency",
     managedByAgencyName: "Northstar Creator Agency",
@@ -110,6 +112,7 @@ const RAW_JOBS: Job[] = [
       { title: "Hook + pacing reference", url: "https://www.youtube.com/watch?v=RgKAFK5djSk" },
     ],
     channelProfileSlug: "edu-hindi",
+    channelExternalUrl: "https://www.youtube.com/@eduhindi",
   },
   {
     id: "4",
@@ -396,9 +399,9 @@ const RAW_JOBS: Job[] = [
     experience: "0–2 years",
     location: "Remote",
     postedShort: "10h",
-    views: 145,
+    views: 0,
     applicants: 6,
-    responseRate: 63,
+    responseRate: 0,
     channel: {
       name: "Learn Visually",
       logoUrl: "https://picsum.photos/seed/visual/96/96",
@@ -510,6 +513,7 @@ export const JOBS: Job[] = RAW_JOBS.map((job) => ({
   requirements: job.requirements?.trim() ? job.requirements : defaultRequirements,
   howToApply: job.howToApply?.trim() ? job.howToApply : defaultHowToApply,
   channelProfileSlug: job.channelProfileSlug || toSlug(job.channel.name) || undefined,
+  channelExternalUrl: job.channelExternalUrl || undefined,
   postedByAgency: Boolean(job.postedByAgency),
   agencyProfileSlug: job.agencyProfileSlug || undefined,
 }));

@@ -175,6 +175,20 @@ const parseList = (value: string) =>
 const externalProjectUrl = (project: BackendPortfolioItem) =>
   project.source_url || project.media_url || project.youtube_url || project.links?.[0] || "";
 
+const isLikelyInternalHref = (value: string) => value.startsWith("/");
+
+const normalizeProjectHref = (value?: string | null) => {
+  const href = value?.trim();
+  if (!href) return null;
+  if (isLikelyInternalHref(href)) return href;
+  try {
+    const url = new URL(href);
+    return url.href;
+  } catch {
+    return null;
+  }
+};
+
 const roleForProject = (project: BackendPortfolioItem) =>
   project.role_name || project.role || project.user_role_in_project || "";
 
@@ -255,6 +269,32 @@ function FactRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function InteractiveProjectLink({
+  href,
+  className,
+  label,
+  children,
+}: {
+  href: string;
+  className: string;
+  label: string;
+  children: ReactNode;
+}) {
+  if (isLikelyInternalHref(href)) {
+    return (
+      <Link href={href} aria-label={label} className={className}>
+        {children}
+      </Link>
+    );
+  }
+
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label} className={className}>
+      {children}
+    </a>
+  );
+}
+
 function IconAction({
   label,
   onClick,
@@ -325,7 +365,7 @@ export default function ProjectDetailPage({
 
   const publicMetrics = project.public_metrics || {};
   const manualMetrics = project.manual_metrics || {};
-  const sourceUrl = externalProjectUrl(project);
+  const sourceUrl = normalizeProjectHref(externalProjectUrl(project));
   const role = roleForProject(project);
   const timeline = formatTimeline(project);
   const publishedDate = formatDateShort(asString(publicMetrics.published_at) || project.published_at || project.published_date);
@@ -537,15 +577,41 @@ export default function ProjectDetailPage({
         <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#15161a] shadow-[0_26px_90px_-54px_rgba(0,0,0,1)]">
           <div className="grid gap-0 lg:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
             <div className="bg-black/25">
-              <div className="aspect-video overflow-hidden bg-white/[0.035]">
-                {project.thumbnail_url ? (
-                  <img src={project.thumbnail_url} alt={project.title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-white/42">
-                    <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
-                  </div>
-                )}
-              </div>
+              {sourceUrl ? (
+                <InteractiveProjectLink
+                  href={sourceUrl}
+                  label={`Open project: ${project.title}`}
+                  className="group/project relative block aspect-video overflow-hidden bg-white/[0.035] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white/18"
+                >
+                  {project.thumbnail_url ? (
+                    <img
+                      src={project.thumbnail_url}
+                      alt={project.title}
+                      className="h-full w-full object-cover transition-[filter,transform] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-white/42 transition-[filter] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]">
+                      <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
+                    </div>
+                  )}
+                  <span className="pointer-events-none absolute inset-0 bg-black/0 opacity-0 transition-colors duration-300 group-hover/project:bg-black/10 group-hover/project:opacity-100 group-focus-visible/project:bg-black/10 group-focus-visible/project:opacity-100" />
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-[opacity,transform] duration-300 group-hover/project:opacity-100 group-focus-visible/project:opacity-100">
+                    <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-black/36 text-white/88 shadow-[0_16px_40px_-22px_rgba(0,0,0,1)] backdrop-blur-md">
+                      <Icon name="external-link" className="h-4 w-4" />
+                    </span>
+                  </span>
+                </InteractiveProjectLink>
+              ) : (
+                <div className="aspect-video overflow-hidden bg-white/[0.035]">
+                  {project.thumbnail_url ? (
+                    <img src={project.thumbnail_url} alt={project.title} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-white/42">
+                      <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col justify-between p-5 sm:p-7">
@@ -557,9 +623,24 @@ export default function ProjectDetailPage({
                   {owner && project.visibility === "private" ? <Chip>Private</Chip> : null}
                   {owner && project.publish_status === "draft" ? <Chip>Draft</Chip> : null}
                 </div>
-                <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
-                  {project.title}
-                </h1>
+                {sourceUrl ? (
+                  <InteractiveProjectLink
+                    href={sourceUrl}
+                    label={`Open project: ${project.title}`}
+                    className="group/title mt-5 inline-flex max-w-full cursor-pointer items-start gap-2 text-white underline-offset-4 transition-colors hover:text-white hover:underline focus:outline-none focus:ring-2 focus:ring-white/15"
+                  >
+                    <h1 className="max-w-full text-3xl font-semibold tracking-tight text-inherit underline-offset-4 group-hover/title:underline sm:text-4xl lg:text-5xl">
+                      {project.title}
+                    </h1>
+                    <span className="mt-2 shrink-0 text-white/42 transition-colors group-hover/title:text-white/72 group-focus-visible/title:text-white/72 sm:mt-2.5">
+                      <Icon name="external-link" className="h-4 w-4" />
+                    </span>
+                  </InteractiveProjectLink>
+                ) : (
+                  <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
+                    {project.title}
+                  </h1>
+                )}
                 {role ? (
                   <p className="mt-3 text-lg font-semibold text-white/82 sm:text-xl">{role}</p>
                 ) : owner ? (
@@ -567,29 +648,11 @@ export default function ProjectDetailPage({
                 ) : null}
                 {contextLine ? <p className="mt-3 text-sm text-white/54">{contextLine}</p> : null}
               </div>
-
-              <div className="mt-8 flex flex-wrap gap-2">
-                {sourceUrl ? (
-                  <a
-                    href={sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Open original project"
-                    className="inline-flex h-10 items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-4 text-sm font-semibold text-white/82 transition-colors hover:bg-white/[0.1] hover:text-white focus:outline-none focus:ring-2 focus:ring-white/15"
-                  >
-                    Open project
-                    <Icon name="external-link" className="h-3.5 w-3.5" />
-                  </a>
-                ) : owner ? (
+              {!sourceUrl && owner ? (
+                <div className="mt-8">
                   <EmptyOwnerPrompt>Add an original project link.</EmptyOwnerPrompt>
-                ) : null}
-                <Link
-                  href={profileHref}
-                  className="inline-flex h-10 items-center rounded-full border border-white/10 bg-white/[0.035] px-4 text-sm font-semibold text-white/68 transition-colors hover:bg-white/[0.075] hover:text-white"
-                >
-                  View profile
-                </Link>
-              </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -783,14 +846,29 @@ export default function ProjectDetailPage({
             <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">
               <div className="flex items-center gap-3">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName} className="h-12 w-12 rounded-2xl object-cover" />
+                  <Link
+                    href={profileHref}
+                    aria-label={`Open profile: ${displayName}`}
+                    className="block rounded-2xl transition-[box-shadow,filter] hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  >
+                    <img src={avatarUrl} alt={displayName} className="h-12 w-12 rounded-2xl object-cover" />
+                  </Link>
                 ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.055] text-white/50">
+                  <Link
+                    href={profileHref}
+                    aria-label={`Open profile: ${displayName}`}
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.055] text-white/50 transition-[border-color,background-color,color] hover:border-white/18 hover:bg-white/[0.08] hover:text-white/72 focus:outline-none focus:ring-2 focus:ring-white/15"
+                  >
                     <Icon name="user" className="h-5 w-5" />
-                  </div>
+                  </Link>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white/90">{displayName}</p>
+                  <Link
+                    href={profileHref}
+                    className="block truncate text-sm font-semibold text-white/90 transition-colors hover:text-white hover:underline focus:outline-none focus:ring-2 focus:ring-white/15"
+                  >
+                    {displayName}
+                  </Link>
                   <p className="truncate text-xs text-white/48">@{username}</p>
                 </div>
               </div>
@@ -799,12 +877,6 @@ export default function ProjectDetailPage({
               <div className="mt-3">
                 <RatingDisplay />
               </div>
-              <Link
-                href={profileHref}
-                className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.055] text-sm font-semibold text-white/78 transition-colors hover:bg-white/[0.09] hover:text-white"
-              >
-                View profile
-              </Link>
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">

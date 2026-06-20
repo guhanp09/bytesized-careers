@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from app.models import HiringIdentity, Job
+from app.notifications import dispatch_notification
 from app.repositories.job_repository import JobRepository
 from app.schemas import JobCreate, JobUpdate
 
@@ -24,6 +25,10 @@ class JobAuthRequiredError(Exception):
 
 
 class JobForbiddenError(Exception):
+    pass
+
+
+class JobVerificationRequiredError(Exception):
     pass
 
 
@@ -74,6 +79,7 @@ class JobService:
         data["hiring_display_name_snapshot"] = identity.display_name
         data["hiring_platform_snapshot"] = identity.platform
         data["hiring_verification_status_snapshot"] = identity.verification_status
+        data["hiring_external_url_snapshot"] = identity.url
         data["managed_by_agency_name_snapshot"] = (
             identity.managed_by_agency_name if identity.is_agency_represented else None
         )
@@ -82,6 +88,25 @@ class JobService:
         data["posted_platform"] = identity.platform.lower()
         data["posted_by_agency"] = bool(identity.is_agency_represented)
         data["is_verified"] = identity.verification_status == "VERIFIED"
+
+    @staticmethod
+    def _published_status(value: Any) -> bool:
+        return isinstance(value, str) and value.lower() == "published"
+
+    @staticmethod
+    def _requires_representation_verification(identity: HiringIdentity | None, status: Any) -> bool:
+        return bool(
+            identity is not None
+            and identity.is_agency_represented
+            and identity.verification_status != "VERIFIED"
+            and JobService._published_status(status)
+        )
+
+    @staticmethod
+    def _raise_representation_verification_required() -> None:
+        raise JobVerificationRequiredError(
+            "This job cannot go live until authorization to hire for this channel/page is verified."
+        )
 
     async def list_jobs(
         self,
@@ -124,6 +149,8 @@ class JobService:
             if selected_identity is None:
                 raise JobForbiddenError("Selected hiring identity does not belong to this user")
             self._apply_hiring_identity_snapshot(data, selected_identity)
+            if self._requires_representation_verification(selected_identity, data.get("status")):
+                self._raise_representation_verification_required()
 
         platforms = [platform.strip().lower() for platform in data.get("platforms", []) if platform]
         posted_platform = (data.get("posted_platform") or "").strip().lower()
@@ -158,12 +185,34 @@ class JobService:
         elif actor_user_id is not None:
             data["posted_by_user_id"] = actor_user_id
 
-        if actor_user_id is not None and not data.get("channel_profile_slug"):
+        if actor_user_id is not None:
             actor_user = await self.repository.get_user_by_id(actor_user_id)
             if actor_user is not None and actor_user.username:
-                data["channel_profile_slug"] = actor_user.username
+                if selected_identity is not None and selected_identity.is_agency_represented:
+                    data["agency_profile_slug"] = data.get("agency_profile_slug") or actor_user.username
+                elif not data.get("channel_profile_slug"):
+                    data["channel_profile_slug"] = actor_user.username
 
         job = await self.repository.create(data)
+        if self._published_status(job.status) and job.posted_by_user_id is not None:
+            # Best-effort: a notification failure must never block job creation.
+            try:
+                await dispatch_notification(
+                    self.repository.session,
+                    event_key="job_posted_successfully",
+                    recipient_user_id=job.posted_by_user_id,
+                    title="Your job is live",
+                    body=f"{job.title} is now published and visible to talent.",
+                    category="job",
+                    resource_type="job",
+                    resource_id=str(job.id),
+                    action_url=f"/jobs/{job.id}",
+                    payload={"job_title": job.title},
+                )
+            except Exception:
+                logger.exception(
+                    "job_posted_notification_failed", extra={"job_id": str(job.id)}
+                )
         await self.repository.session.commit()
         return job
 
@@ -175,12 +224,14 @@ class JobService:
         self, job: Job, payload: JobUpdate, *, actor_user_id: UUID | None = None
     ) -> Job:
         updates = self._to_payload(payload.model_dump(exclude_unset=True))
+        selected_identity: HiringIdentity | None = None
         if "hiring_identity_id" in updates:
             hiring_identity_id = updates.get("hiring_identity_id")
             if hiring_identity_id is None:
                 updates["hiring_display_name_snapshot"] = None
                 updates["hiring_platform_snapshot"] = None
                 updates["hiring_verification_status_snapshot"] = None
+                updates["hiring_external_url_snapshot"] = None
                 updates["managed_by_agency_name_snapshot"] = None
             else:
                 if actor_user_id is None:
@@ -192,6 +243,26 @@ class JobService:
                 if selected_identity is None:
                     raise JobForbiddenError("Selected hiring identity does not belong to this user")
                 self._apply_hiring_identity_snapshot(updates, selected_identity)
+                if selected_identity.is_agency_represented:
+                    actor_user = await self.repository.get_user_by_id(actor_user_id)
+                    if actor_user is not None and actor_user.username:
+                        updates["agency_profile_slug"] = updates.get("agency_profile_slug") or actor_user.username
+        elif job.hiring_identity_id is not None and actor_user_id is not None:
+            selected_identity = await self.repository.get_hiring_identity_for_user(
+                user_id=actor_user_id,
+                identity_id=job.hiring_identity_id,
+            )
+
+        effective_status = updates.get("status", job.status)
+        if self._requires_representation_verification(selected_identity, effective_status):
+            self._raise_representation_verification_required()
+        if (
+            selected_identity is not None
+            and "hiring_identity_id" not in updates
+            and self._published_status(effective_status)
+        ):
+            self._apply_hiring_identity_snapshot(updates, selected_identity)
+
         if updates:
             job = await self.repository.update(job, updates)
             await self.repository.session.commit()

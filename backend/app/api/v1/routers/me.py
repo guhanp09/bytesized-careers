@@ -14,6 +14,7 @@ from app.schemas import (
     HiringIdentityCreate,
     HiringIdentityRead,
     HiringIdentityUpdate,
+    HiringIdentityVerificationCheckRequest,
     HiringIdentityVerificationRequest,
     HiringIdentityVerificationResponse,
     MeRead,
@@ -231,6 +232,27 @@ async def upload_my_avatar(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.post(
+    "/banner",
+    response_model=ProfileRead,
+    summary="Upload authenticated user's profile banner (cover image)",
+)
+async def upload_my_banner(
+    payload: AvatarUploadRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service),
+) -> ProfileRead:
+    try:
+        return await service.upload_my_banner(
+            current_user,
+            payload,
+            public_base_url=str(request.base_url),
+        )
+    except ProfileValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @router.patch(
     "/privacy",
     response_model=ProfileRead,
@@ -313,6 +335,44 @@ async def request_my_hiring_identity_verification(
             current_user,
             identity_id=identity_id,
             payload=payload or HiringIdentityVerificationRequest(),
+        )
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProfileValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/hiring-identities/{identity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete authenticated user's hiring identity",
+)
+async def delete_my_hiring_identity(
+    identity_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service),
+) -> None:
+    try:
+        await service.delete_my_hiring_identity(current_user, identity_id=identity_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/hiring-identities/{identity_id}/check-verification",
+    response_model=HiringIdentityVerificationResponse,
+    summary="Check authenticated user's hiring identity verification code",
+)
+async def check_my_hiring_identity_verification(
+    identity_id: UUID,
+    _payload: HiringIdentityVerificationCheckRequest | None = None,
+    current_user: User = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service),
+) -> HiringIdentityVerificationResponse:
+    try:
+        return await service.check_hiring_identity_bio_verification(
+            current_user,
+            identity_id=identity_id,
         )
     except ProfileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

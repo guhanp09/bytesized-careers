@@ -57,6 +57,72 @@ const absolutize = (value: string | null, baseUrl: string) => {
   }
 };
 
+const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
+// Non-profile first path segments. /p/, /reel/, /stories/ get a specific message;
+// the rest are reserved app routes that aren't profiles.
+const INSTAGRAM_MEDIA_SEGMENTS = new Set(["p", "reel", "reels", "stories", "tv"]);
+const INSTAGRAM_RESERVED_SEGMENTS = new Set([
+  "accounts",
+  "explore",
+  "directory",
+  "about",
+  "web",
+  "invites",
+  "challenge",
+  "developer",
+  "legal",
+  "privacy",
+  "terms",
+  "emails",
+]);
+
+const titleizeUsername = (username: string) =>
+  username ? username.charAt(0).toUpperCase() + username.slice(1) : username;
+
+const cleanInstagramName = (raw: string | null, username: string) => {
+  const decoded = decodeExperienceHtmlEntities(raw);
+  if (!decoded) return titleizeUsername(username);
+  const cleaned = decoded
+    .replace(/\s+/g, " ")
+    .replace(/\s*\(@[^)]*\).*$/i, "")
+    .replace(/\s*[•|\-]\s*Instagram.*$/i, "")
+    .replace(/\s+on Instagram.*$/i, "")
+    .trim();
+  return cleaned || titleizeUsername(username);
+};
+
+type InstagramResolution =
+  | { kind: "identity"; username: string; canonicalUrl: string }
+  | { kind: "error"; status: number; error: string };
+
+const resolveInstagramFromUrl = (parsedUrl: URL): InstagramResolution | null => {
+  const host = parsedUrl.hostname.toLowerCase();
+  if (!INSTAGRAM_HOSTS.has(host)) return null;
+
+  const segments = parsedUrl.pathname
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const firstSegment = (segments[0] || "").replace(/^@/, "").toLowerCase();
+
+  if (INSTAGRAM_MEDIA_SEGMENTS.has(firstSegment)) {
+    return {
+      kind: "error",
+      status: 400,
+      error: "Use the Instagram profile URL, not a post, reel, or story link.",
+    };
+  }
+  if (!firstSegment || INSTAGRAM_RESERVED_SEGMENTS.has(firstSegment) || !/^[a-z0-9._]{1,30}$/.test(firstSegment)) {
+    return { kind: "error", status: 400, error: "Enter a valid Instagram profile URL." };
+  }
+
+  return {
+    kind: "identity",
+    username: firstSegment,
+    canonicalUrl: `https://www.instagram.com/${firstSegment}/`,
+  };
+};
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { url?: unknown } | null;
   const rawUrl = typeof body?.url === "string" ? body.url : "";
@@ -117,6 +183,69 @@ export async function POST(request: Request) {
       error: null,
       confidence: youtubeIdentity.confidence,
       source: youtubeIdentity.source,
+    });
+  }
+
+  // Instagram: resolve identity from the URL itself and never dead-end on an
+  // unreadable public page (Instagram serves login walls to server fetches).
+  // The username/canonical URL is enough to proceed to public-code verification.
+  const instagram = resolveInstagramFromUrl(parsedUrl);
+  if (instagram) {
+    if (instagram.kind === "error") {
+      return NextResponse.json(
+        {
+          error: instagram.error,
+          normalizedUrl,
+          platform: "Instagram",
+          inferredName: null,
+          logoUrl: null,
+          faviconUrl: null,
+          confidence: "none",
+        },
+        { status: instagram.status }
+      );
+    }
+
+    const { username, canonicalUrl } = instagram;
+    // Best-effort: try to enrich name/avatar from public metadata, but treat any
+    // failure as a graceful fallback to the URL-derived identity (no blocking error).
+    let metadataName: string | null = null;
+    let metadataLogo: string | null = null;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      const response = await fetch(canonicalUrl, {
+        signal: controller.signal,
+        headers: {
+          accept: "text/html,application/xhtml+xml",
+          "user-agent": "CreatorJobs local profile resolver",
+        },
+        redirect: "follow",
+      });
+      clearTimeout(timeout);
+      const contentType = response.headers.get("content-type") || "";
+      if (response.ok && contentType.toLowerCase().includes("text/html")) {
+        const html = (await response.text()).slice(0, MAX_HTML_BYTES);
+        metadataName = metaContent(html, "og:title") || metaContent(html, "twitter:title") || null;
+        metadataLogo = metaContent(html, "og:image") || metaContent(html, "twitter:image") || null;
+      }
+    } catch {
+      // Unreadable public page is expected for Instagram; fall back to URL identity.
+    }
+
+    const resolvedLogo = absolutize(metadataLogo, canonicalUrl);
+    return NextResponse.json({
+      normalizedUrl: canonicalUrl,
+      platform: "Instagram",
+      inferredName: cleanInstagramName(metadataName, username),
+      logoUrl: resolvedLogo,
+      faviconUrl: null,
+      canonicalUrl,
+      handle: `@${username}`,
+      externalId: null,
+      error: null,
+      confidence: metadataName || resolvedLogo ? "high" : "medium",
+      source: "instagram_url",
     });
   }
 

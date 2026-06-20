@@ -47,7 +47,27 @@ async def sync_dev_sqlite_schema(engine: AsyncEngine) -> None:
                     if column.name in existing_columns:
                         continue
                     column_sql = str(CreateColumn(column).compile(dialect=sync_conn.dialect)).strip()
+                    added_as_nullable = False
+                    if (
+                        sync_conn.dialect.name == "sqlite"
+                        and not column.nullable
+                        and column.server_default is None
+                    ):
+                        column_sql = column_sql.replace(" NOT NULL", "")
+                        added_as_nullable = True
                     sync_conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
+                    if added_as_nullable and column.default is not None:
+                        default_arg = column.default.arg
+                        try:
+                            default_value = default_arg() if callable(default_arg) else default_arg
+                        except TypeError:
+                            default_value = None
+                        if default_value is not None:
+                            sync_conn.execute(
+                                table.update()
+                                .where(column.is_(None))
+                                .values({column.name: default_value})
+                            )
                     added.append(f"{table.name}.{column.name}")
 
             # Existing SQLite tables do not get new indexes from create_all(checkfirst=True).

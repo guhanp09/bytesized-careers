@@ -3,11 +3,11 @@
 import { AnimatePresence, motion, useIsPresent } from "framer-motion";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { StartTimeframe } from "../../lib/types";
-import { VerifiedIdentity } from "../../lib/identity/types";
-import { formatCompactNumber, formatStartLabel, onlyDigits } from "../../lib/format";
+import { formatStartLabel, onlyDigits } from "../../lib/format";
 import { INDIA_CITIES } from "../../lib/indiaCities";
 import { START_TIME_VALUES } from "../../lib/jobs";
 import { Icon } from "../Icons";
+import ToolPicker from "../you/ToolPicker";
 import StyleSmartInput from "./StyleSmartInput";
 
 const JOB_TITLE_MAX_LENGTH = 94;
@@ -67,6 +67,9 @@ type Step =
 
 type TurnaroundUnit = "hours" | "days" | "weeks";
 type Turnaround = { value: number; unit: TurnaroundUnit } | null;
+type BudgetIntent = "" | "range" | "flexible";
+type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
+type JobPlatform = "" | "youtube" | "instagram";
 
 const pill = (active: boolean) =>
   [
@@ -238,18 +241,6 @@ function BulletListEditor({
   );
 }
 
-const TOOL_SUGGESTIONS = [
-  "Premiere Pro",
-  "Final Cut Pro",
-  "DaVinci Resolve",
-  "After Effects",
-  "CapCut",
-  "Audition",
-  "Avid",
-  "Filmora",
-  "Resolve Studio",
-];
-
 const PLATFORM_SUGGESTIONS = ["YouTube", "Instagram"];
 
 const STEP_SUBTITLES: Record<Step, string> = {
@@ -375,19 +366,6 @@ function TinyChip({
   );
 }
 
-const ghostMatch = (value: string, options: string[]) => {
-  const v = value.trim().toLowerCase();
-  if (!v) return "";
-  const match = options.find((opt) => opt.toLowerCase().startsWith(v));
-  return match || "";
-};
-
-const ghostRemainder = (value: string, suggestion: string) => {
-  if (!suggestion) return "";
-  if (!suggestion.toLowerCase().startsWith(value.trim().toLowerCase())) return suggestion;
-  return suggestion.slice(value.length);
-};
-
 type StepActionsProps = {
   id: Step;
   canSave: boolean;
@@ -398,9 +376,11 @@ type StepActionsProps = {
   onNext: (step: Step) => void;
   nextLabel?: string;
   nextIcon?: React.ReactNode;
+  nextAriaLabel?: string;
   nextType?: "button" | "submit";
   nextDisabled?: boolean;
   isBusy?: boolean;
+  onSaveDraft?: () => void;
   savedSection: null | "basics" | "content" | "tags" | "refs";
   onSaveClick: (
     section: "basics" | "content" | "tags" | "refs",
@@ -418,24 +398,39 @@ function StepActions({
   onNext,
   nextLabel,
   nextIcon,
+  nextAriaLabel,
   nextType = "button",
   nextDisabled = false,
   isBusy = false,
+  onSaveDraft,
   savedSection,
   onSaveClick,
 }: StepActionsProps) {
   const toastKey = id === "referenceVideos" ? "refs" : id === "tags" ? "tags" : id === "basics" ? "basics" : "content";
+  const nextAccessibleLabel = nextAriaLabel || nextLabel || "Continue";
   const nextContent = nextLabel ? (
     <>
       {nextIcon}
       <span className="text-xs font-semibold">{nextLabel}</span>
     </>
+  ) : nextIcon ? (
+    nextIcon
   ) : (
     <span className="text-sm leading-none">→</span>
   );
   return (
     <div className="mt-4 flex items-center justify-between">
-      <div>
+      <div className="flex items-center gap-2">
+        {onSaveDraft ? (
+          <button
+            type="button"
+            onClick={onSaveDraft}
+            disabled={isBusy}
+            className="inline-flex h-10 min-w-[116px] cursor-pointer items-center justify-center rounded-xl border border-white/[0.16] bg-white/[0.065] px-4 text-sm font-semibold text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[background-color,border-color,color,transform] hover:border-white/25 hover:bg-white/[0.095] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            SAVE DRAFT
+          </button>
+        ) : null}
         {canGoBack ? (
           <button
             type="button"
@@ -481,8 +476,8 @@ function StepActions({
                 : "cursor-pointer bg-white text-black border-white hover:bg-white/90",
               nextLabel ? "h-9 px-3 gap-2" : "h-9 w-9",
             ].join(" ")}
-            aria-label="Next"
-            title="Next"
+            aria-label={nextAccessibleLabel}
+            title={nextAccessibleLabel}
             disabled={isBusy || nextDisabled}
           >
             {nextContent}
@@ -513,9 +508,11 @@ export default function PostJobForm({
   budgetMin,
   budgetMax,
   budgetUnit,
+  budgetIntent,
   onBudgetMinChange,
   onBudgetMaxChange,
   onBudgetUnitChange,
+  onBudgetIntentChange,
   expMin,
   expMax,
   onExpMinChange,
@@ -524,24 +521,12 @@ export default function PostJobForm({
   onStartWithinChange,
   platform,
   onPlatformChange,
-  identity,
-  identityLoading,
-  identityError,
-  identityOptions,
-  identityPickerOpen,
-  onIdentitySelect,
-  onIdentityConnect,
-  onIdentityChange,
-  onIdentityPickerClose,
   styles,
   onStylesChange,
   turnaround,
   onTurnaroundChange,
   tools,
-  toolInput,
-  onToolInputChange,
-  onAddTool,
-  onRemoveTool,
+  onToolsChange,
   about,
   responsibilities,
   requirements,
@@ -568,6 +553,7 @@ export default function PostJobForm({
   onSaveContent,
   onSaveTags,
   onSaveReferenceVideos,
+  onSaveDraft,
   canSaveBasics,
   canSaveContent,
   canSaveTags,
@@ -575,6 +561,7 @@ export default function PostJobForm({
   submitError,
   isSubmitting,
   publishDisabled = false,
+  isRepresentedHiringIdentity = false,
 }: {
   step: Step;
   direction: "forward" | "back";
@@ -585,47 +572,37 @@ export default function PostJobForm({
   onNext: (step: Step) => void;
   onBack: (step: Step) => void;
   basicsErrors?: Partial<
-    Record<"title" | "city" | "cityInvalid" | "budgetRange" | "identity" | "platform", string>
+    Record<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode", string>
   >;
   contentErrors?: Partial<Record<"about", string>>;
   title: string;
   onTitleChange: (next: string) => void;
-  workMode: "Remote" | "Hybrid" | "On-site";
-  onWorkModeChange: (next: "Remote" | "Hybrid" | "On-site") => void;
+  workMode: WorkMode;
+  onWorkModeChange: (next: WorkMode) => void;
   city: string;
   onCityChange: (next: string) => void;
   budgetMin: string;
   budgetMax: string;
   budgetUnit: "per project" | "per month";
+  budgetIntent: BudgetIntent;
   onBudgetMinChange: (next: string) => void;
   onBudgetMaxChange: (next: string) => void;
   onBudgetUnitChange: (next: "per project" | "per month") => void;
+  onBudgetIntentChange: (next: BudgetIntent) => void;
   expMin: string;
   expMax: string;
   onExpMinChange: (next: string) => void;
   onExpMaxChange: (next: string) => void;
   startWithin: StartTimeframe | "";
   onStartWithinChange: (next: StartTimeframe | "") => void;
-  platform: "youtube" | "instagram";
-  onPlatformChange: (platform: "youtube" | "instagram") => void;
-  identity: VerifiedIdentity | null;
-  identityLoading: boolean;
-  identityError: string | null;
-  identityOptions: VerifiedIdentity[];
-  identityPickerOpen: boolean;
-  onIdentitySelect: (brandId: string) => void;
-  onIdentityConnect: () => void;
-  onIdentityChange: () => void;
-  onIdentityPickerClose: () => void;
+  platform: JobPlatform;
+  onPlatformChange: (platform: JobPlatform) => void;
   styles: string[];
   onStylesChange: (next: string[]) => void;
   turnaround: Turnaround;
   onTurnaroundChange: (next: Turnaround) => void;
   tools: string[];
-  toolInput: string;
-  onToolInputChange: (next: string) => void;
-  onAddTool: (tool: string) => void;
-  onRemoveTool: (tool: string) => void;
+  onToolsChange: (next: string[]) => void;
   about: string;
   responsibilities: string;
   requirements: string;
@@ -652,6 +629,7 @@ export default function PostJobForm({
   onSaveContent?: () => boolean | void;
   onSaveTags?: () => boolean | void;
   onSaveReferenceVideos?: () => boolean | void;
+  onSaveDraft?: () => void;
   canSaveBasics: boolean;
   canSaveContent: boolean;
   canSaveTags: boolean;
@@ -659,6 +637,7 @@ export default function PostJobForm({
   submitError?: string | null;
   isSubmitting?: boolean;
   publishDisabled?: boolean;
+  isRepresentedHiringIdentity?: boolean;
 }) {
   const [savedSection, setSavedSection] = useState<null | "basics" | "content" | "tags" | "refs">(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -692,8 +671,6 @@ export default function PostJobForm({
     }
   }, [workMode]);
 
-  const toolGhost = ghostMatch(toolInput, TOOL_SUGGESTIONS.filter((t) => !tools.includes(t)));
-  const toolRemainder = ghostRemainder(toolInput, toolGhost);
   const triggerSavedToast = (section: "basics" | "content" | "tags" | "refs") => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     setSavedSection(section);
@@ -712,10 +689,10 @@ export default function PostJobForm({
   const renderStep = (id: Step) => {
     if (id === "basics") {
       const titleError = basicsErrors?.title;
-      const identityErrorMessage = basicsErrors?.identity;
       const cityError = basicsErrors?.city || basicsErrors?.cityInvalid;
-      const budgetError = basicsErrors?.budgetRange;
+      const budgetError = basicsErrors?.budgetMissing || basicsErrors?.budgetRange;
       const platformError = basicsErrors?.platform;
+      const workModeError = basicsErrors?.workMode;
       const invalidClass =
         "border-amber-200/40 ring-1 ring-amber-200/25 focus:border-amber-200/50";
       return (
@@ -735,10 +712,11 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-4">
+          <div className="flex flex-col gap-4">
             <Field
               label={
                 <span className="inline-flex items-center gap-1">
@@ -749,6 +727,8 @@ export default function PostJobForm({
             >
               <div className="space-y-2">
                 <input
+                  aria-required="true"
+                  aria-invalid={Boolean(titleError)}
                   className={[inputBase, "uppercase", titleError ? invalidClass : ""].join(" ")}
                   placeholder="e.g. Video editor for YouTube (retention-focused)"
                   value={title}
@@ -767,16 +747,28 @@ export default function PostJobForm({
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Location" optional>
+              <Field
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    Work mode <span className="text-white/50">*</span>
+                  </span>
+                }
+                error={workModeError}
+              >
                 <select
-                  className={selectBase}
+                  aria-required="true"
+                  aria-invalid={Boolean(workModeError)}
+                  className={[selectBase, workModeError ? invalidClass : ""].join(" ")}
                   value={workMode}
                   onChange={(e) => {
-                    const next = e.target.value as "Remote" | "Hybrid" | "On-site";
+                    const next = e.target.value as WorkMode;
                     onWorkModeChange(next);
                     if (next === "Remote") onCityChange("");
                   }}
                 >
+                  <option value="" className="bg-[#0b0b0f]">
+                    Choose work mode
+                  </option>
                   {(["Remote", "Hybrid", "On-site"] as const).map((m) => (
                     <option key={m} value={m} className="bg-[#0b0b0f]">
                       {m}
@@ -792,11 +784,12 @@ export default function PostJobForm({
                       City <span className="text-white/50">*</span>
                     </span>
                   }
-                  optional
                   error={cityError}
                 >
                   <div className="relative">
                     <input
+                      aria-required="true"
+                      aria-invalid={Boolean(cityError)}
                       className={[inputBase, cityError ? invalidClass : ""].join(" ")}
                       placeholder="e.g. Chennai"
                       value={city}
@@ -866,42 +859,75 @@ export default function PostJobForm({
               ) : null}
             </div>
 
-            <Field label="Budget" optional error={budgetError}>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto] items-center">
-                <input
-                  className={[inputBase, budgetError ? invalidClass : ""].join(" ")}
-                  placeholder="Min"
-                  inputMode="numeric"
-                  value={budgetMin}
-                  onChange={(e) => onBudgetMinChange(onlyDigits(e.target.value))}
-                />
+            <Field
+              label={
+                <span className="inline-flex items-center gap-1">
+                  Budget <span className="text-white/50">*</span>
+                </span>
+              }
+              error={budgetError}
+            >
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center">
+                  <input
+                    aria-required="true"
+                    aria-invalid={Boolean(budgetError)}
+                    className={[inputBase, budgetError ? invalidClass : ""].join(" ")}
+                    placeholder="Min"
+                    inputMode="numeric"
+                    value={budgetMin}
+                    onChange={(e) => {
+                      onBudgetIntentChange("range");
+                      onBudgetMinChange(onlyDigits(e.target.value));
+                    }}
+                  />
 
-                <span className="text-white/45 select-none">–</span>
+                  <span className="text-white/45 select-none">–</span>
 
-                <input
-                  className={[inputBase, budgetError ? invalidClass : ""].join(" ")}
-                  placeholder="Max"
-                  inputMode="numeric"
-                  value={budgetMax}
-                  onChange={(e) => onBudgetMaxChange(onlyDigits(e.target.value))}
-                />
+                  <input
+                    aria-required="true"
+                    aria-invalid={Boolean(budgetError)}
+                    className={[inputBase, budgetError ? invalidClass : ""].join(" ")}
+                    placeholder="Max"
+                    inputMode="numeric"
+                    value={budgetMax}
+                    onChange={(e) => {
+                      onBudgetIntentChange("range");
+                      onBudgetMaxChange(onlyDigits(e.target.value));
+                    }}
+                  />
 
-                <select
-                  className={selectBase}
-                  value={budgetUnit}
-                  onChange={(e) => onBudgetUnitChange(e.target.value as "per project" | "per month")}
+                  <select
+                    className={selectBase}
+                    value={budgetUnit}
+                    onChange={(e) => onBudgetUnitChange(e.target.value as "per project" | "per month")}
+                  >
+                    {(["per project", "per month"] as const).map((u) => (
+                      <option key={u} value={u} className="bg-[#0b0b0f]">
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className={pill(budgetIntent === "flexible" && !budgetMin && !budgetMax)}
+                  onClick={() => {
+                    onBudgetMinChange("");
+                    onBudgetMaxChange("");
+                    onBudgetIntentChange("flexible");
+                  }}
                 >
-                  {(["per project", "per month"] as const).map((u) => (
-                    <option key={u} value={u} className="bg-[#0b0b0f]">
-                      {u}
-                    </option>
-                  ))}
-                </select>
+                  Flexible
+                </button>
               </div>
             </Field>
 
             <Field label="Experience" optional>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] items-center">
+              <div
+                className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center"
+                data-quality-target="job-experience"
+              >
                 <select
                   className={selectBase}
                   value={expMin}
@@ -970,169 +996,12 @@ export default function PostJobForm({
               </div>
             </Field>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-white/80 inline-flex items-center gap-1">
-                    Verify your content creator account <span className="text-white/40">(optional)</span>
-                  </div>
-                {identityErrorMessage ? (
-                  <div className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
-                    <Icon name="alert" className="w-3 h-3" />
-                    <span>{identityErrorMessage}</span>
-                  </div>
-                ) : null}
-              </div>
-
-              {!identity ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                  <div className="text-sm font-semibold text-white/90 inline-flex items-center gap-1">
-                    Verify your content creator account <span className="text-white/40">(optional)</span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-white/50">
-                    Add verification when you want a trusted channel/page badge on the job.
-                  </div>
-                  {identityError ? (
-                    <div className="mt-2 text-[11px] text-amber-200/90">{identityError}</div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onIdentityConnect();
-                    }}
-                    disabled={identityLoading}
-                    className={[
-                      "mt-3 h-10 px-4 rounded-xl",
-                      "bg-white text-black font-semibold text-sm",
-                      "shadow-[0_14px_35px_-26px_rgba(0,0,0,0.95)]",
-                      "transition-transform duration-150 hover:-translate-y-[1px] hover:bg-white/95",
-                      identityLoading ? "opacity-70 pointer-events-none" : "",
-                    ].join(" ")}
-                  >
-                    {identityLoading
-                      ? "Connecting..."
-                      : platform === "youtube"
-                        ? "Connect YouTube"
-                        : "Connect Instagram"}
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-10 w-10 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {identity.imageUrl ? (
-                          <img src={identity.imageUrl} alt={identity.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <Icon name={platform === "youtube" ? "youtube" : "instagram"} className="w-5 h-5 text-white/70" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="text-sm font-semibold text-white/90 truncate">{identity.name}</div>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/10 border border-white/10 text-white/80">
-                            Verified
-                          </span>
-                        </div>
-                        <div className="text-xs text-white/55 truncate">
-                          {identity.handle ? `${identity.handle} • ` : ""}
-                          {identity.followersCount != null
-                            ? `${formatCompactNumber(identity.followersCount)} ${
-                                platform === "youtube" ? "subscribers" : "followers"
-                              }`
-                            : platform === "youtube"
-                              ? "Subscribers hidden"
-                              : "Followers hidden"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={onIdentityChange}
-                      className="h-9 px-3 rounded-xl bg-white/7 border border-white/12 text-white/80 text-sm font-semibold hover:bg-white/10 hover:text-white transition-colors"
-                    >
-                      Refresh
-                    </button>
-                  </div>
-
-                  {platform === "youtube" && identityOptions.length > 0 ? (
-                    <div className="mt-3">
-                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
-                        Posting as
-                      </label>
-                      <select
-                        className={selectBase}
-                        value={identity.brandId}
-                        onChange={(event) => onIdentitySelect(event.target.value)}
-                        disabled={identityLoading}
-                      >
-                        {identityOptions.map((option) => (
-                          <option key={option.brandId} value={option.brandId} className="bg-[#0b0b0f]">
-                            {option.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
-            {identityPickerOpen ? (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-                <div className="w-full max-w-md rounded-2xl bg-[#111216] border border-white/10 p-4">
-                  <div className="text-sm font-semibold text-white/90">Select a {platform} account</div>
-                  <div className="mt-3 space-y-2 max-h-[260px] overflow-y-auto">
-                    {identityOptions.map((option) => (
-                      <button
-                        key={option.brandId}
-                        type="button"
-                        onClick={() => onIdentitySelect(option.brandId)}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center gap-3 text-left hover:bg-white/10"
-                      >
-                        <div className="h-9 w-9 rounded-full border border-white/15 bg-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
-                          {option.imageUrl ? (
-                            <img src={option.imageUrl} alt={option.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <Icon name={platform === "youtube" ? "youtube" : "instagram"} className="w-4 h-4 text-white/70" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-white/85 truncate">{option.name}</div>
-                          <div className="text-xs text-white/50 truncate">
-                            {option.handle ? `${option.handle} • ` : ""}
-                            {option.followersCount != null
-                              ? `${formatCompactNumber(option.followersCount)} ${
-                                  platform === "youtube" ? "subscribers" : "followers"
-                                }`
-                              : platform === "youtube"
-                                ? "Subscribers hidden"
-                                : "Followers hidden"}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={onIdentityPickerClose}
-                      className="h-9 px-3 rounded-xl bg-white/7 border border-white/12 text-white/80 text-sm font-semibold hover:bg-white/10 hover:text-white transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
             <Field label="Style" optional helper="Type and press Enter. Tab accepts the ghost suggestion.">
               <StyleSmartInput value={styles} onChange={onStylesChange} className={ghostInputBase} />
             </Field>
 
             <Field label="Turnaround" optional>
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <input
                   className={inputBase}
                   placeholder="5"
@@ -1171,60 +1040,15 @@ export default function PostJobForm({
               </div>
             </Field>
 
-            <Field label="Tools" optional helper="Select multiple. Tab to complete.">
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  {tools.map((tool) => (
-                    <TinyChip key={tool} onRemove={() => onRemoveTool(tool)}>
-                      {tool}
-                    </TinyChip>
-                  ))}
-                </div>
-                <div className="relative">
-                  <input
-                    className={ghostInputBase}
-                    placeholder="Type a tool (e.g. Premiere Pro)"
-                    value={toolInput}
-                    onChange={(e) => onToolInputChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab" && toolRemainder) {
-                        e.preventDefault();
-                        onToolInputChange(toolInput + toolRemainder);
-                      }
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        onAddTool(toolInput);
-                      }
-                    }}
-                  />
-                  <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm">
-                    {toolInput.length ? (
-                      <span className="text-white/90">{toolInput}</span>
-                    ) : (
-                      <span className="text-white/35">Type a tool (e.g. Premiere Pro)</span>
-                    )}
-                    {toolRemainder ? <span className="text-white/35">{toolRemainder}</span> : null}
-                    {toolRemainder ? (
-                      <span className="ml-2 rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/70">
-                        Tab
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {TOOL_SUGGESTIONS.slice(0, 6).map((tool) => (
-                    <button
-                      key={tool}
-                      type="button"
-                      className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70 hover:bg-white/10"
-                      onClick={() => onAddTool(tool)}
-                    >
-                      {tool}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </Field>
+            <div data-quality-target="job-tools">
+              <ToolPicker
+                value={tools}
+                onChange={onToolsChange}
+                inputId="post-job-tools-picker"
+                className="space-y-3"
+                placeholder="Premiere Pro, After Effects, CapCut, DaVinci Resolve..."
+              />
+            </div>
 
             <Field label="Start" optional>
               <div className="flex flex-wrap gap-2">
@@ -1262,20 +1086,11 @@ export default function PostJobForm({
 
     if (id === "about") {
       const aboutError = contentErrors?.about;
-      const platformLower = platform.toLowerCase();
-      const aboutTitle =
-        platformLower === "youtube"
-          ? "About the channel"
-          : platformLower === "podcast"
-            ? "About the podcast"
-            : "About the page";
+      const aboutTitle = "About the brand";
       const aboutTitleLabel = `${aboutTitle} *`;
-      const aboutPlaceholder =
-        platformLower === "youtube"
-          ? "What kind of videos you make, who they’re for, and what you care about most.\n\nFor example: content theme, posting cadence, tone, and what makes your channel different."
-          : platformLower === "podcast"
-            ? "What the podcast is about, who listens to it, and how episodes usually flow.\n\nMention the format, frequency, and overall vibe."
-            : "Describe your page’s content and audience.\n\nWhat do you usually post, how often, and what style or energy you aim for?";
+      const aboutPlaceholder = isRepresentedHiringIdentity
+        ? "Share the content creator’s vision, audience, and why this role matters."
+        : "Share your brand’s voice, audience, and why this role matters.";
       return (
         <StepCard
           title={aboutTitleLabel}
@@ -1293,11 +1108,14 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-3">
+          <div className="flex flex-col gap-3" data-quality-target="job-description">
             <textarea
+              aria-required="true"
+              aria-invalid={Boolean(aboutError)}
               className={textareaBase}
               placeholder={aboutPlaceholder}
               value={about}
@@ -1312,7 +1130,7 @@ export default function PostJobForm({
               </div>
             ) : (
               <div className="text-[11px] text-white/45">
-                This helps applicants understand your content and decide if they’re a good fit.
+                Help applicants understand the brand context behind the role.
               </div>
             )}
           </div>
@@ -1339,10 +1157,11 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-3">
+          <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-responsibilities">
             <BulletListEditor
               value={responsibilities}
               onChange={onResponsibilitiesChange}
@@ -1376,10 +1195,11 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-3">
+          <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-requirements">
             <BulletListEditor
               value={requirements}
               onChange={onRequirementsChange}
@@ -1410,10 +1230,11 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-3">
+          <div className="flex flex-col gap-3">
             <textarea
               className={textareaBase}
               placeholder={`Include:\n- 2–3 line intro + relevant experience\n- 2 examples of similar work (describe briefly)\n- Tools you use + availability/timezone\n- Expected turnaround + your questions (if any)`}
@@ -1446,11 +1267,12 @@ export default function PostJobForm({
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
           }
         >
-          <div className="grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] items-end">
+          <div className="flex flex-col gap-4 rounded-2xl" data-quality-target="job-reference-video">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end">
               <Field label="Video title" optional>
                 <input
                   className={inputBase}
@@ -1548,16 +1370,17 @@ export default function PostJobForm({
               onBack={onBack}
               onNext={onNext}
               nextType="submit"
-              nextIcon={isSubmitting ? undefined : <Icon name="globe" className="w-4 h-4" />}
-              nextLabel={isSubmitting ? "POSTING..." : "POST JOB"}
+              nextIcon={<Icon name="globe" className="w-4 h-4" />}
+              nextAriaLabel={isSubmitting ? "Posting job" : "Post job"}
               nextDisabled={publishDisabled}
               isBusy={isSubmitting}
               savedSection={savedSection}
               onSaveClick={handleSave}
+              onSaveDraft={onSaveDraft}
             />
         }
       >
-        <div className="grid gap-3">
+        <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-tags">
           <div className="flex gap-2">
             <input
               className={inputBase}

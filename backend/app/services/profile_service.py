@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import base64
 import binascii
+import html
+import re
 import secrets
-from datetime import UTC, datetime
+import unicodedata
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from uuid import UUID
+
+import httpx
 
 from app.core.account_types import is_admin
 from app.core.config import settings
@@ -52,6 +57,7 @@ from app.schemas.profile import (
     PublicJobsListResponse,
     PublicPortfolioListResponse,
     PublicProfileResponse,
+    PublicRepresentedChannel,
     PublicTalentListingItem,
     PublicYouTubeBadge,
     ReviewsSummary,
@@ -100,6 +106,19 @@ HIRING_PRIMARY_PLATFORM_OPTIONS = {"YouTube", "Instagram", "Both"}
 HIRING_VERIFICATION_STATUS_OPTIONS = {"unverified", "verified", "rejected"}
 HIRING_IDENTITY_TYPE_OPTIONS = {"INDIVIDUAL_CHANNEL", "AGENCY_REPRESENTED_CHANNEL"}
 HIRING_IDENTITY_PLATFORM_OPTIONS = {"YOUTUBE", "INSTAGRAM"}
+HIRING_IDENTITY_CODE_TTL = timedelta(hours=24)
+HIRING_IDENTITY_MAX_CODE_CHECKS = 8
+HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT = 5.0
+HIRING_IDENTITY_PUBLIC_BIO_MAX_CHARS = 2_000_000
+HIRING_IDENTITY_ALLOWED_HOSTS = {
+    "YOUTUBE": {"youtube.com", "www.youtube.com", "m.youtube.com"},
+    "INSTAGRAM": {"instagram.com", "www.instagram.com"},
+}
+HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR = (
+    "We could not read the public page right now. Try again later or use another verification method."
+)
+HIRING_IDENTITY_INVALID_PUBLIC_URL_ERROR = "Enter a valid YouTube or Instagram channel/page URL."
+HIRING_IDENTITY_UNSUPPORTED_PLATFORM_ERROR = "We cannot verify this platform yet."
 AVATAR_UPLOAD_EXTENSIONS = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -107,6 +126,7 @@ AVATAR_UPLOAD_EXTENSIONS = {
     "image/gif": "gif",
 }
 MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
 class ProfileValidationError(Exception):
@@ -160,6 +180,110 @@ def _clean_optional_text(value: Any) -> str | None:
 def _is_http_url(value: str) -> bool:
     parsed = urlparse(value.strip())
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _allowed_hiring_identity_url(value: str | None, platform: str) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+    if host not in HIRING_IDENTITY_ALLOWED_HOSTS.get(platform, set()):
+        return False
+    parts = [part for part in parsed.path.split("/") if part]
+    if platform == "YOUTUBE":
+        if not parts:
+            return False
+        first = parts[0].lower()
+        return first.startswith("@") or first in {"channel", "c", "user"}
+    if platform == "INSTAGRAM":
+        if not parts:
+            return False
+        first = parts[0].lower().lstrip("@")
+        return first not in {"accounts", "explore", "p", "reel", "reels", "stories", "tv"}
+    return False
+
+
+def _canonical_hiring_identity_public_url(value: str, platform: str) -> str:
+    parsed = urlparse(value.strip())
+    parts = [part for part in parsed.path.split("/") if part]
+    if platform == "YOUTUBE":
+        first = parts[0]
+        first_lower = first.lower()
+        if first_lower.startswith("@"):
+            path = f"/{first}"
+        elif first_lower in {"channel", "c", "user"} and len(parts) >= 2:
+            path = f"/{first}/{parts[1]}"
+        else:
+            path = parsed.path.rstrip("/") or parsed.path
+        return urlunparse(parsed._replace(path=path, query="", fragment=""))
+    if platform == "INSTAGRAM" and parts:
+        return urlunparse(parsed._replace(path=f"/{parts[0].lstrip('@')}", query="", fragment=""))
+    return urlunparse(parsed._replace(query="", fragment=""))
+
+
+def _html_to_searchable_text(value: str) -> str:
+    without_scripts = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", value, flags=re.IGNORECASE | re.DOTALL)
+    without_tags = re.sub(r"<[^>]+>", " ", without_scripts)
+    return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
+
+
+def _decode_js_escaped_text(value: str) -> str:
+    def replace_unicode(match: re.Match[str]) -> str:
+        return chr(int(match.group(1), 16))
+
+    decoded = re.sub(r"\\u([0-9a-fA-F]{4})", replace_unicode, value)
+    decoded = re.sub(r"\\x([0-9a-fA-F]{2})", replace_unicode, decoded)
+    return decoded.replace("\\/", "/")
+
+
+def _public_verification_search_text(value: str) -> str:
+    js_decoded = _decode_js_escaped_text(value)
+    return "\n".join(
+        (
+            value,
+            html.unescape(value),
+            js_decoded,
+            html.unescape(js_decoded),
+            _html_to_searchable_text(value),
+            _html_to_searchable_text(js_decoded),
+        )
+    )
+
+
+def _normalize_verification_text(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKC", html.unescape(str(value or "")))
+    normalized = _decode_js_escaped_text(normalized)
+    normalized = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]", "-", normalized)
+    normalized = re.sub(r"\s*-\s*", "-", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip().upper()
+
+
+def _verification_code_found(expected_code: str | None, public_text: str) -> bool:
+    normalized_code = _normalize_verification_text(expected_code)
+    normalized_text = _normalize_verification_text(public_text)
+    if not normalized_code:
+        return False
+    if normalized_code in normalized_text:
+        return True
+
+    expected_compact = re.sub(r"[^A-Z0-9]", "", normalized_code)
+    if not re.fullmatch(r"CJ[A-Z0-9]{8}", expected_compact):
+        return False
+
+    for match in re.finditer(r"C\s*J(?:[\s-]*[A-Z0-9]){8}", normalized_text):
+        if re.sub(r"[^A-Z0-9]", "", match.group(0)) == expected_compact:
+            return True
+    return False
+
+
+def _new_hiring_identity_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    first = "".join(secrets.choice(alphabet) for _ in range(4))
+    second = "".join(secrets.choice(alphabet) for _ in range(4))
+    return f"CJ-{first}-{second}"
 
 
 def _normalize_profile_experience(
@@ -978,6 +1102,7 @@ class ProfileService:
             username_last_changed_at=user.username_last_changed_at,
             display_name=user.display_name,
             headline=user.headline,
+            bio=user.bio,
             skills=list(user.skills or []),
             public_links=list(user.public_links or []),
             experience=_normalize_profile_experience(user.profile_experience),
@@ -991,6 +1116,7 @@ class ProfileService:
             avatar_mode="youtube_channel" if user.avatar_mode == "youtube_channel" else "generic",
             avatar_url=avatar_url,
             avatar_youtube_channel_id=user.avatar_youtube_channel_id,
+            banner_url=user.banner_url,
             social_connections=social_connections,
             stats=self._build_stats(jobs=jobs, projects_count=len(portfolio_rows)),
             reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
@@ -1111,21 +1237,145 @@ class ProfileService:
     def _matches_linked_youtube_channel(
         identity: HiringIdentity, channels: list[YouTubeChannel]
     ) -> bool:
-        candidates = {
-            _clean_optional_text(identity.display_name or "") or "",
-            (_clean_optional_text(identity.handle or "") or "").lstrip("@"),
-        }
         url = _clean_optional_text(identity.url)
+        stable_ids: set[str] = set()
+        if url:
+            parsed = urlparse(url)
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) >= 2 and parts[0].lower() == "channel":
+                stable_ids.add(parts[1].lower())
+            for match in re.findall(r"\bUC[\w-]{20,}\b", url):
+                stable_ids.add(match.lower())
+        if not stable_ids:
+            return False
         for channel in channels:
-            title = _clean_optional_text(channel.title) or ""
             channel_id = _clean_optional_text(channel.channel_id) or ""
-            if title and title.lower() in {candidate.lower() for candidate in candidates if candidate}:
-                return True
-            if channel_id and channel_id.lower() in {candidate.lower() for candidate in candidates if candidate}:
-                return True
-            if url and channel_id and channel_id.lower() in url.lower():
+            if channel_id and channel_id.lower() in stable_ids:
                 return True
         return False
+
+    @staticmethod
+    def _public_hiring_identity_urls(identity: HiringIdentity) -> list[str]:
+        public_url = _clean_optional_text(identity.proof_url) or _clean_optional_text(identity.url)
+        if identity.platform not in HIRING_IDENTITY_ALLOWED_HOSTS:
+            raise ProfileValidationError(HIRING_IDENTITY_UNSUPPORTED_PLATFORM_ERROR)
+        if public_url is None:
+            raise ProfileValidationError(HIRING_IDENTITY_INVALID_PUBLIC_URL_ERROR)
+        if not _allowed_hiring_identity_url(public_url, identity.platform):
+            raise ProfileValidationError(HIRING_IDENTITY_INVALID_PUBLIC_URL_ERROR)
+
+        canonical_url = _canonical_hiring_identity_public_url(public_url, identity.platform)
+        candidates: list[str] = []
+        if identity.platform == "YOUTUBE":
+            parsed = urlparse(canonical_url)
+            path = parsed.path.rstrip("/")
+            if not path.lower().endswith("/about"):
+                about_path = f"{path}/about" if path else "/about"
+                candidates.append(
+                    urlunparse(parsed._replace(path=about_path, query="", fragment=""))
+                )
+        candidates.append(canonical_url)
+        if public_url != canonical_url:
+            candidates.append(public_url)
+        unique_candidates: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            unique_candidates.append(candidate)
+        return unique_candidates
+
+    @staticmethod
+    async def _get_allowed_public_page(
+        client: httpx.AsyncClient,
+        public_url: str,
+        platform: str,
+    ) -> httpx.Response:
+        next_url = public_url
+        for _ in range(4):
+            response = await client.get(next_url, follow_redirects=False)
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                if not _allowed_hiring_identity_url(str(response.url), platform):
+                    raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                return response
+            location = response.headers.get("location")
+            if not location:
+                raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+            redirected_url = urljoin(str(response.url), location)
+            if not _allowed_hiring_identity_url(redirected_url, platform):
+                raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+            next_url = redirected_url
+        raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+
+    @staticmethod
+    def _public_page_looks_unreadable(identity: HiringIdentity, response: httpx.Response, text: str) -> bool:
+        final_url = str(response.url).lower()
+        sample = text[:200_000].lower()
+        if identity.platform == "YOUTUBE":
+            return "consent.youtube.com" in final_url or "before you continue to youtube" in sample
+        if identity.platform == "INSTAGRAM":
+            return "login • instagram" in sample or "log in to instagram" in sample
+        return False
+
+    @staticmethod
+    async def _fetch_public_hiring_identity_text(identity: HiringIdentity) -> str:
+        public_urls = ProfileService._public_hiring_identity_urls(identity)
+        chunks: list[str] = []
+        last_error: ProfileValidationError | None = None
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; CreatorJobsVerification/1.0)",
+                    "Accept": "text/html,application/xhtml+xml",
+                },
+            ) as client:
+                for public_url in public_urls:
+                    try:
+                        response = await ProfileService._get_allowed_public_page(
+                            client,
+                            public_url,
+                            identity.platform,
+                        )
+                    except httpx.HTTPError as exc:
+                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                        last_error.__cause__ = exc
+                        continue
+                    except ProfileValidationError as exc:
+                        last_error = exc
+                        continue
+                    content_type = (response.headers.get("content-type") or "").lower()
+                    if response.status_code >= 400 or "text/html" not in content_type:
+                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                        continue
+                    response_text = response.text[:HIRING_IDENTITY_PUBLIC_BIO_MAX_CHARS]
+                    if not response_text.strip() or ProfileService._public_page_looks_unreadable(
+                        identity,
+                        response,
+                        response_text,
+                    ):
+                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                        continue
+                    chunks.append(response_text)
+        except httpx.HTTPError as exc:
+            raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR) from exc
+
+        if not chunks:
+            if last_error is not None:
+                raise last_error
+            raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+        return _public_verification_search_text("\n".join(chunks))
+
+    @staticmethod
+    def _verification_code_expired(identity: HiringIdentity, now: datetime) -> bool:
+        expires_at = identity.verification_code_expires_at
+        if expires_at is None:
+            return True
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        return expires_at <= now
 
     async def list_my_hiring_identities(self, user: User) -> list[HiringIdentity]:
         return await self.repository.list_hiring_identities_for_user(user_id=user.id)
@@ -1141,6 +1391,10 @@ class ProfileService:
         data["verification_status"] = "UNVERIFIED"
         data["verification_method"] = "NONE"
         data["verification_code"] = None
+        data["verification_code_expires_at"] = None
+        data["verification_attempt_count"] = 0
+        data["verification_last_checked_at"] = None
+        data["verification_last_error"] = None
         data["verified_at"] = None
         row = await self.repository.create_hiring_identity(user_id=user.id, data=data)
         await self.repository.commit()
@@ -1167,12 +1421,30 @@ class ProfileService:
             updates["verification_status"] = "UNVERIFIED"
             updates["verification_method"] = "NONE"
             updates["verification_code"] = None
+            updates["verification_code_expires_at"] = None
+            updates["verification_attempt_count"] = 0
+            updates["verification_last_checked_at"] = None
+            updates["verification_last_error"] = None
             updates["verified_at"] = None
         self.repository.update_values(row, **updates)
         await self.repository.session.flush()
         await self.repository.session.refresh(row)
         await self.repository.commit()
         return row
+
+    async def delete_my_hiring_identity(
+        self,
+        user: User,
+        *,
+        identity_id: UUID,
+    ) -> None:
+        row = await self.repository.get_hiring_identity_for_user(
+            user_id=user.id, identity_id=identity_id
+        )
+        if row is None:
+            raise ProfileNotFoundError("Hiring identity not found")
+        await self.repository.delete_hiring_identity(row)
+        await self.repository.commit()
 
     async def request_hiring_identity_verification(
         self,
@@ -1190,7 +1462,10 @@ class ProfileService:
         proof_url = self._stringify_url(payload.proof_url)
         if proof_url and not _is_http_url(proof_url):
             raise ProfileValidationError("Proof URL must be a valid http(s) URL.")
+        if proof_url and not _allowed_hiring_identity_url(proof_url, row.platform):
+            raise ProfileValidationError(HIRING_IDENTITY_INVALID_PUBLIC_URL_ERROR)
         row.proof_url = proof_url or row.proof_url
+        now = datetime.now(UTC)
 
         if row.platform == "YOUTUBE":
             linked_channels = await self.repository.list_user_youtube_channels(user_id=user.id)
@@ -1198,23 +1473,107 @@ class ProfileService:
                 row.verification_status = "VERIFIED"
                 row.verification_method = "YOUTUBE_OAUTH"
                 row.verification_code = None
+                row.verification_code_expires_at = None
+                row.verification_attempt_count = 0
+                row.verification_last_checked_at = None
+                row.verification_last_error = None
                 row.verified_at = datetime.now(UTC)
                 message = "This YouTube channel matches a linked account and is verified."
             else:
                 row.verification_status = "PENDING"
                 row.verification_method = "VERIFICATION_CODE"
-                row.verification_code = row.verification_code or f"CJ-{secrets.token_hex(4).upper()}"
+                if not row.verification_code or self._verification_code_expired(row, now):
+                    row.verification_code = _new_hiring_identity_code()
+                    row.verification_attempt_count = 0
+                row.verification_code_expires_at = now + HIRING_IDENTITY_CODE_TTL
+                row.verification_last_error = None
                 row.verified_at = None
                 message = (
-                    "Add this verification code to the channel description or submit proof "
-                    "for manual review."
+                    "Add this verification code to the public channel description, then check verification."
                 )
         else:
             row.verification_status = "PENDING"
             row.verification_method = "INSTAGRAM_LINK_IN_BIO"
-            row.verification_code = row.verification_code or f"CJ-{secrets.token_hex(4).upper()}"
+            if not row.verification_code or self._verification_code_expired(row, now):
+                row.verification_code = _new_hiring_identity_code()
+                row.verification_attempt_count = 0
+            row.verification_code_expires_at = now + HIRING_IDENTITY_CODE_TTL
+            row.verification_last_error = None
             row.verified_at = None
-            message = "Add this verification code to the Instagram bio or link-in-bio, then submit proof."
+            message = "Add this verification code to the Instagram bio or link-in-bio, then check verification."
+
+        await self.repository.session.flush()
+        await self.repository.session.refresh(row)
+        await self.repository.commit()
+        return HiringIdentityVerificationResponse(
+            identity=HiringIdentityRead.model_validate(row),
+            message=message,
+        )
+
+    async def check_hiring_identity_bio_verification(
+        self,
+        user: User,
+        *,
+        identity_id: UUID,
+    ) -> HiringIdentityVerificationResponse:
+        row = await self.repository.get_hiring_identity_for_user(
+            user_id=user.id, identity_id=identity_id
+        )
+        if row is None:
+            raise ProfileNotFoundError("Hiring identity not found")
+
+        now = datetime.now(UTC)
+        row.verification_last_checked_at = now
+        row.verification_attempt_count = (row.verification_attempt_count or 0) + 1
+
+        if row.verification_status == "VERIFIED":
+            message = "This channel/page is already verified."
+        elif not row.verification_code:
+            row.verification_last_error = "Generate a verification code first."
+            await self.repository.session.flush()
+            await self.repository.session.refresh(row)
+            await self.repository.commit()
+            raise ProfileValidationError(row.verification_last_error)
+        elif self._verification_code_expired(row, now):
+            row.verification_status = "UNVERIFIED"
+            row.verification_last_error = "This verification code expired. Generate a new code."
+            await self.repository.session.flush()
+            await self.repository.session.refresh(row)
+            await self.repository.commit()
+            raise ProfileValidationError(row.verification_last_error)
+        elif row.verification_attempt_count > HIRING_IDENTITY_MAX_CODE_CHECKS:
+            row.verification_last_error = "Too many checks. Generate a new verification code."
+            await self.repository.session.flush()
+            await self.repository.session.refresh(row)
+            await self.repository.commit()
+            raise ProfileValidationError(row.verification_last_error)
+        else:
+            try:
+                public_text = await self._fetch_public_hiring_identity_text(row)
+            except ProfileValidationError as exc:
+                row.verification_last_error = str(exc)
+                await self.repository.session.flush()
+                await self.repository.session.refresh(row)
+                await self.repository.commit()
+                raise
+
+            if _verification_code_found(row.verification_code, public_text):
+                row.verification_status = "VERIFIED"
+                row.verification_method = (
+                    "INSTAGRAM_LINK_IN_BIO" if row.platform == "INSTAGRAM" else "VERIFICATION_CODE"
+                )
+                row.verified_at = now
+                row.verification_last_error = None
+                message = "Authorization verified. You can now publish jobs for this channel/page."
+            else:
+                row.verification_status = "PENDING"
+                row.verification_last_error = (
+                    "We could not find the code in the public bio yet. Add it and try again."
+                )
+                await self.repository.session.flush()
+                await self.repository.session.refresh(row)
+                await self.repository.commit()
+                raise ProfileValidationError(row.verification_last_error)
 
         await self.repository.session.flush()
         await self.repository.session.refresh(row)
@@ -1274,6 +1633,8 @@ class ProfileService:
             user.display_name = _clean_optional_text(updates.get("display_name"))
         if "headline" in updates:
             user.headline = _clean_optional_text(updates.get("headline"))
+        if "bio" in updates:
+            user.bio = _clean_optional_text(updates.get("bio"))
         if "availability_status" in updates:
             availability_status = updates.get("availability_status")
             if availability_status not in {"available", "selective", "unavailable"}:
@@ -1422,6 +1783,53 @@ class ProfileService:
         user.avatar_mode = "generic"
         user.avatar_youtube_channel_id = None
         user.avatar_url = f"{public_base_url.rstrip('/')}{media_base_path}/avatars/{file_name}"
+
+        await self.repository.commit()
+        await self.repository.session.refresh(user)
+        return await self._build_profile_read(user)
+
+    async def upload_my_banner(
+        self,
+        user: User,
+        payload: AvatarUploadRequest,
+        *,
+        public_base_url: str,
+    ) -> ProfileRead:
+        content_type = payload.content_type.strip().lower()
+        data_url = payload.data_url.strip()
+        encoded = data_url
+
+        if data_url.startswith("data:"):
+            header, separator, encoded_body = data_url.partition(",")
+            if separator != ",":
+                raise ProfileValidationError("Invalid banner image data.")
+            header_content_type = header.removeprefix("data:").split(";", 1)[0].strip().lower()
+            if header_content_type:
+                content_type = header_content_type
+            encoded = encoded_body
+
+        extension = AVATAR_UPLOAD_EXTENSIONS.get(content_type)
+        if not extension:
+            raise ProfileValidationError("Banner must be a PNG, JPG, WEBP, or GIF image.")
+
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ProfileValidationError("Invalid banner image data.") from exc
+
+        if not image_bytes:
+            raise ProfileValidationError("Banner image is empty.")
+        if len(image_bytes) > MAX_BANNER_UPLOAD_BYTES:
+            raise ProfileValidationError("Banner image must be 8 MB or smaller.")
+
+        banners_dir = Path(settings.media_root) / "banners"
+        banners_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"{user.id}-{secrets.token_urlsafe(12)}.{extension}"
+        file_path = banners_dir / file_name
+        file_path.write_bytes(image_bytes)
+
+        media_base_path = f"/{settings.media_base_path.strip('/')}"
+        user.banner_url = f"{public_base_url.rstrip('/')}{media_base_path}/banners/{file_name}"
 
         await self.repository.commit()
         await self.repository.session.refresh(user)
@@ -1642,6 +2050,24 @@ class ProfileService:
             created_at=listing.created_at,
         )
 
+    @staticmethod
+    def _public_represented_channels(
+        hiring_identities: list[HiringIdentity],
+    ) -> list[PublicRepresentedChannel]:
+        return [
+            PublicRepresentedChannel(
+                id=identity.id,
+                name=identity.display_name,
+                avatar_url=identity.avatar_url,
+                url=identity.url,
+                platform=identity.platform.lower(),
+                authorization_status="verified",
+                is_self=False,
+            )
+            for identity in hiring_identities
+            if identity.is_agency_represented and identity.verification_status == "VERIFIED"
+        ]
+
     async def get_public_profile(self, username: str) -> PublicProfileResponse:
         user, moved_to_username, normalized_username = await self._resolve_user_for_public_lookup(username)
         if user is None:
@@ -1678,6 +2104,7 @@ class ProfileService:
         selected_roles = await self._load_selected_roles_for_user(user_id=user.id)
         role_answers_summary = await self._build_role_answer_summary(user_id=user.id)
         content_style = await self._resolve_content_style_for_user(user_id=user.id)
+        hiring_identities = await self.repository.list_hiring_identities_for_user(user_id=user.id)
 
         portfolio_rows = await self.repository.list_public_portfolio_items_for_user(user_id=user.id)
         talent_listing_rows = await self.repository.list_talent_listings_for_user_public(user_id=user.id)
@@ -1703,8 +2130,10 @@ class ProfileService:
             username=user.username or normalized_username,
             display_name=user.display_name or (user.username or normalized_username),
             headline=user.headline,
+            bio=user.bio if privacy["show_bio"] else None,
             avatar_url=avatar_url,
             avatar_mode="youtube_channel" if user.avatar_mode == "youtube_channel" else "generic",
+            banner_url=user.banner_url,
             skills=list(user.skills or []),
             public_links=list(user.public_links or []) if privacy["show_links"] else [],
             experience=_normalize_profile_experience(user.profile_experience),
@@ -1724,6 +2153,7 @@ class ProfileService:
             role_answers_summary=role_answers_summary,
             content_style=content_style,
             youtube_badge=badge,
+            represented_channels=self._public_represented_channels(hiring_identities),
             jobs_active=jobs_active,
             jobs_past=jobs_past,
             portfolio_now=portfolio_now,

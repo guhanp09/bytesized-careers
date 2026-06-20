@@ -35,7 +35,7 @@ export default function ProfileStatsRow({ jobsPostedCount }: ProfileStatsRowProp
         value={formatCompactNumber(jobsPostedCount)}
         caption="Marketplace jobs (MVP)"
       />
-      <StatTile label="Applications sent" value="—" caption="Tracked in Activity" />
+      <StatTile label="Applications sent" value="—" caption="Tracked in Inbox" />
       <StatTile label="Saved jobs" value="—" caption="Tracked in Saved" />
       <StatTile label="Active engagements" value="—" caption="Appears after live collaborations" />
     </section>

@@ -39,6 +39,7 @@ export type Job = {
   responseRate: number;
   channel: Channel;
   tags: string[];
+  tools?: string[];
   startTimeframe: StartTimeframe;
   workMode?: string;
   contractType?: string;
@@ -55,6 +56,7 @@ export type Job = {
   requirements?: string;
   howToApply?: string;
   channelProfileSlug?: string;
+  channelExternalUrl?: string;
   postedByAgency?: boolean;
   agencyProfileSlug?: string;
   postedPlatform?: string;
@@ -71,4 +73,13 @@ export type Job = {
   closedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  draftCompletion?: {
+    hasTitle?: boolean;
+    hasBudget?: boolean;
+    hasPlatform?: boolean;
+    hasWorkMode?: boolean;
+    hasChannel?: boolean;
+    hasExperience?: boolean;
+    hasTimeline?: boolean;
+  };
 };

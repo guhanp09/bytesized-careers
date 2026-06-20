@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { BackendTalentListing, saveTalentListing } from "../lib/backendClient";
+import { publicProfileFallbackSlug } from "../lib/profileSlug";
+import { formatTalentExperience } from "../lib/talentListing";
+import { useCardSheen } from "../lib/useCardSheen";
 import { formatCompactNumber } from "../lib/format";
 import { Icon } from "./Icons";
-import { MetaRow, TagPill } from "./ui";
+import { MetaRow, StatRow, TagPill } from "./ui";
 
 const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
 
@@ -43,26 +46,6 @@ const rateLabel = (item: BackendTalentListing) => {
   if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
   if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(item);
   return "Rate flexible";
-};
-
-const experienceRange = (value?: string | null) => {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return "";
-  if (/0\s*[–-]\s*1|less than 1|entry|beginner/.test(normalized)) return "0–1 year";
-  if (/1\s*[–-]\s*2|junior/.test(normalized)) return "1–2 years";
-  if (/2\s*[–-]\s*4|mid/.test(normalized)) return "2–4 years";
-  if (/4\s*[–-]\s*6|senior/.test(normalized)) return "4–6 years";
-  if (/6\+|expert|lead|principal/.test(normalized)) return "6+ years";
-  const years = normalized.match(/(\d+)\s*\+?\s*years?/);
-  if (years) {
-    const count = Number(years[1]);
-    if (count <= 1) return "0–1 year";
-    if (count <= 2) return "1–2 years";
-    if (count <= 4) return "2–4 years";
-    if (count <= 6) return "4–6 years";
-    return "6+ years";
-  }
-  return "";
 };
 
 const displayName = (item: BackendTalentListing) =>
@@ -149,37 +132,27 @@ function TagRow({ tags }: { tags: string[] }) {
   );
 }
 
-function TalentStat({
-  icon,
-  children,
-}: {
-  icon: React.ComponentProps<typeof Icon>["name"];
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap text-xs text-white/70">
-      <Icon name={icon} className="h-3.5 w-3.5" />
-      <span>{children}</span>
-    </span>
-  );
-}
-
 export default function TalentCard({ item }: { item: BackendTalentListing }) {
   const router = useRouter();
   const { data: session } = useSession();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const sheen = useCardSheen();
   const href = `/talent/${encodeURIComponent(item.id)}`;
-  const publicProfileHref = item.owner_username ? `/u/${encodeURIComponent(item.owner_username)}?view=talent` : null;
+  const publicProfileSlug = (item.owner_username || publicProfileFallbackSlug(item.owner_display_name || item.id)).trim();
+  const publicProfileHref = publicProfileSlug ? `/u/${encodeURIComponent(publicProfileSlug)}?view=talent` : null;
   const name = displayName(item);
   const role = item.primary_role || item.roles[0] || "Content talent";
   const location = item.location || titleCase(item.work_mode) || "Remote";
   const metadata = [role, location, item.timezone].filter(Boolean).join(" · ");
   const workMode = titleCase(item.work_mode);
-  const experience = experienceRange(item.experience_level);
+  const experience = formatTalentExperience(item.experience_level) || "Not specified";
   const tags = uniq([...item.tools, ...item.platforms, item.niche, ...item.formats]);
-  const sampleCount = item.portfolio_item_ids.length;
+  const viewCount = Number.isFinite(item.views) ? Math.max(0, item.views) : 0;
+  const interestedRecruitersCount = 0;
+  const responseRate = 0;
+  const modeOrLocation = workMode || location || "Remote";
 
   const open = () => {
     router.push(href);
@@ -190,7 +163,7 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
   };
 
   return (
-    <div className="select-none">
+    <div className="min-w-0 select-none">
       <div
         role="link"
         tabIndex={0}
@@ -202,17 +175,19 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
             open();
           }
         }}
+        {...sheen}
         className={[
-          "group flex h-[340px] cursor-pointer flex-col rounded-2xl p-5",
+          "group relative isolate flex h-[340px] w-full min-w-0 cursor-pointer flex-col rounded-2xl p-5",
           "border border-white/10 bg-white/[0.06]",
           "shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]",
-          "transition-all duration-200",
+          "transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out",
           "hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.075]",
           "hover:shadow-[0_22px_55px_-26px_rgba(0,0,0,0.95)] hover:ring-1 hover:ring-white/10",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
         ].join(" ")}
         title="Open talent listing"
       >
+        <div aria-hidden="true" className="home-card-sheen -z-10" />
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {item.owner_avatar_url ? (
@@ -252,8 +227,8 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
 
         <div className="mt-4 space-y-2">
           <MetaRow icon="cash-stack" text={rateLabel(item)} />
-          {experience ? <MetaRow icon="cap" text={`Experience: ${experience}`} /> : null}
-          {workMode ? <MetaRow icon="pin" text={workMode} /> : null}
+          <MetaRow icon="cap" text={`Experience: ${experience}`} />
+          <MetaRow icon="pin" text={modeOrLocation} />
         </div>
 
         {tags.length ? (
@@ -263,10 +238,28 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
         ) : null}
 
         <div className="mt-auto flex h-10 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3 overflow-hidden">
-            <TalentStat icon="eye">{formatCompactNumber(item.views)}</TalentStat>
-            {sampleCount > 0 ? <TalentStat icon="image">{sampleCount} work samples</TalentStat> : null}
-            {!sampleCount && item.saves > 0 ? <TalentStat icon="bookmark">{formatCompactNumber(item.saves)} saved</TalentStat> : null}
+          <div className="flex min-w-0 items-center gap-4 overflow-hidden">
+            <StatRow
+              icon="eye"
+              value={formatCompactNumber(viewCount)}
+              label="Currently viewing"
+              interactive
+              className="shrink-0"
+            />
+            <StatRow
+              icon="user-plus"
+              value={`${interestedRecruitersCount}`}
+              label="Interested recruiters"
+              interactive
+              className="shrink-0"
+            />
+            <StatRow
+              icon="bolt"
+              value={`${responseRate}%`}
+              label="Response rate"
+              interactive
+              className="shrink-0"
+            />
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2">

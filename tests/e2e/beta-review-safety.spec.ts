@@ -9,7 +9,6 @@ const coreRoutes = [
   "/u/anika-rao",
   "/post-job",
   "/post-talent",
-  "/activity",
   "/saved",
   "/search",
 ];

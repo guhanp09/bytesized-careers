@@ -117,10 +117,10 @@ function TabButton({
       aria-pressed={active}
       onClick={onClick}
       className={[
-        "relative h-11 px-1.5 text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer after:absolute after:inset-x-1.5 after:bottom-0 after:h-px after:rounded-full",
+        "relative h-11 px-1.5 text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer after:absolute after:inset-x-1.5 after:bottom-0 after:h-px after:origin-center after:rounded-full after:bg-white after:transition-[transform,opacity] after:duration-300 after:ease-out",
         active
-          ? "text-white after:bg-white"
-          : "text-white/55 after:bg-transparent hover:text-white/82",
+          ? "text-white after:scale-x-100 after:opacity-100"
+          : "text-white/55 after:scale-x-0 after:opacity-0 hover:text-white/82 hover:after:scale-x-100 hover:after:opacity-30",
       ].join(" ")}
     >
       {label}
@@ -298,80 +298,83 @@ function PortfolioPreviewList({
   username: string;
 }) {
   return (
-    <div className="overflow-hidden">
-      <div className="flex snap-x snap-proximity gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [mask-image:linear-gradient(to_right,transparent,black_18px,black_calc(100%-18px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {items.map((item) => (
-        <Link
-          key={`overview-portfolio-preview-${item.id}`}
-          href={`/u/${encodeURIComponent(username)}/projects/${encodeURIComponent(item.id)}`}
-          aria-label={`Open project detail: ${item.title}`}
-          className="group block min-w-[340px] snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:min-w-[360px] lg:min-w-[380px]"
-        >
-          <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
-            {item.thumbnail_url ? (
-              <img
-                src={item.thumbnail_url}
-                alt={item.title}
-                className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
-              />
-            ) : (
-              <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
-                <Icon name="image" className="h-8 w-8" />
-              </div>
-            )}
-          </div>
-          <div className="p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                {sourceLabel(item.source_type, item.public_metrics?.source_type)}
-              </span>
-              {item.verification_status === "youtube_metadata_verified" ? (
+    <div className="min-w-0">
+      <div
+        aria-label="Portfolio preview"
+        className="flex snap-x snap-proximity gap-4 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {items.map((item) => (
+          <Link
+            key={`overview-portfolio-preview-${item.id}`}
+            href={`/u/${encodeURIComponent(username)}/projects/${encodeURIComponent(item.id)}`}
+            aria-label={`Open project detail: ${item.title}`}
+            className="group block w-[340px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:w-[360px] lg:w-[380px]"
+          >
+            <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
+              {item.thumbnail_url ? (
+                <img
+                  src={item.thumbnail_url}
+                  alt={item.title}
+                  className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
+                />
+              ) : (
+                <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                  <Icon name="image" className="h-8 w-8" />
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                  Verified
+                  {sourceLabel(item.source_type, item.public_metrics?.source_type)}
                 </span>
+                {item.verification_status === "youtube_metadata_verified" ? (
+                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
+                    Verified
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
+              {cleanText(item.role_name || item.role || item.user_role_in_project) ? (
+                <p className="mt-1 text-sm font-medium text-white/72">
+                  {cleanText(item.role_name || item.role || item.user_role_in_project)}
+                </p>
+              ) : null}
+              {(() => {
+                const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
+                const published = formatDateShort(item.published_at || item.published_date || item.created_at);
+                const sourceLine = [
+                  item.channel_name,
+                  views ? `${views} views` : null,
+                  published,
+                  item.duration,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
+              })()}
+              {item.contribution_summary || item.description ? (
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
+                  {item.contribution_summary || item.description}
+                </p>
+              ) : null}
+              {(item.contribution_tags || []).length ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {(item.contribution_tags || []).slice(0, 4).map((tag) => (
+                    <TagPill key={`${item.id}-preview-contribution-${tag}`}>{tag}</TagPill>
+                  ))}
+                </div>
+              ) : null}
+              {item.tools?.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.tools.slice(0, 4).map((tool) => (
+                    <TagPill key={`${item.id}-preview-tool-${tool}`}>{tool}</TagPill>
+                  ))}
+                </div>
               ) : null}
             </div>
-            <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
-            {cleanText(item.role_name || item.role || item.user_role_in_project) ? (
-              <p className="mt-1 text-sm font-medium text-white/72">
-                {cleanText(item.role_name || item.role || item.user_role_in_project)}
-              </p>
-            ) : null}
-            {(() => {
-              const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
-              const published = formatDateShort(item.published_at || item.published_date || item.created_at);
-              const sourceLine = [
-                item.channel_name,
-                views ? `${views} views` : null,
-                published,
-                item.duration,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
-            })()}
-            {item.contribution_summary || item.description ? (
-              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
-                {item.contribution_summary || item.description}
-              </p>
-            ) : null}
-            {(item.contribution_tags || []).length ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(item.contribution_tags || []).slice(0, 4).map((tag) => (
-                  <TagPill key={`${item.id}-preview-contribution-${tag}`}>{tag}</TagPill>
-                ))}
-              </div>
-            ) : null}
-            {item.tools?.length ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {item.tools.slice(0, 4).map((tool) => (
-                  <TagPill key={`${item.id}-preview-tool-${tool}`}>{tool}</TagPill>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </Link>
-      ))}
+          </Link>
+        ))}
       </div>
     </div>
   );
@@ -624,7 +627,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
     ...activeJobs.map((job) => job.category),
     ...pastJobs.map((job) => job.category),
   ]).slice(0, 5);
-  const bioText = cleanText(profile.headline);
+  const bioText = cleanText(profile.bio);
   const reviewCount = profile.reviews?.review_count || 0;
   const reviewAverage = profile.reviews?.avg_rating || 0;
   const reviewItems = useMemo<BackendProfileReviewItem[]>(() => profile.review_items || [], [profile.review_items]);

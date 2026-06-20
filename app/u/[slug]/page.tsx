@@ -4,28 +4,15 @@ import PublicProfileTabs from "../../../components/profile/PublicProfileTabs";
 import ProfileModeSwitch from "../../../components/profile/ProfileModeSwitch";
 import SocialIconRow from "../../../components/profile/SocialIconRow";
 import RatingDisplay from "../../../components/RatingDisplay";
-import {
-  canUseLocalMockFallback,
-  getPublicProfile,
-  type BackendPublicProfileResponse,
-} from "../../../lib/backendClient";
-import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
+import { type BackendPublicProfileResponse } from "../../../lib/backendClient";
 import { buildSocialIconLinks } from "../../../lib/profileSocialLinks";
+import { resolvePublicProfileWithTalentFallback } from "../../../lib/publicProfileFallback";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 async function resolvePublicProfile(username: string) {
-  let profile: BackendPublicProfileResponse | null = null;
-  try {
-    profile = await getPublicProfile(username);
-  } catch {
-    profile = null;
-  }
-  if (!profile && canUseLocalMockFallback()) {
-    profile = getMockPublicTalentProfile(username);
-  }
-  return profile;
+  return resolvePublicProfileWithTalentFallback(username) as Promise<BackendPublicProfileResponse | null>;
 }
 
 export async function generateMetadata({
@@ -147,6 +134,7 @@ function sanitizePublicProfile(profile: BackendPublicProfileResponse): BackendPu
   return {
     ...profile,
     headline: cleanPublicText(profile.headline),
+    bio: cleanPublicText(profile.bio),
     skills: cleanPublicList(profile.skills),
     public_links: cleanPublicList(profile.public_links),
     experience: profile.experience || [],
@@ -265,7 +253,12 @@ export default async function PublicProfilePage({
       <section className="mx-auto w-full max-w-[1560px] space-y-6 px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
         <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#141519] shadow-[0_28px_90px_-52px_rgba(0,0,0,1)]">
           <div className="relative min-h-[150px] border-b border-white/10 bg-[#18191d] sm:min-h-[226px]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.16),transparent_30%),radial-gradient(circle_at_78%_6%,rgba(255,255,255,0.08),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.018)_48%,rgba(0,0,0,0.28))]" />
+            {publicProfile.banner_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={publicProfile.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.16),transparent_30%),radial-gradient(circle_at_78%_6%,rgba(255,255,255,0.08),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.09),rgba(255,255,255,0.018)_48%,rgba(0,0,0,0.28))]" />
+            )}
             <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#141519] to-transparent" />
           </div>
 
@@ -314,9 +307,9 @@ export default async function PublicProfilePage({
                     ) : null}
                   </div>
 
-                  <RatingDisplay className="pt-0.5" />
-
                   <SocialIconRow links={socialIconLinks} />
+
+                  <RatingDisplay className="pt-0.5" />
                 </div>
               </div>
 

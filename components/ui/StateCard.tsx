@@ -14,6 +14,7 @@ type StateIcon =
   | "users"
   | "briefcase"
   | "send"
+  | "file"
   | "alert";
 
 export default function StateCard({

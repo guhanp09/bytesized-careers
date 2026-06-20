@@ -19,6 +19,7 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=20)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=255)
     onboarding_intent: OnboardingIntent = "DECIDE_LATER"
     # Deprecated compatibility input. Public users are not permanently talent/employer classified.
     account_type: PublicAccountType | None = None
@@ -55,6 +56,10 @@ class PasswordResetResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=16)
 
 
 class OAuthGoogleExchangeRequest(BaseModel):
@@ -95,4 +100,7 @@ class AuthUserRead(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    refresh_token: str | None = None
+    access_token_expires_at: int | None = None
+    refresh_token_expires_at: int | None = None
     user: AuthUserRead

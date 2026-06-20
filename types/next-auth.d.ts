@@ -13,6 +13,8 @@ declare module "next-auth" {
     backendAccessToken?: string;
     backendTokenType?: string;
     backendUserId?: string;
+    backendAccessTokenExpiresAt?: number;
+    backendAuthError?: "refresh_failed";
     user?: {
       name?: string | null;
       email?: string | null;
@@ -46,6 +48,10 @@ declare module "next-auth/jwt" {
     oauthScope?: string;
     backendAccessToken?: string;
     backendTokenType?: string;
+    backendRefreshToken?: string;
+    backendAccessTokenExpiresAt?: number;
+    backendRefreshTokenExpiresAt?: number;
+    backendAuthError?: "refresh_failed";
     backendUserId?: string;
     username?: string;
     displayName?: string;

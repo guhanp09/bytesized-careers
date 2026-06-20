@@ -31,6 +31,18 @@ def error_payload(
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    if isinstance(exc.detail, dict):
+        raw_code = exc.detail.get("code")
+        raw_message = exc.detail.get("message")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(
+                code=str(raw_code or f"http_{exc.status_code}"),
+                message=str(raw_message or exc.detail),
+                request=request,
+                details=exc.detail,
+            ),
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content=error_payload(

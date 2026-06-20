@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import UUID
 
+from conftest import TestSessionLocal
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.models import HiringIdentity
 
 
 async def _create_oauth_user(client: AsyncClient, *, email: str, provider_id: str) -> tuple[str, str]:
@@ -177,6 +182,7 @@ async def test_job_create_with_hiring_identity_requires_owner_and_snapshots(clie
             "platform": "YOUTUBE",
             "display_name": "TechWithRavi",
             "handle": "techwithravi",
+            "url": "https://www.youtube.com/@techwithravi",
             "managed_by_agency_name": "GrowthStack Agency",
         },
     )
@@ -197,6 +203,46 @@ async def test_job_create_with_hiring_identity_requires_owner_and_snapshots(clie
     )
     assert wrong_owner_create.status_code == 403
 
+    blocked_publish = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_bearer}"},
+        json={
+            "title": "Blocked represented channel editor",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "hiring_identity_id": identity_id,
+            "status": "published",
+        },
+    )
+    assert blocked_publish.status_code == 403
+    assert blocked_publish.json()["error"]["code"] == "REPRESENTATION_VERIFICATION_REQUIRED"
+
+    draft_response = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_bearer}"},
+        json={
+            "title": "Represented channel draft",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "hiring_identity_id": identity_id,
+            "status": "draft",
+        },
+    )
+    assert draft_response.status_code == 201
+    draft = draft_response.json()
+    assert draft["hiring_verification_status_snapshot"] == "UNVERIFIED"
+
+    async with TestSessionLocal() as session:
+        row = (
+            await session.execute(select(HiringIdentity).where(HiringIdentity.id == UUID(identity_id)))
+        ).scalar_one()
+        row.verification_status = "VERIFIED"
+        row.verification_method = "VERIFICATION_CODE"
+        row.verified_at = datetime.now(UTC)
+        await session.commit()
+
     create_response = await client.post(
         "/api/v1/jobs",
         headers={"Authorization": f"Bearer {owner_bearer}"},
@@ -215,5 +261,8 @@ async def test_job_create_with_hiring_identity_requires_owner_and_snapshots(clie
     assert created["hiring_identity_id"] == identity_id
     assert created["hiring_display_name_snapshot"] == "TechWithRavi"
     assert created["hiring_platform_snapshot"] == "YOUTUBE"
-    assert created["hiring_verification_status_snapshot"] == "UNVERIFIED"
+    assert created["hiring_verification_status_snapshot"] == "VERIFIED"
+    assert created["hiring_external_url_snapshot"] == "https://www.youtube.com/@techwithravi"
     assert created["managed_by_agency_name_snapshot"] == "GrowthStack Agency"
+    assert created["agency_profile_slug"] == "jobs_hiring_identity"
+    assert created["channel_profile_slug"] is None

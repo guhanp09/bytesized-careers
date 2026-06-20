@@ -4,6 +4,13 @@ import { Job, JobCategory, ReferenceVideo, StartTimeframe } from "../types";
 import { randomUUID } from "crypto";
 
 const toIso = (date: Date) => date.toISOString();
+const LOCAL_SAMPLE_POSTED_LABEL = "Local sample";
+const LOCAL_SAMPLE_JOB_IDS = new Set(JOBS.map((job) => String(job.id)));
+
+const isSyntheticPostedShort = (value?: string | null) => {
+  const raw = (value || "").trim().toLowerCase();
+  return !raw || raw === "now" || raw === "just now" || /^\d+[mhd]$/.test(raw) || raw.includes("ago");
+};
 
 const parsePostedShortToDate = (value?: string | null) => {
   if (!value) return new Date();
@@ -30,6 +37,15 @@ const formatPostedShort = (createdAt: Date) => {
   return `${days}d`;
 };
 
+const getLocalPostedShort = (record: { id: string; postedShort: string | null; createdAt: Date }) => {
+  if (LOCAL_SAMPLE_JOB_IDS.has(String(record.id))) {
+    return LOCAL_SAMPLE_POSTED_LABEL;
+  }
+  return isSyntheticPostedShort(record.postedShort)
+    ? formatPostedShort(record.createdAt)
+    : record.postedShort || formatPostedShort(record.createdAt);
+};
+
 const toSlug = (value: string) =>
   value
     .trim()
@@ -42,6 +58,7 @@ const MOCK_ATTRIBUTION_BY_ID = new Map(
     String(job.id),
     {
       channelProfileSlug: job.channelProfileSlug || undefined,
+      channelExternalUrl: job.channelExternalUrl || undefined,
       postedByAgency: Boolean(job.postedByAgency),
       agencyProfileSlug: job.agencyProfileSlug || undefined,
       managedByAgencyName: job.managedByAgencyName || undefined,
@@ -54,6 +71,7 @@ const getAttributionForJob = (jobId: string, channelName: string) => {
   if (fromMock) {
     return {
       channelProfileSlug: fromMock.channelProfileSlug || toSlug(channelName) || undefined,
+      channelExternalUrl: fromMock.channelExternalUrl,
       postedByAgency: fromMock.postedByAgency,
       agencyProfileSlug: fromMock.agencyProfileSlug,
       managedByAgencyName: fromMock.managedByAgencyName,
@@ -108,7 +126,7 @@ const mapRecordToJob = (record: {
   budget: record.budget,
   experience: record.experience,
   location: record.location,
-  postedShort: record.postedShort || formatPostedShort(record.createdAt),
+  postedShort: getLocalPostedShort(record),
   views: record.views,
   applicants: record.applicants,
   responseRate: record.responseRate,
@@ -183,6 +201,8 @@ const backfillSeededJobs = async () => {
       responsibilities?: string;
       requirements?: string;
       howToApply?: string;
+      views?: number;
+      responseRate?: number;
     } = {};
 
     if (!existing.about && job.about) updates.about = job.about;
@@ -190,6 +210,8 @@ const backfillSeededJobs = async () => {
       updates.responsibilities = job.responsibilities;
     if (!existing.requirements && job.requirements) updates.requirements = job.requirements;
     if (!existing.howToApply && job.howToApply) updates.howToApply = job.howToApply;
+    if (existing.views !== job.views) updates.views = job.views ?? 0;
+    if (existing.responseRate !== job.responseRate) updates.responseRate = job.responseRate ?? 0;
 
     if (Object.keys(updates).length) {
       await prisma.job.update({ where: { id }, data: updates });

@@ -3,31 +3,44 @@
 import Link from "next/link";
 import type { MouseEvent } from "react";
 
+const normalizeHttpUrl = (value?: string | null) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 type ChannelAttributionProps = {
   channelName: string;
   channelProfileSlug?: string;
-  postedByAgency?: boolean;
-  showAgencyBadge?: boolean;
+  channelExternalUrl?: string;
   className?: string;
+  ariaLabel?: string;
 };
 
 export default function ChannelAttribution({
   channelName,
   channelProfileSlug,
-  postedByAgency = false,
-  showAgencyBadge,
+  channelExternalUrl,
   className = "",
+  ariaLabel,
 }: ChannelAttributionProps) {
-  const shouldShowAgencyBadge = showAgencyBadge ?? postedByAgency;
+  const externalHref = normalizeHttpUrl(channelExternalUrl);
   const profileHref = channelProfileSlug
     ? `/u/${encodeURIComponent(channelProfileSlug)}?view=hiring`
     : null;
+  const href = externalHref || profileHref;
+  const isExternal = Boolean(externalHref);
 
   const baseClass = [
     "truncate text-left transition-colors",
-    profileHref
+    href
       ? "cursor-pointer underline-offset-2 hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-      : "text-white/55 cursor-not-allowed",
+      : "text-white/55",
     className,
   ].join(" ");
 
@@ -37,26 +50,35 @@ export default function ChannelAttribution({
 
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
-      {profileHref ? (
-        <Link
-          href={profileHref}
-          onClick={stopParentNavigation}
-          className={baseClass}
-          title={channelName}
-        >
-          {channelName}
-        </Link>
+      {href ? (
+        isExternal ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={stopParentNavigation}
+            className={baseClass}
+            title={channelName}
+            aria-label={ariaLabel || `Open ${channelName} channel or page`}
+          >
+            {channelName}
+          </a>
+        ) : (
+          <Link
+            href={href}
+            onClick={stopParentNavigation}
+            className={baseClass}
+            title={channelName}
+            aria-label={ariaLabel || `Open ${channelName} CreatorJobs profile`}
+          >
+            {channelName}
+          </Link>
+        )
       ) : (
-        <span className={baseClass} title="Profile not available" aria-disabled="true">
+        <span className={baseClass} title={channelName}>
           {channelName}
         </span>
       )}
-
-      {shouldShowAgencyBadge ? (
-        <span className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.08] px-2 py-0.5 text-[10px] font-medium tracking-wide text-white/65 whitespace-nowrap">
-          Posted by agency
-        </span>
-      ) : null}
     </span>
   );
 }

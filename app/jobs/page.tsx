@@ -41,7 +41,8 @@ export default async function JobsPage({
     } catch {
       if (canUseMocks) {
         jobs = await listJobsFromLocal();
-        notice = "Backend jobs could not be reached. Showing local development listings.";
+        notice =
+          "Backend not reachable — showing local sample listings for development, not the live feed. Start it with `npm run dev:all` (or `npm run dev:backend`), then refresh.";
       } else {
         jobs = [];
         notice = "Jobs could not be loaded right now. Please try again shortly.";

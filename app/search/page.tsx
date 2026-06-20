@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { JobCard } from "../../components/JobCard";
-import { Icon } from "../../components/Icons";
-import { PageHeader, StateCard, TagPill } from "../../components/ui";
+import { IconFact, PageHeader, StateCard, TagPill } from "../../components/ui";
 import {
   canUseLocalMockFallback,
   isLocalMocksEnabled,
@@ -10,6 +9,7 @@ import {
   listTalentListings,
 } from "../../lib/backendClient";
 import { filterMockTalentListings } from "../../lib/mockTalentListings";
+import { formatTalentExperience } from "../../lib/talentListing";
 import { listJobs as listJobsFromLocal } from "../../lib/repositories/jobRepository";
 import { Job } from "../../lib/types";
 
@@ -18,6 +18,14 @@ export const revalidate = 0;
 
 const first = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value) || "";
 const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
+const titleCase = (value?: string | null) =>
+  value
+    ? value
+        .split(/[_-\s]+/)
+        .filter(Boolean)
+        .map((part) => part[0]?.toUpperCase() + part.slice(1))
+        .join(" ")
+    : "";
 
 export default async function SearchPage({
   searchParams,
@@ -159,44 +167,7 @@ export default async function SearchPage({
                       className="group cursor-pointer rounded-[26px] border border-white/[0.08] bg-white/[0.045] p-5 transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                       aria-label={`Open talent listing: ${item.title}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white/82">
-                            {item.owner_display_name || item.owner_username || "Talent"}
-                          </p>
-                          <p className="mt-1 line-clamp-1 text-xs text-white/46">
-                            {[item.primary_role || item.roles[0], item.location, item.timezone]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        </div>
-                      </div>
-                      <h2 className="mt-4 line-clamp-2 text-lg font-extrabold uppercase leading-tight text-white">
-                        {item.title}
-                      </h2>
-                      <div className="mt-4 space-y-2 text-sm text-white/66">
-                        <p>
-                          {item.rate_note ||
-                            (item.rate_min != null
-                              ? `${formatInr(Number(item.rate_min))}${item.rate_max != null ? `-${formatInr(Number(item.rate_max))}` : "+"}`
-                              : "Rate flexible")}
-                        </p>
-                        <p>{[item.work_mode, item.location || "Remote"].filter(Boolean).join(" · ")}</p>
-                      </div>
-                      {!!item.portfolio_item_ids?.length ? (
-                        <div className="mt-3 inline-flex items-center gap-2 text-xs text-white/48">
-                          <Icon name="image" className="h-3.5 w-3.5" />
-                          <span>{item.portfolio_item_ids.length} work samples</span>
-                        </div>
-                      ) : null}
-                      <div className="mt-4 flex flex-wrap gap-1.5">
-                        {[...item.tools, ...item.platforms, item.niche, ...item.formats]
-                          .filter((tag): tag is string => Boolean(tag))
-                          .slice(0, 3)
-                          .map((tag) => (
-                            <TagPill key={`${item.id}-${tag}`}>{tag}</TagPill>
-                          ))}
-                      </div>
+                      <TalentSearchCard item={item} />
                     </Link>
                   ))}
                 </div>
@@ -219,5 +190,63 @@ export default async function SearchPage({
         )}
       </section>
     </main>
+  );
+}
+
+function TalentSearchCard({
+  item,
+}: {
+  item: Awaited<ReturnType<typeof listTalentListings>>["items"][number];
+}) {
+  const experience = formatTalentExperience(item.experience_level);
+  const workMode = titleCase(item.work_mode) || item.location || "Remote";
+  const detailFacts = [
+    {
+      icon: "cash-stack" as const,
+      label: "Rate",
+      value:
+        item.rate_note ||
+        (item.rate_min != null
+          ? `${formatInr(Number(item.rate_min))}${item.rate_max != null ? `-${formatInr(Number(item.rate_max))}` : "+"}`
+          : "Rate flexible"),
+    },
+    experience ? { icon: "cap" as const, label: "Experience", value: experience } : null,
+    workMode ? { icon: "pin" as const, label: "Work mode", value: workMode } : null,
+  ].filter(Boolean) as Array<{ icon: "cash-stack" | "cap" | "pin"; label: string; value: string }>;
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-white/82">
+            {item.owner_display_name || item.owner_username || "Talent"}
+          </p>
+          <p className="mt-1 line-clamp-1 text-xs text-white/46">
+            {[item.primary_role || item.roles[0], item.location, item.timezone].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+      </div>
+      <h2 className="mt-4 line-clamp-2 text-lg font-extrabold uppercase leading-tight text-white">{item.title}</h2>
+      {detailFacts.length ? (
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+          {detailFacts.map((fact) => (
+            <IconFact key={fact.label} icon={fact.icon} label={fact.label} value={fact.value} valueClassName="text-sm text-white/66" />
+          ))}
+        </div>
+      ) : null}
+      {!!item.portfolio_item_ids?.length ? (
+        <div className="mt-3 inline-flex items-center gap-2 text-xs text-white/48">
+          <IconFact icon="image" label="Work samples" value={item.portfolio_item_ids.length} valueClassName="text-xs text-white/48" />
+        </div>
+      ) : null}
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {[...item.tools, ...item.platforms, item.niche, ...item.formats]
+          .filter((tag): tag is string => Boolean(tag))
+          .slice(0, 3)
+          .map((tag) => (
+            <TagPill key={`${item.id}-${tag}`}>{tag}</TagPill>
+          ))}
+      </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 export { default as Section } from "./Section";
 export { default as TagPill } from "./TagPill";
 export { default as IconTooltip } from "./IconTooltip";
+export { default as IconFact } from "./IconFact";
 export { default as MetaRow } from "./MetaRow";
 export { default as StatRow } from "./StatRow";
 export { default as PageHeader } from "./PageHeader";

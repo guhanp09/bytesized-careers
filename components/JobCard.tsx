@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { Job } from "../lib/types";
 import { formatCompactNumber, formatPostedLabel } from "../lib/format";
 import { saveJob } from "../lib/backendClient";
+import { useCardSheen } from "../lib/useCardSheen";
 import { MetaRow, StatRow, TagPill } from "./ui";
 import { Icon } from "./Icons";
 import ChannelAttribution from "./jobs/ChannelAttribution";
@@ -27,14 +28,6 @@ const getPlatform = (platform?: string) => (platform || "YouTube").toLowerCase()
 const getPlatformIcon = (platform?: string) => {
   const key = getPlatform(platform);
   return platformIconMap[key] || "youtube";
-};
-
-const verificationLabel = (status?: string) => {
-  const normalized = (status || "").toUpperCase();
-  if (normalized === "VERIFIED") return "Verified";
-  if (normalized === "PENDING") return "Pending";
-  if (normalized === "REJECTED") return "Rejected";
-  return "";
 };
 
 const formatFollowersLabel = (count: number | null, platform?: string) => {
@@ -101,9 +94,12 @@ export function JobCard({ job }: { job: Job }) {
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const sheen = useCardSheen();
   const cardHref = `/jobs/${encodeURIComponent(String(job.id))}`;
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   const postedLabel = formatPostedLabel(job.postedShort);
+  const currentlyViewing = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
+  const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
 
   const onCardClick = () => {
     if (!job.id) return;
@@ -111,7 +107,7 @@ export function JobCard({ job }: { job: Job }) {
   };
 
   return (
-    <div className="select-none">
+    <div className="min-w-0 select-none">
       <div
         role="link"
         tabIndex={0}
@@ -122,11 +118,12 @@ export function JobCard({ job }: { job: Job }) {
             onCardClick();
           }
         }}
+        {...sheen}
         className={[
-          "group cursor-pointer rounded-2xl p-5",
+          "group relative isolate cursor-pointer rounded-2xl p-5 min-w-0",
           "bg-white/[0.06] border border-white/10",
           "shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]",
-          "transition-all duration-200",
+          "transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out",
           "hover:-translate-y-0.5 hover:bg-white/[0.075] hover:border-white/25",
           "hover:shadow-[0_22px_55px_-26px_rgba(0,0,0,0.95)]",
           "hover:ring-1 hover:ring-white/10",
@@ -135,6 +132,7 @@ export function JobCard({ job }: { job: Job }) {
         ].join(" ")}
         title="Click to open"
       >
+        <div aria-hidden="true" className="home-card-sheen -z-10" />
         {/* Header row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -154,14 +152,8 @@ export function JobCard({ job }: { job: Job }) {
                 <ChannelAttribution
                   channelName={job.channel.name}
                   channelProfileSlug={job.channelProfileSlug}
-                  postedByAgency={job.postedByAgency}
                   className="text-sm font-semibold text-white max-w-[170px]"
                 />
-                {job.channel.verified ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/10 border border-white/10 text-white/80">
-                    Verified
-                  </span>
-                ) : null}
               </div>
               <p className="text-xs text-white/55 truncate inline-flex items-center gap-1.5">
                 <Icon name={getPlatformIcon(job.platform)} className="w-3.5 h-3.5" />
@@ -171,9 +163,6 @@ export function JobCard({ job }: { job: Job }) {
               {job.hiringDisplayName ? (
                 <p className="mt-1 truncate text-[11px] text-white/50">
                   Hiring for {job.hiringDisplayName}
-                  {verificationLabel(job.hiringVerificationStatus)
-                    ? ` · ${verificationLabel(job.hiringVerificationStatus)}`
-                    : ""}
                   {job.managedByAgencyName ? ` · Managed by ${job.managedByAgencyName}` : ""}
                 </p>
               ) : null}
@@ -208,9 +197,14 @@ export function JobCard({ job }: { job: Job }) {
         {/* Bottom row */}
         <div className="mt-auto flex h-10 items-center justify-between gap-3">
           <div className="flex items-center gap-4">
-            <StatRow icon="eye" value={formatCompactNumber(job.views)} label="Currently viewing" interactive />
+            <StatRow
+              icon="eye"
+              value={formatCompactNumber(currentlyViewing)}
+              label="Currently viewing"
+              interactive
+            />
             <StatRow icon="users" value={`${job.applicants}`} label="Applicants" interactive />
-            <StatRow icon="bolt" value={`${job.responseRate}%`} label="Response rate" interactive />
+            <StatRow icon="bolt" value={`${responseRate}%`} label="Response rate" interactive />
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">

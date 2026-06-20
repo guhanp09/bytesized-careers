@@ -5,6 +5,8 @@ test.describe("phase 3b detail and post surface polish", () => {
     await page.goto("/jobs/1");
 
     await expect(page.getByRole("heading", { name: /Video editor for YouTube/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "About the brand" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "About the channel" })).toHaveCount(0);
     const proposalBox = page.getByPlaceholder("Add a short proposal or context for the hiring team.");
     const applyButton = page.getByRole("button", { name: "Apply" });
     await expect(proposalBox).toBeVisible();
@@ -18,7 +20,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     const counterBounds = await counter.boundingBox();
     const applyButtonBounds = await applyButton.boundingBox();
     const applyPanel = page.getByTestId("job-apply-panel");
-    const postedByCard = page.getByTestId("posted-by-card");
+    const postedByCard = page.getByTestId("posted-by-card").first();
     const safetyCard = page.getByTestId("job-safety-card");
     const applyPanelBounds = await applyPanel.boundingBox();
     const postedByBounds = await postedByCard.boundingBox();
@@ -66,7 +68,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.locator("body")).not.toContainText(/★★★★★|4\.[5-9]|5\.0|[1-9][0-9]* reviews/);
   });
 
-  test("direct posted job opens the channel CreatorJobs profile from the Posted by card", async ({ page }) => {
+  test("direct posted job opens the creator profile from the Posted by card", async ({ page }) => {
     await page.goto("/jobs/3");
 
     const postedByCard = page.getByTestId("posted-by-card");
@@ -75,8 +77,8 @@ test.describe("phase 3b detail and post surface polish", () => {
       "href",
       "/u/edu-hindi?view=hiring"
     );
-    await expect(postedByCard.getByText("Channel · 312K subs")).toBeVisible();
-    await expect(postedByCard.getByText("☆☆☆☆☆ 0 reviews")).toBeVisible();
+    await expect(postedByCard.getByText("Creator", { exact: true })).toBeVisible();
+    await expect(postedByCard.getByText("☆☆☆☆☆ 0 reviews as recruiter")).toBeVisible();
     await expect(postedByCard).not.toContainText("Posted by agency");
     await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof|★★★★★|4\.[5-9]|5\.0|[1-9][0-9]* reviews/i);
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -91,7 +93,26 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByText("Video editor for YouTube", { exact: false }).first()).toBeVisible();
     await expect(page.locator("body")).toContainText("Response rate");
     await expect(page.locator("body")).not.toContainText(/Start:/i);
+    await expect(page.locator("body")).not.toContainText("Posted by agency");
+    await expect(page.locator('[role="link"]').filter({ hasText: /^Verified$/i })).toHaveCount(0);
+    await expect(page.locator('[role="link"]').filter({ hasText: /Representation verified|Verified via|Authorization verified/i })).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
+  });
+
+  test("zero job stats remain visible on both cards and detail panels", async ({ page }) => {
+    await page.goto("/jobs");
+
+    const zeroJobCard = page.getByRole("link").filter({ hasText: "Designer for explainer diagrams + simple motion overlays" }).first();
+    await expect(zeroJobCard).toBeVisible();
+    await expect(zeroJobCard).toContainText("Currently viewing");
+    await expect(zeroJobCard).toContainText("0%");
+
+    await page.goto("/jobs/15");
+    await expect(page.getByRole("heading", { name: /Designer for explainer diagrams/i })).toBeVisible();
+    await expect(page.locator("body")).toContainText("Currently viewing");
+    await expect(page.locator("body")).toContainText("0");
+    await expect(page.locator("body")).toContainText("Response rate");
+    await expect(page.locator("body")).toContainText("0%");
   });
 
   test("talent detail keeps work-sample-first recruiter context", async ({ page }) => {
@@ -100,7 +121,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByRole("heading", { name: /RETENTION EDITOR/i })).toBeVisible();
     const messageFrame = page.getByTestId("talent-message-textarea-frame").first();
     const messageBox = messageFrame.getByPlaceholder("Add a short message for the candidate.");
-    const contactButton = page.getByRole("button", { name: /Invite to job|Contact talent/i }).first();
+    const contactButton = page.getByRole("button", { name: "Hire me" }).first();
     await expect(messageBox).toBeVisible();
     await expect(messageBox).toHaveAttribute("maxlength", "600");
     await expect(messageFrame.getByText("0/600")).toBeVisible();
@@ -114,6 +135,8 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByRole("button", { name: /Share/ })).toBeVisible();
     await expect(page.locator("body")).toContainText("Work samples");
     await expect(page.locator("body")).toContainText("Interested recruiters");
+    await expect(page.locator("body")).toContainText(/Posted \d+ (day|week|month)s? ago|Posted just now/);
+    await expect(page.locator("body")).not.toContainText("Featured");
     await expect(page.locator("body")).toContainText("Safety & expectations");
     await expect(page.locator("body")).toContainText("Report this listing");
     await expect(page.locator("body")).not.toContainText(
@@ -126,6 +149,8 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByText("Who are you hiring for?")).toBeVisible();
     await expect(page.locator("body")).toContainText(/Save draft|Safety & expectations/);
     await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Coming soon/);
+    await expect(page.locator("body")).not.toContainText(/Creator-led media|Monthly/);
+    await expect(page.locator("body")).not.toContainText(/^Editing$/);
 
     await page.goto("/post-talent");
     await expect(page.locator("body")).toContainText(/Create talent listing|Welcome back/);

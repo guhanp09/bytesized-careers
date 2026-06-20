@@ -100,9 +100,44 @@ async def test_register_verify_and_login(client: AsyncClient) -> None:
     data = login.json()
     assert data["access_token"]
     assert data["token_type"] == "bearer"
+    assert data["refresh_token"]
+    assert data["access_token_expires_at"]
+    assert data["refresh_token_expires_at"]
     assert data["user"]["email"] == email
     assert data["user"]["account_type"] == "TALENT"
     assert data["user"]["onboarding_intent"] == "DECIDE_LATER"
+
+    refresh_token_as_bearer = await client.get(
+        "/api/v1/me",
+        headers={"Authorization": f"Bearer {data['refresh_token']}"},
+    )
+    assert refresh_token_as_bearer.status_code == 401
+
+    refresh = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": data["refresh_token"]},
+    )
+    assert refresh.status_code == 200
+    refresh_data = refresh.json()
+    assert refresh_data["access_token"]
+    assert refresh_data["refresh_token"]
+    assert refresh_data["access_token_expires_at"]
+    assert refresh_data["refresh_token_expires_at"]
+    assert refresh_data["user"]["email"] == email
+
+    me = await client.get(
+        "/api/v1/me",
+        headers={"Authorization": f"Bearer {refresh_data['access_token']}"},
+    )
+    assert me.status_code == 200
+
+
+async def test_backend_refresh_rejects_invalid_refresh_token(client: AsyncClient) -> None:
+    refresh = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": "not-a-real-refresh-token"},
+    )
+    assert refresh.status_code == 401
 
 
 async def test_register_persists_onboarding_intent_and_me_can_update_it(

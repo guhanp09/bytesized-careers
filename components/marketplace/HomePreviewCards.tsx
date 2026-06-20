@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import type { Job } from "../../lib/types";
 import { BackendTalentListing, saveJob, saveTalentListing } from "../../lib/backendClient";
+import { formatTalentExperience } from "../../lib/talentListing";
 import { Icon } from "../Icons";
+import { IconFact } from "../ui";
 
 const initials = (value: string) =>
   value
@@ -49,26 +51,6 @@ const talentRateLabel = (item: BackendTalentListing) => {
   if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
   if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(item);
   return "Rate flexible";
-};
-
-const experienceRange = (value?: string | null) => {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return "";
-  if (/0\s*[–-]\s*1|less than 1|entry|beginner/.test(normalized)) return "0–1 year";
-  if (/1\s*[–-]\s*2|junior/.test(normalized)) return "1–2 years";
-  if (/2\s*[–-]\s*4|mid/.test(normalized)) return "2–4 years";
-  if (/4\s*[–-]\s*6|senior/.test(normalized)) return "4–6 years";
-  if (/6\+|expert|lead|principal/.test(normalized)) return "6+ years";
-  const years = normalized.match(/(\d+)\s*\+?\s*years?/);
-  if (years) {
-    const count = Number(years[1]);
-    if (count <= 1) return "0–1 year";
-    if (count <= 2) return "1–2 years";
-    if (count <= 4) return "2–4 years";
-    if (count <= 6) return "4–6 years";
-    return "6+ years";
-  }
-  return "";
 };
 
 const displayName = (item: BackendTalentListing) =>
@@ -241,10 +223,12 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
   const role = item.primary_role || item.roles[0] || "Content talent";
   const meta = [role, item.location || titleCase(item.work_mode) || "Remote", item.timezone].filter(Boolean).join(" · ");
   const tags = uniq([item.niche, ...item.platforms, ...item.tools]).slice(0, 3).join(" · ");
-  const experience = experienceRange(item.experience_level);
-  const details = [talentRateLabel(item), experience ? `Experience: ${experience}` : null, titleCase(item.work_mode)]
-    .filter(Boolean)
-    .join(" · ");
+  const experience = formatTalentExperience(item.experience_level);
+  const detailFacts = [
+    { icon: "cash-stack" as const, label: "Rate", value: talentRateLabel(item) },
+    experience ? { icon: "cap" as const, label: "Experience", value: experience } : null,
+    titleCase(item.work_mode) ? { icon: "pin" as const, label: "Work mode", value: titleCase(item.work_mode) } : null,
+  ].filter(Boolean) as Array<{ icon: "cash-stack" | "cap" | "pin"; label: string; value: string }>;
 
   const open = () => {
     router.push(href);
@@ -305,7 +289,19 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
 
       <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{item.title}</h3>
 
-      {details ? <p className="mt-4 line-clamp-2 text-sm leading-6 text-white/58">{details}</p> : null}
+      {detailFacts.length ? (
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+          {detailFacts.map((fact) => (
+            <IconFact
+              key={fact.label}
+              icon={fact.icon}
+              label={fact.label}
+              value={fact.value}
+              valueClassName="text-sm text-white/58"
+            />
+          ))}
+        </div>
+      ) : null}
       {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-white/36">{tags}</p> : null}
 
       <div className="mt-auto flex items-center justify-end gap-3 pt-5">

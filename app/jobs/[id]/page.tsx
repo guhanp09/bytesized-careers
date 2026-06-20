@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import JobActionsPanelClient from "../../../components/job-details/JobActionsPanelClient";
-import OwnerListingControlsClient from "../../../components/OwnerListingControlsClient";
+import JobOwnerControls from "../../../components/job-details/JobOwnerControls";
 import JobDescriptionSections from "../../../components/job-details/JobDescriptionSections";
 import JobHero from "../../../components/job-details/JobHero";
 import { StateCard } from "../../../components/ui";
@@ -116,23 +116,29 @@ export default async function JobDetailsPage({
       <div className="px-4 sm:px-6 py-8">
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[1fr_420px] items-start">
           <div className="space-y-6">
-            <JobHero job={job} postedText={postedText} titleScale={TITLE_SCALE} />
+            <JobHero
+              job={job}
+              postedText={postedText}
+              titleScale={TITLE_SCALE}
+              ownerControls={
+                isOwner ? (
+                  <JobOwnerControls
+                    jobId={job.id}
+                    status={job.status}
+                    editHref={`/post-job?draftId=${encodeURIComponent(job.id)}`}
+                    applicantsHref="/applications?view=hiring"
+                  />
+                ) : null
+              }
+            />
             <JobDescriptionSections job={job} />
           </div>
 
           <aside className="space-y-6 lg:sticky lg:top-20">
-            {isOwner ? (
-              <OwnerListingControlsClient
-                kind="job"
-                id={job.id}
-                status={job.status}
-                editHref={`/post-job?draftId=${encodeURIComponent(job.id)}`}
-                activityHref="/activity?tab=applications"
-              />
-            ) : null}
             <JobActionsPanelClient
               job={job}
               secondaryBtnBrightness={SECONDARY_BTN_BRIGHTNESS}
+              isOwner={isOwner}
             />
           </aside>
         </div>

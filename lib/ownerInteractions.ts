@@ -1,3 +1,11 @@
+import type {
+  ActivitySummary,
+  BackendJobApplication,
+  BackendTalentInterest,
+  BackendTalentListing,
+} from "./backendClient";
+import type { Job } from "./types";
+
 export type InteractionMode = "talent" | "hiring";
 export type InteractionDirection = "sent" | "received";
 export type InteractionKind = "application" | "hiring_request";
@@ -9,6 +17,7 @@ export type InteractionStatus =
   | "responded"
   | "shortlisted"
   | "accepted"
+  | "hired"
   | "declined"
   | "withdrawn"
   | "closed";
@@ -93,6 +102,7 @@ export type OwnerInteraction = {
 
 export const ARCHIVED_INTERACTION_STATUSES: InteractionStatus[] = [
   "accepted",
+  "hired",
   "declined",
   "withdrawn",
   "closed",
@@ -116,6 +126,8 @@ export function interactionStatusLabel(status: InteractionStatus): string {
       return "Shortlisted";
     case "accepted":
       return "Accepted";
+    case "hired":
+      return "Hired";
     case "declined":
       return "Declined";
     case "withdrawn":
@@ -188,6 +200,18 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       body: "Your pacing reel is close to what we want. Can you start with a one-week trial batch of 5 shorts using next week's scripts?",
       atLabel: "5h ago",
     },
+    replies: [
+      {
+        from: "You",
+        body: "Happy to. I can pull next week's scripts from the shared drive and deliver the first batch of 5 within three days, captions in your house style.",
+        atLabel: "4h ago",
+      },
+      {
+        from: "Motivation Shorts",
+        body: "Perfect. What's your availability for a 15-minute kickoff call this week to walk through the caption presets?",
+        atLabel: "3h ago",
+      },
+    ],
     job: {
       jobId: "4",
       title: "Shorts editor for daily YouTube Shorts (fast paced, captions)",
@@ -221,6 +245,11 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     message:
       "I design high-contrast thumbnail concepts with fast iteration — usually 3 directions within 24 hours. Sharing a packaging set I did for a hardware review channel in a similar niche.",
     proposedTerms: "₹900 per month · 8 thumbnails",
+    response: {
+      from: "Tech Channel",
+      body: "Thanks for the samples — your work is strong. We went with someone who had more long-form documentary packaging experience for this batch. We'll keep your profile for the next round.",
+      atLabel: "4d ago",
+    },
     job: {
       jobId: "2",
       title: "Thumbnail designer (CTR-focused, 2–3 concepts)",
@@ -238,6 +267,81 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       { id: "t-app-sent-3-applied", label: "Application sent", at: "1w ago" },
       { id: "t-app-sent-3-viewed", label: "Viewed by Tech Channel", at: "6d ago" },
       { id: "t-app-sent-3-declined", label: "Declined by Tech Channel", at: "4d ago" },
+    ],
+  },
+  {
+    id: "t-app-sent-4",
+    mode: "talent",
+    direction: "sent",
+    kind: "application",
+    status: "viewed",
+    title: "Script writer for Hindi explainers (8–10 mins)",
+    counterpartyName: "Gyaan Express",
+    counterpartyAvatarUrl: "https://picsum.photos/seed/gyaan/96/96",
+    createdAtLabel: "2d ago",
+    updatedAtLabel: "1d ago",
+    message:
+      "I write Hindi explainer scripts with a clear hook, simple analogies, and a tight 8–10 minute structure. I can match your conversational tone and include on-screen cue notes for the editor.",
+    proposedTerms: "₹1,500 per script",
+    job: {
+      jobId: "5",
+      title: "Script writer for Hindi explainers (8–10 mins)",
+      channelName: "Gyaan Express",
+      channelLogoUrl: "https://picsum.photos/seed/gyaan/96/96",
+      channelProfileSlug: "gyaan-express",
+      budget: "₹1,200–₹2,000 per script",
+      workMode: "Monthly · Remote",
+      location: "Remote",
+      experience: "1–3 years",
+      tags: ["Hindi", "Scripts", "Explainers", "Hooks"],
+      listingStatus: "Open",
+    },
+    timeline: [
+      { id: "t-app-sent-4-applied", label: "Application sent", at: "2d ago" },
+      { id: "t-app-sent-4-viewed", label: "Viewed by Gyaan Express", at: "1d ago" },
+    ],
+  },
+  {
+    id: "t-app-sent-5",
+    mode: "talent",
+    direction: "sent",
+    kind: "application",
+    status: "shortlisted",
+    title: "Long-form editor for documentary-style finance deep dives",
+    counterpartyName: "Moneywise India",
+    counterpartyAvatarUrl: "https://picsum.photos/seed/moneywise/96/96",
+    createdAtLabel: "6d ago",
+    updatedAtLabel: "1d ago",
+    unread: true,
+    message:
+      "I edit documentary-style finance videos — narrative pacing, archival overlays, and clean sound design. I've linked two deep dives I cut end to end and can adapt to your reference style.",
+    proposedTerms: "₹3,500 per video · 5-day turnaround",
+    attachments: [
+      { label: "Deep dive — market crash explainer", url: "https://portfolio.example.com/sample/deep-dive-1" },
+      { label: "Deep dive — startup story", url: "https://portfolio.example.com/sample/deep-dive-2" },
+    ],
+    response: {
+      from: "Moneywise India",
+      body: "We liked your explainers work and shortlisted you. Can you share two more samples with heavier archival/B-roll use?",
+      atLabel: "1d ago",
+    },
+    job: {
+      jobId: "6",
+      title: "Long-form editor for documentary-style finance deep dives",
+      channelName: "Moneywise India",
+      channelLogoUrl: "https://picsum.photos/seed/moneywise/96/96",
+      channelProfileSlug: "moneywise-india",
+      budget: "₹3,000–₹4,500 per video",
+      workMode: "Monthly · Remote",
+      location: "Remote",
+      experience: "3–5 years",
+      tags: ["Premiere", "Documentary", "B-roll", "Sound design"],
+      listingStatus: "Open",
+    },
+    timeline: [
+      { id: "t-app-sent-5-applied", label: "Application sent", at: "6d ago" },
+      { id: "t-app-sent-5-viewed", label: "Viewed by Moneywise India", at: "3d ago" },
+      { id: "t-app-sent-5-shortlisted", label: "Shortlisted by Moneywise India", at: "1d ago" },
     ],
   },
 
@@ -283,6 +387,11 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     message:
       "We publish one long-form explainer a week and want a single editor who owns pacing, captions, and sound. Your listing matches the brief — open to a monthly retainer starting next cycle.",
     proposedTerms: "₹3,200 per month · 4 videos",
+    response: {
+      from: "Finance Channel",
+      body: "Great to have you on board. I'll share the first month's scripts and our brand kit on Monday so you can plan the batch.",
+      atLabel: "2d ago",
+    },
     recruiter: {
       profileSlug: "finance-creator",
       name: "Finance Channel",
@@ -326,6 +435,32 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       { id: "t-req-recv-3-sent", label: "Request received", at: "1w ago" },
       { id: "t-req-recv-3-declined", label: "Declined by you", at: "6d ago" },
     ],
+  },
+  {
+    id: "t-req-recv-4",
+    mode: "talent",
+    direction: "received",
+    kind: "hiring_request",
+    status: "pending",
+    title: "Thumbnail + packaging help for gaming channel",
+    counterpartyName: "Pixel Rush",
+    counterpartyAvatarUrl: "https://picsum.photos/seed/pixelrush/96/96",
+    createdAtLabel: "10h ago",
+    updatedAtLabel: "10h ago",
+    unread: true,
+    message: "",
+    proposedTerms: "₹1,000 per month · 10 thumbnails",
+    recruiter: {
+      profileSlug: "pixel-rush",
+      name: "Pixel Rush",
+      avatarUrl: "https://picsum.photos/seed/pixelrush/96/96",
+      channelName: "Pixel Rush",
+      audienceLabel: "76K subscribers",
+      platform: "YouTube",
+      hiringFor: "Gaming highlights channel",
+    },
+    sourceListingTitle: "Retention-focused long-form and shorts editing",
+    timeline: [{ id: "t-req-recv-4-sent", label: "Request received", at: "10h ago" }],
   },
 
   // ---- Recruiter mode: applications received on this user's job listings ----
@@ -460,6 +595,147 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       { id: "r-app-recv-3-declined", label: "Declined by you", at: "3d ago" },
     ],
   },
+  {
+    id: "r-app-recv-4",
+    mode: "hiring",
+    direction: "received",
+    kind: "application",
+    status: "responded",
+    title: "Rhea Kapoor",
+    counterpartyName: "Rhea Kapoor",
+    createdAtLabel: "2d ago",
+    updatedAtLabel: "6h ago",
+    unread: true,
+    message:
+      "I edit shorts and long-form for education channels and can own your weekly batch. I've attached a before/after where I lifted average view duration by reworking the first 30 seconds.",
+    proposedTerms: "₹2,200 per video",
+    job: {
+      jobId: null,
+      title: "Long-form editor for weekly finance explainers",
+      budget: "₹2,000–₹3,500 per video",
+      workMode: "Monthly · Remote",
+      location: "Remote",
+      experience: "2–4 years",
+      tags: ["Long-form", "Retention", "Captions"],
+      listingStatus: "Open",
+    },
+    response: {
+      from: "You",
+      body: "Thanks Rhea — the before/after is strong. Can you share two shorts examples with the before/after edits?",
+      atLabel: "1d ago",
+    },
+    replies: [
+      {
+        from: "Rhea Kapoor",
+        body: "Sent — here are two shorts with the raw and final side by side. I'm available from next Monday and can take 3 videos per week.",
+        atLabel: "6h ago",
+      },
+    ],
+    talent: {
+      profileSlug: "rhea-kapoor",
+      name: "Rhea Kapoor",
+      headline: "Retention editor for education and finance channels",
+      location: "Delhi, India",
+      availability: "Available from next Monday",
+      bio: "I focus on the first 30 seconds and pacing structure to lift average view duration, with clean captions and mixed audio.",
+      tools: ["Premiere Pro", "After Effects", "DaVinci Resolve"],
+      niches: ["Education", "Finance"],
+      experienceNote: "3 yrs editing weekly batches for creator channels",
+      portfolioHighlights: [
+        { title: "Retention rework — intro 30s", detail: "Before/after · +18% AVD" },
+      ],
+    },
+    timeline: [
+      { id: "r-app-recv-4-applied", label: "Application received", at: "2d ago" },
+      { id: "r-app-recv-4-viewed", label: "Viewed by you", at: "2d ago" },
+      { id: "r-app-recv-4-responded", label: "Reply sent", at: "1d ago" },
+      { id: "r-app-recv-4-candidate", label: "Candidate responded", at: "6h ago" },
+    ],
+  },
+  {
+    id: "r-app-recv-5",
+    mode: "hiring",
+    direction: "received",
+    kind: "application",
+    status: "new",
+    title: "Ishaan Verma",
+    counterpartyName: "Ishaan Verma",
+    createdAtLabel: "8h ago",
+    updatedAtLabel: "8h ago",
+    unread: true,
+    message:
+      "I've spent three years on creator-led finance and tech channels doing long-form edits, motion callouts, and thumbnail packaging. I work hook-first, keep a shared review board, and can deliver a paid test edit on a recent upload before you commit to anything.",
+    proposedTerms: "₹3,000 per video · 3-day turnaround",
+    attachments: [
+      { label: "Showreel — finance long-form", url: "https://portfolio.example.com/ishaan/showreel" },
+      { label: "Thumbnail packaging set", url: "https://portfolio.example.com/ishaan/thumbnails" },
+    ],
+    job: {
+      jobId: null,
+      title: "Long-form editor for weekly finance explainers",
+      budget: "₹2,000–₹3,500 per video",
+      workMode: "Monthly · Remote",
+      location: "Remote",
+      experience: "2–4 years",
+      tags: ["Long-form", "Retention", "Captions"],
+      listingStatus: "Open",
+    },
+    talent: {
+      profileSlug: "ishaan-verma",
+      name: "Ishaan Verma",
+      headline: "Senior editor + packaging for finance and tech creators",
+      location: "Bengaluru, India · IST",
+      availability: "Available · 2 slots this month",
+      bio: "Long-form editing with retention-first structure, motion callouts, and CTR-focused thumbnail packaging. I run a shared review board so approvals stay fast across a channel team.",
+      tools: ["Premiere Pro", "After Effects", "Photoshop", "Figma"],
+      niches: ["Finance", "Tech", "Explainers"],
+      experienceNote: "3 yrs · creator-led channels from 80K to 1.2M subs",
+      portfolioHighlights: [
+        { title: "Retention rebuild — market explainer", detail: "Long-form edit · pacing + caption system" },
+        { title: "Motion callout system — tech reviews", detail: "Reusable AE templates" },
+        { title: "Packaging refresh — finance series", detail: "Channel-wide thumbnail system" },
+      ],
+    },
+    timeline: [{ id: "r-app-recv-5-applied", label: "Application received", at: "8h ago" }],
+  },
+  {
+    id: "r-app-recv-6",
+    mode: "hiring",
+    direction: "received",
+    kind: "application",
+    status: "closed",
+    title: "Sana Khan",
+    counterpartyName: "Sana Khan",
+    createdAtLabel: "1mo ago",
+    updatedAtLabel: "3w ago",
+    message: "",
+    job: {
+      jobId: null,
+      title: "Channel ops manager (part-time)",
+      budget: "₹2,000–₹3,000 per month",
+      workMode: "Part-time · Remote",
+      location: "Remote",
+      experience: "1–2 years",
+      tags: ["Channel ops", "Scheduling"],
+      listingStatus: "Closed",
+    },
+    talent: {
+      profileSlug: "sana-khan",
+      name: "Sana Khan",
+      headline: "Channel coordinator — scheduling and uploads",
+      location: "Hyderabad, India",
+      availability: null,
+      bio: null,
+      tools: ["YouTube Studio", "Notion"],
+      niches: ["Education"],
+      experienceNote: null,
+      portfolioHighlights: [],
+    },
+    timeline: [
+      { id: "r-app-recv-6-applied", label: "Application received", at: "1mo ago" },
+      { id: "r-app-recv-6-archived", label: "Archived", at: "3w ago" },
+    ],
+  },
 
   // ---- Recruiter mode: hiring requests this user sent to talent ----
   {
@@ -511,6 +787,18 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       body: "This fits my schedule from next month. I can send a sample outline for your first topic this week so you can check structure and sourcing style.",
       atLabel: "9h ago",
     },
+    replies: [
+      {
+        from: "You",
+        body: "That works. Let's start with the AI-regulation explainer — I'll drop the brief and reference links in a shared doc today.",
+        atLabel: "7h ago",
+      },
+      {
+        from: "Kabir Sen",
+        body: "Got the brief, thanks. I'll have the outline and sourced notes back to you within two days.",
+        atLabel: "5h ago",
+      },
+    ],
     talent: {
       profileSlug: "kabir-sen",
       name: "Kabir Sen",
@@ -544,6 +832,11 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     message:
       "We want animated callouts and kinetic text for two videos a month — your lower-thirds style matches our brand. Open to a per-video arrangement?",
     proposedTerms: "₹900 per video · 2 per month",
+    response: {
+      from: "Nora Chen",
+      body: "Thanks for thinking of me — your channel looks great. I'm fully booked through next quarter, but I'd be glad to revisit after that.",
+      atLabel: "5d ago",
+    },
     talent: {
       profileSlug: "nora-chen",
       name: "Nora Chen",
@@ -563,4 +856,352 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       { id: "r-req-sent-3-declined", label: "Declined by Nora Chen", at: "5d ago" },
     ],
   },
+  {
+    id: "r-req-sent-4",
+    mode: "hiring",
+    direction: "sent",
+    kind: "hiring_request",
+    status: "accepted",
+    title: "Tara Iyer",
+    contextLabel: "Thumbnail packaging — weekly retainer",
+    counterpartyName: "Tara Iyer",
+    createdAtLabel: "4d ago",
+    updatedAtLabel: "2d ago",
+    message:
+      "Your packaging board for tech channels is exactly our style. We publish twice a week and want 8 thumbnails a month with a shared concept board for fast approvals. Open to a retainer?",
+    proposedTerms: "₹1,200 per month · 8 thumbnails",
+    response: {
+      from: "Tara Iyer",
+      body: "Yes, I'd love to. I can start this week — I'll set up a shared board and send the first two concepts for your next upload.",
+      atLabel: "2d ago",
+    },
+    talent: {
+      profileSlug: "tara-iyer",
+      name: "Tara Iyer",
+      headline: "Thumbnail designer + packaging for tech and finance channels",
+      location: "Chennai, India",
+      availability: "Available · 1 retainer slot",
+      tools: ["Photoshop", "Figma"],
+      niches: ["Tech", "Finance", "Productivity"],
+      experienceNote: "Packaging systems with A/B concept boards",
+      portfolioHighlights: [
+        { title: "Concept board — tech reviews", detail: "3 concepts per video · weekly cadence" },
+      ],
+    },
+    timeline: [
+      { id: "r-req-sent-4-sent", label: "Request sent", at: "4d ago" },
+      { id: "r-req-sent-4-viewed", label: "Viewed by Tara Iyer", at: "3d ago" },
+      { id: "r-req-sent-4-accepted", label: "Accepted by Tara Iyer", at: "2d ago" },
+    ],
+  },
+  {
+    id: "r-req-sent-5",
+    mode: "hiring",
+    direction: "sent",
+    kind: "hiring_request",
+    status: "withdrawn",
+    title: "Arjun Nair",
+    contextLabel: "Voice over — horror stories narration",
+    counterpartyName: "Arjun Nair",
+    createdAtLabel: "3w ago",
+    updatedAtLabel: "2w ago",
+    message:
+      "We're starting a horror-stories channel and need a deep, measured narration voice for weekly 10-minute episodes. Your demo fits the mood — would you be open to a per-episode rate?",
+    proposedTerms: "₹1,500 per episode",
+    talent: {
+      profileSlug: "arjun-nair",
+      name: "Arjun Nair",
+      headline: "Voice over artist — narration for horror and documentary",
+      location: "Kochi, India",
+      availability: "Selective",
+      tools: ["Audition", "Home studio"],
+      niches: ["Horror", "Documentary", "Narration"],
+      experienceNote: "Narration for story-driven channels",
+      portfolioHighlights: [],
+    },
+    timeline: [
+      { id: "r-req-sent-5-sent", label: "Request sent", at: "3w ago" },
+      { id: "r-req-sent-5-withdrawn", label: "Request withdrawn by you", at: "2w ago" },
+    ],
+  },
 ];
+
+// ---- Live backend mapping ----
+// Maps the authenticated activity summary into the same OwnerInteraction shape
+// the Applications workspace renders, using only fields the backend actually
+// returns — no fabricated names, timestamps, or read states.
+
+export function relativeTimeLabel(iso?: string | null): string {
+  if (!iso) return "";
+  // Backend timestamps are UTC but may arrive without a timezone designator;
+  // parsing those as local time would shift every label by the UTC offset.
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso);
+  const time = Date.parse(hasTimezone ? iso : `${iso}Z`);
+  if (!Number.isFinite(time)) return "";
+  const diffMs = Math.max(0, Date.now() - time);
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function applicationStatusToInteraction(
+  status: BackendJobApplication["status"],
+  direction: InteractionDirection
+): InteractionStatus {
+  switch (status) {
+    case "new":
+      return direction === "sent" ? "pending" : "new";
+    case "reviewing":
+      return "viewed";
+    case "shortlisted":
+      return "shortlisted";
+    case "interviewing":
+      return "responded";
+    case "hired":
+      return "hired";
+    case "rejected":
+      return "declined";
+    case "archived":
+      return "closed";
+  }
+}
+
+function interestStatusToInteraction(
+  status: BackendTalentInterest["status"],
+  direction: InteractionDirection
+): InteractionStatus {
+  switch (status) {
+    case "new":
+      return direction === "sent" ? "pending" : "new";
+    case "reviewing":
+      return "viewed";
+    case "contacted":
+      return "accepted";
+    case "declined":
+      return "declined";
+    case "archived":
+      return "closed";
+  }
+}
+
+function liveTimeline(
+  id: string,
+  createdLabel: string,
+  createdAt: string,
+  updatedAt: string,
+  status: InteractionStatus
+): InteractionTimelineEvent[] {
+  const events: InteractionTimelineEvent[] = [
+    { id: `${id}-created`, label: createdLabel, at: relativeTimeLabel(createdAt) },
+  ];
+  const settledStatuses: InteractionStatus[] = ["new", "pending"];
+  if (!settledStatuses.includes(status) && updatedAt && updatedAt !== createdAt) {
+    events.push({ id: `${id}-status`, label: interactionStatusLabel(status), at: relativeTimeLabel(updatedAt) });
+  }
+  return events;
+}
+
+function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
+  return {
+    jobId: String(job.id),
+    title: job.title,
+    channelName: job.channel?.name || null,
+    channelLogoUrl: job.channel?.logoUrl || null,
+    channelProfileSlug: job.channelProfileSlug || null,
+    budget: job.budget,
+    workMode: [job.type, job.workMode].filter(Boolean).join(" · ") || "—",
+    location: job.location || null,
+    experience: job.experience || null,
+    tags: job.tags || [],
+    listingStatus: null,
+  };
+}
+
+const AVAILABILITY_LABELS: Record<BackendTalentListing["availability_status"], string> = {
+  available: "Available",
+  selective: "Selective",
+  unavailable: "Unavailable",
+};
+
+function talentSnapshotFromListing(listing: BackendTalentListing): InteractionTalentSnapshot {
+  return {
+    profileSlug: listing.owner_username || null,
+    name: listing.owner_display_name || listing.owner_username || "Talent",
+    avatarUrl: listing.owner_avatar_url || null,
+    headline: listing.primary_role || listing.title,
+    location: listing.location || null,
+    availability: AVAILABILITY_LABELS[listing.availability_status] || null,
+    bio: listing.description || null,
+    tools: listing.tools || [],
+    niches: [listing.niche, ...(listing.formats || [])].filter((value): value is string => Boolean(value)),
+    experienceNote: listing.experience_level || null,
+    portfolioHighlights: [],
+  };
+}
+
+function asSnapshotString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asSnapshotStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerInteraction[] {
+  const relatedJobsById = new Map(summary.relatedJobs.map((job) => [String(job.id), job]));
+  const myJobsById = new Map(summary.myJobs.map((job) => [String(job.id), job]));
+  const myListingsById = new Map(summary.myTalentListings.map((listing) => [listing.id, listing]));
+  const relatedListingsById = new Map(summary.relatedTalentListings.map((listing) => [listing.id, listing]));
+
+  const entries: Array<{ sortKey: number; item: OwnerInteraction }> = [];
+  const sortKeyOf = (iso: string) => {
+    const time = Date.parse(iso);
+    return Number.isFinite(time) ? time : 0;
+  };
+
+  for (const application of summary.sentApplications) {
+    const job = relatedJobsById.get(String(application.job_id)) || null;
+    const status = applicationStatusToInteraction(application.status, "sent");
+    entries.push({
+      sortKey: sortKeyOf(application.updated_at || application.created_at),
+      item: {
+        id: application.id,
+        mode: "talent",
+        direction: "sent",
+        kind: "application",
+        status,
+        title: job?.title || "Job application",
+        counterpartyName: job?.channel?.name || "Recruiter",
+        counterpartyAvatarUrl: job?.channel?.logoUrl || null,
+        createdAtLabel: relativeTimeLabel(application.created_at),
+        updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
+        message: application.cover_note || "",
+        job: job ? jobSnapshotFromJob(job) : null,
+        timeline: liveTimeline(
+          application.id,
+          "Application sent",
+          application.created_at,
+          application.updated_at,
+          status
+        ),
+      },
+    });
+  }
+
+  for (const application of summary.receivedApplications) {
+    const snapshot = application.applicant_snapshot || {};
+    const applicantName =
+      asSnapshotString(snapshot["display_name"]) || asSnapshotString(snapshot["username"]) || "Applicant";
+    const username = asSnapshotString(snapshot["username"]);
+    const job = myJobsById.get(String(application.job_id)) || null;
+    const status = applicationStatusToInteraction(application.status, "received");
+    entries.push({
+      sortKey: sortKeyOf(application.updated_at || application.created_at),
+      item: {
+        id: application.id,
+        mode: "hiring",
+        direction: "received",
+        kind: "application",
+        status,
+        title: applicantName,
+        counterpartyName: applicantName,
+        createdAtLabel: relativeTimeLabel(application.created_at),
+        updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
+        message: application.cover_note || "",
+        job: job ? { ...jobSnapshotFromJob(job), channelName: null, channelLogoUrl: null } : null,
+        talent: {
+          profileSlug: username,
+          name: applicantName,
+          headline: asSnapshotString(snapshot["headline"]) || "",
+          location:
+            [asSnapshotString(snapshot["location"]), asSnapshotString(snapshot["timezone"])]
+              .filter(Boolean)
+              .join(" · ") || null,
+          availability: null,
+          bio: null,
+          tools: asSnapshotStringList(snapshot["skills"]),
+          niches: [],
+          experienceNote: null,
+          portfolioHighlights: [],
+        },
+        timeline: liveTimeline(
+          application.id,
+          "Application received",
+          application.created_at,
+          application.updated_at,
+          status
+        ),
+      },
+    });
+  }
+
+  for (const interest of summary.sentInterests) {
+    const listing = relatedListingsById.get(interest.talent_listing_id) || null;
+    const talentName = listing?.owner_display_name || listing?.owner_username || "Talent";
+    const status = interestStatusToInteraction(interest.status, "sent");
+    entries.push({
+      sortKey: sortKeyOf(interest.updated_at || interest.created_at),
+      item: {
+        id: interest.id,
+        mode: "hiring",
+        direction: "sent",
+        kind: "hiring_request",
+        status,
+        title: talentName,
+        contextLabel: listing?.title || null,
+        counterpartyName: talentName,
+        counterpartyAvatarUrl: listing?.owner_avatar_url || null,
+        createdAtLabel: relativeTimeLabel(interest.created_at),
+        updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
+        message: interest.note || "",
+        talent: listing ? talentSnapshotFromListing(listing) : null,
+        timeline: liveTimeline(interest.id, "Request sent", interest.created_at, interest.updated_at, status),
+      },
+    });
+  }
+
+  for (const interest of summary.receivedInterests) {
+    const listing = myListingsById.get(interest.talent_listing_id) || null;
+    const relatedJob = interest.job_id ? relatedJobsById.get(String(interest.job_id)) || null : null;
+    const recruiterName = relatedJob?.channel?.name || "Recruiter";
+    const status = interestStatusToInteraction(interest.status, "received");
+    entries.push({
+      sortKey: sortKeyOf(interest.updated_at || interest.created_at),
+      item: {
+        id: interest.id,
+        mode: "talent",
+        direction: "received",
+        kind: "hiring_request",
+        status,
+        title: relatedJob?.title || "Hiring request",
+        counterpartyName: recruiterName,
+        counterpartyAvatarUrl: relatedJob?.channel?.logoUrl || null,
+        createdAtLabel: relativeTimeLabel(interest.created_at),
+        updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
+        message: interest.note || "",
+        recruiter: relatedJob
+          ? {
+              profileSlug: relatedJob.channelProfileSlug || null,
+              name: recruiterName,
+              avatarUrl: relatedJob.channel?.logoUrl || null,
+              channelName: relatedJob.channel?.name || null,
+              audienceLabel: null,
+              platform: relatedJob.platform || null,
+              hiringFor: relatedJob.title,
+            }
+          : null,
+        sourceListingTitle: listing?.title || null,
+        timeline: liveTimeline(interest.id, "Request received", interest.created_at, interest.updated_at, status),
+      },
+    });
+  }
+
+  return entries.sort((a, b) => b.sortKey - a.sortKey).map((entry) => entry.item);
+}

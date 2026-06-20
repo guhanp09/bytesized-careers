@@ -27,17 +27,21 @@ export function Icon({
     | "bolt"
     | "cap"
     | "send"
+    | "circle-play"
     | "inbox"
+    | "mail"
     | "youtube"
     | "check"
     | "alert"
     | "globe"
+    | "help"
     | "cash"
     | "cash-stack"
     | "log-out"
     | "log-in"
     | "user-plus"
     | "pencil"
+    | "file"
     | "settings"
     | "external-link"
     | "instagram"
@@ -45,7 +49,12 @@ export function Icon({
     | "facebook"
     | "linkedin"
     | "x"
-    | "podcast";
+    | "podcast"
+    | "more"
+    | "pause"
+    | "archive"
+    | "copy"
+    | "trash";
   className?: string;
 }) {
   const common = { className, fill: "none", stroke: "currentColor", strokeWidth: 1.8 };
@@ -244,11 +253,36 @@ export function Icon({
         </svg>
       );
 
+    case "circle-play":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <circle cx="12" cy="12" r="8" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m10.5 8.8 5 3.2-5 3.2V8.8Z" />
+        </svg>
+      );
+
     case "inbox":
       return (
         <svg viewBox="0 0 24 24" {...common}>
           <path strokeLinecap="round" d="M4 5h16v14H4z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 13h4l2 3h4l2-3h4" />
+        </svg>
+      );
+
+    case "mail":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="3" y="5.5" width="18" height="13" rx="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 7 7.5 6 7.5-6" />
+        </svg>
+      );
+
+    case "help":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <circle cx="12" cy="12" r="8" />
+          <path strokeLinecap="round" d="M9.8 9.2a2.4 2.4 0 1 1 3.8 2c-.9.6-1.6 1.1-1.6 2.3" />
+          <path strokeLinecap="round" d="M12 16.8h.01" />
         </svg>
       );
 
@@ -399,6 +433,56 @@ export function Icon({
         <svg viewBox="0 0 24 24" {...common}>
           <path strokeLinecap="round" d="M4 20h4l10-10-4-4L4 16v4Z" />
           <path strokeLinecap="round" d="m12 6 4 4" />
+        </svg>
+      );
+
+    case "more":
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor" stroke="none">
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
+      );
+
+    case "pause":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M9 5v14M15 5v14" />
+        </svg>
+      );
+
+    case "archive":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16M5 8v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M5 8l1.2-2.6A1 1 0 0 1 7.1 5h9.8a1 1 0 0 1 .9.5L19 8M10 12h4" />
+        </svg>
+      );
+
+    case "copy":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="8" y="8" width="11" height="11" rx="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v1" />
+        </svg>
+      );
+
+    case "trash":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M4 7h16" />
+          <path strokeLinecap="round" d="M10 11v6M14 11v6" />
+          <path strokeLinecap="round" d="M6 7l1 13h10l1-13" />
+          <path strokeLinecap="round" d="M9 7V4h6v3" />
+        </svg>
+      );
+
+    case "file":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3v5h5" />
+          <path strokeLinecap="round" d="M9 13h6M9 17h6" />
         </svg>
       );
 

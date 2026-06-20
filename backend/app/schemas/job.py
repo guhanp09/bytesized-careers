@@ -178,6 +178,7 @@ class JobRead(JobBase):
     hiring_display_name_snapshot: str | None = None
     hiring_platform_snapshot: str | None = None
     hiring_verification_status_snapshot: str | None = None
+    hiring_external_url_snapshot: str | None = None
     managed_by_agency_name_snapshot: str | None = None
     created_at: datetime
     updated_at: datetime

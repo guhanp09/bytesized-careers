@@ -366,3 +366,88 @@ async def test_job_and_talent_drafts_resume_by_updating_existing_records(
     data = activity.json()
     assert any(item["id"] == job_id for item in data["my_jobs"])
     assert any(item["id"] == listing_id for item in data["my_talent_listings"])
+
+
+async def test_saved_drafts_appear_in_my_listing_endpoints(client: AsyncClient) -> None:
+    # The dedicated /drafts page reads GET /me/jobs and GET /me/talent-listings, so a
+    # Save Draft must persist with status "draft" and show up in those lists. Partial
+    # data (no budget/rate/description) must not block saving a draft.
+    owner_token = await _register_verified_login(
+        client, email="drafts-listing@example.com", username="drafts_listing"
+    )
+
+    job_draft = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"title": "Partial editor draft", "category": "Editing", "location": "Remote", "status": "draft"},
+    )
+    assert job_draft.status_code == 201
+    job_id = job_draft.json()["id"]
+
+    my_jobs = await client.get("/api/v1/me/jobs", headers={"Authorization": f"Bearer {owner_token}"})
+    assert my_jobs.status_code == 200
+    job_row = next((item for item in my_jobs.json() if item["id"] == job_id), None)
+    assert job_row is not None
+    assert job_row["status"] == "draft"
+
+    talent_draft = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Partial talent draft",
+            "roles": ["Video editor"],
+            "tools": ["Premiere Pro"],
+            "work_mode": "remote",
+            "status": "draft",
+        },
+    )
+    assert talent_draft.status_code == 201
+    listing_id = talent_draft.json()["id"]
+
+    my_listings = await client.get(
+        "/api/v1/me/talent-listings", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+    assert my_listings.status_code == 200
+    listing_row = next((item for item in my_listings.json() if item["id"] == listing_id), None)
+    assert listing_row is not None
+    assert listing_row["status"] == "draft"
+
+    # Resuming a draft updates the same record instead of creating a duplicate.
+    updated = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"title": "Partial editor draft (updated)"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["id"] == job_id
+    my_jobs_after = await client.get("/api/v1/me/jobs", headers={"Authorization": f"Bearer {owner_token}"})
+    assert sum(1 for item in my_jobs_after.json() if item["id"] == job_id) == 1
+
+
+async def test_apply_blocked_for_unpublished_job(client: AsyncClient) -> None:
+    owner_token = await _register_verified_login(client, email="draft-owner@example.com", username="draft_owner")
+    applicant_token = await _register_verified_login(
+        client, email="draft-applicant@example.com", username="draft_applicant"
+    )
+
+    job_response = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Draft-only editing role",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "status": "draft",
+        },
+    )
+    assert job_response.status_code == 201
+    job_id = job_response.json()["id"]
+
+    application = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "Interested.", "portfolio_item_ids": []},
+    )
+    assert application.status_code == 400
+    assert application.json()["error"]["message"] == "This job is not accepting applications"

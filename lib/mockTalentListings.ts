@@ -1,13 +1,9 @@
 import type { BackendTalentListing } from "./backendClient";
+import { publicProfileFallbackSlug } from "./profileSlug";
 
 const now = "2026-05-20T10:00:00.000Z";
 
-export const mockTalentProfileSlug = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "talent-profile";
+export const mockTalentProfileSlug = publicProfileFallbackSlug;
 
 const makeTalent = (
   item: Pick<BackendTalentListing, "id" | "title" | "primary_role" | "niche" | "location" | "timezone"> &
@@ -21,7 +17,7 @@ const makeTalent = (
     owner_display_name: ownerDisplayName,
     owner_username: ownerUsername,
     owner_avatar_url: item.owner_avatar_url || null,
-    experience_level: "Mid-level",
+    experience_level: "2–4 years",
     roles: item.primary_role ? [item.primary_role] : [],
     formats: ["Shorts", "Long-form"],
     platforms: ["YouTube"],

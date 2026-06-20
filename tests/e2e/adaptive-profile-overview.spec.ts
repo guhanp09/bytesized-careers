@@ -47,7 +47,7 @@ test.describe("adaptive profile overview", () => {
     await expect(page.getByRole("dialog")).toContainText("YouTube");
     await page.getByRole("button", { name: "Close organization links" }).click();
     await expect(page.locator("body")).not.toContainText("Add experience");
-    await expect(page.getByRole("link", { name: "Open YouTube" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /YouTube ·/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open website" })).toBeVisible();
     const bioY = (await page.getByRole("heading", { name: "Bio" }).boundingBox())?.y ?? 0;
     const experienceY = (await page.getByRole("heading", { name: "Experience" }).boundingBox())?.y ?? 0;
@@ -124,6 +124,7 @@ test.describe("adaptive profile overview", () => {
     const recruiterReviewsPreview = page.getByLabel("Reviews preview");
     await expect(recruiterReviewsPreview).toBeVisible();
     expect(await recruiterReviewsPreview.locator(".snap-start").count()).toBeLessThanOrEqual(4);
+    await expect(page.locator("body")).not.toContainText("Posted by agency");
     await page.getByRole("button", { name: "View All Reviews" }).click();
     await expect(page.getByRole("button", { name: "Reviews", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("body")).toContainText("out of 5");
@@ -184,8 +185,11 @@ test.describe("adaptive profile overview", () => {
 
     await page.goto("/jobs/1");
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("link", { name: /Finance Creator/ }).first().click();
-    await expect(page).toHaveURL(/\/u\/finance-creator\?view=hiring$/);
+    await expect(page.locator('a[href="https://www.youtube.com/@financecreator"]').first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Open Example Creator Agency CreatorJobs profile/ }).first()).toHaveAttribute(
+      "href",
+      "/u/example-agency?view=hiring"
+    );
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 });

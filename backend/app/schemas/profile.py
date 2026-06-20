@@ -120,6 +120,7 @@ class ProfileRead(BaseModel):
     username_last_changed_at: datetime | None = None
     display_name: str | None = None
     headline: str | None = None
+    bio: str | None = None
     skills: list[str] = Field(default_factory=list)
     public_links: list[str] = Field(default_factory=list)
     experience: list[ProfileExperienceItem] = Field(default_factory=list)
@@ -129,6 +130,7 @@ class ProfileRead(BaseModel):
     avatar_mode: AvatarMode = "generic"
     avatar_url: str | None = None
     avatar_youtube_channel_id: str | None = None
+    banner_url: str | None = None
     social_connections: SocialConnections = Field(default_factory=SocialConnections)
     stats: ProfileStats = Field(default_factory=ProfileStats)
     reviews: ReviewsSummary = Field(default_factory=ReviewsSummary)
@@ -149,6 +151,7 @@ class ProfileUpdateRequest(BaseModel):
     username: str | None = Field(default=None, min_length=3, max_length=20)
     display_name: str | None = Field(default=None, max_length=255)
     headline: str | None = Field(default=None, max_length=160)
+    bio: str | None = Field(default=None, max_length=1200)
     skills: list[str] | None = None
     public_links: list[str] | None = None
     experience: list[ProfileExperienceItem] | None = None
@@ -407,12 +410,24 @@ class PublicYouTubeBadge(BaseModel):
     thumbnail_url: str | None = None
 
 
+class PublicRepresentedChannel(BaseModel):
+    id: uuid.UUID
+    name: str
+    avatar_url: str | None = None
+    url: str | None = None
+    platform: str | None = None
+    authorization_status: Literal["verified", "pending", "rejected", "revoked"] | None = None
+    is_self: bool = False
+
+
 class PublicProfileResponse(BaseModel):
     username: str
     display_name: str
     headline: str | None = None
+    bio: str | None = None
     avatar_url: str | None = None
     avatar_mode: AvatarMode = "generic"
+    banner_url: str | None = None
     skills: list[str] = Field(default_factory=list)
     public_links: list[str] = Field(default_factory=list)
     experience: list[ProfileExperienceItem] = Field(default_factory=list)
@@ -430,6 +445,7 @@ class PublicProfileResponse(BaseModel):
     role_answers_summary: list[RoleAnswerSummary] = Field(default_factory=list)
     content_style: ContentStyleRead = Field(default_factory=ContentStyleRead)
     youtube_badge: PublicYouTubeBadge | None = None
+    represented_channels: list[PublicRepresentedChannel] = Field(default_factory=list)
     jobs_active: list[PublicJobItem] = Field(default_factory=list)
     jobs_past: list[PublicJobItem] = Field(default_factory=list)
     portfolio_now: list[PortfolioItemRead] = Field(default_factory=list)

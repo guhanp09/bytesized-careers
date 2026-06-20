@@ -2,19 +2,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+First, run the frontend and backend together:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev:all
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+If you intentionally want the frontend only, run `npm run dev` and set
+`NEXT_PUBLIC_USE_LOCAL_MOCKS=true`. Otherwise backend-backed pages will fall
+back to local sample data when the FastAPI service is not running.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
@@ -51,6 +49,24 @@ In Google Cloud Console (OAuth 2.0 Client ID for Web application), add:
 - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
 
 If you sometimes run on another local port, add that too (for example `http://localhost:3001` and `http://localhost:3001/api/auth/callback/google`).
+
+## Location Autocomplete Setup
+
+The `/you` profile basics editor works locally without an API key using built-in city suggestions. For broader production coverage, add a Google Places key later. The key is server-only and must not use a `NEXT_PUBLIC_` prefix.
+
+1. Create an API key in Google Cloud Console.
+2. Enable the Google Places API for that project.
+3. Paste the key into `.env.local` at the project root:
+
+```bash
+GOOGLE_PLACES_API_KEY=your_key_here
+```
+
+4. Restart the dev server after changing `.env.local`.
+5. Do not commit `.env.local`; it is ignored by git.
+6. Restrict the key in Google Cloud before production.
+
+Without this key, local autocomplete still works from the built-in dataset. Adding `GOOGLE_PLACES_API_KEY` later switches the server-side autocomplete route to Google Places.
 
 ## Optional External Backend
 

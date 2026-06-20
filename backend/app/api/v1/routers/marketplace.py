@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from app.models import (
     TalentListing,
     User,
 )
+from app.notifications import dispatch_notification
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -53,6 +55,8 @@ from app.schemas.marketplace import (
 
 router = APIRouter(tags=["marketplace"])
 
+logger = logging.getLogger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -73,21 +77,29 @@ async def _create_notification(
     resource_type: str | None = None,
     resource_id: str | None = None,
     action_url: str | None = None,
+    actor_user_id: UUID | None = None,
+    payload: dict | None = None,
 ) -> None:
-    if user_id is None:
-        return
-    session.add(
-        Notification(
-            user_id=user_id,
-            type=type_,
-            category=category,
+    # Thin wrapper around the central dispatch service: writes the in-app row and
+    # queues a (mocked) email when the event has email enabled in the registry.
+    # A notification must never break the user action that triggered it, so any
+    # unexpected dispatch failure is logged and swallowed here.
+    try:
+        await dispatch_notification(
+            session,
+            event_key=type_,
+            recipient_user_id=user_id,
             title=title,
             body=body,
+            actor_user_id=actor_user_id,
+            category=category,
             resource_type=resource_type,
             resource_id=resource_id,
             action_url=action_url,
+            payload=payload,
         )
-    )
+    except Exception:
+        logger.exception("notification_dispatch_failed", extra={"event_key": type_})
 
 
 def _job_snapshot(job: Job) -> dict:
@@ -262,6 +274,11 @@ async def apply_to_job(
     session: AsyncSession = Depends(get_db),
 ) -> JobApplicationRead:
     job = await _get_job_or_404(session, job_id)
+    if job.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This job is not accepting applications",
+        )
     if job.posted_by_user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot apply to your own job")
     existing = (
@@ -291,16 +308,19 @@ async def apply_to_job(
     )
     job.applicants = int(job.applicants or 0) + 1
     session.add(application)
+    applicant_name = current_user.display_name or current_user.username or current_user.email
     await _create_notification(
         session,
         user_id=job.posted_by_user_id,
         type_="new_applicant",
         title="New applicant received",
-        body=f"{current_user.display_name or current_user.username or current_user.email} applied to {job.title}.",
+        body=f"{applicant_name} applied to {job.title}.",
         category="application",
         resource_type="job_application",
         resource_id=str(application.id),
-        action_url="/activity?tab=applicants",
+        action_url="/applications",
+        actor_user_id=current_user.id,
+        payload={"job_title": job.title, "applicant_name": applicant_name},
     )
     await _create_notification(
         session,
@@ -312,6 +332,7 @@ async def apply_to_job(
         resource_type="job",
         resource_id=str(job.id),
         action_url=f"/jobs/{job.id}",
+        payload={"job_title": job.title},
     )
     try:
         await session.commit()
@@ -384,7 +405,9 @@ async def update_application_status(
         category="application",
         resource_type="job_application",
         resource_id=str(application.id),
-        action_url="/activity?tab=applications",
+        action_url="/applications",
+        actor_user_id=current_user.id,
+        payload={"status": payload.status},
     )
     await session.commit()
     await session.refresh(application)
@@ -732,7 +755,9 @@ async def send_talent_interest(
         category="talent",
         resource_type="talent_interest",
         resource_id=str(interest.id),
-        action_url="/activity?tab=interests",
+        action_url="/applications",
+        actor_user_id=current_user.id,
+        payload={"job_title": invite_job.title} if invite_job is not None else {},
     )
     await session.commit()
     await session.refresh(interest)
@@ -880,7 +905,9 @@ async def update_talent_interest_status(
         category="talent",
         resource_type="talent_interest",
         resource_id=str(interest.id),
-        action_url="/activity?tab=leads",
+        action_url="/applications",
+        actor_user_id=current_user.id,
+        payload={"status": payload.status},
     )
     await session.commit()
     await session.refresh(interest)

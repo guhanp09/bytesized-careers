@@ -12,7 +12,7 @@ test.describe("talent browse regression coverage", () => {
     await expect(page.getByText("Retention editor", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("₹20,000 per long-form video").first()).toBeVisible();
     await expect(page.getByText("Experience: 2–4 years").first()).toBeVisible();
-    await expect(page.getByText(/work samples/i).first()).toBeVisible();
+    await expect(page.getByText(/interested recruiters/i).first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText(/\$|USD|Proof|1 slot open|Selective/);
   });
 

@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { BackendTalentListing } from "../lib/backendClient";
 import TalentCard from "./TalentCard";
+import { Reveal } from "./ui";
 
 type TalentFilter = {
   label: string;
@@ -101,8 +102,10 @@ export default function TalentFeedClient({ items, notice }: { items: BackendTale
         ) : null}
         {filtered.length ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((item) => (
-              <TalentCard key={item.id} item={item} />
+            {filtered.map((item, index) => (
+              <Reveal key={item.id} delay={Math.min(index, 7) * 55} className="h-full min-w-0">
+                <TalentCard item={item} />
+              </Reveal>
             ))}
           </div>
         ) : (

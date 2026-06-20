@@ -60,6 +60,10 @@ class HiringIdentityVerificationRequest(BaseModel):
     proof_url: HttpUrl | None = None
 
 
+class HiringIdentityVerificationCheckRequest(BaseModel):
+    pass
+
+
 class HiringIdentityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,6 +81,10 @@ class HiringIdentityRead(BaseModel):
     verification_status: HiringIdentityVerificationStatus
     verification_method: HiringIdentityVerificationMethod
     verification_code: str | None = None
+    verification_code_expires_at: datetime | None = None
+    verification_attempt_count: int = 0
+    verification_last_checked_at: datetime | None = None
+    verification_last_error: str | None = None
     proof_url: str | None = None
     verified_at: datetime | None = None
     created_at: datetime

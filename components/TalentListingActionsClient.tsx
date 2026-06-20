@@ -4,9 +4,14 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Icon } from "./Icons";
-import { createReport, listMyJobs, saveTalentListing, sendTalentInterest } from "../lib/backendClient";
+import {
+  createReport,
+  describeActionError,
+  isBackendAuthError,
+  saveTalentListing,
+  sendTalentInterest,
+} from "../lib/backendClient";
 import { formatCompactNumber } from "../lib/format";
-import type { Job } from "../lib/types";
 import { IconTooltip, Section } from "./ui";
 
 type ActionState = "idle" | "saving" | "sent" | "error";
@@ -34,22 +39,35 @@ function StatTile({
   value,
   label,
 }: {
-  icon: "user-plus" | "eye" | "image";
+  icon: "eye" | "user-plus" | "bolt";
   value: string;
   label: string;
 }) {
+  const tooltipId = React.useId();
+  const anchorRef = React.useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+
   return (
     <div className="relative">
-      <div className="peer">
+      <div
+        tabIndex={0}
+        aria-label={label}
+        aria-describedby={open ? tooltipId : undefined}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="cursor-default focus-visible:outline-none"
+      >
         <TileShell className="h-[54px] flex items-center justify-center">
-          <div className="flex items-center justify-center gap-2 text-white/75 transition-colors duration-150 hover:text-white">
+          <div ref={anchorRef} className="flex items-center justify-center gap-2 text-white/75 transition-colors duration-150 hover:text-white">
             <Icon name={icon} className="h-4 w-4" />
             <span className="text-sm tabular-nums">{value}</span>
           </div>
         </TileShell>
       </div>
       <span className="sr-only">{label}</span>
-      <IconTooltip label={label} className="-top-6" />
+      <IconTooltip label={label} anchorRef={anchorRef} open={open} id={tooltipId} sideOffset={4} />
     </div>
   );
 }
@@ -57,58 +75,29 @@ function StatTile({
 export default function TalentListingActionsClient({
   listingId,
   views = 0,
-  workSamplesCount = 0,
   interestedRecruitersCount = 0,
 }: {
   listingId: string;
   views?: number;
-  workSamplesCount?: number;
   interestedRecruitersCount?: number;
 }) {
   const router = useRouter();
   const { data: session } = useSession();
   const [note, setNote] = React.useState("");
   const [saveState, setSaveState] = React.useState<ActionState>("idle");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [interestState, setInterestState] = React.useState<ActionState>("idle");
+  const [interestError, setInterestError] = React.useState<string | null>(null);
   const [reportState, setReportState] = React.useState<ActionState>("idle");
   const [shareState, setShareState] = React.useState<"idle" | "copied">("idle");
-  const [myJobs, setMyJobs] = React.useState<Job[]>([]);
-  const [jobsLoading, setJobsLoading] = React.useState(false);
-  const [selectedJobId, setSelectedJobId] = React.useState("");
 
-  React.useEffect(() => {
-    const token = session?.backendAccessToken;
-    if (!token) {
-      setMyJobs([]);
-      setSelectedJobId("");
-      return;
-    }
-    let cancelled = false;
-    setJobsLoading(true);
-    void listMyJobs(token)
-      .then((jobs) => {
-        if (cancelled) return;
-        const activeJobs = jobs.filter((job) => !["closed", "archived"].includes(String(job.status || "")));
-        setMyJobs(activeJobs);
-        setSelectedJobId((current) => current || activeJobs[0]?.id || "");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setMyJobs([]);
-        setSelectedJobId("");
-      })
-      .finally(() => {
-        if (!cancelled) setJobsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.backendAccessToken]);
+  const loginRedirect = () =>
+    router.push(`/auth?mode=login&next=${encodeURIComponent(`/talent/${listingId}`)}`);
 
   const requireToken = () => {
     const token = session?.backendAccessToken;
     if (!token) {
-      router.push(`/auth?mode=login&next=${encodeURIComponent(`/talent/${listingId}`)}`);
+      loginRedirect();
       return null;
     }
     return token;
@@ -118,11 +107,14 @@ export default function TalentListingActionsClient({
     const token = requireToken();
     if (!token) return;
     setSaveState("saving");
+    setSaveError(null);
     try {
       await saveTalentListing(token, listingId);
       setSaveState("sent");
-    } catch {
+    } catch (err) {
+      console.error("Save talent listing failed:", err);
       setSaveState("error");
+      setSaveError(describeActionError(err, "Couldn’t save this listing right now."));
     }
   };
 
@@ -130,11 +122,15 @@ export default function TalentListingActionsClient({
     const token = requireToken();
     if (!token) return;
     setInterestState("saving");
+    setInterestError(null);
     try {
-      await sendTalentInterest(token, listingId, note, selectedJobId || null);
+      await sendTalentInterest(token, listingId, note, null);
       setInterestState("sent");
-    } catch {
+    } catch (err) {
+      console.error("Send talent interest failed:", err);
       setInterestState("error");
+      setInterestError(describeActionError(err, "Couldn’t contact talent. Try again."));
+      if (isBackendAuthError(err)) loginRedirect();
     }
   };
 
@@ -188,47 +184,21 @@ export default function TalentListingActionsClient({
           </span>
         </div>
 
-        {myJobs.length ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-semibold text-white/45">Attach a job</span>
-            <select
-              value={selectedJobId}
-              onChange={(event) => setSelectedJobId(event.target.value)}
-              disabled={jobsLoading || interestState === "saving" || interestState === "sent"}
-              className="mt-1 h-11 w-full cursor-pointer rounded-2xl border border-white/10 bg-white/[0.045] px-3 text-sm text-white outline-none transition hover:bg-white/[0.065] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {myJobs.map((job) => (
-                <option key={job.id} value={job.id}>
-                  {job.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
         <button
           type="button"
           onClick={sendInterest}
           disabled={interestState === "saving" || interestState === "sent"}
           className="mt-3 inline-flex h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white text-lg font-extrabold text-black shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] transition-transform duration-150 hover:-translate-y-[1px] hover:bg-white/95 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65"
         >
-          <Icon name="send" className="h-5 w-5" />
-          {interestState === "saving"
-            ? "Sending..."
-            : interestState === "sent"
-              ? selectedJobId
-                ? "Invite sent"
-                : "Contacted"
-              : myJobs.length
-                ? "Invite to job"
-                : "Contact talent"}
+          <Icon name="briefcase" className="h-5 w-5" />
+          {interestState === "saving" ? "Sending..." : interestState === "sent" ? "Request sent" : "Hire me"}
         </button>
         {interestState === "error" ? (
-          <p className="mt-2 text-xs text-white/52">Couldn’t contact talent. Try again.</p>
+          <p className="mt-2 text-xs text-amber-200/80">{interestError || "Couldn’t contact talent. Try again."}</p>
         ) : null}
         {interestState === "sent" ? (
           <p className="mt-2 text-xs text-white/52">
-            {selectedJobId ? "The invite is now visible in Activity." : "Your contact request is now visible in Activity."}
+            Your hiring request is now visible in Inbox.
           </p>
         ) : null}
 
@@ -251,13 +221,15 @@ export default function TalentListingActionsClient({
             {shareState === "copied" ? "Copied" : "Share"}
           </button>
         </div>
-        {saveState === "error" ? <p className="mt-2 text-xs text-white/45">Couldn’t save this listing right now.</p> : null}
+        {saveState === "error" ? (
+          <p className="mt-2 text-xs text-amber-200/80">{saveError || "Couldn’t save this listing right now."}</p>
+        ) : null}
         {shareState === "copied" ? <p className="mt-2 text-xs text-white/45">Link copied to your clipboard.</p> : null}
 
         <div className="mt-4 grid grid-cols-3 gap-3">
+          <StatTile icon="eye" value={formatCompactNumber(views)} label="Currently viewing" />
           <StatTile icon="user-plus" value={formatCompactNumber(interestedRecruitersCount)} label="Interested recruiters" />
-          <StatTile icon="eye" value={formatCompactNumber(views)} label="Views" />
-          <StatTile icon="image" value={formatCompactNumber(workSamplesCount)} label="Work samples" />
+          <StatTile icon="bolt" value="0%" label="Response rate" />
         </div>
       </section>
 

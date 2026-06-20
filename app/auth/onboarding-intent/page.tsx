@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import AccountTypePage from "../../../components/AccountTypePage";
 import { authOptions } from "../../../lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +21,8 @@ export default async function Page({
   const nextPath = safeNextPath(nextValue);
 
   if (!session?.user || !session.backendAccessToken) {
-    redirect(
-      `/auth?mode=login&next=${encodeURIComponent(
-        `/auth/onboarding-intent?next=${encodeURIComponent(nextPath)}`
-      )}`
-    );
+    redirect(`/auth?mode=login&next=${encodeURIComponent(nextPath)}`);
   }
 
-  return <AccountTypePage accessToken={session.backendAccessToken} nextPath={nextPath} />;
+  redirect(nextPath);
 }

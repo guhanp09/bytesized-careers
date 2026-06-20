@@ -5,6 +5,7 @@ import { CATEGORIES, START_TIME_VALUES } from "../lib/jobs";
 import { formatStartFilterLabel } from "../lib/format";
 import { StartTimeframe, Job } from "../lib/types";
 import { JobCard } from "./JobCard";
+import { Reveal } from "./ui";
 
 function Chip({
   label,
@@ -114,7 +115,11 @@ export default function JobGridClient({
               No jobs found
             </div>
           ) : (
-            filtered.map((job) => <JobCard key={job.id} job={job} />)
+            filtered.map((job, index) => (
+              <Reveal key={job.id} delay={Math.min(index, 7) * 55} className="h-full min-w-0">
+                <JobCard job={job} />
+              </Reveal>
+            ))
           )}
         </div>
       </section>

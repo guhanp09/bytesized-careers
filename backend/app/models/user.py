@@ -46,6 +46,7 @@ class User(Base):
     avatar_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     avatar_youtube_channel_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    banner_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     skills: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     public_links: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)

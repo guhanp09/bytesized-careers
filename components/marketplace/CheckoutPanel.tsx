@@ -28,7 +28,7 @@ export function CheckoutPanel({
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const copy = PRICE_COPY[kind];
-  const returnHref = nextUrl || "/activity?tab=drafts";
+  const returnHref = nextUrl || "/drafts";
 
   return (
     <section className="rounded-[32px] border border-white/[0.08] bg-white/[0.04] p-6 text-white shadow-[0_18px_60px_-42px_rgba(0,0,0,0.95)]">
@@ -53,7 +53,7 @@ export function CheckoutPanel({
       </div>
 
       <div className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-white/55">
-        Your listing can still be edited, paused, or closed later from Activity. No payment method is required during beta.
+        Your listing can still be edited, paused, or closed later from your workspace. No payment method is required during beta.
       </div>
 
       {status === "error" ? (
