@@ -15,10 +15,12 @@ const textFor = (item: BackendTalentListing) =>
   [
     item.title,
     item.primary_role,
-    item.experience_level,
+    item.experience_years != null ? `${item.experience_years} years` : null,
     item.niche,
     item.location,
     item.timezone,
+    ...(item.content_niches || []),
+    ...(item.content_genres || []),
     ...item.roles,
     ...item.platforms,
     ...item.formats,
@@ -61,19 +63,42 @@ function Chip({
   );
 }
 
-export default function TalentFeedClient({ items, notice }: { items: BackendTalentListing[]; notice?: string | null }) {
+type TalentSortKey = "relevance" | "newest" | "rate";
+const talentRate = (item: BackendTalentListing) => item.rate_min ?? item.rate_max ?? 0;
+const talentDate = (item: BackendTalentListing) => (item.created_at ? Date.parse(item.created_at) || 0 : 0);
+
+export default function TalentFeedClient({
+  items,
+  notice,
+  query,
+}: {
+  items: BackendTalentListing[];
+  notice?: string | null;
+  query?: string;
+}) {
   const [active, setActive] = useState("All");
+  const [sort, setSort] = useState<TalentSortKey>("relevance");
   const hasActiveFilter = active !== "All";
+  const isSearchEmpty = Boolean(query?.trim()) && items.length === 0 && !hasActiveFilter;
 
   const filtered = useMemo(() => {
     const selected = FILTERS.find((filter) => filter.label === active) || FILTERS[0];
     return items.filter(selected.match);
   }, [active, items]);
 
+  const sorted = useMemo(() => {
+    if (sort === "relevance") return filtered;
+    const list = [...filtered];
+    if (sort === "newest") list.sort((a, b) => talentDate(b) - talentDate(a));
+    else if (sort === "rate") list.sort((a, b) => talentRate(b) - talentRate(a));
+    return list;
+  }, [filtered, sort]);
+
   return (
     <main className="min-h-[calc(100vh-56px)] bg-[#0b0b0f] text-white">
       <div className="fixed left-20 right-0 top-14 z-30 bg-[#0b0b0f]/92 backdrop-blur">
-        <div className="overflow-x-auto px-3 py-2 sm:px-4">
+        <div className="flex items-center gap-3 px-3 py-2 sm:px-4">
+          <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex w-max items-center gap-2">
             {FILTERS.map((filter) => (
               <Chip
@@ -84,6 +109,20 @@ export default function TalentFeedClient({ items, notice }: { items: BackendTale
               />
             ))}
           </div>
+          </div>
+          <label className="flex shrink-0 items-center gap-2">
+            <span className="hidden text-xs text-white/45 sm:inline">Sort</span>
+            <select
+              aria-label="Sort talent"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as TalentSortKey)}
+              className="h-8 cursor-pointer rounded-lg border border-white/12 bg-white/[0.06] px-2.5 text-sm text-white outline-none transition-colors hover:bg-white/[0.09] focus-visible:ring-2 focus-visible:ring-white/20"
+            >
+              <option value="relevance">Relevance</option>
+              <option value="newest">Newest</option>
+              <option value="rate">Highest rate</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -102,7 +141,7 @@ export default function TalentFeedClient({ items, notice }: { items: BackendTale
         ) : null}
         {filtered.length ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((item, index) => (
+            {sorted.map((item, index) => (
               <Reveal key={item.id} delay={Math.min(index, 7) * 55} className="h-full min-w-0">
                 <TalentCard item={item} />
               </Reveal>
@@ -111,10 +150,16 @@ export default function TalentFeedClient({ items, notice }: { items: BackendTale
         ) : (
           <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-6 text-sm text-white/70">
             <p className="font-semibold text-white/85">
-              {items.length ? "No talent listings found." : "No talent listings yet."}
+              {isSearchEmpty
+                ? "No matching talent found"
+                : items.length
+                  ? "No talent listings found."
+                  : "No talent listings yet."}
             </p>
             <p className="mt-1 text-white/55">
-              {items.length
+              {isSearchEmpty
+                ? "Try searching by role, tool, location, or platform."
+                : items.length
                 ? "Try a different filter or clear filters."
                 : "Create the first talent listing."}
             </p>
@@ -126,6 +171,13 @@ export default function TalentFeedClient({ items, notice }: { items: BackendTale
               >
                 Clear filters
               </button>
+            ) : isSearchEmpty ? (
+              <Link
+                href="/talent"
+                className="mt-4 inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+              >
+                Browse all talent
+              </Link>
             ) : !items.length ? (
               <Link
                 href="/post-talent"

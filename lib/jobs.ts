@@ -1,6 +1,6 @@
 // lib/jobs.ts
 
-import { Job, StartTimeframe } from "./types";
+import type { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
 
 export const CATEGORIES = [
   "All",
@@ -25,6 +25,62 @@ const toSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+const referenceFocusByCategory: Record<JobCategory, string[]> = {
+  Editing: ["hook pacing", "scene rhythm", "retention cuts"],
+  Design: ["visual hierarchy", "brand consistency", "clean composition"],
+  Writing: ["opening hook", "structure", "clarity"],
+  Thumbnails: ["subject contrast", "readable type", "click-worthy framing"],
+  Shorts: ["caption timing", "beat cuts", "mobile-first pacing"],
+  "Motion Graphics": ["callout timing", "lower-third polish", "motion restraint"],
+  "Channel Manager": ["operating cadence", "upload QA", "handoff clarity"],
+  Research: ["source framing", "story order", "fact-checking tone"],
+  "Voice Over": ["warm delivery", "sentence rhythm", "clean narration"],
+  Marketing: ["positioning", "distribution angle", "audience promise"],
+};
+
+const timestampSets = [
+  [
+    { seconds: 0, title: "Opening cue", description: "Notice how the first beat sets expectations quickly." },
+    { seconds: 18, title: "Main pattern", description: "Use this moment to calibrate the core style and pacing." },
+    { seconds: 46, title: "Execution detail", description: "Reference the polish level without copying the creative directly." },
+  ],
+  [
+    { seconds: 7, title: "Hook setup", description: "The viewer promise is clear before the first major transition." },
+    { seconds: 31, title: "Rhythm shift", description: "The edit resets attention while keeping the idea easy to follow." },
+    { seconds: 74, title: "Finish quality", description: "Match the delivery standard and export polish here." },
+  ],
+  [
+    { seconds: 12, title: "Style signal", description: "This shows the tone, density, and visual restraint to aim for." },
+    { seconds: 39, title: "Handoff detail", description: "Useful reference for how assets, captions, or notes should land." },
+    { seconds: 96, title: "Retention moment", description: "The change in pace keeps the segment from feeling flat." },
+  ],
+];
+
+const enrichMockReferenceVideo = (job: Job, video: ReferenceVideo, index: number): ReferenceVideo => {
+  const title = video.title?.trim() || `${job.category} reference ${index + 1}`;
+  const focusItems = referenceFocusByCategory[job.category] || ["creator workflow"];
+  const focus = focusItems[index % focusItems.length];
+  const format = job.formatsHiredFor?.[index % Math.max(job.formatsHiredFor.length, 1)] || job.category;
+  const genre = job.contentGenres?.[0] || "creator-led content";
+  const timestampTemplates = timestampSets[index % timestampSets.length];
+
+  return {
+    ...video,
+    title,
+    platform: video.platform || "YouTube Reference",
+    whatToReference:
+      video.whatToReference ||
+      `Use this to calibrate ${focus} for ${job.channel.name}'s ${genre.toLowerCase()} work, especially the ${format.toLowerCase()} deliverable.`,
+    timestampNotes: video.timestampNotes?.length
+      ? video.timestampNotes
+      : timestampTemplates.map((note, noteIndex) => ({
+          id: `${toSlug(job.id)}-${toSlug(title)}-${noteIndex + 1}`,
+          time: `${Math.floor(note.seconds / 60)}:${String(note.seconds % 60).padStart(2, "0")}`,
+          ...note,
+        })),
+  };
+};
+
 const RAW_JOBS: Job[] = [
   {
     id: "1",
@@ -44,10 +100,57 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Premiere", "Story pace", "SFX", "Captions", "Sound cleanup"],
+    contentNiches: ["Finance", "Education"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Long-form video", "Captions"],
     startTimeframe: "<1mo",
     type: "One-time",
     referenceVideos: [
-      { title: "Pacing + retention reference", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+      {
+        title: "Pacing + retention reference",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        platform: "YouTube Reference",
+        whatToReference:
+          "Study how the intro hooks quickly, energy lifts drive momentum, and the loop keeps viewers watching.",
+        timestampNotes: [
+          {
+            time: "0:00",
+            seconds: 0,
+            title: "Hook pacing",
+            description: "Cold open hits immediately. Strong visual + curiosity within the first second.",
+          },
+          {
+            time: "0:12",
+            seconds: 12,
+            title: "Energy lift",
+            description: "Beat drop aligns with the subject entry. Notice the momentum shift.",
+          },
+          {
+            time: "0:34",
+            seconds: 34,
+            title: "Retention cut",
+            description: "Quick angle change keeps attention. No shot lingers more than about two seconds.",
+          },
+          {
+            time: "1:08",
+            seconds: 68,
+            title: "B-roll rhythm",
+            description: "Performance and B-roll alternate on beat. Edits support the music, not fight it.",
+          },
+          {
+            time: "1:42",
+            seconds: 102,
+            title: "Pre-chorus build",
+            description: "Slight pause creates anticipation before the hook returns.",
+          },
+          {
+            time: "2:03",
+            seconds: 123,
+            title: "Loop point",
+            description: "Energy resets here. Notice the natural loop for repeat views.",
+          },
+        ],
+      },
       { title: "Clean captions + sound style", url: "https://www.youtube.com/watch?v=3JZ_D3ELwOQ" },
       { title: "Structure + story flow reference", url: "https://www.youtube.com/watch?v=9bZkp7q19f0" },
     ],
@@ -56,6 +159,19 @@ const RAW_JOBS: Job[] = [
     postedByAgency: true,
     agencyProfileSlug: "example-agency",
     managedByAgencyName: "Example Creator Agency",
+    // Sample listing that exercises every job-context first-message requirement.
+    applicationRequirements: [
+      "expected_rate",
+      "relevant_portfolio",
+      "turnaround",
+      "working_hours",
+      "relevant_experience",
+      "tools_workflow",
+      "start_availability",
+      "fit_note",
+      "custom_instruction",
+    ],
+    howToApply: "Share one similar explainer you worked on and what you personally handled.",
   },
   {
     id: "2",
@@ -75,6 +191,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Photoshop", "Bold type", "A/B ideas", "Fast iterations"],
+    contentNiches: ["Tech"],
+    contentGenres: ["Reviews"],
+    formatsHiredFor: ["Thumbnails", "YouTube packaging"],
     startTimeframe: "ASAP",
     type: "Part-time",
     referenceVideos: [
@@ -86,6 +205,8 @@ const RAW_JOBS: Job[] = [
     postedByAgency: true,
     agencyProfileSlug: "northstar-creator-agency",
     managedByAgencyName: "Northstar Creator Agency",
+    // Smaller combination: rate + portfolio + turnaround.
+    applicationRequirements: ["expected_rate", "relevant_portfolio", "turnaround"],
   },
   {
     id: "3",
@@ -105,6 +226,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Hooks", "Research", "Hindi", "Tone match", "Fast delivery"],
+    contentNiches: ["Education"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Scripts", "Hooks"],
     startTimeframe: "Flexible",
     type: "One-time",
     referenceVideos: [
@@ -113,6 +237,8 @@ const RAW_JOBS: Job[] = [
     ],
     channelProfileSlug: "edu-hindi",
     channelExternalUrl: "https://www.youtube.com/@eduhindi",
+    // Smaller combination: working hours + experience + tools/workflow.
+    applicationRequirements: ["working_hours", "relevant_experience", "tools_workflow"],
   },
   {
     id: "4",
@@ -132,6 +258,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["CapCut", "Subtitles", "Beat sync", "Fast turnaround"],
+    contentNiches: ["Entertainment"],
+    contentGenres: ["Shorts/Reels"],
+    formatsHiredFor: ["Shorts/Reels", "Captions"],
     startTimeframe: "<2mo",
     type: "Monthly",
     referenceVideos: [
@@ -139,6 +268,8 @@ const RAW_JOBS: Job[] = [
       { title: "Shorts pacing reference", url: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
       { title: "Beat sync reference", url: "https://www.youtube.com/watch?v=JGwWNGJdvx8" },
     ],
+    // Smaller combination: start availability + fit note.
+    applicationRequirements: ["start_availability", "fit_note"],
   },
   {
     id: "5",
@@ -158,6 +289,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["After Effects", "Kinetic type", "Templates", "Callouts"],
+    contentNiches: ["Education", "Science"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Motion graphics", "Long-form video"],
     startTimeframe: "<3mo",
     type: "One-time",
     referenceVideos: [
@@ -183,6 +317,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Notion", "Content calendar", "YouTube Studio", "Ops"],
+    contentNiches: ["Business"],
+    contentGenres: ["Interviews", "Case studies"],
+    formatsHiredFor: ["Content strategy", "Channel research"],
     startTimeframe: "<1mo",
     type: "Part-time",
     referenceVideos: [
@@ -208,6 +345,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Primary sources", "Fact check", "Outline", "Citations"],
+    contentNiches: ["News", "Business"],
+    contentGenres: ["Documentaries"],
+    formatsHiredFor: ["Channel research", "Scripts"],
     startTimeframe: "ASAP",
     type: "One-time",
     referenceVideos: [
@@ -234,6 +374,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Figma", "Brand kit", "YouTube banner", "Templates"],
+    contentNiches: ["Gaming"],
+    contentGenres: ["Vlogs"],
+    formatsHiredFor: ["YouTube packaging", "Social posts"],
     startTimeframe: "Flexible",
     type: "One-time",
     referenceVideos: [
@@ -259,6 +402,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Neutral accent", "Clean audio", "Fast delivery", "Consistency"],
+    contentNiches: ["Finance", "Business"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Voice-over", "Long-form video"],
     startTimeframe: "<2mo",
     type: "One-time",
     referenceVideos: [
@@ -284,6 +430,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Distribution", "Hooks", "SEO basics", "Email marketing"],
+    contentNiches: ["Business"],
+    contentGenres: ["Case studies", "Product demos"],
+    formatsHiredFor: ["Content strategy", "Social posts"],
     startTimeframe: "<1mo",
     type: "Part-time",
     referenceVideos: [
@@ -309,6 +458,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Multicam", "Audio cleanup", "Chapters", "Snappy pacing"],
+    contentNiches: ["Business"],
+    contentGenres: ["Podcasts", "Interviews"],
+    formatsHiredFor: ["Podcast editing", "Long-form video"],
     startTimeframe: "<3mo",
     type: "Monthly",
     referenceVideos: [
@@ -334,6 +486,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Photoshop", "High contrast", "Fast variants", "Packaging"],
+    contentNiches: ["Gaming"],
+    contentGenres: ["Reviews"],
+    formatsHiredFor: ["Thumbnails", "YouTube packaging"],
     startTimeframe: "ASAP",
     type: "Monthly",
     referenceVideos: [
@@ -359,6 +514,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Captions", "Beat cuts", "Trend pacing", "CapCut/PR"],
+    contentNiches: ["Fitness"],
+    contentGenres: ["Shorts/Reels"],
+    formatsHiredFor: ["Shorts/Reels", "Captions"],
     startTimeframe: "<2mo",
     type: "Monthly",
     referenceVideos: [
@@ -384,6 +542,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Clarity", "Outline", "Hooks", "Fast revisions"],
+    contentNiches: ["Tech"],
+    contentGenres: ["Reviews", "Product demos"],
+    formatsHiredFor: ["Scripts", "Hooks"],
     startTimeframe: "Flexible",
     type: "One-time",
     referenceVideos: [
@@ -409,6 +570,9 @@ const RAW_JOBS: Job[] = [
       verified: false,
     },
     tags: ["Figma", "Clean layout", "Minimal style", "Consistency"],
+    contentNiches: ["Education"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Motion graphics", "Social posts"],
     startTimeframe: "<1mo",
     type: "One-time",
     referenceVideos: [
@@ -434,6 +598,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["After Effects", "Templates", "Reusable", "Brand match"],
+    contentNiches: ["Entertainment"],
+    contentGenres: ["Behind-the-scenes"],
+    formatsHiredFor: ["Motion graphics", "YouTube packaging"],
     startTimeframe: "ASAP",
     type: "One-time",
     referenceVideos: [
@@ -459,6 +626,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Sources", "Fact check", "Structured notes", "Neutral"],
+    contentNiches: ["Finance", "Business"],
+    contentGenres: ["Documentaries", "Explainers"],
+    formatsHiredFor: ["Channel research", "Scripts"],
     startTimeframe: "<3mo",
     type: "One-time",
     referenceVideos: [
@@ -484,6 +654,9 @@ const RAW_JOBS: Job[] = [
       verified: true,
     },
     tags: ["Ops", "Sponsors", "Publishing", "Analytics"],
+    contentNiches: ["Business", "Entertainment"],
+    contentGenres: ["Interviews", "Podcasts"],
+    formatsHiredFor: ["Content strategy", "Channel research"],
     startTimeframe: "<2mo",
     type: "Part-time",
     referenceVideos: [
@@ -512,6 +685,7 @@ export const JOBS: Job[] = RAW_JOBS.map((job) => ({
   responsibilities: job.responsibilities?.trim() ? job.responsibilities : defaultResponsibilities,
   requirements: job.requirements?.trim() ? job.requirements : defaultRequirements,
   howToApply: job.howToApply?.trim() ? job.howToApply : defaultHowToApply,
+  referenceVideos: (job.referenceVideos || []).map((video, index) => enrichMockReferenceVideo(job, video, index)),
   channelProfileSlug: job.channelProfileSlug || toSlug(job.channel.name) || undefined,
   channelExternalUrl: job.channelExternalUrl || undefined,
   postedByAgency: Boolean(job.postedByAgency),

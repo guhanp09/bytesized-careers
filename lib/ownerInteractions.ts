@@ -4,6 +4,8 @@ import type {
   BackendTalentInterest,
   BackendTalentListing,
 } from "./backendClient";
+import type { FirstMessageAnswers } from "./firstMessageRequirements";
+import { formatTalentListingExperience, formatTalentRate } from "./talentListing";
 import type { Job } from "./types";
 
 export type InteractionMode = "talent" | "hiring";
@@ -54,6 +56,10 @@ export type InteractionTalentSnapshot = {
   name: string;
   avatarUrl?: string | null;
   headline: string;
+  /** Human rate label (e.g. "₹2,000–₹3,500 per video"); the talent mirror of a job's budget. */
+  rate?: string | null;
+  /** Talent experience as exact whole years (e.g. "3 years") — never a range or level label. */
+  experience?: string | null;
   location?: string | null;
   availability?: string | null;
   bio?: string | null;
@@ -61,6 +67,12 @@ export type InteractionTalentSnapshot = {
   niches: string[];
   experienceNote?: string | null;
   portfolioHighlights: Array<{ title: string; detail: string }>;
+  /**
+   * True when the snapshot is the viewer's *own* talent listing (a received hiring
+   * request). The context card then genericises the identity to "Your listing" —
+   * mirroring how the job card omits the channel for the owner's own job postings.
+   */
+  isOwnListing?: boolean;
 };
 
 export type InteractionRecruiterSnapshot = {
@@ -88,6 +100,13 @@ export type OwnerInteraction = {
   updatedAtLabel: string;
   unread?: boolean;
   message: string;
+  /**
+   * Structured answers the requester gave to the owner's first-message
+   * requirements. Context is implied by {@link kind}: an "application" carries
+   * job-context answers; a "hiring_request" carries talent-context answers.
+   * Absent/empty for legacy interactions, so the inbox stays backward compatible.
+   */
+  firstMessageAnswers?: FirstMessageAnswers | null;
   proposedTerms?: string | null;
   attachments?: Array<{ label: string; url?: string | null }>;
   response?: InteractionThreadMessage | null;
@@ -143,6 +162,26 @@ export function interactionKindLabel(item: Pick<OwnerInteraction, "direction" | 
   }
   return item.direction === "sent" ? "Sent hiring request" : "Received hiring request";
 }
+
+/**
+ * The viewer's own talent listing, shown as the context card for every received
+ * hiring request (a recruiter is interested in this listing). One listing is
+ * reused across the demo requests, matching their shared sourceListingTitle.
+ */
+const OWN_TALENT_LISTING_SNAPSHOT: InteractionTalentSnapshot = {
+  profileSlug: "demo-owner",
+  name: "Your listing",
+  headline: "Retention-focused long-form and shorts editing",
+  rate: "₹2,000–₹3,500 per video",
+  experience: "Less than 1 year",
+  location: "Remote",
+  availability: "Available · 2 retainer slots",
+  tools: ["Premiere Pro", "After Effects"],
+  niches: ["Finance", "Education", "Shorts"],
+  experienceNote: "4 yrs editing for creator-led finance and education channels",
+  portfolioHighlights: [],
+  isOwnListing: true,
+};
 
 export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
   // ---- Talent mode: applications this user sent to jobs ----
@@ -361,6 +400,21 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     message:
       "Saw your listing and your retention work fits our daily channel. We need 15 shorts a month with captions in our house style — scripts and raw clips are ready every Monday. Could you share your availability for a kickoff call this week?",
     proposedTerms: "₹1,400 per month · 15 shorts · 2 revision rounds",
+    // Structured answers to the talent's first-message requirements (talent context).
+    firstMessageAnswers: {
+      project_budget: { amount: "1,400", unit: "per month" },
+      project_brief:
+        "15 Shorts per month in our house caption style. Scripts and raw clips are ready every Monday; 2 revision rounds per short.",
+      turnaround: { value: "2", unit: "days" },
+      working_hours: "Weekly delivery",
+      channel_or_brand_link: "https://youtube.com/@motivationshorts",
+      reference_links: [
+        "https://youtube.com/watch?v=ref-short-1",
+        "https://youtube.com/watch?v=ref-short-2",
+      ],
+      start_availability: "Immediately",
+      fit_note: "Your retention work fits our daily channel and we already have a steady content pipeline.",
+    },
     recruiter: {
       profileSlug: "motivation-shorts",
       name: "Motivation Shorts",
@@ -371,6 +425,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       hiringFor: "Daily faceless shorts channel",
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
+    talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [{ id: "t-req-recv-1-sent", label: "Request received", at: "1d ago" }],
   },
   {
@@ -402,6 +457,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       hiringFor: "Weekly finance explainers",
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
+    talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [
       { id: "t-req-recv-2-sent", label: "Request received", at: "3d ago" },
       { id: "t-req-recv-2-accepted", label: "Accepted by you", at: "2d ago" },
@@ -431,6 +487,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       hiringFor: "Documentary-style deep dives",
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
+    talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [
       { id: "t-req-recv-3-sent", label: "Request received", at: "1w ago" },
       { id: "t-req-recv-3-declined", label: "Declined by you", at: "6d ago" },
@@ -460,6 +517,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       hiringFor: "Gaming highlights channel",
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
+    talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [{ id: "t-req-recv-4-sent", label: "Request received", at: "10h ago" }],
   },
 
@@ -481,6 +539,28 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     attachments: [
       { label: "Retention case study", url: "https://portfolio.example.com/aarav/case-study" },
     ],
+    // Structured answers to the recruiter's first-message requirements (job context).
+    firstMessageAnswers: {
+      expected_rate: { amount: "2,500", unit: "per video" },
+      relevant_portfolio: [
+        {
+          id: "demo-portfolio-1",
+          title: "Retention rebuild — market explainer",
+          url: "https://portfolio.example.com/aarav/market-explainer",
+        },
+        {
+          id: "demo-portfolio-2",
+          title: "Series packaging — education channel",
+          url: "https://portfolio.example.com/aarav/series-packaging",
+        },
+      ],
+      turnaround: { value: "4", unit: "days" },
+      working_hours: "Evenings IST",
+      relevant_experience: "3 years editing weekly finance explainers for two creator-led channels.",
+      tools_workflow: ["Premiere Pro", "After Effects", "Audition"],
+      start_availability: "Within 1 week",
+      fit_note: "I already edit in your niche, so I can match the channel’s pacing from day one.",
+    },
     job: {
       jobId: null,
       title: "Long-form editor for weekly finance explainers",
@@ -756,6 +836,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       profileSlug: "anika-rao",
       name: "Anika Rao",
       headline: "Shorts editor for daily faceless channels",
+      rate: "₹15,000 per month",
+      experience: "3 years",
       location: "Bengaluru, India",
       availability: "Available · evenings IST",
       tools: ["CapCut", "Premiere Pro"],
@@ -803,6 +885,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       profileSlug: "kabir-sen",
       name: "Kabir Sen",
       headline: "Scriptwriter for explainers, documentary hooks, and outlines",
+      rate: "₹8,000 per script",
+      experience: "4 years",
       location: "Kolkata, India",
       availability: "Selective · 2 scripts per month",
       tools: ["Notion", "Google Docs"],
@@ -841,6 +925,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       profileSlug: "nora-chen",
       name: "Nora Chen",
       headline: "Motion designer for callouts, lower thirds, and kinetic text",
+      rate: "₹12,000 per project",
+      experience: "5 years",
       location: "Singapore",
       availability: "Unavailable until next quarter",
       tools: ["After Effects", "Illustrator"],
@@ -879,6 +965,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       profileSlug: "tara-iyer",
       name: "Tara Iyer",
       headline: "Thumbnail designer + packaging for tech and finance channels",
+      rate: "₹1,500 per thumbnail",
+      experience: "4 years",
       location: "Chennai, India",
       availability: "Available · 1 retainer slot",
       tools: ["Photoshop", "Figma"],
@@ -912,6 +1000,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       profileSlug: "arjun-nair",
       name: "Arjun Nair",
       headline: "Voice over artist — narration for horror and documentary",
+      rate: "₹2,500 per episode",
+      experience: "5 years",
       location: "Kochi, India",
       availability: "Selective",
       tools: ["Audition", "Home studio"],
@@ -970,6 +1060,8 @@ function applicationStatusToInteraction(
       return "declined";
     case "archived":
       return "closed";
+    case "withdrawn":
+      return "withdrawn";
   }
 }
 
@@ -988,6 +1080,8 @@ function interestStatusToInteraction(
       return "declined";
     case "archived":
       return "closed";
+    case "withdrawn":
+      return "withdrawn";
   }
 }
 
@@ -1036,7 +1130,11 @@ function talentSnapshotFromListing(listing: BackendTalentListing): InteractionTa
     name: listing.owner_display_name || listing.owner_username || "Talent",
     avatarUrl: listing.owner_avatar_url || null,
     headline: listing.primary_role || listing.title,
-    location: listing.location || null,
+    // Mirror the job card's metadata: rate → numeric experience → location/work mode.
+    rate: formatTalentRate(listing) || null,
+    experience: formatTalentListingExperience(listing) || null,
+    // Location, or the work-mode equivalent when no place is set — same as the public talent card.
+    location: listing.location || listing.work_mode || null,
     availability: AVAILABILITY_LABELS[listing.availability_status] || null,
     bio: listing.description || null,
     tools: listing.tools || [],
@@ -1052,6 +1150,12 @@ function asSnapshotString(value: unknown): string | null {
 
 function asSnapshotStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+/** Coerce a loosely-typed backend answers blob into structured answers, or null. */
+function coerceAnswers(value: Record<string, unknown> | undefined | null): FirstMessageAnswers | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return Object.keys(value).length ? (value as FirstMessageAnswers) : null;
 }
 
 export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerInteraction[] {
@@ -1083,6 +1187,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         createdAtLabel: relativeTimeLabel(application.created_at),
         updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
         message: application.cover_note || "",
+        firstMessageAnswers: coerceAnswers(application.first_message_answers),
         job: job ? jobSnapshotFromJob(job) : null,
         timeline: liveTimeline(
           application.id,
@@ -1115,6 +1220,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         createdAtLabel: relativeTimeLabel(application.created_at),
         updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
         message: application.cover_note || "",
+        firstMessageAnswers: coerceAnswers(application.first_message_answers),
         job: job ? { ...jobSnapshotFromJob(job), channelName: null, channelLogoUrl: null } : null,
         talent: {
           profileSlug: username,
@@ -1161,6 +1267,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         createdAtLabel: relativeTimeLabel(interest.created_at),
         updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
         message: interest.note || "",
+        firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         talent: listing ? talentSnapshotFromListing(listing) : null,
         timeline: liveTimeline(interest.id, "Request sent", interest.created_at, interest.updated_at, status),
       },
@@ -1186,6 +1293,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         createdAtLabel: relativeTimeLabel(interest.created_at),
         updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
         message: interest.note || "",
+        firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         recruiter: relatedJob
           ? {
               profileSlug: relatedJob.channelProfileSlug || null,
@@ -1197,6 +1305,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
               hiringFor: relatedJob.title,
             }
           : null,
+        // The context card is the viewer's own listing the recruiter is interested in.
+        talent: listing ? { ...talentSnapshotFromListing(listing), isOwnListing: true } : null,
         sourceListingTitle: listing?.title || null,
         timeline: liveTimeline(interest.id, "Request received", interest.created_at, interest.updated_at, status),
       },

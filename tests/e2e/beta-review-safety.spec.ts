@@ -13,7 +13,7 @@ const coreRoutes = [
   "/search",
 ];
 
-const blockedTrustCopy = /Proof|Post availability|Enlist|USD|\$[0-9]|4\.[5-9]|5\.0|★★★★★|[1-9][0-9]* reviews/i;
+const blockedTrustCopy = /Proof|Post availability|Enlist|USD|\$[0-9]|★★★★★|[1-9][0-9]* reviews/i;
 
 test.describe("beta review and trust-copy safety", () => {
   for (const route of coreRoutes) {

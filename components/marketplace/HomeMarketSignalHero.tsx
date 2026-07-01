@@ -64,6 +64,10 @@ const heroStats = [
   },
 ] as const;
 
+// Steady cadence for the bottom-right stat carousel (within the 4–6s target). A fixed
+// interval keeps cycling continuous and keeps the progress bar in sync with each change.
+const STAT_ROTATION_MS = 5000;
+
 function resolveStoredHeadline() {
   if (typeof window === "undefined") return homepageHeadlines[0];
 
@@ -186,7 +190,6 @@ export function HomeMarketSignalHero() {
   const orbitTwoRef = useRef<HTMLDivElement | null>(null);
   const activeSceneIndex = reducedMotion ? 0 : activeIndex;
   const activeStat = heroStats[activeSceneIndex];
-  const rotationDelayMs = Math.min(5000 + transitionCount * 2000, 17000);
 
   useEffect(() => {
     const applyStoredHeadline = () => setHeadline(resolveStoredHeadline());
@@ -196,13 +199,16 @@ export function HomeMarketSignalHero() {
   useEffect(() => {
     if (reducedMotion) return;
 
-    const timeout = window.setTimeout(() => {
+    // Continuous, steady rotation. A fixed-delay interval (deps: reducedMotion only)
+    // means cycling never stalls — unlike a self-rescheduling timeout whose delay can
+    // settle to a constant and stop re-triggering its effect.
+    const interval = window.setInterval(() => {
       setActiveIndex((current) => (current + 1) % heroStats.length);
       setTransitionCount((current) => current + 1);
-    }, rotationDelayMs);
+    }, STAT_ROTATION_MS);
 
-    return () => window.clearTimeout(timeout);
-  }, [reducedMotion, rotationDelayMs]);
+    return () => window.clearInterval(interval);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -354,7 +360,7 @@ export function HomeMarketSignalHero() {
           </p>
 
           <div className="min-w-0 lg:justify-self-end" aria-live="off">
-            <div key={activeStat.value} className="market-signal-scene">
+            <div key={activeStat.value} className="market-signal-scene" data-testid="hero-stat">
               <div className="relative max-w-full">
                 <div className="market-signal-stat-glow absolute -inset-x-4 bottom-1 h-16 rounded-full sm:h-20" />
                 <p className="market-signal-stat-number relative whitespace-nowrap font-semibold tabular-nums text-white">
@@ -362,13 +368,17 @@ export function HomeMarketSignalHero() {
                 </p>
               </div>
               <div className="mt-4 max-w-xl lg:ml-auto lg:text-right">
-                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-white/72">{activeStat.label}</p>
+                <p data-testid="hero-stat-label" className="text-sm font-semibold uppercase tracking-[0.14em] text-white/72">{activeStat.label}</p>
                 <p className="mt-2 text-sm leading-6 text-white/48">{activeStat.caption}</p>
                 {!reducedMotion ? (
-                  <div className="market-signal-progress-track mt-4 lg:ml-auto" aria-hidden="true">
+                  <div
+                    className="market-signal-progress-track mt-4 lg:ml-auto"
+                    aria-hidden="true"
+                    data-testid="hero-stat-progress"
+                  >
                     <div
                       className="market-signal-progress-fill"
-                      style={{ animationDuration: `${rotationDelayMs}ms` }}
+                      style={{ animationDuration: `${STAT_ROTATION_MS}ms` }}
                     />
                   </div>
                 ) : null}

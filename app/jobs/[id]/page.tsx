@@ -6,9 +6,13 @@ import JobDescriptionSections from "../../../components/job-details/JobDescripti
 import JobHero from "../../../components/job-details/JobHero";
 import { StateCard } from "../../../components/ui";
 import { authOptions } from "../../../lib/auth";
-import { getJobById as getJobByIdFromBackend, isLocalMocksEnabled } from "../../../lib/backendClient";
-import { getJobById as getJobByIdFromLocal } from "../../../lib/repositories/jobRepository";
+import { getJobById as getJobByIdFromBackend, getPublicProfile } from "../../../lib/backendClient";
+import { getMarketplaceDataSource } from "../../../lib/devDataSource.server";
 import { formatPostedLabel } from "../../../lib/format";
+import { JOBS } from "../../../lib/jobs";
+import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
+import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
+import type { Job } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,11 +27,21 @@ export const revalidate = 0;
  * - 0.85 = noticeably smaller
  */
 const TITLE_SCALE = 0.58; // 👈 change this number
-const SECONDARY_BTN_BRIGHTNESS = 0.88; // 👈 change this anytime (0.75–0.95)
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000").replace(
   /\/+$/,
   ""
 );
+
+async function getJobChannelRating(job: Job, dataSource: "backend" | "mock") {
+  const channelSlug = job.channelProfileSlug?.trim();
+  if (!channelSlug) return null;
+  const href = buildProfileReviewsHref(channelSlug, "hiring");
+  const profile =
+    dataSource === "mock"
+      ? getMockPublicTalentProfile(channelSlug)
+      : await getPublicProfile(channelSlug).catch(() => null);
+  return profileRatingSummaryFromProfile(profile, href);
+}
 
 export async function generateMetadata({
   params,
@@ -35,22 +49,32 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const job = isLocalMocksEnabled()
-    ? await getJobByIdFromLocal(String(id))
+  const dataSource = await getMarketplaceDataSource();
+  const job = dataSource === "mock"
+    ? JOBS.find((item) => String(item.id) === String(id))
     : await getJobByIdFromBackend(String(id));
   if (!job) {
     return { title: "Job not found | CreatorJobs" };
   }
+  const description = [job.channel.name, job.location, job.budget].filter(Boolean).join(" · ");
+  const image = job.channel.logoUrl || undefined;
   return {
     title: `${job.title} | CreatorJobs`,
-    description: [job.channel.name, job.location, job.budget].filter(Boolean).join(" · "),
+    description,
     alternates: {
       canonical: `/jobs/${encodeURIComponent(String(job.id))}`,
     },
     openGraph: {
       title: `${job.title} | CreatorJobs`,
-      description: [job.channel.name, job.location, job.budget].filter(Boolean).join(" · "),
+      description,
+      siteName: "CreatorJobs",
       type: "article",
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title: `${job.title} | CreatorJobs`,
+      description,
     },
   };
 }
@@ -62,8 +86,9 @@ export default async function JobDetailsPage({
 }) {
   const { id } = await params;
   const jobId = String(id ?? "");
-  const job = isLocalMocksEnabled()
-    ? await getJobByIdFromLocal(jobId)
+  const dataSource = await getMarketplaceDataSource();
+  const job = dataSource === "mock"
+    ? JOBS.find((item) => String(item.id) === jobId)
     : await getJobByIdFromBackend(jobId);
   const session = await getServerSession(authOptions);
 
@@ -106,6 +131,7 @@ export default async function JobDetailsPage({
     url: `${siteUrl}/jobs/${encodeURIComponent(String(job.id))}`,
   };
   const isOwner = Boolean(session?.backendUserId && job.postedByUserId === session.backendUserId);
+  const channelRating = await getJobChannelRating(job, dataSource);
 
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
@@ -114,12 +140,13 @@ export default async function JobDetailsPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingJsonLd) }}
       />
       <div className="px-4 sm:px-6 py-8">
-        <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[1fr_420px] items-start">
-          <div className="space-y-6">
+        <div className="mx-auto grid max-w-6xl min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+          <div className="min-w-0 space-y-6">
             <JobHero
               job={job}
               postedText={postedText}
               titleScale={TITLE_SCALE}
+              channelRating={channelRating}
               ownerControls={
                 isOwner ? (
                   <JobOwnerControls
@@ -134,10 +161,9 @@ export default async function JobDetailsPage({
             <JobDescriptionSections job={job} />
           </div>
 
-          <aside className="space-y-6 lg:sticky lg:top-20">
+          <aside className="min-w-0 space-y-6 lg:sticky lg:top-20">
             <JobActionsPanelClient
               job={job}
-              secondaryBtnBrightness={SECONDARY_BTN_BRIGHTNESS}
               isOwner={isOwner}
             />
           </aside>

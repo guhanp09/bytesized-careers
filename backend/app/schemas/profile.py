@@ -98,12 +98,24 @@ class CollaborationPreferences(BaseModel):
     revisions: str | None = None
     working_hours: str | None = None
     tools: str | None = None
+    # Multiple free-form collaboration styles (e.g. "One-off", "Retainer", custom).
+    styles: list[str] = Field(default_factory=list)
+    # Where the recruiter usually hires from: Remote / Hybrid / On-site (or None).
+    work_mode: str | None = None
 
 
 class HiringInfo(BaseModel):
     hiring_type: HiringType | None = None
     website_or_social_url: str | None = None
     primary_platform: HiringPrimaryPlatform | None = None
+    # Multiple platforms the work is published on (supersedes the single
+    # primary_platform enum, which is kept in sync for backward compatibility).
+    platforms: list[str] = Field(default_factory=list)
+    # Recruiter-side metadata, separate from the talent's own content_style so the
+    # two sides can be customised independently.
+    niches: list[str] = Field(default_factory=list)
+    genres: list[str] = Field(default_factory=list)
+    formats: list[str] = Field(default_factory=list)
     channels_or_pages_managed: str | None = None
     verification_status: HiringVerificationStatus = "unverified"
 
@@ -138,6 +150,8 @@ class ProfileRead(BaseModel):
         default_factory=CollaborationPreferences
     )
     hiring_info: HiringInfo = Field(default_factory=HiringInfo)
+    # Talent-side publishing platforms, separate from hiring_info.platforms.
+    creator_platforms: list[str] = Field(default_factory=list)
     roles: list[RoleRead] = Field(default_factory=list)
     role_answers_summary: list[RoleAnswerSummary] = Field(default_factory=list)
     content_style: ContentStyleRead = Field(default_factory=ContentStyleRead)
@@ -168,9 +182,16 @@ class ProfileUpdateRequest(BaseModel):
     collaboration_revisions: str | None = Field(default=None, max_length=255)
     collaboration_working_hours: str | None = Field(default=None, max_length=255)
     collaboration_tools: str | None = Field(default=None, max_length=255)
+    collaboration_styles: list[str] | None = None
+    work_mode: str | None = Field(default=None, max_length=32)
     hiring_type: HiringType | None = None
     hiring_website_or_social_url: str | None = Field(default=None, max_length=1024)
     hiring_primary_platform: HiringPrimaryPlatform | None = None
+    hiring_platforms: list[str] | None = None
+    hiring_niches: list[str] | None = None
+    hiring_genres: list[str] | None = None
+    hiring_formats: list[str] | None = None
+    creator_platforms: list[str] | None = None
     hiring_channels_or_pages_managed: str | None = None
 
 
@@ -199,6 +220,9 @@ class PortfolioItemBase(BaseModel):
     user_role_in_project: str | None = Field(default=None, max_length=255)
     description: str | None = None
     contribution_summary: str | None = None
+    what_i_did: str | None = None
+    contribution_highlights: list[str] = Field(default_factory=list)
+    timestamp_notes: list[dict[str, object]] = Field(default_factory=list)
     timeframe: PortfolioStatus | None = None
     status: PortfolioStatus = "now"
     portfolio_status: PortfolioStatus = "now"
@@ -218,6 +242,11 @@ class PortfolioItemBase(BaseModel):
     tags: list[str] = Field(default_factory=list)
     contribution_tags: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
+    content_niches: list[str] = Field(default_factory=list)
+    content_genres: list[str] = Field(default_factory=list)
+    platforms: list[str] = Field(default_factory=list)
+    formats: list[str] = Field(default_factory=list)
+    results: list[str] = Field(default_factory=list)
     public_metrics: dict[str, object] = Field(default_factory=dict)
     manual_metrics: dict[str, object] = Field(default_factory=dict)
     verification_status: PortfolioVerificationStatus = "manual"
@@ -311,6 +340,9 @@ class PortfolioItemUpdate(BaseModel):
     user_role_in_project: str | None = Field(default=None, max_length=255)
     description: str | None = None
     contribution_summary: str | None = None
+    what_i_did: str | None = None
+    contribution_highlights: list[str] | None = None
+    timestamp_notes: list[dict[str, object]] | None = None
     timeframe: PortfolioStatus | None = None
     status: PortfolioStatus | None = None
     portfolio_status: PortfolioStatus | None = None
@@ -330,6 +362,11 @@ class PortfolioItemUpdate(BaseModel):
     tags: list[str] | None = None
     contribution_tags: list[str] | None = None
     tools: list[str] | None = None
+    content_niches: list[str] | None = None
+    content_genres: list[str] | None = None
+    platforms: list[str] | None = None
+    formats: list[str] | None = None
+    results: list[str] | None = None
     public_metrics: dict[str, object] | None = None
     manual_metrics: dict[str, object] | None = None
     verification_status: PortfolioVerificationStatus | None = None
@@ -441,6 +478,7 @@ class PublicProfileResponse(BaseModel):
         default_factory=CollaborationPreferences
     )
     hiring_info: HiringInfo = Field(default_factory=HiringInfo)
+    creator_platforms: list[str] = Field(default_factory=list)
     roles: list[RoleRead] = Field(default_factory=list)
     role_answers_summary: list[RoleAnswerSummary] = Field(default_factory=list)
     content_style: ContentStyleRead = Field(default_factory=ContentStyleRead)

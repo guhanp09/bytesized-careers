@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
+import { formatListingTitle } from "../../lib/displayText";
 import { formatPostedLabel } from "../../lib/format";
+import { jobDisplayChips } from "../../lib/jobCreatorContext";
 import { Icon } from "../Icons";
 import { MetaRow, StatRow, TagPill } from "../ui";
 import ChannelAttribution from "../jobs/ChannelAttribution";
@@ -53,6 +55,15 @@ function PreviewIconButton({
   );
 }
 
+function PreviewCta({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90">
+      <span>{label}</span>
+      <span aria-hidden="true">→</span>
+    </span>
+  );
+}
+
 export default function PreviewCard({
   title,
   channelName,
@@ -61,6 +72,9 @@ export default function PreviewCard({
   experienceText,
   locationText,
   tags,
+  contentNiches = [],
+  contentGenres = [],
+  formatsHiredFor = [],
   platform,
   postedShort,
   profileImageUrl,
@@ -72,21 +86,25 @@ export default function PreviewCard({
   experienceText: string;
   locationText: string;
   tags: string[];
+  contentNiches?: string[];
+  contentGenres?: string[];
+  formatsHiredFor?: string[];
   platform?: string;
   postedShort?: string;
   profileImageUrl?: string | null;
 }) {
   const showChannelName = channelName.trim() || "Finance Channel";
   const showSubs = subsText.trim();
-  const showTitle = title.trim() || "Your job title goes here";
+  const showTitle = formatListingTitle(title.trim() || "Your job title goes here");
 
   const showBudget = budgetText.trim();
   const showExperience = experienceText.trim();
   const showLocation = locationText.trim();
   const postedLabel = formatPostedLabel(postedShort || "1d");
 
-  const topTags = tags.slice(0, 3);
-  const extra = tags.length - topTags.length;
+  const displayChips = jobDisplayChips({ tags, contentNiches, contentGenres, formatsHiredFor }).slice(0, 8);
+  const topTags = displayChips.slice(0, 3);
+  const extra = displayChips.length - topTags.length;
 
   return (
     <div className="select-none">
@@ -129,9 +147,10 @@ export default function PreviewCard({
               </p>
             </div>
           </div>
+          <PreviewCta label="Apply Now" />
         </div>
 
-        <h3 className="mt-4 text-[15px] font-extrabold leading-snug text-white uppercase line-clamp-2 h-[52px]">
+        <h3 className="mt-4 h-[52px] line-clamp-2 text-[15px] font-extrabold leading-snug text-white">
           {showTitle}
         </h3>
 

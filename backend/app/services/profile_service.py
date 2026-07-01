@@ -104,6 +104,12 @@ HIRING_TYPE_OPTIONS = {
 }
 HIRING_PRIMARY_PLATFORM_OPTIONS = {"YouTube", "Instagram", "Both"}
 HIRING_VERIFICATION_STATUS_OPTIONS = {"unverified", "verified", "rejected"}
+WORK_MODE_OPTIONS = {"Remote", "Hybrid", "On-site"}
+# Cap on additive recruiter list fields to keep payloads/storage bounded.
+MAX_HIRING_LIST_ITEMS = 24
+MAX_ROLES_PER_USER = 12
+MAX_ROLE_NAME_LENGTH = 60
+CUSTOM_ROLE_CATEGORY = "Custom"
 HIRING_IDENTITY_TYPE_OPTIONS = {"INDIVIDUAL_CHANNEL", "AGENCY_REPRESENTED_CHANNEL"}
 HIRING_IDENTITY_PLATFORM_OPTIONS = {"YOUTUBE", "INSTAGRAM"}
 HIRING_IDENTITY_CODE_TTL = timedelta(hours=24)
@@ -158,6 +164,45 @@ def _normalize_unique_list(values: list[str] | None) -> list[str]:
         seen.add(key)
         unique.append(value)
     return unique
+
+
+def _clean_portfolio_timestamp_notes(values: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not isinstance(values, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for idx, raw in enumerate(values[:10]):
+        if not isinstance(raw, dict):
+            continue
+        time = _clean_optional_text(raw.get("time"))
+        seconds_raw = raw.get("seconds")
+        seconds: int | None = None
+        if isinstance(seconds_raw, (int, float)) and seconds_raw >= 0:
+            seconds = int(seconds_raw)
+        elif time:
+            parts = time.split(":")
+            try:
+                numbers = [int(part) for part in parts]
+            except ValueError:
+                numbers = []
+            if len(numbers) == 2 and numbers[1] < 60:
+                seconds = numbers[0] * 60 + numbers[1]
+            elif len(numbers) == 3 and numbers[1] < 60 and numbers[2] < 60:
+                seconds = numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+        title = (_clean_optional_text(raw.get("title")) or "")[:60]
+        description = (_clean_optional_text(raw.get("description")) or "")[:220]
+        if seconds is None or (not title and not description):
+            continue
+        minutes, sec = divmod(seconds, 60)
+        cleaned.append(
+            {
+                "id": _clean_optional_text(raw.get("id")) or f"note-{idx + 1}",
+                "time": time or f"{minutes}:{sec:02d}",
+                "seconds": seconds,
+                "title": title or "Project moment",
+                "description": description,
+            }
+        )
+    return cleaned
 
 
 def _merge_privacy_settings(raw: dict[str, bool] | None) -> dict[str, bool]:
@@ -546,19 +591,47 @@ class ProfileService:
         return selected_roles
 
     async def set_user_roles(self, user: User, payload: UserRolesUpsertRequest) -> list[RoleRead]:
+        available_roles = await self.repository.list_roles()
+        role_map = {role.id: role for role in available_roles}
+        name_map = {role.name.strip().lower(): role for role in available_roles}
+
         requested_ids: list[UUID] = []
         seen: set[UUID] = set()
+
+        # Explicit catalog ids must reference known roles (unchanged behavior).
+        unknown = [str(role_id) for role_id in payload.role_ids if role_id not in role_map]
+        if unknown:
+            raise ProfileValidationError(f"Unknown role ids: {', '.join(unknown)}")
         for role_id in payload.role_ids:
             if role_id in seen:
                 continue
             seen.add(role_id)
             requested_ids.append(role_id)
 
-        available_roles = await self.repository.list_roles()
-        role_map = {role.id: role for role in available_roles}
-        unknown = [str(role_id) for role_id in requested_ids if role_id not in role_map]
-        if unknown:
-            raise ProfileValidationError(f"Unknown role ids: {', '.join(unknown)}")
+        # Free-text names: reuse an existing role (case-insensitive) or create one,
+        # so a user can add a specialization that isn't in the catalog yet.
+        for raw_name in payload.role_names:
+            name = " ".join(str(raw_name).split())
+            if not name:
+                continue
+            if len(name) > MAX_ROLE_NAME_LENGTH:
+                raise ProfileValidationError(
+                    f"Specializations must be {MAX_ROLE_NAME_LENGTH} characters or fewer."
+                )
+            role = name_map.get(name.lower())
+            if role is None:
+                role = await self.repository.create_role(name=name, category=CUSTOM_ROLE_CATEGORY)
+                name_map[name.lower()] = role
+                role_map[role.id] = role
+            if role.id in seen:
+                continue
+            seen.add(role.id)
+            requested_ids.append(role.id)
+
+        if len(requested_ids) > MAX_ROLES_PER_USER:
+            raise ProfileValidationError(
+                f"You can select up to {MAX_ROLES_PER_USER} specializations."
+            )
 
         await self.repository.replace_user_roles(user_id=user.id, role_ids=requested_ids)
         selected_questions = await self.repository.list_role_questions_for_roles(role_ids=requested_ids)
@@ -667,17 +740,15 @@ class ProfileService:
     async def upsert_user_content_style(
         self, user: User, payload: ContentStyleUpsertRequest
     ) -> ContentStyleRead:
-        cleaned_format = _normalize_unique_list(payload.format)
-        cleaned_tone = _normalize_unique_list(payload.tone)
+        # Formats and tone accept free-form custom values (capped) so the talent can
+        # describe their work beyond the preset suggestions. Editing complexity stays a
+        # constrained enum.
+        cleaned_format = _normalize_unique_list(payload.format)[:MAX_HIRING_LIST_ITEMS]
+        cleaned_tone = _normalize_unique_list(payload.tone)[:MAX_HIRING_LIST_ITEMS]
         cleaned_niche = _clean_optional_text(payload.primary_niche)
         cleaned_target_audience = _clean_optional_text(payload.target_audience)
         cleaned_complexity = _clean_optional_text(payload.editing_complexity)
 
-        for item in cleaned_format:
-            if item not in CONTENT_STYLE_FORMAT_OPTIONS:
-                raise ProfileValidationError(
-                    f"Invalid format '{item}'. Allowed: {', '.join(sorted(CONTENT_STYLE_FORMAT_OPTIONS))}"
-                )
         if cleaned_complexity and cleaned_complexity not in CONTENT_STYLE_COMPLEXITY_OPTIONS:
             raise ProfileValidationError(
                 f"Invalid editing complexity '{cleaned_complexity}'. Allowed: {', '.join(sorted(CONTENT_STYLE_COMPLEXITY_OPTIONS))}"
@@ -902,6 +973,8 @@ class ProfileService:
             revisions=user.collaboration_revisions,
             working_hours=user.collaboration_working_hours,
             tools=user.collaboration_tools,
+            styles=_normalize_unique_list(user.collaboration_styles),
+            work_mode=_clean_optional_text(user.work_mode),
         )
 
     @staticmethod
@@ -917,6 +990,10 @@ class ProfileService:
                 if user.hiring_primary_platform in HIRING_PRIMARY_PLATFORM_OPTIONS
                 else None
             ),
+            platforms=_normalize_unique_list(user.hiring_platforms),
+            niches=_normalize_unique_list(user.hiring_niches),
+            genres=_normalize_unique_list(user.hiring_genres),
+            formats=_normalize_unique_list(user.hiring_formats),
             channels_or_pages_managed=_clean_optional_text(user.hiring_channels_or_pages_managed),
             verification_status=verification_status,
         )
@@ -1048,6 +1125,40 @@ class ProfileService:
             parsed = parsed.model_copy(update={"timeframe": parsed.status})
         return parsed
 
+    @staticmethod
+    def _portfolio_metadata(portfolio_rows: list[PortfolioItem]) -> dict[str, list[str]]:
+        tools: list[str] = []
+        niches: list[str] = []
+        genres: list[str] = []
+        platforms: list[str] = []
+        formats: list[str] = []
+        for item in portfolio_rows:
+            tools.extend(item.tools or [])
+            niches.extend(item.content_niches or [])
+            genres.extend(item.content_genres or [])
+            platforms.extend(item.platforms or [])
+            formats.extend(item.formats or [])
+        return {
+            "tools": _normalize_unique_list(tools),
+            "niches": _normalize_unique_list(niches),
+            "genres": _normalize_unique_list(genres),
+            "platforms": _normalize_unique_list(platforms),
+            "formats": _normalize_unique_list(formats),
+        }
+
+    @staticmethod
+    def _content_style_with_portfolio_metadata(
+        content_style: ContentStyleRead,
+        metadata: dict[str, list[str]],
+    ) -> ContentStyleRead:
+        return content_style.model_copy(
+            update={
+                "primary_niche": content_style.primary_niche or (metadata["niches"][0] if metadata["niches"] else None),
+                "format": _normalize_unique_list([*(content_style.format or []), *metadata["formats"]])[:12],
+                "tone": _normalize_unique_list([*(content_style.tone or []), *metadata["genres"]])[:12],
+            }
+        )
+
     async def _resolve_avatar_url(
         self,
         *,
@@ -1083,6 +1194,8 @@ class ProfileService:
         hiring_identities = await self.repository.list_hiring_identities_for_user(user_id=user.id)
         role_answers_summary = await self._build_role_answer_summary(user_id=user.id)
         content_style = await self._resolve_content_style_for_user(user_id=user.id)
+        portfolio_metadata = self._portfolio_metadata(portfolio_rows)
+        content_style = self._content_style_with_portfolio_metadata(content_style, portfolio_metadata)
 
         social_connections = self._build_social_connections(
             user=user,
@@ -1103,7 +1216,7 @@ class ProfileService:
             display_name=user.display_name,
             headline=user.headline,
             bio=user.bio,
-            skills=list(user.skills or []),
+            skills=_normalize_unique_list([*(user.skills or []), *portfolio_metadata["tools"]]),
             public_links=list(user.public_links or []),
             experience=_normalize_profile_experience(user.profile_experience),
             availability_status=(
@@ -1122,6 +1235,7 @@ class ProfileService:
             reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
             collaboration_preferences=self._build_collaboration_preferences(user),
             hiring_info=self._build_hiring_info(user),
+            creator_platforms=_normalize_unique_list([*(user.creator_platforms or []), *portfolio_metadata["platforms"]]),
             roles=selected_roles,
             role_answers_summary=role_answers_summary,
             content_style=content_style,
@@ -1679,6 +1793,15 @@ class ProfileService:
             )
         if "collaboration_tools" in updates:
             user.collaboration_tools = _clean_optional_text(updates.get("collaboration_tools"))
+        if "collaboration_styles" in updates:
+            user.collaboration_styles = _normalize_unique_list(
+                updates.get("collaboration_styles")
+            )[:MAX_HIRING_LIST_ITEMS]
+        if "work_mode" in updates:
+            work_mode = _clean_optional_text(updates.get("work_mode"))
+            if work_mode is not None and work_mode not in WORK_MODE_OPTIONS:
+                raise ProfileValidationError("Invalid work mode.")
+            user.work_mode = work_mode
         if "hiring_type" in updates:
             hiring_type = updates.get("hiring_type")
             if hiring_type is not None and hiring_type not in HIRING_TYPE_OPTIONS:
@@ -1694,6 +1817,39 @@ class ProfileService:
             if primary_platform is not None and primary_platform not in HIRING_PRIMARY_PLATFORM_OPTIONS:
                 raise ProfileValidationError("Invalid hiring primary platform.")
             user.hiring_primary_platform = primary_platform
+        if "hiring_platforms" in updates:
+            platforms = _normalize_unique_list(updates.get("hiring_platforms"))[:MAX_HIRING_LIST_ITEMS]
+            user.hiring_platforms = platforms
+            # Keep the legacy single-enum primary_platform in sync so any existing
+            # platform filters keep working — unless the caller set it explicitly in
+            # the same request, in which case the explicit value wins.
+            if "hiring_primary_platform" not in updates:
+                has_youtube = any(p.strip().lower() == "youtube" for p in platforms)
+                has_instagram = any(p.strip().lower() == "instagram" for p in platforms)
+                if has_youtube and has_instagram:
+                    user.hiring_primary_platform = "Both"
+                elif has_youtube:
+                    user.hiring_primary_platform = "YouTube"
+                elif has_instagram:
+                    user.hiring_primary_platform = "Instagram"
+                else:
+                    user.hiring_primary_platform = None
+        if "hiring_niches" in updates:
+            user.hiring_niches = _normalize_unique_list(updates.get("hiring_niches"))[
+                :MAX_HIRING_LIST_ITEMS
+            ]
+        if "hiring_genres" in updates:
+            user.hiring_genres = _normalize_unique_list(updates.get("hiring_genres"))[
+                :MAX_HIRING_LIST_ITEMS
+            ]
+        if "hiring_formats" in updates:
+            user.hiring_formats = _normalize_unique_list(updates.get("hiring_formats"))[
+                :MAX_HIRING_LIST_ITEMS
+            ]
+        if "creator_platforms" in updates:
+            user.creator_platforms = _normalize_unique_list(updates.get("creator_platforms"))[
+                :MAX_HIRING_LIST_ITEMS
+            ]
         if "hiring_channels_or_pages_managed" in updates:
             user.hiring_channels_or_pages_managed = _clean_optional_text(
                 updates.get("hiring_channels_or_pages_managed")
@@ -1866,12 +2022,20 @@ class ProfileService:
         data["tags"] = _clean_str_list(data.get("tags")) or []
         data["contribution_tags"] = _normalize_unique_list(data.get("contribution_tags"))
         data["tools"] = _clean_str_list(data.get("tools")) or []
+        data["content_niches"] = _normalize_unique_list(data.get("content_niches"))[:12]
+        data["content_genres"] = _normalize_unique_list(data.get("content_genres"))[:12]
+        data["platforms"] = _normalize_unique_list(data.get("platforms"))[:12]
+        data["formats"] = _normalize_unique_list(data.get("formats"))[:12]
+        data["results"] = _normalize_unique_list(data.get("results"))[:10]
+        data["contribution_highlights"] = _normalize_unique_list(data.get("contribution_highlights"))[:8]
+        data["timestamp_notes"] = _clean_portfolio_timestamp_notes(data.get("timestamp_notes"))
         data["thumbnail_options"] = _clean_thumbnail_options(data.get("thumbnail_options"))
         data["role_name"] = _clean_optional_text(data.get("role_name")) or _clean_optional_text(data.get("role")) or _clean_optional_text(data.get("user_role_in_project"))
         data["role"] = data["role_name"]
         data["user_role_in_project"] = data["role_name"]
-        data["contribution_summary"] = _clean_optional_text(data.get("contribution_summary")) or _clean_optional_text(data.get("description"))
-        data["description"] = _clean_optional_text(data.get("description")) or data["contribution_summary"]
+        data["what_i_did"] = _clean_optional_text(data.get("what_i_did")) or _clean_optional_text(data.get("contribution_summary")) or _clean_optional_text(data.get("description"))
+        data["contribution_summary"] = _clean_optional_text(data.get("contribution_summary")) or data["what_i_did"]
+        data["description"] = _clean_optional_text(data.get("description")) or data["what_i_did"]
         data["source_type"] = (data.get("source_type") or ("youtube" if data.get("youtube_url") else "custom")).strip().lower()
         data["source_url"] = _clean_optional_text(data.get("source_url")) or _clean_optional_text(data.get("youtube_url")) or _clean_optional_text(data.get("media_url")) or (data["links"][0] if data["links"] else None)
         data["media_url"] = _clean_optional_text(data.get("media_url")) or data["source_url"]
@@ -1940,6 +2104,20 @@ class ProfileService:
             updates["contribution_tags"] = _normalize_unique_list(updates.get("contribution_tags"))
         if "tools" in updates:
             updates["tools"] = _clean_str_list(updates.get("tools")) or []
+        if "content_niches" in updates:
+            updates["content_niches"] = _normalize_unique_list(updates.get("content_niches"))[:12]
+        if "content_genres" in updates:
+            updates["content_genres"] = _normalize_unique_list(updates.get("content_genres"))[:12]
+        if "platforms" in updates:
+            updates["platforms"] = _normalize_unique_list(updates.get("platforms"))[:12]
+        if "formats" in updates:
+            updates["formats"] = _normalize_unique_list(updates.get("formats"))[:12]
+        if "results" in updates:
+            updates["results"] = _normalize_unique_list(updates.get("results"))[:10]
+        if "contribution_highlights" in updates:
+            updates["contribution_highlights"] = _normalize_unique_list(updates.get("contribution_highlights"))[:8]
+        if "timestamp_notes" in updates:
+            updates["timestamp_notes"] = _clean_portfolio_timestamp_notes(updates.get("timestamp_notes"))
         if "thumbnail_options" in updates:
             updates["thumbnail_options"] = _clean_thumbnail_options(updates.get("thumbnail_options"))
         if any(key in updates for key in ("role_name", "role", "user_role_in_project")):
@@ -1947,8 +2125,13 @@ class ProfileService:
             updates["role_name"] = role_name
             updates["role"] = role_name
             updates["user_role_in_project"] = role_name
-        if "contribution_summary" in updates or "description" in updates:
-            summary = _clean_optional_text(updates.get("contribution_summary")) or _clean_optional_text(updates.get("description"))
+        if "what_i_did" in updates or "contribution_summary" in updates or "description" in updates:
+            summary = (
+                _clean_optional_text(updates.get("what_i_did"))
+                or _clean_optional_text(updates.get("contribution_summary"))
+                or _clean_optional_text(updates.get("description"))
+            )
+            updates["what_i_did"] = summary
             updates["contribution_summary"] = summary
             updates["description"] = _clean_optional_text(updates.get("description")) or summary
         if any(key in updates for key in ("source_url", "youtube_url", "media_url", "links", "source_type")):
@@ -2107,6 +2290,8 @@ class ProfileService:
         hiring_identities = await self.repository.list_hiring_identities_for_user(user_id=user.id)
 
         portfolio_rows = await self.repository.list_public_portfolio_items_for_user(user_id=user.id)
+        portfolio_metadata = self._portfolio_metadata(portfolio_rows)
+        content_style = self._content_style_with_portfolio_metadata(content_style, portfolio_metadata)
         talent_listing_rows = await self.repository.list_talent_listings_for_user_public(user_id=user.id)
         talent_listings_active = [
             self._public_talent_listing_item(listing) for listing in talent_listing_rows
@@ -2134,7 +2319,7 @@ class ProfileService:
             avatar_url=avatar_url,
             avatar_mode="youtube_channel" if user.avatar_mode == "youtube_channel" else "generic",
             banner_url=user.banner_url,
-            skills=list(user.skills or []),
+            skills=_normalize_unique_list([*(user.skills or []), *portfolio_metadata["tools"]]),
             public_links=list(user.public_links or []) if privacy["show_links"] else [],
             experience=_normalize_profile_experience(user.profile_experience),
             availability_status=(
@@ -2149,6 +2334,7 @@ class ProfileService:
             reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
             collaboration_preferences=self._build_collaboration_preferences(user),
             hiring_info=self._build_hiring_info(user),
+            creator_platforms=_normalize_unique_list([*(user.creator_platforms or []), *portfolio_metadata["platforms"]]),
             roles=selected_roles,
             role_answers_summary=role_answers_summary,
             content_style=content_style,

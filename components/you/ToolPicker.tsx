@@ -314,7 +314,8 @@ export default function ToolPicker({
   return (
     <div className={className}>
       {label ? (
-        <label htmlFor={resolvedInputId} className="text-xs text-white/55">
+        <label htmlFor={resolvedInputId} className="inline-flex items-center gap-2 text-xs font-semibold text-white/55">
+          <Icon name="sliders-horizontal" className="h-4 w-4 text-white/55" />
           {label}
         </label>
       ) : null}

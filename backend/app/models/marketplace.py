@@ -56,6 +56,11 @@ class JobApplication(Base):
     )
     cover_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     portfolio_item_ids: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
+    # Structured answers to the job's first-message requirements, keyed by
+    # requirement key (see lib/firstMessageRequirements.ts). Empty = none required.
+    first_message_answers: Mapped[dict] = mapped_column(
+        json_obj_type, nullable=False, default=dict, server_default="{}"
+    )
     applicant_snapshot: Mapped[dict] = mapped_column(json_obj_type, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -73,12 +78,22 @@ class TalentListing(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     primary_role: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    # Legacy free-form experience range/level (e.g. "2–4 years"); kept for backward compatibility.
     experience_level: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Canonical talent experience: exact whole years of self-declared experience.
+    experience_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
     roles: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     niche: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    content_niches: Mapped[list[str]] = mapped_column(
+        json_list_type, nullable=False, default=list, server_default="[]"
+    )
+    content_genres: Mapped[list[str]] = mapped_column(
+        json_list_type, nullable=False, default=list, server_default="[]"
+    )
     formats: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     platforms: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     tools: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
+    languages: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
     work_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -91,6 +106,11 @@ class TalentListing(Base):
     turnaround: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     portfolio_item_ids: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
+    # Keys (from the shared first-message requirements registry) that recruiters
+    # must answer when sending a hiring request. Empty list = no specific requirements.
+    first_message_requirements: Mapped[list[str]] = mapped_column(
+        json_list_type, nullable=False, default=list, server_default="[]"
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", index=True)
     is_featured: Mapped[bool] = mapped_column(default=False, nullable=False)
     featured_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
@@ -143,6 +163,11 @@ class TalentInterest(Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Structured answers to the talent listing's first-message requirements, keyed
+    # by requirement key (see lib/firstMessageRequirements.ts). Empty = none required.
+    first_message_answers: Mapped[dict] = mapped_column(
+        json_obj_type, nullable=False, default=dict, server_default="{}"
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

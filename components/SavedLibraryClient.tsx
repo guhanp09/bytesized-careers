@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { unsaveJob, unsaveTalentListing } from "../lib/backendClient";
+import { formatListingTitle } from "../lib/displayText";
 import { Icon } from "./Icons";
 import { StateCard, TagPill } from "./ui";
 
@@ -170,8 +171,8 @@ export default function SavedLibraryClient({
                   className="group flex min-h-[210px] cursor-pointer flex-col rounded-2xl border border-white/10 bg-white/[0.055] p-5 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.075] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 >
                   <p className="text-sm font-semibold text-white/82">{item.identity}</p>
-                  <h2 className="mt-3 line-clamp-2 text-lg font-extrabold uppercase leading-tight text-white">
-                    {item.title}
+                  <h2 className="mt-3 line-clamp-2 text-lg font-extrabold leading-tight text-white">
+                    {formatListingTitle(item.title)}
                   </h2>
                   <div className="mt-4 space-y-2 text-sm text-white/68">
                     <p>{item.budget}</p>
@@ -227,8 +228,8 @@ export default function SavedLibraryClient({
                     <p className="truncate text-sm font-semibold text-white/82">{item.name}</p>
                   )}
                 </div>
-                <h2 className="mt-3 line-clamp-2 text-lg font-extrabold uppercase leading-tight text-white">
-                  {item.title}
+                <h2 className="mt-3 line-clamp-2 text-lg font-extrabold leading-tight text-white">
+                  {formatListingTitle(item.title)}
                 </h2>
                 <div className="mt-4 space-y-2 text-sm text-white/68">
                   <p>{item.rate}</p>

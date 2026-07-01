@@ -4,15 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.job import JobRead
+from app.schemas.job import JobRead, normalize_creator_context_items
 
 ApplicationStatus = Literal[
-    "new", "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"
+    "new", "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived", "withdrawn"
 ]
 TalentListingStatus = Literal["draft", "published", "paused", "closed", "archived", "featured"]
-TalentInterestStatus = Literal["new", "reviewing", "contacted", "declined", "archived"]
+TalentInterestStatus = Literal[
+    "new", "reviewing", "contacted", "declined", "archived", "withdrawn"
+]
 ReportTargetType = Literal["job", "talent_listing", "profile"]
 ReportStatus = Literal["open", "dismissed", "action_taken"]
 EntitlementKind = Literal["job_post", "talent_listing", "featured_job", "featured_talent_listing"]
@@ -36,6 +38,7 @@ class SavedJobRead(BaseModel):
 class JobApplicationCreate(BaseModel):
     cover_note: str | None = Field(default=None, max_length=5000)
     portfolio_item_ids: list[str] = Field(default_factory=list)
+    first_message_answers: dict = Field(default_factory=dict)
 
 
 class JobApplicationStatusUpdate(BaseModel):
@@ -51,6 +54,7 @@ class JobApplicationRead(BaseModel):
     job_owner_user_id: uuid.UUID | None = None
     cover_note: str | None = None
     portfolio_item_ids: list[str] = Field(default_factory=list)
+    first_message_answers: dict = Field(default_factory=dict)
     applicant_snapshot: dict = Field(default_factory=dict)
     status: ApplicationStatus
     created_at: datetime
@@ -60,12 +64,18 @@ class JobApplicationRead(BaseModel):
 class TalentListingBase(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     primary_role: str | None = Field(default=None, max_length=128)
+    # Legacy range/level string, retained for backward compatibility with old listings.
     experience_level: str | None = Field(default=None, max_length=64)
+    # Canonical talent experience: exact whole years.
+    experience_years: int | None = Field(default=None, ge=0, le=80)
     roles: list[str] = Field(default_factory=list)
     niche: str | None = Field(default=None, max_length=255)
+    content_niches: list[str] = Field(default_factory=list)
+    content_genres: list[str] = Field(default_factory=list)
     formats: list[str] = Field(default_factory=list)
     platforms: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
     work_mode: str | None = Field(default=None, max_length=64)
     location: str | None = Field(default=None, max_length=255)
     timezone: str | None = Field(default=None, max_length=64)
@@ -78,11 +88,17 @@ class TalentListingBase(BaseModel):
     turnaround: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=5000)
     portfolio_item_ids: list[str] = Field(default_factory=list)
+    first_message_requirements: list[str] = Field(default_factory=list)
     status: TalentListingStatus = "draft"
     is_featured: bool = False
     featured_until: datetime | None = None
     paused_at: datetime | None = None
     closed_at: datetime | None = None
+
+    @field_validator("content_niches", "content_genres", "formats")
+    @classmethod
+    def normalize_creator_context_lists(cls, value: list[str] | None) -> list[str]:
+        return normalize_creator_context_items(value) or []
 
 
 class TalentListingCreate(TalentListingBase):
@@ -93,11 +109,15 @@ class TalentListingUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=255)
     primary_role: str | None = Field(default=None, max_length=128)
     experience_level: str | None = Field(default=None, max_length=64)
+    experience_years: int | None = Field(default=None, ge=0, le=80)
     roles: list[str] | None = None
     niche: str | None = Field(default=None, max_length=255)
+    content_niches: list[str] | None = None
+    content_genres: list[str] | None = None
     formats: list[str] | None = None
     platforms: list[str] | None = None
     tools: list[str] | None = None
+    languages: list[str] | None = None
     work_mode: str | None = Field(default=None, max_length=64)
     location: str | None = Field(default=None, max_length=255)
     timezone: str | None = Field(default=None, max_length=64)
@@ -110,11 +130,17 @@ class TalentListingUpdate(BaseModel):
     turnaround: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=5000)
     portfolio_item_ids: list[str] | None = None
+    first_message_requirements: list[str] | None = None
     status: TalentListingStatus | None = None
     is_featured: bool | None = None
     featured_until: datetime | None = None
     paused_at: datetime | None = None
     closed_at: datetime | None = None
+
+    @field_validator("content_niches", "content_genres", "formats")
+    @classmethod
+    def normalize_creator_context_lists(cls, value: list[str] | None) -> list[str] | None:
+        return normalize_creator_context_items(value)
 
 
 class TalentListingRead(TalentListingBase):
@@ -171,6 +197,7 @@ class SavedSummaryResponse(BaseModel):
 class TalentInterestCreate(BaseModel):
     job_id: uuid.UUID | None = None
     note: str | None = Field(default=None, max_length=3000)
+    first_message_answers: dict = Field(default_factory=dict)
 
 
 class TalentInterestStatusUpdate(BaseModel):
@@ -186,6 +213,7 @@ class TalentInterestRead(BaseModel):
     job_id: uuid.UUID | None = None
     owner_user_id: uuid.UUID
     note: str | None = None
+    first_message_answers: dict = Field(default_factory=dict)
     status: TalentInterestStatus
     created_at: datetime
     updated_at: datetime

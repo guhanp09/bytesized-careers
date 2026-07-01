@@ -27,6 +27,74 @@ const reviewSummary = (items: BackendProfileReviewItem[]) => ({
   review_count: items.length,
 });
 
+const noReviewProfileSlugs = new Set(["anika-rao", "learn-visually"]);
+
+const generatedReviewPatterns = [
+  [5, 4, 4, 4, 3, 4, 4],
+  [5, 5, 4, 4, 5, 4, 4, 5],
+  [5, 5, 5, 4, 5, 4, 5, 5, 4],
+  [4, 4, 4, 4, 5, 3],
+  [5, 4, 5, 4, 4, 4, 5, 4],
+];
+
+const generatedReviewerNames = [
+  "Creator Ops Team",
+  "Long-form Studio",
+  "Launch Content Lab",
+  "Independent Creator",
+  "Channel Producer",
+  "Editorial Lead",
+  "Growth Partner",
+  "Freelance Collaborator",
+  "Production Manager",
+];
+
+const generatedReviewBodies = {
+  talent: [
+    "Clear communication, practical handoffs, and reliable delivery across creator-led production work.",
+    "Strong understanding of pacing and creator workflow. Feedback rounds stayed focused and easy to manage.",
+    "Brought good judgment to the brief and kept the project moving without needing heavy oversight.",
+  ],
+  hiring: [
+    "Clear briefs, respectful feedback, and a professional payment rhythm. The collaboration felt organized from the first message.",
+    "Expectations were well scoped and the review process stayed constructive across delivery rounds.",
+    "Good creator-side communication with practical notes, clear timelines, and realistic approval cycles.",
+  ],
+};
+
+const seedForSlug = (slug: string) =>
+  slug.split("").reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 1), 0);
+
+const generatedReviewsForSlug = (
+  slug: string,
+  displayName: string,
+  profileType: "talent" | "hiring"
+): BackendProfileReviewItem[] => {
+  if (noReviewProfileSlugs.has(slug)) return [];
+  const seed = seedForSlug(slug);
+  const ratings = generatedReviewPatterns[seed % generatedReviewPatterns.length];
+  const bodies = generatedReviewBodies[profileType];
+  const profileLabel = displayName || titleCase(slug);
+
+  return ratings.map((rating, index) =>
+    reviewItem(`${slug}-generated-review-${index + 1}`, {
+      reviewer_name: generatedReviewerNames[(seed + index) % generatedReviewerNames.length],
+      reviewer_role: profileType === "talent" ? "Hiring team" : "Creator talent",
+      relationship_label: profileType === "talent" ? "Verified client" : "Verified collaboration",
+      rating,
+      body: `${bodies[(seed + index) % bodies.length]} ${profileLabel} kept the collaboration grounded and easy to evaluate.`,
+      created_at: `2026-${String(Math.max(1, 5 - (index % 5))).padStart(2, "0")}-${String(10 + index).padStart(2, "0")}T10:00:00.000Z`,
+      verified: true,
+    })
+  );
+};
+
+const mockReviewsForProfile = (
+  slug: string,
+  displayName: string,
+  profileType: "talent" | "hiring"
+) => mockReviewsBySlug[slug] || generatedReviewsForSlug(slug, displayName, profileType);
+
 const titleCase = (value?: string | null) =>
   value
     ? value
@@ -245,23 +313,64 @@ const portfolioItem = (
   const role = listing.primary_role || listing.roles[0] || "Talent";
   const platform = listing.platforms[index % Math.max(listing.platforms.length, 1)] || "YouTube";
   const tools = listing.tools.slice(0, 3);
+  const videoIds = ["dQw4w9WgXcQ", "3JZ_D3ELwOQ", "aqz-KE-bpKQ"];
+  const isVideoProject = platform === "YouTube" || listing.formats.some((item) => /short|long|video|reel/i.test(item));
+  const sourceUrl = isVideoProject
+    ? `https://www.youtube.com/watch?v=${videoIds[index % videoIds.length]}`
+    : `https://example.com/${slug}/work-${index + 1}`;
+  const sourceType: BackendPortfolioItem["source_type"] = isVideoProject ? "youtube" : "custom";
+  const contentGenres = uniq([...(listing.content_genres || []), index === 0 ? "Explainers" : index === 1 ? "Tutorials" : "Case studies"]).slice(0, 3);
+  const formats = uniq(listing.formats.length ? listing.formats : ["Long-form", "Shorts"]).slice(0, 4);
+  const whatIDid = `Handled the ${role.toLowerCase()} contribution for this ${listing.niche || "creator"} project: ${summary}`;
+  const timestampNotes = isVideoProject
+    ? [
+        {
+          id: `${slug}-sample-${index + 1}-hook`,
+          time: "0:12",
+          seconds: 12,
+          title: "Opening hook",
+          description: `Shaped the first beat so the ${listing.niche || "creator"} angle is clear immediately.`,
+        },
+        {
+          id: `${slug}-sample-${index + 1}-pacing`,
+          time: "0:42",
+          seconds: 42,
+          title: "Pacing reset",
+          description: `Tightened the middle section and clarified the ${role.toLowerCase()} choices.`,
+        },
+        {
+          id: `${slug}-sample-${index + 1}-packaging`,
+          time: "1:08",
+          seconds: 68,
+          title: "Packaging moment",
+          description: "Highlighted the section most useful for titles, thumbnails, and repeat viewing.",
+        },
+      ]
+    : [];
 
   return {
     id: `${slug}-sample-${index + 1}`,
     user_id: listing.owner_user_id,
     title,
-    source_type: "custom",
-    source_url: `https://example.com/${slug}/work-${index + 1}`,
+    source_type: sourceType,
+    source_url: sourceUrl,
     role_id: null,
     role_name: role,
     role,
     user_role_in_project: role,
     description: summary,
     contribution_summary: summary,
+    what_i_did: whatIDid,
+    contribution_highlights: [
+      `Planned the ${formats[0] || "content"} structure`,
+      `Handled ${role.toLowerCase()} delivery`,
+      `Documented repeatable decisions for the team`,
+    ],
+    timestamp_notes: timestampNotes,
     timeframe: "now",
     media_url: null,
     metrics: null,
-    youtube_url: null,
+    youtube_url: isVideoProject ? sourceUrl : null,
     thumbnail_url: null,
     thumbnail_options: [],
     channel_name: platform,
@@ -271,10 +380,15 @@ const portfolioItem = (
     published_at: null,
     duration: null,
     retention_percent: null,
-    links: [`https://example.com/${slug}/work-${index + 1}`],
+    links: [sourceUrl],
     tags: uniq([listing.niche, ...listing.formats, ...listing.platforms]).slice(0, 5),
     contribution_tags: uniq([role, listing.niche, ...listing.formats]).slice(0, 4),
     tools,
+    content_niches: uniq([listing.niche]).filter(Boolean),
+    content_genres: contentGenres,
+    platforms: uniq(listing.platforms.length ? listing.platforms : [platform]).slice(0, 4),
+    formats,
+    results: index === 0 ? ["18K views", "Delivered in 5 days"] : index === 1 ? ["12 assets delivered"] : ["Repeatable workflow"],
     public_metrics: {},
     manual_metrics: {},
     verification_status: "manual",
@@ -294,7 +408,7 @@ const portfolioFor = (listing: BackendTalentListing) => {
   const niche = listing.niche || "creator-led media";
   const format = listing.formats[0] || "content";
 
-  return [
+  const items = [
     portfolioItem(
       listing,
       0,
@@ -314,6 +428,21 @@ const portfolioFor = (listing: BackendTalentListing) => {
       `Repeatable process, tools, and delivery rhythm for hiring teams evaluating fit.`
     ),
   ];
+
+  const targetCount = Math.max(items.length, listing.portfolio_item_ids?.length || 0);
+  while (items.length < targetCount) {
+    const index = items.length;
+    items.push(
+      portfolioItem(
+        listing,
+        index,
+        `${titleCase(role)} case study ${index + 1}`,
+        `A selected ${format.toLowerCase()} portfolio project showing repeatable ${role.toLowerCase()} execution for ${niche}.`
+      )
+    );
+  }
+
+  return items;
 };
 
 const makeExperienceEntry = (
@@ -812,7 +941,7 @@ export const buildMockPublicTalentProfileFromListing = (
   const normalizedSlug = ownerSlug(listing);
   const portfolio = portfolioFor(listing);
   const experience = experienceFor(listing);
-  const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
+  const reviewItems = mockReviewsForProfile(normalizedSlug, displayName(listing), "talent");
   const reviews = reviewSummary(reviewItems);
   const role = listing.primary_role || listing.roles[0] || "Talent";
   const platforms = uniq(listing.platforms);
@@ -918,16 +1047,17 @@ export const getMockPublicTalentProfile = (slug: string): BackendPublicProfileRe
     const activeJobs = jobsForProfile.map(publicJobItem);
     const pastSourceJobs = jobsForProfile.length > 1 ? jobsForProfile.slice(0, 2) : [firstJob, firstJob];
     const pastJobs = pastSourceJobs.map((job, index) => pastHiringJobItem(job, index));
-    const reviewItems = mockReviewsBySlug[normalizedSlug] || [];
-    const reviews = reviewSummary(reviewItems);
     const roleNames = uniq(jobsForProfile.map((job) => job.category));
     const tools = uniq(jobsForProfile.flatMap((job) => job.tags || []));
     const isAgencyProfile = jobsForProfile.some((job) => job.agencyProfileSlug === normalizedSlug);
     const agencyDisplayName = firstJob.managedByAgencyName || titleCase(normalizedSlug);
+    const profileDisplayName = isAgencyProfile ? agencyDisplayName : firstJob.channel.name || titleCase(normalizedSlug);
+    const reviewItems = mockReviewsForProfile(normalizedSlug, profileDisplayName, "hiring");
+    const reviews = reviewSummary(reviewItems);
 
     return {
       username: normalizedSlug,
-      display_name: isAgencyProfile ? agencyDisplayName : firstJob.channel.name || titleCase(normalizedSlug),
+      display_name: profileDisplayName,
       headline: isAgencyProfile ? "Creator agency hiring for creator-led channels" : "Creator-led hiring for content roles",
       bio: isAgencyProfile
         ? "We hire for creator-led channels and coordinate recurring freelance support across editing, thumbnails, and channel operations."

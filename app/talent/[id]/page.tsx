@@ -3,83 +3,41 @@ import { getServerSession } from "next-auth";
 import TalentListingActionsClient from "../../../components/TalentListingActionsClient";
 import OwnerListingControlsClient from "../../../components/OwnerListingControlsClient";
 import TalentHero from "../../../components/talent-details/TalentHero";
-import { Section, StateCard, TagPill } from "../../../components/ui";
+import TalentDescriptionSections from "../../../components/talent-details/TalentDescriptionSections";
+import { StateCard } from "../../../components/ui";
 import { authOptions } from "../../../lib/auth";
 import {
   canUseLocalMockFallback,
+  getPublicProfile,
   getTalentListing,
   listPortfolioByUserId,
   type BackendPortfolioItem,
   type BackendTalentListing,
 } from "../../../lib/backendClient";
+import { getMarketplaceDataSourceState } from "../../../lib/devDataSource.server";
+import type { MarketplaceDataSourceState } from "../../../lib/devDataSource";
+import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
 import { MOCK_TALENT_LISTINGS } from "../../../lib/mockTalentListings";
 import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
-import { formatTalentExperience } from "../../../lib/talentListing";
+import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
+import { formatTalentListingExperience } from "../../../lib/talentListing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const TITLE_SCALE = 0.58;
 
-type WorkSample = {
-  id: string;
-  title: string;
-  role?: string;
-  platform?: string;
-  note?: string;
-  href?: string;
-  thumbnailUrl?: string | null;
-};
-
-const MOCK_WORK_SAMPLES: Record<string, WorkSample[]> = {
+const mockPortfolioTitles: Record<string, string[]> = {
   "mock-talent-retention-editor": [
-    {
-      id: "retention-1",
-      title: "Education channel retention edit",
-      role: "Editor",
-      platform: "YouTube",
-      note: "Long-form pacing, hooks, and section resets.",
-    },
-    {
-      id: "retention-2",
-      title: "Finance explainer cleanup",
-      role: "Editor",
-      platform: "YouTube",
-      note: "Story structure, B-roll rhythm, and sound cleanup.",
-    },
-    {
-      id: "retention-3",
-      title: "Founder story cutdown",
-      role: "Editor",
-      platform: "YouTube",
-      note: "Narrative tightening and intro restructuring.",
-    },
+    "Education channel retention edit",
+    "Finance explainer cleanup",
+    "Founder story cutdown",
   ],
   "mock-talent-thumbnail-designer": [
-    {
-      id: "thumbnail-1",
-      title: "Tech launch thumbnail system",
-      role: "Thumbnail designer",
-      platform: "YouTube",
-      note: "CTR-focused concepts and A/B variants.",
-    },
-    {
-      id: "thumbnail-2",
-      title: "Finance explainer packaging",
-      role: "Thumbnail designer",
-      platform: "YouTube",
-      note: "High-contrast visual hierarchy and title framing.",
-    },
+    "Tech launch thumbnail system",
+    "Finance explainer packaging",
   ],
-  "mock-talent-channel-manager": [
-    {
-      id: "channel-1",
-      title: "Weekly upload operations",
-      role: "Channel manager",
-      platform: "YouTube",
-      note: "Upload QA, analytics review, and content calendar setup.",
-    },
-  ],
+  "mock-talent-channel-manager": ["Weekly upload operations"],
 };
 
 const titleCase = (value?: string | null) =>
@@ -189,38 +147,121 @@ const formatTalentPostedLabel = (value?: string | null) => {
   return `${years} year${years === 1 ? "" : "s"} ago`;
 };
 
-async function getListing(id: string) {
+async function getListing(id: string, dataSource: MarketplaceDataSourceState) {
+  if (dataSource.source === "mock") {
+    return MOCK_TALENT_LISTINGS.find((item) => item.id === id) || null;
+  }
+
   const backendListing = await getTalentListing(id).catch(() => null);
   if (backendListing) return backendListing;
-  if (!canUseLocalMockFallback()) return null;
+  if (dataSource.overrideSource === "backend" || !canUseLocalMockFallback()) return null;
   return MOCK_TALENT_LISTINGS.find((item) => item.id === id) || null;
 }
 
-async function getWorkSamples(listing: BackendTalentListing): Promise<WorkSample[]> {
-  const mockSamples = MOCK_WORK_SAMPLES[listing.id];
-  if (canUseLocalMockFallback() && mockSamples?.length) return mockSamples;
+async function getRelevantPortfolioItems(
+  listing: BackendTalentListing,
+  dataSource: MarketplaceDataSourceState
+): Promise<BackendPortfolioItem[]> {
+  if (dataSource.source === "mock" || dataSource.overrideSource !== "backend") {
+    return mockPortfolioItemsFor(listing);
+  }
 
   const response = await listPortfolioByUserId(listing.owner_user_id).catch(() => ({ items: [] }));
   const publicItems = response.items.filter((item) => item.is_public && item.publish_status !== "draft");
-  const selectedIds = new Set(listing.portfolio_item_ids);
-  const selectedItems = selectedIds.size
-    ? publicItems.filter((item) => selectedIds.has(item.id))
-    : publicItems.slice(0, 4);
+  const selectedIds = listing.portfolio_item_ids || [];
+  if (!selectedIds.length) return [];
 
-  return selectedItems.slice(0, 6).map(portfolioItemToWorkSample);
+  const byId = new Map(publicItems.map((item) => [item.id, item]));
+  return selectedIds.map((id) => byId.get(id)).filter((item): item is BackendPortfolioItem => Boolean(item));
 }
 
-function portfolioItemToWorkSample(item: BackendPortfolioItem): WorkSample {
-  const platform = titleCase(item.source_type || undefined) || item.channel_name || "Portfolio";
-  return {
-    id: item.id,
-    title: item.title,
-    role: item.role_name || item.role || item.user_role_in_project || undefined,
-    platform,
-    note: item.contribution_summary || item.description || undefined,
-    href: item.source_url || item.youtube_url || item.media_url || item.links?.[0] || undefined,
-    thumbnailUrl: item.thumbnail_url || null,
-  };
+function mockPortfolioItemsFor(listing: BackendTalentListing): BackendPortfolioItem[] {
+  const ids = listing.portfolio_item_ids || [];
+  if (!ids.length) return [];
+
+  const titles = mockPortfolioTitles[listing.id] || [];
+  const role = listing.primary_role || listing.roles[0] || "Creator talent";
+  const niche = listing.niche || listing.content_niches?.[0] || "creator-led content";
+
+  return ids.map((id, index) => {
+    const platform = listing.platforms[index % Math.max(listing.platforms.length, 1)] || "YouTube";
+    const format = listing.formats[index % Math.max(listing.formats.length, 1)] || "project";
+    const title = titles[index] || `${titleCase(role)} sample for ${niche}`;
+    const summary =
+      index === 0
+        ? `A focused ${format.toLowerCase()} project showing ${role.toLowerCase()} work for ${niche}.`
+        : `Packaging, pacing, and execution for a creator-led ${platform} workflow.`;
+    const videoUrl = `https://www.youtube.com/watch?v=${index === 0 ? "dQw4w9WgXcQ" : index === 1 ? "3JZ_D3ELwOQ" : "aqz-KE-bpKQ"}`;
+
+    return {
+      id,
+      user_id: listing.owner_user_id,
+      title,
+      source_type: "youtube",
+      source_url: videoUrl,
+      role_id: null,
+      role_name: role,
+      role,
+      user_role_in_project: role,
+      description: summary,
+      contribution_summary: summary,
+      what_i_did: `Handled the ${role.toLowerCase()} contribution for this ${niche} project: ${summary}`,
+      contribution_highlights: [
+        `Mapped the ${format.toLowerCase()} structure`,
+        `Handled ${role.toLowerCase()} execution`,
+        `Prepared reusable notes for similar ${platform} work`,
+      ],
+      timestamp_notes: [
+        {
+          id: `${id}-hook`,
+          time: "0:12",
+          seconds: 12,
+          title: "Opening hook",
+          description: "Reworked the first beat so the value proposition lands quickly.",
+        },
+        {
+          id: `${id}-pacing`,
+          time: "0:42",
+          seconds: 42,
+          title: "Pacing reset",
+          description: "Tightened the mid-section and made the edit easier to scan.",
+        },
+      ],
+      timeframe: "now",
+      media_url: videoUrl,
+      metrics: null,
+      youtube_url: videoUrl,
+      thumbnail_url: `https://picsum.photos/seed/${encodeURIComponent(id)}/760/428`,
+      thumbnail_options: [],
+      channel_name: platform,
+      channel_id: null,
+      views: index === 0 ? 18000 : index === 1 ? 9200 : 5400,
+      published_date: null,
+      published_at: null,
+      duration: null,
+      retention_percent: null,
+      links: [videoUrl],
+      tags: uniq([listing.niche, ...listing.formats, ...listing.platforms]).slice(0, 5),
+      contribution_tags: uniq([role, listing.niche, ...listing.formats]).slice(0, 4),
+      tools: listing.tools.slice(0, 4),
+      content_niches: uniq([niche, ...(listing.content_niches || [])]).slice(0, 4),
+      content_genres: uniq(listing.content_genres || []).slice(0, 4),
+      platforms: uniq(listing.platforms.length ? listing.platforms : [platform]).slice(0, 4),
+      formats: uniq(listing.formats.length ? listing.formats : [format]).slice(0, 4),
+      results: index === 0 ? ["18K views", "Delivered in 5 days"] : ["Reusable workflow"],
+      public_metrics: {},
+      manual_metrics: {},
+      verification_status: "manual",
+      visibility: "public",
+      publish_status: "published",
+      portfolio_status: "now",
+      is_featured: index === 0,
+      status: "now",
+      is_public: true,
+      created_at: listing.created_at,
+      updated_at: listing.updated_at,
+    };
+  });
 }
 
 function servicesFor(listing: BackendTalentListing) {
@@ -242,12 +283,38 @@ function servicesFor(listing: BackendTalentListing) {
 function aboutFor(listing: BackendTalentListing) {
   if (listing.description?.trim()) return listing.description.trim();
   const role = listing.primary_role || listing.roles[0] || "talent";
-  const context = uniq([listing.niche, ...listing.platforms, ...listing.formats]).slice(0, 3).join(", ");
+  const context = uniq([
+    ...(listing.content_niches || []),
+    ...(listing.content_genres || []),
+    listing.niche,
+    ...listing.platforms,
+    ...listing.formats,
+  ]).slice(0, 3).join(", ");
   return `I help hiring teams with ${role.toLowerCase()} work${context ? ` across ${context}` : ""}.`;
 }
 
 function metadataFor(listing: BackendTalentListing) {
   return uniq([listing.primary_role || listing.roles[0], listing.location, listing.timezone]).join(" · ");
+}
+
+async function ratingFor(
+  publicProfileSlug: string | null,
+  dataSource: MarketplaceDataSourceState
+) {
+  if (!publicProfileSlug) return null;
+  const href = buildProfileReviewsHref(publicProfileSlug, "talent");
+
+  if (dataSource.source === "mock") {
+    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href);
+  }
+
+  const profile = await getPublicProfile(publicProfileSlug).catch(() => null);
+  if (profile) return profileRatingSummaryFromProfile(profile, href);
+
+  if (dataSource.overrideSource !== "backend" && canUseLocalMockFallback()) {
+    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href);
+  }
+  return null;
 }
 
 function collaborationRows(listing: BackendTalentListing) {
@@ -264,22 +331,30 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const listing = await getListing(String(id));
+  const dataSource = await getMarketplaceDataSourceState();
+  const listing = await getListing(String(id), dataSource);
   if (!listing) return { title: "Talent listing not found | CreatorJobs" };
+  const description = [displayName(listing), listing.primary_role || listing.roles[0], listing.location, rateLabel(listing)]
+    .filter(Boolean)
+    .join(" · ");
+  const image = listing.owner_avatar_url || undefined;
   return {
     title: `${listing.title} | CreatorJobs`,
-    description: [displayName(listing), listing.primary_role || listing.roles[0], listing.location, rateLabel(listing)]
-      .filter(Boolean)
-      .join(" · "),
+    description,
     alternates: {
       canonical: `/talent/${encodeURIComponent(listing.id)}`,
     },
     openGraph: {
       title: `${listing.title} | CreatorJobs`,
-      description: [displayName(listing), listing.primary_role || listing.roles[0], listing.location, rateLabel(listing)]
-        .filter(Boolean)
-        .join(" · "),
+      description,
+      siteName: "CreatorJobs",
       type: "article",
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title: `${listing.title} | CreatorJobs`,
+      description,
     },
   };
 }
@@ -290,7 +365,8 @@ export default async function TalentListingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const listing = await getListing(String(id));
+  const dataSource = await getMarketplaceDataSourceState();
+  const listing = await getListing(String(id), dataSource);
   const session = await getServerSession(authOptions);
 
   if (!listing) {
@@ -312,32 +388,42 @@ export default async function TalentListingPage({
   const name = displayName(listing);
   const publicProfileSlug = (listing.owner_username || publicProfileFallbackSlug(listing.owner_display_name || listing.id)).trim();
   const publicProfileHref = publicProfileSlug ? `/u/${encodeURIComponent(publicProfileSlug)}?view=talent` : null;
+  const rating = await ratingFor(publicProfileSlug || null, dataSource);
+  const publicProfilePortfolioHref = publicProfileSlug
+    ? `/u/${encodeURIComponent(publicProfileSlug)}?view=talent&tab=portfolio#portfolio`
+    : null;
   const role = listing.primary_role || listing.roles[0] || "Talent";
   const meta = metadataFor(listing);
   const postedText = `Posted ${formatTalentPostedLabel(listing.created_at)}`;
-  const workSamples = await getWorkSamples(listing);
-  const sampleCount = workSamples.length || listing.portfolio_item_ids.length;
-  const bestFitTags = uniq([...listing.platforms, ...listing.formats, listing.niche]).slice(0, 12);
+  const portfolioItems = await getRelevantPortfolioItems(listing, dataSource);
+  const creatorContextRows = [
+    { label: "Content niches", values: uniq(listing.content_niches || []) },
+    { label: "Genres", values: uniq(listing.content_genres || []) },
+    { label: "Formats offered", values: uniq(listing.formats || []) },
+  ].filter((row) => row.values.length > 0);
   const tools = uniq(listing.tools);
-  const tags = uniq([...listing.tools, ...listing.platforms, listing.niche, ...listing.formats, ...listing.roles]).slice(0, 14);
+  const tags = uniq([
+    ...listing.platforms,
+    ...listing.roles,
+  ]).slice(0, 14);
   const services = servicesFor(listing);
   const rows = collaborationRows(listing);
   const isOwner = Boolean(session?.backendUserId && listing.owner_user_id === session.backendUserId);
   const topStats = [
     { icon: "cash-stack" as const, label: "Rate", value: rateLabel(listing) },
-    { icon: "cap" as const, label: "Experience", value: formatTalentExperience(listing.experience_level) || "Not specified" },
+    { icon: "cap" as const, label: "Experience", value: formatTalentListingExperience(listing) || "Not specified" },
     { icon: "pin" as const, label: "Location", value: listing.location || titleCase(listing.work_mode) || "Remote" },
-    { icon: "image" as const, label: "Work samples", value: sampleCount ? String(sampleCount) : "0" },
   ];
 
   return (
     <main className="min-h-screen bg-[#0b0b0f] px-4 py-8 text-white sm:px-6">
-      <div className="mx-auto grid max-w-6xl items-start gap-6 lg:grid-cols-[1fr_420px]">
-        <div className="space-y-6">
+      <div className="mx-auto grid w-full max-w-6xl min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+        <div className="min-w-0 space-y-6">
           <TalentHero
             title={listing.title}
             name={name}
             profileHref={publicProfileHref}
+            rating={rating}
             avatarUrl={listing.owner_avatar_url}
             initials={initials(name)}
             metaLine={meta || role}
@@ -346,65 +432,17 @@ export default async function TalentListingPage({
             stats={topStats}
           />
 
-          <Section title="About this talent" bodyClassName="mt-3 text-sm leading-relaxed text-white/80">
-            <p className="whitespace-pre-line">{aboutFor(listing)}</p>
-          </Section>
-
-          {services.length ? (
-            <Section title="Services offered" bodyClassName="mt-3 text-sm leading-relaxed text-white/80">
-              <ul className="list-disc space-y-2 pl-5">
-                {services.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </Section>
-          ) : null}
-
-          {bestFitTags.length ? (
-            <Section title="Best-fit content" bodyClassName="mt-3">
-              <TagList values={bestFitTags} />
-            </Section>
-          ) : null}
-
-          <Section title="Work samples" bodyClassName="mt-4">
-            {workSamples.length ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {workSamples.map((sample, index) => (
-                  <WorkSampleCard key={sample.id || `${sample.title}-${index}`} sample={sample} index={index} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-white/58">No work samples added yet.</p>
-            )}
-          </Section>
-
-          {tools.length ? (
-            <Section title="Tools" bodyClassName="mt-3">
-              <TagList values={tools} />
-            </Section>
-          ) : null}
-
-          {rows.length ? (
-            <Section title="Collaboration preferences" bodyClassName="mt-4">
-              <dl className="grid gap-4 sm:grid-cols-2">
-                {rows.map((row) => (
-                  <div key={row.label}>
-                    <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-white/38">{row.label}</dt>
-                    <dd className="mt-2 text-sm leading-6 text-white/76">{row.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Section>
-          ) : null}
-
-          {tags.length ? (
-            <Section title="Tags" bodyClassName="mt-3">
-              <TagList values={tags} />
-            </Section>
-          ) : null}
+          <TalentDescriptionSections
+            about={aboutFor(listing)}
+            services={services}
+            rows={rows}
+            portfolioItems={portfolioItems}
+            fullPortfolioHref={publicProfilePortfolioHref}
+            tags={tags}
+          />
         </div>
 
-        <aside className="lg:sticky lg:top-20">
+        <aside className="min-w-0 lg:sticky lg:top-20">
           <div className="space-y-6">
             {isOwner ? (
               <OwnerListingControlsClient
@@ -418,7 +456,11 @@ export default async function TalentListingPage({
             {!isOwner ? (
               <TalentListingActionsClient
                 listingId={listing.id}
+                talentName={name}
                 views={listing.views}
+                requirementKeys={listing.first_message_requirements || []}
+                metadataRows={creatorContextRows}
+                tools={tools}
               />
             ) : null}
           </div>
@@ -426,56 +468,4 @@ export default async function TalentListingPage({
       </div>
     </main>
   );
-}
-
-function TagList({ values }: { values: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {values.map((value) => (
-        <TagPill key={value}>{value}</TagPill>
-      ))}
-    </div>
-  );
-}
-
-function WorkSampleCard({ sample, index }: { sample: WorkSample; index: number }) {
-  const inner = (
-    <>
-      <div className="relative aspect-video w-full bg-black/30">
-        {sample.thumbnailUrl ? (
-          <div
-            className="h-full w-full bg-cover bg-center opacity-90 transition-opacity group-hover:opacity-100"
-            style={{ backgroundImage: `url(${sample.thumbnailUrl})` }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-sm text-white/42">
-            Work sample {index + 1}
-          </div>
-        )}
-      </div>
-      <div className="px-4 py-3">
-        <div className="line-clamp-1 text-sm font-semibold text-white/90">{sample.title}</div>
-        <div className="mt-1 line-clamp-1 text-xs text-white/55">
-          {[sample.role, sample.platform].filter(Boolean).join(" · ") || "Portfolio"}
-        </div>
-        {sample.note ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/48">{sample.note}</p> : null}
-      </div>
-    </>
-  );
-
-  const className = [
-    "group block overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.06]",
-    "shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)] transition-all duration-150",
-    sample.href ? "cursor-pointer hover:-translate-y-[1px] hover:border-white/20" : "",
-  ].join(" ");
-
-  if (sample.href) {
-    return (
-      <a href={sample.href} target="_blank" rel="noopener noreferrer" className={className}>
-        {inner}
-      </a>
-    );
-  }
-
-  return <div className={className}>{inner}</div>;
 }

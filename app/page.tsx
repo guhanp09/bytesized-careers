@@ -1,53 +1,58 @@
 import Link from "next/link";
 
+import { HomeBetaBanner } from "../components/marketplace/HomeBetaBanner";
+import { HomeBrowseCategories } from "../components/marketplace/HomeBrowseCategories";
 import { HomeClosingCta } from "../components/marketplace/HomeClosingCta";
+import { HomeComparison } from "../components/marketplace/HomeComparison";
+import { HomeFaq } from "../components/marketplace/HomeFaq";
+import { HomeHowItWorks } from "../components/marketplace/HomeHowItWorks";
+import { HomeJobAlerts } from "../components/marketplace/HomeJobAlerts";
 import { HomeMarketSignalHero } from "../components/marketplace/HomeMarketSignalHero";
 import { HomeRolesMarquee } from "../components/marketplace/HomeRolesMarquee";
+import { HomeWhySection } from "../components/marketplace/HomeWhySection";
 import { JobCard } from "../components/JobCard";
 import TalentCard from "../components/TalentCard";
 import { Reveal } from "../components/ui";
 import {
   canUseLocalMockFallback,
-  isLocalMocksEnabled,
   listJobsWithMeta,
   listTalentListings,
 } from "../lib/backendClient";
+import { getMarketplaceDataSourceState } from "../lib/devDataSource.server";
+import { JOBS } from "../lib/jobs";
 import { filterMockTalentListings } from "../lib/mockTalentListings";
-import { listJobs as listJobsFromLocal } from "../lib/repositories/jobRepository";
 import { Job } from "../lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Home() {
-  const usingLocal = isLocalMocksEnabled();
-  const canUseMocks = canUseLocalMockFallback();
+  const dataSource = await getMarketplaceDataSourceState();
+  const usingMock = dataSource.source === "mock";
+  const canUseMocks = canUseLocalMockFallback() && dataSource.overrideSource !== "backend";
   let jobs: Job[] = [];
 
-  if (usingLocal) {
-    jobs = await listJobsFromLocal();
+  if (usingMock) {
+    jobs = JOBS;
   } else {
     try {
       const response = await listJobsWithMeta({ status: "published", limit: 8, offset: 0 });
       jobs = response.items;
     } catch {
-      jobs = canUseMocks ? await listJobsFromLocal() : [];
+      jobs = canUseMocks ? JOBS : [];
     }
   }
 
-  const talent = await listTalentListings({ status: "published", limit: 6 }).catch(() => {
-    if (!canUseMocks) {
-      return { items: [], total: 0, limit: 6, offset: 0 };
-    }
-    const items = filterMockTalentListings({}).slice(0, 6);
-    return { items, total: items.length, limit: 6, offset: 0 };
-  });
-  const talentItems =
-    canUseMocks && talent.total === 0 && talent.items.length === 0
-      ? filterMockTalentListings({}).slice(0, 6)
-      : talent.items.length || usingLocal
-        ? talent.items
-        : filterMockTalentListings({}).slice(0, 6);
+  const talentItems = usingMock
+    ? filterMockTalentListings({}).slice(0, 6)
+    : await listTalentListings({ status: "published", limit: 6 })
+        .then((response) => {
+          if (canUseMocks && response.total === 0 && response.items.length === 0) {
+            return filterMockTalentListings({}).slice(0, 6);
+          }
+          return response.items;
+        })
+        .catch(() => (canUseMocks ? filterMockTalentListings({}).slice(0, 6) : []));
   const previewJobs = jobs.slice(0, 3);
   const previewTalent = talentItems.slice(0, 3);
 
@@ -55,9 +60,16 @@ export default async function Home() {
     <main className="min-h-[calc(100vh-56px)] overflow-hidden bg-[#0b0b0f] px-4 py-7 text-white sm:px-6 lg:px-8">
       <section className="mx-auto w-full max-w-[1480px] space-y-16">
         <div className="space-y-8">
+          <HomeBetaBanner />
           <HomeMarketSignalHero />
           <HomeRolesMarquee />
         </div>
+
+        <HomeWhySection />
+
+        <HomeHowItWorks />
+
+        <HomeBrowseCategories />
 
         <section className="home-rise-delay-jobs space-y-5">
           <Reveal>
@@ -134,6 +146,12 @@ export default async function Home() {
             </div>
           )}
         </section>
+
+        <HomeComparison />
+
+        <HomeJobAlerts />
+
+        <HomeFaq />
 
         <Reveal>
           <HomeClosingCta />

@@ -7,8 +7,13 @@ import { formatCompactNumber } from "../../lib/format";
 import { Icon } from "../Icons";
 import { IconTooltip, Section } from "../ui";
 
-const APPLY_NOTE_MAX_LENGTH = 600;
 const EMPTY_REVIEW_STARS = "☆☆☆☆☆";
+
+// Secondary action buttons (Save / Share): clearly pressable — filled surface
+// with a subtle lift + shadow — but deliberately subordinate to the solid white
+// primary (Apply) and visually distinct from the flat, passive stat chips.
+const SECONDARY_ACTION_CLASS =
+  "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] text-sm font-semibold text-white/85 shadow-[0_10px_26px_-20px_rgba(0,0,0,0.95)] transition-all duration-150 hover:-translate-y-[1px] hover:border-white/25 hover:bg-white/[0.13] hover:text-white active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-60";
 
 const cleanText = (value?: string | null) => {
   const text = value?.trim();
@@ -78,8 +83,7 @@ function TileShell({ children, className = "" }: { children: React.ReactNode; cl
     <div
       className={[
         "rounded-2xl",
-        "bg-white/[0.045] border border-white/[0.08]",
-        "shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]",
+        "bg-white/[0.03] border border-white/[0.06]",
         "px-4 py-3",
         "select-none",
         className,
@@ -205,6 +209,51 @@ function PostedByCard({ job }: { job: Job }) {
   );
 }
 
+function CreatorContextCard({ job }: { job: Job }) {
+  const groups = [
+    { label: "Content niches", items: job.contentNiches ?? [] },
+    { label: "Genres", items: job.contentGenres ?? [] },
+    { label: "Formats hired for", items: job.formatsHiredFor ?? [] },
+  ]
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.trim().length > 0),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  if (!groups.length) {
+    return null;
+  }
+
+  return (
+    <section
+      data-testid="job-creator-context-card"
+      aria-label="Structured job metadata"
+      className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.06] p-5 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]"
+    >
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <div key={group.label} className="min-w-0 space-y-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">
+              {group.label}
+            </div>
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {group.items.map((item) => (
+                <span
+                  key={`${group.label}-${item}`}
+                  className="max-w-full break-words rounded-full border border-white/[0.09] bg-white/[0.04] px-3 py-1.5 text-xs font-medium leading-relaxed text-white/64"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function JobActionsPanel({
   job,
   onShare,
@@ -216,9 +265,6 @@ export default function JobActionsPanel({
   applyError = null,
   saveError = null,
   reportState = "idle",
-  applyNote,
-  onApplyNoteChange,
-  secondaryBtnBrightness,
   shareState = "idle",
   isOwner = false,
 }: {
@@ -232,9 +278,6 @@ export default function JobActionsPanel({
   applyError?: string | null;
   saveError?: string | null;
   reportState?: "idle" | "sending" | "sent" | "error";
-  applyNote: string;
-  onApplyNoteChange: (value: string) => void;
-  secondaryBtnBrightness: number;
   shareState?: "idle" | "copied";
   isOwner?: boolean;
 }) {
@@ -248,31 +291,16 @@ export default function JobActionsPanel({
         data-testid="job-apply-panel"
         className="rounded-3xl bg-white/[0.06] border border-white/[0.08] p-6 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]"
       >
-        <div
-          className="relative rounded-2xl border border-white/10 bg-white/[0.045] transition focus-within:ring-2 focus-within:ring-white/15"
-          data-testid="proposal-textarea-frame"
-        >
-          <textarea
-            value={applyNote}
-            onChange={(event) => onApplyNoteChange(event.target.value)}
-            maxLength={APPLY_NOTE_MAX_LENGTH}
-            className="min-h-[112px] w-full resize-none bg-transparent px-3 pb-8 pt-2 text-sm leading-6 text-white placeholder:text-white/35 focus:outline-none"
-            placeholder="Add a short proposal or context for the hiring team."
-          />
-          <span className="pointer-events-none absolute bottom-2.5 right-3 text-xs font-medium tabular-nums text-white/38">
-            {applyNote.length}/{APPLY_NOTE_MAX_LENGTH}
-          </span>
-        </div>
-
         <button
           className={[
-            "mt-3 w-full h-14 cursor-pointer rounded-2xl bg-white text-black font-extrabold text-lg",
+            "w-full h-14 cursor-pointer rounded-2xl bg-white text-black font-extrabold text-lg",
             "shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)]",
             "transition-transform duration-150 hover:-translate-y-[1px] hover:bg-white/95",
             "active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65",
           ].join(" ")}
           onClick={onApply}
           disabled={applyState === "saving" || applyState === "sent"}
+          data-testid="job-apply-button"
         >
           <span className="inline-flex items-center justify-center gap-2">
             <Icon name="send" className="w-5 h-5" />
@@ -287,8 +315,7 @@ export default function JobActionsPanel({
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <button
-            className="h-10 cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl text-black text-sm font-semibold shadow-[0_14px_35px_-26px_rgba(0,0,0,0.95)] transition-transform duration-150 hover:-translate-y-[1px] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65"
-            style={{ backgroundColor: `rgba(255,255,255,${secondaryBtnBrightness})` }}
+            className={SECONDARY_ACTION_CLASS}
             onClick={onSave}
             disabled={saveState === "saving"}
           >
@@ -297,8 +324,7 @@ export default function JobActionsPanel({
           </button>
 
           <button
-            className="h-10 cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl text-black text-sm font-semibold shadow-[0_14px_35px_-26px_rgba(0,0,0,0.95)] transition-transform duration-150 hover:-translate-y-[1px] active:translate-y-0"
-            style={{ backgroundColor: `rgba(255,255,255,${secondaryBtnBrightness})` }}
+            className={SECONDARY_ACTION_CLASS}
             onClick={onShare}
           >
             <Icon name="share" className="w-4 h-4" />
@@ -319,6 +345,8 @@ export default function JobActionsPanel({
       )}
 
       <PostedByCard job={job} />
+
+      <CreatorContextCard job={job} />
 
       <div data-testid="job-safety-card">
         <Section title="Safety & expectations" bodyClassName="mt-3 text-sm text-white/80 leading-relaxed">

@@ -1,37 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CreatorJobs
 
-## Getting Started
+CreatorJobs is a creator-economy hiring marketplace: content creators and channels post
+**jobs**, freelance talent publish **talent listings**, and both sides browse, apply / express
+interest, manage those in a shared inbox, and get in-app notifications. It runs as a
+[Next.js](https://nextjs.org) frontend (App Router) with a standalone [FastAPI](https://fastapi.tiangolo.com)
+backend.
 
-First, run the frontend and backend together:
+> **Status:** free, pre-launch beta. No payments, and notification email delivery is mocked to an
+> outbox until a production domain + provider exist. See [docs/](#documentation) for readiness notes.
+
+## Quickstart
 
 ```bash
+# 1. Install frontend deps
+npm install
+
+# 2. Set up env (frontend). Copy the template and fill in values.
+cp .env.example .env.local
+
+# 3. Set up the backend (FastAPI, managed with uv). See backend/README.md for details.
+#    The dev scripts expect a virtualenv at backend/.venv.
+
+# 4. Run frontend + backend together (frontend :3000, backend :8000)
 npm run dev:all
+
+# 5. Seed demo marketplace data (jobs + talent listings) — backend must be running
+npm run seed
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-If you intentionally want the frontend only, run `npm run dev` and set
-`NEXT_PUBLIC_USE_LOCAL_MOCKS=true`. Otherwise backend-backed pages will fall
-back to local sample data when the FastAPI service is not running.
+Frontend-only mode: run `npm run dev` and set `NEXT_PUBLIC_USE_LOCAL_MOCKS=true`. Otherwise
+backend-backed pages fall back to local sample data when the FastAPI service is not running (in
+non-production only).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path | What lives there |
+| --- | --- |
+| `app/` | Next.js App Router routes (pages, layouts, route handlers, loading/error boundaries) |
+| `components/` | UI components (marketplace, job/talent details, post flows, `/you` hub, inbox) |
+| `lib/` | Frontend data access (`backendClient.ts`), drafts, opening-message, mock data, helpers |
+| `backend/` | FastAPI service: routers, models, schemas, services, Alembic migrations, pytest suite |
+| `tests/` | Playwright e2e (`tests/e2e/`) + Node unit tests (`tests/*.test.mjs`) |
+| `docs/` | Readiness audits, notifications architecture, roadmap, IA reference |
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command | Purpose |
+| --- | --- |
+| `npm run dev:all` | Run frontend (:3000) and backend (:8000) together |
+| `npm run dev` | Frontend only |
+| `npm run dev:backend` | Backend only (uvicorn, reload) |
+| `npm run seed` | Seed demo marketplace data via the dev-only seed endpoint |
+| `npm run build` | Production build of the frontend |
+| `npm run lint` | ESLint |
+| `npm run test:e2e` | Playwright end-to-end suite |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Testing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+# Type-check the frontend
+npx tsc --noEmit
 
-## Deploy on Vercel
+# Frontend e2e (Playwright)
+npm run test:e2e
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Frontend unit tests (Node's built-in runner; imports lib/*.ts directly)
+# Scope to *.test.mjs so the runner doesn't try to execute the Playwright e2e specs.
+node --test 'tests/*.test.mjs'
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Backend tests — APP_ENV=test is required, or ~30 tests fail on the auth rate limiter
+cd backend && APP_ENV=test .venv/bin/python -m pytest
+```
+
+## Documentation
+
+- [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) — what's needed to admit live users (infra, secrets, email).
+- [docs/BETA_LAUNCH_READINESS.md](docs/BETA_LAUNCH_READINESS.md) — beta data, copy rules, safety, and manual QA checklist.
+- [docs/PHASE_4A_LAUNCH_READINESS_AUDIT.md](docs/PHASE_4A_LAUNCH_READINESS_AUDIT.md) — env var + migration checklist.
+- [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) — the in-app notification pipeline + mocked email outbox.
+- [docs/POST_BETA_ROADMAP.md](docs/POST_BETA_ROADMAP.md) — intentionally deferred, post-beta work.
+- [docs/CREATORJOBS_INFORMATION_ARCHITECTURE.md](docs/CREATORJOBS_INFORMATION_ARCHITECTURE.md) — routes and IA.
+- [backend/README.md](backend/README.md) — backend setup (uv), migrations, and run instructions.
 
 ## Local OAuth Setup
 
@@ -68,9 +119,7 @@ GOOGLE_PLACES_API_KEY=your_key_here
 
 Without this key, local autocomplete still works from the built-in dataset. Adding `GOOGLE_PLACES_API_KEY` later switches the server-side autocomplete route to Google Places.
 
-## Optional External Backend
-
-This repo now includes a standalone FastAPI backend under `backend/`.
+## Backend Data Source Flags
 
 Frontend job data source is switchable via env flags:
 
@@ -86,7 +135,7 @@ Defaults:
 
 ## Auth Integration Notes
 
-Frontend auth now uses:
+Frontend auth uses:
 - NextAuth Google OAuth (`signIn("google")`)
 - NextAuth Credentials provider (`signIn("credentials")`) backed by FastAPI `/api/v1/auth/login`
 
@@ -105,4 +154,7 @@ Email/password registration + verification endpoints are provided by the backend
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/verify-email`
 
-Portfolio YouTube import uses the backend-only `YOUTUBE_API_KEY` variable. Do not expose that key with a `NEXT_PUBLIC_` prefix.
+During beta, notification email delivery is disabled (`EMAIL_DELIVERY_ENABLED=false`): notification
+emails are queued to an outbox and viewable via the dev inbox at `/dev/emails`. Auth emails (verify,
+reset) follow `EMAIL_MODE` (default `log`). Portfolio YouTube import uses the backend-only
+`YOUTUBE_API_KEY` variable — do not expose it with a `NEXT_PUBLIC_` prefix.

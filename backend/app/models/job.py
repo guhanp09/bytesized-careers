@@ -52,9 +52,18 @@ class Job(Base):
     about_channel: Mapped[str | None] = mapped_column(Text, nullable=True)
     responsibilities: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     requirements: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
+    # Keys (from the shared first-message requirements registry) that applicants
+    # must answer in their opening message. Empty list = no specific requirements.
+    application_requirements: Mapped[list[str]] = mapped_column(
+        json_list_type, nullable=False, default=list, server_default="[]"
+    )
     how_to_apply: Mapped[str | None] = mapped_column(Text, nullable=True)
     reference_videos: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     tags: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
+    languages: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
+    content_niches: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
+    content_genres: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
+    formats_hired_for: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
 
     youtube_channel_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

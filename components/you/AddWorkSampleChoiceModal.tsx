@@ -45,6 +45,11 @@ type AddWorkSampleChoiceModalProps = {
   onClose: () => void;
   onChoose: (action: WorkSampleAction) => void;
   onPreviewLink: (url: string) => Promise<BackendPortfolioLinkPreviewResponse>;
+  /**
+   * Raise the modal above another open modal (e.g. the job-application popup) so it
+   * stacks cleanly when launched in-flow. Default keeps the standalone /you z-index.
+   */
+  elevated?: boolean;
 };
 
 const normalizeWorkUrl = (value: string) => {
@@ -206,7 +211,7 @@ const URL_PLACEHOLDER_EXAMPLES = [
   "https://notion.site/...",
 ];
 
-export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewLink }: AddWorkSampleChoiceModalProps) {
+export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewLink, elevated = false }: AddWorkSampleChoiceModalProps) {
   const [workLink, setWorkLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fetchingPreview, setFetchingPreview] = useState(false);
@@ -295,7 +300,7 @@ export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewL
   };
 
   return (
-    <div className="ui-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+    <div className={`ui-modal-backdrop fixed inset-0 ${elevated ? "z-[70]" : "z-50"} flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm`}>
       <button
         type="button"
         className="absolute inset-0 cursor-default"

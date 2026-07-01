@@ -7,17 +7,20 @@ export default function MetaRow({
   icon,
   text,
   className = "",
+  truncate = false,
 }: {
-  icon: "briefcase" | "cap" | "pin" | "cash" | "cash-stack";
+  icon: "briefcase" | "cap" | "pin" | "cash" | "cash-stack" | "clock";
   text: string;
   className?: string;
+  /** Keep the row to a single line, eliding overflow. Off by default to preserve wrapping callers. */
+  truncate?: boolean;
 }) {
   return (
-    <div className={["flex items-center gap-2 text-sm", className].join(" ")}>
-      <span className="text-white/70">
+    <div className={["flex items-center gap-2 text-sm", truncate ? "min-w-0" : "", className].join(" ")}>
+      <span className="shrink-0 text-white/70">
         <Icon name={icon} className="w-4 h-4" />
       </span>
-      <span className="text-white/90 leading-snug">{text}</span>
+      <span className={["text-white/90 leading-snug", truncate ? "min-w-0 truncate" : ""].join(" ")}>{text}</span>
     </div>
   );
 }

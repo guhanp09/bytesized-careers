@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import type { Job } from "../../lib/types";
 import { BackendTalentListing, saveJob, saveTalentListing } from "../../lib/backendClient";
-import { formatTalentExperience } from "../../lib/talentListing";
+import { formatListingTitle } from "../../lib/displayText";
+import { jobDisplayChips } from "../../lib/jobCreatorContext";
+import { formatTalentListingExperience } from "../../lib/talentListing";
 import { Icon } from "../Icons";
 import { IconFact } from "../ui";
 
@@ -134,8 +136,9 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const href = `/jobs/${encodeURIComponent(String(job.id))}`;
+  const displayTitle = formatListingTitle(job.title);
   const meta = [job.budget, job.location, job.experience || job.contractType].filter(Boolean).join(" · ");
-  const tags = job.tags.slice(0, 2).join(" · ");
+  const tags = jobDisplayChips(job).slice(0, 2).join(" · ");
 
   const open = () => {
     router.push(href);
@@ -167,7 +170,7 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
         </div>
       </div>
 
-      <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{job.title}</h3>
+      <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{displayTitle}</h3>
 
       {meta ? <p className="mt-4 line-clamp-2 text-sm leading-6 text-white/58">{meta}</p> : null}
       {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-white/36">{tags}</p> : null}
@@ -218,12 +221,13 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const href = `/talent/${encodeURIComponent(item.id)}`;
+  const displayTitle = formatListingTitle(item.title);
   const publicProfileHref = item.owner_username ? `/u/${encodeURIComponent(item.owner_username)}?view=talent` : null;
   const name = displayName(item);
   const role = item.primary_role || item.roles[0] || "Content talent";
   const meta = [role, item.location || titleCase(item.work_mode) || "Remote", item.timezone].filter(Boolean).join(" · ");
   const tags = uniq([item.niche, ...item.platforms, ...item.tools]).slice(0, 3).join(" · ");
-  const experience = formatTalentExperience(item.experience_level);
+  const experience = formatTalentListingExperience(item);
   const detailFacts = [
     { icon: "cash-stack" as const, label: "Rate", value: talentRateLabel(item) },
     experience ? { icon: "cap" as const, label: "Experience", value: experience } : null,
@@ -287,7 +291,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
         </div>
       </div>
 
-      <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{item.title}</h3>
+      <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{displayTitle}</h3>
 
       {detailFacts.length ? (
         <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">

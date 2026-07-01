@@ -11,10 +11,13 @@ const unsafeSecretValues = new Set([
   "replace-me",
 ]);
 
-const isStrictProductionEnv = () =>
-  process.env.APP_ENV === "production" ||
-  process.env.NEXT_PUBLIC_APP_ENV === "production" ||
-  process.env.VERCEL_ENV === "production";
+const explicitAppEnv = () => process.env.APP_ENV || process.env.NEXT_PUBLIC_APP_ENV;
+
+const isStrictProductionEnv = () => {
+  const appEnv = explicitAppEnv();
+  if (appEnv) return appEnv === "production";
+  return process.env.VERCEL_ENV === "production";
+};
 
 const requireProductionEnv = () => {
   if (!isStrictProductionEnv()) return;

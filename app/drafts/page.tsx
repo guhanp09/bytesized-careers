@@ -14,7 +14,10 @@ export default async function DraftsPage() {
     return (
       <main className="min-h-[calc(100vh-56px)] bg-[#0b0b0f] px-4 py-10 text-white sm:px-6">
         <section className="mx-auto max-w-6xl space-y-6">
-          <PageHeader title="Drafts" description="Resume unfinished job and talent listings." />
+          <PageHeader
+            title="Drafts"
+            description="Resume unfinished job and talent listings — saved to your account and synced across devices."
+          />
           <StateCard
             icon="file"
             title="Sign in to open your drafts."

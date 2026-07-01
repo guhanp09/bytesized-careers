@@ -41,12 +41,17 @@ export const metadata: Metadata = {
 import Header from "../components/Header";
 import SmartTypingProvider from "../components/SmartTypingProvider";
 import AuthProvider from "../components/AuthProvider";
+import DevToolsPanel from "../components/dev/DevToolsPanel";
+import { isDevToolsAllowed } from "../lib/devTools";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Computed on the server: in production the panel is never rendered into the tree
+  // at all (not merely hidden), so the dev tooling cannot be reached in production.
+  const devToolsEnabled = isDevToolsAllowed();
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} bg-[#0b0b0f] text-white antialiased`}>
@@ -56,6 +61,7 @@ export default function RootLayout({
 
           {/* Content sits "under" the fixed header, and to the right of the fixed sidebar */}
           <div className="pl-20 pt-14">{children}</div>
+          {devToolsEnabled ? <DevToolsPanel /> : null}
         </AuthProvider>
       </body>
     </html>

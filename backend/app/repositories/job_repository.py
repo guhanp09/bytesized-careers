@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, func, select
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import HiringIdentity, Job
@@ -35,7 +35,19 @@ class JobRepository:
 
         if q:
             term = f"%{q.lower()}%"
-            query = query.where(func.lower(Job.title).like(term))
+            query = query.where(
+                or_(
+                    func.lower(Job.title).like(term),
+                    func.lower(Job.category).like(term),
+                    func.lower(Job.about_channel).like(term),
+                    func.lower(Job.platforms.cast(String)).like(term),
+                    func.lower(Job.tags.cast(String)).like(term),
+                    func.lower(Job.languages.cast(String)).like(term),
+                    func.lower(Job.content_niches.cast(String)).like(term),
+                    func.lower(Job.content_genres.cast(String)).like(term),
+                    func.lower(Job.formats_hired_for.cast(String)).like(term),
+                )
+            )
 
         if platform:
             bind = self.session.get_bind()

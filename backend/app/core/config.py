@@ -43,8 +43,12 @@ class Settings(BaseSettings):
 
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    # Beta posture: there is no app-level refresh for credentials users yet, so a
+    # short access-token TTL forced people to re-login (~hourly) mid-action on
+    # apply/save. Default to a 14-day window so beta sessions stay usable. Override
+    # via env and add refresh-token rotation before tightening this for scale.
     jwt_access_token_expires_minutes: int = Field(
-        default=60, alias="JWT_ACCESS_TOKEN_EXPIRES_MINUTES"
+        default=60 * 24 * 14, alias="JWT_ACCESS_TOKEN_EXPIRES_MINUTES"
     )
     jwt_refresh_token_expires_minutes: int = Field(
         default=60 * 24 * 30, alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES"

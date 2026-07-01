@@ -8,13 +8,14 @@ APPLICATION_STATUSES = (
     "hired",
     "rejected",
     "archived",
+    "withdrawn",
 )
 
 JOB_STATUSES = ("draft", "published", "paused", "closed", "archived")
 
 TALENT_LISTING_STATUSES = ("draft", "published", "paused", "closed", "archived", "featured")
 
-TALENT_INTEREST_STATUSES = ("new", "reviewing", "contacted", "declined", "archived")
+TALENT_INTEREST_STATUSES = ("new", "reviewing", "contacted", "declined", "archived", "withdrawn")
 
 REPORT_TARGET_TYPES = ("job", "talent_listing", "profile")
 

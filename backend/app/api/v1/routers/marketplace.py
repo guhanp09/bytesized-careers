@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import String, func, select
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,10 @@ from app.models import (
     User,
 )
 from app.notifications import dispatch_notification
+from app.services.messaging_service import (
+    get_or_create_conversation_for_application,
+    get_or_create_conversation_for_interest,
+)
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -64,6 +68,53 @@ def _now() -> datetime:
 
 def _clean_list(values: list[str] | None) -> list[str]:
     return [item.strip() for item in values or [] if item and item.strip()]
+
+
+def _first_message_answer_filled(value: object) -> bool:
+    """Server-side completeness check for a single first-message answer.
+
+    Registry-free on purpose: it mirrors the frontend's "is this answer non-empty"
+    rule across every answer shape (plain text, currency/turnaround objects,
+    portfolio/link/tool lists) without duplicating the TS requirement registry.
+    URL/format validation stays on the client; the server enforces presence so a
+    required field cannot be left blank by a direct API call.
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        # Structured answers: currency {amount, unit}, turnaround {value, unit}.
+        if "amount" in value:
+            return bool(str(value.get("amount") or "").strip())
+        if "value" in value and "unit" in value:
+            return bool(str(value.get("value") or "").strip())
+        return any(_first_message_answer_filled(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_first_message_answer_filled(item) for item in value)
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return True
+    return bool(value)
+
+
+def _assert_first_message_complete(
+    required_keys: list[str] | None,
+    answers: dict | None,
+) -> None:
+    """Reject creation when any owner-configured requirement is missing/blank."""
+    if not required_keys:
+        return
+    answers = answers or {}
+    missing = [
+        key for key in required_keys if not _first_message_answer_filled(answers.get(key))
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Missing required first-message details: {', '.join(missing)}",
+        )
 
 
 async def _create_notification(
@@ -129,6 +180,9 @@ def _talent_snapshot(listing: TalentListing) -> dict:
         "primary_role": listing.primary_role,
         "roles": listing.roles or [],
         "niche": listing.niche,
+        "content_niches": listing.content_niches or [],
+        "content_genres": listing.content_genres or [],
+        "formats": listing.formats or [],
         "platforms": listing.platforms or [],
         "tools": listing.tools or [],
         "location": listing.location,
@@ -291,12 +345,16 @@ async def apply_to_job(
     ).scalar_one_or_none()
     if existing is not None:
         return JobApplicationRead.model_validate(existing)
+    # Enforce the owner's first-message requirements server-side so a direct API
+    # call cannot bypass the completion modal the frontend presents.
+    _assert_first_message_complete(job.application_requirements, payload.first_message_answers)
     application = JobApplication(
         job_id=job_id,
         applicant_user_id=current_user.id,
         job_owner_user_id=job.posted_by_user_id,
         cover_note=payload.cover_note.strip() if payload.cover_note else None,
         portfolio_item_ids=_clean_list(payload.portfolio_item_ids),
+        first_message_answers=payload.first_message_answers or {},
         applicant_snapshot={
             "display_name": current_user.display_name,
             "username": current_user.username,
@@ -308,6 +366,14 @@ async def apply_to_job(
     )
     job.applicants = int(job.applicants or 0) + 1
     session.add(application)
+    # Flush so the DB-side default assigns application.id before we reference it in the
+    # recruiter notification — otherwise resource_id is stamped as the string "None"
+    # and the notification can't deep-link back to this application.
+    await session.flush()
+    # Eagerly create the conversation thread for this application so both sides can
+    # message immediately (older applications get one lazily on first open).
+    if job.posted_by_user_id is not None:
+        await get_or_create_conversation_for_application(session, application)
     applicant_name = current_user.display_name or current_user.username or current_user.email
     await _create_notification(
         session,
@@ -414,6 +480,50 @@ async def update_application_status(
     return JobApplicationRead.model_validate(application)
 
 
+@router.post("/applications/{application_id}/withdraw", response_model=JobApplicationRead)
+async def withdraw_application(
+    application_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> JobApplicationRead:
+    application = (
+        await session.execute(select(JobApplication).where(JobApplication.id == application_id))
+    ).scalar_one_or_none()
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    # Only the applicant who sent it may withdraw — not the recruiter/job owner.
+    if application.applicant_user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the applicant can withdraw this application",
+        )
+    if application.status == "withdrawn":
+        return JobApplicationRead.model_validate(application)  # idempotent
+    if application.status == "hired":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A hired application cannot be withdrawn",
+        )
+    application.status = "withdrawn"
+    if application.job_owner_user_id is not None:
+        await _create_notification(
+            session,
+            user_id=application.job_owner_user_id,
+            type_="application_withdrawn",
+            title="Application withdrawn",
+            body="An applicant withdrew their application.",
+            category="application",
+            resource_type="job_application",
+            resource_id=str(application.id),
+            action_url="/applications",
+            actor_user_id=current_user.id,
+            payload={"status": "withdrawn"},
+        )
+    await session.commit()
+    await session.refresh(application)
+    return JobApplicationRead.model_validate(application)
+
+
 @router.get("/talent-listings", response_model=TalentListingListResponse)
 async def list_talent_listings(
     q: str | None = None,
@@ -435,7 +545,23 @@ async def list_talent_listings(
         query = query.where(TalentListing.status == status_filter)
     if q:
         term = f"%{q.lower()}%"
-        query = query.where(func.lower(TalentListing.title).like(term))
+        query = query.where(
+            or_(
+                func.lower(TalentListing.title).like(term),
+                func.lower(TalentListing.primary_role).like(term),
+                func.lower(TalentListing.niche).like(term),
+                func.lower(TalentListing.description).like(term),
+                func.lower(TalentListing.roles.cast(String)).like(term),
+                func.lower(TalentListing.content_niches.cast(String)).like(term),
+                func.lower(TalentListing.content_genres.cast(String)).like(term),
+                func.lower(TalentListing.formats.cast(String)).like(term),
+                func.lower(TalentListing.platforms.cast(String)).like(term),
+                func.lower(TalentListing.tools.cast(String)).like(term),
+                func.lower(TalentListing.languages.cast(String)).like(term),
+                func.lower(User.display_name).like(term),
+                func.lower(User.username).like(term),
+            )
+        )
     if role:
         query = query.where(func.lower(TalentListing.roles.cast(String)).like(f"%{role.lower()}%"))
     if location:
@@ -495,10 +621,14 @@ async def create_talent_listing(
 ) -> TalentListingRead:
     listing = TalentListing(owner_user_id=current_user.id, **payload.model_dump())
     listing.roles = _clean_list(listing.roles)
+    listing.content_niches = _clean_list(listing.content_niches)
+    listing.content_genres = _clean_list(listing.content_genres)
     listing.formats = _clean_list(listing.formats)
     listing.platforms = _clean_list(listing.platforms)
     listing.tools = _clean_list(listing.tools)
+    listing.languages = _clean_list(listing.languages)
     listing.portfolio_item_ids = _clean_list(listing.portfolio_item_ids)
+    listing.first_message_requirements = _clean_list(listing.first_message_requirements)
     session.add(listing)
     await _create_notification(
         session,
@@ -528,7 +658,16 @@ async def update_talent_listing(
     if listing.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Talent listing owner required")
     updates = payload.model_dump(exclude_unset=True)
-    for key in ("roles", "formats", "platforms", "tools", "portfolio_item_ids"):
+    for key in (
+        "roles",
+        "content_niches",
+        "content_genres",
+        "formats",
+        "platforms",
+        "tools",
+        "portfolio_item_ids",
+        "first_message_requirements",
+    ):
         if key in updates:
             updates[key] = _clean_list(updates[key])
     for key, value in updates.items():
@@ -728,18 +867,31 @@ async def send_talent_interest(
     if existing is not None:
         existing.note = payload.note.strip() if payload.note else existing.note
         existing.job_id = payload.job_id
+        if payload.first_message_answers:
+            existing.first_message_answers = payload.first_message_answers
         existing.status = "new"
         await session.commit()
         await session.refresh(existing)
         return TalentInterestRead.model_validate(existing)
+    # Enforce the talent's first-message requirements server-side so a direct API
+    # call cannot bypass the completion modal the frontend presents.
+    _assert_first_message_complete(
+        listing.first_message_requirements, payload.first_message_answers
+    )
     interest = TalentInterest(
         talent_listing_id=listing_id,
         recruiter_user_id=current_user.id,
         job_id=payload.job_id,
         owner_user_id=listing.owner_user_id,
         note=payload.note.strip() if payload.note else None,
+        first_message_answers=payload.first_message_answers or {},
     )
     session.add(interest)
+    # Flush so interest.id is populated before it is referenced as the notification's
+    # resource_id (otherwise it is stamped as the string "None").
+    await session.flush()
+    # Eagerly create the conversation thread for this hiring request.
+    await get_or_create_conversation_for_interest(session, interest)
     title = "New job invite" if invite_job is not None else "New recruiter interest"
     body = (
         f"{current_user.display_name or current_user.username or current_user.email} invited you to {invite_job.title}."
@@ -908,6 +1060,44 @@ async def update_talent_interest_status(
         action_url="/applications",
         actor_user_id=current_user.id,
         payload={"status": payload.status},
+    )
+    await session.commit()
+    await session.refresh(interest)
+    return TalentInterestRead.model_validate(interest)
+
+
+@router.post("/talent-interests/{interest_id}/withdraw", response_model=TalentInterestRead)
+async def withdraw_talent_interest(
+    interest_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TalentInterestRead:
+    interest = (
+        await session.execute(select(TalentInterest).where(TalentInterest.id == interest_id))
+    ).scalar_one_or_none()
+    if interest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+    # Only the recruiter who sent the hiring request may withdraw — not the talent.
+    if interest.recruiter_user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the sender can withdraw this hiring request",
+        )
+    if interest.status == "withdrawn":
+        return TalentInterestRead.model_validate(interest)  # idempotent
+    interest.status = "withdrawn"
+    await _create_notification(
+        session,
+        user_id=interest.owner_user_id,
+        type_="talent_interest_withdrawn",
+        title="Hiring request withdrawn",
+        body="A recruiter withdrew their hiring request.",
+        category="talent",
+        resource_type="talent_interest",
+        resource_id=str(interest.id),
+        action_url="/applications",
+        actor_user_id=current_user.id,
+        payload={"status": "withdrawn"},
     )
     await session.commit()
     await session.refresh(interest)

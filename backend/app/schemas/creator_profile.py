@@ -50,6 +50,10 @@ class RoleQuestionsResponse(BaseModel):
 
 class UserRolesUpsertRequest(BaseModel):
     role_ids: list[uuid.UUID] = Field(default_factory=list)
+    # Free-text specializations. Each is matched to an existing role by name
+    # (case-insensitive) or created on the fly, so users can add a role that
+    # isn't in the catalog yet.
+    role_names: list[str] = Field(default_factory=list)
 
 
 class UserRolesResponse(BaseModel):

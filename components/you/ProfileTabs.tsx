@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { formatListingTitle } from "../../lib/displayText";
 import type { Job } from "../../lib/types";
 import { TagPill } from "../ui";
 
@@ -148,7 +149,7 @@ export default function ProfileTabs({ marketplaceJobs }: ProfileTabsProps) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-white/90 truncate">
-                          {job.title}
+                          {formatListingTitle(job.title)}
                         </p>
                         <p className="mt-1 text-xs text-white/55 truncate">
                           {job.channel.name} | {job.category}

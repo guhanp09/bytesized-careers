@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   BackendPublicProfileResponse,
@@ -14,34 +13,27 @@ import type { Job } from "../../lib/types";
 import { Icon } from "../Icons";
 import { JobCard } from "../JobCard";
 import JobsEmptyState from "../jobs/JobsEmptyState";
+import PortfolioDetailRail from "./PortfolioDetailRail";
+import { usePortfolioDetailPopup } from "./PortfolioDetailPopup";
 import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "./ProfileReviews";
 import { TagPill } from "../ui";
 import ProfileExperienceList from "./ProfileExperienceList";
-
-type PublicProfileTabsProps = {
-  profile: BackendPublicProfileResponse;
-  initialView?: ProfileViewMode;
-};
+import {
+  formatProjectTypePreference,
+  formatRevisionsPreference,
+  formatTurnaroundPreference,
+  formatWorkingHoursPreference,
+} from "../../lib/workPreferences";
+import { sanitizeProfileTags } from "../../lib/profileTags";
+import { portfolioSummaryPreview } from "../../lib/portfolioCard";
 
 type ProfileViewMode = "talent" | "hiring";
 type TopTab = "overview" | "portfolio" | "jobs" | "reviews";
 
-const sourceLabel = (source?: string | null, previewSource?: unknown) => {
-  const preview = typeof previewSource === "string" ? previewSource.toLowerCase() : "";
-  if (preview === "google_docs") return "Google Docs";
-  if (preview === "notion") return "Notion";
-  if (preview === "figma") return "Figma";
-  if (preview === "canva") return "Canva";
-  const normalized = (source || "custom").toLowerCase();
-  if (normalized === "youtube") return "YouTube";
-  if (normalized === "drive") return "Google Drive";
-  if (normalized === "behance") return "Behance";
-  if (normalized === "instagram") return "Instagram";
-  if (normalized === "website") return "Custom URL";
-  if (normalized === "custom") return "Custom URL";
-  if (normalized === "vimeo") return "Vimeo";
-  if (normalized === "other") return "Custom URL";
-  return "Custom URL";
+type PublicProfileTabsProps = {
+  profile: BackendPublicProfileResponse;
+  initialView?: ProfileViewMode;
+  initialTab?: TopTab;
 };
 
 const metricNumber = (value: unknown) => {
@@ -89,18 +81,6 @@ const initialsForHiringFor = (value?: string | null) =>
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
-
-const formatTextValue = (value?: string | null) => {
-  const text = cleanText(value);
-  return text || "–";
-};
-
-const formatProjectType = (value?: string | null) => {
-  if (value === "oneOff") return "One-off projects";
-  if (value === "retainer") return "Retainers";
-  if (value === "either") return "One-off or retainer";
-  return formatTextValue(value);
-};
 
 function TabButton({
   active,
@@ -180,6 +160,9 @@ function MetadataRail({
 
 const splitCompactValues = (value?: string | null) =>
   cleanList((value || "").split(/[·,]/).map((part) => part.trim()));
+
+const splitPublicProfileTags = (value?: string | null) =>
+  sanitizeProfileTags((value || "").split(/[·,]/).map((part) => part.trim()));
 
 const sortPortfolioPreview = (items: BackendPortfolioItem[]) =>
   [...items]
@@ -289,96 +272,6 @@ const mapPublicJobToCanonical = (
     updatedAt: item.created_at || baseJob?.updatedAt,
   };
 };
-
-function PortfolioPreviewList({
-  items,
-  username,
-}: {
-  items: BackendPortfolioItem[];
-  username: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <div
-        aria-label="Portfolio preview"
-        className="flex snap-x snap-proximity gap-4 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {items.map((item) => (
-          <Link
-            key={`overview-portfolio-preview-${item.id}`}
-            href={`/u/${encodeURIComponent(username)}/projects/${encodeURIComponent(item.id)}`}
-            aria-label={`Open project detail: ${item.title}`}
-            className="group block w-[340px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:w-[360px] lg:w-[380px]"
-          >
-            <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
-              {item.thumbnail_url ? (
-                <img
-                  src={item.thumbnail_url}
-                  alt={item.title}
-                  className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
-                />
-              ) : (
-                <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
-                  <Icon name="image" className="h-8 w-8" />
-                </div>
-              )}
-            </div>
-            <div className="p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                  {sourceLabel(item.source_type, item.public_metrics?.source_type)}
-                </span>
-                {item.verification_status === "youtube_metadata_verified" ? (
-                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                    Verified
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-3 truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
-              {cleanText(item.role_name || item.role || item.user_role_in_project) ? (
-                <p className="mt-1 text-sm font-medium text-white/72">
-                  {cleanText(item.role_name || item.role || item.user_role_in_project)}
-                </p>
-              ) : null}
-              {(() => {
-                const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
-                const published = formatDateShort(item.published_at || item.published_date || item.created_at);
-                const sourceLine = [
-                  item.channel_name,
-                  views ? `${views} views` : null,
-                  published,
-                  item.duration,
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
-                return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
-              })()}
-              {item.contribution_summary || item.description ? (
-                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
-                  {item.contribution_summary || item.description}
-                </p>
-              ) : null}
-              {(item.contribution_tags || []).length ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {(item.contribution_tags || []).slice(0, 4).map((tag) => (
-                    <TagPill key={`${item.id}-preview-contribution-${tag}`}>{tag}</TagPill>
-                  ))}
-                </div>
-              ) : null}
-              {item.tools?.length ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {item.tools.slice(0, 4).map((tool) => (
-                    <TagPill key={`${item.id}-preview-tool-${tool}`}>{tool}</TagPill>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function JobsPreviewList({ items }: { items: Array<{ key: string; job: Job }> }) {
   return (
@@ -536,8 +429,8 @@ const modeFromProfile = (profile: BackendPublicProfileResponse, requested?: Prof
   return "talent";
 };
 
-export default function PublicProfileTabs({ profile, initialView }: PublicProfileTabsProps) {
-  const [topTab, setTopTab] = useState<TopTab>("overview");
+export default function PublicProfileTabs({ profile, initialView, initialTab }: PublicProfileTabsProps) {
+  const [topTab, setTopTab] = useState<TopTab>(initialTab || "overview");
   const profileMode = modeFromProfile(profile, initialView);
 
   const activeJobs = useMemo(() => profile.jobs_active || [], [profile.jobs_active]);
@@ -552,7 +445,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
     .map((role) => cleanText(role.name))
     .filter((item): item is string => Boolean(item));
   const primaryNiche = cleanText(profile.content_style?.primary_niche);
-  const targetAudience = cleanText(profile.content_style?.target_audience);
+  const targetAudienceTags = splitPublicProfileTags(profile.content_style?.target_audience);
   const contentFormats = cleanList(profile.content_style?.format || []);
   const contentTones = cleanList(profile.content_style?.tone || []);
 
@@ -643,12 +536,13 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
     {
       label: "Work preferences",
       values: cleanList([
-        formatProjectType(profile.collaboration_preferences?.project_type_preference),
-        cleanText(profile.collaboration_preferences?.turnaround),
-        cleanText(profile.collaboration_preferences?.working_hours),
+        formatProjectTypePreference(profile.collaboration_preferences?.project_type_preference),
+        formatTurnaroundPreference(profile.collaboration_preferences?.turnaround),
+        formatRevisionsPreference(profile.collaboration_preferences?.revisions),
+        formatWorkingHoursPreference(profile.collaboration_preferences?.working_hours),
       ]).filter((value) => value !== "–"),
     },
-    { label: "Tags", values: cleanList([targetAudience, ...contentTones]).slice(0, 6) },
+    { label: "Tags", values: cleanList([...targetAudienceTags, ...contentTones]).slice(0, 6) },
   ];
   const recruiterMetadataGroups = [
     { label: "Hiring focus", values: hiringRoles },
@@ -659,12 +553,12 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
     {
       label: "Collaboration style",
       values: cleanList([
-        formatProjectType(profile.collaboration_preferences?.project_type_preference),
-        cleanText(profile.collaboration_preferences?.turnaround),
-        cleanText(profile.collaboration_preferences?.revisions),
+        formatProjectTypePreference(profile.collaboration_preferences?.project_type_preference),
+        formatTurnaroundPreference(profile.collaboration_preferences?.turnaround),
+        formatRevisionsPreference(profile.collaboration_preferences?.revisions),
       ]).filter((value) => value !== "–"),
     },
-    { label: "Work model", values: cleanList([profile.location, profile.timezone, cleanText(profile.collaboration_preferences?.working_hours)]) },
+    { label: "Work model", values: cleanList([profile.location, profile.timezone, formatWorkingHoursPreference(profile.collaboration_preferences?.working_hours)]) },
     { label: "Tags", values: cleanList([...hiringRoles, ...splitCompactValues(hiringInfo?.channels_or_pages_managed)]).slice(0, 6) },
   ];
 
@@ -673,7 +567,8 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
       ? "overview"
       : profileMode === "hiring" && topTab === "portfolio"
         ? "overview"
-        : topTab;
+      : topTab;
+  const portfolioPopup = usePortfolioDetailPopup("public-profile-portfolio-popup");
 
   const overview = (
     <div className="grid w-full max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
@@ -707,7 +602,10 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
               </button>
             }
           >
-            <PortfolioPreviewList items={portfolioPreview} username={profile.username} />
+            <PortfolioDetailRail
+              items={portfolioPreview}
+              keyPrefix="public-profile-portfolio-preview"
+            />
           </OverviewModule>
         ) : null}
 
@@ -763,6 +661,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
   );
 
   return (
+    <>
     <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#141519] shadow-[0_24px_80px_-52px_rgba(0,0,0,1)]">
       <div className="overflow-x-auto border-b border-white/[0.08] px-5 pt-1 sm:px-8">
         <div className="flex min-w-max items-end gap-8">
@@ -781,7 +680,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
         {visibleTopTab === "overview" ? overview : null}
 
         {profileMode === "talent" && visibleTopTab === "portfolio" ? (
-          <div className="space-y-3">
+          <div id="portfolio" className="scroll-mt-24 space-y-3">
             {portfolioProjects.length ? (
               <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 {portfolioProjects.map((item) => {
@@ -799,15 +698,20 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
                     formatDateShort(item.published_at || item.published_date || item.created_at),
                     item.duration,
                   ].filter(Boolean).join(" · ");
-                  const projectHref = `/u/${encodeURIComponent(profile.username)}/projects/${encodeURIComponent(item.id)}`;
                   const roleLabel = cleanText(item.role_name || item.role || item.user_role_in_project);
 
                   return (
-                    <Link
+                    <button
+                      type="button"
                       key={item.id}
-                      href={projectHref}
-                      aria-label={`Open project detail: ${item.title}`}
-                      className="group cursor-pointer rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15"
+                      aria-label={`View portfolio project details: ${item.title}`}
+                      aria-expanded={portfolioPopup.activeItemId === item.id}
+                      aria-controls={portfolioPopup.activeItemId === item.id ? portfolioPopup.popoverId : undefined}
+                      onClick={(event) => {
+                        const origin = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : undefined;
+                        portfolioPopup.open(item, event.currentTarget, origin);
+                      }}
+                      className="group cursor-pointer rounded-2xl border border-white/10 bg-white/[0.045] text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15"
                     >
                       <div className="aspect-video overflow-hidden rounded-t-2xl bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
                         {item.thumbnail_url ? (
@@ -823,22 +727,12 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
                         )}
                       </div>
                       <div className="p-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                            {sourceLabel(item.source_type, item.public_metrics?.source_type)}
-                          </span>
-                          {item.verification_status === "youtube_metadata_verified" ? (
-                            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">
-                              Verified
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-3 text-sm font-semibold text-white/90">{item.title}</p>
+                        <p className="text-sm font-semibold text-white/90">{item.title}</p>
                         {roleLabel ? <p className="mt-1 text-sm font-medium text-white/72">{roleLabel}</p> : null}
                         {sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null}
-                        {item.contribution_summary || item.description ? (
+                        {portfolioSummaryPreview(item) ? (
                           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
-                            {item.contribution_summary || item.description}
+                            {portfolioSummaryPreview(item)}
                           </p>
                         ) : null}
                         {(item.contribution_tags || []).length ? (
@@ -864,7 +758,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
                           {turnaround !== null ? <span>{turnaround} day turnaround</span> : null}
                         </div>
                       </div>
-                    </Link>
+                    </button>
                   );
                 })}
               </div>
@@ -900,5 +794,7 @@ export default function PublicProfileTabs({ profile, initialView }: PublicProfil
 
       </div>
     </section>
+    {portfolioPopup.popover}
+    </>
   );
 }

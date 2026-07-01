@@ -33,6 +33,10 @@ export default function ApplicationsPageClient({
     viewParam === "recruiter" || viewParam === "hiring" ? "hiring" : "talent"
   );
 
+  // Deep-link target: "Open conversation" after applying / sending a request
+  // lands here with ?thread=<recordId>, so the inbox opens on that thread.
+  const threadParam = searchParams.get("thread");
+
   // Opt-in demo data so the UI can be browsed without a backend. Only honoured
   // outside production, so mock data can never surface to real users.
   const demoRequested = searchParams.get("demo") === "1" || searchParams.get("mock") === "1";
@@ -66,6 +70,7 @@ export default function ApplicationsPageClient({
         onToggleDemo={toggleDemo}
         backendAccessToken={backendAccessToken}
         forceMock={demoMode}
+        initialSelectedId={threadParam}
       />
     </div>
   );

@@ -2,68 +2,35 @@
 
 import React from "react";
 import { Job } from "../../lib/types";
+import { formatListingTitle } from "../../lib/displayText";
 import { formatSubs } from "../../lib/format";
-import { Icon } from "../Icons";
+import type { ProfileRatingSummary } from "../../lib/profileRating";
 import useFitTitle from "./useFitTitle";
 import ChannelAttribution from "../jobs/ChannelAttribution";
+import ListingStatTile from "../listing-details/ListingStatTile";
+import ProfileRatingLink from "../profile/ProfileRatingLink";
 
 const TITLE_MAX_LINES = 2;
 const TITLE_BASE_PX = 44;
 const TITLE_MIN_PX = 20;
 const TITLE_STEP_PX = 1;
 
-function TileShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={[
-        "rounded-2xl",
-        "bg-white/[0.045] border border-white/[0.08]",
-        "shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]",
-        "px-4 py-3",
-        "select-none",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function DetailTile({
-  icon,
-  label,
-  value,
-}: {
-  icon: "briefcase" | "cap" | "pin";
-  label: string;
-  value: string;
-}) {
-  return (
-    <TileShell className="h-[108px] flex items-center justify-center">
-      <div className="flex flex-col items-center justify-center text-center gap-1">
-        <span className="text-white/70">
-          <Icon name={icon} className="w-4 h-4" />
-        </span>
-        <div className="text-[11px] text-white/60 leading-snug">{label}</div>
-        <div className="text-sm text-white/90 font-medium leading-snug tabular-nums">{value}</div>
-      </div>
-    </TileShell>
-  );
-}
-
 export default function JobHero({
   job,
   postedText,
   titleScale,
+  channelRating,
   ownerControls,
 }: {
   job: Job;
   postedText: string;
   titleScale: number;
+  channelRating?: ProfileRatingSummary | null;
   ownerControls?: React.ReactNode;
 }) {
+  const displayTitle = formatListingTitle(job.title);
   const { ref: titleRef, fontPx } = useFitTitle({
-    text: job.title,
+    text: displayTitle,
     maxLines: TITLE_MAX_LINES,
     basePx: TITLE_BASE_PX,
     minPx: TITLE_MIN_PX,
@@ -91,9 +58,9 @@ export default function JobHero({
       <div className="flex items-start gap-3">
         <h1
           ref={titleRef}
-          className="min-w-0 flex-1 font-extrabold tracking-tight leading-[1.08] break-words uppercase"
+          className="min-w-0 flex-1 break-words font-extrabold leading-[1.08] tracking-tight"
         >
-          {job.title}
+          {displayTitle}
         </h1>
         {ownerControls ? <div className="shrink-0">{ownerControls}</div> : null}
       </div>
@@ -112,6 +79,11 @@ export default function JobHero({
               channelExternalUrl={job.postedByAgency ? job.channelExternalUrl : undefined}
               className="text-lg font-semibold text-white max-w-[320px]"
             />
+            <ProfileRatingLink
+              rating={channelRating}
+              ariaLabel={`View ${job.channel.name} reviews`}
+              testId="job-channel-rating"
+            />
           </div>
           <div className="text-white/55 text-sm">{formatSubs(job.channel.subscribers)}</div>
           <div className="text-white/45 text-sm">{postedText}</div>
@@ -121,7 +93,7 @@ export default function JobHero({
       {tiles.length ? (
         <div className={`mt-6 grid gap-3 ${tileGridClass}`}>
           {tiles.map((tile) => (
-            <DetailTile key={tile.label} icon={tile.icon} label={tile.label} value={tile.value} />
+            <ListingStatTile key={tile.label} icon={tile.icon} label={tile.label} value={tile.value} />
           ))}
         </div>
       ) : null}

@@ -25,7 +25,7 @@ import {
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
-import { Job, ReferenceVideo, StartTimeframe } from "../lib/types";
+import { Job, ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
 import { formatBudgetPreview, formatExperiencePreview, formatSubsInput } from "../lib/format";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
 import { INDIA_CITIES } from "../lib/indiaCities";
@@ -36,6 +36,12 @@ import RecommendedChecklistPopup, { RecommendedChecklistItem } from "./Recommend
 import { IdentityPlatform, VerifiedIdentity } from "../lib/identity/types";
 import { PageLoading } from "./ui";
 import { Icon } from "./Icons";
+import {
+  CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
+  sanitizeRequirementKeys,
+} from "../lib/firstMessageRequirements";
+import { normalizeCreatorContextList } from "../lib/jobCreatorContext";
+import { normalizeReferenceTimestampNote, normalizeReferenceVideo, serializeReferenceVideo } from "../lib/referenceVideos";
 
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type TurnaroundUnit = "hours" | "days" | "weeks";
@@ -45,22 +51,48 @@ type JobPlatform = IdentityPlatform | "";
 
 type Step =
   | "basics"
+  | "details"
+  | "creatorContext"
+  | "toolsTags"
   | "about"
-  | "responsibilities"
-  | "requirements"
-  | "howToApply"
-  | "referenceVideos"
-  | "tags";
+  | "applicationRequirements"
+  | "referenceVideos";
 
 const STEPS: Step[] = [
   "basics",
+  "details",
   "about",
-  "responsibilities",
-  "requirements",
-  "howToApply",
+  "creatorContext",
+  "toolsTags",
+  "applicationRequirements",
   "referenceVideos",
-  "tags",
 ];
+
+const MAX_REFERENCE_VIDEOS = 3;
+
+const normalizeJobApplicationRequirementsForPayload = (
+  keys: readonly string[],
+  customInstruction: string,
+  noRequirements: boolean
+) => {
+  if (noRequirements) return [];
+  const normalized = sanitizeRequirementKeys(keys, "job");
+  if (!normalized.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)) return normalized;
+  return customInstruction.trim()
+    ? normalized
+    : normalized.filter((key) => key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY);
+};
+
+const normalizeJobPlatforms = (values: Array<string | null | undefined>): IdentityPlatform[] => {
+  const normalized: IdentityPlatform[] = [];
+  values.forEach((value) => {
+    const next = value?.toLowerCase();
+    if ((next === "youtube" || next === "instagram") && !normalized.includes(next)) {
+      normalized.push(next);
+    }
+  });
+  return normalized;
+};
 
 type SavedBasics = {
   title: string;
@@ -74,11 +106,15 @@ type SavedBasics = {
   expMax: string;
   startWithin: StartTimeframe | "";
   platform: JobPlatform;
+  platforms: IdentityPlatform[];
   platformName: string;
   platformAudience: string;
-  styles: string[];
+  contentNiches: string[];
+  contentGenres: string[];
+  formatsHiredFor: string[];
   turnaround: Turnaround;
   tools: string[];
+  languages: string[];
 };
 
 type SavedContent = {
@@ -86,6 +122,8 @@ type SavedContent = {
   responsibilities: string;
   requirements: string;
   howToApply: string;
+  applicationRequirements: string[];
+  noFirstMessageRequirements: boolean;
 };
 
 type SavedTags = {
@@ -96,6 +134,8 @@ type SavedRefs = {
   refVideos: ReferenceVideo[];
   refTitle: string;
   refUrl: string;
+  refWhatToReference: string;
+  refTimestampNotes: ReferenceVideo["timestampNotes"];
 };
 
 type HiringIdentityChoice =
@@ -873,13 +913,24 @@ const JOB_COMPLETION_TARGETS: Record<string, { step: Step; target?: string }> = 
   basics: { step: "basics" },
   budget: { step: "basics" },
   identity: { step: "basics" },
-  tools: { step: "basics", target: "job-tools" },
+  tools: { step: "toolsTags", target: "job-tools" },
+  creatorContext: { step: "creatorContext", target: "job-content-niches" },
+  contentNiches: { step: "creatorContext", target: "job-content-niches" },
+  contentGenres: { step: "creatorContext", target: "job-content-genres" },
+  formatsHiredFor: { step: "creatorContext", target: "job-formats-hired-for" },
   experience: { step: "basics", target: "job-experience" },
-  responsibilities: { step: "responsibilities", target: "job-responsibilities" },
-  requirements: { step: "requirements", target: "job-requirements" },
+  timeline: { step: "details" },
+  start: { step: "details" },
+  turnaround: { step: "details" },
+  responsibilities: { step: "about", target: "job-responsibilities" },
+  requirements: { step: "about", target: "job-requirements" },
   about: { step: "about", target: "job-description" },
-  tags: { step: "tags", target: "job-tags" },
+  tags: { step: "toolsTags", target: "job-tags" },
   media: { step: "referenceVideos", target: "job-reference-video" },
+  referenceVideos: { step: "referenceVideos", target: "job-reference-video" },
+  howToApply: { step: "applicationRequirements", target: "job-first-message" },
+  "job-first-message": { step: "applicationRequirements", target: "job-first-message" },
+  applyReferences: { step: "applicationRequirements", target: "job-first-message" },
 };
 
 function PublishReadyDialog({
@@ -979,15 +1030,16 @@ export default function PostJobPage() {
   const [startWithin, setStartWithin] = useState<StartTimeframe | "">("");
 
   const [platform, setPlatform] = useState<JobPlatform>("");
+  const [platforms, setPlatforms] = useState<IdentityPlatform[]>([]);
   const [platformName, setPlatformName] = useState("");
   const [platformAudience, setPlatformAudience] = useState("");
   const [identity, setIdentity] = useState<VerifiedIdentity | null>(null);
   const [, setIdentityLoading] = useState(false);
   const [, setIdentityError] = useState<string | null>(null);
   const [identityOptions, setIdentityOptions] = useState<VerifiedIdentity[]>([]);
-  const [styles, setStyles] = useState<string[]>([]);
   const [turnaround, setTurnaround] = useState<Turnaround>(null);
   const [tools, setTools] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
 
   const [verified, setVerified] = useState(false);
 
@@ -995,12 +1047,17 @@ export default function PostJobPage() {
   const [responsibilities, setResponsibilities] = useState("");
   const [requirements, setRequirements] = useState("");
   const [howToApply, setHowToApply] = useState("");
+  const [applicationRequirements, setApplicationRequirements] = useState<string[]>([]);
+  const [noFirstMessageRequirements, setNoFirstMessageRequirements] = useState(false);
+  const [firstMessageError, setFirstMessageError] = useState<string | null>(null);
 
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
 
   const [refTitle, setRefTitle] = useState("");
   const [refUrl, setRefUrl] = useState("");
+  const [refWhatToReference, setRefWhatToReference] = useState("");
+  const [refTimestampNotes, setRefTimestampNotes] = useState<ReferenceVideo["timestampNotes"]>([]);
   const [refVideos, setRefVideos] = useState<ReferenceVideo[]>([]);
   const [refUrlError, setRefUrlError] = useState<string | null>(null);
 
@@ -1016,23 +1073,31 @@ export default function PostJobPage() {
     expMax: "",
     startWithin: "",
     platform: "",
+    platforms: [],
     platformName: "",
     platformAudience: "",
-    styles: [],
+    contentNiches: [],
+    contentGenres: [],
+    formatsHiredFor: [],
     turnaround: null,
     tools: [],
+    languages: [],
   });
   const [savedContent, setSavedContent] = useState<SavedContent>({
     about: "",
     responsibilities: "",
     requirements: "",
     howToApply: "",
+    applicationRequirements: [],
+    noFirstMessageRequirements: false,
   });
   const [savedTags, setSavedTags] = useState<SavedTags>({ tags: [] });
   const [savedRefs, setSavedRefs] = useState<SavedRefs>({
     refVideos: [],
     refTitle: "",
     refUrl: "",
+    refWhatToReference: "",
+    refTimestampNotes: [],
   });
   const [contentErrors, setContentErrors] = useState<{ about?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1047,6 +1112,9 @@ export default function PostJobPage() {
   const [selectedHiringIdentityId, setSelectedHiringIdentityId] = useState<string>("");
   const [localPendingHiringIdentity, setLocalPendingHiringIdentity] =
     useState<LocalPendingHiringIdentity | null>(null);
+  const [contentNiches, setContentNiches] = useState<string[]>([]);
+  const [contentGenres, setContentGenres] = useState<string[]>([]);
+  const [formatsHiredFor, setFormatsHiredFor] = useState<string[]>([]);
   const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(!draftId);
   const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
   const [previewBudgetText, setPreviewBudgetText] = useState("");
@@ -1077,10 +1145,20 @@ export default function PostJobPage() {
     return c ? `${workMode} - ${c}` : workMode;
   }, [workMode, city]);
 
+  React.useEffect(() => {
+    if (!platform) return;
+    setPlatforms((prev) => (prev.includes(platform) ? prev : [...prev, platform]));
+  }, [platform]);
+
+  const selectedJobPlatforms = useMemo(
+    () => (platforms.length ? platforms : platform ? [platform] : []),
+    [platform, platforms]
+  );
+
   const normalizeCity = (value: string) => value.trim().toLowerCase();
   const matchedCity = INDIA_CITIES.find((c) => normalizeCity(c) === normalizeCity(city));
   const isCityRequired = workMode === "Hybrid" || workMode === "On-site";
-  const requiresYouTubeChannel = platform === "youtube";
+  const requiresYouTubeChannel = selectedJobPlatforms.includes("youtube");
   const hasHiringForIdentity = Boolean(selectedHiringIdentityId || localPendingHiringIdentity || identity);
   const hasBudgetMin = budgetMin.trim().length > 0;
   const hasBudgetMax = budgetMax.trim().length > 0;
@@ -1212,14 +1290,7 @@ export default function PostJobPage() {
     const refsFrom = (value: unknown): ReferenceVideo[] => {
       if (!Array.isArray(value)) return [];
       return value
-        .map((entry) => {
-          if (typeof entry === "string") return { url: entry };
-          if (!entry || typeof entry !== "object") return null;
-          const record = entry as { title?: unknown; url?: unknown };
-          return typeof record.url === "string"
-            ? { title: typeof record.title === "string" ? record.title : undefined, url: record.url }
-            : null;
-        })
+        .map((entry) => normalizeReferenceVideo(entry))
         .filter((entry): entry is ReferenceVideo => Boolean(entry));
     };
 
@@ -1238,8 +1309,11 @@ export default function PostJobPage() {
         const experience = experienceParts(draft.experience_level);
         const nextWorkMode = normalizeWorkMode(draft.work_mode);
         const nextLocation = typeof draft.location === "string" ? draft.location : "";
-        const nextPlatform: JobPlatform =
-          draft.platforms?.[0] === "instagram" ? "instagram" : draft.platforms?.[0] === "youtube" ? "youtube" : "";
+        const nextPlatforms = normalizeJobPlatforms([
+          ...(Array.isArray(draft.platforms) ? draft.platforms : []),
+          draft.posted_platform,
+        ]);
+        const nextPlatform: JobPlatform = nextPlatforms[0] || "";
 
         setTitle(draft.title || "");
         setBudgetMin(budgetMinValue);
@@ -1252,17 +1326,37 @@ export default function PostJobPage() {
         setExpMax(experience.max);
         setStartWithin((draft.start_timeframe as StartTimeframe) || "");
         setPlatform(nextPlatform);
+        setPlatforms(nextPlatforms);
         setPlatformName(draft.channel_name || "");
         setPlatformAudience(draft.channel_subscribers != null ? String(draft.channel_subscribers) : "");
         setVerified(Boolean(draft.is_verified));
         setAbout(draft.about_channel || "");
         setResponsibilities((draft.responsibilities || []).join("\n"));
         setRequirements((draft.requirements || []).join("\n"));
-        setHowToApply(draft.how_to_apply || "");
+        const restoredHowToApply = draft.how_to_apply || "";
+        setHowToApply(restoredHowToApply);
+        const restoredRequirements = sanitizeRequirementKeys(
+          restoredHowToApply.trim()
+            ? [...(draft.application_requirements || []), CUSTOM_INSTRUCTION_REQUIREMENT_KEY]
+            : draft.application_requirements,
+          "job"
+        );
+        setApplicationRequirements(restoredRequirements);
+        // Resuming restores the chosen requirements; the explicit "none" choice is
+        // a publish-time gate, so the owner re-confirms it intentionally.
+        setNoFirstMessageRequirements(false);
         setTags(draft.tags || []);
+        setContentNiches(normalizeCreatorContextList(draft.content_niches || []));
+        setContentGenres(normalizeCreatorContextList(draft.content_genres || []));
+        setFormatsHiredFor(normalizeCreatorContextList(draft.formats_hired_for || []));
         setTools(
           Array.isArray(draft.tools)
             ? draft.tools.filter((tool): tool is string => typeof tool === "string" && tool.trim().length > 0)
+            : []
+        );
+        setLanguages(
+          Array.isArray(draft.languages)
+            ? draft.languages.filter((lang): lang is string => typeof lang === "string" && lang.trim().length > 0)
             : []
         );
         setRefVideos(refsFrom(draft.reference_videos));
@@ -1538,7 +1632,7 @@ export default function PostJobPage() {
     const errors: Array<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode"> = [];
     if (!hasHiringForIdentity) errors.push("identity");
     if (title.trim().length < 3) errors.push("title");
-    if (!platform) errors.push("platform");
+    if (selectedJobPlatforms.length === 0) errors.push("platform");
     if (!workMode) errors.push("workMode");
     if (isCityRequired && !city.trim()) errors.push("city");
     if (isCityRequired && city.trim() && !matchedCity) errors.push("cityInvalid");
@@ -1555,7 +1649,7 @@ export default function PostJobPage() {
     (key: "title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode") => {
       if (key === "title") return title.trim().length < 3;
       if (key === "identity") return !hasHiringForIdentity;
-      if (key === "platform") return !platform;
+      if (key === "platform") return selectedJobPlatforms.length === 0;
       if (key === "workMode") return !workMode;
       if (key === "city") return isCityRequired && !city.trim();
       if (key === "cityInvalid") return isCityRequired && city.trim() && !matchedCity;
@@ -1566,7 +1660,7 @@ export default function PostJobPage() {
     [
       title,
       hasHiringForIdentity,
-      platform,
+      selectedJobPlatforms,
       workMode,
       isCityRequired,
       city,
@@ -1620,6 +1714,13 @@ export default function PostJobPage() {
       setContentErrors((prev) => ({ ...prev, about: undefined }));
     }
   }, [about]);
+
+  React.useEffect(() => {
+    const hasCustomInstruction = applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY);
+    if (noFirstMessageRequirements || (applicationRequirements.length && (!hasCustomInstruction || howToApply.trim()))) {
+      setFirstMessageError(null);
+    }
+  }, [noFirstMessageRequirements, applicationRequirements, howToApply]);
 
   React.useEffect(() => {
     if (!hasHiringForIdentity) return;
@@ -1794,8 +1895,18 @@ export default function PostJobPage() {
 
   const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
 
-  const setPlatformSelection = (next: JobPlatform) => {
-    setPlatform(next);
+  const togglePlatformSelection = (next: IdentityPlatform) => {
+    setPlatforms((prev) => {
+      const updated = prev.includes(next)
+        ? prev.filter((item) => item !== next)
+        : [...prev, next];
+      setPlatform((current) => {
+        if (updated.length === 0) return "";
+        if (current && updated.includes(current)) return current;
+        return updated[0];
+      });
+      return updated;
+    });
   };
 
   React.useEffect(() => {
@@ -1836,16 +1947,72 @@ export default function PostJobPage() {
   };
 
   const addRefVideo = () => {
+    if (refVideos.length >= MAX_REFERENCE_VIDEOS) return;
     const url = refUrl.trim();
-    if (!url || !isValidYouTubeUrl(url)) return;
-    setRefVideos((prev) => [...prev, { title: refTitle.trim() || undefined, url }]);
+    if (!url) {
+      setRefUrlError("Add a YouTube video URL first.");
+      return;
+    }
+    if (!isValidYouTubeUrl(url)) {
+      setRefUrlError("YouTube video URL must be valid.");
+      return;
+    }
+    const timestampNotes = (refTimestampNotes || [])
+      .map((note) => normalizeReferenceTimestampNote(note))
+      .filter((note): note is ReferenceTimestampNote => Boolean(note));
+    setRefUrlError(null);
+    setRefVideos((prev) => [
+      ...prev,
+      {
+        title: refTitle.trim() || undefined,
+        url,
+        platform: "YouTube",
+        whatToReference: refWhatToReference.trim() || undefined,
+        timestampNotes,
+      },
+    ].slice(0, MAX_REFERENCE_VIDEOS));
     setRefTitle("");
     setRefUrl("");
+    setRefWhatToReference("");
+    setRefTimestampNotes([]);
   };
 
   const removeRefVideo = (idx: number) => {
     setRefVideos((prev) => prev.filter((_, i) => i !== idx));
   };
+
+  const updateRefVideo = (idx: number, next: ReferenceVideo) => {
+    setRefVideos((prev) => prev.map((video, i) => (i === idx ? next : video)));
+  };
+
+  const cleanReferenceVideo = (video: ReferenceVideo): ReferenceVideo => ({
+    ...video,
+    title: video.title?.trim() || undefined,
+    whatToReference: video.whatToReference?.trim() || undefined,
+    timestampNotes: (video.timestampNotes || [])
+      .map((note) => normalizeReferenceTimestampNote(note))
+      .filter((note): note is ReferenceTimestampNote => Boolean(note)),
+  });
+
+  const getReferenceVideosForPayload = () => {
+    const videos = refVideos.map(cleanReferenceVideo).filter((video) => video.url.trim()).slice(0, MAX_REFERENCE_VIDEOS);
+    const activeUrl = refUrl.trim();
+    if (videos.length >= MAX_REFERENCE_VIDEOS || !activeUrl || !isValidYouTubeUrl(activeUrl)) {
+      return videos;
+    }
+    const activeVideo = cleanReferenceVideo({
+      title: refTitle.trim() || undefined,
+      url: activeUrl,
+      platform: "YouTube",
+      whatToReference: refWhatToReference.trim() || undefined,
+      timestampNotes: refTimestampNotes || [],
+    });
+    if (videos.some((video) => video.url.trim() === activeVideo.url.trim())) {
+      return videos;
+    }
+    return [...videos, activeVideo].slice(0, MAX_REFERENCE_VIDEOS);
+  };
+  const referenceVideosForPayload = getReferenceVideosForPayload();
 
   const activeHiringIdentity = localPendingHiringIdentity || selectedHiringIdentity;
   const activeHiringVerificationStatus = localPendingHiringIdentity
@@ -1898,7 +2065,7 @@ export default function PostJobPage() {
 
   const jobQualityItems: JobQualityItem[] = getJobDraftCompletion({
     title,
-    platform,
+    platform: platform || selectedJobPlatforms[0] || "",
     hiringDisplayName: activeHiringDisplayName,
     hiringIdentityId: selectedHiringIdentityId || undefined,
     hiringVerificationStatus: activeHiringVerificationStatus || undefined,
@@ -1908,14 +2075,17 @@ export default function PostJobPage() {
     responsibilities,
     requirements,
     tools,
+    contentNiches,
+    contentGenres,
+    formatsHiredFor,
     experience: hasExperienceQuality ? previewExperienceText || experienceText : "",
     weeklyHours: turnaround ? `${turnaround.value} ${turnaround.unit}` : "",
     startTimeframe: startWithin || undefined,
-    referenceVideos: refVideos,
+    referenceVideos: referenceVideosForPayload,
     draftCompletion: {
       hasTitle: Boolean(title.trim()),
       hasBudget: Boolean(budgetMin.trim() && budgetMax.trim()),
-      hasPlatform: Boolean(platform),
+      hasPlatform: selectedJobPlatforms.length > 0,
       hasWorkMode: Boolean(workMode),
       hasChannel: hasHiringForIdentity,
       hasExperience: hasExperienceQuality,
@@ -2009,6 +2179,14 @@ export default function PostJobPage() {
     const normalizedResponsibilities = responsibilities.trim();
     const normalizedRequirements = requirements.trim();
     const normalizedHowToApply = howToApply.trim();
+    const sanitizedApplicationRequirements = normalizeJobApplicationRequirementsForPayload(
+      applicationRequirements,
+      normalizedHowToApply,
+      noFirstMessageRequirements
+    );
+    const normalizedCustomInstruction = sanitizedApplicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+      ? normalizedHowToApply
+      : "";
     const normalizedLocation = previewLocationText || locationText || "Remote";
     const normalizedExperience = previewExperienceText || experienceText || "Any";
     const normalizedBudgetText =
@@ -2025,7 +2203,11 @@ export default function PostJobPage() {
       budgetAmountValue != null &&
       budgetMaxValue != null &&
       budgetMaxValue >= budgetAmountValue;
-    const selectedPlatform: IdentityPlatform = platform || "youtube";
+    const selectedPlatform: IdentityPlatform = platform || selectedJobPlatforms[0] || "youtube";
+    const normalizedSelectedPlatforms = selectedJobPlatforms.length ? selectedJobPlatforms : [selectedPlatform];
+    const normalizedContentNiches = normalizeCreatorContextList(contentNiches);
+    const normalizedContentGenres = normalizeCreatorContextList(contentGenres);
+    const normalizedFormatsHiredFor = normalizeCreatorContextList(formatsHiredFor);
 
     const jobToCreate: Job = {
       id: "",
@@ -2047,13 +2229,18 @@ export default function PostJobPage() {
       channelExternalUrl: activeHiringIdentity?.url || undefined,
       tags,
       tools,
+      contentNiches: normalizedContentNiches,
+      contentGenres: normalizedContentGenres,
+      formatsHiredFor: normalizedFormatsHiredFor,
       startTimeframe: startWithin || "Flexible",
       platform: selectedPlatform,
-      referenceVideos: refVideos,
+      platforms: normalizedSelectedPlatforms,
+      referenceVideos: referenceVideosForPayload,
       about: normalizedAbout,
       responsibilities: normalizedResponsibilities,
       requirements: normalizedRequirements,
-      howToApply: normalizedHowToApply,
+      applicationRequirements: sanitizedApplicationRequirements,
+      howToApply: normalizedCustomInstruction,
       postedPlatform: selectedPlatform,
       postedYoutubeChannelId: selectedYouTubeChannelId,
       hiringIdentityId: selectedHiringIdentityId || undefined,
@@ -2072,7 +2259,7 @@ export default function PostJobPage() {
       budget_currency: "INR",
       budget_unit: budgetUnit,
       experience_level: normalizedExperience,
-      platforms: [selectedPlatform],
+      platforms: normalizedSelectedPlatforms,
       start_timeframe: startWithin || "Flexible",
       work_mode: workMode.toLowerCase().replace("on-site", "onsite"),
       contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
@@ -2082,12 +2269,14 @@ export default function PostJobPage() {
       about_channel: normalizedAbout,
       responsibilities: splitLines(normalizedResponsibilities),
       requirements: splitLines(normalizedRequirements),
-      how_to_apply: normalizedHowToApply || null,
+      application_requirements: sanitizedApplicationRequirements,
+      how_to_apply: normalizedCustomInstruction || null,
       tools,
-      reference_videos: refVideos.map((video) => ({
-        title: video.title?.trim() || null,
-        url: video.url,
-      })),
+      languages,
+      content_niches: normalizedContentNiches,
+      content_genres: normalizedContentGenres,
+      formats_hired_for: normalizedFormatsHiredFor,
+      reference_videos: referenceVideosForPayload.map(serializeReferenceVideo),
       tags,
       youtube_channel_id: selectedYouTubeChannelId || null,
       is_verified: verified,
@@ -2149,25 +2338,77 @@ export default function PostJobPage() {
     }
   };
 
+  // After publish validation jumps to a step, pinpoint the problem by scrolling
+  // the first invalid field into view and focusing it (the step must render first).
+  const focusFirstInvalidField = () => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus({ preventScroll: true });
+    }, 60);
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
 
     setSubmitError(null);
     const basicsErrs = getBasicsErrors();
-    if (basicsErrs.length) {
+    if (basicsErrs.includes("identity")) {
       setBasicsErrors(basicsErrs);
-      setDirection("back");
+      setDirection(STEPS.indexOf("basics") < STEPS.indexOf(step) ? "back" : "forward");
       setStep("basics");
-      if (basicsErrs.includes("identity")) {
-        setHiringIdentityModalOpen(true);
-      }
+      setHiringIdentityModalOpen(true);
+      setSubmitError("Fix the highlighted fields before publishing.");
+      focusFirstInvalidField();
       return;
     }
+    const basicsFieldErrs = basicsErrs.filter((key) => key !== "identity");
+    if (basicsFieldErrs.length) {
+      setBasicsErrors(basicsFieldErrs);
+      setDirection(STEPS.indexOf("basics") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("basics");
+      setSubmitError("Fix the highlighted fields before publishing.");
+      focusFirstInvalidField();
+      return;
+    }
+    setBasicsErrors([]);
     if (about.trim().length < 20) {
       setContentErrors({ about: "Add at least 20 characters about the brand." });
-      setDirection("back");
+      setDirection(STEPS.indexOf("about") < STEPS.indexOf(step) ? "back" : "forward");
       setStep("about");
+      setSubmitError("Add the missing details before publishing.");
+      focusFirstInvalidField();
+      return;
+    }
+    const referenceError = getRefUrlError();
+    if (referenceError) {
+      setRefUrlError(referenceError);
+      setDirection(STEPS.indexOf("referenceVideos") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("referenceVideos");
+      setSubmitError("Fix the highlighted fields before publishing.");
+      focusFirstInvalidField();
+      return;
+    }
+    setRefUrlError(null);
+    if (!noFirstMessageRequirements && applicationRequirements.length === 0) {
+      setFirstMessageError(
+        "Choose what applicants must include with their first message, or select “No specific first-message requirements.”"
+      );
+      setDirection(STEPS.indexOf("applicationRequirements") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("applicationRequirements");
+      return;
+    }
+    if (
+      !noFirstMessageRequirements &&
+      applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
+      !howToApply.trim()
+    ) {
+      setFirstMessageError("Add the custom instruction or remove it.");
+      setDirection(STEPS.indexOf("applicationRequirements") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("applicationRequirements");
       return;
     }
     if (isHiringAuthorizationBlockingPublish) {
@@ -2209,6 +2450,18 @@ export default function PostJobPage() {
       budgetAmountValue != null &&
       budgetMaxValue != null &&
       budgetMaxValue >= budgetAmountValue;
+    const normalizedContentNiches = normalizeCreatorContextList(contentNiches);
+    const normalizedContentGenres = normalizeCreatorContextList(contentGenres);
+    const normalizedFormatsHiredFor = normalizeCreatorContextList(formatsHiredFor);
+    const normalizedHowToApply = howToApply.trim();
+    const sanitizedApplicationRequirements = normalizeJobApplicationRequirementsForPayload(
+      applicationRequirements,
+      normalizedHowToApply,
+      noFirstMessageRequirements
+    );
+    const normalizedCustomInstruction = sanitizedApplicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+      ? normalizedHowToApply
+      : "";
 
     const backendPayload: BackendCreateJobPayload = {
       title: normalizedTitle,
@@ -2219,7 +2472,7 @@ export default function PostJobPage() {
       budget_currency: "INR",
       budget_unit: budgetUnit,
       experience_level: experienceText || null,
-      platforms: platform ? [platform] : [],
+      platforms: selectedJobPlatforms,
       start_timeframe: startWithin || null,
       work_mode: workMode ? workMode.toLowerCase().replace("on-site", "onsite") : null,
       contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
@@ -2228,16 +2481,21 @@ export default function PostJobPage() {
       about_channel: about.trim() || null,
       responsibilities: splitLines(responsibilities),
       requirements: splitLines(requirements),
-      how_to_apply: howToApply.trim() || null,
+      application_requirements: sanitizedApplicationRequirements,
+      how_to_apply: normalizedCustomInstruction || null,
       tools,
-      reference_videos: refVideos.map((video) => ({ title: video.title?.trim() || null, url: video.url })),
+      languages,
+      content_niches: normalizedContentNiches,
+      content_genres: normalizedContentGenres,
+      formats_hired_for: normalizedFormatsHiredFor,
+      reference_videos: referenceVideosForPayload.map(serializeReferenceVideo),
       tags,
       youtube_channel_id: selectedYouTubeChannelId || null,
       is_verified: verified,
       channel_name: normalizedChannelName,
       channel_logo_url: normalizedChannelLogoUrl,
       channel_subscribers: normalizedChannelSubscribers,
-      posted_platform: platform || null,
+      posted_platform: platform || selectedJobPlatforms[0] || null,
       posted_youtube_channel_id: selectedYouTubeChannelId || null,
       hiring_identity_id: selectedHiringIdentityId || null,
       status: "draft",
@@ -2320,11 +2578,15 @@ export default function PostJobPage() {
       expMax,
       startWithin,
       platform,
+      platforms: selectedJobPlatforms,
       platformName,
       platformAudience,
-      styles,
+      contentNiches,
+      contentGenres,
+      formatsHiredFor,
       turnaround,
       tools,
+      languages,
     });
   };
 
@@ -2334,6 +2596,8 @@ export default function PostJobPage() {
       responsibilities,
       requirements,
       howToApply,
+      applicationRequirements,
+      noFirstMessageRequirements,
     });
   };
 
@@ -2347,12 +2611,39 @@ export default function PostJobPage() {
       setRefUrlError(error);
       return false;
     }
+    const cleanedActiveNotes = (refTimestampNotes || [])
+      .map((note) => normalizeReferenceTimestampNote(note))
+      .filter((note): note is ReferenceTimestampNote => Boolean(note));
     setRefUrlError(null);
-    setSavedRefs({ refVideos, refTitle, refUrl });
+    setRefTimestampNotes(cleanedActiveNotes);
+    setSavedRefs({
+      refVideos: referenceVideosForPayload,
+      refTitle,
+      refUrl,
+      refWhatToReference,
+      refTimestampNotes: cleanedActiveNotes,
+    });
     return true;
   };
 
-  const canSaveBasics =
+  const canSaveContent =
+    about !== savedContent.about ||
+    responsibilities !== savedContent.responsibilities ||
+    requirements !== savedContent.requirements ||
+    howToApply !== savedContent.howToApply ||
+    noFirstMessageRequirements !== savedContent.noFirstMessageRequirements ||
+    JSON.stringify(applicationRequirements) !== JSON.stringify(savedContent.applicationRequirements);
+
+  const canSaveTags = JSON.stringify(tags) !== JSON.stringify(savedTags.tags);
+
+  const canSaveReferenceVideos =
+    JSON.stringify(referenceVideosForPayload) !== JSON.stringify(savedRefs.refVideos) ||
+    refTitle !== savedRefs.refTitle ||
+    refUrl !== savedRefs.refUrl ||
+    refWhatToReference !== savedRefs.refWhatToReference ||
+    JSON.stringify(refTimestampNotes) !== JSON.stringify(savedRefs.refTimestampNotes);
+
+  const canSaveCoreBasics =
     title !== savedBasics.title ||
     budgetMin !== savedBasics.budgetMin ||
     budgetMax !== savedBasics.budgetMax ||
@@ -2362,27 +2653,44 @@ export default function PostJobPage() {
     city !== savedBasics.city ||
     expMin !== savedBasics.expMin ||
     expMax !== savedBasics.expMax ||
-    startWithin !== savedBasics.startWithin ||
+    platform !== savedBasics.platform ||
+    JSON.stringify(selectedJobPlatforms) !== JSON.stringify(savedBasics.platforms) ||
     platformName !== savedBasics.platformName ||
-    platformAudience !== savedBasics.platformAudience ||
-    JSON.stringify(styles) !== JSON.stringify(savedBasics.styles) ||
+    platformAudience !== savedBasics.platformAudience;
+
+  const canSaveDetails =
+    startWithin !== savedBasics.startWithin ||
     turnaround?.value !== savedBasics.turnaround?.value ||
     turnaround?.unit !== savedBasics.turnaround?.unit ||
-    platform !== savedBasics.platform ||
-    JSON.stringify(tools) !== JSON.stringify(savedBasics.tools);
+    JSON.stringify(languages) !== JSON.stringify(savedBasics.languages);
 
-  const canSaveContent =
+  const canSaveCreatorContext =
+    JSON.stringify(contentNiches) !== JSON.stringify(savedBasics.contentNiches) ||
+    JSON.stringify(contentGenres) !== JSON.stringify(savedBasics.contentGenres) ||
+    JSON.stringify(formatsHiredFor) !== JSON.stringify(savedBasics.formatsHiredFor) ||
+    JSON.stringify(tools) !== JSON.stringify(savedBasics.tools) ||
+    canSaveTags;
+
+  const canSaveAbout =
     about !== savedContent.about ||
     responsibilities !== savedContent.responsibilities ||
-    requirements !== savedContent.requirements ||
-    howToApply !== savedContent.howToApply;
+    requirements !== savedContent.requirements;
 
-  const canSaveTags = JSON.stringify(tags) !== JSON.stringify(savedTags.tags);
+  const canSaveApplicationRequirements =
+    howToApply !== savedContent.howToApply ||
+    noFirstMessageRequirements !== savedContent.noFirstMessageRequirements ||
+    JSON.stringify(applicationRequirements) !== JSON.stringify(savedContent.applicationRequirements);
 
-  const canSaveReferenceVideos =
-    JSON.stringify(refVideos) !== JSON.stringify(savedRefs.refVideos) ||
-    refTitle !== savedRefs.refTitle ||
-    refUrl !== savedRefs.refUrl;
+  const onSaveDetails = onSaveBasics;
+
+  const onSaveCreatorContext = () => {
+    onSaveBasics();
+    onSaveTags();
+  };
+
+  const onSaveAbout = onSaveContent;
+
+  const onSaveApplicationRequirements = onSaveContent;
 
   const hasNext = STEPS.indexOf(step) < STEPS.length - 1;
   const hasBack = STEPS.indexOf(step) > 0;
@@ -2391,18 +2699,13 @@ export default function PostJobPage() {
   const goNext = (current: Step) => {
     const idx = STEPS.indexOf(current);
     if (idx >= STEPS.length - 1) return;
-    if (current === "referenceVideos") {
-      const error = getRefUrlError();
-      if (error) {
-        setRefUrlError(error);
-        return;
-      }
-      setRefUrlError(null);
-    }
     if (current === "basics") {
       const errs = getBasicsErrors();
       if (errs.length) {
         setBasicsErrors(errs);
+        if (errs.includes("identity")) {
+          setHiringIdentityModalOpen(true);
+        }
         updateBasicsPreview();
         return;
       }
@@ -2416,6 +2719,14 @@ export default function PostJobPage() {
       }
       setContentErrors({});
     }
+    if (
+      current === "applicationRequirements" &&
+      applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
+      !howToApply.trim()
+    ) {
+      setFirstMessageError("Add the custom instruction or remove it.");
+      return;
+    }
     setDirection("forward");
     setStep(STEPS[idx + 1]);
   };
@@ -2426,6 +2737,53 @@ export default function PostJobPage() {
     setDirection("back");
     setStep(STEPS[idx - 1]);
   };
+
+  const hiringIdentityPanel = (
+    <section className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <HiringIdentityAvatar
+            name={activeHiringDisplayName}
+            imageUrl={activeHiringAvatarUrl}
+            platform={activeHiringPlatform}
+            className="h-10 w-10"
+          />
+          <div className="min-w-0">
+            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-white/36">
+              <Icon name="briefcase" className="h-3.5 w-3.5 text-white/38" />
+              <span>Hiring for</span>
+            </p>
+            <p className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-semibold text-white/86">
+              <span className="truncate">{activeHiringDisplayName}</span>
+              <span
+                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${activeHiringStatusMeta.className}`}
+                title={activeHiringStatusMeta.tooltip}
+                aria-label={activeHiringStatusMeta.label}
+              >
+                <Icon name={activeHiringStatusMeta.icon} className="h-3 w-3" />
+              </span>
+            </p>
+            {isHiringAuthorizationBlockingPublish ? (
+              <p className="mt-1 text-xs text-amber-100/72">
+                This job can be completed as a draft, but it will not go live until authorization is verified.
+              </p>
+            ) : draftId ? (
+              <p className="mt-1 text-xs text-white/42">Editing job draft.</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setHiringIdentityModalOpen(true)}
+            className="h-9 w-fit rounded-xl border border-white/[0.1] px-3 text-xs font-semibold text-white/74 transition-colors hover:bg-white/[0.07] hover:text-white cursor-pointer"
+          >
+            Change
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 
   if (sessionStatus === "loading" || draftLoading) {
     return <PageLoading blocks={4} />;
@@ -2448,47 +2806,7 @@ export default function PostJobPage() {
       <div className="px-4 sm:px-6 py-8">
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-start">
           <div className="min-w-0 space-y-6">
-            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-center gap-3">
-                  <HiringIdentityAvatar
-                    name={activeHiringDisplayName}
-                    imageUrl={activeHiringAvatarUrl}
-                    platform={activeHiringPlatform}
-                    className="h-10 w-10"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.13em] text-white/36">Hiring for</p>
-                    <p className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-semibold text-white/86">
-                      <span className="truncate">{activeHiringDisplayName}</span>
-                      <span
-                        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${activeHiringStatusMeta.className}`}
-                        title={activeHiringStatusMeta.tooltip}
-                        aria-label={activeHiringStatusMeta.label}
-                      >
-                        <Icon name={activeHiringStatusMeta.icon} className="h-3 w-3" />
-                      </span>
-                    </p>
-                    {isHiringAuthorizationBlockingPublish ? (
-                      <p className="mt-1 text-xs text-amber-100/72">
-                        This job can be completed as a draft, but it will not go live until authorization is verified.
-                      </p>
-                    ) : draftId ? (
-                      <p className="mt-1 text-xs text-white/42">Editing job draft.</p>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setHiringIdentityModalOpen(true)}
-                    className="h-9 w-fit rounded-xl border border-white/[0.1] px-3 text-xs font-semibold text-white/74 transition-colors hover:bg-white/[0.07] hover:text-white cursor-pointer"
-                  >
-                    Change
-                  </button>
-                </div>
-              </div>
-            </section>
+            {hiringIdentityPanel}
 
             <PostJobForm
               step={step}
@@ -2526,14 +2844,20 @@ export default function PostJobPage() {
               onExpMaxChange={setExpMax}
               startWithin={startWithin}
               onStartWithinChange={setStartWithin}
-              platform={platform}
-              onPlatformChange={setPlatformSelection}
-              styles={styles}
-              onStylesChange={setStyles}
+              platforms={selectedJobPlatforms}
+              onPlatformToggle={togglePlatformSelection}
+              contentNiches={contentNiches}
+              onContentNichesChange={(next) => setContentNiches(normalizeCreatorContextList(next))}
+              contentGenres={contentGenres}
+              onContentGenresChange={(next) => setContentGenres(normalizeCreatorContextList(next))}
+              formatsHiredFor={formatsHiredFor}
+              onFormatsHiredForChange={(next) => setFormatsHiredFor(normalizeCreatorContextList(next))}
               turnaround={turnaround}
               onTurnaroundChange={setTurnaround}
               tools={tools}
               onToolsChange={setTools}
+              languages={languages}
+              onLanguagesChange={setLanguages}
               about={about}
               responsibilities={responsibilities}
               requirements={requirements}
@@ -2542,6 +2866,11 @@ export default function PostJobPage() {
               onResponsibilitiesChange={setResponsibilities}
               onRequirementsChange={setRequirements}
               onHowToApplyChange={setHowToApply}
+              applicationRequirements={applicationRequirements}
+              onApplicationRequirementsChange={setApplicationRequirements}
+              noFirstMessageRequirements={noFirstMessageRequirements}
+              onNoFirstMessageRequirementsChange={setNoFirstMessageRequirements}
+              firstMessageError={firstMessageError || undefined}
               tagInput={tagInput}
               tags={tags}
               onTagInputChange={setTagInput}
@@ -2549,21 +2878,32 @@ export default function PostJobPage() {
               onRemoveTag={removeTag}
               refTitle={refTitle}
               refUrl={refUrl}
+              refWhatToReference={refWhatToReference}
+              refTimestampNotes={refTimestampNotes || []}
               refUrlError={refUrlError || undefined}
               refVideos={refVideos}
               onRefTitleChange={setRefTitle}
               onRefUrlChange={setRefUrl}
+              onRefWhatToReferenceChange={setRefWhatToReference}
+              onRefTimestampNotesChange={setRefTimestampNotes}
               onAddRefVideo={addRefVideo}
               onRemoveRefVideo={removeRefVideo}
+              onUpdateRefVideo={updateRefVideo}
               onSubmit={onSubmit}
               onSaveBasics={onSaveBasics}
+              onSaveDetails={onSaveDetails}
+              onSaveCreatorContext={onSaveCreatorContext}
               onSaveContent={onSaveContent}
-              onSaveTags={onSaveTags}
+              onSaveAbout={onSaveAbout}
+              onSaveApplicationRequirements={onSaveApplicationRequirements}
               onSaveReferenceVideos={onSaveReferenceVideos}
               onSaveDraft={() => void onSaveDraft()}
-              canSaveBasics={canSaveBasics}
+              canSaveBasics={canSaveCoreBasics}
+              canSaveDetails={canSaveDetails}
+              canSaveCreatorContext={canSaveCreatorContext}
               canSaveContent={canSaveContent}
-              canSaveTags={canSaveTags}
+              canSaveAbout={canSaveAbout}
+              canSaveApplicationRequirements={canSaveApplicationRequirements}
               canSaveReferenceVideos={canSaveReferenceVideos}
               contentErrors={contentErrors}
               submitError={submitError}
@@ -2582,6 +2922,9 @@ export default function PostJobPage() {
               experienceText={previewExperienceText}
               locationText={previewLocationText}
               tags={tags}
+              contentNiches={contentNiches}
+              contentGenres={contentGenres}
+              formatsHiredFor={formatsHiredFor}
               platform={platform}
               profileImageUrl={activeHiringAvatarUrl}
             />

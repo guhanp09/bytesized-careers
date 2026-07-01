@@ -1,4 +1,6 @@
 import type { BackendTalentListing } from "./backendClient";
+import { creatorContextFieldCount, isCreatorContextComplete } from "./jobCreatorContext.ts";
+import type { DraftItem } from "./ownerDrafts";
 import type { Job } from "./types";
 
 /**
@@ -203,7 +205,7 @@ function build(
     const first = missingRecommendedItems[0];
     nextBestAction = {
       title: first.actionLabel,
-      body: "This can improve listing strength.",
+      body: first.helpText || "This can improve listing strength.",
       jump: first.target,
       jumpLabel: jumpLabel(first),
       done: false,
@@ -277,6 +279,14 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
   const workMode = (job.workMode || "").toLowerCase();
   const cityRequired = workMode === "hybrid" || workMode === "onsite" || workMode === "on-site";
   const tools = job.tools || [];
+  const creatorContextCount = creatorContextFieldCount({
+    contentNiches: job.contentNiches,
+    contentGenres: job.contentGenres,
+    formatsHiredFor: job.formatsHiredFor,
+  });
+  const hasContentNiches = Boolean(job.contentNiches?.length);
+  const hasContentGenres = Boolean(job.contentGenres?.length);
+  const hasFormatsHiredFor = Boolean(job.formatsHiredFor?.length);
   const hasRefVideos = Boolean(job.referenceVideos && job.referenceVideos.length > 0);
   const hasTimeline = hasActualTimeline(
     job,
@@ -293,6 +303,7 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     role: { key: "role", label: "Role details" },
     budget: { key: "budget", label: "Budget / compensation" },
     skills: { key: "skills", label: "Skills & tools" },
+    creatorContext: { key: "creatorContext", label: "Creator context" },
     location: { key: "location", label: "Location / work mode" },
     timeline: { key: "timeline", label: "Timeline / availability" },
     media: { key: "media", label: "Portfolio / media" },
@@ -409,6 +420,36 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
       actionLabel: "Add tools expected",
     },
     {
+      key: "contentNiches",
+      label: "Add content niches",
+      done: hasContentNiches,
+      required: false,
+      jump: "contentNiches",
+      group: G.creatorContext.key,
+      groupLabel: G.creatorContext.label,
+      actionLabel: "Add content niches",
+    },
+    {
+      key: "contentGenres",
+      label: "Add genres",
+      done: hasContentGenres,
+      required: false,
+      jump: "contentGenres",
+      group: G.creatorContext.key,
+      groupLabel: G.creatorContext.label,
+      actionLabel: "Add genres",
+    },
+    {
+      key: "formatsHiredFor",
+      label: "Add formats hired for",
+      done: hasFormatsHiredFor,
+      required: false,
+      jump: "formatsHiredFor",
+      group: G.creatorContext.key,
+      groupLabel: G.creatorContext.label,
+      actionLabel: "Add formats hired for",
+    },
+    {
       key: "experience",
       label: "Add experience",
       done: hasExperience,
@@ -437,7 +478,7 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     }
   );
 
-  const groups = [G.basics, G.context, G.role, G.budget, G.skills, G.location, G.timeline, G.media, G.verification];
+  const groups = [G.basics, G.context, G.role, G.budget, G.skills, G.creatorContext, G.location, G.timeline, G.media, G.verification];
 
   const accessConfirmed = !job.hiringIdentityId || verification === "VERIFIED";
   const accessValue = job.hiringIdentityId
@@ -453,6 +494,12 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     { key: "workMode", label: "Work mode", value: job.workMode || null, jump: "basics" },
     { key: "budget", label: "Compensation", value: truthy(job.budget) ? (job.budget as string) : null, jump: "budget" },
     { key: "tools", label: "Tools", value: tools.length ? tools.slice(0, 3).join(", ") : null, jump: "tools" },
+    {
+      key: "creatorContext",
+      label: "Creator context",
+      value: creatorContextCount ? `${creatorContextCount}/3 fields` : null,
+      jump: "creatorContext",
+    },
     { key: "location", label: "Location", value: job.location || null, jump: "basics" },
     { key: "timeline", label: "Timeline", value: job.weeklyHours || (hasTimeline ? job.startTimeframe || null : null), jump: "basics" },
     { key: "access", label: "Channel access", value: accessValue, jump: accessConfirmed ? null : "identity" },
@@ -472,10 +519,16 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
   const tools = listing.tools || [];
   const platforms = listing.platforms || [];
   const portfolio = listing.portfolio_item_ids || [];
+  const creatorContextCount = creatorContextFieldCount({
+    contentNiches: listing.content_niches,
+    contentGenres: listing.content_genres,
+    formatsHiredFor: listing.formats,
+  });
 
   const G = {
     basics: { key: "basics", label: "Basics" },
     role: { key: "role", label: "Role / niche" },
+    creatorContext: { key: "creatorContext", label: "Creator context" },
     skills: { key: "skills", label: "Skills & tools" },
     portfolio: { key: "portfolio", label: "Portfolio / media" },
     rates: { key: "rates", label: "Rates / availability" },
@@ -536,12 +589,28 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
   items.push(
     {
       key: "niche",
-      label: "Add niches or platforms",
-      done: truthy(listing.niche) || platforms.length > 0,
+      label: "Add platforms",
+      done: platforms.length > 0,
       required: false,
       jump: "niche",
       group: G.role.key,
       groupLabel: G.role.label,
+      actionLabel: "Add platforms",
+    },
+    {
+      key: "creatorContext",
+      label: "Add creator context",
+      done: isCreatorContextComplete({
+        contentNiches: listing.content_niches,
+        contentGenres: listing.content_genres,
+        formatsHiredFor: listing.formats,
+      }),
+      required: false,
+      jump: "creatorContext",
+      group: G.creatorContext.key,
+      groupLabel: G.creatorContext.label,
+      actionLabel: "Add creator context",
+      helpText: "Helps recruiters find you in search.",
     },
     {
       key: "tools",
@@ -572,8 +641,10 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
     },
     {
       key: "experience",
-      label: "Add experience range",
-      done: truthy(listing.experience_level),
+      label: "Add years of experience",
+      // Talent experience is now exact whole years (0 = "less than 1 year" still counts);
+      // legacy range/level strings no longer count.
+      done: typeof listing.experience_years === "number" && listing.experience_years >= 0,
       required: false,
       jump: "experience",
       group: G.experience.key,
@@ -581,7 +652,7 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
     }
   );
 
-  const groups = [G.basics, G.role, G.skills, G.portfolio, G.rates, G.location, G.experience];
+  const groups = [G.basics, G.role, G.creatorContext, G.skills, G.portfolio, G.rates, G.location, G.experience];
 
   const rateValue = hasRate
     ? truthy(listing.rate_note)
@@ -594,9 +665,55 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
     { key: "role", label: "Primary role", value: primaryRole || null, jump: "basics" },
     { key: "workMode", label: "Work mode", value: listing.work_mode || null, jump: "collaboration" },
     { key: "rate", label: "Rate", value: rateValue, jump: "collaboration" },
+    {
+      key: "creatorContext",
+      label: "Creator context",
+      value: creatorContextCount ? `${creatorContextCount}/3 fields` : null,
+      jump: "creatorContext",
+    },
     { key: "tools", label: "Tools", value: tools.length ? tools.slice(0, 3).join(", ") : null, jump: "tools" },
     { key: "portfolio", label: "Portfolio", value: portfolio.length ? `${portfolio.length} sample${portfolio.length > 1 ? "s" : ""}` : null, jump: "portfolio" },
   ];
 
   return build(items, groups, keyFacts);
+}
+
+// ---- Inline draft title editing ----
+
+export const DRAFT_TITLE_MIN_LENGTH = 3;
+export const DRAFT_TITLE_MAX_LENGTH = 94;
+
+export type DraftTitleValidation = { ok: true; title: string } | { ok: false; error: string };
+
+/**
+ * Title rule shared with the post-job / post-talent flows: trimmed and at least
+ * 3 characters. An empty string is never accepted as a real title.
+ */
+export function validateDraftTitle(raw: string): DraftTitleValidation {
+  const title = raw.trim();
+  if (!title) return { ok: false, error: "Add a title to save." };
+  if (title.length < DRAFT_TITLE_MIN_LENGTH) return { ok: false, error: "Use at least 3 characters." };
+  return { ok: true, title };
+}
+
+/**
+ * Returns a copy of `item` with `rawTitle` applied to the underlying draft
+ * source and the completion model recomputed, so publish readiness, the
+ * "Add title" task, and the next best action all reflect the new title. Every
+ * other field (resume target, draft status, id, etc.) is preserved — no
+ * duplicate is created and the status stays "draft".
+ */
+export function applyDraftTitle(item: DraftItem, rawTitle: string): DraftItem {
+  const title = rawTitle.trim();
+  const isRealTitle = title.length >= DRAFT_TITLE_MIN_LENGTH && !isFallbackDraftTitle(title);
+  if (item.kind === "job") {
+    const sourceJob: Partial<Job> = {
+      ...(item.sourceJob || {}),
+      title,
+      draftCompletion: { ...(item.sourceJob?.draftCompletion || {}), hasTitle: isRealTitle },
+    };
+    return { ...item, title, untitled: !isRealTitle, completion: getJobDraftCompletion(sourceJob), sourceJob };
+  }
+  const sourceTalent: Partial<BackendTalentListing> = { ...(item.sourceTalent || {}), title };
+  return { ...item, title, untitled: !isRealTitle, completion: getTalentDraftCompletion(sourceTalent), sourceTalent };
 }

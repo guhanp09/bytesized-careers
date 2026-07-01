@@ -40,7 +40,7 @@ class JobService:
     def _to_payload(data: dict[str, Any]) -> dict[str, Any]:
         payload = dict(data)
         if "reference_videos" in payload and payload["reference_videos"] is not None:
-            normalized_reference_videos: list[str | dict[str, str]] = []
+            normalized_reference_videos: list[str | dict[str, Any]] = []
             for item in payload["reference_videos"]:
                 if isinstance(item, str):
                     normalized_reference_videos.append(str(item))
@@ -50,10 +50,35 @@ class JobService:
                     url = item.get("url")
                     if not url:
                         continue
-                    normalized_item: dict[str, str] = {"url": str(url)}
-                    title = item.get("title")
-                    if isinstance(title, str) and title.strip():
-                        normalized_item["title"] = title.strip()
+                    normalized_item: dict[str, Any] = {"url": str(url)}
+                    for key in ("id", "title", "platform", "description", "what_to_reference"):
+                        value = item.get(key)
+                        if isinstance(value, str) and value.strip():
+                            normalized_item[key] = " ".join(value.split())
+                    thumbnail_url = item.get("thumbnail_url")
+                    if thumbnail_url:
+                        normalized_item["thumbnail_url"] = str(thumbnail_url)
+                    timestamp_notes = item.get("timestamp_notes")
+                    if isinstance(timestamp_notes, list):
+                        normalized_notes: list[dict[str, Any]] = []
+                        for note in timestamp_notes[:8]:
+                            if not isinstance(note, dict):
+                                continue
+                            seconds = note.get("seconds")
+                            title = note.get("title")
+                            time = note.get("time")
+                            if not isinstance(seconds, int) or seconds < 0 or not isinstance(title, str) or not title.strip():
+                                continue
+                            normalized_notes.append(
+                                {
+                                    "id": note.get("id") if isinstance(note.get("id"), str) else None,
+                                    "time": str(time).strip() if time else str(seconds),
+                                    "seconds": seconds,
+                                    "title": " ".join(title.split())[:60],
+                                    "description": " ".join(str(note.get("description") or "").split())[:220],
+                                }
+                            )
+                        normalized_item["timestamp_notes"] = normalized_notes
                     normalized_reference_videos.append(normalized_item)
                     continue
 
@@ -61,9 +86,16 @@ class JobService:
                 if url is None:
                     continue
                 normalized_item = {"url": str(url)}
-                title = getattr(item, "title", None)
-                if isinstance(title, str) and title.strip():
-                    normalized_item["title"] = title.strip()
+                for key in ("id", "title", "platform", "description", "what_to_reference"):
+                    value = getattr(item, key, None)
+                    if isinstance(value, str) and value.strip():
+                        normalized_item[key] = " ".join(value.split())
+                thumbnail_url = getattr(item, "thumbnail_url", None)
+                if thumbnail_url:
+                    normalized_item["thumbnail_url"] = str(thumbnail_url)
+                timestamp_notes = getattr(item, "timestamp_notes", None)
+                if isinstance(timestamp_notes, list):
+                    normalized_item["timestamp_notes"] = [note.model_dump() for note in timestamp_notes[:8]]
                 normalized_reference_videos.append(normalized_item)
 
             payload["reference_videos"] = normalized_reference_videos

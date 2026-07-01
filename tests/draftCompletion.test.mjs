@@ -153,6 +153,41 @@ test("job listing strength excludes tags and includes experience", () => {
   assert.equal(experience.actionLabel, "Add experience");
 });
 
+test("job creator context checklist tracks each creator field independently", () => {
+  const base = {
+    title: "Motion graphics editor",
+    platform: "youtube",
+    hiringDisplayName: "@explainlab",
+    workMode: "remote",
+    budget: "₹3,000 per video",
+    about: "Explainer videos for a creator-led education channel.",
+  };
+
+  const empty = getJobDraftCompletion(base);
+  const oneField = getJobDraftCompletion({ ...base, contentNiches: ["Education"] });
+  const allFields = getJobDraftCompletion({
+    ...base,
+    contentNiches: ["Education"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Long-form video"],
+  });
+
+  assert.equal(empty.recommendedItems.find((i) => i.key === "contentNiches").done, false);
+  assert.equal(empty.recommendedItems.find((i) => i.key === "contentGenres").done, false);
+  assert.equal(empty.recommendedItems.find((i) => i.key === "formatsHiredFor").done, false);
+
+  assert.equal(oneField.recommendedItems.find((i) => i.key === "contentNiches").done, true);
+  assert.equal(oneField.recommendedItems.find((i) => i.key === "contentGenres").done, false);
+  assert.equal(oneField.recommendedItems.find((i) => i.key === "formatsHiredFor").done, false);
+
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "contentNiches").label, "Add content niches");
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "contentGenres").label, "Add genres");
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "formatsHiredFor").label, "Add formats hired for");
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "contentNiches").done, true);
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "contentGenres").done, true);
+  assert.equal(allFields.recommendedItems.find((i) => i.key === "formatsHiredFor").done, true);
+});
+
 test("fully complete & strong job draft", () => {
   const c = getJobDraftCompletion({
     title: "Motion graphics editor",
@@ -167,6 +202,9 @@ test("fully complete & strong job draft", () => {
     responsibilities: "Animate explainers.",
     requirements: "2y experience.",
     tools: ["After Effects"],
+    contentNiches: ["Education"],
+    contentGenres: ["Explainers"],
+    formatsHiredFor: ["Long-form video"],
     weeklyHours: "48 hours",
     referenceVideos: [{ url: "https://youtu.be/x" }],
   });
@@ -263,6 +301,7 @@ test("partially complete talent draft: missing rate blocks publish", () => {
     primary_role: "Video Editor",
     work_mode: "remote",
     niche: "Education",
+    platforms: ["YouTube"],
     tools: ["Premiere Pro"],
     // no rate
   });
@@ -283,6 +322,30 @@ test("publish-ready but weak talent draft", () => {
   assert.ok(c.recommendedPercent < 100);
 });
 
+test("talent creator context checklist completes when at least two fields are filled", () => {
+  const base = {
+    title: "Thumbnail designer",
+    primary_role: "Thumbnail Designer",
+    work_mode: "remote",
+    rate_min: 1000,
+  };
+
+  const empty = getTalentDraftCompletion(base);
+  const oneField = getTalentDraftCompletion({ ...base, content_niches: ["Finance"] });
+  const twoFields = getTalentDraftCompletion({
+    ...base,
+    content_niches: ["Finance"],
+    formats: ["Thumbnails"],
+  });
+
+  assert.equal(empty.recommendedItems.find((i) => i.key === "creatorContext").done, false);
+  assert.equal(oneField.recommendedItems.find((i) => i.key === "creatorContext").done, false);
+  const creatorContext = twoFields.recommendedItems.find((i) => i.key === "creatorContext");
+  assert.equal(creatorContext.done, true);
+  assert.equal(creatorContext.label, "Add creator context");
+  assert.equal(creatorContext.helpText, "Helps recruiters find you in search.");
+});
+
 test("fully complete & strong talent draft", () => {
   const c = getTalentDraftCompletion({
     title: "Thumbnail designer",
@@ -290,9 +353,13 @@ test("fully complete & strong talent draft", () => {
     work_mode: "remote",
     rate_min: 1000,
     niche: "Tech",
+    content_niches: ["Tech", "Finance"],
+    content_genres: ["Reviews"],
+    formats: ["Thumbnails"],
+    platforms: ["YouTube"],
     tools: ["Photoshop"],
     description: "High-CTR thumbnails.",
-    experience_level: "3",
+    experience_years: 3,
     portfolio_item_ids: ["p1", "p2"],
   });
   assert.equal(c.publishReady, true);

@@ -138,9 +138,12 @@ async def test_talent_listing_save_interest_and_notifications(client: AsyncClien
             "title": "Video editor open for creator channels",
             "roles": ["Video editor"],
             "niche": "Gaming",
+            "content_niches": ["Gaming", "gaming", ""],
+            "content_genres": ["Explainers", "Explainers"],
             "formats": ["Long-form"],
             "platforms": ["YouTube"],
             "tools": ["DaVinci Resolve"],
+            "languages": ["Hindi", "English"],
             "work_mode": "remote",
             "location": "Remote",
             "timezone": "IST",
@@ -151,11 +154,23 @@ async def test_talent_listing_save_interest_and_notifications(client: AsyncClien
         },
     )
     assert create_listing.status_code == 201
-    listing_id = create_listing.json()["id"]
+    created_listing = create_listing.json()
+    listing_id = created_listing["id"]
+    assert created_listing["languages"] == ["Hindi", "English"]
+    assert created_listing["content_niches"] == ["Gaming"]
+    assert created_listing["content_genres"] == ["Explainers"]
 
     public_list = await client.get("/api/v1/talent-listings")
     assert public_list.status_code == 200
-    assert any(item["id"] == listing_id for item in public_list.json()["items"])
+    matched = next((item for item in public_list.json()["items"] if item["id"] == listing_id), None)
+    assert matched is not None
+    assert matched["languages"] == ["Hindi", "English"]
+    assert matched["content_niches"] == ["Gaming"]
+    assert matched["content_genres"] == ["Explainers"]
+
+    search_by_genre = await client.get("/api/v1/talent-listings", params={"q": "explainers"})
+    assert search_by_genre.status_code == 200
+    assert any(item["id"] == listing_id for item in search_by_genre.json()["items"])
 
     save = await client.post(
         f"/api/v1/talent-listings/{listing_id}/save",
@@ -219,6 +234,69 @@ async def test_talent_listing_save_interest_and_notifications(client: AsyncClien
     )
     assert recruiter_activity.status_code == 200
     assert recruiter_activity.json()["sent_interests"][0]["id"] == interest_id
+
+
+async def test_talent_listing_delete_requires_owner(client: AsyncClient) -> None:
+    owner_token = await _register_verified_login(
+        client, email="talent-delete-owner@example.com", username="talent_delete_owner"
+    )
+    other_token = await _register_verified_login(
+        client, email="talent-delete-other@example.com", username="talent_delete_other"
+    )
+
+    create_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Thumbnail designer open for work",
+            "roles": ["Thumbnail designer"],
+            "niche": "Gaming",
+            "formats": ["Thumbnails"],
+            "platforms": ["YouTube"],
+            "work_mode": "remote",
+            "location": "Remote",
+            "availability_status": "available",
+            "status": "published",
+        },
+    )
+    assert create_listing.status_code == 201
+    listing_id = create_listing.json()["id"]
+
+    # Anonymous callers can't delete.
+    unauth_delete = await client.delete(f"/api/v1/talent-listings/{listing_id}")
+    assert unauth_delete.status_code == 401
+
+    # A signed-in non-owner is forbidden.
+    wrong_owner_delete = await client.delete(
+        f"/api/v1/talent-listings/{listing_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert wrong_owner_delete.status_code == 403
+
+    # The owner can soft-delete it.
+    owner_delete = await client.delete(
+        f"/api/v1/talent-listings/{listing_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_delete.status_code == 200
+    assert owner_delete.json()["ok"] is True
+
+    # Once deleted it 404s on fetch and disappears from the public list.
+    fetch_deleted = await client.get(f"/api/v1/talent-listings/{listing_id}")
+    assert fetch_deleted.status_code == 404
+
+    public_list = await client.get("/api/v1/talent-listings")
+    assert public_list.status_code == 200
+    assert all(item["id"] != listing_id for item in public_list.json()["items"])
+
+    # It also drops out of the owner's own listing endpoint.
+    my_listings = await client.get(
+        "/api/v1/me/talent-listings",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert my_listings.status_code == 200
+    my_listing_ids = [item["id"] for item in my_listings.json()]
+    assert listing_id not in my_listing_ids
 
 
 async def test_talent_interest_can_be_attached_to_recruiter_job(client: AsyncClient) -> None:
@@ -451,3 +529,377 @@ async def test_apply_blocked_for_unpublished_job(client: AsyncClient) -> None:
     )
     assert application.status_code == 400
     assert application.json()["error"]["message"] == "This job is not accepting applications"
+
+
+async def test_application_first_message_answers_persist_and_round_trip(client: AsyncClient) -> None:
+    """Structured first-message answers survive apply and appear for both sides of the inbox."""
+    owner_token = await _register_verified_login(client, email="fm-owner@example.com", username="fm_owner")
+    applicant_token = await _register_verified_login(client, email="fm-applicant@example.com", username="fm_applicant")
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Finance editor with first-message requirements",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "application_requirements": ["expected_rate", "relevant_portfolio", "fit_note"],
+            "status": "published",
+        },
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    answers = {
+        "expected_rate": {"amount": "2500", "unit": "per video"},
+        "relevant_portfolio": [{"id": "portfolio-1", "title": "Retention edit"}],
+        "fit_note": "I edit finance explainers with tight retention.",
+    }
+    application = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={
+            "cover_note": "Excited to help.",
+            "portfolio_item_ids": ["portfolio-1"],
+            "first_message_answers": answers,
+        },
+    )
+    assert application.status_code == 201
+    assert application.json()["first_message_answers"] == answers
+
+    sent = await client.get("/api/v1/me/applications/sent", headers={"Authorization": f"Bearer {applicant_token}"})
+    assert sent.status_code == 200
+    assert sent.json()[0]["first_message_answers"] == answers
+
+    received = await client.get(
+        "/api/v1/me/applications/received",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert received.status_code == 200
+    assert received.json()[0]["first_message_answers"] == answers
+
+
+async def test_application_without_first_message_answers_defaults_to_empty(client: AsyncClient) -> None:
+    """Backward compatibility: applying without answers stores an empty mapping."""
+    owner_token = await _register_verified_login(client, email="fm-legacy-owner@example.com", username="fm_legacy_owner")
+    applicant_token = await _register_verified_login(
+        client, email="fm-legacy-applicant@example.com", username="fm_legacy_applicant"
+    )
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Legacy editor role",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    application = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "Interested.", "portfolio_item_ids": []},
+    )
+    assert application.status_code == 201
+    assert application.json()["first_message_answers"] == {}
+
+
+async def test_talent_listing_first_message_requirements_persist_and_round_trip(client: AsyncClient) -> None:
+    """Talent listings store the recruiter-facing first-message requirements they declare."""
+    creator_token = await _register_verified_login(client, email="fm-creator@example.com", username="fm_creator")
+
+    requirements = ["project_budget", "project_brief", "reference_links", "fit_note"]
+    create_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={
+            "title": "Retention editor open for creator channels",
+            "roles": ["Video editor"],
+            "platforms": ["YouTube"],
+            "tools": ["Premiere Pro"],
+            "work_mode": "remote",
+            "first_message_requirements": requirements,
+            "status": "published",
+        },
+    )
+    assert create_listing.status_code == 201
+    listing_id = create_listing.json()["id"]
+    assert create_listing.json()["first_message_requirements"] == requirements
+    assert create_listing.json()["content_niches"] == []
+    assert create_listing.json()["content_genres"] == []
+
+    public_list = await client.get("/api/v1/talent-listings")
+    assert public_list.status_code == 200
+    listing = next(item for item in public_list.json()["items"] if item["id"] == listing_id)
+    assert listing["first_message_requirements"] == requirements
+
+
+async def test_talent_interest_first_message_answers_persist_and_round_trip(client: AsyncClient) -> None:
+    """Recruiter hiring requests carry structured answers through to the creator's inbox."""
+    creator_token = await _register_verified_login(client, email="fm-talent@example.com", username="fm_talent")
+    recruiter_token = await _register_verified_login(client, email="fm-recruiter@example.com", username="fm_recruiter")
+
+    create_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={
+            "title": "Shorts editor for daily channels",
+            "roles": ["Shorts editor"],
+            "platforms": ["YouTube"],
+            "tools": ["CapCut"],
+            "work_mode": "remote",
+            "first_message_requirements": ["project_budget", "project_brief", "fit_note"],
+            "status": "published",
+        },
+    )
+    assert create_listing.status_code == 201
+    listing_id = create_listing.json()["id"]
+
+    answers = {
+        "project_budget": {"amount": "40000", "unit": "per month"},
+        "project_brief": "Daily faceless shorts from long-form podcast clips.",
+        "fit_note": "Looking for fast turnaround and consistent style.",
+    }
+    interest = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={"note": "Would love to work together.", "first_message_answers": answers},
+    )
+    assert interest.status_code == 201
+    assert interest.json()["first_message_answers"] == answers
+
+    received = await client.get(
+        "/api/v1/me/talent-interests",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    assert received.status_code == 200
+    assert received.json()[0]["first_message_answers"] == answers
+
+
+async def test_apply_to_job_missing_required_answers_returns_422(client: AsyncClient) -> None:
+    """The apply endpoint rejects a direct call that omits required first-message details."""
+    owner_token = await _register_verified_login(client, email="fm-block-owner@example.com", username="fm_block_owner")
+    applicant_token = await _register_verified_login(
+        client, email="fm-block-applicant@example.com", username="fm_block_applicant"
+    )
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Editor that requires opening details",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "application_requirements": ["expected_rate", "relevant_portfolio", "fit_note"],
+            "status": "published",
+        },
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    # No answers at all → blocked.
+    blocked = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "Trying to bypass the modal.", "first_message_answers": {}},
+    )
+    assert blocked.status_code == 422
+    detail = blocked.json()["error"]["message"]
+    assert "expected_rate" in detail and "relevant_portfolio" in detail and "fit_note" in detail
+
+    # Present-but-blank answers are still incomplete → blocked.
+    partial = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={
+            "first_message_answers": {
+                "expected_rate": {"amount": "", "unit": "per video"},
+                "relevant_portfolio": [],
+                "fit_note": "   ",
+            }
+        },
+    )
+    assert partial.status_code == 422
+
+    # Complete answers → accepted.
+    accepted = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={
+            "first_message_answers": {
+                "expected_rate": {"amount": "2500", "unit": "per video"},
+                "relevant_portfolio": [{"id": "portfolio-1", "title": "Reel"}],
+                "fit_note": "Strong retention editing background.",
+            }
+        },
+    )
+    assert accepted.status_code == 201
+
+
+async def test_send_talent_interest_missing_required_answers_returns_422(client: AsyncClient) -> None:
+    """The talent-interest endpoint rejects a direct call that omits required details."""
+    creator_token = await _register_verified_login(client, email="fm-block-talent@example.com", username="fm_block_talent")
+    recruiter_token = await _register_verified_login(
+        client, email="fm-block-recruiter@example.com", username="fm_block_recruiter"
+    )
+
+    create_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={
+            "title": "Editor requiring recruiter details",
+            "roles": ["Video editor"],
+            "platforms": ["YouTube"],
+            "tools": ["Premiere Pro"],
+            "work_mode": "remote",
+            "first_message_requirements": ["project_budget", "project_brief", "fit_note"],
+            "status": "published",
+        },
+    )
+    assert create_listing.status_code == 201
+    listing_id = create_listing.json()["id"]
+
+    blocked = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={"note": "Trying to bypass.", "first_message_answers": {}},
+    )
+    assert blocked.status_code == 422
+    detail = blocked.json()["error"]["message"]
+    assert "project_budget" in detail and "project_brief" in detail and "fit_note" in detail
+
+    accepted = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={
+            "note": "Real outreach.",
+            "first_message_answers": {
+                "project_budget": {"amount": "40000", "unit": "per month"},
+                "project_brief": "Daily shorts from podcast clips.",
+                "fit_note": "Need consistent style and fast turnaround.",
+            },
+        },
+    )
+    assert accepted.status_code == 201
+
+
+async def test_apply_without_requirements_ignores_first_message_enforcement(client: AsyncClient) -> None:
+    """Backward compatibility: a job with no requirements accepts an empty application."""
+    owner_token = await _register_verified_login(
+        client, email="fm-compat-owner@example.com", username="fm_compat_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="fm-compat-applicant@example.com", username="fm_compat_applicant"
+    )
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "No-requirements role",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    application = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "No structured details needed."},
+    )
+    assert application.status_code == 201
+
+
+async def test_apply_to_job_twice_reuses_the_same_application(client: AsyncClient) -> None:
+    """Re-applying never creates a second application: the same conversation is reused."""
+    owner_token = await _register_verified_login(client, email="dup-owner@example.com", username="dup_owner")
+    applicant_token = await _register_verified_login(client, email="dup-applicant@example.com", username="dup_applicant")
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Editor reused on re-apply",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    first = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "First send."},
+    )
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+
+    second = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"cover_note": "Accidental re-click."},
+    )
+    assert second.status_code == 201
+    assert second.json()["id"] == first_id
+
+    sent = await client.get("/api/v1/me/applications/sent", headers={"Authorization": f"Bearer {applicant_token}"})
+    assert sent.status_code == 200
+    assert len([row for row in sent.json() if row["job_id"] == job_id]) == 1
+
+
+async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncClient) -> None:
+    """Re-sending a hiring request reuses the existing one rather than duplicating it."""
+    creator_token = await _register_verified_login(client, email="dup-creator@example.com", username="dup_creator")
+    recruiter_token = await _register_verified_login(client, email="dup-recruiter@example.com", username="dup_recruiter")
+
+    create_listing = await client.post(
+        "/api/v1/talent-listings",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={
+            "title": "Editor reused on re-request",
+            "roles": ["Video editor"],
+            "platforms": ["YouTube"],
+            "tools": ["Premiere Pro"],
+            "work_mode": "remote",
+            "status": "published",
+        },
+    )
+    assert create_listing.status_code == 201
+    listing_id = create_listing.json()["id"]
+
+    first = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={"note": "First outreach."},
+    )
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+
+    second = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={"note": "Accidental re-click."},
+    )
+    assert second.status_code == 201
+    assert second.json()["id"] == first_id
+
+    sent = await client.get(
+        "/api/v1/me/talent-interests/sent",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert sent.status_code == 200
+    assert len([row for row in sent.json() if row["talent_listing_id"] == listing_id]) == 1

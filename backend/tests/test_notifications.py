@@ -76,9 +76,9 @@ def test_event_registry_is_valid() -> None:
     ):
         assert key in EVENT_REGISTRY
 
-    # Messaging is declared but intentionally not wired (no backend yet).
+    # Messaging is now a real, wired event (messaging_service.post_message).
     assert get_event("message_received") is not None
-    assert get_event("message_received").wired is False
+    assert get_event("message_received").wired is True
 
 
 def test_missing_payload_fields() -> None:

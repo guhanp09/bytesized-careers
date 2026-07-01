@@ -146,6 +146,45 @@ async def test_roles_answers_content_style_and_completion_flow(client: AsyncClie
     assert completion_data["missing_required_sections"] == []
 
 
+async def test_user_roles_custom_names_get_or_create(client: AsyncClient) -> None:
+    bearer, _user_id = await _register_verify_login(
+        client,
+        email="phase1-custom-role@example.com",
+        username="phase1_custom_role",
+    )
+
+    # A specialization that isn't in the catalog is created on the fly, and a
+    # duplicate (different case + surrounding whitespace) is deduped, not added.
+    save = await client.post(
+        "/api/v1/user/roles",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={"role_names": ["Director", "  director  "]},
+    )
+    assert save.status_code == 200
+    items = save.json()["items"]
+    assert len(items) == 1
+    created = items[0]
+    assert created["name"] == "Director"
+    created_id = created["id"]
+
+    # The new role now shows up in the public catalog for everyone else.
+    catalog = await client.get("/api/v1/roles")
+    assert catalog.status_code == 200
+    assert any(item["id"] == created_id for item in catalog.json()["items"])
+
+    # Re-saving the same name (case-insensitive) reuses the existing role rather
+    # than creating a duplicate.
+    resave = await client.post(
+        "/api/v1/user/roles",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={"role_names": ["DIRECTOR"]},
+    )
+    assert resave.status_code == 200
+    resaved = resave.json()["items"]
+    assert len(resaved) == 1
+    assert resaved[0]["id"] == created_id
+
+
 async def test_portfolio_youtube_ingest_and_listing(client: AsyncClient, monkeypatch) -> None:
     bearer, user_id = await _register_verify_login(
         client,

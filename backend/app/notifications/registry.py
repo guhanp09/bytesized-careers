@@ -88,6 +88,16 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         required_payload=("status",),
         notes="Shortlisted / declined / hired etc. Source: marketplace.update_application_status.",
     ),
+    NotificationEvent(
+        key="application_withdrawn",
+        category=CATEGORY_TRANSACTIONAL,
+        recipient="Recruiter / job owner",
+        actor="Applicant",
+        channels=_BOTH,
+        default_channels=(CHANNEL_IN_APP,),  # withdrawal is low-value for email
+        priority=PRIORITY_NORMAL,
+        notes="An applicant withdrew their application. Source: marketplace.withdraw_application.",
+    ),
     # ---- Hiring requests (talent interest) ----
     NotificationEvent(
         key="talent_interest_received",
@@ -109,6 +119,16 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         priority=PRIORITY_NORMAL,
         required_payload=("status",),
         notes="Talent responded to a hiring request. Source: marketplace.update_talent_interest_status.",
+    ),
+    NotificationEvent(
+        key="talent_interest_withdrawn",
+        category=CATEGORY_TRANSACTIONAL,
+        recipient="Talent (listing owner)",
+        actor="Recruiter",
+        channels=_BOTH,
+        default_channels=(CHANNEL_IN_APP,),  # withdrawal is low-value for email
+        priority=PRIORITY_NORMAL,
+        notes="A recruiter withdrew their hiring request. Source: marketplace.withdraw_talent_interest.",
     ),
     # ---- Jobs / listings ----
     NotificationEvent(
@@ -142,18 +162,16 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         priority=PRIORITY_LOW,
         notes="Free-during-launch confirmation. Source: marketplace.complete_launch_free_checkout.",
     ),
-    # ---- Defined but not wired yet (no backend trigger) ----
+    # ---- Messaging ----
     NotificationEvent(
         key="message_received",
         category=CATEGORY_TRANSACTIONAL,
         recipient="Conversation participant",
         actor="Other participant",
         channels=_BOTH,
-        default_channels=_BOTH,
+        default_channels=(CHANNEL_IN_APP,),  # in-app for now; email digesting can come later
         priority=PRIORITY_HIGH,
-        wired=False,
-        notes="DEFERRED: messaging has no backend yet (reply composer is demo-only). "
-        "Declared so the contract is ready; no trigger today. Batch into a digest when built.",
+        notes="A participant sent a real message. Source: messaging_service.post_message.",
     ),
 )
 

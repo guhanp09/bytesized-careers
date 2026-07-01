@@ -59,6 +59,14 @@ export default function RecommendedChecklistPopup<StepId extends string>({
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [items, statusSignature]);
 
+  const strengthLabel = progress >= 80 ? "Strong" : progress >= 50 ? "Good" : "Basic";
+  const strengthClass =
+    progress >= 80
+      ? "bg-emerald-300/15 text-emerald-100/90"
+      : progress >= 50
+        ? "bg-white/10 text-white/72"
+        : "bg-amber-300/15 text-amber-100/85";
+
   return (
     <>
       <section
@@ -67,11 +75,19 @@ export default function RecommendedChecklistPopup<StepId extends string>({
       >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs font-semibold tracking-tight text-white/78">Improve your listing</h2>
-          <span
-            className="text-[11px] font-semibold tabular-nums text-white/48"
-            aria-label={`${progress}% complete`}
-          >
-            {progress}%
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={["rounded-full px-1.5 py-0.5 text-[10px] font-semibold", strengthClass].join(" ")}
+              aria-label={`Listing strength: ${strengthLabel}`}
+            >
+              {strengthLabel}
+            </span>
+            <span
+              className="text-[11px] font-semibold tabular-nums text-white/48"
+              aria-label={`${progress}% complete`}
+            >
+              {progress}%
+            </span>
           </span>
         </div>
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.075]" aria-hidden="true">

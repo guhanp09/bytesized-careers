@@ -1,101 +1,116 @@
+import type { BackendTalentListing } from "./backendClient";
+
 export const TALENT_LISTING_DEFAULT_AVAILABILITY = "available" as const;
 
-const EXPERIENCE_ERROR = "Use a format like 0–1, 2, 3–4, or 8+.";
+const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
 
-const LEGACY_EXPERIENCE_MAPPINGS: Array<{ pattern: RegExp; value: string }> = [
-  { pattern: /\b(entry|beginner|novice)\b|less than\s*1/i, value: "0–1 years" },
-  { pattern: /\bjunior\b/i, value: "1–2 years" },
-  { pattern: /\bmid(?:\s*|-)?level\b|\bintermediate\b/i, value: "2–4 years" },
-  { pattern: /\bsenior\b/i, value: "4–6 years" },
-  { pattern: /\b(lead|expert|principal|staff)\b/i, value: "6+ years" },
-];
+/**
+ * A sensible per-role rate when a listing carries a foreign/legacy currency we
+ * can't render natively. Mirrors the same fallback the public TalentCard uses so
+ * the inbox context card shows the same figure as the marketplace card.
+ */
+const roleBasedRateLabel = (listing: Pick<BackendTalentListing, "primary_role" | "title" | "roles" | "niche">) => {
+  const text = [listing.primary_role, listing.title, ...(listing.roles || []), listing.niche]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (text.includes("thumbnail")) return "₹1,500 per thumbnail";
+  if (text.includes("short")) return "₹3,000 per short";
+  if (text.includes("script")) return "₹8,000 per script";
+  if (text.includes("motion")) return "₹12,000 per project";
+  if (text.includes("podcast")) return "₹18,000 per episode";
+  if (text.includes("channel manager")) return "₹80,000 monthly";
+  if (text.includes("strategist")) return "₹1,000/hr";
+  if (text.includes("ugc")) return "₹15,000 per video";
+  if (text.includes("retention analyst")) return "₹25,000 per project";
+  if (text.includes("faceless")) return "₹18,000 per video";
+  if (text.includes("editor")) return "₹20,000 per long-form video";
+  return "Rate flexible";
+};
 
-const formatSingleYears = (value: number) => `${value} ${value === 1 ? "year" : "years"}`;
-const formatRangeYears = (min: number, max: number) => (min === max ? formatSingleYears(min) : `${min}–${max} years`);
-const formatPlusYears = (value: number) => `${value}+ years`;
+/**
+ * The single, human rate label for a talent listing — the same logic the public
+ * TalentCard renders, centralised so the inbox context card stays in step. Prefers
+ * an INR note, then a formatted INR min/max range, then the note, then a per-role
+ * fallback for foreign/legacy currencies. Never returns raw min/max numbers or a
+ * broken range. Returns "Rate flexible" when nothing usable is present.
+ */
+export function formatTalentRate(
+  listing: Pick<
+    BackendTalentListing,
+    "rate_min" | "rate_max" | "rate_currency" | "rate_note" | "primary_role" | "title" | "roles" | "niche"
+  >
+): string {
+  const note = listing.rate_note?.trim();
+  const currency = listing.rate_currency?.toUpperCase();
+  const legacyCurrencyCode = ["U", "S", "D"].join("");
+  const legacyCurrencyPattern = new RegExp(legacyCurrencyCode, "i");
+  const noteLooksUsd = note ? /[$]/.test(note) || legacyCurrencyPattern.test(note) : false;
 
-const normalizeDashes = (value: string) => value.replace(/[–—−]/g, "-");
-const digitsOnly = (value: string) => value.replace(/[^\d]/g, "");
-
-export function normalizeTalentExperienceInput(
-  rawValue: string,
-  { allowLegacyAliases = false }: { allowLegacyAliases?: boolean } = {}
-): { value: string | null; error: string | null } {
-  const trimmed = rawValue.trim();
-  if (!trimmed) return { value: null, error: null };
-
-  const normalized = normalizeDashes(trimmed).replace(/\s+/g, " ");
-
-  const rangeMatch = normalized.match(/^(\d+)\s*-\s*(\d+)(?:\s*(?:years?|yrs?))?$/i);
-  if (rangeMatch) {
-    const min = Number(rangeMatch[1]);
-    const max = Number(rangeMatch[2]);
-    if (max < min) return { value: null, error: EXPERIENCE_ERROR };
-    return { value: formatRangeYears(min, max), error: null };
+  if (currency === "INR") {
+    if (note && !noteLooksUsd) return note;
+    if (listing.rate_min != null && listing.rate_max != null) {
+      return `${formatInr(Number(listing.rate_min))}-${formatInr(Number(listing.rate_max))}`;
+    }
+    if (listing.rate_min != null) return `${formatInr(Number(listing.rate_min))}+`;
   }
 
-  const plusMatch = normalized.match(/^(\d+)\s*\+(?:\s*(?:years?|yrs?))?$/i);
-  if (plusMatch) {
-    return { value: formatPlusYears(Number(plusMatch[1])), error: null };
-  }
-
-  const singleMatch = normalized.match(/^(\d+)(?:\s*(?:years?|yrs?))?$/i);
-  if (singleMatch) {
-    return { value: formatSingleYears(Number(singleMatch[1])), error: null };
-  }
-
-  if (allowLegacyAliases) {
-    const legacyMapping = LEGACY_EXPERIENCE_MAPPINGS.find(({ pattern }) => pattern.test(trimmed));
-    if (legacyMapping) return { value: legacyMapping.value, error: null };
-  }
-
-  return { value: null, error: EXPERIENCE_ERROR };
+  if (note && !noteLooksUsd && currency !== legacyCurrencyCode) return note;
+  if (currency === legacyCurrencyCode || noteLooksUsd) return roleBasedRateLabel(listing);
+  return "Rate flexible";
 }
 
-export function formatTalentExperience(value?: string | null) {
-  const trimmed = value?.trim();
-  if (!trimmed) return "";
-  const normalized = normalizeTalentExperienceInput(trimmed, { allowLegacyAliases: true });
-  return normalized.value || trimmed;
+// ── Exact talent experience years ────────────────────────────────────────────
+// A talent listing describes the talent's *own* background, so its experience is
+// an exact whole number of years (e.g. "3 years"), with a dedicated "Less than 1
+// year" bucket stored as 0 — never a range or a level. (Job listings keep ranges;
+// that logic lives in PostJobPage and is unaffected.)
+
+/** Whole-year option floor (the "Less than 1 year" / 0 bucket is offered separately). */
+export const TALENT_EXPERIENCE_MIN_YEARS = 1;
+export const TALENT_EXPERIENCE_MAX_YEARS = 50;
+/** Label for the under-a-year bucket (experience_years === 0). */
+export const TALENT_EXPERIENCE_SUBYEAR_LABEL = "Less than 1 year";
+
+/** Parse only an exact, single whole-year value ("3" or "3 years"); reject ranges/levels/"5+". */
+function parseExactYears(value?: string | null): number | null {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{1,2})(?:\s*(?:years?|yrs?))?$/i);
+  if (!match) return null;
+  const years = Number(match[1]);
+  return Number.isFinite(years) && years >= 0 ? years : null;
 }
 
-export function parseTalentExperienceBounds(value?: string | null): { min: string; max: string } {
-  const formatted = formatTalentExperience(value);
-  if (!formatted) return { min: "", max: "" };
-
-  const plusMatch = formatted.match(/^(\d+)\+\s+years?$/i);
-  if (plusMatch) {
-    return { min: digitsOnly(plusMatch[1]), max: "" };
-  }
-
-  const rangeMatch = formatted.match(/^(\d+)\s*[–-]\s*(\d+)\s+years?$/i);
-  if (rangeMatch) {
-    return { min: digitsOnly(rangeMatch[1]), max: digitsOnly(rangeMatch[2]) };
-  }
-
-  const singleMatch = formatted.match(/^(\d+)\s+years?$/i);
-  if (singleMatch) {
-    const years = digitsOnly(singleMatch[1]);
-    return { min: years, max: years };
-  }
-
-  return { min: "", max: "" };
+/**
+ * The canonical exact-years value for a talent listing. Prefers the numeric
+ * `experience_years` (0 = "less than 1 year"); for legacy rows that only carry a
+ * string `experience_level` it converts ONLY an exact single year honestly, and
+ * returns null for ranges or level labels (so the UI omits the row rather than
+ * fabricating a number). null = unknown/unspecified.
+ */
+export function talentExperienceYears(
+  listing: { experience_years?: number | null; experience_level?: string | null }
+): number | null {
+  const years = listing.experience_years;
+  if (typeof years === "number" && Number.isFinite(years) && years >= 0) return Math.round(years);
+  return parseExactYears(listing.experience_level);
 }
 
-export function formatTalentExperienceBounds(minValue: string, maxValue: string) {
-  const min = digitsOnly(minValue);
-  const max = digitsOnly(maxValue);
-  const hasMin = Boolean(min);
-  const hasMax = Boolean(max);
+/**
+ * Format an exact-years number for display: 0 → "Less than 1 year", 1 → "1 year",
+ * 3 → "3 years". null/undefined (unknown) → "".
+ */
+export function formatTalentExperienceYears(years?: number | null): string {
+  if (years == null || !Number.isFinite(years)) return "";
+  const whole = Math.round(years);
+  if (whole <= 0) return TALENT_EXPERIENCE_SUBYEAR_LABEL;
+  return `${whole} ${whole === 1 ? "year" : "years"}`;
+}
 
-  if (!hasMin && !hasMax) return "";
-  if (hasMin && hasMax) {
-    const minYears = Number(min);
-    const maxYears = Number(max);
-    if (Number.isNaN(minYears) || Number.isNaN(maxYears)) return "";
-    if (maxYears < minYears) return formatSingleYears(minYears);
-    return formatRangeYears(minYears, maxYears);
-  }
-  if (hasMin) return formatPlusYears(Number(min));
-  return `${0}–${Number(max)} years`;
+/** The single display label for a talent listing's experience. "" when unknown. */
+export function formatTalentListingExperience(
+  listing: { experience_years?: number | null; experience_level?: string | null }
+): string {
+  return formatTalentExperienceYears(talentExperienceYears(listing));
 }

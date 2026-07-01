@@ -67,9 +67,52 @@ class User(Base):
     collaboration_revisions: Mapped[str | None] = mapped_column(String(255), nullable=True)
     collaboration_working_hours: Mapped[str | None] = mapped_column(String(255), nullable=True)
     collaboration_tools: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Additive recruiter/hiring fields. Lists default to [] and work_mode is nullable so
+    # existing profiles (saved before these columns existed) keep rendering unchanged.
+    collaboration_styles: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    work_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     hiring_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     hiring_website_or_social_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     hiring_primary_platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    hiring_platforms: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # Recruiter/hiring metadata kept SEPARATE from the talent-side content_style so a
+    # user can describe what they hire for independently of what they create. All
+    # default to [] so existing profiles keep rendering unchanged.
+    hiring_niches: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    hiring_genres: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    hiring_formats: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # Talent-side publishing platforms, kept separate from the recruiter hiring_platforms.
+    creator_platforms: Mapped[list[str]] = mapped_column(
+        json_list_type,
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
     hiring_channels_or_pages_managed: Mapped[str | None] = mapped_column(Text, nullable=True)
     hiring_verification_status: Mapped[str] = mapped_column(
         String(32),

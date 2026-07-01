@@ -10,11 +10,50 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 JobStatus = Literal["draft", "published", "paused", "closed", "archived"]
 BudgetUnit = Literal["per project", "per month"]
 ApplicationMode = Literal["internal", "external"]
+CREATOR_CONTEXT_FIELDS = ("content_niches", "content_genres", "formats_hired_for")
+MAX_CREATOR_CONTEXT_ITEMS = 12
+MAX_CREATOR_CONTEXT_ITEM_LENGTH = 40
+
+
+def normalize_creator_context_items(value: list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        if raw is None:
+            continue
+        normalized = " ".join(str(raw).split())
+        if not normalized:
+            continue
+        normalized = normalized[:MAX_CREATOR_CONTEXT_ITEM_LENGTH]
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(normalized)
+        if len(out) >= MAX_CREATOR_CONTEXT_ITEMS:
+            break
+    return out
+
+
+class JobReferenceTimestampNote(BaseModel):
+    id: str | None = Field(default=None, max_length=80)
+    time: str = Field(min_length=1, max_length=16)
+    seconds: int = Field(ge=0)
+    title: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=220)
 
 
 class JobReferenceVideo(BaseModel):
+    id: str | None = Field(default=None, max_length=80)
     title: str | None = Field(default=None, max_length=255)
     url: HttpUrl
+    thumbnail_url: HttpUrl | None = None
+    platform: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=400)
+    what_to_reference: str | None = Field(default=None, max_length=400)
+    timestamp_notes: list[JobReferenceTimestampNote] = Field(default_factory=list, max_length=8)
 
     @field_validator("title")
     @classmethod
@@ -22,6 +61,14 @@ class JobReferenceVideo(BaseModel):
         if value is None:
             return None
         normalized = value.strip()
+        return normalized or None
+
+    @field_validator("platform", "description", "what_to_reference")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
         return normalized or None
 
 
@@ -49,9 +96,14 @@ class JobBase(BaseModel):
     about_channel: str | None = None
     responsibilities: list[str] = Field(default_factory=list)
     requirements: list[str] = Field(default_factory=list)
+    application_requirements: list[str] = Field(default_factory=list)
     how_to_apply: str | None = None
     reference_videos: list[HttpUrl | JobReferenceVideo] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    content_niches: list[str] = Field(default_factory=list)
+    content_genres: list[str] = Field(default_factory=list)
+    formats_hired_for: list[str] = Field(default_factory=list)
 
     youtube_channel_id: str | None = Field(default=None, max_length=255)
     is_verified: bool = False
@@ -81,10 +133,15 @@ class JobBase(BaseModel):
     def normalize_currency(cls, value: str) -> str:
         return value.upper()
 
-    @field_validator("platforms", "responsibilities", "requirements", "tags")
+    @field_validator("platforms", "responsibilities", "requirements", "application_requirements", "tags")
     @classmethod
     def strip_items(cls, value: list[str]) -> list[str]:
         return [item.strip() for item in value if item and item.strip()]
+
+    @field_validator(*CREATOR_CONTEXT_FIELDS)
+    @classmethod
+    def normalize_creator_context(cls, value: list[str]) -> list[str]:
+        return normalize_creator_context_items(value) or []
 
     @model_validator(mode="after")
     def validate_budget_range(self) -> JobBase:
@@ -125,9 +182,14 @@ class JobUpdate(BaseModel):
     about_channel: str | None = None
     responsibilities: list[str] | None = None
     requirements: list[str] | None = None
+    application_requirements: list[str] | None = None
     how_to_apply: str | None = None
     reference_videos: list[HttpUrl | JobReferenceVideo] | None = None
     tags: list[str] | None = None
+    languages: list[str] | None = None
+    content_niches: list[str] | None = None
+    content_genres: list[str] | None = None
+    formats_hired_for: list[str] | None = None
 
     youtube_channel_id: str | None = Field(default=None, max_length=255)
     is_verified: bool | None = None
@@ -158,6 +220,11 @@ class JobUpdate(BaseModel):
         if value is None:
             return None
         return value.upper()
+
+    @field_validator(*CREATOR_CONTEXT_FIELDS)
+    @classmethod
+    def normalize_creator_context(cls, value: list[str] | None) -> list[str] | None:
+        return normalize_creator_context_items(value)
 
     @model_validator(mode="after")
     def validate_budget_range(self) -> JobUpdate:

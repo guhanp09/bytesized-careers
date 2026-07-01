@@ -1,4 +1,5 @@
 import { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
+import { normalizeReferenceVideo } from "./referenceVideos";
 
 const CATEGORY_VALUES: JobCategory[] = [
   "Editing",
@@ -23,10 +24,11 @@ const parseBool = (value?: string) => {
 export const isLocalMocksEnabled = () =>
   parseBool(process.env.NEXT_PUBLIC_USE_LOCAL_MOCKS);
 
-export const isProductionRuntime = () =>
-  process.env.APP_ENV === "production" ||
-  process.env.NEXT_PUBLIC_APP_ENV === "production" ||
-  process.env.VERCEL_ENV === "production";
+export const isProductionRuntime = () => {
+  const appEnv = process.env.APP_ENV || process.env.NEXT_PUBLIC_APP_ENV;
+  if (appEnv) return appEnv === "production";
+  return process.env.VERCEL_ENV === "production";
+};
 
 const isLocalBackendUrl = () => {
   const raw = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000/api/v1";
@@ -76,12 +78,20 @@ export type BackendJob = {
   aboutChannel?: string | null;
   responsibilities?: string[] | null;
   requirements?: string[] | null;
+  application_requirements?: string[] | null;
   how_to_apply?: string | null;
   howToApply?: string | null;
   tools?: string[] | null;
   reference_videos?: unknown;
   referenceVideos?: unknown;
   tags?: string[] | null;
+  languages?: string[] | null;
+  content_niches?: string[] | null;
+  contentNiches?: string[] | null;
+  content_genres?: string[] | null;
+  contentGenres?: string[] | null;
+  formats_hired_for?: string[] | null;
+  formatsHiredFor?: string[] | null;
   youtube_channel_id?: string | null;
   is_verified?: boolean | null;
   channel_name?: string | null;
@@ -157,10 +167,15 @@ export type BackendCreateJobPayload = {
   about_channel?: string | null;
   responsibilities?: string[];
   requirements?: string[];
+  application_requirements?: string[];
   how_to_apply?: string | null;
   tools?: string[];
-  reference_videos?: Array<string | { title?: string | null; url: string }>;
+  reference_videos?: Array<string | Record<string, unknown>>;
   tags?: string[];
+  languages?: string[];
+  content_niches?: string[];
+  content_genres?: string[];
+  formats_hired_for?: string[];
   youtube_channel_id?: string | null;
   is_verified?: boolean;
   channel_name?: string | null;
@@ -357,6 +372,8 @@ export type BackendCollaborationPreferences = {
   revisions?: string | null;
   working_hours?: string | null;
   tools?: string | null;
+  styles?: string[] | null;
+  work_mode?: string | null;
 };
 
 export type BackendHiringType =
@@ -374,6 +391,10 @@ export type BackendHiringInfo = {
   hiring_type?: BackendHiringType | null;
   website_or_social_url?: string | null;
   primary_platform?: BackendHiringPrimaryPlatform | null;
+  platforms?: string[] | null;
+  niches?: string[] | null;
+  genres?: string[] | null;
+  formats?: string[] | null;
   channels_or_pages_managed?: string | null;
   verification_status: "unverified" | "verified" | "rejected";
 };
@@ -548,6 +569,7 @@ export type BackendProfileResponse = {
   review_items?: BackendProfileReviewItem[];
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info: BackendHiringInfo;
+  creator_platforms?: string[] | null;
   roles: BackendRole[];
   role_answers_summary: BackendRoleAnswerSummary[];
   content_style: BackendContentStyle;
@@ -578,9 +600,16 @@ export type BackendProfileUpdatePayload = {
   collaboration_revisions?: string;
   collaboration_working_hours?: string;
   collaboration_tools?: string;
+  collaboration_styles?: string[];
+  work_mode?: string | null;
   hiring_type?: BackendHiringType | null;
   hiring_website_or_social_url?: string | null;
   hiring_primary_platform?: BackendHiringPrimaryPlatform | null;
+  hiring_platforms?: string[];
+  hiring_niches?: string[];
+  hiring_genres?: string[];
+  hiring_formats?: string[];
+  creator_platforms?: string[];
   hiring_channels_or_pages_managed?: string | null;
 };
 
@@ -604,6 +633,12 @@ export type BackendPortfolioItem = {
   user_role_in_project?: string | null;
   description?: string | null;
   contribution_summary?: string | null;
+  what_i_did?: string | null;
+  whatIDid?: string | null;
+  contribution_highlights?: string[] | null;
+  contributionHighlights?: string[] | null;
+  timestamp_notes?: Array<Record<string, unknown>> | null;
+  timestampNotes?: Array<Record<string, unknown>> | null;
   timeframe?: "now" | "past";
   media_url?: string | null;
   metrics?: string | null;
@@ -621,6 +656,13 @@ export type BackendPortfolioItem = {
   tags: string[];
   contribution_tags?: string[];
   tools: string[];
+  content_niches?: string[];
+  contentNiches?: string[];
+  content_genres?: string[];
+  contentGenres?: string[];
+  platforms?: string[];
+  formats?: string[];
+  results?: string[];
   public_metrics?: Record<string, unknown>;
   manual_metrics?: Record<string, unknown>;
   verification_status?: "youtube_metadata_verified" | "manual" | "unverified";
@@ -648,11 +690,19 @@ export type BackendPortfolioCreatePayload = {
   user_role_in_project?: string;
   description?: string;
   contribution_summary?: string;
+  what_i_did?: string;
+  contribution_highlights?: string[];
+  timestamp_notes?: Array<Record<string, unknown>>;
   timeframe?: "now" | "past";
   links?: string[];
   tags?: string[];
   contribution_tags?: string[];
   tools?: string[];
+  content_niches?: string[];
+  content_genres?: string[];
+  platforms?: string[];
+  formats?: string[];
+  results?: string[];
   media_url?: string;
   metrics?: string;
   youtube_url?: string;
@@ -789,6 +839,7 @@ export type BackendPublicProfileResponse = {
   review_items?: BackendProfileReviewItem[];
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info?: BackendHiringInfo | null;
+  creator_platforms?: string[] | null;
   roles: BackendRole[];
   role_answers_summary: BackendRoleAnswerSummary[];
   content_style: BackendContentStyle;
@@ -833,8 +884,9 @@ export type BackendJobApplication = {
   job_owner_user_id?: string | null;
   cover_note?: string | null;
   portfolio_item_ids: string[];
+  first_message_answers?: Record<string, unknown>;
   applicant_snapshot: Record<string, unknown>;
-  status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived";
+  status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
   created_at: string;
   updated_at: string;
 };
@@ -847,12 +899,18 @@ export type BackendTalentListing = {
   owner_avatar_url?: string | null;
   title: string;
   primary_role?: string | null;
+  /** Legacy experience range/level string (e.g. "2–4 years"). Retained for backward compatibility. */
   experience_level?: string | null;
+  /** Canonical talent experience: exact whole years of self-declared experience. */
+  experience_years?: number | null;
   roles: string[];
   niche?: string | null;
+  content_niches?: string[];
+  content_genres?: string[];
   formats: string[];
   platforms: string[];
   tools: string[];
+  languages?: string[];
   work_mode?: string | null;
   location?: string | null;
   timezone?: string | null;
@@ -865,6 +923,7 @@ export type BackendTalentListing = {
   turnaround?: string | null;
   description?: string | null;
   portfolio_item_ids: string[];
+  first_message_requirements?: string[];
   status: "draft" | "published" | "paused" | "closed" | "archived" | "featured";
   is_featured: boolean;
   featured_until?: string | null;
@@ -880,11 +939,15 @@ export type BackendTalentListingPayload = {
   title: string;
   primary_role?: string | null;
   experience_level?: string | null;
+  experience_years?: number | null;
   roles?: string[];
   niche?: string | null;
+  content_niches?: string[];
+  content_genres?: string[];
   formats?: string[];
   platforms?: string[];
   tools?: string[];
+  languages?: string[];
   work_mode?: string | null;
   location?: string | null;
   timezone?: string | null;
@@ -897,6 +960,7 @@ export type BackendTalentListingPayload = {
   turnaround?: string | null;
   description?: string | null;
   portfolio_item_ids?: string[];
+  first_message_requirements?: string[];
   status?: "draft" | "published" | "paused" | "closed" | "archived" | "featured";
   is_featured?: boolean;
   featured_until?: string | null;
@@ -932,7 +996,8 @@ export type BackendTalentInterest = {
   job_id?: string | null;
   owner_user_id: string;
   note?: string | null;
-  status: "new" | "reviewing" | "contacted" | "declined" | "archived";
+  first_message_answers?: Record<string, unknown>;
+  status: "new" | "reviewing" | "contacted" | "declined" | "archived" | "withdrawn";
   created_at: string;
   updated_at: string;
 };
@@ -1115,25 +1180,7 @@ const asReferenceVideos = (value: unknown): ReferenceVideo[] => {
   if (!Array.isArray(value)) return [];
 
   return value
-    .map((entry) => {
-      if (typeof entry === "string") {
-        const url = asString(entry);
-        return url ? { url } : null;
-      }
-
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
-
-      const record = entry as { title?: unknown; url?: unknown; href?: unknown };
-      const url = asString(record.url) ?? asString(record.href);
-      if (!url) {
-        return null;
-      }
-
-      const title = asString(record.title);
-      return title ? { title, url } : { url };
-    })
+    .map((entry) => normalizeReferenceVideo(entry))
     .filter((entry): entry is ReferenceVideo => Boolean(entry));
 };
 
@@ -1219,6 +1266,10 @@ const toFrontendJob = (job: BackendJob): Job => {
     },
     tags: asStringArray(job.tags),
     tools: asStringArray(job.tools),
+    languages: asStringArray(job.languages),
+    contentNiches: asStringArray(job.content_niches ?? job.contentNiches),
+    contentGenres: asStringArray(job.content_genres ?? job.contentGenres),
+    formatsHiredFor: asStringArray(job.formats_hired_for ?? job.formatsHiredFor),
     startTimeframe: ensureStartTimeframe(startTimeframe),
     workMode: asString(job.work_mode),
     contractType: asString(job.contract_type),
@@ -1232,6 +1283,7 @@ const toFrontendJob = (job: BackendJob): Job => {
     about: asString(job.about_channel) ?? asString(job.aboutChannel) ?? "",
     responsibilities: asStringArray(job.responsibilities).join("\n"),
     requirements: asStringArray(job.requirements).join("\n"),
+    applicationRequirements: asStringArray(job.application_requirements),
     howToApply: asString(job.how_to_apply) ?? asString(job.howToApply) ?? "",
     channelProfileSlug: asString(job.channel_profile_slug),
     channelExternalUrl: asString(job.hiring_external_url_snapshot),
@@ -1633,6 +1685,17 @@ export async function updateMyAccountType(
   });
 }
 
+export async function updateMyOnboardingIntent(
+  accessToken: string,
+  onboardingIntent: BackendOnboardingIntent
+): Promise<BackendMeResponse> {
+  return requestJson<BackendMeResponse>("/me/onboarding-intent", {
+    method: "PATCH",
+    body: JSON.stringify({ onboarding_intent: onboardingIntent }),
+    accessToken,
+  });
+}
+
 export async function upsertGoogleOAuthForMe(
   accessToken: string,
   payload: BackendOAuthUpsertPayload
@@ -1840,6 +1903,17 @@ export async function upsertMyRoles(
   });
 }
 
+export async function upsertMyRolesByName(
+  accessToken: string,
+  roleNames: string[]
+): Promise<BackendUserRolesResponse> {
+  return requestJson<BackendUserRolesResponse>("/user/roles", {
+    method: "POST",
+    body: JSON.stringify({ role_names: roleNames }),
+    accessToken,
+  });
+}
+
 export async function getMyRoleAnswers(accessToken: string): Promise<BackendUserRoleAnswersResponse> {
   return requestJson<BackendUserRoleAnswersResponse>("/user/role-answers", { accessToken });
 }
@@ -1993,13 +2067,18 @@ export async function listMyBackendJobs(accessToken: string): Promise<BackendJob
 export async function applyToJob(
   accessToken: string,
   jobId: string,
-  payload: { cover_note?: string | null; portfolio_item_ids?: string[] } = {}
+  payload: {
+    cover_note?: string | null;
+    portfolio_item_ids?: string[];
+    first_message_answers?: Record<string, unknown>;
+  } = {}
 ): Promise<BackendJobApplication> {
   return requestJson<BackendJobApplication>(`/jobs/${encodeURIComponent(jobId)}/applications`, {
     method: "POST",
     body: JSON.stringify({
       cover_note: payload.cover_note || null,
       portfolio_item_ids: payload.portfolio_item_ids || [],
+      first_message_answers: payload.first_message_answers || {},
     }),
     accessToken,
   });
@@ -2021,6 +2100,18 @@ export async function updateApplicationStatus(
   return requestJson<BackendJobApplication>(`/applications/${encodeURIComponent(applicationId)}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status: statusValue }),
+    accessToken,
+  });
+}
+
+// Sender-only: the applicant withdraws their own application. Backend sets the
+// status to "withdrawn" and notifies the job owner.
+export async function withdrawApplication(
+  accessToken: string,
+  applicationId: string
+): Promise<BackendJobApplication> {
+  return requestJson<BackendJobApplication>(`/applications/${encodeURIComponent(applicationId)}/withdraw`, {
+    method: "POST",
     accessToken,
   });
 }
@@ -2112,11 +2203,16 @@ export async function sendTalentInterest(
   accessToken: string,
   listingId: string,
   note?: string | null,
-  jobId?: string | null
+  jobId?: string | null,
+  firstMessageAnswers?: Record<string, unknown>
 ): Promise<BackendTalentInterest> {
   return requestJson<BackendTalentInterest>(`/talent-listings/${encodeURIComponent(listingId)}/interest`, {
     method: "POST",
-    body: JSON.stringify({ note: note || null, job_id: jobId || null }),
+    body: JSON.stringify({
+      note: note || null,
+      job_id: jobId || null,
+      first_message_answers: firstMessageAnswers || {},
+    }),
     accessToken,
   });
 }
@@ -2159,6 +2255,18 @@ export async function updateTalentInterestStatus(
   });
 }
 
+// Sender-only: the recruiter withdraws their own hiring request. Backend sets the
+// status to "withdrawn" and notifies the talent (listing owner).
+export async function withdrawTalentInterest(
+  accessToken: string,
+  interestId: string
+): Promise<BackendTalentInterest> {
+  return requestJson<BackendTalentInterest>(`/talent-interests/${encodeURIComponent(interestId)}/withdraw`, {
+    method: "POST",
+    accessToken,
+  });
+}
+
 export async function listNotifications(accessToken: string): Promise<BackendNotificationListResponse> {
   return requestJson<BackendNotificationListResponse>("/notifications", { accessToken });
 }
@@ -2178,6 +2286,78 @@ export async function markAllNotificationsRead(accessToken: string): Promise<Bac
     method: "POST",
     accessToken,
   });
+}
+
+// --- Messaging (real conversations attached to applications / hiring requests) ---
+
+export type BackendMessage = {
+  id: string;
+  conversation_id: string;
+  sender_user_id: string;
+  from_me: boolean;
+  sender_name?: string | null;
+  body: string;
+  created_at?: string | null;
+};
+
+export type BackendConversation = {
+  id: string;
+  context_type: string;
+  application_id?: string | null;
+  talent_interest_id?: string | null;
+  thread_id: string;
+  last_message_at?: string | null;
+  unread_count: number;
+};
+
+export type BackendConversationDetail = {
+  conversation: BackendConversation;
+  messages: BackendMessage[];
+};
+
+export async function listConversations(accessToken: string): Promise<BackendConversation[]> {
+  return requestJson<BackendConversation[]>("/me/conversations", { accessToken });
+}
+
+export async function getApplicationConversation(
+  accessToken: string,
+  applicationId: string
+): Promise<BackendConversationDetail> {
+  return requestJson<BackendConversationDetail>(
+    `/me/applications/${encodeURIComponent(applicationId)}/conversation`,
+    { accessToken }
+  );
+}
+
+export async function getInterestConversation(
+  accessToken: string,
+  interestId: string
+): Promise<BackendConversationDetail> {
+  return requestJson<BackendConversationDetail>(
+    `/me/talent-interests/${encodeURIComponent(interestId)}/conversation`,
+    { accessToken }
+  );
+}
+
+export async function sendConversationMessage(
+  accessToken: string,
+  conversationId: string,
+  body: string
+): Promise<BackendMessage> {
+  return requestJson<BackendMessage>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/messages`,
+    { method: "POST", body: JSON.stringify({ body }), accessToken }
+  );
+}
+
+export async function markConversationRead(
+  accessToken: string,
+  conversationId: string
+): Promise<BackendConversation> {
+  return requestJson<BackendConversation>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: "POST", accessToken }
+  );
 }
 
 export async function createReport(

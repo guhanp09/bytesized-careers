@@ -6,8 +6,22 @@ export type Channel = {
 };
 
 export type ReferenceVideo = {
+  id?: string;
   title?: string;
   url: string;
+  thumbnailUrl?: string;
+  platform?: string;
+  description?: string;
+  whatToReference?: string;
+  timestampNotes?: ReferenceTimestampNote[];
+};
+
+export type ReferenceTimestampNote = {
+  id?: string;
+  time: string;
+  seconds: number;
+  title: string;
+  description: string;
 };
 
 export type JobCategory =
@@ -40,6 +54,10 @@ export type Job = {
   channel: Channel;
   tags: string[];
   tools?: string[];
+  languages?: string[];
+  contentNiches?: string[];
+  contentGenres?: string[];
+  formatsHiredFor?: string[];
   startTimeframe: StartTimeframe;
   workMode?: string;
   contractType?: string;
@@ -51,9 +69,12 @@ export type Job = {
   type?: JobType;
   referenceVideos?: ReferenceVideo[];
   platform?: string;
+  platforms?: string[];
   about?: string;
   responsibilities?: string;
   requirements?: string;
+  /** Keys from the first-message requirements registry applicants must answer. */
+  applicationRequirements?: string[];
   howToApply?: string;
   channelProfileSlug?: string;
   channelExternalUrl?: string;

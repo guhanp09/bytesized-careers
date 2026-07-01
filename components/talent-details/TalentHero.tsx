@@ -2,8 +2,12 @@
 
 import Link from "next/link";
 import React from "react";
+import { formatListingTitle } from "../../lib/displayText";
+import type { ProfileRatingSummary } from "../../lib/profileRating";
 import { Icon } from "../Icons";
 import useFitTitle from "../job-details/useFitTitle";
+import ListingStatTile from "../listing-details/ListingStatTile";
+import ProfileRatingLink from "../profile/ProfileRatingLink";
 
 const TITLE_MAX_LINES = 2;
 const TITLE_BASE_PX = 44;
@@ -11,45 +15,6 @@ const TITLE_MIN_PX = 20;
 const TITLE_STEP_PX = 1;
 
 type DetailIconName = React.ComponentProps<typeof Icon>["name"];
-
-function TileShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={[
-        "rounded-2xl",
-        "bg-white/[0.045] border border-white/[0.08]",
-        "shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]",
-        "px-4 py-3",
-        "select-none",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
-function DetailTile({
-  icon,
-  label,
-  value,
-}: {
-  icon: Extract<DetailIconName, "cash-stack" | "cap" | "pin" | "image">;
-  label: string;
-  value: string;
-}) {
-  return (
-    <TileShell className="flex h-[108px] items-center justify-center">
-      <div className="flex flex-col items-center justify-center gap-1 text-center">
-        <span className="text-white/70">
-          <Icon name={icon} className="h-4 w-4" />
-        </span>
-        <div className="text-[11px] leading-snug text-white/60">{label}</div>
-        <div className="text-sm font-medium leading-snug text-white/90 tabular-nums">{value}</div>
-      </div>
-    </TileShell>
-  );
-}
 
 function TalentAvatar({
   avatarUrl,
@@ -81,6 +46,7 @@ export default function TalentHero({
   title,
   name,
   profileHref,
+  rating,
   avatarUrl,
   initials,
   metaLine,
@@ -91,19 +57,21 @@ export default function TalentHero({
   title: string;
   name: string;
   profileHref?: string | null;
+  rating?: ProfileRatingSummary | null;
   avatarUrl?: string | null;
   initials: string;
   metaLine: string;
   postedText: string;
   titleScale: number;
   stats: Array<{
-    icon: Extract<DetailIconName, "cash-stack" | "cap" | "pin" | "image">;
+    icon: Extract<DetailIconName, "cash-stack" | "cap" | "pin">;
     label: string;
     value: string;
   }>;
 }) {
+  const displayTitle = formatListingTitle(title);
   const { ref: titleRef, fontPx } = useFitTitle({
-    text: title,
+    text: displayTitle,
     maxLines: TITLE_MAX_LINES,
     basePx: TITLE_BASE_PX,
     minPx: TITLE_MIN_PX,
@@ -113,38 +81,40 @@ export default function TalentHero({
 
   const titleBottomSpaceClass =
     fontPx >= 38 ? "mt-6" : fontPx >= 32 ? "mt-5" : fontPx >= 26 ? "mt-4" : "mt-3";
-
   return (
     <section className="rounded-3xl border border-white/[0.08] bg-white/[0.06] p-6 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)] sm:p-7">
       <h1
         ref={titleRef}
-        className="min-w-0 font-extrabold uppercase leading-[1.08] tracking-tight break-words"
+        className="min-w-0 break-words font-extrabold leading-[1.08] tracking-tight"
       >
-        {title}
+        {displayTitle}
       </h1>
 
       <div className={[titleBottomSpaceClass, "flex items-center gap-4"].join(" ")}>
         <TalentAvatar avatarUrl={avatarUrl} name={name} initials={initials} />
         <div className="min-w-0">
-          {profileHref ? (
-            <Link
-              href={profileHref}
-              className="block max-w-[320px] cursor-pointer truncate rounded-sm text-lg font-semibold text-white underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-            >
-              {name}
-            </Link>
-          ) : (
-            <p className="max-w-[320px] truncate text-lg font-semibold text-white">{name}</p>
-          )}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            {profileHref ? (
+              <Link
+                href={profileHref}
+                className="block max-w-[320px] cursor-pointer truncate rounded-sm text-lg font-semibold text-white underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              >
+                {name}
+              </Link>
+            ) : (
+              <p className="max-w-[320px] truncate text-lg font-semibold text-white">{name}</p>
+            )}
+            <ProfileRatingLink rating={rating} ariaLabel="View talent reviews" testId="talent-hero-rating" />
+          </div>
           <div className="text-sm text-white/55">{metaLine}</div>
           <div className="text-sm text-white/45">{postedText}</div>
         </div>
       </div>
 
       {stats.length ? (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {stats.map((stat) => (
-            <DetailTile key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} />
+            <ListingStatTile key={stat.label} icon={stat.icon} label={stat.label} value={stat.value} />
           ))}
         </div>
       ) : null}

@@ -13,17 +13,30 @@ import {
   updateTalentListing,
 } from "../lib/backendClient";
 import type { BackendPortfolioItem, BackendTalentListing } from "../lib/backendClient";
+import { formatListingTitle } from "../lib/displayText";
 import {
+  TALENT_EXPERIENCE_MAX_YEARS,
+  TALENT_EXPERIENCE_MIN_YEARS,
   TALENT_LISTING_DEFAULT_AVAILABILITY,
-  formatTalentExperience,
-  formatTalentExperienceBounds,
-  parseTalentExperienceBounds,
+  formatTalentExperienceYears,
+  talentExperienceYears,
 } from "../lib/talentListing";
+import {
+  CONTENT_GENRE_SUGGESTIONS,
+  CONTENT_NICHE_SUGGESTIONS,
+  CREATOR_CONTEXT_MAX_ITEMS,
+  FORMATS_HIRED_FOR_SUGGESTIONS,
+  normalizeCreatorContextList,
+  normalizeCreatorContextValue,
+} from "../lib/jobCreatorContext";
 import { getTalentDraftCompletion } from "../lib/draftCompletion";
+import { sanitizeRequirementKeys } from "../lib/firstMessageRequirements";
 import { Icon } from "./Icons";
 import { MetaRow, PageLoading, StatRow, TagPill } from "./ui";
 import RecommendedChecklistPopup, { RecommendedChecklistItem } from "./RecommendedChecklistPopup";
+import RequirementSelector from "./first-message/RequirementSelector";
 import ToolPicker from "./you/ToolPicker";
+import LanguagePicker from "./post-flow/LanguagePicker";
 
 type Step = "basics" | "focus" | "collaboration" | "proof" | "preview" | "publish";
 type AvailabilityStatus = "available" | "selective" | "unavailable";
@@ -40,9 +53,11 @@ const TALENT_COMPLETION_TARGETS: Record<string, { step: Step; target?: string }>
   preview: { step: "preview" },
   portfolio: { step: "proof", target: "talent-portfolio" },
   tools: { step: "focus", target: "talent-tools" },
-  niche: { step: "focus", target: "talent-niche-platforms" },
+  niche: { step: "focus", target: "talent-platforms" },
+  creatorContext: { step: "focus", target: "talent-creator-context" },
   description: { step: "focus", target: "talent-services" },
   experience: { step: "basics", target: "talent-experience" },
+  "talent-first-message": { step: "collaboration", target: "talent-first-message" },
 };
 
 const normalizeTalentWorkMode = (value?: string | null): TalentWorkMode => {
@@ -101,6 +116,14 @@ const parseList = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const splitLegacyContext = (value?: string | null) =>
+  normalizeCreatorContextList(
+    (value || "")
+      .split(/[·,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+
 const parseMoney = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -153,6 +176,133 @@ function PreviewTagRow({ tags }: { tags: string[] }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function ContextTinyChip({
+  children,
+  onRemove,
+}: {
+  children: React.ReactNode;
+  onRemove: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/8 px-2 py-1 text-[11px] text-white/80">
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        aria-label="Remove"
+        title="Remove"
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function CreatorContextChipField({
+  label,
+  helper,
+  value,
+  suggestions,
+  onChange,
+}: {
+  label: string;
+  helper: string;
+  value: string[];
+  suggestions: readonly string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim();
+  const selectedKeys = useMemo(() => new Set(value.map((item) => item.toLowerCase())), [value]);
+  const visibleSuggestions = suggestions
+    .filter((suggestion) => !selectedKeys.has(suggestion.toLowerCase()))
+    .filter((suggestion) => !normalizedQuery || suggestion.toLowerCase().includes(normalizedQuery.toLowerCase()))
+    .slice(0, 8);
+
+  const addValue = (raw: string) => {
+    const nextValue = normalizeCreatorContextValue(raw);
+    if (!nextValue) return;
+    if (selectedKeys.has(nextValue.toLowerCase())) {
+      setQuery("");
+      return;
+    }
+    if (value.length >= CREATOR_CONTEXT_MAX_ITEMS) return;
+    onChange([...value, nextValue]);
+    setQuery("");
+  };
+
+  const removeValue = (item: string) => {
+    onChange(value.filter((current) => current !== item));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold text-white/78">{label}</div>
+          <div className="mt-0.5 text-[11px] text-white/42">{helper}</div>
+        </div>
+        <div className="text-[11px] text-white/35">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
+      </div>
+
+      {value.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((item) => (
+            <ContextTinyChip key={item} onRemove={() => removeValue(item)}>
+              {item}
+            </ContextTinyChip>
+          ))}
+        </div>
+      ) : null}
+
+      <input
+        className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25 focus:bg-white/[0.065]"
+        value={query}
+        placeholder={`Add ${label.toLowerCase()}`}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === ",") {
+            event.preventDefault();
+            addValue(query);
+          }
+        }}
+      />
+
+      <div className="flex flex-wrap gap-1.5">
+        {visibleSuggestions.map((suggestion) => (
+          <button
+            type="button"
+            key={suggestion}
+            className="h-7 cursor-pointer rounded-lg border border-white/[0.09] bg-white/[0.04] px-2 text-[11px] font-medium text-white/58 transition-colors hover:border-white/18 hover:bg-white/[0.075] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+            onClick={() => addValue(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+        {normalizedQuery && !selectedKeys.has(normalizedQuery.toLowerCase()) ? (
+          <button
+            type="button"
+            className="h-7 cursor-pointer rounded-lg border border-white/20 bg-white/[0.08] px-2 text-[11px] font-semibold text-white/78 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+            onClick={() => addValue(query)}
+          >
+            Add “{normalizeCreatorContextValue(query)}”
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PreviewListingCta({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90">
+      <span>{label}</span>
+      <span aria-hidden="true">→</span>
+    </span>
   );
 }
 
@@ -265,6 +415,9 @@ function TalentPreview({
   timezone,
   workMode,
   niche,
+  contentNiches,
+  contentGenres,
+  formats,
   platforms,
   tools,
   rateNote,
@@ -279,6 +432,9 @@ function TalentPreview({
   timezone: string;
   workMode: string;
   niche: string;
+  contentNiches: string[];
+  contentGenres: string[];
+  formats: string[];
   platforms: string[];
   tools: string[];
   rateNote: string;
@@ -287,7 +443,7 @@ function TalentPreview({
   rateCurrency: string;
 }) {
   const role = primaryRole.trim() || "Content talent";
-  const showTitle = title.trim() || "Your talent listing headline";
+  const showTitle = formatListingTitle(title.trim() || "Your talent listing headline");
   const meta = [role, location.trim() || "Remote", timezone.trim()].filter(Boolean).join(" · ");
   const min = rateMin.trim();
   const max = rateMax.trim();
@@ -303,9 +459,9 @@ function TalentPreview({
           ? `${formatInr(min)}+`
           : `${currency} ${min}+`
         : "Rate not set");
-  const experienceValue = formatTalentExperience(experience) || "Not specified";
+  const experienceValue = experience.trim() || "Not specified";
   const modeOrLocation = titleCase(workMode || "Remote");
-  const tags = uniq([...tools, ...platforms, niche]);
+  const tags = uniq([...formats, ...contentNiches, ...contentGenres, ...tools, ...platforms, niche]);
 
   return (
     <article className="group relative isolate flex h-[340px] min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.06] p-5 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]">
@@ -319,9 +475,10 @@ function TalentPreview({
             <p className="mt-1 truncate text-xs text-white/55">{meta}</p>
           </div>
         </div>
+        <PreviewListingCta label="Hire Me" />
       </div>
 
-      <h3 className="mt-4 h-[52px] line-clamp-2 text-[15px] font-extrabold uppercase leading-snug text-white">
+      <h3 className="mt-4 h-[52px] line-clamp-2 text-[15px] font-extrabold leading-snug text-white">
         {showTitle}
       </h3>
 
@@ -443,13 +600,15 @@ export default function PostTalentPage() {
   const [step, setStep] = useState<Step>("basics");
   const [title, setTitle] = useState("");
   const [primaryRole, setPrimaryRole] = useState("");
-  const [experienceMin, setExperienceMin] = useState("");
-  const [experienceMax, setExperienceMax] = useState("");
+  const [experienceYears, setExperienceYears] = useState("");
   const [roles, setRoles] = useState("");
   const [niche, setNiche] = useState("");
+  const [contentNiches, setContentNiches] = useState<string[]>([]);
+  const [contentGenres, setContentGenres] = useState<string[]>([]);
   const [formats, setFormats] = useState("");
   const [platforms, setPlatforms] = useState("");
   const [tools, setTools] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
   const [location, setLocation] = useState("");
   const [timezone, setTimezone] = useState("");
   const [availabilityStatus, setAvailabilityStatus] = useState<AvailabilityStatus>(TALENT_LISTING_DEFAULT_AVAILABILITY);
@@ -463,6 +622,9 @@ export default function PostTalentPage() {
   const [portfolioItems, setPortfolioItems] = useState<BackendPortfolioItem[]>([]);
   const [selectedPortfolioIds, setSelectedPortfolioIds] = useState<string[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [firstMessageRequirements, setFirstMessageRequirements] = useState<string[]>([]);
+  const [noFirstMessageRequirements, setNoFirstMessageRequirements] = useState(false);
+  const [firstMessageError, setFirstMessageError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -479,13 +641,13 @@ export default function PostTalentPage() {
   const canGoBack = stepIndex > 0;
   const canGoNext = stepIndex < STEPS.length - 1;
   const rolesList = parseList(roles);
-  const formatsList = parseList(formats);
+  const formatsList = normalizeCreatorContextList(parseList(formats));
+  const contentNichesList = normalizeCreatorContextList(contentNiches);
+  const contentGenresList = normalizeCreatorContextList(contentGenres);
   const platformsList = parseList(platforms);
   const workSampleItems = portfolioItems.filter((item) => item.is_public && item.publish_status !== "draft");
-  const experienceLevel = useMemo(
-    () => formatTalentExperienceBounds(experienceMin, experienceMax),
-    [experienceMax, experienceMin]
-  );
+  const experienceYearsValue = experienceYears.trim() ? Number(experienceYears) : null;
+  const experienceDisplay = formatTalentExperienceYears(experienceYearsValue);
   const invalidClass =
     "border-amber-200/40 ring-1 ring-amber-200/25 focus:border-amber-200/50";
   const isTalentLocationRequired = workMode === "Hybrid" || workMode === "On-site";
@@ -514,16 +676,23 @@ export default function PostTalentPage() {
     if (!token || !draftId) return;
     let mounted = true;
     const hydrate = (listing: BackendTalentListing) => {
-      const experienceBounds = parseTalentExperienceBounds(listing.experience_level || "");
+      const hydratedYears = talentExperienceYears(listing);
       setTitle(listing.title || "");
       setPrimaryRole(listing.primary_role || "");
-      setExperienceMin(experienceBounds.min);
-      setExperienceMax(experienceBounds.max);
+      setExperienceYears(hydratedYears != null ? String(hydratedYears) : "");
       setRoles(listing.roles.join(", "));
-      setNiche(listing.niche || "");
-      setFormats(listing.formats.join(", "));
+      const nextContentNiches = normalizeCreatorContextList(
+        listing.content_niches?.length ? listing.content_niches : splitLegacyContext(listing.niche)
+      );
+      const nextContentGenres = normalizeCreatorContextList(listing.content_genres || []);
+      const nextFormats = normalizeCreatorContextList(listing.formats || []);
+      setNiche(listing.niche || nextContentNiches.join(" · "));
+      setContentNiches(nextContentNiches);
+      setContentGenres(nextContentGenres);
+      setFormats(nextFormats.join(", "));
       setPlatforms(listing.platforms.join(", "));
       setTools(Array.isArray(listing.tools) ? listing.tools : []);
+      setLanguages(Array.isArray(listing.languages) ? listing.languages : []);
       setLocation(listing.location || "");
       setTimezone(listing.timezone || "");
       setAvailabilityStatus(listing.availability_status || TALENT_LISTING_DEFAULT_AVAILABILITY);
@@ -544,6 +713,10 @@ export default function PostTalentPage() {
       );
       setDescription(listing.description || "");
       setSelectedPortfolioIds(listing.portfolio_item_ids || []);
+      // Restore the chosen requirements; the "none" choice is a publish-time
+      // gate, so it is re-confirmed intentionally on resume.
+      setFirstMessageRequirements(sanitizeRequirementKeys(listing.first_message_requirements, "talent"));
+      setNoFirstMessageRequirements(false);
     };
     setDraftLoading(true);
     void listMyTalentListings(token)
@@ -599,11 +772,14 @@ export default function PostTalentPage() {
     rate_max: rateMax.trim() ? Number(rateMax) : null,
     rate_note: effectiveRateNote || null,
     niche,
+    content_niches: contentNichesList,
+    content_genres: contentGenresList,
     platforms: platformsList,
+    formats: formatsList,
     tools,
     portfolio_item_ids: selectedPortfolioIds,
     description,
-    experience_level: experienceLevel || null,
+    experience_years: experienceYearsValue,
   })
     .recommendedItems.map((item) => {
       const target = TALENT_COMPLETION_TARGETS[item.target] || TALENT_COMPLETION_TARGETS[item.jump] || TALENT_COMPLETION_TARGETS.basics;
@@ -629,6 +805,12 @@ export default function PostTalentPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (noFirstMessageRequirements || firstMessageRequirements.length) {
+      setFirstMessageError(null);
+    }
+  }, [noFirstMessageRequirements, firstMessageRequirements.length]);
 
   const focusQualityTarget = (targetId?: string) => {
     if (!targetId) return;
@@ -724,6 +906,18 @@ export default function PostTalentPage() {
     });
   };
 
+  // After validation flags fields, pinpoint the problem by scrolling the first
+  // invalid field into view and focusing it (the step must render first).
+  const focusFirstInvalidField = () => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus({ preventScroll: true });
+    }, 60);
+  };
+
   const firstErrorStep = (requiredErrors: TalentFieldErrors): Step => {
     if (requiredErrors.title || requiredErrors.primaryRole || requiredErrors.location) return "basics";
     if (requiredErrors.workMode || requiredErrors.rateIntent || requiredErrors.rateRange) return "collaboration";
@@ -737,6 +931,7 @@ export default function PostTalentPage() {
       applyStepErrors(keys, requiredErrors);
       const hasErrors = keys.some((key) => Boolean(requiredErrors[key]));
       setError(hasErrors ? "Fix the highlighted fields." : null);
+      if (hasErrors) focusFirstInvalidField();
       return !hasErrors;
     }
     if (step === "collaboration") {
@@ -745,6 +940,7 @@ export default function PostTalentPage() {
       const hasErrors = keys.some((key) => Boolean(requiredErrors[key]));
       setError(hasErrors ? "Fix the highlighted fields." : null);
       if (requiredErrors.location) setStep("basics");
+      if (hasErrors) focusFirstInvalidField();
       return !hasErrors;
     }
     setError(null);
@@ -771,12 +967,15 @@ export default function PostTalentPage() {
   const payload = (publishStatus: "draft" | "published") => ({
     title: publishStatus === "draft" ? title.trim() || "Untitled talent listing" : title.trim(),
     primary_role: primaryRole.trim() || rolesList[0] || null,
-    experience_level: experienceLevel || null,
+    experience_years: experienceYearsValue,
     roles: rolesList,
-    niche: niche.trim() || null,
+    niche: niche.trim() || contentNichesList.join(" · ") || null,
+    content_niches: contentNichesList,
+    content_genres: contentGenresList,
     formats: formatsList,
     platforms: platformsList,
     tools,
+    languages,
     work_mode: workMode.trim() || null,
     location: location.trim() || null,
     timezone: timezone.trim() || null,
@@ -789,6 +988,9 @@ export default function PostTalentPage() {
     turnaround: turnaround.trim() || null,
     description: description.trim() || null,
     portfolio_item_ids: selectedPortfolioIds,
+    first_message_requirements: noFirstMessageRequirements
+      ? []
+      : sanitizeRequirementKeys(firstMessageRequirements, "talent"),
     status: publishStatus,
   });
 
@@ -837,6 +1039,16 @@ export default function PostTalentPage() {
       setFieldErrors(requiredErrors);
       setError("Fix the highlighted fields.");
       setStep(firstErrorStep(requiredErrors));
+      focusFirstInvalidField();
+      return;
+    }
+
+    if (!noFirstMessageRequirements && firstMessageRequirements.length === 0) {
+      setFirstMessageError(
+        "Choose what recruiters must include with their first message, or select “No specific first-message requirements.”"
+      );
+      setStep("collaboration");
+      focusQualityTarget("talent-first-message");
       return;
     }
 
@@ -853,7 +1065,10 @@ export default function PostTalentPage() {
   if (status === "loading" || draftLoading) {
     return <PageLoading blocks={4} />;
   }
-  const experienceOptions = Array.from({ length: 21 }, (_, index) => String(index));
+  const experienceOptions = Array.from(
+    { length: TALENT_EXPERIENCE_MAX_YEARS - TALENT_EXPERIENCE_MIN_YEARS + 1 },
+    (_, index) => String(TALENT_EXPERIENCE_MIN_YEARS + index)
+  );
   const currentStepRequiredErrors = getRequiredErrors();
   const currentStepRequiredKeys: TalentFieldKey[] =
     step === "basics"
@@ -991,52 +1206,25 @@ export default function PostTalentPage() {
             <Field label="Timezone" optional>
               <input className={inputBase} value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="IST" />
             </Field>
-            <Field label="Experience" wide optional targetId="talent-experience">
-              <div className="grid items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-                <select
-                  className={selectBase}
-                  value={experienceMin}
-                  onChange={(event) => {
-                    const nextMin = event.target.value;
-                    setExperienceMin(nextMin);
-                    if (experienceMax && nextMin && Number(experienceMax) < Number(nextMin)) {
-                      setExperienceMax(nextMin);
-                    }
-                  }}
-                >
-                  <option value="" className="bg-[#0b0b0f]">
-                    Min years
+            <Field label="Years of experience" optional targetId="talent-experience">
+              <select
+                className={selectBase}
+                aria-label="Years of experience"
+                value={experienceYears}
+                onChange={(event) => setExperienceYears(event.target.value)}
+              >
+                <option value="" className="bg-[#0b0b0f]">
+                  Select years
+                </option>
+                <option value="0" className="bg-[#0b0b0f]">
+                  Less than 1 year
+                </option>
+                {experienceOptions.map((value) => (
+                  <option key={`talent-exp-${value}`} value={value} className="bg-[#0b0b0f]">
+                    {value} {value === "1" ? "year" : "years"}
                   </option>
-                  {experienceOptions.map((value) => (
-                    <option key={`talent-exp-min-${value}`} value={value} className="bg-[#0b0b0f]">
-                      {value}
-                    </option>
-                  ))}
-                </select>
-
-                <span className="select-none text-white/45">–</span>
-
-                <select
-                  className={selectBase}
-                  value={experienceMax}
-                  onChange={(event) => {
-                    const nextMax = event.target.value;
-                    setExperienceMax(nextMax);
-                    if (experienceMin && nextMax && Number(nextMax) < Number(experienceMin)) {
-                      setExperienceMin(nextMax);
-                    }
-                  }}
-                >
-                  <option value="" className="bg-[#0b0b0f]">
-                    Max years
-                  </option>
-                  {experienceOptions.map((value) => (
-                    <option key={`talent-exp-max-${value}`} value={value} className="bg-[#0b0b0f]">
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                ))}
+              </select>
             </Field>
           </div>
         </StepShell>
@@ -1050,13 +1238,43 @@ export default function PostTalentPage() {
             <Field label="Roles" wide>
               <input className={inputBase} value={roles} onChange={(event) => setRoles(event.target.value)} placeholder="Video editor, thumbnail designer" />
             </Field>
-            <Field label="Niches / categories" targetId="talent-niche-platforms">
-              <input className={inputBase} value={niche} onChange={(event) => setNiche(event.target.value)} placeholder="Gaming, education, business" />
-            </Field>
-            <Field label="Content formats">
-              <input className={inputBase} value={formats} onChange={(event) => setFormats(event.target.value)} placeholder="Shorts, long-form, reels" />
-            </Field>
-            <Field label="Platforms">
+            <div
+              className="space-y-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 sm:col-span-2"
+              data-quality-target="talent-creator-context"
+            >
+              <div>
+                <h2 className="text-sm font-semibold text-white/88">Creator context</h2>
+                <p className="mt-1 text-xs text-white/42">Helps recruiters find you in search.</p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <CreatorContextChipField
+                  label="Content niches"
+                  helper="Choose the content areas you work in."
+                  value={contentNichesList}
+                  suggestions={CONTENT_NICHE_SUGGESTIONS}
+                  onChange={(next) => {
+                    const normalized = normalizeCreatorContextList(next);
+                    setContentNiches(normalized);
+                    setNiche(normalized.join(" · "));
+                  }}
+                />
+                <CreatorContextChipField
+                  label="Genres"
+                  helper="Select the content styles you support."
+                  value={contentGenresList}
+                  suggestions={CONTENT_GENRE_SUGGESTIONS}
+                  onChange={(next) => setContentGenres(normalizeCreatorContextList(next))}
+                />
+                <CreatorContextChipField
+                  label="Formats offered"
+                  helper="Choose the services you offer."
+                  value={formatsList}
+                  suggestions={FORMATS_HIRED_FOR_SUGGESTIONS}
+                  onChange={(next) => setFormats(normalizeCreatorContextList(next).join(", "))}
+                />
+              </div>
+            </div>
+            <Field label="Platforms" targetId="talent-platforms">
               <input className={inputBase} value={platforms} onChange={(event) => setPlatforms(event.target.value)} placeholder="YouTube, Instagram, TikTok" />
             </Field>
             <div className="sm:col-span-2" data-quality-target="talent-tools">
@@ -1067,6 +1285,9 @@ export default function PostTalentPage() {
                 className="space-y-3"
                 placeholder="Premiere Pro, DaVinci Resolve, Figma..."
               />
+            </div>
+            <div className="sm:col-span-2" data-quality-target="talent-languages">
+              <LanguagePicker value={languages} onChange={setLanguages} idPrefix="post-talent" />
             </div>
             <Field label="Services offered" wide targetId="talent-services">
               <textarea className={textareaBase} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A listing-specific note about the kind of work you want to be hired for." />
@@ -1191,6 +1412,29 @@ export default function PostTalentPage() {
               <input className={`${inputBase} uppercase`} value={rateCurrency} onChange={(event) => setRateCurrency(event.target.value)} placeholder="INR" />
             </Field>
           </div>
+
+          <div
+            data-quality-target="talent-first-message"
+            className="mt-8 border-t border-white/8 pt-6"
+          >
+            <h3 className="text-sm font-semibold text-white/90">What recruiters must include</h3>
+            <p className="mt-1 text-[13px] leading-relaxed text-white/50">
+              Pick the details a recruiter has to share in their first message, so every hiring
+              request lands ready to act on. Choose none if you’d rather keep it open.
+            </p>
+            <div className="mt-4">
+              <RequirementSelector
+                context="talent"
+                selectedKeys={firstMessageRequirements}
+                onChange={setFirstMessageRequirements}
+                noneSelected={noFirstMessageRequirements}
+                onNoneChange={setNoFirstMessageRequirements}
+              />
+            </div>
+            {firstMessageError ? (
+              <p className="mt-3 text-[13px] text-amber-200/90">{firstMessageError}</p>
+            ) : null}
+          </div>
         </StepShell>
       );
     }
@@ -1248,11 +1492,14 @@ export default function PostTalentPage() {
           <TalentPreview
             title={title}
             primaryRole={primaryRole || rolesList[0] || ""}
-            experience={experienceLevel}
+            experience={experienceDisplay}
             location={location}
             timezone={timezone}
             workMode={workMode}
             niche={niche}
+            contentNiches={contentNichesList}
+            contentGenres={contentGenresList}
+            formats={formatsList}
             platforms={platformsList}
             tools={tools}
             rateNote={effectiveRateNote}
@@ -1317,11 +1564,14 @@ export default function PostTalentPage() {
           <TalentPreview
             title={title}
             primaryRole={primaryRole || rolesList[0] || ""}
-            experience={experienceLevel}
+            experience={experienceDisplay}
             location={location}
             timezone={timezone}
             workMode={workMode}
             niche={niche}
+            contentNiches={contentNichesList}
+            contentGenres={contentGenresList}
+            formats={formatsList}
             platforms={platformsList}
             tools={tools}
             rateNote={effectiveRateNote}

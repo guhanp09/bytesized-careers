@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icons";
 import {
   createJob,
@@ -13,17 +13,23 @@ import {
   isLocalMocksEnabled,
   listMyJobs,
   listMyTalentListings,
+  updateJob,
+  updateTalentListing,
 } from "../../lib/backendClient";
 import { relativeTimeLabel } from "../../lib/ownerInteractions";
 import { classifyDraftLoad } from "../../lib/draftLoad";
+import { formatListingTitle } from "../../lib/displayText";
 import DraftTipTicker from "./DraftTipTicker";
 import {
+  DRAFT_TITLE_MAX_LENGTH,
   MOCK_OWNER_DRAFTS,
+  applyDraftTitle,
   buildDuplicateJobPayload,
   buildDuplicateTalentPayload,
   duplicateLocalDraft,
   jobToDraft,
   talentToDraft,
+  validateDraftTitle,
   type DraftItem,
   type DraftKind,
 } from "../../lib/ownerDrafts";
@@ -345,11 +351,46 @@ export default function DraftsPageClient({
       .finally(() => setDuplicatingId(null));
   };
 
+  // Inline title rename from the detail header pencil. Persists to the draft
+  // record (job/talent PATCH) in live mode, recomputes completion locally, and
+  // never creates a duplicate or changes status. Returns a result so the inline
+  // editor can keep itself open with an error when the title is invalid.
+  const handleRenameTitle = async (
+    item: DraftItem,
+    rawTitle: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const validation = validateDraftTitle(rawTitle);
+    if (!validation.ok) return { ok: false, error: validation.error };
+    const nextTitle = validation.title;
+
+    // Unchanged value → close without an API call.
+    const currentTitle = item.untitled ? "" : item.title;
+    if (nextTitle === currentTitle) return { ok: true };
+
+    if (!liveMode) {
+      setDrafts((prev) => prev.map((d) => (d.id === item.id ? applyDraftTitle(d, nextTitle) : d)));
+      return { ok: true };
+    }
+
+    if (!backendAccessToken) return { ok: false, error: "You need to sign in again to edit this draft." };
+    try {
+      if (item.kind === "job") {
+        await updateJob(backendAccessToken, item.id, { title: nextTitle });
+      } else {
+        await updateTalentListing(backendAccessToken, item.id, { title: nextTitle });
+      }
+      setDrafts((prev) => prev.map((d) => (d.id === item.id ? applyDraftTitle(d, nextTitle) : d)));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Couldn’t save the title — the backend is unreachable. Try again." };
+    }
+  };
+
   const savedBanner = savedParam ? (
     <div className="mb-4 rounded-2xl border border-emerald-200/20 bg-emerald-200/[0.08] px-4 py-3 text-sm font-medium text-emerald-50/90">
       <span className="inline-flex items-center gap-2">
         <Icon name="check" className="h-4 w-4 text-emerald-100/75" />
-        Draft saved successfully.
+        Draft saved to your account — it’s safe and available on any device.
       </span>
     </div>
   ) : null;
@@ -513,6 +554,7 @@ export default function DraftsPageClient({
                 onBack={() => setMobileDetailOpen(false)}
                 onResume={() => router.push(selected.resumeHref)}
                 onPreview={() => router.push(`${selected.resumeHref}&section=preview`)}
+                onRenameTitle={(rawTitle) => handleRenameTitle(selected, rawTitle)}
                 onDuplicate={() => handleDuplicate(selected)}
                 onRequestDelete={() => setConfirmingId(selected.id)}
                 onCancelDelete={() => setConfirmingId(null)}
@@ -542,6 +584,7 @@ function ResumeQueueRow({
   onSelect: () => void;
 }) {
   const c = item.completion;
+  const displayTitle = formatListingTitle(item.title);
   const rowIconTone =
     selected
       ? "border-white/16 bg-white/[0.08] text-white/80"
@@ -566,10 +609,10 @@ function ResumeQueueRow({
         </span>
         <div className="min-w-0 flex-1">
           <span className={`block truncate text-sm ${item.untitled ? "font-medium text-white/55" : "font-semibold text-white/88"}`}>
-            {item.title}
+            {displayTitle}
           </span>
           <p className="mt-0.5 truncate text-[11px] text-white/45">
-            {item.kind === "job" ? "Job listing" : "Talent listing"} · {relativeTimeLabel(item.updatedAtIso)}
+            {item.kind === "job" ? "Job listing" : "Talent listing"} · Last saved {relativeTimeLabel(item.updatedAtIso)}
           </p>
         </div>
       </div>
@@ -608,6 +651,7 @@ function DraftCompletionWorkspace({
   onBack,
   onResume,
   onPreview,
+  onRenameTitle,
   onDuplicate,
   onRequestDelete,
   onCancelDelete,
@@ -621,12 +665,24 @@ function DraftCompletionWorkspace({
   onBack: () => void;
   onResume: () => void;
   onPreview: () => void;
+  onRenameTitle: (rawTitle: string) => Promise<{ ok: boolean; error?: string }>;
   onDuplicate: () => void;
   onRequestDelete: () => void;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
   const c = selected.completion;
+  const displayTitle = formatListingTitle(selected.title);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const editTitleButtonRef = useRef<HTMLButtonElement>(null);
+  const wasEditingTitleRef = useRef(false);
+
+  // Return focus to the pencil after the inline editor closes (save or cancel),
+  // so keyboard users land back on the control they opened.
+  useEffect(() => {
+    if (wasEditingTitleRef.current && !editingTitle) editTitleButtonRef.current?.focus();
+    wasEditingTitleRef.current = editingTitle;
+  }, [editingTitle]);
   const resumeHref = selected.resumeHref;
   const canPreview = selected.kind === "talent";
   const nextIcon = c.nextBestAction.done
@@ -649,21 +705,33 @@ function DraftCompletionWorkspace({
           Back to drafts
         </button>
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className={`truncate text-lg font-semibold sm:text-xl ${selected.untitled ? "text-white/60" : "text-white"}`}>
-                {selected.title}
-              </h2>
-              <button
-                type="button"
-                onClick={onResume}
-                aria-label="Edit draft title"
-                title="Edit draft"
-                className="shrink-0 text-white/40 transition-colors hover:text-white/80"
-              >
-                <Icon name="pencil" className="h-4 w-4" />
-              </button>
-            </div>
+          <div className="min-w-0 flex-1">
+            {editingTitle ? (
+              <InlineTitleEditor
+                initialValue={selected.untitled ? "" : selected.title}
+                placeholder={selected.kind === "job" ? "Untitled job draft" : "Untitled talent draft"}
+                maxLength={DRAFT_TITLE_MAX_LENGTH}
+                onSave={onRenameTitle}
+                onClose={() => setEditingTitle(false)}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <h2 className={`truncate text-lg font-semibold sm:text-xl ${selected.untitled ? "text-white/60" : "text-white"}`}>
+                  {displayTitle}
+                </h2>
+                <button
+                  ref={editTitleButtonRef}
+                  type="button"
+                  onClick={() => setEditingTitle(true)}
+                  aria-label="Edit draft title"
+                  title="Edit draft title"
+                  data-testid="draft-title-edit"
+                  className="shrink-0 rounded text-white/40 transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                >
+                  <Icon name="pencil" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <p className="mt-1 text-[12px] text-white/45">
               {selected.kind === "job" ? "Job listing" : "Talent listing"} · Last saved {relativeTimeLabel(selected.updatedAtIso)}
             </p>
@@ -712,7 +780,7 @@ function DraftCompletionWorkspace({
           <section data-testid="draft-delete-confirm" className="mb-4 rounded-xl border border-white/[0.12] bg-white/[0.03] p-4">
             <p className="text-sm font-semibold text-white/90">Delete this draft?</p>
             <p className="mt-1 text-xs leading-relaxed text-white/55">
-              “{selected.title}” will be removed from your drafts. You can’t undo this.
+              “{displayTitle}” will be removed from your drafts. You can’t undo this.
             </p>
             <div className="mt-3.5 flex items-center gap-2">
               <button
@@ -805,6 +873,115 @@ function DraftCompletionWorkspace({
           Resume
         </button>
       </div>
+    </div>
+  );
+}
+
+// Native, lightweight inline title editor: replaces the title text with a
+// themed input in the same spot. Enter / check saves, Escape cancels, blur
+// saves a changed value (else cancels), and invalid titles keep the field open
+// with a calm inline error.
+function InlineTitleEditor({
+  initialValue,
+  placeholder,
+  maxLength,
+  onSave,
+  onClose,
+}: {
+  initialValue: string;
+  placeholder: string;
+  maxLength: number;
+  onSave: (rawTitle: string) => Promise<{ ok: boolean; error?: string }>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(initialValue);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const closedRef = useRef(false);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    // Select an existing real title so it can be overwritten immediately; a
+    // fallback/empty title starts blank (initialValue is "").
+    if (initialValue) el.select();
+  }, [initialValue]);
+
+  const submit = async () => {
+    if (saving || closedRef.current) return;
+    setSaving(true);
+    const result = await onSave(value);
+    if (result.ok) {
+      closedRef.current = true;
+      onClose();
+      return;
+    }
+    setError(result.error || "Couldn’t save the title.");
+    setSaving(false);
+    inputRef.current?.focus();
+  };
+
+  const cancel = () => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    onClose();
+  };
+
+  const handleBlur = () => {
+    if (closedRef.current || saving) return;
+    const trimmed = value.trim();
+    // Blur saves a changed, non-empty value; otherwise it cancels quietly.
+    if (!trimmed || trimmed === initialValue.trim()) {
+      cancel();
+      return;
+    }
+    void submit();
+  };
+
+  return (
+    <div className="min-w-0">
+      {/*
+       * The title itself becomes editable: a transparent input that inherits the
+       * heading's size/weight/colour, with only a subtle focus ring. No box, no
+       * confirm button — Enter / blur saves, Escape cancels. Negative margins
+       * cancel the ring padding so there is no layout shift versus the <h2>.
+       */}
+      <input
+        ref={inputRef}
+        type="text"
+        aria-label="Draft title"
+        aria-invalid={Boolean(error)}
+        value={value}
+        maxLength={maxLength}
+        disabled={saving}
+        placeholder={placeholder}
+        data-testid="draft-title-input"
+        onChange={(e) => {
+          setValue(e.target.value);
+          if (error) setError(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        onBlur={handleBlur}
+        className={[
+          "-mx-1.5 -my-0.5 w-full min-w-0 rounded-md bg-transparent px-1.5 py-0.5 text-lg font-semibold text-white outline-none placeholder:font-semibold placeholder:text-white/35 sm:text-xl",
+          error ? "ring-2 ring-amber-300/50" : "focus:ring-2 focus:ring-white/25",
+        ].join(" ")}
+      />
+      {error ? (
+        <p role="alert" data-testid="draft-title-error" className="mt-1.5 text-xs text-amber-200/90">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

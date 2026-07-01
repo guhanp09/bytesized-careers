@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "test:e2e": "playwright test",
-    "test:e2e:server": "NEXT_PUBLIC_USE_LOCAL_MOCKS=true NEXTAUTH_URL=http://127.0.0.1:3100 NEXTAUTH_SECRET=e2e-secret NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000/api/v1 DATABASE_URL=file:./dev.db next build && NEXT_PUBLIC_USE_LOCAL_MOCKS=true NEXTAUTH_URL=http://127.0.0.1:3100 NEXTAUTH_SECRET=e2e-secret NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000/api/v1 DATABASE_URL=file:./dev.db next start --hostname 127.0.0.1 --port 3100",
+    "test:e2e:server": "NEXT_PUBLIC_USE_LOCAL_MOCKS=true NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH=true NEXTAUTH_URL=http://127.0.0.1:3100 NEXTAUTH_SECRET=e2e-secret NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000/api/v1 DATABASE_URL=file:./dev.db next build && NEXT_PUBLIC_USE_LOCAL_MOCKS=true NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH=true NEXTAUTH_URL=http://127.0.0.1:3100 NEXTAUTH_SECRET=e2e-secret NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000/api/v1 DATABASE_URL=file:./dev.db next start --hostname 127.0.0.1 --port 3100",
     "lint": "eslint",
     "generate:logo": "node scripts/generate-logo-assets.mjs",
     "generate:logo-v2": "node scripts/generate-logo-source-v2-variants.mjs",

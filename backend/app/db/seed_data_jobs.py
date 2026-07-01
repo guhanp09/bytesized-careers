@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 SEED_NAMESPACE = uuid.UUID("9f5068b6-3a5f-4d6a-b2da-7f0e6db31f16")
 
@@ -41,7 +41,7 @@ class RawSeedJob(TypedDict):
     responsibilities: list[str]
     requirements: list[str]
     how_to_apply: str
-    reference_videos: list[str]
+    reference_videos: list[str | dict[str, object]]
     tags: list[str]
     channel_name: str
     channel_logo_url: str
@@ -51,6 +51,10 @@ class RawSeedJob(TypedDict):
     posted_by_agency: bool
     agency_profile_slug: str | None
     status: str
+    languages: NotRequired[list[str]]
+    content_niches: NotRequired[list[str]]
+    content_genres: NotRequired[list[str]]
+    formats_hired_for: NotRequired[list[str]]
 
 
 RAW_SEED_JOBS: list[RawSeedJob] = [
@@ -73,11 +77,49 @@ RAW_SEED_JOBS: list[RawSeedJob] = [
         "requirements": ["Premiere Pro", "Story pacing", "Sound cleanup"],
         "how_to_apply": "Share 2-3 relevant edits and your weekly availability.",
         "reference_videos": [
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            {
+                "title": "Pacing + retention reference",
+                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "platform": "YouTube Reference",
+                "what_to_reference": "Study how the intro hooks quickly, energy lifts drive momentum, and the loop keeps viewers watching.",
+                "timestamp_notes": [
+                    {
+                        "time": "0:00",
+                        "seconds": 0,
+                        "title": "Hook pacing",
+                        "description": "Cold open hits immediately. Strong visual and curiosity within the first second.",
+                    },
+                    {
+                        "time": "0:12",
+                        "seconds": 12,
+                        "title": "Energy lift",
+                        "description": "Beat drop aligns with the subject entry. Notice the momentum shift.",
+                    },
+                    {
+                        "time": "0:34",
+                        "seconds": 34,
+                        "title": "Retention cut",
+                        "description": "Quick angle change keeps attention.",
+                    },
+                    {
+                        "time": "1:08",
+                        "seconds": 68,
+                        "title": "B-roll rhythm",
+                        "description": "Performance and B-roll alternate on beat.",
+                    },
+                    {
+                        "time": "1:42",
+                        "seconds": 102,
+                        "title": "Pre-chorus build",
+                        "description": "Slight pause creates anticipation before the hook returns.",
+                    },
+                ],
+            },
             "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
             "https://www.youtube.com/watch?v=9bZkp7q19f0",
         ],
         "tags": ["Premiere", "Story pace", "SFX", "Captions", "Sound cleanup"],
+        "languages": ["Hindi", "English"],
         "channel_name": "Finance Creator",
         "channel_logo_url": "https://picsum.photos/seed/finance/96/96",
         "channel_subscribers": 128000,
@@ -142,6 +184,7 @@ RAW_SEED_JOBS: list[RawSeedJob] = [
             "https://www.youtube.com/watch?v=RgKAFK5djSk",
         ],
         "tags": ["Hooks", "Research", "Hindi", "Tone match", "Fast delivery"],
+        "languages": ["Hindi"],
         "channel_name": "Edu Hindi",
         "channel_logo_url": "https://picsum.photos/seed/edu/96/96",
         "channel_subscribers": 312000,
@@ -572,7 +615,153 @@ RAW_SEED_JOBS: list[RawSeedJob] = [
         "agency_profile_slug": None,
         "status": "published",
     },
+    {
+        "seed_key": "job_19",
+        "title": "Faceless channel editor — stock + VO assembly (3 videos/week)",
+        "category": "Editing",
+        "location": "Remote",
+        "budget_amount": 2500,
+        "budget_currency": "INR",
+        "experience_level": "1-3 years",
+        "platforms": ["youtube"],
+        "start_timeframe": "<1mo",
+        "about_channel": "Calm Mind Media runs faceless meditation and motivation channels with a steady upload cadence.",
+        "responsibilities": [
+            "Assemble videos from script, stock footage, and voice-over",
+            "Add subtitles, B-roll, and light motion",
+            "Keep a consistent 3-videos-per-week pace",
+        ],
+        "requirements": ["Premiere Pro or DaVinci", "Stock sourcing", "Subtitle workflow"],
+        "how_to_apply": "Share a faceless edit sample and your weekly capacity.",
+        "reference_videos": [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        ],
+        "tags": ["Faceless", "Stock", "Subtitles", "Voice-over", "Cadence"],
+        "channel_name": "Calm Mind Media",
+        "channel_logo_url": "https://picsum.photos/seed/calmmind/96/96",
+        "channel_subscribers": 240000,
+        "is_verified": False,
+        "channel_profile_slug": None,
+        "posted_by_agency": False,
+        "agency_profile_slug": None,
+        "status": "published",
+    },
+    {
+        "seed_key": "job_20",
+        "title": "Course video editor — screencasts + lessons for a creator academy",
+        "category": "Editing",
+        "location": "Remote",
+        "budget_amount": 4000,
+        "budget_currency": "INR",
+        "experience_level": "2-4 years",
+        "platforms": ["youtube"],
+        "start_timeframe": "<2mo",
+        "about_channel": "Build With Us teaches no-code and design through structured online courses and YouTube lessons.",
+        "responsibilities": [
+            "Edit screen-recorded lessons into clean, chaptered videos",
+            "Add zooms, callouts, and lower thirds for clarity",
+            "Keep terminology and chapters consistent across a course",
+        ],
+        "requirements": ["Screencast editing", "Chapter markers", "Callouts and zoom"],
+        "how_to_apply": "Share an edited lesson or tutorial and your turnaround time.",
+        "reference_videos": [
+            "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
+        ],
+        "tags": ["Course", "Screencast", "Education", "Callouts", "Chapters"],
+        "channel_name": "Build With Us",
+        "channel_logo_url": "https://picsum.photos/seed/buildwithus/96/96",
+        "channel_subscribers": 96000,
+        "is_verified": True,
+        "channel_profile_slug": None,
+        "posted_by_agency": False,
+        "agency_profile_slug": None,
+        "status": "published",
+    },
+    {
+        "seed_key": "job_21",
+        "title": "Newsletter growth specialist — referrals + cross-promo for a creator newsletter",
+        "category": "Marketing",
+        "location": "Remote",
+        "budget_amount": 5000,
+        "budget_currency": "INR",
+        "experience_level": "3-5 years",
+        "platforms": ["youtube"],
+        "start_timeframe": "<2mo",
+        "about_channel": "The Weekly Cut is a creator-economy newsletter paired with a YouTube channel and a 40k subscriber list.",
+        "responsibilities": [
+            "Run referral and cross-promotion campaigns",
+            "Coordinate newsletter and YouTube growth loops",
+            "Report on subscriber and open-rate trends",
+        ],
+        "requirements": ["Newsletter growth", "Cross-promotion", "Basic analytics"],
+        "how_to_apply": "Share a growth campaign you ran and the result.",
+        "reference_videos": [],
+        "tags": ["Newsletter", "Growth", "Referrals", "Cross-promo", "Analytics"],
+        "channel_name": "The Weekly Cut",
+        "channel_logo_url": "https://picsum.photos/seed/weeklycut/96/96",
+        "channel_subscribers": 40000,
+        "is_verified": False,
+        "channel_profile_slug": None,
+        "posted_by_agency": False,
+        "agency_profile_slug": None,
+        "status": "published",
+    },
 ]
+
+
+# First-message requirements per seeded job (what an applicant must include when
+# applying). job_1 showcases every job-context requirement so the apply flow can be
+# exercised end-to-end; the rest stay open (no specific requirements).
+_JOB_FIRST_MESSAGE_REQUIREMENTS: dict[str, list[str]] = {
+    # job_1 showcases every job-context requirement so the apply flow can be
+    # exercised end-to-end; job_2–job_4 use smaller combinations for variety.
+    "job_1": [
+        "expected_rate",
+        "relevant_portfolio",
+        "turnaround",
+        "working_hours",
+        "relevant_experience",
+        "tools_workflow",
+        "start_availability",
+        "fit_note",
+    ],
+    "job_2": ["expected_rate", "relevant_portfolio", "turnaround"],
+    "job_3": ["working_hours", "relevant_experience", "tools_workflow"],
+    "job_4": ["start_availability", "fit_note"],
+}
+
+_JOB_CREATOR_CONTEXT: dict[str, dict[str, list[str]]] = {
+    "job_1": {
+        "content_niches": ["Finance", "Education"],
+        "content_genres": ["Explainers"],
+        "formats_hired_for": ["Long-form video", "Captions"],
+    },
+    "job_2": {
+        "content_niches": ["Tech"],
+        "content_genres": ["Reviews"],
+        "formats_hired_for": ["Thumbnails", "YouTube packaging"],
+    },
+    "job_3": {
+        "content_niches": ["Education"],
+        "content_genres": ["Explainers"],
+        "formats_hired_for": ["Scripts", "Hooks"],
+    },
+    "job_4": {
+        "content_niches": ["Entertainment"],
+        "content_genres": ["Shorts/Reels"],
+        "formats_hired_for": ["Shorts/Reels", "Captions"],
+    },
+    "job_7": {
+        "content_niches": ["News", "Business"],
+        "content_genres": ["Documentaries"],
+        "formats_hired_for": ["Channel research", "Scripts"],
+    },
+    "job_19": {
+        "content_niches": ["Gaming"],
+        "content_genres": ["Shorts/Reels"],
+        "formats_hired_for": ["Repurposed clips", "Captions"],
+    },
+}
 
 
 SEEDED_JOBS = [
@@ -592,6 +781,10 @@ SEEDED_JOBS = [
         "how_to_apply": seed_job["how_to_apply"],
         "reference_videos": seed_job["reference_videos"],
         "tags": seed_job["tags"],
+        "languages": seed_job.get("languages", []),
+        "content_niches": seed_job.get("content_niches", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("content_niches", [])),
+        "content_genres": seed_job.get("content_genres", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("content_genres", [])),
+        "formats_hired_for": seed_job.get("formats_hired_for", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("formats_hired_for", [])),
         "youtube_channel_id": None,
         "is_verified": seed_job["is_verified"],
         "channel_name": seed_job["channel_name"],
@@ -601,6 +794,7 @@ SEEDED_JOBS = [
         or _slugify(seed_job["channel_name"]),
         "posted_by_agency": seed_job["posted_by_agency"],
         "agency_profile_slug": seed_job["agency_profile_slug"],
+        "application_requirements": _JOB_FIRST_MESSAGE_REQUIREMENTS.get(seed_job["seed_key"], []),
         "views": 0,
         "applicants": 0,
         "response_rate": 0,

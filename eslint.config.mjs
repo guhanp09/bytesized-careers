@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone Vite reference project provided for design inspiration only —
+    // it is not part of the Next app and carries its own deps/lint baseline.
+    "reference-homepage/**",
   ]),
 ]);
 

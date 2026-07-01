@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Icon } from "../Icons";
 import { StateCard } from "../ui";
 import {
@@ -21,6 +21,16 @@ const formatTime = (value: string) => {
   }).format(parsed);
 };
 
+const labelFor = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+const chipClass = (active: boolean) =>
+  [
+    "cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+    active
+      ? "border-white/20 bg-white text-black"
+      : "border-white/[0.1] bg-white/[0.035] text-white/65 hover:bg-white/[0.06] hover:text-white",
+  ].join(" ");
+
 export function NotificationList({
   accessToken,
   initialItems,
@@ -34,6 +44,27 @@ export function NotificationList({
   const [unread, setUnread] = useState(initialUnread);
   const [busyAll, setBusyAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+
+  const categoryOf = (item: BackendNotification) => (item.category || "system").toLowerCase();
+
+  // Only surface filter chips for categories the user actually has notifications in.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((item) => set.add(categoryOf(item)));
+    return Array.from(set).sort();
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () =>
+      items.filter((item) => {
+        if (unreadOnly && item.read_at) return false;
+        if (categoryFilter !== "all" && categoryOf(item) !== categoryFilter) return false;
+        return true;
+      }),
+    [items, unreadOnly, categoryFilter]
+  );
 
   const markOne = async (id: string) => {
     try {
@@ -79,8 +110,61 @@ export function NotificationList({
       ) : null}
 
       {items.length ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={chipClass(categoryFilter === "all")} onClick={() => setCategoryFilter("all")}>
+            All
+          </button>
+          {categories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              className={chipClass(categoryFilter === category)}
+              onClick={() => setCategoryFilter(category)}
+            >
+              {labelFor(category)}
+            </button>
+          ))}
+          <span className="mx-1 h-4 w-px bg-white/10" aria-hidden="true" />
+          <button
+            type="button"
+            aria-pressed={unreadOnly}
+            className={chipClass(unreadOnly)}
+            onClick={() => setUnreadOnly((value) => !value)}
+          >
+            Unread only
+          </button>
+        </div>
+      ) : null}
+
+      {items.length === 0 ? (
+        <StateCard
+          icon="bell"
+          align="center"
+          title="No notifications yet."
+          description="Applications, invites, saves, and launch-free confirmations will appear here."
+        />
+      ) : visibleItems.length === 0 ? (
+        <StateCard
+          icon="bell"
+          align="center"
+          title="Nothing matches this filter."
+          description="Try a different category, or turn off ‘Unread only’."
+          action={
+            <button
+              type="button"
+              onClick={() => {
+                setCategoryFilter("all");
+                setUnreadOnly(false);
+              }}
+              className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.045] px-3.5 text-xs font-semibold text-white/78 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              Clear filters
+            </button>
+          }
+        />
+      ) : (
         <div className="divide-y divide-white/[0.08] overflow-hidden rounded-[28px] border border-white/[0.08] bg-white/[0.035]">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const content = (
               <div className="flex gap-4 px-5 py-4 transition-[background-color,transform] duration-200 hover:bg-white/[0.04]">
                 <span
@@ -136,13 +220,6 @@ export function NotificationList({
             );
           })}
         </div>
-      ) : (
-        <StateCard
-          icon="bell"
-          align="center"
-          title="No notifications yet."
-          description="Applications, invites, saves, and launch-free confirmations will appear here."
-        />
       )}
     </section>
   );

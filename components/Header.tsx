@@ -7,6 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import { Icon } from "./Icons";
 import Sidebar from "./Sidebar";
 import BrandLogo from "./BrandLogo";
+import DevDataSourceSwitch from "./dev/DevDataSourceSwitch";
 import { PostMenu } from "./marketplace/PostMenu";
 import {
   getMyProfile,
@@ -64,6 +65,7 @@ export default function Header() {
   const [notifications, setNotifications] = useState<BackendNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [searchValue, setSearchValue] = useState("");
+  const [searchMode, setSearchMode] = useState<"jobs" | "talent">("jobs");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const bellRef = useRef<HTMLDivElement | null>(null);
 
@@ -217,19 +219,45 @@ export default function Header() {
                   onSubmit={(event) => {
                     event.preventDefault();
                     const query = searchValue.trim();
-                    router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
+                    const target = searchMode === "talent" ? "/talent" : "/jobs";
+                    router.push(query ? `${target}?q=${encodeURIComponent(query)}` : target);
                   }}
                 >
+                  <div
+                    role="group"
+                    aria-label="Search type"
+                    className="my-1 ml-1 flex shrink-0 items-center rounded-full bg-white/[0.05] p-0.5"
+                  >
+                    {(["jobs", "talent"] as const).map((modeOption) => (
+                      <button
+                        key={modeOption}
+                        type="button"
+                        onClick={() => setSearchMode(modeOption)}
+                        aria-pressed={searchMode === modeOption}
+                        className={[
+                          "h-7 cursor-pointer rounded-full px-2.5 text-[11px] font-semibold capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+                          searchMode === modeOption ? "bg-white text-black" : "text-white/55 hover:text-white",
+                        ].join(" ")}
+                      >
+                        {modeOption}
+                      </button>
+                    ))}
+                  </div>
                   <input
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
-                    className="w-full bg-transparent px-4 py-2.5 outline-none text-sm text-white placeholder:text-white/45"
-                    placeholder="Search jobs and talent"
+                    className="w-full bg-transparent px-3 py-2.5 outline-none text-sm text-white placeholder:text-white/45"
+                    placeholder={
+                      searchMode === "talent"
+                        ? "Search talent, roles, tools, portfolios, locations..."
+                        : "Search jobs, roles, platforms, locations, budgets..."
+                    }
+                    aria-label={`Search ${searchMode}`}
                   />
                   <button
                     type="submit"
                     className="cursor-pointer px-4 py-2.5 border-l border-white/10 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                    aria-label="Search"
+                    aria-label={`Search ${searchMode}`}
                   >
                     <Icon name="search" className="w-5 h-5" />
                   </button>
@@ -246,6 +274,7 @@ export default function Header() {
             </div>
 
             <div className="flex items-center gap-2">
+              <DevDataSourceSwitch />
               <PostMenu />
 
               <div className="relative" ref={bellRef}>
@@ -483,6 +512,21 @@ export default function Header() {
                           <span className="flex items-center gap-2">
                             <Icon name="globe" className="w-4 h-4" />
                             Public profile
+                          </span>
+                          <span className="text-white/45">›</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2 py-2 text-sm text-white/85 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            router.push("/settings");
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Icon name="settings" className="w-4 h-4" />
+                            Settings
                           </span>
                           <span className="text-white/45">›</span>
                         </button>

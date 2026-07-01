@@ -6,6 +6,28 @@ import { randomUUID } from "crypto";
 const toIso = (date: Date) => date.toISOString();
 const LOCAL_SAMPLE_POSTED_LABEL = "Local sample";
 const LOCAL_SAMPLE_JOB_IDS = new Set(JOBS.map((job) => String(job.id)));
+// First-message requirements are a presentational, registry-driven field that the
+// local Prisma mock schema does not persist as a column. For seeded sample jobs we
+// re-derive them from the source constant by id so the mock detail page mirrors the
+// production (backend) experience without a schema migration. User-created local
+// jobs simply have none, which is the backward-compatible default.
+const LOCAL_SAMPLE_JOB_REQUIREMENTS = new Map(
+  JOBS.map((job) => [String(job.id), job.applicationRequirements ?? []])
+);
+const LOCAL_SAMPLE_JOB_CREATOR_CONTEXT = new Map(
+  JOBS.map((job) => [
+    String(job.id),
+    {
+      contentNiches: job.contentNiches ?? [],
+      contentGenres: job.contentGenres ?? [],
+      formatsHiredFor: job.formatsHiredFor ?? [],
+    },
+  ])
+);
+const LOCAL_DYNAMIC_JOB_CREATOR_CONTEXT = new Map<
+  string,
+  { contentNiches: string[]; contentGenres: string[]; formatsHiredFor: string[] }
+>();
 
 const isSyntheticPostedShort = (value?: string | null) => {
   const raw = (value || "").trim().toLowerCase();
@@ -45,6 +67,14 @@ const getLocalPostedShort = (record: { id: string; postedShort: string | null; c
     ? formatPostedShort(record.createdAt)
     : record.postedShort || formatPostedShort(record.createdAt);
 };
+
+const getLocalCreatorContext = (jobId: string) =>
+  LOCAL_DYNAMIC_JOB_CREATOR_CONTEXT.get(jobId) ??
+  LOCAL_SAMPLE_JOB_CREATOR_CONTEXT.get(jobId) ?? {
+    contentNiches: [],
+    contentGenres: [],
+    formatsHiredFor: [],
+  };
 
 const toSlug = (value: string) =>
   value
@@ -118,38 +148,46 @@ const mapRecordToJob = (record: {
   channelVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
-}): Job => ({
-  ...getAttributionForJob(record.id, record.channelName),
-  id: String(record.id),
-  title: record.title,
-  category: record.category as JobCategory,
-  budget: record.budget,
-  experience: record.experience,
-  location: record.location,
-  postedShort: getLocalPostedShort(record),
-  views: record.views,
-  applicants: record.applicants,
-  responseRate: record.responseRate,
-  channel: {
-    name: record.channelName,
-    logoUrl: record.channelLogoUrl || "https://picsum.photos/seed/new/96/96",
-    subscribers: record.channelSubscribers ?? null,
-    verified: record.channelVerified || undefined,
-  },
-  tags: Array.isArray(record.tags) ? (record.tags as string[]) : [],
-  startTimeframe: record.startTimeframe as StartTimeframe,
-  type: toJobType(record.type),
-  referenceVideos: Array.isArray(record.referenceVideos)
-    ? (record.referenceVideos as ReferenceVideo[])
-    : undefined,
-  platform: record.platform || undefined,
-  about: record.about || "",
-  responsibilities: record.responsibilities || "",
-  requirements: record.requirements || "",
-  howToApply: record.howToApply || "",
-  createdAt: toIso(record.createdAt),
-  updatedAt: toIso(record.updatedAt),
-});
+}): Job => {
+  const creatorContext = getLocalCreatorContext(String(record.id));
+
+  return {
+    ...getAttributionForJob(record.id, record.channelName),
+    id: String(record.id),
+    title: record.title,
+    category: record.category as JobCategory,
+    budget: record.budget,
+    experience: record.experience,
+    location: record.location,
+    postedShort: getLocalPostedShort(record),
+    views: record.views,
+    applicants: record.applicants,
+    responseRate: record.responseRate,
+    channel: {
+      name: record.channelName,
+      logoUrl: record.channelLogoUrl || "https://picsum.photos/seed/new/96/96",
+      subscribers: record.channelSubscribers ?? null,
+      verified: record.channelVerified || undefined,
+    },
+    tags: Array.isArray(record.tags) ? (record.tags as string[]) : [],
+    contentNiches: creatorContext.contentNiches,
+    contentGenres: creatorContext.contentGenres,
+    formatsHiredFor: creatorContext.formatsHiredFor,
+    startTimeframe: record.startTimeframe as StartTimeframe,
+    type: toJobType(record.type),
+    referenceVideos: Array.isArray(record.referenceVideos)
+      ? (record.referenceVideos as ReferenceVideo[])
+      : undefined,
+    platform: record.platform || undefined,
+    about: record.about || "",
+    responsibilities: record.responsibilities || "",
+    requirements: record.requirements || "",
+    howToApply: record.howToApply || "",
+    applicationRequirements: LOCAL_SAMPLE_JOB_REQUIREMENTS.get(String(record.id)) ?? [],
+    createdAt: toIso(record.createdAt),
+    updatedAt: toIso(record.updatedAt),
+  };
+};
 
 const mapMockToCreateInput = (job: Job) => ({
   id: job.id || randomUUID(),
@@ -221,6 +259,11 @@ const backfillSeededJobs = async () => {
 
 export async function createJob(job: Job): Promise<Job> {
   const id = job.id && String(job.id).trim() ? String(job.id) : randomUUID();
+  LOCAL_DYNAMIC_JOB_CREATOR_CONTEXT.set(id, {
+    contentNiches: job.contentNiches ?? [],
+    contentGenres: job.contentGenres ?? [],
+    formatsHiredFor: job.formatsHiredFor ?? [],
+  });
 
   const created = await prisma.job.create({
     data: {

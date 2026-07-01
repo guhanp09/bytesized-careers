@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { isLocalMocksEnabled, listJobsWithMeta, listTalentListings } from "../lib/backendClient";
-import { listJobs as listJobsFromLocal } from "../lib/repositories/jobRepository";
+import { JOBS } from "../lib/jobs";
 
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000").replace(
   /\/+$/,
@@ -42,7 +42,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const jobs = isLocalMocksEnabled()
-    ? await listJobsFromLocal()
+    ? JOBS
     : await listJobsWithMeta({ limit: 100, offset: 0 })
         .then((response) => response.items)
         .catch(() => []);

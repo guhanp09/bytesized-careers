@@ -418,6 +418,12 @@ class AuthRepository:
         stmt: Select[tuple[Role]] = select(Role).where(Role.id == role_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def create_role(self, *, name: str, category: str) -> Role:
+        role = Role(name=name.strip(), category=category)
+        self.session.add(role)
+        await self.session.flush()
+        return role
+
     async def list_role_questions_for_role(self, *, role_id: UUID) -> list[RoleQuestion]:
         stmt: Select[tuple[RoleQuestion]] = (
             select(RoleQuestion)

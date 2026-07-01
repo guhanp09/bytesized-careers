@@ -12,7 +12,8 @@ from app.core.config import settings, validate_production_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
-from app.db.session import engine
+from app.db.seed import seed_roles_if_missing
+from app.db.session import SessionLocal, engine
 from app.middleware.request_id import RequestIDMiddleware
 
 validate_production_settings()
@@ -65,4 +66,6 @@ async def root() -> dict[str, str]:
 @app.on_event("startup")
 async def on_startup() -> None:
     await sync_dev_sqlite_schema(engine)
+    async with SessionLocal() as session:
+        await seed_roles_if_missing(session)
     logger.info("backend_startup", extra={"env": settings.app_env})

@@ -856,3 +856,170 @@ def test_instagram_hiring_identity_url_validation_and_canonicalization() -> None
         )
         == "https://www.instagram.com/guhanpurushothaman"
     )
+
+
+async def test_recruiter_hiring_fields_default_for_existing_profiles(client: AsyncClient) -> None:
+    # A profile that never set the new additive fields must keep rendering:
+    # lists default to [] and work_mode to None (backward compatibility).
+    bearer = await _register_verify_login(
+        client,
+        email="legacy-recruiter@example.com",
+        username="legacy_recruiter",
+    )
+
+    profile = await client.get(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert profile.status_code == 200
+    body = profile.json()
+    assert body["hiring_info"]["platforms"] == []
+    assert body["collaboration_preferences"]["styles"] == []
+    assert body["collaboration_preferences"]["work_mode"] is None
+
+
+async def test_recruiter_hiring_fields_round_trip(client: AsyncClient) -> None:
+    bearer = await _register_verify_login(
+        client,
+        email="recruiter-fields@example.com",
+        username="recruiter_fields",
+    )
+
+    update = await client.patch(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={
+            # Multiple platforms incl. a custom one, with duplicates to be de-duped.
+            "hiring_platforms": ["YouTube", "Instagram", "youtube", "LinkedIn"],
+            # Multiple collaboration styles incl. a custom value.
+            "collaboration_styles": ["Retainer", "Part-time", "Brand partnerships"],
+            "work_mode": "Hybrid",
+        },
+    )
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["hiring_info"]["platforms"] == ["YouTube", "Instagram", "LinkedIn"]
+    # Legacy single-enum primary_platform is kept in sync (YouTube + Instagram -> Both).
+    assert updated["hiring_info"]["primary_platform"] == "Both"
+    assert updated["collaboration_preferences"]["styles"] == [
+        "Retainer",
+        "Part-time",
+        "Brand partnerships",
+    ]
+    assert updated["collaboration_preferences"]["work_mode"] == "Hybrid"
+
+    # Values persist across a fresh GET.
+    fetched = await client.get(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert fetched.status_code == 200
+    refetched = fetched.json()
+    assert refetched["hiring_info"]["platforms"] == ["YouTube", "Instagram", "LinkedIn"]
+    assert refetched["collaboration_preferences"]["styles"] == [
+        "Retainer",
+        "Part-time",
+        "Brand partnerships",
+    ]
+    assert refetched["collaboration_preferences"]["work_mode"] == "Hybrid"
+
+    # An invalid work_mode is rejected; clearing lists is supported.
+    bad = await client.patch(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={"work_mode": "Anywhere"},
+    )
+    assert bad.status_code == 400
+
+    cleared = await client.patch(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={"hiring_platforms": [], "collaboration_styles": [], "work_mode": None},
+    )
+    assert cleared.status_code == 200
+    cleared_body = cleared.json()
+    assert cleared_body["hiring_info"]["platforms"] == []
+    assert cleared_body["collaboration_preferences"]["styles"] == []
+    assert cleared_body["collaboration_preferences"]["work_mode"] is None
+
+
+async def test_talent_recruiter_metadata_default_for_existing_profiles(
+    client: AsyncClient,
+) -> None:
+    # The separated talent/recruiter metadata fields default to [] for profiles
+    # that never set them (backward compatibility).
+    bearer = await _register_verify_login(
+        client,
+        email="legacy-separation@example.com",
+        username="legacy_separation",
+    )
+    profile = await client.get(
+        "/api/v1/me/profile",
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert profile.status_code == 200
+    body = profile.json()
+    assert body["hiring_info"]["niches"] == []
+    assert body["hiring_info"]["genres"] == []
+    assert body["hiring_info"]["formats"] == []
+    assert body["creator_platforms"] == []
+
+
+async def test_talent_and_recruiter_metadata_are_independent(client: AsyncClient) -> None:
+    # Editing the recruiter (hiring_*) side must not touch the talent content_style,
+    # and editing the talent side must not touch the recruiter side.
+    bearer = await _register_verify_login(
+        client,
+        email="separation@example.com",
+        username="separation_user",
+    )
+    headers = {"Authorization": f"Bearer {bearer}"}
+
+    # Recruiter side.
+    recruiter = await client.patch(
+        "/api/v1/me/profile",
+        headers=headers,
+        json={
+            "hiring_niches": ["Finance", "Tech"],
+            "hiring_genres": ["Explainers"],
+            "hiring_formats": ["Long-form video", "Thumbnails"],
+            "hiring_platforms": ["YouTube"],
+            "creator_platforms": ["Instagram"],
+        },
+    )
+    assert recruiter.status_code == 200
+    rec_body = recruiter.json()
+    assert rec_body["hiring_info"]["niches"] == ["Finance", "Tech"]
+    assert rec_body["hiring_info"]["genres"] == ["Explainers"]
+    assert rec_body["hiring_info"]["formats"] == ["Long-form video", "Thumbnails"]
+    assert rec_body["hiring_info"]["platforms"] == ["YouTube"]
+    assert rec_body["creator_platforms"] == ["Instagram"]
+    # Recruiter edits did not populate the talent content_style.
+    assert rec_body["content_style"]["primary_niche"] in (None, "")
+    assert rec_body["content_style"]["format"] == []
+
+    # Talent side (content_style) — distinct values, incl. a custom format.
+    talent = await client.post(
+        "/api/v1/user/content-style",
+        headers=headers,
+        json={
+            "primary_niche": "Gaming",
+            "format": ["Vertical shorts", "Stream highlights"],
+            "tone": ["Entertaining"],
+            "target_audience": "Console gamers",
+        },
+    )
+    assert talent.status_code == 200
+    # Custom (non-preset) formats are now accepted.
+    assert talent.json()["format"] == ["Vertical shorts", "Stream highlights"]
+
+    # The recruiter side is unchanged after editing the talent side.
+    after = await client.get("/api/v1/me/profile", headers=headers)
+    assert after.status_code == 200
+    after_body = after.json()
+    assert after_body["hiring_info"]["niches"] == ["Finance", "Tech"]
+    assert after_body["hiring_info"]["formats"] == ["Long-form video", "Thumbnails"]
+    assert after_body["hiring_info"]["platforms"] == ["YouTube"]
+    assert after_body["creator_platforms"] == ["Instagram"]
+    assert after_body["content_style"]["primary_niche"] == "Gaming"
+    assert after_body["content_style"]["format"] == ["Vertical shorts", "Stream highlights"]

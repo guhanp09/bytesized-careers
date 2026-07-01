@@ -3,13 +3,26 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
-import { MetaRow, TagPill } from "../ui";
+import { MetaRow } from "../ui";
+import FirstMessageSummary from "../first-message/FirstMessageSummary";
+import { formatListingTitle } from "../../lib/displayText";
+import { buildOpeningMessageBody, resolveTalentDisplayName } from "../../lib/openingMessage";
+import { buildUnreadByThread, formatBadgeCount, mapBackendMessage, totalUnread } from "../../lib/messaging";
+import type { FirstMessageAnswers, RequirementContext } from "../../lib/firstMessageRequirements";
 import {
   canUseLocalMockFallback,
   getActivitySummary,
+  getApplicationConversation,
+  getInterestConversation,
   isLocalMocksEnabled,
+  listConversations,
+  markConversationRead,
+  sendConversationMessage,
   updateApplicationStatus,
   updateTalentInterestStatus,
+  withdrawApplication,
+  withdrawTalentInterest,
+  type BackendMessage,
 } from "../../lib/backendClient";
 import {
   MOCK_OWNER_INTERACTIONS,
@@ -17,9 +30,9 @@ import {
   interactionStatusLabel,
   isArchivedInteraction,
   mapActivityToOwnerInteractions,
+  relativeTimeLabel,
   type InteractionStatus,
   type InteractionJobSnapshot,
-  type InteractionRecruiterSnapshot,
   type InteractionTalentSnapshot,
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
@@ -39,6 +52,8 @@ type ApplicationsWorkspaceProps = {
   backendAccessToken?: string;
   /** Force the demo dataset even when a backend token is present (preview only). */
   forceMock?: boolean;
+  /** Thread to open on mount, e.g. from an "Open conversation" deep-link. */
+  initialSelectedId?: string | null;
 };
 
 type HeaderAction = {
@@ -277,23 +292,21 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
   const reply: HeaderAction = { key: "reply", label: `Reply to ${name}`, icon: "send", flow: "reply" };
 
   if (item.kind === "application" && item.direction === "sent") {
-    // Live mode: the backend has no applicant-side withdraw endpoint and no
-    // messaging — showing those actions would fake functionality.
-    if (live) return [];
-    return [
-      reply,
-      {
-        key: "withdraw",
-        label: "Withdraw application",
-        icon: "x",
-        destructive: true,
-        flow: "confirm",
-        nextStatus: "withdrawn",
-        eventLabel: "Application withdrawn by you",
-        panelTitle: "Withdraw this application?",
-        confirmLabel: "Confirm withdraw",
-      },
-    ];
+    const withdraw: HeaderAction = {
+      key: "withdraw",
+      label: "Withdraw application",
+      icon: "x",
+      destructive: true,
+      flow: "confirm",
+      nextStatus: "withdrawn",
+      eventLabel: "Application withdrawn by you",
+      panelTitle: "Withdraw this application?",
+      confirmLabel: "Confirm withdraw",
+    };
+    // Withdraw is backed by a real applicant-side endpoint. Reply stays demo-only
+    // in live mode (no messaging backend) — showing it would fake functionality.
+    if (live) return [withdraw];
+    return [reply, withdraw];
   }
   if (item.kind === "hiring_request" && item.direction === "received") {
     const actions: HeaderAction[] = [
@@ -362,21 +375,20 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
     if (!live) actions.push(reply);
     return actions;
   }
-  if (live) return [];
-  return [
-    reply,
-    {
-      key: "withdraw",
-      label: "Withdraw request",
-      icon: "x",
-      destructive: true,
-      flow: "confirm",
-      nextStatus: "withdrawn",
-      eventLabel: "Request withdrawn by you",
-      panelTitle: "Withdraw this request?",
-      confirmLabel: "Confirm withdraw",
-    },
-  ];
+  const withdrawRequest: HeaderAction = {
+    key: "withdraw",
+    label: "Withdraw request",
+    icon: "x",
+    destructive: true,
+    flow: "confirm",
+    nextStatus: "withdrawn",
+    eventLabel: "Request withdrawn by you",
+    panelTitle: "Withdraw this request?",
+    confirmLabel: "Confirm withdraw",
+  };
+  // Withdraw is backed by a real sender-side endpoint; reply stays demo-only in live mode.
+  if (live) return [withdrawRequest];
+  return [reply, withdrawRequest];
 }
 
 function quickReplyTemplates(item: OwnerInteraction): Array<{ label: string; text: string }> {
@@ -453,36 +465,6 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
 }
 
 /**
- * A context snapshot card. When it represents a navigable entity (a profile) the
- * whole card is the link — no separate "View X" button, no label — with a hover +
- * focus affordance and a quiet ↗ on hover. Otherwise it renders as a plain card.
- */
-function ContextCard({ href, children }: { href?: string | null; children: ReactNode }) {
-  const body = (
-    <div className="relative">
-      {href ? (
-        <Icon
-          name="external-link"
-          className="absolute right-0 top-0 h-3.5 w-3.5 text-white/30 opacity-0 transition-opacity group-hover:opacity-100"
-        />
-      ) : null}
-      {children}
-    </div>
-  );
-  const cls = `block rounded-2xl ${SURFACE} p-4`;
-  return href ? (
-    <Link
-      href={href}
-      className={`group ${cls} cursor-pointer transition-colors hover:border-white/[0.14] hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
-    >
-      {body}
-    </Link>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
-
-/**
  * Compact job card for the context rail — the essential top of the marketplace
  * JobCard (channel identity → job title → pay / experience / location), no tags.
  * The whole card opens the job detail page when a route exists.
@@ -490,6 +472,7 @@ function ContextCard({ href, children }: { href?: string | null; children: React
 function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
   const href = job.jobId ? `/jobs/${encodeURIComponent(job.jobId)}` : null;
   const payIcon = job.budget.toLowerCase().includes("per month") ? "briefcase" : "cash-stack";
+  const displayTitle = formatListingTitle(job.title);
   const body = (
     <div className="relative">
       {href ? (
@@ -500,7 +483,7 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
       ) : null}
       <div className="flex items-center gap-2.5">
         <InteractionAvatar
-          name={job.channelName || job.title}
+          name={job.channelName || displayTitle}
           src={job.channelLogoUrl}
           shape="rounded"
           sizeClasses="h-9 w-9"
@@ -509,7 +492,7 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
           {job.channelName || "Hiring team"}
         </span>
       </div>
-      <h3 className="mt-2.5 text-sm font-semibold leading-snug text-white">{job.title}</h3>
+      <h3 className="mt-2.5 text-sm font-semibold leading-snug text-white">{displayTitle}</h3>
       <div className="mt-2.5 space-y-1.5">
         <MetaRow icon={payIcon} text={job.budget} />
         {job.experience ? <MetaRow icon="cap" text={job.experience} /> : null}
@@ -530,92 +513,53 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
   );
 }
 
-function TalentSnapshotSection({
-  talent,
-  showTitle = true,
-}: {
-  talent: InteractionTalentSnapshot;
-  /** When false, the name lives in the detail header, so the card leads with the headline. */
-  showTitle?: boolean;
-}) {
+/**
+ * Compact talent card for the context rail — the talent mirror of {@link CompactJobCard}.
+ * Renders the same shape of information in the same order: identity → listing title →
+ * rate / experience (numeric years) / location, with no bio, tags, portfolio block, or
+ * availability status. The whole card opens the talent's listing/profile when a route exists.
+ */
+function CompactTalentCard({ talent }: { talent: InteractionTalentSnapshot }) {
   const href = talent.profileSlug ? `/u/${talent.profileSlug}?view=talent` : null;
-  return (
-    <ContextCard href={href}>
-      <div className="mt-3 flex items-start gap-3.5">
-        <InteractionAvatar name={talent.name} src={talent.avatarUrl} sizeClasses="h-11 w-11" />
-        <div className="min-w-0 flex-1">
-          {showTitle ? <p className="text-sm font-semibold text-white/92">{talent.name}</p> : null}
-          {talent.headline ? (
-            <p
-              className={
-                showTitle ? "mt-0.5 text-xs text-white/60" : "text-sm font-semibold text-white/90"
-              }
-            >
-              {talent.headline}
-            </p>
-          ) : null}
-          {talent.location || talent.availability ? (
-            <p className="mt-1 text-xs text-white/45">
-              {[talent.location, talent.availability].filter(Boolean).join(" · ")}
-            </p>
-          ) : null}
-        </div>
+  // Mirror the job card's pay row exactly: monthly retainers read better with the briefcase.
+  const rate = talent.rate?.trim() || null;
+  const payIcon = rate && rate.toLowerCase().includes("per month") ? "briefcase" : "cash-stack";
+  // Numeric-year language only (e.g. "2–4 years"); never a level label like "Senior".
+  const experience = talent.experience?.trim() || null;
+  // For the viewer's own listing, repeating their name is noise — genericise the
+  // identity to "Your listing" and seed the avatar from the headline instead.
+  const identity = talent.isOwnListing ? "Your listing" : talent.name;
+  const avatarSeed = talent.isOwnListing ? talent.headline : talent.name;
+  const body = (
+    <div className="relative">
+      {href ? (
+        <Icon
+          name="external-link"
+          className="absolute right-0 top-0 h-3.5 w-3.5 text-white/30 opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      ) : null}
+      <div className="flex items-center gap-2.5">
+        <InteractionAvatar name={avatarSeed} src={talent.avatarUrl} sizeClasses="h-9 w-9" />
+        <span className="min-w-0 truncate pr-5 text-xs font-medium text-white/60">{identity}</span>
       </div>
-      {talent.bio ? <p className="mt-3 text-[13px] leading-relaxed text-white/65">{talent.bio}</p> : null}
-      {talent.experienceNote ? <p className="mt-1.5 text-xs text-white/50">{talent.experienceNote}</p> : null}
-      {talent.tools.length > 0 || talent.niches.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {talent.tools.map((tool) => (
-            <TagPill key={`${talent.name}-tool-${tool}`}>{tool}</TagPill>
-          ))}
-          {talent.niches.map((niche) => (
-            <TagPill key={`${talent.name}-niche-${niche}`} className="text-white/55">
-              {niche}
-            </TagPill>
-          ))}
-        </div>
-      ) : null}
-      {talent.portfolioHighlights.length > 0 ? (
-        <div className="mt-3.5 space-y-2.5 border-l border-white/[0.1] pl-3.5">
-          {talent.portfolioHighlights.map((highlight) => (
-            <div key={`${talent.name}-highlight-${highlight.title}`}>
-              <p className="text-xs font-semibold text-white/82">{highlight.title}</p>
-              <p className="mt-0.5 text-[11px] text-white/48">{highlight.detail}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </ContextCard>
+      <h3 className="mt-2.5 line-clamp-2 text-sm font-semibold leading-snug text-white">{talent.headline}</h3>
+      <div className="mt-2.5 space-y-1.5">
+        {rate ? <MetaRow icon={payIcon} text={rate} truncate /> : null}
+        {experience ? <MetaRow icon="cap" text={experience} truncate /> : null}
+        {talent.location ? <MetaRow icon="pin" text={talent.location} truncate /> : null}
+      </div>
+    </div>
   );
-}
-
-function RecruiterSnapshotSection({
-  recruiter,
-  sourceListingTitle,
-}: {
-  recruiter: InteractionRecruiterSnapshot;
-  sourceListingTitle?: string | null;
-}) {
-  const audienceLine = [recruiter.audienceLabel, recruiter.platform].filter(Boolean).join(" · ");
-  const href = recruiter.profileSlug ? `/u/${recruiter.profileSlug}?view=hiring` : null;
-  return (
-    <ContextCard href={href}>
-      <div className="mt-3 flex items-start gap-3.5">
-        <InteractionAvatar name={recruiter.name} src={recruiter.avatarUrl} shape="rounded" sizeClasses="h-10 w-10" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white/92">{recruiter.name}</p>
-          {audienceLine ? <p className="mt-0.5 text-xs text-white/55">{audienceLine}</p> : null}
-          {recruiter.hiringFor ? (
-            <p className="mt-1 text-xs text-white/45">Hiring for {recruiter.hiringFor}</p>
-          ) : null}
-        </div>
-      </div>
-      {sourceListingTitle ? (
-        <p className="mt-3 text-xs text-white/50">
-          Sent for your listing · <span className="text-white/70">{sourceListingTitle}</span>
-        </p>
-      ) : null}
-    </ContextCard>
+  const cls = "block rounded-2xl border border-white/10 bg-white/[0.06] p-4";
+  return href ? (
+    <Link
+      href={href}
+      className={`group ${cls} cursor-pointer transition-colors hover:border-white/20 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 
@@ -656,11 +600,10 @@ function contextCardFor(item: OwnerInteraction): ReactNode {
   if (item.kind === "application" && item.job) {
     return <CompactJobCard job={item.job} />;
   }
-  if (item.kind === "hiring_request" && item.direction === "sent" && item.talent) {
-    return <TalentSnapshotSection talent={item.talent} showTitle={false} />;
-  }
-  if (item.kind === "hiring_request" && item.direction === "received" && item.recruiter) {
-    return <RecruiterSnapshotSection recruiter={item.recruiter} sourceListingTitle={item.sourceListingTitle} />;
+  if (item.kind === "hiring_request" && item.talent) {
+    // Both directions resolve to the talent listing the conversation is about:
+    // the recruited talent (sent) or the viewer's own listing (received).
+    return <CompactTalentCard talent={item.talent} />;
   }
   return null;
 }
@@ -730,6 +673,8 @@ type ChatMessage = {
   atLabel: string;
   rate?: string | null;
   attachments?: OwnerInteraction["attachments"];
+  firstMessageAnswers?: FirstMessageAnswers | null;
+  firstMessageContext?: RequirementContext;
 };
 
 /**
@@ -739,17 +684,51 @@ type ChatMessage = {
  */
 function buildConversation(item: OwnerInteraction): ChatMessage[] {
   const messages: ChatMessage[] = [];
-  const hasOpening = Boolean(item.message) || (item.attachments?.length ?? 0) > 0;
+  // An application carries job-context answers; a hiring request carries talent-context.
+  const context: RequirementContext = item.kind === "application" ? "job" : "talent";
+  const rawAnswers =
+    item.firstMessageAnswers && Object.keys(item.firstMessageAnswers).length
+      ? item.firstMessageAnswers
+      : null;
+  const fitNote =
+    rawAnswers && typeof rawAnswers.fit_note === "string" ? rawAnswers.fit_note.trim() : "";
+
+  // Opening message body. Real submissions store the body, but legacy records (or
+  // any saved blank) can arrive with only requirement answers — generate a natural
+  // default so the bubble never looks empty. A provided fit note *is* the message.
+  let openingBody = item.message || "";
+  if (!openingBody.trim() && rawAnswers) {
+    openingBody = buildOpeningMessageBody({
+      context,
+      recipientName: context === "job" ? item.job?.channelName : resolveTalentDisplayName(item.talent),
+      fitNote,
+      seed: item.id,
+    });
+  }
+
+  // When the fit note is the message body, drop it from the details so it doesn't
+  // appear twice (once as the bubble text, once as a "Fit note" item).
+  let answers = rawAnswers;
+  if (answers && fitNote && openingBody.trim() === fitNote) {
+    const rest = Object.fromEntries(
+      Object.entries(answers).filter(([key]) => key !== "fit_note")
+    ) as FirstMessageAnswers;
+    answers = Object.keys(rest).length ? rest : null;
+  }
+
+  const hasOpening = Boolean(openingBody) || (item.attachments?.length ?? 0) > 0 || Boolean(answers);
   if (hasOpening) {
     const openingFromMe = item.direction === "sent";
     messages.push({
       id: `${item.id}-opening`,
       fromMe: openingFromMe,
       senderName: openingFromMe ? "You" : item.counterpartyName,
-      body: item.message || "",
+      body: openingBody,
       atLabel: item.createdAtLabel,
       rate: item.proposedTerms || null,
       attachments: item.attachments,
+      firstMessageAnswers: answers,
+      firstMessageContext: context,
     });
   }
   if (item.response) {
@@ -863,6 +842,13 @@ function MessageBubble({
             </div>
           ) : null}
         </div>
+        {message.firstMessageAnswers && message.firstMessageContext ? (
+          <FirstMessageSummary
+            context={message.firstMessageContext}
+            answers={message.firstMessageAnswers}
+            className="w-full"
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -878,6 +864,7 @@ export default function ApplicationsWorkspace({
   interactions,
   backendAccessToken,
   forceMock = false,
+  initialSelectedId = null,
 }: ApplicationsWorkspaceProps) {
   // Live mode: authenticated against the real backend (local-mocks env always
   // stays in demo mode, matching the rest of the app's data strategy). The
@@ -888,10 +875,20 @@ export default function ApplicationsWorkspace({
   );
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(liveMode ? "loading" : "ready");
   const [reloadNonce, setReloadNonce] = useState(0);
+  // Real message threads loaded per interaction in live mode (keyed by record id ==
+  // OwnerInteraction id). Demo mode keeps using the in-memory `replies` on the item.
+  const [liveThreads, setLiveThreads] = useState<
+    Record<string, { conversationId: string; messages: BackendMessage[] }>
+  >({});
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  // Unread message count per inbox thread (keyed by record id == OwnerInteraction id),
+  // sourced from the real GET /me/conversations endpoint in live mode.
+  const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(Boolean(initialSelectedId));
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
@@ -915,6 +912,14 @@ export default function ApplicationsWorkspace({
         }
         setLoadState("error");
       });
+    // Unread badges are non-critical: fetch independently so a failure here never
+    // disturbs the main inbox list or its demo fallback.
+    listConversations(backendAccessToken)
+      .then((conversations) => {
+        if (cancelled) return;
+        setUnreadByThread(buildUnreadByThread(conversations));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -936,6 +941,45 @@ export default function ApplicationsWorkspace({
     [visibleItems, selectedId]
   );
   const selectedItemId = selected?.id ?? null;
+  const selectedKind = selected?.kind ?? null;
+
+  // Load the real conversation for the open thread (live mode only) and mark it read.
+  // The record id == OwnerInteraction id; the kind decides which endpoint to call.
+  useEffect(() => {
+    if (!liveMode || !backendAccessToken || !selectedItemId || !selectedKind) return;
+    const recordId = selectedItemId;
+    let cancelled = false;
+    setSendError(null);
+    const loader =
+      selectedKind === "hiring_request"
+        ? getInterestConversation(backendAccessToken, recordId)
+        : getApplicationConversation(backendAccessToken, recordId);
+    loader
+      .then((detail) => {
+        if (cancelled) return;
+        setLiveThreads((prev) => ({
+          ...prev,
+          [recordId]: { conversationId: detail.conversation.id, messages: detail.messages },
+        }));
+        if (detail.conversation.unread_count > 0) {
+          void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
+        }
+        // Opening a thread clears its unread badge immediately.
+        setUnreadByThread((prev) => {
+          if (!prev[recordId]) return prev;
+          const next = { ...prev };
+          delete next[recordId];
+          return next;
+        });
+      })
+      .catch(() => {
+        // Leaving the thread without a loaded conversation simply keeps the composer
+        // disabled; the opening message (application detail) still renders.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [liveMode, backendAccessToken, selectedItemId, selectedKind, reloadNonce]);
 
   const filterCounts = useMemo(
     () => ({
@@ -1005,24 +1049,30 @@ export default function ApplicationsWorkspace({
     if (liveMode && backendAccessToken) {
       // Map workspace actions to the real backend status vocabulary; commit
       // locally only after the backend confirms — no fake success states.
+      // Withdraw is sender-initiated and uses its own endpoint (the status PATCH
+      // is owner-only and would reject the sender).
       const applicationStatus =
         action.key === "shortlist" ? "shortlisted" : action.key === "hire" ? "hired" : "rejected";
       const request =
-        target.kind === "application"
-          ? updateApplicationStatus(
-              backendAccessToken,
-              target.id,
-              applicationStatus
-            )
-          : updateTalentInterestStatus(
-              backendAccessToken,
-              target.id,
-              action.key === "accept" ? "contacted" : "declined"
-            );
+        action.key === "withdraw"
+          ? target.kind === "application"
+            ? withdrawApplication(backendAccessToken, target.id)
+            : withdrawTalentInterest(backendAccessToken, target.id)
+          : target.kind === "application"
+            ? updateApplicationStatus(backendAccessToken, target.id, applicationStatus)
+            : updateTalentInterestStatus(
+                backendAccessToken,
+                target.id,
+                action.key === "accept" ? "contacted" : "declined"
+              );
       request
         .then(() => commitStatusLocally(target, action))
         .catch(() => {
-          setActionError("Couldn't update the status — the backend is unreachable. Try again.");
+          setActionError(
+            action.key === "withdraw"
+              ? "Couldn't withdraw — the backend is unreachable. Try again."
+              : "Couldn't update the status — the backend is unreachable. Try again."
+          );
           setPendingActionKey(null);
           setPendingNote("");
         });
@@ -1032,9 +1082,35 @@ export default function ApplicationsWorkspace({
     commitStatusLocally(target, action, trimmedNote);
   };
 
-  const handleSendReply = (target: OwnerInteraction) => {
+  const handleSendReply = async (target: OwnerInteraction) => {
     const body = replyDraft.trim();
     if (!body) return;
+
+    // Live mode: persist a real message through the backend conversation.
+    if (liveMode && backendAccessToken) {
+      const thread = liveThreads[target.id];
+      if (!thread) {
+        setSendError("This thread is still loading. Try again in a moment.");
+        return;
+      }
+      setSending(true);
+      setSendError(null);
+      try {
+        const message = await sendConversationMessage(backendAccessToken, thread.conversationId, body);
+        setLiveThreads((prev) => ({
+          ...prev,
+          [target.id]: { ...thread, messages: [...thread.messages, message] },
+        }));
+        setReplyDraft("");
+      } catch {
+        setSendError("Message could not be sent. Please try again.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // Demo mode: append to the in-memory thread (no backend).
     setItems((prev) =>
       prev.map((item) =>
         item.id === target.id
@@ -1127,8 +1203,17 @@ export default function ApplicationsWorkspace({
   // The reply composer is demo-only: there is no messaging backend yet, so in
   // live mode it is shown disabled rather than pretending to deliver.
   const selectedArchived = selected ? isArchivedInteraction(selected) : false;
-  const selectedActive = selected ? !selectedArchived && !liveMode : false;
-  const conversation = selected ? buildConversation(selected) : [];
+  // The composer is active for any open, non-archived thread. In live mode it sends
+  // real messages once the conversation has loaded; in demo mode it appends locally.
+  const liveThread = selected && liveMode ? liveThreads[selected.id] : undefined;
+  const selectedActive = selected ? !selectedArchived && (!liveMode || Boolean(liveThread)) : false;
+  const liveMessages: ChatMessage[] =
+    selected && liveMode && liveThread
+      ? liveThread.messages.map((message) =>
+          mapBackendMessage(message, selected.counterpartyName, relativeTimeLabel)
+        )
+      : [];
+  const conversation = selected ? [...buildConversation(selected), ...liveMessages] : [];
   const subtitle = selected ? subtitleFor(selected) : null;
   const forward = selected ? forwardLinkFor(selected) : null;
   const menuItems: OverflowMenuItem[] = selected
@@ -1163,6 +1248,7 @@ export default function ApplicationsWorkspace({
     : false;
   const contextCard = selected ? contextCardFor(selected) : null;
   const showProposalInRail = Boolean(selected?.proposedTerms) && !hasOpeningMessage;
+  const totalUnreadCount = liveMode ? totalUnread(unreadByThread) : 0;
 
   return (
     <div className={`w-full ${WORKSPACE_HEIGHT_CLASSES}`} data-testid="applications-workspace">
@@ -1182,6 +1268,15 @@ export default function ApplicationsWorkspace({
             onToggleDemo={onToggleDemo}
           />
           <FilterBar filter={filter} counts={filterCounts} onSelect={selectFilter} />
+          {totalUnreadCount > 0 ? (
+            <div
+              data-testid="inbox-unread-total"
+              className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5 text-[11px] text-white/45"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-white/80" aria-hidden="true" />
+              {totalUnreadCount} unread message{totalUnreadCount === 1 ? "" : "s"}
+            </div>
+          ) : null}
 
           <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {visibleItems.length === 0 ? (
@@ -1190,6 +1285,10 @@ export default function ApplicationsWorkspace({
               <div className="divide-y divide-white/[0.05]">
                 {visibleItems.map((item) => {
                   const isSelected = item.id === selectedItemId;
+                  // Real unread message count for this thread (live mode); demo data
+                  // still drives the simple "new" dot via item.unread.
+                  const messageUnread = liveMode ? unreadByThread[item.id] ?? 0 : 0;
+                  const rowUnread = Boolean(item.unread) || messageUnread > 0;
                   return (
                     <button
                       key={item.id}
@@ -1210,16 +1309,27 @@ export default function ApplicationsWorkspace({
                           <span className="truncate text-[11px] font-medium text-white/42">
                             {interactionKindLabel(item)}
                           </span>
-                          <span className="shrink-0 text-[11px] text-white/38">{item.updatedAtLabel}</span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {messageUnread > 0 ? (
+                              <span
+                                data-testid="inbox-unread-badge"
+                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
+                                className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-none text-black"
+                              >
+                                {formatBadgeCount(messageUnread)}
+                              </span>
+                            ) : null}
+                            <span className="text-[11px] text-white/38">{item.updatedAtLabel}</span>
+                          </div>
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
-                          {item.unread ? (
+                          {rowUnread ? (
                             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/90" aria-hidden="true" />
                           ) : null}
                           <span
                             className={[
                               "truncate text-sm",
-                              item.unread ? "font-semibold text-white" : "font-medium text-white/85",
+                              rowUnread ? "font-semibold text-white" : "font-medium text-white/85",
                             ].join(" ")}
                           >
                             {item.title}
@@ -1408,10 +1518,10 @@ export default function ApplicationsWorkspace({
                             <button
                               type="button"
                               aria-label="Send"
-                              onClick={() => handleSendReply(selected)}
-                              disabled={!replyDraft.trim()}
+                              onClick={() => void handleSendReply(selected)}
+                              disabled={!replyDraft.trim() || sending}
                               className={
-                                replyDraft.trim()
+                                replyDraft.trim() && !sending
                                   ? "inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white text-black transition-colors hover:bg-white/90"
                                   : "inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/30"
                               }
@@ -1419,13 +1529,26 @@ export default function ApplicationsWorkspace({
                               <Icon name="send" className="h-4 w-4" />
                             </button>
                           </div>
-                          <p className="mt-1.5 text-[11px] text-white/35">Demo only — replies aren’t delivered yet.</p>
+                          {sendError ? (
+                            <p className="mt-1.5 text-[11px] text-rose-300/80">{sendError}</p>
+                          ) : !liveMode ? (
+                            <p className="mt-1.5 text-[11px] text-white/35">
+                              Demo only — replies aren’t delivered yet.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : liveMode && selected && !selectedArchived ? (
+                        <div className="flex items-center gap-2 py-1">
+                          <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
+                          <p className="text-[11px] text-white/40">Loading conversation…</p>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 py-1">
                           <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
                           <p className="text-[11px] text-white/40">
-                            Messaging isn’t available yet — replies will open up here once it ships.
+                            {selectedArchived
+                              ? "This thread is closed to new messages."
+                              : "Messaging will open up here once the thread is active."}
                           </p>
                         </div>
                       )}

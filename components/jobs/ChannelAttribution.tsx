@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 
 const normalizeHttpUrl = (value?: string | null) => {
   const trimmed = value?.trim();
@@ -47,6 +47,9 @@ export default function ChannelAttribution({
   const stopParentNavigation = (event: MouseEvent<HTMLAnchorElement>) => {
     event.stopPropagation();
   };
+  const stopParentKeyboardNavigation = (event: KeyboardEvent<HTMLAnchorElement>) => {
+    event.stopPropagation();
+  };
 
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
@@ -57,6 +60,7 @@ export default function ChannelAttribution({
             target="_blank"
             rel="noopener noreferrer"
             onClick={stopParentNavigation}
+            onKeyDown={stopParentKeyboardNavigation}
             className={baseClass}
             title={channelName}
             aria-label={ariaLabel || `Open ${channelName} channel or page`}
@@ -67,6 +71,7 @@ export default function ChannelAttribution({
           <Link
             href={href}
             onClick={stopParentNavigation}
+            onKeyDown={stopParentKeyboardNavigation}
             className={baseClass}
             title={channelName}
             aria-label={ariaLabel || `Open ${channelName} CreatorJobs profile`}

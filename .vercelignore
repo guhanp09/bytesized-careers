@@ -1,0 +1,36 @@
+# Local secrets and environment files
+.env*
+!.env.example
+backend/.env*
+
+# Local dependencies, builds, caches, and test output
+node_modules/
+.next/
+.vercel/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.DS_Store
+.ruff_cache/
+
+# Local databases and generated storage
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+prisma/*.db*
+backend/*.db*
+.local-data/
+backend/.local-data/
+backend/.local-venv/
+
+# Non-frontend runtime material not needed for a Vercel designer preview
+app/api/dev/
+app/dev/
+backend/
+tests/
+docs/
+seed/
+reference-homepage/
+.github/

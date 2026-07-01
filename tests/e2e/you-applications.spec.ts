@@ -83,7 +83,11 @@ test.describe("/you Applications workspace", () => {
     await expect(requestRow).toHaveAttribute("aria-pressed", "true");
 
     const detail = page.getByTestId("applications-detail");
-    await expect(detail.getByText(/Hiring for Daily faceless shorts channel/)).toBeVisible();
+    // Header is the recruiter; the context card is the viewer's own talent listing.
+    await expect(detail.getByRole("heading", { name: "Motivation Shorts" })).toBeVisible();
+    await expect(
+      detail.getByRole("heading", { name: "Retention-focused long-form and shorts editing" })
+    ).toBeVisible();
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: "Accept request" })).toBeVisible();
     await expect(page).toHaveURL(/\/applications/);
@@ -143,6 +147,70 @@ test.describe("/you Applications workspace", () => {
     // No redundant label, no tag clutter in the compact card.
     await expect(detail.getByText("Job you applied to")).toHaveCount(0);
     await expect(jobCard.getByText("Premiere")).toHaveCount(0);
+  });
+
+  test("sent hiring request: talent context card is a compact mini-card linking to the profile, without bio/tag/portfolio clutter", async ({
+    page,
+  }) => {
+    await openApplicationsTab(page);
+    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await page.getByTestId("interaction-row").filter({ hasText: "Anika Rao" }).click();
+
+    const detail = page.getByTestId("applications-detail");
+    // Header answers "who am I talking to?" — the talent.
+    await expect(detail.getByRole("heading", { name: "Anika Rao" })).toBeVisible();
+
+    // The talent lives in a compact context card — the mirror of the job card — that is
+    // itself the link to their talent profile. Scope by the headline so the header link
+    // (same href, no headline) isn't matched.
+    const talentCard = detail
+      .locator('a[href^="/u/anika-rao"]')
+      .filter({ hasText: "Shorts editor for daily faceless channels" });
+    await expect(talentCard).toBeVisible();
+    await expect(
+      talentCard.getByRole("heading", { name: "Shorts editor for daily faceless channels" })
+    ).toBeVisible();
+    // Same shape of info as the job card, same order: rate → experience (numeric years) → location.
+    await expect(talentCard.getByText("₹15,000 per month")).toBeVisible();
+    await expect(talentCard.getByText("3 years")).toBeVisible();
+    await expect(talentCard.getByText("Bengaluru, India")).toBeVisible();
+
+    // No availability status, no raw experience clause, no tag pills, no portfolio block.
+    await expect(talentCard.getByText("Available · evenings IST")).toHaveCount(0);
+    await expect(talentCard.getByText("Daily shorts pipelines for 3 faceless channels")).toHaveCount(0);
+    await expect(talentCard.getByText("CapCut")).toHaveCount(0);
+    await expect(talentCard.getByText("Daily shorts system — fitness channel")).toHaveCount(0);
+  });
+
+  test("received hiring request: context card is the viewer's own talent listing (mini talent card), not the recruiter", async ({
+    page,
+  }) => {
+    await openApplicationsTab(page);
+    // Talent mode (default): a recruiter showed interest in the viewer's listing.
+    await page
+      .getByTestId("interaction-row")
+      .filter({ hasText: "Shorts editing package — 15 shorts per month" })
+      .click();
+
+    const detail = page.getByTestId("applications-detail");
+    // Header answers "who am I talking to?" — the recruiter — and links to their hiring profile.
+    await expect(detail.getByRole("heading", { name: "Motivation Shorts" })).toBeVisible();
+
+    // Context card is the same compact talent card, here representing the viewer's own
+    // listing, linking to their talent profile. Identity is genericised to "Your listing".
+    const ownListingCard = detail.locator('a[href^="/u/demo-owner"]');
+    await expect(ownListingCard).toBeVisible();
+    await expect(
+      ownListingCard.getByRole("heading", { name: "Retention-focused long-form and shorts editing" })
+    ).toBeVisible();
+    await expect(ownListingCard.getByText("Your listing")).toBeVisible();
+    await expect(ownListingCard.getByText("₹2,000–₹3,500 per video")).toBeVisible();
+    // Availability status is not a job-card-equivalent field, so it does not appear here.
+    await expect(ownListingCard.getByText("Available · 2 retainer slots")).toHaveCount(0);
+
+    // The recruiter is the header, not a second context card — its old detail is gone.
+    await expect(detail.getByText(/Hiring for/)).toHaveCount(0);
+    await expect(detail.getByText(/Sent for your listing/)).toHaveCount(0);
   });
 
   test("recruiter mode shows received applications: counterparty header, job context card, and clears stale detail", async ({

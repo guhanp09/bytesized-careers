@@ -1,12 +1,18 @@
 "use client";
 
 import React from "react";
+import { CUSTOM_INSTRUCTION_REQUIREMENT_KEY } from "../../lib/firstMessageRequirements";
 import { Job } from "../../lib/types";
-import { Section, TagPill } from "../ui";
+import {
+  BodySection,
+  BulletList,
+  LISTING_PANEL_CLASS,
+  Pills,
+  SectionLabel,
+} from "../listing-details/ListingSections";
 import ReferenceVideos from "./ReferenceVideos";
 
 export default function JobDescriptionSections({ job }: { job: Job }) {
-  const bodyClass = "mt-3 text-sm text-white/80 leading-relaxed";
   const aboutText = job.about?.trim();
   const responsibilities = (job.responsibilities || "")
     .split("\n")
@@ -16,62 +22,83 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
     .split("\n")
     .map((line) => line.replace(/^\s*[-•]\s*/, "").trim())
     .filter(Boolean);
-  const howToApply = job.howToApply?.trim();
+  const customInstructionIsApplicantRequirement = Boolean(
+    job.applicationRequirements?.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+  );
+  const howToApply = customInstructionIsApplicantRequirement ? "" : job.howToApply?.trim();
+  const referenceVideos = job.referenceVideos ?? [];
+  const tags = job.tags ?? [];
+
+  const textSections: React.ReactNode[] = [];
+
+  if (aboutText) {
+    textSections.push(
+      <BodySection key="about" title="About the brand">
+        <p className="whitespace-pre-line">{aboutText}</p>
+      </BodySection>
+    );
+  }
+
+  if (responsibilities.length) {
+    textSections.push(
+      <BodySection key="responsibilities" title="Responsibilities">
+        <BulletList items={responsibilities} />
+      </BodySection>
+    );
+  }
+
+  if (requirements.length) {
+    textSections.push(
+      <BodySection key="requirements" title="Requirements">
+        <BulletList items={requirements} />
+      </BodySection>
+    );
+  }
+
+  if (howToApply) {
+    textSections.push(
+      <BodySection key="how-to-apply" title="How to apply">
+        <p className="whitespace-pre-line">{howToApply}</p>
+      </BodySection>
+    );
+  }
+
+  const hasText = textSections.length > 0;
+  const hasReference = referenceVideos.length > 0;
+  const hasTags = tags.length > 0;
+
+  if (!hasText && !hasReference && !hasTags) {
+    return (
+      <section className={`${LISTING_PANEL_CLASS} min-w-0 py-8`}>
+        <SectionLabel>Listing details</SectionLabel>
+        <p className="mt-4 text-sm leading-relaxed text-white/55">
+          This job does not have additional details yet.
+        </p>
+      </section>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {aboutText ? (
-        <Section title="About the brand" bodyClassName={bodyClass}>
-          <p className="whitespace-pre-line">{aboutText}</p>
-        </Section>
+    <div className="min-w-0 space-y-6">
+      {hasText ? (
+        <section className={`${LISTING_PANEL_CLASS} min-w-0`}>
+          <div className="min-w-0 divide-y divide-white/[0.08]">{textSections}</div>
+        </section>
       ) : null}
 
-      {responsibilities.length ? (
-        <Section title="Responsibilities" bodyClassName={bodyClass}>
-          <ul className="list-disc pl-5 space-y-2">
-            {responsibilities.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-
-      {requirements.length ? (
-        <Section title="Requirements" bodyClassName={bodyClass}>
-          <ul className="list-disc pl-5 space-y-2">
-            {requirements.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
-
-      {howToApply ? (
-        <Section title="How to apply" bodyClassName={bodyClass}>
-          <p className="whitespace-pre-line">{howToApply}</p>
-        </Section>
-      ) : null}
-
-      {job.referenceVideos?.length ? (
-        <Section title="Reference videos" bodyClassName={bodyClass}>
-          <ReferenceVideos videos={job.referenceVideos} />
-        </Section>
-      ) : null}
-
-      {job.tags?.length ? (
-        <Section title="Tags" bodyClassName={bodyClass}>
-          <div className="flex flex-wrap gap-2">
-            {job.tags.map((t) => (
-              <TagPill key={t}>{t}</TagPill>
-            ))}
+      {hasReference ? (
+        <section className={`${LISTING_PANEL_CLASS} min-w-0 py-8`}>
+          <SectionLabel>Reference videos</SectionLabel>
+          <div className="mt-5 min-w-0">
+            <ReferenceVideos videos={referenceVideos} />
           </div>
-        </Section>
+        </section>
       ) : null}
 
-      {!aboutText && !responsibilities.length && !requirements.length && !howToApply && !job.referenceVideos?.length && !job.tags?.length ? (
-        <Section title="Listing details" bodyClassName={bodyClass}>
-          <p className="text-white/58">This job does not have additional details yet.</p>
-        </Section>
+      {hasTags ? (
+        <div className="px-1">
+          <Pills items={tags} />
+        </div>
       ) : null}
     </div>
   );

@@ -38,6 +38,7 @@ yarn-error.log*
 prisma/*.db
 prisma/*.db-journal
 backend/.local-data/
+.local-data/
 backend/.local-venv/
 backend/*.db
 backend/*.db-journal

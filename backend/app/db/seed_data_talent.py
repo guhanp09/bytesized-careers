@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 SEED_NAMESPACE = uuid.UUID("58d5dd38-8158-4356-9f66-7d85c646bd8d")
 
@@ -18,6 +18,8 @@ class RawSeedTalent(TypedDict):
     primary_role: str
     roles: list[str]
     niche: str
+    content_niches: NotRequired[list[str]]
+    content_genres: NotRequired[list[str]]
     formats: list[str]
     platforms: list[str]
     tools: list[str]
@@ -25,7 +27,7 @@ class RawSeedTalent(TypedDict):
     location: str
     timezone: str
     availability_status: str
-    experience_level: str
+    experience_years: int
     rate_min: int
     rate_max: int
     rate_currency: str
@@ -34,6 +36,7 @@ class RawSeedTalent(TypedDict):
     turnaround: str
     description: str
     is_featured: bool
+    languages: NotRequired[list[str]]
 
 
 RAW_SEED_TALENT: list[RawSeedTalent] = [
@@ -52,7 +55,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Austin, TX",
         "timezone": "CT",
         "availability_status": "available",
-        "experience_level": "Senior",
+        "experience_years": 5,
         "rate_min": 20000,
         "rate_max": 60000,
         "rate_currency": "INR",
@@ -77,7 +80,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Bengaluru, India",
         "timezone": "IST",
         "availability_status": "selective",
-        "experience_level": "Mid-level",
+        "experience_years": 0,
         "rate_min": 3000,
         "rate_max": 9000,
         "rate_currency": "INR",
@@ -102,7 +105,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Toronto, Canada",
         "timezone": "ET",
         "availability_status": "available",
-        "experience_level": "Senior",
+        "experience_years": 5,
         "rate_min": 1500,
         "rate_max": 5000,
         "rate_currency": "INR",
@@ -127,7 +130,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Mexico City, Mexico",
         "timezone": "CT",
         "availability_status": "selective",
-        "experience_level": "Senior",
+        "experience_years": 5,
         "rate_min": 8000,
         "rate_max": 30000,
         "rate_currency": "INR",
@@ -152,7 +155,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "London, UK",
         "timezone": "GMT",
         "availability_status": "available",
-        "experience_level": "Senior",
+        "experience_years": 5,
         "rate_min": 12000,
         "rate_max": 70000,
         "rate_currency": "INR",
@@ -177,7 +180,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Milan, Italy",
         "timezone": "CET",
         "availability_status": "available",
-        "experience_level": "Mid-level",
+        "experience_years": 3,
         "rate_min": 18000,
         "rate_max": 60000,
         "rate_currency": "INR",
@@ -202,7 +205,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Portland, OR",
         "timezone": "PT",
         "availability_status": "selective",
-        "experience_level": "Mid-level",
+        "experience_years": 0,
         "rate_min": 50000,
         "rate_max": 120000,
         "rate_currency": "INR",
@@ -227,7 +230,7 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "location": "Tokyo, Japan",
         "timezone": "JST",
         "availability_status": "available",
-        "experience_level": "Senior",
+        "experience_years": 5,
         "rate_min": 1000,
         "rate_max": 3000,
         "rate_currency": "INR",
@@ -238,6 +241,34 @@ RAW_SEED_TALENT: list[RawSeedTalent] = [
         "is_featured": True,
     },
 ]
+
+
+def _split_context(value: str) -> list[str]:
+    return [part.strip() for part in value.replace("·", ",").split(",") if part.strip()]
+
+
+def _genres_from_formats(formats: list[str]) -> list[str]:
+    out: list[str] = []
+    mapping = {
+        "explainer": "Explainers",
+        "short": "Shorts/Reels",
+        "reel": "Shorts/Reels",
+        "tiktok": "Shorts/Reels",
+        "podcast": "Podcasts",
+        "interview": "Interviews",
+        "vlog": "Vlogs",
+        "documentary": "Documentaries",
+        "narrative": "Documentaries",
+        "live": "Live streams",
+        "demo": "Product demos",
+        "review": "Reviews",
+    }
+    for item in formats:
+        lowered = item.lower()
+        for key, value in mapping.items():
+            if key in lowered and value not in out:
+                out.append(value)
+    return out
 
 
 ROLE_VARIANTS = [
@@ -257,6 +288,10 @@ ROLE_VARIANTS = [
     ("UGC creator", "Food", ["UGC", "Shorts"], ["TikTok", "Instagram"], ["CapCut", "iPhone"]),
     ("Content strategist", "Finance", ["Strategy", "Packaging"], ["YouTube"], ["YouTube Studio", "Notion"]),
     ("Community manager", "Tech communities", ["Discord", "Events"], ["Discord", "YouTube"], ["Discord", "Circle"]),
+    ("Voice-over artist", "Finance", ["Narration", "VO"], ["YouTube", "Podcast"], ["Adobe Audition", "Audacity"]),
+    ("Faceless channel editor", "Automation", ["Long-form", "Compilation"], ["YouTube"], ["Premiere Pro", "ElevenLabs"]),
+    ("Subtitle & localization editor", "Education", ["Subtitles", "Dubbing"], ["YouTube"], ["Subtitle Edit", "CapCut"]),
+    ("Course producer", "Online courses", ["Lessons", "Screencasts"], ["YouTube", "Teachable"], ["Camtasia", "Notion"]),
 ]
 
 LOCATIONS = [
@@ -313,7 +348,7 @@ def generated_seed_talent() -> list[RawSeedTalent]:
                 "location": location,
                 "timezone": timezone,
                 "availability_status": "available" if index % 3 else "selective",
-                "experience_level": "Mid-level" if index % 2 else "Senior",
+                "experience_years": 0 if index % 3 == 0 else (3 if index % 2 else 5),
                 "rate_min": rate_min,
                 "rate_max": rate_max,
                 "rate_currency": "INR",
@@ -322,6 +357,7 @@ def generated_seed_talent() -> list[RawSeedTalent]:
                 "turnaround": "3-7 days",
                 "description": f"Available for focused {niche.lower()} creator work with clear process and async collaboration.",
                 "is_featured": index % 5 == 0,
+                "languages": ["Hindi", "English"] if index % 2 == 0 else ["English"],
             }
         )
     return records
@@ -344,18 +380,41 @@ SEEDED_TALENT_USERS = [
     for item in generated_seed_talent()
 ]
 
+# First-message requirements per seeded talent listing (what a recruiter must include
+# when sending a hiring request). talent_01 showcases every talent-context requirement
+# so the hiring-request flow can be exercised end-to-end; the rest stay open.
+_TALENT_FIRST_MESSAGE_REQUIREMENTS: dict[str, list[str]] = {
+    "talent_01": [
+        "project_budget",
+        "project_brief",
+        "turnaround",
+        "working_hours",
+        "channel_or_brand_link",
+        "reference_links",
+        "start_availability",
+        "fit_note",
+    ],
+    "talent_02": ["project_budget", "project_brief", "turnaround"],
+    "talent_03": ["working_hours", "channel_or_brand_link", "reference_links"],
+    "talent_04": ["start_availability", "fit_note"],
+}
+
+
 SEEDED_TALENT_LISTINGS = [
     {
         "id": _stable_uuid(item["seed_key"]),
         "owner_user_id": _stable_uuid(f"user_{item['seed_key']}"),
         "title": item["title"],
         "primary_role": item["primary_role"],
-        "experience_level": item["experience_level"],
+        "experience_years": item["experience_years"],
         "roles": item["roles"],
         "niche": item["niche"],
+        "content_niches": item.get("content_niches", _split_context(item["niche"])),
+        "content_genres": item.get("content_genres", _genres_from_formats(item["formats"])),
         "formats": item["formats"],
         "platforms": item["platforms"],
         "tools": item["tools"],
+        "languages": item.get("languages", []),
         "work_mode": item["work_mode"],
         "location": item["location"],
         "timezone": item["timezone"],
@@ -368,6 +427,7 @@ SEEDED_TALENT_LISTINGS = [
         "turnaround": item["turnaround"],
         "description": item["description"],
         "portfolio_item_ids": [],
+        "first_message_requirements": _TALENT_FIRST_MESSAGE_REQUIREMENTS.get(item["seed_key"], []),
         "status": "published",
         "is_featured": item["is_featured"],
     }

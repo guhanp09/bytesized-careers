@@ -30,11 +30,11 @@ test.describe("phase 3a polish surfaces", () => {
 
   test("search handles empty and results states without placeholder copy", async ({ page }) => {
     await page.goto("/search");
-    await expect(page.getByRole("heading", { name: "Search" })).toBeVisible();
-    await expect(page.locator("body")).toContainText("Start with a role, platform, or niche.");
+    await expect(page).toHaveURL(/\/jobs$/);
 
     await page.goto("/search?q=editor");
-    await expect(page.getByRole("heading", { name: /Results for "editor"/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/jobs\?q=editor/);
+    await expect(page.locator('div[role="link"]').first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText(/Proof|USD|\$[0-9]/);
   });
 

@@ -1,5 +1,6 @@
 import type { BackendCreateJobPayload, BackendTalentListing, BackendTalentListingPayload } from "./backendClient";
 import { getJobDraftCompletion, getTalentDraftCompletion, isFallbackDraftTitle, type DraftCompletion } from "./draftCompletion";
+import { serializeReferenceVideo } from "./referenceVideos";
 import type { Job } from "./types";
 
 export type DraftKind = "job" | "talent";
@@ -40,6 +41,16 @@ export function draftSortKey(iso?: string | null): number {
   const t = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`);
   return Number.isFinite(t) ? t : 0;
 }
+
+// Title validation + title-rename recompute live with the completion model
+// (which already owns isFallbackDraftTitle) so they stay testable in isolation.
+export {
+  DRAFT_TITLE_MIN_LENGTH,
+  DRAFT_TITLE_MAX_LENGTH,
+  validateDraftTitle,
+  applyDraftTitle,
+  type DraftTitleValidation,
+} from "./draftCompletion";
 
 const splitLines = (value?: string | null) =>
   (value || "")
@@ -90,10 +101,10 @@ export function buildDuplicateJobPayload(item: DraftItem): BackendCreateJobPaylo
     requirements: splitLines(job.requirements),
     how_to_apply: job.howToApply || null,
     tools: job.tools || [],
-    reference_videos: (job.referenceVideos || []).map((video) => ({
-      title: video.title || null,
-      url: video.url,
-    })),
+    content_niches: job.contentNiches || [],
+    content_genres: job.contentGenres || [],
+    formats_hired_for: job.formatsHiredFor || [],
+    reference_videos: (job.referenceVideos || []).map(serializeReferenceVideo),
     tags: job.tags || [],
     channel_name: job.channel?.name || job.hiringDisplayName || null,
     channel_logo_url: job.channel?.logoUrl || null,
@@ -115,9 +126,11 @@ export function buildDuplicateTalentPayload(item: DraftItem): BackendTalentListi
   return {
     title: duplicateTitle(item),
     primary_role: listing.primary_role || listing.roles?.[0] || null,
-    experience_level: listing.experience_level || null,
+    experience_years: listing.experience_years ?? null,
     roles: listing.roles || [],
     niche: listing.niche || null,
+    content_niches: listing.content_niches || [],
+    content_genres: listing.content_genres || [],
     formats: listing.formats || [],
     platforms: listing.platforms || [],
     tools: listing.tools || [],
@@ -276,7 +289,7 @@ export function talentToDraft(listing: BackendTalentListing): DraftItem {
     statusLabel: untitled ? "Incomplete" : "Draft",
     statusKind: untitled ? "incomplete" : "draft",
     channelName: null,
-    meta: [role, listing.niche].filter((v): v is string => Boolean(v)),
+    meta: [role, listing.content_niches?.[0] || listing.niche].filter((v): v is string => Boolean(v)),
     missingFields,
     nextStep: untitled
       ? "Finish the required fields to publish."
@@ -486,7 +499,7 @@ const MOCK_SPECS: MockSpec[] = [
       niche: "Tech",
       tools: ["Photoshop", "Figma"],
       description: "Bold, high-CTR thumbnails for tech and finance creators.",
-      experience_level: "3",
+      experience_years: 3,
       portfolio_item_ids: ["mock-portfolio-1", "mock-portfolio-2"],
     },
   },

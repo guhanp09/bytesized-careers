@@ -114,7 +114,7 @@ export default function ProfileHeaderCard({
           </div>
 
           <Link
-            href="/you/edit"
+            href="/you"
             className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] text-sm font-semibold text-white/75 transition hover:bg-white/[0.08] hover:text-white"
           >
             Edit profile

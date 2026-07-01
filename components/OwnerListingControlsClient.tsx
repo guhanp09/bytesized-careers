@@ -10,6 +10,7 @@ import {
   updateJob,
   updateTalentListing,
 } from "../lib/backendClient";
+import ConfirmDialog from "./ui/ConfirmDialog";
 
 type ListingKind = "job" | "talent";
 
@@ -30,6 +31,7 @@ export default function OwnerListingControlsClient({
   const { data: session } = useSession();
   const [currentStatus, setCurrentStatus] = React.useState(status || "published");
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const mutate = async (action: "published" | "paused" | "closed" | "archived") => {
@@ -44,7 +46,11 @@ export default function OwnerListingControlsClient({
         } else {
           await deleteTalentListing(token, id);
         }
-        setCurrentStatus("archived");
+        setConfirmOpen(false);
+        // The listing is gone — refreshing this page would 404. Send the owner back
+        // to their hub (jobs grid for jobs; overview for talent listings).
+        router.push(kind === "job" ? "/you?tab=jobs" : "/you");
+        return;
       } else if (kind === "job") {
         await updateJob(token, id, { status: action });
         setCurrentStatus(action);
@@ -65,12 +71,13 @@ export default function OwnerListingControlsClient({
   const isClosed = currentStatus === "closed";
   const activeLabel = kind === "job" ? "View applicants" : "View interests";
   const statusLabel = currentStatus[0]?.toUpperCase() + currentStatus.slice(1);
-  const archiveLabel = kind === "job" ? "Archive job" : "Archive listing";
+  const deleteLabel = kind === "job" ? "Delete job" : "Delete listing";
 
-  const confirmAndMutate = (action: "published" | "paused" | "closed" | "archived") => {
+  // Deleting asks for confirmation first; non-destructive status changes apply directly.
+  const requestAction = (action: "published" | "paused" | "closed" | "archived") => {
     if (action === "archived") {
-      const confirmed = window.confirm(`Archive this ${kind === "job" ? "job" : "talent listing"}?`);
-      if (!confirmed) return;
+      setConfirmOpen(true);
+      return;
     }
     void mutate(action);
   };
@@ -107,7 +114,7 @@ export default function OwnerListingControlsClient({
           <button
             type="button"
             disabled={busyAction !== null}
-            onClick={() => confirmAndMutate("published")}
+            onClick={() => requestAction("published")}
             className="cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Publish
@@ -117,7 +124,7 @@ export default function OwnerListingControlsClient({
           <button
             type="button"
             disabled={busyAction !== null}
-            onClick={() => confirmAndMutate("paused")}
+            onClick={() => requestAction("paused")}
             className="cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Pause
@@ -127,7 +134,7 @@ export default function OwnerListingControlsClient({
           <button
             type="button"
             disabled={busyAction !== null}
-            onClick={() => confirmAndMutate("closed")}
+            onClick={() => requestAction("closed")}
             className="cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/72 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Close
@@ -137,15 +144,30 @@ export default function OwnerListingControlsClient({
           <button
             type="button"
             disabled={busyAction !== null}
-            onClick={() => confirmAndMutate("archived")}
+            onClick={() => requestAction("archived")}
             className="cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/55 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {archiveLabel}
+            {deleteLabel}
           </button>
         ) : null}
       </div>
 
       {error ? <p className="mt-3 text-xs text-amber-100/75">{error}</p> : null}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={kind === "job" ? "Delete this job?" : "Delete this listing?"}
+        body={
+          kind === "job"
+            ? "It will be removed from the marketplace and can’t be undone. Applications you’ve already received stay in your inbox."
+            : "It will be removed from the marketplace and can’t be undone. Hiring requests you’ve already received stay in your inbox."
+        }
+        confirmLabel={deleteLabel}
+        destructive
+        busy={busyAction === "archived"}
+        onConfirm={() => void mutate("archived")}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </section>
   );
 }

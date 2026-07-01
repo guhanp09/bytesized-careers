@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Job } from "../lib/types";
 import { formatCompactNumber, formatPostedLabel } from "../lib/format";
+import { formatListingTitle } from "../lib/displayText";
+import { jobDisplayChips } from "../lib/jobCreatorContext";
 import { saveJob } from "../lib/backendClient";
 import { useCardSheen } from "../lib/useCardSheen";
 import { MetaRow, StatRow, TagPill } from "./ui";
@@ -88,6 +90,31 @@ function IconAction({
   );
 }
 
+function ListingCta({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onKeyDown={(event) => event.stopPropagation()}
+      className="group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+    >
+      <span>{label}</span>
+      <span
+        aria-hidden="true"
+        className="inline-block transition-transform group-hover/cta:translate-x-0.5 motion-reduce:transition-none"
+      >
+        →
+      </span>
+    </button>
+  );
+}
+
 export function JobCard({ job }: { job: Job }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -100,6 +127,8 @@ export function JobCard({ job }: { job: Job }) {
   const postedLabel = formatPostedLabel(job.postedShort);
   const currentlyViewing = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
   const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
+  const displayTitle = formatListingTitle(job.title);
+  const displayChips = jobDisplayChips(job);
 
   const onCardClick = () => {
     if (!job.id) return;
@@ -152,7 +181,8 @@ export function JobCard({ job }: { job: Job }) {
                 <ChannelAttribution
                   channelName={job.channel.name}
                   channelProfileSlug={job.channelProfileSlug}
-                  className="text-sm font-semibold text-white max-w-[170px]"
+                  channelExternalUrl={job.channelExternalUrl}
+                  className="max-w-[170px] text-sm font-semibold text-white underline-offset-4"
                 />
               </div>
               <p className="text-xs text-white/55 truncate inline-flex items-center gap-1.5">
@@ -169,11 +199,18 @@ export function JobCard({ job }: { job: Job }) {
             </div>
           </div>
 
+          <ListingCta
+            label="Apply Now"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCardClick();
+            }}
+          />
         </div>
 
         {/* Title row */}
-        <h3 className="mt-4 text-[15px] font-extrabold leading-snug text-white uppercase line-clamp-2 h-[52px]">
-          {job.title}
+        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug text-white underline-offset-4 transition-colors hover:underline">
+          {displayTitle}
         </h3>
 
         {/* Details rows */}
@@ -188,9 +225,9 @@ export function JobCard({ job }: { job: Job }) {
         ) : null}
 
         {/* Tags row */}
-        {job.tags?.length ? (
+        {displayChips.length ? (
           <div className="mt-4 overflow-hidden">
-            <TagRow tags={job.tags} />
+            <TagRow tags={displayChips} />
           </div>
         ) : null}
 

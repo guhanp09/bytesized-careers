@@ -168,10 +168,10 @@ export default async function PublicProfilePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ preview?: string; view?: string }>;
+  searchParams: Promise<{ preview?: string; view?: string; tab?: string }>;
 }) {
   const { slug: rawUsername } = await params;
-  const { preview, view } = await searchParams;
+  const { preview, view, tab } = await searchParams;
   const username = decodeURIComponent(rawUsername || "").trim().toLowerCase();
   const isPreview = preview === "1";
 
@@ -215,6 +215,9 @@ export default async function PublicProfilePage({
 
   const publicProfile = sanitizePublicProfile(profile);
   const activeProfileView = resolveProfileView(publicProfile, view);
+  const initialProfileTab = ["portfolio", "jobs", "reviews"].includes(tab || "")
+    ? (tab as "portfolio" | "jobs" | "reviews")
+    : undefined;
   const usernameLabel = `@${publicProfile.username.replace(/^@+/, "")}`;
   const allPortfolio = [...(publicProfile.portfolio_now || []), ...(publicProfile.portfolio_past || [])];
   const openJobsCount = publicProfile.jobs_active.length;
@@ -336,7 +339,7 @@ export default async function PublicProfilePage({
           </div>
         </section>
 
-        <PublicProfileTabs profile={publicProfile} initialView={activeProfileView} />
+        <PublicProfileTabs profile={publicProfile} initialView={activeProfileView} initialTab={initialProfileTab} />
       </section>
     </main>
   );

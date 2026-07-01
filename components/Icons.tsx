@@ -16,13 +16,33 @@ export function Icon({
     | "bell"
     | "bell-yt"
     | "briefcase"
+    | "screen"
+    | "laptop"
     | "pin"
     | "share"
     | "bookmark"
     | "tag"
     | "eye"
     | "image"
+    | "images"
+    | "video"
     | "clock"
+    | "timer-reset"
+    | "calendar"
+    | "calendar-clock"
+    | "calendar-check"
+    | "languages"
+    | "sparkles"
+    | "layers"
+    | "layout-grid"
+    | "list-checks"
+    | "clipboard-check"
+    | "clipboard-list"
+    | "message-text"
+    | "message-square-text"
+    | "message-square-plus"
+    | "notebook-text"
+    | "sliders-horizontal"
     | "users"
     | "bolt"
     | "cap"
@@ -32,11 +52,18 @@ export function Icon({
     | "mail"
     | "youtube"
     | "check"
+    | "close"
+    | "shield"
+    | "badge-check"
+    | "trending-up"
     | "alert"
     | "globe"
     | "help"
     | "cash"
     | "cash-stack"
+    | "wallet"
+    | "indian-rupee"
+    | "refresh"
     | "log-out"
     | "log-in"
     | "user-plus"
@@ -142,6 +169,23 @@ export function Icon({
         </svg>
       );
 
+    case "screen":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="5" width="16" height="12" rx="2" />
+          <path strokeLinecap="round" d="M9 20h6M12 17v3" />
+          <path strokeLinecap="round" d="M8 9h4" />
+        </svg>
+      );
+
+    case "laptop":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M5 6h14v10H5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 19h18l-2-3H5l-2 3Z" />
+        </svg>
+      );
+
     case "pin":
       return (
         <svg viewBox="0 0 24 24" {...common}>
@@ -203,11 +247,169 @@ export function Icon({
         </svg>
       );
 
+    case "images":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="7" y="6" width="13" height="12" rx="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16V8a2 2 0 0 1 2-2h1" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m10 15 2.6-2.6a1 1 0 0 1 1.4 0L17 15" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m16 14 1-1a1 1 0 0 1 1.4 0l1.6 1.6" />
+          <circle cx="12" cy="10" r="1" />
+        </svg>
+      );
+
+    case "video":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="6.5" width="11" height="11" rx="2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m15 10 5-3v10l-5-3" />
+        </svg>
+      );
+
     case "clock":
       return (
         <svg viewBox="0 0 24 24" {...common}>
           <circle cx="12" cy="12" r="8" />
           <path strokeLinecap="round" d="M12 7v5l3 2" />
+        </svg>
+      );
+
+    case "timer-reset":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M10 2h4M12 8v5l3 2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.2 9A8 8 0 1 1 12 5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 5v4h-4" />
+        </svg>
+      );
+
+    case "calendar":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path strokeLinecap="round" d="M8 3v4M16 3v4M4 10h16" />
+          <path strokeLinecap="round" d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" />
+        </svg>
+      );
+
+    case "calendar-clock":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path strokeLinecap="round" d="M8 3v4M16 3v4M4 10h16" />
+          <circle cx="15" cy="15" r="3" />
+          <path strokeLinecap="round" d="M15 13.5V15l1.1.8" />
+        </svg>
+      );
+
+    case "calendar-check":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+          <path strokeLinecap="round" d="M8 3v4M16 3v4M4 10h16" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m9 15 2 2 4-5" />
+        </svg>
+      );
+
+    case "languages":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M4 5h9M9 5v3M6 9c1.2 2.1 3.2 3.8 6 5" />
+          <path strokeLinecap="round" d="M12 9c-.9 1.8-2.8 3.8-6 5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m14 20 3.5-8 3.5 8M15.3 17h4.4" />
+        </svg>
+      );
+
+    case "sparkles":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.6 5.1L19 10l-5.4 1.9L12 17l-1.6-5.1L5 10l5.4-1.9L12 3Z" />
+          <path strokeLinecap="round" d="M5 15l.7 2.3L8 18l-2.3.7L5 21l-.7-2.3L2 18l2.3-.7L5 15ZM18 4l.5 1.5L20 6l-1.5.5L18 8l-.5-1.5L16 6l1.5-.5L18 4Z" />
+        </svg>
+      );
+
+    case "layers":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4 3 9l9 5 9-5-9-5Z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 7 4 7-4M5 17l7 4 7-4" />
+        </svg>
+      );
+
+    case "layout-grid":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <rect x="4" y="4" width="6" height="6" rx="1.5" />
+          <rect x="14" y="4" width="6" height="6" rx="1.5" />
+          <rect x="4" y="14" width="6" height="6" rx="1.5" />
+          <rect x="14" y="14" width="6" height="6" rx="1.5" />
+        </svg>
+      );
+
+    case "list-checks":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4 7 1.5 1.5L8 5.5M4 14l1.5 1.5L8 12.5" />
+          <path strokeLinecap="round" d="M11 7h9M11 15h9" />
+        </svg>
+      );
+
+    case "clipboard-check":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M9 4h6" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5a2 2 0 0 0-2 2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1a2 2 0 0 0-2-2" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m9 14 2 2 4-5" />
+        </svg>
+      );
+
+    case "clipboard-list":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M9 4h6" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5a2 2 0 0 0-2 2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1a2 2 0 0 0-2-2" />
+          <path strokeLinecap="round" d="M8 12h.01M11 12h5M8 16h.01M11 16h5" />
+        </svg>
+      );
+
+    case "message-text":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v11a2 2 0 0 1-2 2H9l-5 3V7a2 2 0 0 1 2-2Z" />
+          <path strokeLinecap="round" d="M8 10h8M8 14h5" />
+        </svg>
+      );
+
+    case "message-square-text":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v11a2 2 0 0 1-2 2H9l-5 3V7a2 2 0 0 1 2-2Z" />
+          <path strokeLinecap="round" d="M8 10h8M8 14h6" />
+        </svg>
+      );
+
+    case "message-square-plus":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v11a2 2 0 0 1-2 2H9l-5 3V7a2 2 0 0 1 2-2Z" />
+          <path strokeLinecap="round" d="M12 9v6M9 12h6" />
+        </svg>
+      );
+
+    case "notebook-text":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" />
+          <path strokeLinecap="round" d="M8 8h7M8 12h8M8 16h5M7 4v16" />
+        </svg>
+      );
+
+    case "sliders-horizontal":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M4 7h5M15 7h5M4 17h9M19 17h1" />
+          <circle cx="12" cy="7" r="3" />
+          <circle cx="16" cy="17" r="3" />
         </svg>
       );
 
@@ -304,6 +506,30 @@ export function Icon({
         </svg>
       );
 
+    case "wallet":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M5 7.5h12.5A2.5 2.5 0 0 1 20 10v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11" />
+          <path strokeLinecap="round" d="M16 12h4" />
+          <circle cx="16" cy="14.5" r="1" />
+        </svg>
+      );
+
+    case "indian-rupee":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" d="M7 5h10M7 9h10M8 5c3.8 0 6 1.5 6 4.2S11.8 14 8 14h-.8L15 21" />
+        </svg>
+      );
+
+    case "refresh":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 7v5h-5" />
+          <path strokeLinecap="round" d="M19.2 12a7.2 7.2 0 1 1-2-5" />
+        </svg>
+      );
+
     case "instagram":
       return (
         <svg viewBox="0 0 24 24" {...common}>
@@ -372,6 +598,45 @@ export function Icon({
       return (
         <svg viewBox="0 0 24 24" {...common}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l4 4L19 6" />
+        </svg>
+      );
+
+    case "close":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      );
+
+    case "shield":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 3l7 3v5c0 4.2-2.9 7.4-7 8.5-4.1-1.1-7-4.3-7-8.5V6l7-3z"
+          />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 11.5l2 2 4-4" />
+        </svg>
+      );
+
+    case "badge-check":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 3.5 14.2 5l2.7-.2 1 2.5 2.2 1.6-.8 2.6.8 2.6-2.2 1.6-1 2.5-2.7-.2L12 20.5 9.8 19l-2.7.2-1-2.5-2.2-1.6.8-2.6-.8-2.6 2.2-1.6 1-2.5 2.7.2L12 3.5Z"
+          />
+          <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
+        </svg>
+      );
+
+    case "trending-up":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 17l6-6 4 4 8-8" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 7h6v6" />
         </svg>
       );
 

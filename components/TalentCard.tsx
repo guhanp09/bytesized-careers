@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { BackendTalentListing, saveTalentListing } from "../lib/backendClient";
+import { formatListingTitle } from "../lib/displayText";
 import { publicProfileFallbackSlug } from "../lib/profileSlug";
-import { formatTalentExperience } from "../lib/talentListing";
+import { formatTalentListingExperience } from "../lib/talentListing";
 import { useCardSheen } from "../lib/useCardSheen";
 import { formatCompactNumber } from "../lib/format";
 import { Icon } from "./Icons";
@@ -132,6 +133,31 @@ function TagRow({ tags }: { tags: string[] }) {
   );
 }
 
+function ListingCta({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onKeyDown={(event) => event.stopPropagation()}
+      className="group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+    >
+      <span>{label}</span>
+      <span
+        aria-hidden="true"
+        className="inline-block transition-transform group-hover/cta:translate-x-0.5 motion-reduce:transition-none"
+      >
+        →
+      </span>
+    </button>
+  );
+}
+
 export default function TalentCard({ item }: { item: BackendTalentListing }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -147,12 +173,20 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
   const location = item.location || titleCase(item.work_mode) || "Remote";
   const metadata = [role, location, item.timezone].filter(Boolean).join(" · ");
   const workMode = titleCase(item.work_mode);
-  const experience = formatTalentExperience(item.experience_level) || "Not specified";
-  const tags = uniq([...item.tools, ...item.platforms, item.niche, ...item.formats]);
+  const experience = formatTalentListingExperience(item) || "Not specified";
+  const tags = uniq([
+    ...item.formats,
+    ...(item.content_niches || []),
+    ...(item.content_genres || []),
+    ...item.tools,
+    ...item.platforms,
+    item.niche,
+  ]);
   const viewCount = Number.isFinite(item.views) ? Math.max(0, item.views) : 0;
   const interestedRecruitersCount = 0;
   const responseRate = 0;
   const modeOrLocation = workMode || location || "Remote";
+  const displayTitle = formatListingTitle(item.title);
 
   const open = () => {
     router.push(href);
@@ -209,7 +243,7 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
                     event.stopPropagation();
                   }}
                   onKeyDown={(event) => event.stopPropagation()}
-                  className="block max-w-full cursor-pointer truncate rounded-sm text-left text-sm font-semibold text-white/88 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="block max-w-full cursor-pointer truncate rounded-sm text-left text-sm font-semibold text-white/88 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 >
                   {name}
                 </Link>
@@ -219,10 +253,17 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
               <p className="mt-1 truncate text-xs text-white/55">{metadata}</p>
             </div>
           </div>
+          <ListingCta
+            label="Hire Me"
+            onClick={(event) => {
+              event.stopPropagation();
+              open();
+            }}
+          />
         </div>
 
-        <h2 className="mt-4 h-[52px] line-clamp-2 text-[15px] font-extrabold uppercase leading-snug text-white">
-          {item.title}
+        <h2 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug text-white underline-offset-4 transition-colors hover:underline">
+          {displayTitle}
         </h2>
 
         <div className="mt-4 space-y-2">

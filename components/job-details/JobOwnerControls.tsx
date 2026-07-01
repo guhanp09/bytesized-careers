@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { deleteJob, updateJob } from "../../lib/backendClient";
 import { Icon } from "../Icons";
+import ConfirmDialog from "../ui/ConfirmDialog";
 
 type OwnerAction = "published" | "paused" | "closed" | "archived";
 
@@ -14,7 +15,7 @@ type OwnerAction = "published" | "paused" | "closed" | "archived";
 const STATUS_LABEL: Record<string, string> = {
   paused: "Paused",
   closed: "Closed",
-  archived: "Archived",
+  archived: "Deleted",
   draft: "Draft",
 };
 
@@ -42,6 +43,7 @@ export default function JobOwnerControls({
   const [currentStatus, setCurrentStatus] = React.useState((status || "published").toLowerCase());
   const [busy, setBusy] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const mutate = async (action: OwnerAction) => {
@@ -55,9 +57,14 @@ export default function JobOwnerControls({
     try {
       if (action === "archived") {
         await deleteJob(token, jobId);
-      } else {
-        await updateJob(token, jobId, { status: action });
+        setMenuOpen(false);
+        setConfirmOpen(false);
+        // The listing no longer exists — refreshing in place would 404. Send the
+        // owner to their jobs management hub instead.
+        router.push("/you?tab=jobs");
+        return;
       }
+      await updateJob(token, jobId, { status: action });
       setCurrentStatus(action);
       setMenuOpen(false);
       router.refresh();
@@ -68,10 +75,11 @@ export default function JobOwnerControls({
     }
   };
 
-  const confirmAndMutate = (action: OwnerAction) => {
+  // Deleting asks for confirmation first; non-destructive status changes apply directly.
+  const requestAction = (action: OwnerAction) => {
     if (action === "archived") {
-      const confirmed = window.confirm("Archive this job? It will no longer be visible to talent.");
-      if (!confirmed) return;
+      setConfirmOpen(true);
+      return;
     }
     void mutate(action);
   };
@@ -144,7 +152,7 @@ export default function JobOwnerControls({
                   type="button"
                   role="menuitem"
                   disabled={busy}
-                  onClick={() => confirmAndMutate("published")}
+                  onClick={() => requestAction("published")}
                   className={menuItem}
                 >
                   <Icon name="check" className="h-4 w-4 text-white/50" />
@@ -156,7 +164,7 @@ export default function JobOwnerControls({
                   type="button"
                   role="menuitem"
                   disabled={busy}
-                  onClick={() => confirmAndMutate("paused")}
+                  onClick={() => requestAction("paused")}
                   className={menuItem}
                 >
                   <Icon name="pause" className="h-4 w-4 text-white/50" />
@@ -168,7 +176,7 @@ export default function JobOwnerControls({
                   type="button"
                   role="menuitem"
                   disabled={busy}
-                  onClick={() => confirmAndMutate("closed")}
+                  onClick={() => requestAction("closed")}
                   className={menuItem}
                 >
                   <Icon name="x" className="h-4 w-4 text-white/50" />
@@ -180,11 +188,11 @@ export default function JobOwnerControls({
                   type="button"
                   role="menuitem"
                   disabled={busy}
-                  onClick={() => confirmAndMutate("archived")}
+                  onClick={() => requestAction("archived")}
                   className={menuItem}
                 >
-                  <Icon name="archive" className="h-4 w-4 text-white/50" />
-                  Archive job
+                  <Icon name="trash" className="h-4 w-4 text-white/50" />
+                  Delete job
                 </button>
               ) : null}
             </div>
@@ -200,6 +208,17 @@ export default function JobOwnerControls({
           {error}
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete this job?"
+        body="It will be removed from the marketplace and can’t be undone. Applications you’ve already received stay in your inbox."
+        confirmLabel="Delete job"
+        destructive
+        busy={busy}
+        onConfirm={() => void mutate("archived")}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

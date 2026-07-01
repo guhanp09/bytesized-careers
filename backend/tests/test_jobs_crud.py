@@ -51,6 +51,10 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
             }
         ],
         "tags": ["premiere", "storytelling"],
+        "languages": ["Hindi", "English"],
+        "content_niches": ["Finance", " finance ", "", "Education"],
+        "content_genres": ["Explainers", "Explainers"],
+        "formats_hired_for": ["Long-form video", "Thumbnails"],
         "channel_name": "Finance Creator",
         "channel_profile_slug": "finance-creator",
         "status": "published",
@@ -65,6 +69,10 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
     assert Decimal(str(created["budget_max"])) == Decimal("2400.00")
     assert created["budget_unit"] == "per month"
     assert created["reference_videos"][0]["title"] == "Pacing reference"
+    assert created["languages"] == ["Hindi", "English"]
+    assert created["content_niches"] == ["Finance", "Education"]
+    assert created["content_genres"] == ["Explainers"]
+    assert created["formats_hired_for"] == ["Long-form video", "Thumbnails"]
 
     job_id = created["id"]
     get_response = await client.get(f"/api/v1/jobs/{job_id}")
@@ -72,8 +80,16 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
     fetched = get_response.json()
     assert fetched["id"] == job_id
     assert fetched["platforms"] == ["instagram"]
+    assert fetched["languages"] == ["Hindi", "English"]
+    assert fetched["content_niches"] == ["Finance", "Education"]
+    assert fetched["content_genres"] == ["Explainers"]
+    assert fetched["formats_hired_for"] == ["Long-form video", "Thumbnails"]
     assert fetched["channel_profile_slug"] == "finance-creator"
     assert fetched["reference_videos"][0]["title"] == "Pacing reference"
+
+    searched = await client.get("/api/v1/jobs", params={"q": "thumbnails"})
+    assert searched.status_code == 200
+    assert any(item["id"] == job_id for item in searched.json()["items"])
 
 
 async def test_authenticated_create_sets_posted_by_user_id(client: AsyncClient) -> None:
@@ -140,10 +156,19 @@ async def test_job_update_and_delete_require_owner(client: AsyncClient) -> None:
     owner_update = await client.patch(
         f"/api/v1/jobs/{job_id}",
         headers={"Authorization": f"Bearer {owner_bearer}"},
-        json={"title": "Owner updated title"},
+        json={
+            "title": "Owner updated title",
+            "content_niches": ["Gaming", "gaming", ""],
+            "content_genres": ["Shorts/Reels"],
+            "formats_hired_for": ["Shorts/Reels", "Captions"],
+        },
     )
     assert owner_update.status_code == 200
-    assert owner_update.json()["title"] == "Owner updated title"
+    updated = owner_update.json()
+    assert updated["title"] == "Owner updated title"
+    assert updated["content_niches"] == ["Gaming"]
+    assert updated["content_genres"] == ["Shorts/Reels"]
+    assert updated["formats_hired_for"] == ["Shorts/Reels", "Captions"]
 
     wrong_owner_delete = await client.delete(
         f"/api/v1/jobs/{job_id}",
@@ -266,3 +291,51 @@ async def test_job_create_with_hiring_identity_requires_owner_and_snapshots(clie
     assert created["managed_by_agency_name_snapshot"] == "GrowthStack Agency"
     assert created["agency_profile_slug"] == "jobs_hiring_identity"
     assert created["channel_profile_slug"] is None
+
+
+async def test_job_application_requirements_persist_and_round_trip(client: AsyncClient) -> None:
+    """A job can declare structured first-message requirements that survive create + fetch."""
+    requirements = [
+        "expected_rate",
+        "relevant_portfolio",
+        "turnaround",
+        "fit_note",
+    ]
+    create_response = await client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Finance channel editor",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "application_requirements": requirements,
+            "status": "published",
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["application_requirements"] == requirements
+
+    job_id = created["id"]
+    fetched = (await client.get(f"/api/v1/jobs/{job_id}")).json()
+    assert fetched["application_requirements"] == requirements
+
+
+async def test_job_without_application_requirements_defaults_to_empty(client: AsyncClient) -> None:
+    """Backward compatibility: jobs created without optional list fields report empty lists."""
+    create_response = await client.post(
+        "/api/v1/jobs",
+        json={
+            "title": "Legacy job without requirements",
+            "category": "Editing",
+            "location": "Remote",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["application_requirements"] == []
+    assert created["content_niches"] == []
+    assert created["content_genres"] == []
+    assert created["formats_hired_for"] == []
