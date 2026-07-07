@@ -2,9 +2,15 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CATEGORIES, START_TIME_VALUES } from "../lib/jobs";
 import { formatStartFilterLabel } from "../lib/format";
 import { StartTimeframe, Job } from "../lib/types";
+import {
+  seoFilterRoutesForType,
+  seoSelectedChipLabels,
+  type SeoFilterRoute,
+} from "../lib/seoFilterRoutes";
 import { JobCard } from "./JobCard";
 import { Reveal } from "./ui";
 
@@ -12,18 +18,31 @@ function Chip({
   label,
   active,
   onClick,
+  href,
 }: {
   label: string;
   active?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  href?: string;
 }) {
+  const className = [
+    "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
+    active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
+  ].join(" ");
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {label}
+      </Link>
+    );
+  }
+
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={[
-        "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
-        active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
-      ].join(" ")}
+      className={className}
     >
       {label}
     </button>
@@ -44,15 +63,30 @@ export default function JobGridClient({
   jobs,
   notice,
   query,
+  seoRoute,
 }: {
   jobs: Job[];
   notice?: string | null;
   query?: string;
+  seoRoute?: SeoFilterRoute | null;
 }) {
-  const [activeCat, setActiveCat] = useState<(typeof CATEGORIES)[number]>("All");
+  // Local category chips are single-select with the SEO chips. Landing on the
+  // base list with ?filter=<category> — how a local chip replaces an SEO
+  // selection — restores that category as active on mount.
+  const searchParams = useSearchParams();
+  const filterParam = searchParams.get("filter");
+  const [activeCat, setActiveCat] = useState<(typeof CATEGORIES)[number]>(
+    filterParam && (CATEGORIES as readonly string[]).includes(filterParam)
+      ? (filterParam as (typeof CATEGORIES)[number])
+      : "All"
+  );
   const [startOpen, setStartOpen] = useState(false);
   const [selectedStarts, setSelectedStarts] = useState<StartTimeframe[]>([]);
   const [sort, setSort] = useState<JobSortKey>("relevance");
+  const activeSeoLabels = seoSelectedChipLabels(seoRoute);
+  const seoChips = seoFilterRoutesForType("jobs");
+  const seoChipLabels = new Set(seoChips.map((route) => route.chipLabel.toLowerCase()));
+  const localCategoryChips = CATEGORIES.filter((category) => category !== "All" && !seoChipLabels.has(category.toLowerCase()));
 
   const toggleStart = (value: StartTimeframe) => {
     setSelectedStarts((prev) => {
@@ -76,7 +110,7 @@ export default function JobGridClient({
     return list;
   }, [activeCat, selectedStarts, jobs]);
 
-  const hasActiveFilters = activeCat !== "All" || selectedStarts.length > 0;
+  const hasActiveFilters = activeCat !== "All" || selectedStarts.length > 0 || activeSeoLabels.length > 0;
   const isSearchEmpty = Boolean(query?.trim()) && jobs.length === 0 && !hasActiveFilters;
 
   const clearFilters = () => {
@@ -103,9 +137,26 @@ export default function JobGridClient({
         <div className="flex items-center gap-3 px-3 sm:px-4 py-2">
           <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex items-center gap-2 w-max">
-            {CATEGORIES.map((c) => (
-              <Chip key={c} label={c} active={activeCat === c} onClick={() => setActiveCat(c)} />
+            <Chip label="All" active={activeCat === "All" && activeSeoLabels.length === 0} href="/jobs" />
+            {seoChips.map((route) => (
+              <Chip
+                key={route.path}
+                label={route.chipLabel}
+                active={activeSeoLabels.includes(route.chipLabel)}
+                href={route.path}
+              />
             ))}
+            {localCategoryChips.map((c) =>
+              // On a curated SEO route, a local category replaces the SEO
+              // selection (navigates to the base list with the category applied)
+              // rather than narrowing the SEO subset. On the base list it stays an
+              // instant client-side toggle.
+              seoRoute ? (
+                <Chip key={c} label={c} href={`/jobs?filter=${encodeURIComponent(c)}`} />
+              ) : (
+                <Chip key={c} label={c} active={activeCat === c} onClick={() => setActiveCat(c)} />
+              )
+            )}
 
             <button
               onClick={() => setStartOpen((v) => !v)}
@@ -151,7 +202,10 @@ export default function JobGridClient({
         </div>
       </div>
 
-      {/* Scrollable content starts BELOW the fixed filters bar */}
+      {/* Scrollable content starts BELOW the fixed filters bar. A curated SEO
+          route renders no visible title/intro — the highlighted filter chip and
+          the filtered results convey the niche, exactly like a selected chip on
+          the normal browse page (the SEO name lives only in metadata/canonical). */}
       <section className="px-4 sm:px-6 py-8 pt-24">
         {notice ? (
           <div className="mb-6 rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3 text-sm text-white/85">
@@ -179,6 +233,13 @@ export default function JobGridClient({
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {isSearchEmpty ? (
+                  <Link
+                    href="/jobs"
+                    className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                  >
+                    Browse all jobs
+                  </Link>
+                ) : activeSeoLabels.length > 0 ? (
                   <Link
                     href="/jobs"
                     className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"

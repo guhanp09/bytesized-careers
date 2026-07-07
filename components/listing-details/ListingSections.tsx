@@ -1,4 +1,8 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+
+import { Icon } from "../Icons";
+
+type IconName = ComponentProps<typeof Icon>["name"];
 
 /**
  * Shared editorial primitives for listing detail bodies (jobs + talent).
@@ -11,9 +15,16 @@ import type { ReactNode } from "react";
 export const LISTING_PANEL_CLASS =
   "rounded-3xl bg-white/[0.03] border border-white/[0.07] px-6 sm:px-9 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]";
 
-export function SectionLabel({ children }: { children: ReactNode }) {
+export function SectionLabel({ children, icon }: { children: ReactNode; icon?: IconName }) {
   return (
-    <h2 className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/40">{children}</h2>
+    <h2 className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-white/40">
+      {icon ? (
+        <span aria-hidden="true" className="inline-flex shrink-0 text-white/45">
+          <Icon name={icon} className="h-4 w-4" />
+        </span>
+      ) : null}
+      <span>{children}</span>
+    </h2>
   );
 }
 
@@ -22,10 +33,10 @@ export function SectionLabel({ children }: { children: ReactNode }) {
  * panel) so `divide-y` on the parent draws an evenly spaced rule between
  * sections, and the first/last section keep symmetric breathing room.
  */
-export function BodySection({ title, children }: { title: string; children: ReactNode }) {
+export function BodySection({ title, icon, children }: { title: string; icon?: IconName; children: ReactNode }) {
   return (
     <section className="py-8">
-      <SectionLabel>{title}</SectionLabel>
+      <SectionLabel icon={icon}>{title}</SectionLabel>
       <div className="mt-4 text-sm leading-relaxed text-white/80">{children}</div>
     </section>
   );

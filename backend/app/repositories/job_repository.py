@@ -18,7 +18,15 @@ class JobRepository:
         self.session = session
 
     def _base_query(self):
-        return select(Job).where(Job.deleted_at.is_(None))
+        # Suspended posters' jobs are invisible everywhere this repository
+        # serves (public lists + detail). Jobs without a poster are dev/seed
+        # display data and stay visible.
+        suspended_owner = (
+            select(User.id)
+            .where(User.id == Job.posted_by_user_id, User.suspended_at.isnot(None))
+            .exists()
+        )
+        return select(Job).where(Job.deleted_at.is_(None), ~suspended_owner)
 
     async def list_jobs(
         self,

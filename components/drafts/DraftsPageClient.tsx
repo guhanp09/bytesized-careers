@@ -553,7 +553,6 @@ export default function DraftsPageClient({
                 actionError={actionError}
                 onBack={() => setMobileDetailOpen(false)}
                 onResume={() => router.push(selected.resumeHref)}
-                onPreview={() => router.push(`${selected.resumeHref}&section=preview`)}
                 onRenameTitle={(rawTitle) => handleRenameTitle(selected, rawTitle)}
                 onDuplicate={() => handleDuplicate(selected)}
                 onRequestDelete={() => setConfirmingId(selected.id)}
@@ -650,7 +649,6 @@ function DraftCompletionWorkspace({
   actionError,
   onBack,
   onResume,
-  onPreview,
   onRenameTitle,
   onDuplicate,
   onRequestDelete,
@@ -664,7 +662,6 @@ function DraftCompletionWorkspace({
   actionError: string | null;
   onBack: () => void;
   onResume: () => void;
-  onPreview: () => void;
   onRenameTitle: (rawTitle: string) => Promise<{ ok: boolean; error?: string }>;
   onDuplicate: () => void;
   onRequestDelete: () => void;
@@ -684,7 +681,6 @@ function DraftCompletionWorkspace({
     wasEditingTitleRef.current = editingTitle;
   }, [editingTitle]);
   const resumeHref = selected.resumeHref;
-  const canPreview = selected.kind === "talent";
   const nextIcon = c.nextBestAction.done
     ? "check"
     : c.nextBestAction.jumpLabel && /budget|rate|compensation/.test(c.nextBestAction.jumpLabel)
@@ -741,12 +737,6 @@ function DraftCompletionWorkspace({
               <Icon name="circle-play" className="h-4 w-4" />
               Resume
             </button>
-            {canPreview ? (
-              <button type="button" onClick={onPreview} className={`hidden lg:inline-flex ${SECONDARY_BUTTON_CLASSES}`}>
-                <Icon name="eye" className="h-4 w-4" />
-                Preview
-              </button>
-            ) : null}
             <button
               type="button"
               aria-label="Duplicate draft"

@@ -35,6 +35,7 @@ class Job(Base):
 
     budget_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     budget_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    budget_note: Mapped[str | None] = mapped_column(String(64), nullable=True)
     budget_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
     budget_unit: Mapped[str] = mapped_column(String(32), nullable=False, default="per project")
 

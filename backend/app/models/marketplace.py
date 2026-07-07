@@ -63,6 +63,9 @@ class JobApplication(Base):
     )
     applicant_snapshot: Mapped[dict] = mapped_column(json_obj_type, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
+    # Private annotation by the job owner managing this applicant. Never shown
+    # to the applicant — sender-facing responses blank it.
+    manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
@@ -111,6 +114,7 @@ class TalentListing(Base):
     first_message_requirements: Mapped[list[str]] = mapped_column(
         json_list_type, nullable=False, default=list, server_default="[]"
     )
+    first_message_custom_instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", index=True)
     is_featured: Mapped[bool] = mapped_column(default=False, nullable=False)
     featured_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
@@ -169,6 +173,9 @@ class TalentInterest(Base):
         json_obj_type, nullable=False, default=dict, server_default="{}"
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
+    # Private annotation by the talent (listing owner) managing this hiring
+    # request. Never shown to the recruiter — sender-facing responses blank it.
+    manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

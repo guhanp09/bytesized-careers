@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -41,6 +41,17 @@ class User(Base):
     onboarding_intent_selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Admin suspension (reversible): a suspended account is rejected at auth and
+    # its published content is excluded from public marketplace queries. Set only
+    # through the audited admin endpoints (docs/ADMIN_PANEL_PLAN.md §12).
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    suspension_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suspended_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Coarse activity signal for the admin directory (touched at most every 15
+    # minutes on authenticated requests — not a precise presence system).
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     headline: Mapped[str | None] = mapped_column(String(160), nullable=True)
     avatar_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")

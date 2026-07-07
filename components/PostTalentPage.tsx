@@ -30,7 +30,10 @@ import {
   normalizeCreatorContextValue,
 } from "../lib/jobCreatorContext";
 import { getTalentDraftCompletion } from "../lib/draftCompletion";
-import { sanitizeRequirementKeys } from "../lib/firstMessageRequirements";
+import {
+  CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
+  sanitizeRequirementKeys,
+} from "../lib/firstMessageRequirements";
 import { Icon } from "./Icons";
 import { MetaRow, PageLoading, StatRow, TagPill } from "./ui";
 import RecommendedChecklistPopup, { RecommendedChecklistItem } from "./RecommendedChecklistPopup";
@@ -38,26 +41,30 @@ import RequirementSelector from "./first-message/RequirementSelector";
 import ToolPicker from "./you/ToolPicker";
 import LanguagePicker from "./post-flow/LanguagePicker";
 
-type Step = "basics" | "focus" | "collaboration" | "proof" | "preview" | "publish";
+type Step = "basics" | "details" | "services" | "creatorContext" | "toolsPortfolio" | "hiringRequests";
 type AvailabilityStatus = "available" | "selective" | "unavailable";
 type RateIntent = "" | "contact" | "flexible";
 type TalentWorkMode = "" | "Remote" | "Hybrid" | "On-site";
-type TalentFieldKey = "title" | "primaryRole" | "location" | "workMode" | "rateIntent" | "rateRange";
+type TalentFieldKey = "title" | "primaryRole" | "location" | "workMode" | "rateChoice" | "rateRange";
 type TalentFieldErrors = Partial<Record<TalentFieldKey, string>>;
+type IconName = React.ComponentProps<typeof Icon>["name"];
 
 type TalentQualityItem = RecommendedChecklistItem<Step>;
 
 const TALENT_COMPLETION_TARGETS: Record<string, { step: Step; target?: string }> = {
   basics: { step: "basics" },
-  collaboration: { step: "collaboration" },
-  preview: { step: "preview" },
-  portfolio: { step: "proof", target: "talent-portfolio" },
-  tools: { step: "focus", target: "talent-tools" },
-  niche: { step: "focus", target: "talent-platforms" },
-  creatorContext: { step: "focus", target: "talent-creator-context" },
-  description: { step: "focus", target: "talent-services" },
+  collaboration: { step: "basics" },
+  rate: { step: "basics" },
+  workMode: { step: "basics" },
+  preview: { step: "hiringRequests" },
+  portfolio: { step: "toolsPortfolio", target: "talent-portfolio" },
+  tools: { step: "toolsPortfolio", target: "talent-tools" },
+  niche: { step: "creatorContext", target: "talent-platforms" },
+  creatorContext: { step: "creatorContext", target: "talent-creator-context" },
+  platforms: { step: "creatorContext", target: "talent-platforms" },
+  description: { step: "services", target: "talent-services" },
   experience: { step: "basics", target: "talent-experience" },
-  "talent-first-message": { step: "collaboration", target: "talent-first-message" },
+  "talent-first-message": { step: "hiringRequests", target: "talent-first-message" },
 };
 
 const normalizeTalentWorkMode = (value?: string | null): TalentWorkMode => {
@@ -71,29 +78,36 @@ const normalizeTalentWorkMode = (value?: string | null): TalentWorkMode => {
 // Step labels stay internal (routing, progress, and accessibility only) — they are
 // intentionally not rendered as visible pills/labels in the progress header.
 const STEPS: Array<{ id: Step; label: string }> = [
-  { id: "basics", label: "Listing basics" },
-  { id: "focus", label: "Work focus" },
-  { id: "collaboration", label: "Collaboration" },
-  { id: "proof", label: "Work samples" },
-  { id: "preview", label: "Preview" },
-  { id: "publish", label: "Publish" },
+  { id: "basics", label: "Basics" },
+  { id: "details", label: "Details" },
+  { id: "services", label: "Services" },
+  { id: "creatorContext", label: "Creator context" },
+  { id: "toolsPortfolio", label: "Tools & portfolio" },
+  { id: "hiringRequests", label: "Hiring requests" },
 ];
 
 // Short, calm, motivating microcopy — mirrors the Post a Job header tone and keeps
 // the flow feeling light. One line per step; this is the only contextual copy shown.
 const STEP_MICROCOPY: Record<Step, string> = {
   basics: "Start with the essentials.",
-  focus: "Shape your focus.",
-  collaboration: "Set how you work.",
-  proof: "Show your proof.",
-  preview: "Nearly there.",
-  publish: "Ready to publish.",
+  details: "Set practical expectations.",
+  services: "Describe what you offer.",
+  creatorContext: "Shape your creator fit.",
+  toolsPortfolio: "Show how you work.",
+  hiringRequests: "Set hiring request details.",
+};
+
+const LEGACY_STEP_MAP: Record<string, Step> = {
+  basics: "basics",
+  focus: "creatorContext",
+  collaboration: "basics",
+  proof: "toolsPortfolio",
+  preview: "hiringRequests",
+  publish: "hiringRequests",
 };
 
 const inputBase =
   "h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.07]";
-const textareaBase =
-  "min-h-[118px] w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2.5 text-sm leading-6 text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.07]";
 const selectBase =
   "h-11 w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none transition-colors focus:border-white/25 focus:bg-white/[0.07]";
 const choiceButton = (active: boolean) =>
@@ -115,6 +129,17 @@ const parseList = (value: string) =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const cleanServiceLine = (value: string) => value.replace(/^\s*[-•]\s*/, "").replace(/\s+/g, " ").trim();
+
+const parseServicesValue = (value: string) => {
+  const rawLines = value
+    .split(/\n+/)
+    .map(cleanServiceLine)
+    .filter(Boolean);
+  const lines = rawLines.length ? rawLines : value.trim() ? [cleanServiceLine(value)] : [];
+  return uniq(lines).slice(0, 12);
+};
 
 const splitLegacyContext = (value?: string | null) =>
   normalizeCreatorContextList(
@@ -205,12 +230,16 @@ function ContextTinyChip({
 function CreatorContextChipField({
   label,
   helper,
+  icon,
+  targetId,
   value,
   suggestions,
   onChange,
 }: {
   label: string;
   helper: string;
+  icon: IconName;
+  targetId?: string;
   value: string[];
   suggestions: readonly string[];
   onChange: (next: string[]) => void;
@@ -240,10 +269,12 @@ function CreatorContextChipField({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-quality-target={targetId}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold text-white/78">{label}</div>
+          <div className="text-xs font-semibold text-white/78">
+            <LabelWithIcon icon={icon}>{label}</LabelWithIcon>
+          </div>
           <div className="mt-0.5 text-[11px] text-white/42">{helper}</div>
         </div>
         <div className="text-[11px] text-white/35">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
@@ -297,6 +328,130 @@ function CreatorContextChipField({
   );
 }
 
+function ServicesBulletEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  type Row = { id: string; value: string };
+  const makeRowIdRef = useRef(0);
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const focusRowIdRef = useRef<string | null>(null);
+  const emittedSignatureRef = useRef<string | null>(null);
+
+  const makeRow = (rowValue = ""): Row => {
+    makeRowIdRef.current += 1;
+    return { id: `service-row-${makeRowIdRef.current}`, value: rowValue };
+  };
+
+  const rowsFromValue = (nextValue: string) => {
+    const parsed = parseServicesValue(nextValue);
+    return parsed.length ? parsed.map((item) => makeRow(item)) : [makeRow()];
+  };
+
+  const [rows, setRows] = useState<Row[]>(() => rowsFromValue(value));
+
+  useEffect(() => {
+    const signature = parseServicesValue(value).join("\n");
+    if (signature === emittedSignatureRef.current) return;
+    setRows(rowsFromValue(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  useEffect(() => {
+    if (!focusRowIdRef.current) return;
+    inputRefs.current[focusRowIdRef.current]?.focus();
+    focusRowIdRef.current = null;
+  }, [rows.length]);
+
+  const emitRows = (nextRows: Row[]) => {
+    const cleaned = uniq(nextRows.map((row) => cleanServiceLine(row.value)).filter(Boolean));
+    const nextValue = cleaned.join("\n");
+    emittedSignatureRef.current = nextValue;
+    onChange(nextValue);
+  };
+
+  const updateRows = (updater: (current: Row[]) => Row[]) => {
+    setRows((current) => {
+      const nextRows = updater(current);
+      emitRows(nextRows);
+      return nextRows;
+    });
+  };
+
+  const addRow = () => {
+    const nextRow = makeRow();
+    focusRowIdRef.current = nextRow.id;
+    updateRows((current) => [...current, nextRow]);
+  };
+
+  const updateRow = (id: string, rowValue: string) => {
+    updateRows((current) => current.map((row) => (row.id === id ? { ...row, value: rowValue } : row)));
+  };
+
+  const removeRow = (id: string) => {
+    updateRows((current) => {
+      const nextRows = current.filter((row) => row.id !== id);
+      return nextRows.length ? nextRows : [makeRow()];
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {rows.map((row, index) => (
+          <div key={row.id} className="flex items-center gap-2">
+            <span className="flex h-11 w-5 shrink-0 items-center justify-center text-lg leading-none text-white/58" aria-hidden="true">
+              •
+            </span>
+            <input
+              ref={(node) => {
+                inputRefs.current[row.id] = node;
+              }}
+              className={inputBase}
+              value={row.value}
+              placeholder={
+                index === 0
+                  ? "e.g. Shorts video editing"
+                  : index === 1
+                    ? "e.g. Thumbnail design for finance channels"
+                    : "e.g. Long-form YouTube editing"
+              }
+              onChange={(event) => updateRow(row.id, event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addRow();
+                }
+              }}
+              aria-label={`Service offered ${index + 1}`}
+            />
+            <button
+              type="button"
+              onClick={() => removeRow(row.id)}
+              className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/48 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+              aria-label={`Remove service ${index + 1}`}
+              title="Remove"
+            >
+              <Icon name="x" className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={addRow}
+        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-semibold text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+      >
+        <Icon name="plus" className="h-4 w-4" />
+        Add service
+      </button>
+    </div>
+  );
+}
+
 function PreviewListingCta({ label }: { label: string }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90">
@@ -310,7 +465,6 @@ function Field({
   label,
   children,
   wide,
-  optional,
   required,
   error,
   targetId,
@@ -318,7 +472,6 @@ function Field({
   label: React.ReactNode;
   children: React.ReactNode;
   wide?: boolean;
-  optional?: boolean;
   required?: boolean;
   error?: string;
   targetId?: string;
@@ -338,8 +491,6 @@ function Field({
             <Icon name="alert" className="h-3 w-3" />
             {error}
           </span>
-        ) : optional ? (
-          <span className="text-white/45">Optional</span>
         ) : null}
       </span>
       {children}
@@ -347,15 +498,38 @@ function Field({
   );
 }
 
+function LabelWithIcon({
+  icon,
+  children,
+}: {
+  icon: IconName;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Icon name={icon} className="h-3.5 w-3.5 shrink-0 text-white/45" />
+      <span>{children}</span>
+    </span>
+  );
+}
+
 function StepShell({
+  title,
+  icon,
   children,
   footer,
 }: {
+  title: string;
+  icon: IconName;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)] sm:p-6">
+      <div className="mb-5 flex items-center gap-2">
+        <Icon name={icon} className="h-5 w-5 shrink-0 text-white/55" />
+        <h2 className="text-sm font-semibold uppercase tracking-tight text-white/90">{title}</h2>
+      </div>
       {children}
       {footer ? <div className="mt-6 border-t border-white/[0.08] pt-4">{footer}</div> : null}
     </section>
@@ -616,13 +790,13 @@ export default function PostTalentPage() {
   const [turnaround, setTurnaround] = useState("");
   const [rateMin, setRateMin] = useState("");
   const [rateMax, setRateMax] = useState("");
-  const [rateCurrency, setRateCurrency] = useState("INR");
   const [rateNote, setRateNote] = useState("");
   const [description, setDescription] = useState("");
   const [portfolioItems, setPortfolioItems] = useState<BackendPortfolioItem[]>([]);
   const [selectedPortfolioIds, setSelectedPortfolioIds] = useState<string[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [firstMessageRequirements, setFirstMessageRequirements] = useState<string[]>([]);
+  const [firstMessageCustomInstruction, setFirstMessageCustomInstruction] = useState("");
   const [noFirstMessageRequirements, setNoFirstMessageRequirements] = useState(false);
   const [firstMessageError, setFirstMessageError] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -700,7 +874,6 @@ export default function PostTalentPage() {
       setTurnaround(listing.turnaround || "");
       setRateMin(listing.rate_min != null ? String(listing.rate_min) : "");
       setRateMax(listing.rate_max != null ? String(listing.rate_max) : "");
-      setRateCurrency(listing.rate_currency || "INR");
       const nextRateNote = listing.rate_note || "";
       const normalizedRateNote = nextRateNote.trim().toLowerCase();
       setRateNote(nextRateNote);
@@ -716,6 +889,7 @@ export default function PostTalentPage() {
       // Restore the chosen requirements; the "none" choice is a publish-time
       // gate, so it is re-confirmed intentionally on resume.
       setFirstMessageRequirements(sanitizeRequirementKeys(listing.first_message_requirements, "talent"));
+      setFirstMessageCustomInstruction(listing.first_message_custom_instruction || "");
       setNoFirstMessageRequirements(false);
     };
     setDraftLoading(true);
@@ -849,7 +1023,8 @@ export default function PostTalentPage() {
   useEffect(() => {
     if (!sectionParam || sectionAppliedRef.current) return;
     if (draftId && draftLoading) return;
-    const dest = TALENT_COMPLETION_TARGETS[sectionParam];
+    const legacyStep = LEGACY_STEP_MAP[sectionParam];
+    const dest = TALENT_COMPLETION_TARGETS[sectionParam] || (legacyStep ? { step: legacyStep } : null);
     if (!dest) return;
     sectionAppliedRef.current = true;
     setStep(dest.step);
@@ -886,7 +1061,7 @@ export default function PostTalentPage() {
     if (rateError) {
       next.rateRange = rateError;
     } else if (!hasNumericRateIntent && !hasExplicitRateIntent) {
-      next.rateIntent = "Add a rate, or choose Contact for pricing/Flexible.";
+      next.rateChoice = "Add a rate, or choose Contact for pricing/Flexible.";
     }
 
     return next;
@@ -919,27 +1094,26 @@ export default function PostTalentPage() {
   };
 
   const firstErrorStep = (requiredErrors: TalentFieldErrors): Step => {
-    if (requiredErrors.title || requiredErrors.primaryRole || requiredErrors.location) return "basics";
-    if (requiredErrors.workMode || requiredErrors.rateIntent || requiredErrors.rateRange) return "collaboration";
+    if (
+      requiredErrors.title ||
+      requiredErrors.primaryRole ||
+      requiredErrors.location ||
+      requiredErrors.workMode ||
+      requiredErrors.rateChoice ||
+      requiredErrors.rateRange
+    ) {
+      return "basics";
+    }
     return step;
   };
 
   const validateCurrentStep = () => {
     const requiredErrors = getRequiredErrors();
     if (step === "basics") {
-      const keys: TalentFieldKey[] = ["title", "primaryRole", "location"];
+      const keys: TalentFieldKey[] = ["title", "primaryRole", "workMode", "location", "rateChoice", "rateRange"];
       applyStepErrors(keys, requiredErrors);
       const hasErrors = keys.some((key) => Boolean(requiredErrors[key]));
       setError(hasErrors ? "Fix the highlighted fields." : null);
-      if (hasErrors) focusFirstInvalidField();
-      return !hasErrors;
-    }
-    if (step === "collaboration") {
-      const keys: TalentFieldKey[] = ["workMode", "rateIntent", "rateRange", "location"];
-      applyStepErrors(keys, requiredErrors);
-      const hasErrors = keys.some((key) => Boolean(requiredErrors[key]));
-      setError(hasErrors ? "Fix the highlighted fields." : null);
-      if (requiredErrors.location) setStep("basics");
       if (hasErrors) focusFirstInvalidField();
       return !hasErrors;
     }
@@ -982,7 +1156,7 @@ export default function PostTalentPage() {
     availability_status: availabilityStatus || TALENT_LISTING_DEFAULT_AVAILABILITY,
     rate_min: rateMin.trim() ? Number(rateMin) : null,
     rate_max: rateMax.trim() ? Number(rateMax) : null,
-    rate_currency: rateCurrency.trim().toUpperCase() || "INR",
+    rate_currency: "INR",
     rate_note: effectiveRateNote || null,
     open_slots: null,
     turnaround: turnaround.trim() || null,
@@ -991,6 +1165,11 @@ export default function PostTalentPage() {
     first_message_requirements: noFirstMessageRequirements
       ? []
       : sanitizeRequirementKeys(firstMessageRequirements, "talent"),
+    first_message_custom_instruction:
+      !noFirstMessageRequirements &&
+      sanitizeRequirementKeys(firstMessageRequirements, "talent").includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+        ? firstMessageCustomInstruction.trim() || null
+        : null,
     status: publishStatus,
   });
 
@@ -1047,7 +1226,17 @@ export default function PostTalentPage() {
       setFirstMessageError(
         "Choose what recruiters must include with their first message, or select “No specific first-message requirements.”"
       );
-      setStep("collaboration");
+      setStep("hiringRequests");
+      focusQualityTarget("talent-first-message");
+      return;
+    }
+    if (
+      !noFirstMessageRequirements &&
+      firstMessageRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
+      !firstMessageCustomInstruction.trim()
+    ) {
+      setFirstMessageError("Add the custom instruction recruiters should answer.");
+      setStep("hiringRequests");
       focusQualityTarget("talent-first-message");
       return;
     }
@@ -1072,10 +1261,8 @@ export default function PostTalentPage() {
   const currentStepRequiredErrors = getRequiredErrors();
   const currentStepRequiredKeys: TalentFieldKey[] =
     step === "basics"
-      ? ["title", "primaryRole", "location"]
-      : step === "collaboration"
-        ? ["workMode", "rateIntent", "rateRange", "location"]
-        : [];
+      ? ["title", "primaryRole", "workMode", "location", "rateChoice", "rateRange"]
+      : [];
   const canConfirmCurrentStep = !currentStepRequiredKeys.some((key) => Boolean(currentStepRequiredErrors[key]));
 
   const confirmCurrentStep = () => {
@@ -1157,9 +1344,14 @@ export default function PostTalentPage() {
   const renderStep = () => {
     if (step === "basics") {
       return (
-        <StepShell footer={footerActions}>
+        <StepShell title="Basics" icon="user" footer={footerActions}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Listing headline" wide required error={fieldErrors.title}>
+            <Field
+              label={<LabelWithIcon icon="notebook-text">Listing headline</LabelWithIcon>}
+              wide
+              required
+              error={fieldErrors.title}
+            >
               <input
                 aria-required="true"
                 aria-invalid={Boolean(fieldErrors.title)}
@@ -1172,7 +1364,7 @@ export default function PostTalentPage() {
                 placeholder="Retention-focused video editor for creator-led channels"
               />
             </Field>
-            <Field label="Primary role" required error={fieldErrors.primaryRole}>
+            <Field label={<LabelWithIcon icon="briefcase">Primary role</LabelWithIcon>} required error={fieldErrors.primaryRole}>
               <input
                 aria-required="true"
                 aria-invalid={Boolean(fieldErrors.primaryRole)}
@@ -1185,28 +1377,7 @@ export default function PostTalentPage() {
                 placeholder="Video editor"
               />
             </Field>
-            <Field
-              label="Location"
-              required={isTalentLocationRequired}
-              optional={!isTalentLocationRequired}
-              error={fieldErrors.location}
-            >
-              <input
-                aria-required={isTalentLocationRequired}
-                aria-invalid={Boolean(fieldErrors.location)}
-                className={[inputBase, fieldErrors.location ? invalidClass : ""].join(" ")}
-                value={location}
-                onChange={(event) => {
-                  setLocation(event.target.value);
-                  clearFieldError("location");
-                }}
-                placeholder={isTalentLocationRequired ? "Chennai" : "Remote, Chennai"}
-              />
-            </Field>
-            <Field label="Timezone" optional>
-              <input className={inputBase} value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="IST" />
-            </Field>
-            <Field label="Years of experience" optional targetId="talent-experience">
+            <Field label={<LabelWithIcon icon="cap">Years of experience</LabelWithIcon>} targetId="talent-experience">
               <select
                 className={selectBase}
                 aria-label="Years of experience"
@@ -1226,82 +1397,7 @@ export default function PostTalentPage() {
                 ))}
               </select>
             </Field>
-          </div>
-        </StepShell>
-      );
-    }
-
-    if (step === "focus") {
-      return (
-        <StepShell footer={footerActions}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Roles" wide>
-              <input className={inputBase} value={roles} onChange={(event) => setRoles(event.target.value)} placeholder="Video editor, thumbnail designer" />
-            </Field>
-            <div
-              className="space-y-4 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 sm:col-span-2"
-              data-quality-target="talent-creator-context"
-            >
-              <div>
-                <h2 className="text-sm font-semibold text-white/88">Creator context</h2>
-                <p className="mt-1 text-xs text-white/42">Helps recruiters find you in search.</p>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-3">
-                <CreatorContextChipField
-                  label="Content niches"
-                  helper="Choose the content areas you work in."
-                  value={contentNichesList}
-                  suggestions={CONTENT_NICHE_SUGGESTIONS}
-                  onChange={(next) => {
-                    const normalized = normalizeCreatorContextList(next);
-                    setContentNiches(normalized);
-                    setNiche(normalized.join(" · "));
-                  }}
-                />
-                <CreatorContextChipField
-                  label="Genres"
-                  helper="Select the content styles you support."
-                  value={contentGenresList}
-                  suggestions={CONTENT_GENRE_SUGGESTIONS}
-                  onChange={(next) => setContentGenres(normalizeCreatorContextList(next))}
-                />
-                <CreatorContextChipField
-                  label="Formats offered"
-                  helper="Choose the services you offer."
-                  value={formatsList}
-                  suggestions={FORMATS_HIRED_FOR_SUGGESTIONS}
-                  onChange={(next) => setFormats(normalizeCreatorContextList(next).join(", "))}
-                />
-              </div>
-            </div>
-            <Field label="Platforms" targetId="talent-platforms">
-              <input className={inputBase} value={platforms} onChange={(event) => setPlatforms(event.target.value)} placeholder="YouTube, Instagram, TikTok" />
-            </Field>
-            <div className="sm:col-span-2" data-quality-target="talent-tools">
-              <ToolPicker
-                value={tools}
-                onChange={setTools}
-                inputId="post-talent-tools-picker"
-                className="space-y-3"
-                placeholder="Premiere Pro, DaVinci Resolve, Figma..."
-              />
-            </div>
-            <div className="sm:col-span-2" data-quality-target="talent-languages">
-              <LanguagePicker value={languages} onChange={setLanguages} idPrefix="post-talent" />
-            </div>
-            <Field label="Services offered" wide targetId="talent-services">
-              <textarea className={textareaBase} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A listing-specific note about the kind of work you want to be hired for." />
-            </Field>
-          </div>
-        </StepShell>
-      );
-    }
-
-    if (step === "collaboration") {
-      return (
-        <StepShell footer={footerActions}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Work mode" required error={fieldErrors.workMode}>
+            <Field label={<LabelWithIcon icon="laptop">Work mode</LabelWithIcon>} required error={fieldErrors.workMode}>
               <select
                 aria-required="true"
                 aria-invalid={Boolean(fieldErrors.workMode)}
@@ -1322,28 +1418,79 @@ export default function PostTalentPage() {
                 <option value="On-site">On-site</option>
               </select>
             </Field>
-            <Field label="Turnaround" optional>
-              <input className={inputBase} value={turnaround} onChange={(event) => setTurnaround(event.target.value)} placeholder="24-48 hours, weekly, ongoing" />
+            <Field
+              label={<LabelWithIcon icon="pin">Location</LabelWithIcon>}
+              required={isTalentLocationRequired}
+              error={fieldErrors.location}
+            >
+              <input
+                aria-required={isTalentLocationRequired}
+                aria-invalid={Boolean(fieldErrors.location)}
+                className={[inputBase, fieldErrors.location ? invalidClass : ""].join(" ")}
+                value={location}
+                onChange={(event) => {
+                  setLocation(event.target.value);
+                  clearFieldError("location");
+                }}
+                placeholder={isTalentLocationRequired ? "Chennai" : "Remote, Chennai"}
+              />
             </Field>
             <Field
-              label="Rate intent"
+              label={
+                <LabelWithIcon icon="indian-rupee">
+                  Rate <span className="text-white/50">*</span>
+                </LabelWithIcon>
+              }
               wide
               required
-              error={fieldErrors.rateIntent || fieldErrors.rateRange}
+              error={fieldErrors.rateChoice || fieldErrors.rateRange}
             >
-              <div className="space-y-3">
-                <input
-                  aria-required="true"
-                  aria-invalid={Boolean(fieldErrors.rateIntent || fieldErrors.rateRange)}
-                  className={[inputBase, fieldErrors.rateIntent || fieldErrors.rateRange ? invalidClass : ""].join(" ")}
-                  value={rateNote}
-                  onChange={(event) => {
-                    setRateNote(event.target.value);
-                    clearFieldError("rateIntent");
-                    clearFieldError("rateRange");
-                  }}
-                  placeholder="Contact for pricing, project-based, monthly retainer"
-                />
+              <div className="space-y-3" data-quality-target="talent-rate">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/55">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      aria-required="true"
+                      aria-invalid={Boolean(fieldErrors.rateRange)}
+                      className={[inputBase, "pl-8", fieldErrors.rateRange ? invalidClass : ""].join(" ")}
+                      value={rateMin}
+                      onChange={(event) => {
+                        setRateMin(event.target.value);
+                        setRateIntent("");
+                        setRateNote("");
+                        clearFieldError("rateChoice");
+                        clearFieldError("rateRange");
+                      }}
+                      placeholder="Min"
+                    />
+                  </div>
+                  <span className="hidden text-base text-white/50 select-none sm:inline-flex">–</span>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/55">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      aria-required="true"
+                      aria-invalid={Boolean(fieldErrors.rateRange)}
+                      className={[inputBase, "pl-8", fieldErrors.rateRange ? invalidClass : ""].join(" ")}
+                      value={rateMax}
+                      onChange={(event) => {
+                        setRateMax(event.target.value);
+                        setRateIntent("");
+                        setRateNote("");
+                        clearFieldError("rateChoice");
+                        clearFieldError("rateRange");
+                      }}
+                      placeholder="Max"
+                    />
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1353,7 +1500,7 @@ export default function PostTalentPage() {
                       setRateMin("");
                       setRateMax("");
                       setRateNote("");
-                      clearFieldError("rateIntent");
+                      clearFieldError("rateChoice");
                       clearFieldError("rateRange");
                     }}
                   >
@@ -1367,7 +1514,7 @@ export default function PostTalentPage() {
                       setRateMin("");
                       setRateMax("");
                       setRateNote("");
-                      clearFieldError("rateIntent");
+                      clearFieldError("rateChoice");
                       clearFieldError("rateRange");
                     }}
                   >
@@ -1376,163 +1523,206 @@ export default function PostTalentPage() {
                 </div>
               </div>
             </Field>
-            <Field label="Rate min">
-              <input
-                type="number"
-                min="0"
-                aria-invalid={Boolean(fieldErrors.rateRange)}
-                className={[inputBase, fieldErrors.rateRange ? invalidClass : ""].join(" ")}
-                value={rateMin}
-                onChange={(event) => {
-                  setRateMin(event.target.value);
-                  setRateIntent("");
-                  clearFieldError("rateIntent");
-                  clearFieldError("rateRange");
-                }}
-                placeholder="5000"
-              />
-            </Field>
-            <Field label="Rate max" optional>
-              <input
-                type="number"
-                min="0"
-                aria-invalid={Boolean(fieldErrors.rateRange)}
-                className={[inputBase, fieldErrors.rateRange ? invalidClass : ""].join(" ")}
-                value={rateMax}
-                onChange={(event) => {
-                  setRateMax(event.target.value);
-                  setRateIntent("");
-                  clearFieldError("rateIntent");
-                  clearFieldError("rateRange");
-                }}
-                placeholder="25000"
-              />
-            </Field>
-            <Field label="Currency">
-              <input className={`${inputBase} uppercase`} value={rateCurrency} onChange={(event) => setRateCurrency(event.target.value)} placeholder="INR" />
-            </Field>
-          </div>
-
-          <div
-            data-quality-target="talent-first-message"
-            className="mt-8 border-t border-white/8 pt-6"
-          >
-            <h3 className="text-sm font-semibold text-white/90">What recruiters must include</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-white/50">
-              Pick the details a recruiter has to share in their first message, so every hiring
-              request lands ready to act on. Choose none if you’d rather keep it open.
-            </p>
-            <div className="mt-4">
-              <RequirementSelector
-                context="talent"
-                selectedKeys={firstMessageRequirements}
-                onChange={setFirstMessageRequirements}
-                noneSelected={noFirstMessageRequirements}
-                onNoneChange={setNoFirstMessageRequirements}
-              />
-            </div>
-            {firstMessageError ? (
-              <p className="mt-3 text-[13px] text-amber-200/90">{firstMessageError}</p>
-            ) : null}
           </div>
         </StepShell>
       );
     }
 
-    if (step === "proof") {
+    if (step === "details") {
       return (
-        <StepShell footer={footerActions}>
-          {portfolioLoading ? (
-            <p className="text-sm text-white/55">Loading portfolio projects...</p>
-          ) : workSampleItems.length ? (
-            <div className="grid gap-3 rounded-2xl" data-quality-target="talent-portfolio">
-              {workSampleItems.slice(0, 6).map((item) => {
-                const selected = selectedPortfolioIds.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => togglePortfolio(item.id)}
-                    className={[
-                      "cursor-pointer rounded-2xl border p-4 text-left transition-colors",
-                      selected ? "border-white/30 bg-white/[0.10]" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]",
-                    ].join(" ")}
-                  >
-                    <p className="line-clamp-1 text-sm font-semibold text-white/88">{item.title}</p>
-                    <p className="mt-1 line-clamp-1 text-xs text-white/48">
-                      {[item.role_name || item.role || item.user_role_in_project, item.source_type, item.tools?.slice(0, 2).join(" · ")]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </button>
-                );
-              })}
+        <StepShell title="Details" icon="sliders-horizontal" footer={footerActions}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={<LabelWithIcon icon="clock">Turnaround</LabelWithIcon>}>
+              <input
+                className={inputBase}
+                value={turnaround}
+                onChange={(event) => setTurnaround(event.target.value)}
+                placeholder="24-48 hours, weekly, ongoing"
+              />
+            </Field>
+            <Field label={<LabelWithIcon icon="globe">Timezone</LabelWithIcon>}>
+              <input
+                className={inputBase}
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+                placeholder="IST"
+              />
+            </Field>
+            <div className="sm:col-span-2" data-quality-target="talent-languages">
+              <LanguagePicker value={languages} onChange={setLanguages} idPrefix="post-talent" enableGlobalPicker />
             </div>
-          ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5" data-quality-target="talent-portfolio">
-              <p className="text-sm font-semibold text-white/86">No public portfolio projects yet.</p>
-              <p className="mt-2 text-sm leading-6 text-white/55">
-                You can publish now and add work samples later, or add projects before creating this listing.
-              </p>
-              <Link
-                href="/you?tab=portfolio"
-                className="mt-4 inline-flex cursor-pointer rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white/74 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Open portfolio →
-              </Link>
-            </div>
-          )}
+          </div>
         </StepShell>
       );
     }
 
-    if (step === "preview") {
+    if (step === "services") {
       return (
-        <StepShell footer={footerActions}>
-          <TalentPreview
-            title={title}
-            primaryRole={primaryRole || rolesList[0] || ""}
-            experience={experienceDisplay}
-            location={location}
-            timezone={timezone}
-            workMode={workMode}
-            niche={niche}
-            contentNiches={contentNichesList}
-            contentGenres={contentGenresList}
-            formats={formatsList}
-            platforms={platformsList}
-            tools={tools}
-            rateNote={effectiveRateNote}
-            rateMin={rateMin}
-            rateMax={rateMax}
-            rateCurrency={rateCurrency}
-          />
+        <StepShell title="Services" icon="briefcase" footer={footerActions}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={<LabelWithIcon icon="users">Roles</LabelWithIcon>} wide>
+              <input
+                className={inputBase}
+                value={roles}
+                onChange={(event) => setRoles(event.target.value)}
+                placeholder="Video editor, thumbnail designer"
+              />
+            </Field>
+            <Field label={<LabelWithIcon icon="list-checks">Services offered</LabelWithIcon>} wide targetId="talent-services">
+              <ServicesBulletEditor value={description} onChange={setDescription} />
+            </Field>
+          </div>
+        </StepShell>
+      );
+    }
+
+    if (step === "creatorContext") {
+      return (
+        <StepShell title="Creator context" icon="sparkles" footer={footerActions}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-4 sm:col-span-2" data-quality-target="talent-creator-context">
+              <CreatorContextChipField
+                label="Content niches"
+                helper="Choose the content areas you work in."
+                icon="sparkles"
+                targetId="talent-content-niches"
+                value={contentNichesList}
+                suggestions={CONTENT_NICHE_SUGGESTIONS}
+                onChange={(next) => {
+                  const normalized = normalizeCreatorContextList(next);
+                  setContentNiches(normalized);
+                  setNiche(normalized.join(" · "));
+                }}
+              />
+              <CreatorContextChipField
+                label="Genres"
+                helper="Select the content styles you support."
+                icon="layers"
+                targetId="talent-content-genres"
+                value={contentGenresList}
+                suggestions={CONTENT_GENRE_SUGGESTIONS}
+                onChange={(next) => setContentGenres(normalizeCreatorContextList(next))}
+              />
+              <CreatorContextChipField
+                label="Formats offered"
+                helper="Choose the services you offer."
+                icon="layout-grid"
+                targetId="talent-formats-offered"
+                value={formatsList}
+                suggestions={FORMATS_HIRED_FOR_SUGGESTIONS}
+                onChange={(next) => setFormats(normalizeCreatorContextList(next).join(", "))}
+              />
+            </div>
+            <Field label={<LabelWithIcon icon="screen">Platforms</LabelWithIcon>} wide targetId="talent-platforms">
+              <input
+                className={inputBase}
+                value={platforms}
+                onChange={(event) => setPlatforms(event.target.value)}
+                placeholder="YouTube, Instagram, TikTok"
+              />
+            </Field>
+          </div>
+        </StepShell>
+      );
+    }
+
+    if (step === "toolsPortfolio") {
+      return (
+        <StepShell title="Tools & portfolio" icon="images" footer={footerActions}>
+          <div className="space-y-4">
+            <div className="max-w-[680px] min-w-0" data-quality-target="talent-tools">
+              <ToolPicker
+                value={tools}
+                onChange={setTools}
+                inputId="post-talent-tools-picker"
+                className="space-y-2"
+                placeholder="Premiere Pro, DaVinci Resolve, Figma..."
+              />
+            </div>
+            {portfolioLoading ? (
+              <p className="text-sm text-white/55">Loading portfolio projects...</p>
+            ) : workSampleItems.length ? (
+              <div className="grid max-w-[680px] min-w-0 gap-2.5 rounded-2xl" data-quality-target="talent-portfolio">
+                <span className="inline-flex items-center gap-2 text-xs font-semibold text-white/55">
+                  <Icon name="images" className="h-4 w-4 text-white/55" />
+                  Public portfolio/work samples
+                </span>
+                {workSampleItems.slice(0, 4).map((item) => {
+                  const selected = selectedPortfolioIds.includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => togglePortfolio(item.id)}
+                      className={[
+                        "cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors",
+                        selected ? "border-white/30 bg-white/[0.10]" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]",
+                      ].join(" ")}
+                    >
+                      <p className="line-clamp-1 text-sm font-semibold text-white/88">{item.title}</p>
+                      <p className="mt-1 line-clamp-1 text-xs text-white/48">
+                        {[item.role_name || item.role || item.user_role_in_project, item.source_type, item.tools?.slice(0, 2).join(" · ")]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="max-w-[680px] rounded-2xl border border-white/10 bg-white/[0.04] p-5" data-quality-target="talent-portfolio">
+                <p className="text-sm font-semibold text-white/86">No public portfolio projects yet.</p>
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  You can publish now and add work samples later, or add projects before creating this listing.
+                </p>
+                <Link
+                  href="/you?tab=portfolio"
+                  className="mt-4 inline-flex cursor-pointer rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white/74 transition hover:bg-white/[0.06] hover:text-white"
+                >
+                  Open portfolio →
+                </Link>
+              </div>
+            )}
+          </div>
         </StepShell>
       );
     }
 
     return (
-      <StepShell footer={footerActions}>
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/38">Launch-free checkout</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">Standard talent listing</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/56">
-              Free during beta. No payment is required right now, and your listing can still be edited or closed later from your workspace.
-            </p>
+      <StepShell title="Hiring requests" icon="clipboard-list" footer={footerActions}>
+        <div data-quality-target="talent-first-message">
+          <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-white/90">
+            <Icon name="clipboard-list" className="h-4 w-4 text-white/55" />
+            What recruiters must include
+          </h3>
+          <div className="mt-4">
+            <RequirementSelector
+              context="talent"
+              selectedKeys={firstMessageRequirements}
+              onChange={(next) => {
+                setFirstMessageRequirements(next);
+                if (firstMessageError) setFirstMessageError(null);
+              }}
+              noneSelected={noFirstMessageRequirements}
+              onNoneChange={(next) => {
+                setNoFirstMessageRequirements(next);
+                if (firstMessageError) setFirstMessageError(null);
+              }}
+              customInstructionValue={firstMessageCustomInstruction}
+              onCustomInstructionChange={(next) => {
+                setFirstMessageCustomInstruction(next);
+                if (firstMessageError) setFirstMessageError(null);
+              }}
+              customInstructionError={
+                firstMessageRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+                  ? firstMessageError || undefined
+                  : undefined
+              }
+            />
           </div>
-          <div className="rounded-2xl border border-white/10 px-4 py-3 text-right">
-            <p className="text-xs text-white/42">Due today</p>
-            <p className="text-2xl font-semibold text-white">₹0</p>
-          </div>
-        </div>
-        <div className="mt-7 divide-y divide-white/10 rounded-2xl border border-white/10">
-          <CheckoutRow label="Standard price" value="₹499" />
-          <CheckoutRow label="Launch beta adjustment" value="-₹499" />
-          <CheckoutRow label="Total due now" value="₹0" strong />
-        </div>
-        <div className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-white/55">
-          Your listing will publish after confirmation. You can manage it later from your workspace.
+          {firstMessageError ? (
+            <p className="mt-3 text-[13px] text-amber-200/90">{firstMessageError}</p>
+          ) : null}
         </div>
       </StepShell>
     );
@@ -1577,7 +1767,7 @@ export default function PostTalentPage() {
             rateNote={effectiveRateNote}
             rateMin={rateMin}
             rateMax={rateMax}
-            rateCurrency={rateCurrency}
+            rateCurrency="INR"
           />
         </aside>
       </div>
@@ -1601,14 +1791,5 @@ export default function PostTalentPage() {
         publishButtonRef={publishAnywayButtonRef}
       />
     </main>
-  );
-}
-
-function CheckoutRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-      <span className="text-white/52">{label}</span>
-      <span className={strong ? "font-semibold text-white" : "text-white/74"}>{value}</span>
-    </div>
   );
 }

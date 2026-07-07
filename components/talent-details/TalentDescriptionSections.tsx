@@ -32,7 +32,7 @@ export default function TalentDescriptionSections({
 
   if (aboutText) {
     contentSections.push(
-      <BodySection key="about" title="About this talent">
+      <BodySection key="about" title="About this talent" icon="user">
         <p className="whitespace-pre-line">{aboutText}</p>
       </BodySection>
     );
@@ -40,7 +40,7 @@ export default function TalentDescriptionSections({
 
   if (services.length) {
     contentSections.push(
-      <BodySection key="services" title="Services offered">
+      <BodySection key="services" title="Services offered" icon="briefcase">
         <BulletList items={services} />
       </BodySection>
     );
@@ -48,7 +48,7 @@ export default function TalentDescriptionSections({
 
   if (rows.length) {
     contentSections.push(
-      <BodySection key="collaboration" title="Collaboration preferences">
+      <BodySection key="collaboration" title="Collaboration preferences" icon="sliders-horizontal">
         <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
           {rows.map((row) => (
             <div key={row.label}>
@@ -70,7 +70,7 @@ export default function TalentDescriptionSections({
   if (!hasContent && !hasPortfolioItems && !hasTags) {
     return (
       <section className={`${LISTING_PANEL_CLASS} py-8`}>
-        <SectionLabel>Listing details</SectionLabel>
+        <SectionLabel icon="file">Listing details</SectionLabel>
         <p className="mt-4 text-sm leading-relaxed text-white/55">
           This listing does not have additional details yet.
         </p>
@@ -89,7 +89,7 @@ export default function TalentDescriptionSections({
       {hasPortfolioItems ? (
         <section className={`${LISTING_PANEL_CLASS} min-w-0 py-8`}>
           <div className="flex items-center justify-between gap-4">
-            <SectionLabel>Relevant portfolio</SectionLabel>
+            <SectionLabel icon="images">Relevant portfolio</SectionLabel>
             {fullPortfolioHref ? (
               <Link
                 href={fullPortfolioHref}

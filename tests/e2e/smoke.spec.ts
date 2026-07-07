@@ -351,9 +351,9 @@ test("job apply modal blocks an empty submit with calm inline validation", async
 });
 
 test("job detail without requirements applies without opening the modal", async ({ page }) => {
-  // Mock job "5" declares no first-message requirements (jobs 1-4 carry demo
+  // Mock job "15" declares no first-message requirements (most demo jobs carry
   // requirement sets so the modal can be exercised on the listing pages).
-  await page.goto("/jobs/5", { waitUntil: "domcontentloaded" });
+  await page.goto("/jobs/15", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("job-apply-panel").first()).toBeVisible();
   await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
@@ -400,9 +400,9 @@ test("talent hire modal blocks an empty submit with calm inline validation", asy
 });
 
 test("talent detail without requirements requests without opening the modal", async ({ page }) => {
-  // The motion-designer mock listing declares no first-message requirements
-  // (the first few talent listings carry demo requirement sets).
-  await page.goto("/talent/mock-talent-motion-designer", { waitUntil: "domcontentloaded" });
+  // The scriptwriter mock listing declares no first-message requirements
+  // (most other talent listings carry demo requirement sets).
+  await page.goto("/talent/mock-talent-scriptwriter", { waitUntil: "domcontentloaded" });
 
   // The detail page renders the actions panel for both desktop and mobile layouts,
   // so the hire button appears more than once; first() keeps the assertion strict-safe.

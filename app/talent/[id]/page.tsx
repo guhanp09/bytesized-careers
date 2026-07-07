@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
+import { notFound } from "next/navigation";
 import TalentListingActionsClient from "../../../components/TalentListingActionsClient";
 import OwnerListingControlsClient from "../../../components/OwnerListingControlsClient";
 import TalentHero from "../../../components/talent-details/TalentHero";
 import TalentDescriptionSections from "../../../components/talent-details/TalentDescriptionSections";
-import { StateCard } from "../../../components/ui";
+import { TalentBrowse } from "../page";
 import { authOptions } from "../../../lib/auth";
 import {
   canUseLocalMockFallback,
@@ -20,12 +21,17 @@ import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfile
 import { MOCK_TALENT_LISTINGS } from "../../../lib/mockTalentListings";
 import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
+import { getSeoFilterRoute } from "../../../lib/seoFilterRoutes";
 import { formatTalentListingExperience } from "../../../lib/talentListing";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const TITLE_SCALE = 0.58;
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000").replace(
+  /\/+$/,
+  ""
+);
 
 const mockPortfolioTitles: Record<string, string[]> = {
   "mock-talent-retention-editor": [
@@ -264,12 +270,16 @@ function mockPortfolioItemsFor(listing: BackendTalentListing): BackendPortfolioI
   });
 }
 
-function servicesFor(listing: BackendTalentListing) {
-  const descriptionLines = (listing.description || "")
+function serviceLinesFromDescription(description?: string | null) {
+  return (description || "")
     .split("\n")
     .map((line) => line.replace(/^\s*[-•]\s*/, "").trim())
     .filter(Boolean)
     .slice(0, 5);
+}
+
+function servicesFor(listing: BackendTalentListing) {
+  const descriptionLines = serviceLinesFromDescription(listing.description);
   if (descriptionLines.length >= 2) return descriptionLines;
 
   const role = listing.primary_role || listing.roles[0] || "content work";
@@ -281,7 +291,8 @@ function servicesFor(listing: BackendTalentListing) {
 }
 
 function aboutFor(listing: BackendTalentListing) {
-  if (listing.description?.trim()) return listing.description.trim();
+  const descriptionLines = serviceLinesFromDescription(listing.description);
+  if (descriptionLines.length < 2 && listing.description?.trim()) return listing.description.trim();
   const role = listing.primary_role || listing.roles[0] || "talent";
   const context = uniq([
     ...(listing.content_niches || []),
@@ -331,9 +342,30 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
+  const seoRoute = getSeoFilterRoute("talent", String(id));
+  if (seoRoute) {
+    return {
+      title: seoRoute.metaTitle,
+      description: seoRoute.metaDescription,
+      alternates: {
+        canonical: seoRoute.path,
+      },
+      openGraph: {
+        title: seoRoute.metaTitle,
+        description: seoRoute.metaDescription,
+        siteName: "CreatorJobs",
+        type: "website",
+      },
+      twitter: {
+        card: "summary",
+        title: seoRoute.metaTitle,
+        description: seoRoute.metaDescription,
+      },
+    };
+  }
   const dataSource = await getMarketplaceDataSourceState();
   const listing = await getListing(String(id), dataSource);
-  if (!listing) return { title: "Talent listing not found | CreatorJobs" };
+  if (!listing) return { title: "Talent listing not found", robots: { index: false, follow: false } };
   const description = [displayName(listing), listing.primary_role || listing.roles[0], listing.location, rateLabel(listing)]
     .filter(Boolean)
     .join(" · ");
@@ -365,24 +397,33 @@ export default async function TalentListingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const seoRoute = getSeoFilterRoute("talent", String(id));
+  if (seoRoute) {
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "BreadcrumbList",
+              itemListElement: [
+                { "@type": "ListItem", position: 1, name: "Talent", item: `${siteUrl}/talent` },
+                { "@type": "ListItem", position: 2, name: seoRoute.h1, item: `${siteUrl}${seoRoute.path}` },
+              ],
+            }),
+          }}
+        />
+        <TalentBrowse searchParams={Promise.resolve({})} seoRoute={seoRoute} />
+      </>
+    );
+  }
   const dataSource = await getMarketplaceDataSourceState();
   const listing = await getListing(String(id), dataSource);
   const session = await getServerSession(authOptions);
 
   if (!listing) {
-    return (
-      <main className="min-h-screen bg-[#0b0b0f] px-4 py-10 text-white sm:px-6">
-        <section className="mx-auto max-w-4xl">
-          <StateCard
-            icon="user"
-            title="Talent listing not found"
-            description="This listing is unavailable or has already been removed."
-            actionLabel="Browse talent"
-            actionHref="/talent"
-          />
-        </section>
-      </main>
-    );
+    notFound();
   }
 
   const name = displayName(listing);
@@ -456,9 +497,9 @@ export default async function TalentListingPage({
             {!isOwner ? (
               <TalentListingActionsClient
                 listingId={listing.id}
-                talentName={name}
                 views={listing.views}
                 requirementKeys={listing.first_message_requirements || []}
+                customInstructionPrompt={listing.first_message_custom_instruction || null}
                 metadataRows={creatorContextRows}
                 tools={tools}
               />

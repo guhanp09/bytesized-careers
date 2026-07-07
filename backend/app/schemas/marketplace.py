@@ -15,8 +15,21 @@ TalentListingStatus = Literal["draft", "published", "paused", "closed", "archive
 TalentInterestStatus = Literal[
     "new", "reviewing", "contacted", "declined", "archived", "withdrawn"
 ]
-ReportTargetType = Literal["job", "talent_listing", "profile"]
+ReportTargetType = Literal["job", "talent_listing", "profile", "message"]
 ReportStatus = Literal["open", "dismissed", "action_taken"]
+# User-facing report reasons. "suspicious" predates the richer set and stays
+# valid so old clients/tests keep working; the reason picker offers the rest.
+ReportCategory = Literal[
+    "spam",
+    "scam_or_fraud",
+    "harassment",
+    "impersonation",
+    "off_platform_payment",
+    "inappropriate_content",
+    "suspicious_or_inaccurate",
+    "suspicious",
+    "other",
+]
 EntitlementKind = Literal["job_post", "talent_listing", "featured_job", "featured_talent_listing"]
 
 
@@ -45,6 +58,36 @@ class JobApplicationStatusUpdate(BaseModel):
     status: ApplicationStatus
 
 
+# Owner-side pipeline stages: statuses the manager of a received item may set.
+# "withdrawn" stays sender-only (its own endpoint), and "new" is the arrival
+# state rather than a stage a manager moves things into.
+ManagedApplicationStatus = Literal[
+    "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"
+]
+ManagedInterestStatus = Literal["reviewing", "contacted", "declined", "archived"]
+
+BULK_STATUS_MAX_IDS = 50
+
+
+class JobApplicationBulkStatusUpdate(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_STATUS_MAX_IDS)
+    status: ManagedApplicationStatus
+    # Stage moves are internal tracking by default; informing the other side is
+    # an explicit, user-confirmed act (a status-update chat message). The bell
+    # notification here is therefore opt-in rather than automatic.
+    notify: bool = False
+
+
+class TalentInterestBulkStatusUpdate(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_STATUS_MAX_IDS)
+    status: ManagedInterestStatus
+    notify: bool = False
+
+
+class ManagerNoteUpdate(BaseModel):
+    note: str | None = Field(default=None, max_length=5000)
+
+
 class JobApplicationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +100,8 @@ class JobApplicationRead(BaseModel):
     first_message_answers: dict = Field(default_factory=dict)
     applicant_snapshot: dict = Field(default_factory=dict)
     status: ApplicationStatus
+    # Job owner's private note. Sender-facing endpoints blank this field.
+    manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -89,6 +134,7 @@ class TalentListingBase(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     portfolio_item_ids: list[str] = Field(default_factory=list)
     first_message_requirements: list[str] = Field(default_factory=list)
+    first_message_custom_instruction: str | None = Field(default=None, max_length=2000)
     status: TalentListingStatus = "draft"
     is_featured: bool = False
     featured_until: datetime | None = None
@@ -131,6 +177,7 @@ class TalentListingUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     portfolio_item_ids: list[str] | None = None
     first_message_requirements: list[str] | None = None
+    first_message_custom_instruction: str | None = Field(default=None, max_length=2000)
     status: TalentListingStatus | None = None
     is_featured: bool | None = None
     featured_until: datetime | None = None
@@ -215,6 +262,8 @@ class TalentInterestRead(BaseModel):
     note: str | None = None
     first_message_answers: dict = Field(default_factory=dict)
     status: TalentInterestStatus
+    # Listing owner's (talent's) private note. Sender-facing endpoints blank this field.
+    manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -254,7 +303,7 @@ class ActivitySummaryResponse(BaseModel):
 class ReportCreate(BaseModel):
     target_type: ReportTargetType
     target_id: str = Field(min_length=1, max_length=64)
-    category: str = Field(min_length=2, max_length=64)
+    category: ReportCategory
     note: str | None = Field(default=None, max_length=3000)
 
 
@@ -276,10 +325,8 @@ class ReportRead(BaseModel):
     updated_at: datetime
 
 
-class ReportAdminUpdate(BaseModel):
-    status: ReportStatus = "action_taken"
-    action: str = Field(min_length=2, max_length=64)
-    admin_note: str | None = Field(default=None, max_length=3000)
+# Admin resolution schemas live in app/schemas/admin.py (AdminReportResolveRequest,
+# enum-enforced actions); the old free-string ReportAdminUpdate is retired.
 
 
 class LaunchCheckoutRequest(BaseModel):

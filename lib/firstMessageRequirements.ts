@@ -87,6 +87,7 @@ export const CUSTOM_INSTRUCTION_REQUIREMENT_KEY = "custom_instruction";
 export type CurrencyAnswer = { amount: string; unit: string };
 export type TurnaroundAnswer = { value: string; unit: "hours" | "days" | "weeks" };
 export type PortfolioRef = { id: string; title: string; url?: string };
+export type OpeningMessageAttachment = { label: string; url?: string | null };
 export type CustomInstructionAnswer = {
   prompt?: string;
   response: string;
@@ -288,6 +289,13 @@ export const FIRST_MESSAGE_REQUIREMENTS: RequirementDef[] = [
       placeholder: "Respond to the custom instruction from this listing.",
       summary: "Custom instruction",
     },
+    talent: {
+      owner: "Custom instruction",
+      ownerHint: "Ask for something specific.",
+      requester: "Custom instruction",
+      placeholder: "Respond to the custom instruction from this listing.",
+      summary: "Custom instruction",
+    },
   },
 ];
 
@@ -349,6 +357,41 @@ export function isStringArray(value: unknown): value is string[] {
 }
 export function isCustomInstructionAnswer(value: unknown): value is CustomInstructionAnswer {
   return Boolean(value) && typeof value === "object" && "response" in (value as object);
+}
+
+function comparableText(value: string | null | undefined): string {
+  return (value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function comparableUrl(value: string | null | undefined): string {
+  return (value || "").trim().replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Legacy opening-message attachments and structured `relevant_portfolio` answers
+ * can carry the same portfolio links. Render the structured answer once and keep
+ * only attachments that are not already represented there.
+ */
+export function filterStructuredPortfolioDuplicateAttachments<T extends OpeningMessageAttachment>(
+  attachments: readonly T[] | null | undefined,
+  answers: FirstMessageAnswers | null | undefined
+): T[] {
+  if (!attachments?.length) return [];
+  const portfolio = answers?.relevant_portfolio;
+  if (!isPortfolioAnswer(portfolio) || portfolio.length === 0) return [...attachments];
+
+  const portfolioUrls = new Set(portfolio.map((item) => comparableUrl(item.url)).filter(Boolean));
+  const portfolioLabels = new Set(portfolio.map((item) => comparableText(item.title)).filter(Boolean));
+
+  return attachments.filter((attachment) => {
+    const url = comparableUrl(attachment.url);
+    if (url && portfolioUrls.has(url)) return false;
+
+    const label = comparableText(attachment.label);
+    if (label && portfolioLabels.has(label)) return false;
+
+    return true;
+  });
 }
 
 // ── Validation ──────────────────────────────────────────────────────────────────
@@ -471,7 +514,7 @@ export type RequirementSummaryItem = {
   /** Single-line value for compact display, when applicable. */
   text?: string;
   /** Link/portfolio values for richer rendering. */
-  links?: { label: string; url?: string }[];
+  links?: { id?: string; label: string; url?: string; kind?: "portfolio" | "link" }[];
   /** Headline value (e.g. the rate) shown without a label, since it reads on its own. */
   emphasis?: boolean;
 };
@@ -513,11 +556,15 @@ export function summarizeAnswers(
       const text = formatTurnaround(value);
       if (text) items.push({ ...base, text });
     } else if (def.answerType === "portfolio" && isPortfolioAnswer(value)) {
-      const links = value.map((p) => ({ label: p.title || "Portfolio item", url: p.url }));
+      const links = value.map((p) => ({
+        id: p.id,
+        label: p.title || "Portfolio item",
+        url: p.url,
+        kind: "portfolio" as const,
+      }));
       if (links.length) {
         items.push({
           ...base,
-          text: `${links.length} selected ${links.length === 1 ? "item" : "items"}`,
           links,
         });
       }

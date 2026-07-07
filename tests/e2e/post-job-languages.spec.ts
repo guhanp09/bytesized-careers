@@ -72,14 +72,14 @@ test("post-job reference videos support timestamp rows and multiple videos", asy
   await expect(referenceStep).toBeVisible();
 
   await referenceStep.getByRole("button", { name: "Add timestamp" }).click();
-  await expect(referenceStep.getByLabel("Timestamp 2")).toBeVisible();
+  await expect(referenceStep.getByLabel("Timestamp 2", { exact: true })).toBeVisible();
 
-  const firstTimestamp = referenceStep.getByLabel("Timestamp 1");
+  const firstTimestamp = referenceStep.getByLabel("Timestamp 1", { exact: true });
   await firstTimestamp.fill("4:4");
   await firstTimestamp.blur();
   await expect(firstTimestamp).toHaveValue("4:04");
 
-  const secondTimestamp = referenceStep.getByLabel("Timestamp 2");
+  const secondTimestamp = referenceStep.getByLabel("Timestamp 2", { exact: true });
   await secondTimestamp.fill("33");
   await secondTimestamp.blur();
   await expect(secondTimestamp).toHaveValue("33:00");

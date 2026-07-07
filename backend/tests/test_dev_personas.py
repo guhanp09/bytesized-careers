@@ -85,6 +85,35 @@ async def test_persona_relationship_data_serializes_through_read_schemas(client:
     assert (await client.get("/api/v1/me/activity/summary", headers=talent_headers)).status_code == 200
 
 
+async def test_persona_seed_includes_current_first_message_answers(client: AsyncClient) -> None:
+    assert (await client.post(SEED_URL, json={"scenario": "full_demo"})).status_code == 200
+    legacy_keys = {"portfolio_link", "rate_expectation"}
+
+    _, recruiter_token = await _login(client, "recruiter-active")
+    recruiter_headers = {"Authorization": f"Bearer {recruiter_token}"}
+    received = await client.get("/api/v1/me/applications/received", headers=recruiter_headers)
+    assert received.status_code == 200
+    applications = received.json()
+    structured_apps = [app for app in applications if app["first_message_answers"]]
+    assert structured_apps
+    for app in structured_apps:
+        answers = app["first_message_answers"]
+        assert not (legacy_keys & set(answers))
+        assert any(key in answers for key in ("expected_rate", "relevant_portfolio", "turnaround"))
+
+    _, talent_token = await _login(client, "talent-complete")
+    talent_headers = {"Authorization": f"Bearer {talent_token}"}
+    interests = await client.get("/api/v1/me/talent-interests", headers=talent_headers)
+    assert interests.status_code == 200
+    structured_interests = [interest for interest in interests.json() if interest["first_message_answers"]]
+    assert structured_interests
+    for interest in structured_interests:
+        answers = interest["first_message_answers"]
+        assert "project_budget" in answers
+        assert "project_brief" in answers
+        assert not (legacy_keys & set(answers))
+
+
 async def test_seed_rejects_unknown_scenario(client: AsyncClient) -> None:
     response = await client.post(SEED_URL, json={"scenario": "does-not-exist"})
     assert response.status_code == 400

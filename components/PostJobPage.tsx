@@ -46,8 +46,11 @@ import { normalizeReferenceTimestampNote, normalizeReferenceVideo, serializeRefe
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type TurnaroundUnit = "hours" | "days" | "weeks";
 type Turnaround = { value: number; unit: TurnaroundUnit } | null;
-type BudgetIntent = "" | "range" | "flexible";
+type BudgetIntent = "" | "range" | "flexible" | "contact";
 type JobPlatform = IdentityPlatform | "";
+
+const budgetIntentLabel = (intent: BudgetIntent) =>
+  intent === "contact" ? "Contact for pricing" : intent === "flexible" ? "Flexible" : "";
 
 type Step =
   | "basics"
@@ -1171,8 +1174,8 @@ export default function PostJobPage() {
     !Number.isNaN(budgetMaxNumber) &&
     budgetMaxNumber >= budgetMinNumber;
   const hasAnyBudgetInput = hasBudgetMin || hasBudgetMax;
-  const hasFlexibleBudgetIntent = budgetIntent === "flexible" && !hasAnyBudgetInput;
-  const hasCompensationIntent = hasValidBudgetRange || hasFlexibleBudgetIntent;
+  const hasExplicitBudgetIntent = (budgetIntent === "flexible" || budgetIntent === "contact") && !hasAnyBudgetInput;
+  const hasCompensationIntent = hasValidBudgetRange || hasExplicitBudgetIntent;
   const backendAccessToken = session?.backendAccessToken;
   const activeBackendAccessToken = resolvedBackendAccessToken || backendAccessToken;
   const oauthProviderAccountId = session?.user?.providerAccountId;
@@ -1305,7 +1308,15 @@ export default function PostJobPage() {
         }
         const budgetMinValue = wholeNumberString(draft.budget_amount ?? draft.budget_min);
         const budgetMaxValue = wholeNumberString(draft.budget_max);
-        const nextBudgetIntent: BudgetIntent = budgetMinValue && budgetMaxValue ? "range" : "";
+        const budgetNote = typeof draft.budget_note === "string" ? draft.budget_note.trim().toLowerCase() : "";
+        const nextBudgetIntent: BudgetIntent =
+          budgetMinValue && budgetMaxValue
+            ? "range"
+            : budgetNote === "contact for pricing"
+              ? "contact"
+              : budgetNote === "flexible"
+                ? "flexible"
+                : "";
         const experience = experienceParts(draft.experience_level);
         const nextWorkMode = normalizeWorkMode(draft.work_mode);
         const nextLocation = typeof draft.location === "string" ? draft.location : "";
@@ -1364,7 +1375,7 @@ export default function PostJobPage() {
         setPreviewBudgetText(
           nextBudgetIntent === "range"
             ? formatBudgetPreview(budgetMinValue, budgetMaxValue, draft.budget_unit === "per month" ? "per month" : "per project")
-            : ""
+            : budgetIntentLabel(nextBudgetIntent)
         );
         setPreviewLocationText(nextWorkMode === "Remote" ? "Remote" : nextWorkMode && nextLocation ? `${nextWorkMode} - ${nextLocation}` : "");
         setPreviewExperienceText(
@@ -1686,7 +1697,7 @@ export default function PostJobPage() {
       case "cityInvalid":
         return "Incorrect city name.";
       case "budgetMissing":
-        return "Add a budget range or choose Flexible.";
+        return "Add a budget range, or choose Flexible/Contact for pricing.";
       case "budgetRange":
         return "Add both min and max budget, with max at least min.";
       case "identity":
@@ -2070,7 +2081,7 @@ export default function PostJobPage() {
     hiringIdentityId: selectedHiringIdentityId || undefined,
     hiringVerificationStatus: activeHiringVerificationStatus || undefined,
     workMode,
-    budget: previewBudgetText || (budgetIntent === "flexible" ? "Flexible" : budgetText),
+    budget: previewBudgetText || budgetIntentLabel(budgetIntent) || budgetText,
     about,
     responsibilities,
     requirements,
@@ -2189,8 +2200,7 @@ export default function PostJobPage() {
       : "";
     const normalizedLocation = previewLocationText || locationText || "Remote";
     const normalizedExperience = previewExperienceText || experienceText || "Any";
-    const normalizedBudgetText =
-      previewBudgetText || (budgetIntent === "flexible" ? "Flexible" : budgetText);
+    const normalizedBudgetText = previewBudgetText || budgetIntentLabel(budgetIntent) || budgetText;
     const selectedYouTubeChannelId =
       requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity ? identity?.brandId : undefined;
     const normalizedChannelName = activeHiringDisplayName;
@@ -2256,6 +2266,7 @@ export default function PostJobPage() {
       location: normalizedLocation,
       budget_amount: hasPersistedBudget ? budgetAmountValue : null,
       budget_max: hasPersistedBudget ? budgetMaxValue : null,
+      budget_note: hasPersistedBudget ? null : budgetIntentLabel(budgetIntent) || null,
       budget_currency: "INR",
       budget_unit: budgetUnit,
       experience_level: normalizedExperience,
@@ -2469,6 +2480,7 @@ export default function PostJobPage() {
       location: normalizedLocation,
       budget_amount: hasPersistedBudget ? budgetAmountValue : null,
       budget_max: hasPersistedBudget ? budgetMaxValue : null,
+      budget_note: hasPersistedBudget ? null : budgetIntentLabel(budgetIntent) || null,
       budget_currency: "INR",
       budget_unit: budgetUnit,
       experience_level: experienceText || null,
@@ -2528,7 +2540,7 @@ export default function PostJobPage() {
       hasBudgetMin && hasBudgetMax && !Number.isNaN(minNum) && !Number.isNaN(maxNum) && maxNum >= minNum;
 
     if (!hasBudgetMin && !hasBudgetMax) {
-      nextBudget = budgetIntent === "flexible" ? "Flexible" : "";
+      nextBudget = budgetIntentLabel(budgetIntent);
     } else if (budgetValid) {
       nextBudget = formatBudgetPreview(budgetMin, budgetMax, budgetUnit);
     }

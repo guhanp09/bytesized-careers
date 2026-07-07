@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import RatingDisplay from "../RatingDisplay";
 import { ReceivedApplicant } from "../../lib/mockApplications";
@@ -19,6 +19,27 @@ const getInitials = (name: string) => {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 };
+
+type SectionIconName = ComponentProps<typeof Icon>["name"];
+
+function SectionHeading({
+  icon,
+  children,
+  className,
+}: {
+  icon: SectionIconName;
+  children: ReactNode;
+  className: string;
+}) {
+  return (
+    <h2 className={join("inline-flex items-center gap-2", className)}>
+      <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+        <Icon name={icon} className="h-4 w-4" />
+      </span>
+      <span>{children}</span>
+    </h2>
+  );
+}
 
 export default function ReceivedApplicationsClient({
   applicants,
@@ -57,7 +78,9 @@ export default function ReceivedApplicationsClient({
         <div className="grid gap-4 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
           <aside className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 sm:p-5 shadow-[0_18px_55px_-32px_rgba(0,0,0,0.95)] min-h-[560px] flex flex-col">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-white/95">Received</h2>
+              <SectionHeading icon="inbox" className="text-sm font-semibold text-white/95">
+                Received
+              </SectionHeading>
               <span className="text-xs text-white/60">{filteredApplicants.length}</span>
             </div>
 
@@ -147,25 +170,33 @@ export default function ReceivedApplicationsClient({
                 </div>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <h2 className="text-xs uppercase tracking-[0.14em] text-white/45">Applicant summary</h2>
+                  <SectionHeading icon="notebook-text" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Applicant summary
+                  </SectionHeading>
                   <p className="mt-2 text-sm leading-relaxed text-white/75">{selectedApplicant.bio}</p>
                 </article>
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <h2 className="text-xs uppercase tracking-[0.14em] text-white/45">Applied To</h2>
+                    <SectionHeading icon="briefcase" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                      Applied To
+                    </SectionHeading>
                     <p className="mt-2 text-sm text-white/85">{selectedApplicant.jobAppliedToTitle}</p>
                     <p className="mt-1 text-xs text-white/50">Applied {selectedApplicant.appliedAt}</p>
                   </article>
                   <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <h2 className="text-xs uppercase tracking-[0.14em] text-white/45">Location / Availability</h2>
+                    <SectionHeading icon="pin" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                      Location / Availability
+                    </SectionHeading>
                     <p className="mt-2 text-sm text-white/85">{selectedApplicant.location}</p>
                     <p className="mt-1 text-xs text-white/55">{selectedApplicant.availability}</p>
                   </article>
                 </div>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <h2 className="text-xs uppercase tracking-[0.14em] text-white/45">Skills & Tools</h2>
+                  <SectionHeading icon="sliders-horizontal" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Skills & Tools
+                  </SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[...selectedApplicant.skills, ...selectedApplicant.tools].map((item) => (
                       <span
@@ -179,7 +210,9 @@ export default function ReceivedApplicationsClient({
                 </article>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <h2 className="text-xs uppercase tracking-[0.14em] text-white/45">Portfolio Links</h2>
+                  <SectionHeading icon="images" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Portfolio Links
+                  </SectionHeading>
                   {selectedApplicant.portfolioLinks.length ? (
                     <ul className="mt-3 space-y-2">
                       {selectedApplicant.portfolioLinks.map((link) => (

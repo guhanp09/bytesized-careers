@@ -267,6 +267,8 @@ test("talent blank work mode and rate stay incomplete", () => {
 
   assert.equal(c.requiredItems.find((i) => i.key === "workMode").done, false);
   assert.equal(c.requiredItems.find((i) => i.key === "rate").done, false);
+  assert.equal(c.requiredItems.find((i) => i.key === "workMode").jump, "basics");
+  assert.equal(c.requiredItems.find((i) => i.key === "rate").jump, "basics");
   assert.ok(c.missingRequiredItems.some((i) => i.key === "workMode"));
   assert.ok(c.missingRequiredItems.some((i) => i.key === "rate"));
 });
@@ -344,6 +346,30 @@ test("talent creator context checklist completes when at least two fields are fi
   assert.equal(creatorContext.done, true);
   assert.equal(creatorContext.label, "Add creator context");
   assert.equal(creatorContext.helpText, "Helps recruiters find you in search.");
+  assert.equal(creatorContext.groupLabel, "Creator context");
+});
+
+test("talent draft completion groups route to the restructured talent flow", () => {
+  const c = getTalentDraftCompletion({
+    title: "Thumbnail designer",
+    primary_role: "Thumbnail Designer",
+    work_mode: "remote",
+    rate_min: 1000,
+    platforms: ["YouTube"],
+    content_niches: ["Finance"],
+    content_genres: ["Explainers"],
+    tools: ["Photoshop"],
+    description: "High-CTR thumbnail packaging for education and finance channels.",
+    portfolio_item_ids: ["p1"],
+  });
+
+  assert.equal(c.recommendedItems.find((i) => i.key === "niche").groupLabel, "Creator context");
+  assert.equal(c.recommendedItems.find((i) => i.key === "tools").groupLabel, "Tools & portfolio");
+  assert.equal(c.recommendedItems.find((i) => i.key === "portfolio").groupLabel, "Tools & portfolio");
+  assert.equal(c.recommendedItems.find((i) => i.key === "description").groupLabel, "Services");
+
+  assert.equal(c.keyFacts.find((item) => item.key === "workMode").jump, "basics");
+  assert.equal(c.keyFacts.find((item) => item.key === "rate").jump, "basics");
 });
 
 test("fully complete & strong talent draft", () => {

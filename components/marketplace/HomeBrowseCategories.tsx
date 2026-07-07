@@ -27,7 +27,10 @@ export function HomeBrowseCategories() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Explore</p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">Browse by category</h2>
+            <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
+              <Icon name="layout-grid" className="h-5 w-5 text-white/55" />
+              <span>Browse by category</span>
+            </h2>
           </div>
           <Link
             href="/jobs"

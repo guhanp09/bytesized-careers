@@ -79,6 +79,7 @@ class JobBase(BaseModel):
 
     budget_amount: Decimal | None = Field(default=None, ge=0)
     budget_max: Decimal | None = Field(default=None, ge=0)
+    budget_note: str | None = Field(default=None, max_length=64)
     budget_currency: str = Field(default="INR", min_length=3, max_length=3)
     budget_unit: BudgetUnit = "per project"
 
@@ -133,6 +134,14 @@ class JobBase(BaseModel):
     def normalize_currency(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator("budget_note")
+    @classmethod
+    def normalize_budget_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
     @field_validator("platforms", "responsibilities", "requirements", "application_requirements", "tags")
     @classmethod
     def strip_items(cls, value: list[str]) -> list[str]:
@@ -165,6 +174,7 @@ class JobUpdate(BaseModel):
 
     budget_amount: Decimal | None = Field(default=None, ge=0)
     budget_max: Decimal | None = Field(default=None, ge=0)
+    budget_note: str | None = Field(default=None, max_length=64)
     budget_currency: str | None = Field(default=None, min_length=3, max_length=3)
     budget_unit: BudgetUnit | None = None
 
@@ -220,6 +230,14 @@ class JobUpdate(BaseModel):
         if value is None:
             return None
         return value.upper()
+
+    @field_validator("budget_note")
+    @classmethod
+    def normalize_budget_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
 
     @field_validator(*CREATOR_CONTEXT_FIELDS)
     @classmethod

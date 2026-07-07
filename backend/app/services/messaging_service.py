@@ -158,8 +158,16 @@ async def participant_names(session: AsyncSession, conversation: Conversation) -
 
 
 async def post_message(
-    session: AsyncSession, conversation: Conversation, sender: User, body: str
+    session: AsyncSession,
+    conversation: Conversation,
+    sender: User,
+    body: str,
+    kind: str | None = None,
 ) -> Message:
+    """Post a message. ``kind`` marks platform-generated entries (currently
+    "status_update", posted when a manager chooses to inform the other side of
+    a pipeline stage change) so clients can render them apart from user text.
+    """
     if not is_participant(conversation, sender.id):
         raise NotAParticipant()
     clean = (body or "").strip()
@@ -167,7 +175,12 @@ async def post_message(
         raise EmptyMessageBody()
     clean = clean[:MAX_MESSAGE_LENGTH]
 
-    message = Message(conversation_id=conversation.id, sender_user_id=sender.id, body=clean)
+    message = Message(
+        conversation_id=conversation.id,
+        sender_user_id=sender.id,
+        body=clean,
+        metadata_json={"kind": kind} if kind else {},
+    )
     session.add(message)
     await session.flush()  # populate message.id / created_at before referencing them
 
@@ -210,6 +223,7 @@ def serialize_message(message: Message, viewer_id: UUID, sender_name: str | None
         "from_me": message.sender_user_id == viewer_id,
         "sender_name": sender_name,
         "body": message.body,
+        "kind": (message.metadata_json or {}).get("kind"),
         "created_at": message.created_at.isoformat() if message.created_at else None,
     }
 

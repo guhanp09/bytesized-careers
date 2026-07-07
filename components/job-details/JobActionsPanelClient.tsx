@@ -16,7 +16,9 @@ import {
   saveJob,
   type BackendPortfolioItem,
   type BackendRole,
+  type ReportCategory,
 } from "../../lib/backendClient";
+import ReportDialog from "../ReportDialog";
 import {
   CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
   FirstMessageAnswers,
@@ -26,7 +28,6 @@ import {
   validateAnswers,
 } from "../../lib/firstMessageRequirements";
 import { toPortfolioOption, toPortfolioOptions } from "../../lib/firstMessagePortfolio";
-import { buildOpeningMessageBody, resolveJobChannelName } from "../../lib/openingMessage";
 import type { PortfolioState } from "../first-message/FirstMessageFields";
 import ActionSuccessModal from "../first-message/ActionSuccessModal";
 import FirstMessageRequirementsModal from "../first-message/FirstMessageRequirementsModal";
@@ -319,24 +320,13 @@ export default function JobActionsPanelClient({
       const portfolioItemIds = isPortfolioAnswer(portfolioAnswer)
         ? portfolioAnswer.map((ref) => ref.id).filter((id) => !id.startsWith("link:"))
         : [];
-      // Store a real opening message so the inbox never shows a blank bubble: a
-      // required fit note becomes the message, otherwise a natural default is
-      // generated (personalised with the channel, rotated deterministically per
-      // applicant + listing so it's varied but stable).
-      const fitNote =
-        requirementKeys.includes("fit_note") && typeof normalizedAnswers.fit_note === "string"
-          ? normalizedAnswers.fit_note
-          : "";
-      const coverNote = buildOpeningMessageBody({
-        context: "job",
-        recipientName: resolveJobChannelName(job),
-        fitNote,
-        seed: `${job.id}:${session?.backendUserId ?? ""}:${job.postedByUserId ?? ""}`,
-      });
+      // The inbox creates the opening system event. Structured requirement
+      // answers render as the first-message summary; no-requirement applications
+      // should not create an extra generated text bubble.
       // The backend is idempotent: a repeat apply returns the existing record, so
       // its id always points at the one conversation this application created.
       const application = await applyToJob(token, String(job.id), {
-        cover_note: coverNote,
+        cover_note: null,
         ...(portfolioItemIds.length ? { portfolio_item_ids: portfolioItemIds } : {}),
         ...(requirementKeys.length ? { first_message_answers: normalizedAnswers } : {}),
       });
@@ -353,20 +343,24 @@ export default function JobActionsPanelClient({
     }
   };
 
-  const onReport = async () => {
-    if (reportState === "sent" || reportState === "sending") return;
+  // "Report this listing" opens the shared reason picker; the report itself is
+  // submitted from the dialog with the chosen category + optional note.
+  const [reportOpen, setReportOpen] = React.useState(false);
+  const onReport = () => {
+    if (reportState === "sent") return;
+    setReportOpen(true);
+  };
+
+  const submitReport = async (category: ReportCategory, note: string | null) => {
+    if (reportState === "sending") return;
     setReportState("sending");
     try {
       await createReport(
-        {
-          target_type: "job",
-          target_id: String(job.id),
-          category: "suspicious_or_inaccurate",
-          note: null,
-        },
+        { target_type: "job", target_id: String(job.id), category, note },
         session?.backendAccessToken
       );
       setReportState("sent");
+      setReportOpen(false);
     } catch {
       setReportState("error");
     }
@@ -436,6 +430,14 @@ export default function JobActionsPanelClient({
             document.body
           )
         : null}
+      <ReportDialog
+        open={reportOpen}
+        targetLabel="this job"
+        sending={reportState === "sending"}
+        error={reportState === "error" ? "Couldn’t send the report. Try again." : null}
+        onSubmit={(category, note) => void submitReport(category, note)}
+        onClose={() => setReportOpen(false)}
+      />
       <ActionSuccessModal
         open={successOpen}
         title="Application sent"

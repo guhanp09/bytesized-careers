@@ -32,6 +32,7 @@ async def test_dev_sqlite_schema_sync_adds_missing_job_columns(
                     location VARCHAR(255),
                     budget_amount NUMERIC(12, 2),
                     budget_max NUMERIC(12, 2),
+                    budget_note VARCHAR(64),
                     budget_currency VARCHAR(3) NOT NULL,
                     budget_unit VARCHAR(32) NOT NULL,
                     experience_level VARCHAR(64),

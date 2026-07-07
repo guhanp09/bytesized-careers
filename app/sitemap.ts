@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { isLocalMocksEnabled, listJobsWithMeta, listTalentListings } from "../lib/backendClient";
 import { JOBS } from "../lib/jobs";
+import { seoFilterSitemapRoutes } from "../lib/seoFilterRoutes";
 
 const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000").replace(
   /\/+$/,
@@ -69,5 +70,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         )
         .catch(() => []);
 
-  return [...staticRoutes, ...jobRoutes, ...talentRoutes];
+  const seoFilterRoutes = seoFilterSitemapRoutes().map((route) => ({
+    url: `${siteUrl}${route.path}`,
+    lastModified: new Date(),
+    changeFrequency: "daily" as const,
+    priority: route.type === "jobs" ? 0.78 : 0.74,
+  }));
+
+  return [...staticRoutes, ...seoFilterRoutes, ...jobRoutes, ...talentRoutes];
 }

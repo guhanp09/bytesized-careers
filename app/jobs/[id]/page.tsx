@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
+import { notFound } from "next/navigation";
 import JobActionsPanelClient from "../../../components/job-details/JobActionsPanelClient";
 import JobOwnerControls from "../../../components/job-details/JobOwnerControls";
 import JobDescriptionSections from "../../../components/job-details/JobDescriptionSections";
 import JobHero from "../../../components/job-details/JobHero";
-import { StateCard } from "../../../components/ui";
+import { JobsBrowse } from "../page";
 import { authOptions } from "../../../lib/auth";
 import { getJobById as getJobByIdFromBackend, getPublicProfile } from "../../../lib/backendClient";
 import { getMarketplaceDataSource } from "../../../lib/devDataSource.server";
@@ -12,6 +13,7 @@ import { formatPostedLabel } from "../../../lib/format";
 import { JOBS } from "../../../lib/jobs";
 import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
+import { getSeoFilterRoute } from "../../../lib/seoFilterRoutes";
 import type { Job } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +51,33 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
+  const seoRoute = getSeoFilterRoute("jobs", String(id));
+  if (seoRoute) {
+    return {
+      title: seoRoute.metaTitle,
+      description: seoRoute.metaDescription,
+      alternates: {
+        canonical: seoRoute.path,
+      },
+      openGraph: {
+        title: seoRoute.metaTitle,
+        description: seoRoute.metaDescription,
+        siteName: "CreatorJobs",
+        type: "website",
+      },
+      twitter: {
+        card: "summary",
+        title: seoRoute.metaTitle,
+        description: seoRoute.metaDescription,
+      },
+    };
+  }
   const dataSource = await getMarketplaceDataSource();
   const job = dataSource === "mock"
     ? JOBS.find((item) => String(item.id) === String(id))
     : await getJobByIdFromBackend(String(id));
   if (!job) {
-    return { title: "Job not found | CreatorJobs" };
+    return { title: "Job not found", robots: { index: false, follow: false } };
   }
   const description = [job.channel.name, job.location, job.budget].filter(Boolean).join(" · ");
   const image = job.channel.logoUrl || undefined;
@@ -86,6 +109,27 @@ export default async function JobDetailsPage({
 }) {
   const { id } = await params;
   const jobId = String(id ?? "");
+  const seoRoute = getSeoFilterRoute("jobs", jobId);
+  if (seoRoute) {
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "BreadcrumbList",
+              itemListElement: [
+                { "@type": "ListItem", position: 1, name: "Jobs", item: `${siteUrl}/jobs` },
+                { "@type": "ListItem", position: 2, name: seoRoute.h1, item: `${siteUrl}${seoRoute.path}` },
+              ],
+            }),
+          }}
+        />
+        <JobsBrowse searchParams={Promise.resolve({})} seoRoute={seoRoute} />
+      </>
+    );
+  }
   const dataSource = await getMarketplaceDataSource();
   const job = dataSource === "mock"
     ? JOBS.find((item) => String(item.id) === jobId)
@@ -93,19 +137,7 @@ export default async function JobDetailsPage({
   const session = await getServerSession(authOptions);
 
   if (!job) {
-    return (
-      <main className="min-h-screen text-white bg-[#0b0b0f] px-4 sm:px-6 py-10">
-        <div className="mx-auto max-w-5xl">
-          <StateCard
-            icon="briefcase"
-            title="Job not found"
-            description="This listing is unavailable or has already been removed."
-            actionLabel="Browse jobs"
-            actionHref="/jobs"
-          />
-        </div>
-      </main>
-    );
+    notFound();
   }
 
   const postedLabel = formatPostedLabel(job.postedShort);

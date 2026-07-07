@@ -298,6 +298,8 @@ const RAW_JOBS: Job[] = [
       { title: "Callouts + lower thirds reference", url: "https://www.youtube.com/watch?v=oRdxUFDoQe0" },
       { title: "Kinetic text reference", url: "https://www.youtube.com/watch?v=YQHsXMglC9A" },
     ],
+    applicationRequirements: ["relevant_portfolio", "tools_workflow", "custom_instruction"],
+    howToApply: "Share how you would turn the references into a reusable callout template system.",
   },
   {
     id: "6",
@@ -326,6 +328,7 @@ const RAW_JOBS: Job[] = [
       { title: "Ops workflow reference", url: "https://www.youtube.com/watch?v=Zi_XLOBDo_Y" },
       { title: "Upload cadence reference", url: "https://www.youtube.com/watch?v=60ItHLz5WEA" },
     ],
+    applicationRequirements: ["expected_rate", "working_hours", "start_availability"],
   },
   {
     id: "7",
@@ -355,6 +358,8 @@ const RAW_JOBS: Job[] = [
       { title: "Narrative pacing reference", url: "https://www.youtube.com/watch?v=3JZ_D3ELwOQ" },
       { title: "Visual + research tone reference", url: "https://www.youtube.com/watch?v=9bZkp7q19f0" },
     ],
+    applicationRequirements: ["relevant_experience", "tools_workflow", "custom_instruction"],
+    howToApply: "Share how you evaluate sources and keep a documentary outline fact-safe.",
   },
   {
     id: "8",
@@ -383,6 +388,7 @@ const RAW_JOBS: Job[] = [
       { title: "Brand kit reference", url: "https://www.youtube.com/watch?v=ktvTqknDobU" },
       { title: "Channel banner style reference", url: "https://www.youtube.com/watch?v=450p7goxZqg" },
     ],
+    applicationRequirements: ["relevant_portfolio", "fit_note"],
   },
   {
     id: "9",
@@ -411,6 +417,7 @@ const RAW_JOBS: Job[] = [
       { title: "Warm VO tone reference", url: "https://www.youtube.com/watch?v=UceaB4D0jpo" },
       { title: "Clean narration reference", url: "https://www.youtube.com/watch?v=F57P9C4SAW4" },
     ],
+    applicationRequirements: ["expected_rate", "turnaround", "working_hours"],
   },
   {
     id: "10",
@@ -439,6 +446,8 @@ const RAW_JOBS: Job[] = [
       { title: "Growth strategy reference", url: "https://www.youtube.com/watch?v=SlPhMPnQ58k" },
       { title: "Newsletter + video growth reference", url: "https://www.youtube.com/watch?v=J---aiyznGQ" },
     ],
+    applicationRequirements: ["relevant_experience", "start_availability", "custom_instruction"],
+    howToApply: "Share one channel or newsletter growth loop you would test first.",
   },
   {
     id: "11",
@@ -467,6 +476,7 @@ const RAW_JOBS: Job[] = [
       { title: "Multicam pacing reference", url: "https://www.youtube.com/watch?v=hT_nvWreIhg" },
       { title: "Podcast-to-YouTube style reference", url: "https://www.youtube.com/watch?v=YykjpeuMNEk" },
     ],
+    applicationRequirements: ["expected_rate", "relevant_portfolio", "turnaround", "tools_workflow"],
   },
   {
     id: "12",
@@ -495,6 +505,7 @@ const RAW_JOBS: Job[] = [
       { title: "Gaming packaging reference", url: "https://www.youtube.com/watch?v=YQHsXMglC9A" },
       { title: "High contrast thumb reference", url: "https://www.youtube.com/watch?v=OPf0YbXqDm0" },
     ],
+    applicationRequirements: ["expected_rate", "relevant_portfolio", "fit_note"],
   },
   {
     id: "13",
@@ -523,6 +534,7 @@ const RAW_JOBS: Job[] = [
       { title: "Fitness shorts pacing reference", url: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
       { title: "Trend pacing reference", url: "https://www.youtube.com/watch?v=JGwWNGJdvx8" },
     ],
+    applicationRequirements: ["turnaround", "working_hours", "start_availability"],
   },
   {
     id: "14",
@@ -551,6 +563,8 @@ const RAW_JOBS: Job[] = [
       { title: "Tech review structure reference", url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk" },
       { title: "Punchy writing reference", url: "https://www.youtube.com/watch?v=uelHwf8o7_U" },
     ],
+    applicationRequirements: ["relevant_experience", "custom_instruction"],
+    howToApply: "Share a tight opening hook for a phone review video.",
   },
   {
     id: "15",
@@ -607,6 +621,7 @@ const RAW_JOBS: Job[] = [
       { title: "Lower thirds reference", url: "https://www.youtube.com/watch?v=oRdxUFDoQe0" },
       { title: "Transition pack reference", url: "https://www.youtube.com/watch?v=SlPhMPnQ58k" },
     ],
+    applicationRequirements: ["expected_rate", "relevant_portfolio", "tools_workflow", "turnaround"],
   },
   {
     id: "17",
@@ -635,6 +650,7 @@ const RAW_JOBS: Job[] = [
       { title: "Finance storytelling reference", url: "https://www.youtube.com/watch?v=UceaB4D0jpo" },
       { title: "Claims + counterpoints reference", url: "https://www.youtube.com/watch?v=F57P9C4SAW4" },
     ],
+    applicationRequirements: ["relevant_experience", "turnaround", "fit_note"],
   },
   {
     id: "18",

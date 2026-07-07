@@ -10,6 +10,7 @@ const routes = [
   "/talent",
   "/talent/mock-talent-retention-editor",
   "/talent?q=video%20editor",
+  "/settings",
   "/u/aarav-mehta",
 ];
 

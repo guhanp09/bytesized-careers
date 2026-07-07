@@ -423,7 +423,16 @@ def build_persona_talent_listings() -> list[dict[str, object]]:
             open_slots=2,
             turnaround="5–7 days",
             description="Edits scripted finance/education videos with clean pacing, retention graphs, and calm motion systems.",
-            first_message_requirements=["project_budget", "project_brief", "turnaround", "reference_links"],
+            first_message_requirements=[
+                "project_budget",
+                "project_brief",
+                "turnaround",
+                "working_hours",
+                "channel_or_brand_link",
+                "reference_links",
+                "start_availability",
+                "fit_note",
+            ],
             status="published",
             is_featured=True,
         ),
@@ -451,6 +460,12 @@ def build_persona_talent_listings() -> list[dict[str, object]]:
             open_slots=1,
             turnaround="1 week",
             description="Produces and edits creator-led interview episodes end to end: cleanup, structure, chapters, and clips.",
+            first_message_requirements=[
+                "project_budget",
+                "project_brief",
+                "turnaround",
+                "fit_note",
+            ],
             status="published",
         ),
         # Recruiter persona also drafting a talent listing — tests draft listings.
@@ -520,7 +535,16 @@ def build_persona_jobs() -> list[dict[str, object]]:
             about_channel="A finance education channel publishing weekly long-form explainers.",
             responsibilities=["Edit weekly long-form videos", "Build retention-first structure", "Add light motion graphics"],
             requirements=["3+ years long-form editing", "Premiere Pro + After Effects", "Strong sense of pacing"],
-            application_requirements=["relevant_experience", "portfolio_link", "rate_expectation"],
+            application_requirements=[
+                "expected_rate",
+                "relevant_portfolio",
+                "turnaround",
+                "working_hours",
+                "relevant_experience",
+                "tools_workflow",
+                "start_availability",
+                "fit_note",
+            ],
             tags=["finance", "long-form", "retention"],
             languages=["Hindi", "English"],
             content_niches=["Finance", "Education"],
@@ -547,6 +571,7 @@ def build_persona_jobs() -> list[dict[str, object]]:
             about_channel="A high-volume gaming channel needing scroll-stopping thumbnails.",
             responsibilities=["Design 3-4 thumbnails per week", "A/B concept variations"],
             requirements=["Photoshop", "Strong typography and composition"],
+            application_requirements=["expected_rate", "relevant_portfolio", "fit_note"],
             tags=["gaming", "thumbnails", "ctr"],
             languages=["English"],
             content_niches=["Gaming"],
@@ -572,6 +597,7 @@ def build_persona_jobs() -> list[dict[str, object]]:
             about_channel="A fitness creator scaling daily short-form output.",
             responsibilities=["Cut 5 shorts per week", "Punchy hooks and captions"],
             requirements=["CapCut or Premiere Pro", "Understands short-form retention"],
+            application_requirements=["expected_rate", "turnaround", "start_availability", "fit_note"],
             tags=["fitness", "shorts", "reels"],
             languages=["Hindi", "English"],
             content_niches=["Fitness"],
@@ -593,7 +619,12 @@ def build_persona_jobs() -> list[dict[str, object]]:
             about_channel="A weekly interview podcast publishing on YouTube and Spotify.",
             responsibilities=["Edit full episodes", "Cut highlight clips", "Add chapters"],
             requirements=["Multicam podcast editing", "Descript or Premiere Pro"],
-            application_requirements=["relevant_experience", "portfolio_link"],
+            application_requirements=[
+                "expected_rate",
+                "relevant_portfolio",
+                "turnaround",
+                "tools_workflow",
+            ],
             tags=["podcast", "interviews", "long-form"],
             languages=["English"],
             content_niches=["Interviews"],
@@ -746,7 +777,14 @@ def build_persona_portfolio_items() -> list[dict[str, object]]:
 
 # --- Applications (sent + received across personas) -------------------------
 
-def _application(applicant: str, job_key: str, owner: str, status: str, cover_note: str) -> dict[str, object]:
+def _application(
+    applicant: str,
+    job_key: str,
+    owner: str,
+    status: str,
+    cover_note: str,
+    answers: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "id": persona_uuid(f"application:{applicant}:{job_key}"),
         "job_id": persona_uuid(f"job:{job_key}"),
@@ -754,7 +792,7 @@ def _application(applicant: str, job_key: str, owner: str, status: str, cover_no
         "job_owner_user_id": persona_user_id(owner),
         "cover_note": cover_note,
         "portfolio_item_ids": [],
-        "first_message_answers": {},
+        "first_message_answers": answers or {},
         "applicant_snapshot": {},
         "status": status,
         "created_at": SEED_TIME,
@@ -765,34 +803,96 @@ def build_persona_applications() -> list[dict[str, object]]:
     return [
         _application(
             "talent-complete", "recruiter-active-1", "recruiter-active", "shortlisted",
-            "I edit retention-first finance long-form — here's my reel and a recent 12-min explainer.",
+            "Hi, I came across the listing and would love to help with the finance channel edits.",
+            answers={
+                "expected_rate": {"amount": "25000", "unit": "per video"},
+                "relevant_portfolio": [
+                    {
+                        "id": str(persona_uuid("portfolio:talent-complete:1")),
+                        "title": "How index funds actually work (12-min explainer)",
+                        "url": "https://www.youtube.com/watch?v=dev-portfolio-1",
+                    },
+                    {
+                        "id": str(persona_uuid("portfolio:talent-complete:2")),
+                        "title": "Why startups fail — education explainer",
+                        "url": "https://www.youtube.com/watch?v=dev-portfolio-2",
+                    },
+                ],
+                "turnaround": {"value": "5", "unit": "days"},
+                "working_hours": "Evenings IST",
+                "relevant_experience": "6 years editing finance and education explainers.",
+                "tools_workflow": ["Premiere Pro", "After Effects", "Frame.io"],
+                "start_availability": "Within 1 week",
+                "fit_note": "I already edit finance explainers, so I can match the channel's pacing quickly.",
+            },
         ),
         _application(
             "talent-complete", "recruiter-active-3", "recruiter-active", "new",
-            "Happy to take on the daily shorts — I can start this week.",
+            "Hi, I can help with the daily shorts workflow.",
+            answers={
+                "expected_rate": {"amount": "3000", "unit": "per video"},
+                "turnaround": {"value": "2", "unit": "days"},
+                "start_availability": "Immediately",
+                "fit_note": "I can keep a repeatable short-form cadence without slowing the channel down.",
+            },
         ),
         _application(
             "both-sides", "recruiter-active-1", "recruiter-active", "rejected",
-            "I mostly do podcast long-form but wanted to put my name in.",
+            "Hi, I mostly do podcast long-form and wanted to put my name in.",
+            answers={
+                "expected_rate": {"amount": "18000", "unit": "per video"},
+                "relevant_portfolio": [
+                    {
+                        "id": "link:podcast-case-study",
+                        "title": "Podcast case study",
+                        "url": "https://portfolio.example.com/podcast-case-study",
+                    }
+                ],
+                "turnaround": {"value": "7", "unit": "days"},
+                "working_hours": "Flexible overlap",
+                "relevant_experience": "4 years producing and editing creator interviews.",
+                "tools_workflow": ["Descript", "Premiere Pro", "Riverside"],
+                "start_availability": "Within 2 weeks",
+                "fit_note": "The role is close to my long-form interview workflow, though finance is a newer niche for me.",
+            },
         ),
         # talent-complete applies to both-sides' job → gives both-sides a received application.
         _application(
             "talent-complete", "both-sides-1", "both-sides", "new",
-            "I edit long-form interviews and would love to cut your episodes.",
+            "Hi, I edit long-form interviews and would love to cut your episodes.",
+            answers={
+                "expected_rate": {"amount": "15000", "unit": "per video"},
+                "relevant_portfolio": [
+                    {
+                        "id": str(persona_uuid("portfolio:talent-complete:2")),
+                        "title": "Why startups fail — education explainer",
+                        "url": "https://www.youtube.com/watch?v=dev-portfolio-2",
+                    }
+                ],
+                "turnaround": {"value": "1", "unit": "weeks"},
+                "tools_workflow": ["Premiere Pro", "Frame.io"],
+            },
         ),
     ]
 
 
 # --- Hiring requests / talent interests -------------------------------------
 
-def _interest(recruiter: str, listing_key: str, owner: str, status: str, note: str) -> dict[str, object]:
+def _interest(
+    recruiter: str,
+    listing_key: str,
+    owner: str,
+    status: str,
+    note: str,
+    answers: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "id": persona_uuid(f"interest:{recruiter}:{listing_key}"),
         "talent_listing_id": persona_uuid(f"listing:{listing_key}"),
         "recruiter_user_id": persona_user_id(recruiter),
         "owner_user_id": persona_user_id(owner),
         "note": note,
-        "first_message_answers": {},
+        "first_message_answers": answers or {},
         "status": status,
         "created_at": SEED_TIME,
     }
@@ -806,12 +906,31 @@ def build_persona_interests() -> list[dict[str, object]]:
         # both-sides (as recruiter) reaches out to talent-complete → talent-complete received.
         _interest(
             "both-sides", "talent-complete", "talent-complete", "contacted",
-            "Would you edit a couple of interview episodes? Flexible on timeline.",
+            "Hi, I came across your listing and would like to discuss a small interview-editing batch.",
+            answers={
+                "project_budget": {"amount": "40000", "unit": "per project"},
+                "project_brief": "Two interview episodes with long-form cleanup, chapters, and Shorts cutdowns.",
+                "turnaround": {"value": "1", "unit": "weeks"},
+                "working_hours": "Flexible overlap",
+                "channel_or_brand_link": "https://youtube.com/@interviewroom",
+                "reference_links": [
+                    "https://youtube.com/watch?v=reference-interview-1",
+                    "https://youtube.com/watch?v=reference-interview-2",
+                ],
+                "start_availability": "Within 2 weeks",
+                "fit_note": "Your finance and education pacing work looks relevant to our interview edits.",
+            },
         ),
         # recruiter-active reaches out to both-sides' listing → both-sides received a hiring request.
         _interest(
             "recruiter-active", "both-sides", "both-sides", "new",
-            "We need a podcast-style editor for some founder interviews — interested?",
+            "Hi, we need a podcast-style editor for founder interviews.",
+            answers={
+                "project_budget": {"amount": "30000", "unit": "per month"},
+                "project_brief": "Four founder interviews per month with cleanup, chapters, and highlight clips.",
+                "turnaround": {"value": "5", "unit": "days"},
+                "fit_note": "Your interview-production background matches the format we publish weekly.",
+            },
         ),
     ]
 

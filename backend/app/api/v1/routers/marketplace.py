@@ -9,12 +9,13 @@ from sqlalchemy import String, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_optional_current_user, require_admin
+from app.api.deps import get_current_user, get_db, get_optional_current_user
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Entitlement,
     Job,
     JobApplication,
+    Message,
     Notification,
     Report,
     SavedJob,
@@ -32,13 +33,14 @@ from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
     EntitlementRead,
+    JobApplicationBulkStatusUpdate,
     JobApplicationCreate,
     JobApplicationRead,
     JobApplicationStatusUpdate,
     LaunchCheckoutRequest,
+    ManagerNoteUpdate,
     NotificationListResponse,
     NotificationRead,
-    ReportAdminUpdate,
     ReportCreate,
     ReportRead,
     SavedJobRead,
@@ -48,6 +50,7 @@ from app.schemas.marketplace import (
     SavedTalentSummaryItem,
     SaveJobRequest,
     SaveTalentListingRequest,
+    TalentInterestBulkStatusUpdate,
     TalentInterestCreate,
     TalentInterestRead,
     TalentInterestStatusUpdate,
@@ -58,6 +61,22 @@ from app.schemas.marketplace import (
 )
 
 router = APIRouter(tags=["marketplace"])
+
+
+def _application_read_for_sender(application: JobApplication) -> JobApplicationRead:
+    """Serialize an application for its sender (applicant): the job owner's
+    private manager_note must never leak to the applicant."""
+    read = JobApplicationRead.model_validate(application)
+    read.manager_note = None
+    return read
+
+
+def _interest_read_for_sender(interest: TalentInterest) -> TalentInterestRead:
+    """Serialize a hiring request for its sender (recruiter): the talent's
+    private manager_note must never leak to the recruiter."""
+    read = TalentInterestRead.model_validate(interest)
+    read.manager_note = None
+    return read
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +180,7 @@ def _job_snapshot(job: Job) -> dict:
         "location": job.location,
         "budget_amount": str(job.budget_amount) if job.budget_amount is not None else None,
         "budget_max": str(job.budget_max) if job.budget_max is not None else None,
+        "budget_note": job.budget_note,
         "budget_currency": job.budget_currency,
         "budget_unit": job.budget_unit,
         "work_mode": job.work_mode,
@@ -344,7 +364,7 @@ async def apply_to_job(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return JobApplicationRead.model_validate(existing)
+        return _application_read_for_sender(existing)
     # Enforce the owner's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     _assert_first_message_complete(job.application_requirements, payload.first_message_answers)
@@ -412,9 +432,9 @@ async def apply_to_job(
                 )
             )
         ).scalar_one()
-        return JobApplicationRead.model_validate(existing)
+        return _application_read_for_sender(existing)
     await session.refresh(application)
-    return JobApplicationRead.model_validate(application)
+    return _application_read_for_sender(application)
 
 
 @router.get("/me/applications/sent", response_model=list[JobApplicationRead])
@@ -429,7 +449,7 @@ async def list_sent_applications(
             .order_by(JobApplication.created_at.desc())
         )
     ).scalars().all()
-    return [JobApplicationRead.model_validate(row) for row in rows]
+    return [_application_read_for_sender(row) for row in rows]
 
 
 @router.get("/me/applications/received", response_model=list[JobApplicationRead])
@@ -498,7 +518,7 @@ async def withdraw_application(
             detail="Only the applicant can withdraw this application",
         )
     if application.status == "withdrawn":
-        return JobApplicationRead.model_validate(application)  # idempotent
+        return _application_read_for_sender(application)  # idempotent
     if application.status == "hired":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -521,7 +541,84 @@ async def withdraw_application(
         )
     await session.commit()
     await session.refresh(application)
+    return _application_read_for_sender(application)
+
+
+@router.patch("/applications/{application_id}/note", response_model=JobApplicationRead)
+async def update_application_manager_note(
+    application_id: UUID,
+    payload: ManagerNoteUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> JobApplicationRead:
+    """Set/clear the job owner's private note on a received application.
+
+    The note is a pipeline annotation for the manager only; no notification is
+    dispatched and the applicant can never read it.
+    """
+    application = (
+        await session.execute(select(JobApplication).where(JobApplication.id == application_id))
+    ).scalar_one_or_none()
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if application.job_owner_user_id != current_user.id and current_user.account_type != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    note = (payload.note or "").strip()
+    application.manager_note = note or None
+    await session.commit()
+    await session.refresh(application)
     return JobApplicationRead.model_validate(application)
+
+
+@router.post("/applications/bulk-status", response_model=list[JobApplicationRead])
+async def bulk_update_application_status(
+    payload: JobApplicationBulkStatusUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[JobApplicationRead]:
+    """Move several received applications to one pipeline stage in a single call.
+
+    Owner-only, all-or-nothing: if any id is missing or not managed by the
+    caller the whole batch is rejected, so a bulk action can never silently
+    skip rows. Stage moves are quiet by default — internal pipeline tracking
+    must never surprise the applicant. Clients that want a bell notification
+    pass ``notify: true``; the richer path is a user-confirmed status-update
+    chat message posted separately.
+    """
+    unique_ids = list(dict.fromkeys(payload.ids))
+    applications = (
+        (await session.execute(select(JobApplication).where(JobApplication.id.in_(unique_ids))))
+        .scalars()
+        .all()
+    )
+    if len(applications) != len(unique_ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    is_admin = current_user.account_type == "ADMIN"
+    if any(app.job_owner_user_id != current_user.id and not is_admin for app in applications):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    for application in applications:
+        if application.status == payload.status:
+            continue
+        application.status = payload.status
+        if not payload.notify:
+            continue
+        await _create_notification(
+            session,
+            user_id=application.applicant_user_id,
+            type_="application_status_changed",
+            title="Application status updated",
+            body=f"Your application is now {payload.status.replace('_', ' ')}.",
+            category="application",
+            resource_type="job_application",
+            resource_id=str(application.id),
+            action_url="/applications",
+            actor_user_id=current_user.id,
+            payload={"status": payload.status},
+        )
+    await session.commit()
+    for application in applications:
+        await session.refresh(application)
+    return [JobApplicationRead.model_validate(application) for application in applications]
 
 
 @router.get("/talent-listings", response_model=TalentListingListResponse)
@@ -539,7 +636,8 @@ async def list_talent_listings(
     query = (
         select(TalentListing, User)
         .join(User, TalentListing.owner_user_id == User.id)
-        .where(TalentListing.deleted_at.is_(None))
+        # Suspended owners' listings are excluded from the public marketplace.
+        .where(TalentListing.deleted_at.is_(None), User.suspended_at.is_(None))
     )
     if status_filter:
         query = query.where(TalentListing.status == status_filter)
@@ -590,10 +688,13 @@ async def get_talent_listing(
     listing = await _get_listing_or_404(session, listing_id)
     if listing.status not in {"published", "featured"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent listing not found")
+    owner = await session.get(User, listing.owner_user_id)
+    if owner is not None and owner.suspended_at is not None:
+        # Suspended owners' content is hidden from the public marketplace.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent listing not found")
     listing.views = int(listing.views or 0) + 1
     await session.commit()
     await session.refresh(listing)
-    owner = await session.get(User, listing.owner_user_id)
     return _talent_read(listing, owner)
 
 
@@ -629,6 +730,7 @@ async def create_talent_listing(
     listing.languages = _clean_list(listing.languages)
     listing.portfolio_item_ids = _clean_list(listing.portfolio_item_ids)
     listing.first_message_requirements = _clean_list(listing.first_message_requirements)
+    listing.first_message_custom_instruction = (listing.first_message_custom_instruction or "").strip() or None
     session.add(listing)
     await _create_notification(
         session,
@@ -670,6 +772,10 @@ async def update_talent_listing(
     ):
         if key in updates:
             updates[key] = _clean_list(updates[key])
+    if "first_message_custom_instruction" in updates:
+        updates["first_message_custom_instruction"] = (
+            updates["first_message_custom_instruction"] or ""
+        ).strip() or None
     for key, value in updates.items():
         setattr(listing, key, value)
     await session.commit()
@@ -872,7 +978,7 @@ async def send_talent_interest(
         existing.status = "new"
         await session.commit()
         await session.refresh(existing)
-        return TalentInterestRead.model_validate(existing)
+        return _interest_read_for_sender(existing)
     # Enforce the talent's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     _assert_first_message_complete(
@@ -913,7 +1019,7 @@ async def send_talent_interest(
     )
     await session.commit()
     await session.refresh(interest)
-    return TalentInterestRead.model_validate(interest)
+    return _interest_read_for_sender(interest)
 
 
 @router.get("/me/talent-interests", response_model=list[TalentInterestRead])
@@ -943,7 +1049,7 @@ async def list_sent_talent_interests(
             .order_by(TalentInterest.created_at.desc())
         )
     ).scalars().all()
-    return [TalentInterestRead.model_validate(row) for row in rows]
+    return [_interest_read_for_sender(row) for row in rows]
 
 
 @router.get("/me/activity/summary", response_model=ActivitySummaryResponse)
@@ -1022,10 +1128,10 @@ async def activity_summary(
     return ActivitySummaryResponse(
         my_jobs=[JobRead.model_validate(row) for row in my_jobs],
         my_talent_listings=await _talent_reads_with_owners(session, list(my_talent_listings)),
-        sent_applications=[JobApplicationRead.model_validate(row) for row in sent_applications],
+        sent_applications=[_application_read_for_sender(row) for row in sent_applications],
         received_applications=[JobApplicationRead.model_validate(row) for row in received_applications],
         received_interests=[TalentInterestRead.model_validate(row) for row in received_interests],
-        sent_interests=[TalentInterestRead.model_validate(row) for row in sent_interests],
+        sent_interests=[_interest_read_for_sender(row) for row in sent_interests],
         related_jobs=[
             JobRead.model_validate(row) for row in (related_jobs.scalars().all() if related_jobs is not None else [])
         ],
@@ -1084,7 +1190,7 @@ async def withdraw_talent_interest(
             detail="Only the sender can withdraw this hiring request",
         )
     if interest.status == "withdrawn":
-        return TalentInterestRead.model_validate(interest)  # idempotent
+        return _interest_read_for_sender(interest)  # idempotent
     interest.status = "withdrawn"
     await _create_notification(
         session,
@@ -1101,7 +1207,79 @@ async def withdraw_talent_interest(
     )
     await session.commit()
     await session.refresh(interest)
+    return _interest_read_for_sender(interest)
+
+
+@router.patch("/talent-interests/{interest_id}/note", response_model=TalentInterestRead)
+async def update_talent_interest_manager_note(
+    interest_id: UUID,
+    payload: ManagerNoteUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TalentInterestRead:
+    """Set/clear the talent's private note on a received hiring request.
+
+    Manager-only annotation; no notification, never visible to the recruiter.
+    """
+    interest = (
+        await session.execute(select(TalentInterest).where(TalentInterest.id == interest_id))
+    ).scalar_one_or_none()
+    if interest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+    if interest.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    note = (payload.note or "").strip()
+    interest.manager_note = note or None
+    await session.commit()
+    await session.refresh(interest)
     return TalentInterestRead.model_validate(interest)
+
+
+@router.post("/talent-interests/bulk-status", response_model=list[TalentInterestRead])
+async def bulk_update_talent_interest_status(
+    payload: TalentInterestBulkStatusUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[TalentInterestRead]:
+    """Move several received hiring requests to one stage in a single call.
+
+    Owner-only, all-or-nothing — mirrors the application bulk endpoint,
+    including the quiet-by-default notification behavior.
+    """
+    unique_ids = list(dict.fromkeys(payload.ids))
+    interests = (
+        (await session.execute(select(TalentInterest).where(TalentInterest.id.in_(unique_ids))))
+        .scalars()
+        .all()
+    )
+    if len(interests) != len(unique_ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+    is_admin = current_user.account_type == "ADMIN"
+    if any(interest.owner_user_id != current_user.id and not is_admin for interest in interests):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    for interest in interests:
+        if interest.status == payload.status:
+            continue
+        interest.status = payload.status
+        if not payload.notify:
+            continue
+        await _create_notification(
+            session,
+            user_id=interest.recruiter_user_id,
+            type_="talent_interest_status_changed",
+            title="Talent interest status updated",
+            body=f"Your interest is now {payload.status}.",
+            category="talent",
+            resource_type="talent_interest",
+            resource_id=str(interest.id),
+            action_url="/applications",
+            actor_user_id=current_user.id,
+            payload={"status": payload.status},
+        )
+    await session.commit()
+    for interest in interests:
+        await session.refresh(interest)
+    return [TalentInterestRead.model_validate(interest) for interest in interests]
 
 
 @router.get("/notifications", response_model=NotificationListResponse)
@@ -1170,6 +1348,24 @@ async def mark_all_notifications_read(
     return {"ok": True, "updated": len(rows)}
 
 
+async def _report_target_exists(session: AsyncSession, target_type: str, target_id: str) -> bool:
+    """A report must point at something real — otherwise the admin queue fills
+    with unactionable rows and target hydration can never resolve them."""
+    parsed = _parse_uuid_or_none(target_id)
+    if parsed is None:
+        return False
+    model = {
+        "job": Job,
+        "talent_listing": TalentListing,
+        "profile": User,
+        "message": Message,
+    }.get(target_type)
+    if model is None:
+        return False
+    row = (await session.execute(select(model.id).where(model.id == parsed))).scalar_one_or_none()
+    return row is not None
+
+
 @router.post("/reports", response_model=ReportRead, status_code=status.HTTP_201_CREATED)
 async def create_report(
     payload: ReportCreate,
@@ -1177,6 +1373,8 @@ async def create_report(
     current_user: User | None = Depends(get_optional_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ReportRead:
+    if not await _report_target_exists(session, payload.target_type, payload.target_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report target not found")
     report = Report(
         reporter_user_id=current_user.id if current_user else None,
         target_type=payload.target_type,
@@ -1205,70 +1403,9 @@ async def list_my_jobs(
     return [JobRead.model_validate(row) for row in rows]
 
 
-@router.get("/admin/reports", response_model=list[ReportRead])
-async def list_admin_reports(
-    status_filter: str | None = Query(default=None, alias="status"),
-    admin_user: User = Depends(require_admin),
-    session: AsyncSession = Depends(get_db),
-) -> list[ReportRead]:
-    _ = admin_user
-    query = select(Report).order_by(Report.created_at.desc())
-    if status_filter:
-        query = query.where(Report.status == status_filter)
-    rows = (await session.execute(query.limit(100))).scalars().all()
-    return [ReportRead.model_validate(row) for row in rows]
-
-
-@router.patch("/admin/reports/{report_id}", response_model=ReportRead)
-async def update_admin_report(
-    report_id: UUID,
-    payload: ReportAdminUpdate,
-    admin_user: User = Depends(require_admin),
-    session: AsyncSession = Depends(get_db),
-) -> ReportRead:
-    report = (await session.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
-    if report is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
-
-    if payload.action == "hide_listing":
-        if report.target_type == "job":
-            target_id = _parse_uuid_or_none(report.target_id)
-            target = (await session.execute(select(Job).where(Job.id == target_id))).scalar_one_or_none() if target_id else None
-            if target is not None:
-                target.deleted_at = _now()
-                target.status = "archived"
-        elif report.target_type == "talent_listing":
-            target_id = _parse_uuid_or_none(report.target_id)
-            target = (
-                await session.execute(select(TalentListing).where(TalentListing.id == target_id))
-            ).scalar_one_or_none() if target_id else None
-            if target is not None:
-                target.deleted_at = _now()
-                target.status = "archived"
-    elif payload.action == "pause_listing":
-        if report.target_type == "job":
-            target_id = _parse_uuid_or_none(report.target_id)
-            target = (await session.execute(select(Job).where(Job.id == target_id))).scalar_one_or_none() if target_id else None
-            if target is not None:
-                target.status = "paused"
-                target.paused_at = _now()
-        elif report.target_type == "talent_listing":
-            target_id = _parse_uuid_or_none(report.target_id)
-            target = (
-                await session.execute(select(TalentListing).where(TalentListing.id == target_id))
-            ).scalar_one_or_none() if target_id else None
-            if target is not None:
-                target.status = "paused"
-                target.paused_at = _now()
-
-    report.status = payload.status
-    report.action = payload.action
-    report.admin_note = payload.admin_note
-    report.resolved_by_user_id = admin_user.id
-    report.resolved_at = _now()
-    await session.commit()
-    await session.refresh(report)
-    return ReportRead.model_validate(report)
+# The admin report queue moved to app/api/v1/routers/admin.py (GET/PATCH
+# /admin/reports): enum-enforced actions, pagination, target hydration, and
+# audit-log writes live there.
 
 
 @router.post("/checkout/launch-free", response_model=EntitlementRead, status_code=status.HTTP_201_CREATED)

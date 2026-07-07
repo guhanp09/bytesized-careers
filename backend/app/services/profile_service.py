@@ -2190,6 +2190,9 @@ class ProfileService:
 
         user = await self.repository.get_user_by_username(normalized_username)
         if user is not None:
+            if user.suspended_at is not None:
+                # Suspended accounts have no public presence (admin enforcement).
+                raise ProfileNotFoundError("Profile not found")
             return user, None, normalized_username
 
         history = await self.repository.get_username_history(normalized_username)
@@ -2197,6 +2200,8 @@ class ProfileService:
             raise ProfileNotFoundError("Profile not found")
         moved_user = await self.repository.get_user_by_id(history.user_id)
         if moved_user is None or not moved_user.username:
+            raise ProfileNotFoundError("Profile not found")
+        if moved_user.suspended_at is not None:
             raise ProfileNotFoundError("Profile not found")
         return moved_user, moved_user.username, normalized_username
 

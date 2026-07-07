@@ -23,6 +23,7 @@ import { parseReferenceTimestamp } from "../../lib/referenceVideos";
 import type { ReferenceTimestampNote } from "../../lib/types";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "../Icons";
+import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { type PopoverAnchorPoint } from "../ui/AnchoredGlassPopover";
 import { AnimatedStep, type StepDirection } from "../ui/StepTransition";
 import ToolPicker from "./ToolPicker";
@@ -505,6 +506,7 @@ export function PortfolioProjectCard({
   item,
   onDelete,
   onToggleFeatured,
+  onEdit,
   projectHref,
   onActivate,
   showActions = true,
@@ -512,6 +514,7 @@ export function PortfolioProjectCard({
   item: BackendPortfolioItem;
   onDelete?: (id: string) => void;
   onToggleFeatured?: (item: BackendPortfolioItem) => void;
+  onEdit?: (item: BackendPortfolioItem) => void;
   projectHref?: string;
   onActivate?: (item: BackendPortfolioItem, target: HTMLElement, origin?: PopoverAnchorPoint) => void;
   showActions?: boolean;
@@ -547,7 +550,7 @@ export function PortfolioProjectCard({
     ? item.links
     : [item.source_url, item.media_url, item.youtube_url].filter((link): link is string => Boolean(link));
   const primaryProjectLink = projectLinks[0] || null;
-  const hasOwnerMenu = Boolean(onToggleFeatured || onDelete);
+  const hasOwnerMenu = Boolean(onEdit || onToggleFeatured || onDelete || primaryProjectLink);
   const isProjectClickable = Boolean(onActivate || projectHref || primaryProjectLink);
   const openProject = useCallback(() => {
     if (!primaryProjectLink || typeof window === "undefined") return;
@@ -597,7 +600,7 @@ export function PortfolioProjectCard({
       role={isProjectClickable ? (onActivate ? "button" : "link") : undefined}
       aria-label={
         isProjectClickable
-          ? `${onActivate ? "Edit portfolio project" : projectHref ? "Open project detail" : "Open project"}: ${item.title}`
+          ? `${onActivate ? "Open portfolio project details" : projectHref ? "Open project detail" : "Open project"}: ${item.title}`
           : undefined
       }
       tabIndex={isProjectClickable ? 0 : undefined}
@@ -682,6 +685,19 @@ export function PortfolioProjectCard({
                     role="menu"
                     className="absolute right-0 top-full z-[80] mt-2 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#15161a] p-1 shadow-[0_24px_60px_-22px_rgba(0,0,0,1)]"
                   >
+                    {onEdit ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onEdit(item);
+                        }}
+                        className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-white/72 transition-colors hover:bg-white/[0.07] hover:text-white cursor-pointer"
+                      >
+                        Edit project
+                      </button>
+                    ) : null}
                     {onToggleFeatured ? (
                       <button
                         type="button"
@@ -859,6 +875,7 @@ export default function PortfolioProjectWorkspace({
   const [stepDirection, setStepDirection] = useState<StepDirection>("forward");
   const [highlightChecked, setHighlightChecked] = useState(false);
   const [timestampChecked, setTimestampChecked] = useState(false);
+  const portfolioDetailPopup = usePortfolioDetailPopup("owner-portfolio-detail-popup");
   const highlightRefs = useRef<Array<HTMLInputElement | null>>([]);
   const timestampTimeRefs = useRef<Array<HTMLInputElement | null>>([]);
   const pendingHighlightFocus = useRef<number | null>(null);
@@ -2134,8 +2151,8 @@ export default function PortfolioProjectWorkspace({
               <PortfolioProjectCard
                 key={item.id}
                 item={item}
-                projectHref={`/you/projects/${encodeURIComponent(item.id)}`}
-                onActivate={openEditorForProject}
+                onActivate={portfolioDetailPopup.open}
+                onEdit={openEditorForProject}
                 onDelete={deleteProject}
                 onToggleFeatured={toggleFeatured}
               />
@@ -2173,6 +2190,8 @@ export default function PortfolioProjectWorkspace({
           onPreviewLink={previewWorkLink}
         />
       ) : null}
+
+      {!embedded ? portfolioDetailPopup.popover : null}
 
       {editorOpen ? (
         <div className={`fixed inset-0 ${embedded ? "z-[80]" : "z-50"} flex items-center justify-center overflow-hidden bg-black/70 px-4 py-4 backdrop-blur-sm`}>

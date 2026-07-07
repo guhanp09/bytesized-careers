@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import TalentFeedClient from "../../components/TalentFeedClient";
 import {
   canUseLocalMockFallback,
@@ -7,20 +8,46 @@ import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { filterMockTalentListings } from "../../lib/mockTalentListings";
 import { parseQuery } from "../../lib/search/queryParser";
 import { rankTalent, relaxParsedQuery } from "../../lib/search/ranking";
+import { filterAndOrderTalentForSeoRoute } from "../../lib/seoFilterMatch";
+import type { SeoFilterRoute } from "../../lib/seoFilterRoutes";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const first = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value) || "";
 
-export default async function TalentPage({
+export async function generateMetadata({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<Metadata> {
+  const params = await searchParams;
+  const hasParams = Object.values(params).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    return value != null && value !== "";
+  });
+
+  return {
+    title: "Talent",
+    description: "Browse creator-economy talent for YouTube, short-form, thumbnails, strategy, and creator-led workflows.",
+    alternates: { canonical: "/talent" },
+    robots: hasParams ? { index: false, follow: true } : undefined,
+  };
+}
+
+export async function TalentBrowse({
+  searchParams,
+  seoRoute,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  seoRoute?: SeoFilterRoute | null;
 }) {
   const params = await searchParams;
   const q = first(params.q);
-  const query = q.trim();
+  // Curated SEO routes are a hard filter (applied via `selectForView`); free-text
+  // search is ranked. `query` stays empty on SEO routes so the empty state reads
+  // as a filtered browse, not a failed search.
+  const query = seoRoute ? "" : q.trim();
   const role = first(params.role);
   const platform = first(params.platform);
   const location = first(params.location);
@@ -29,7 +56,8 @@ export default async function TalentPage({
   const usingMock = dataSource.source === "mock";
   const canUseMocks = canUseLocalMockFallback() && dataSource.overrideSource !== "backend";
 
-  const rankForQuery = (items: Awaited<ReturnType<typeof listTalentListings>>["items"]) => {
+  type TalentItems = Awaited<ReturnType<typeof listTalentListings>>["items"];
+  const rankForQuery = (items: TalentItems) => {
     if (!query) return items;
     const parsed = parseQuery(query);
     let ranked = rankTalent(items, parsed);
@@ -38,10 +66,13 @@ export default async function TalentPage({
     }
     return ranked.map((result) => result.item);
   };
+  // SEO route → hard eligibility gate + relevance ordering; otherwise free-text rank.
+  const selectForView = (items: TalentItems) =>
+    seoRoute ? filterAndOrderTalentForSeoRoute(items, seoRoute) : rankForQuery(items);
 
   if (usingMock) {
-    const items = rankForQuery(filterMockTalentListings({ role, platform, location, availability }));
-    return <TalentFeedClient items={items} query={query} />;
+    const items = selectForView(filterMockTalentListings({ role, platform, location, availability }));
+    return <TalentFeedClient items={items} query={query} seoRoute={seoRoute || null} />;
   }
 
   const result = await listTalentListings({
@@ -63,10 +94,18 @@ export default async function TalentPage({
       return { response: { items, total: items.length, limit: 100, offset: 0 }, notice: null };
     });
 
-  if (canUseMocks && !query && result.response.total === 0 && result.response.items.length === 0) {
+  if (canUseMocks && !query && !seoRoute && result.response.total === 0 && result.response.items.length === 0) {
     const items = filterMockTalentListings({ role, platform, location, availability });
-    return <TalentFeedClient items={items} />;
+    return <TalentFeedClient items={items} seoRoute={seoRoute || null} />;
   }
 
-  return <TalentFeedClient items={rankForQuery(result.response.items)} notice={result.notice} query={query} />;
+  return <TalentFeedClient items={selectForView(result.response.items)} notice={result.notice} query={query} seoRoute={seoRoute || null} />;
+}
+
+export default async function TalentPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  return <TalentBrowse searchParams={searchParams} />;
 }

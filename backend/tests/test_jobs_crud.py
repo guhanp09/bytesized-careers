@@ -35,6 +35,7 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
         "location": "Remote",
         "budget_amount": "1200.00",
         "budget_max": "2400.00",
+        "budget_note": None,
         "budget_currency": "INR",
         "budget_unit": "per month",
         "experience_level": "3-5 years",
@@ -67,6 +68,7 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
     assert created["status"] == "published"
     assert Decimal(str(created["budget_amount"])) == Decimal("1200.00")
     assert Decimal(str(created["budget_max"])) == Decimal("2400.00")
+    assert created["budget_note"] is None
     assert created["budget_unit"] == "per month"
     assert created["reference_videos"][0]["title"] == "Pacing reference"
     assert created["languages"] == ["Hindi", "English"]
@@ -91,6 +93,33 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
     assert searched.status_code == 200
     assert any(item["id"] == job_id for item in searched.json()["items"])
 
+
+async def test_job_budget_note_persists_for_contact_pricing(client: AsyncClient) -> None:
+    payload = {
+        "title": "Creator partnerships lead",
+        "category": "Strategy",
+        "location": "Remote",
+        "budget_amount": None,
+        "budget_max": None,
+        "budget_note": "  Contact   for pricing  ",
+        "budget_currency": "INR",
+        "budget_unit": "per project",
+        "platforms": ["youtube"],
+        "about_channel": "A creator-led business channel.",
+        "status": "draft",
+    }
+
+    create_response = await client.post("/api/v1/jobs", json=payload)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["budget_amount"] is None
+    assert created["budget_max"] is None
+    assert created["budget_note"] == "Contact for pricing"
+
+    get_response = await client.get(f"/api/v1/jobs/{created['id']}")
+    assert get_response.status_code == 200
+    fetched = get_response.json()
+    assert fetched["budget_note"] == "Contact for pricing"
 
 async def test_authenticated_create_sets_posted_by_user_id(client: AsyncClient) -> None:
     bearer, user_id = await _create_oauth_user(

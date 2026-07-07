@@ -157,6 +157,7 @@ test("post-job basics uses the compact icon-led layout", () => {
   assert.match(form, /PlatformMark platform=\{key\}/);
   assert.match(form, /₹/);
   assert.match(form, /Flexible/);
+  assert.match(form, /Contact for pricing/);
   assert.match(form, /saveDraftIcon=\{<Icon name="file"/);
 });
 

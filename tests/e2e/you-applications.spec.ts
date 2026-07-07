@@ -331,18 +331,22 @@ test.describe("/you Applications workspace", () => {
     await expect(detail.locator('a[href^="/jobs/"]').first()).toBeVisible();
   });
 
-  test("no-message interaction shows a polished empty conversation state", async ({ page }) => {
+  test("an answers-only hiring request renders a generated opening message, never a blank thread", async ({ page }) => {
     await openApplicationsTab(page);
     await page
       .getByTestId("interaction-row")
       .filter({ hasText: "Thumbnail + packaging help for gaming channel" })
       .click();
 
+    // This request has no typed message — only structured first-message answers.
+    // The inbox turns those into one real opening bubble from the requester
+    // (fit note as the body, budget in the summary), never a blank thread.
     const detail = page.getByTestId("applications-detail");
-    await expect(detail.getByTestId("chat-message")).toHaveCount(0);
-    await expect(detail.getByText("No messages yet.")).toBeVisible();
-    // The offered rate is preserved in the context card rather than dropped.
-    await expect(detail.getByText("₹1,000 per month · 10 thumbnails")).toBeVisible();
+    await expect(detail.getByTestId("chat-message")).toHaveCount(1);
+    await expect(detail.locator('[data-testid="chat-message"][data-from="other"]')).toHaveCount(1);
+    await expect(detail).toContainText("retention and packaging work");
+    await expect(detail).toContainText("₹1,000 per month");
+    await expect(detail.getByText("No messages yet.")).toHaveCount(0);
   });
 
   test("Applications filters are All/Sent/Received/Archived and no longer include Drafts", async ({ page }) => {

@@ -34,6 +34,8 @@ export type InteractionThreadMessage = {
   from: string;
   body: string;
   atLabel: string;
+  /** "status" marks a platform-generated stage update rendered apart from bubbles. */
+  kind?: "status";
 };
 
 export type InteractionJobSnapshot = {
@@ -91,6 +93,13 @@ export type OwnerInteraction = {
   direction: InteractionDirection;
   kind: InteractionKind;
   status: InteractionStatus;
+  /**
+   * Raw backend status (pipeline vocabulary). Present on live items; mock/demo
+   * items derive it via applicationPipeline.backendStatusOf's reverse map.
+   */
+  backendStatus?: string | null;
+  /** The manager's private note on a received item. Never present on sent items. */
+  managerNote?: string | null;
   title: string;
   /** Short subject line for rows where the title is a person's name. */
   contextLabel?: string | null;
@@ -98,7 +107,7 @@ export type OwnerInteraction = {
   counterpartyAvatarUrl?: string | null;
   createdAtLabel: string;
   updatedAtLabel: string;
-  unread?: boolean;
+    unread?: boolean;
   message: string;
   /**
    * Structured answers the requester gave to the owner's first-message
@@ -198,7 +207,32 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "2h ago",
     message:
       "Hi — I edit long-form finance and education videos with a focus on retention pacing. I rebuilt the structure for two explainer channels last quarter and can match your captions and sound style from the references. Happy to do a paid test edit on one of your recent uploads.",
-    proposedTerms: "₹2,800 per project · 3-day turnaround",
+    firstMessageAnswers: {
+      expected_rate: { amount: "2,800", unit: "per project" },
+      relevant_portfolio: [
+        {
+          id: "t-app-sent-1-portfolio-1",
+          title: "Retention edit sample",
+          url: "https://portfolio.example.com/sample/retention-edit",
+        },
+        {
+          id: "t-app-sent-1-portfolio-2",
+          title: "Captions + sound style reel",
+          url: "https://portfolio.example.com/sample/captions-reel",
+        },
+      ],
+      turnaround: { value: "3", unit: "days" },
+      working_hours: "Evenings IST",
+      relevant_experience: "2 finance explainers and 1 education series edited end to end last quarter.",
+      tools_workflow: ["Premiere Pro", "After Effects", "Frame.io"],
+      start_availability: "Within 1 week",
+      fit_note: "I already edit finance and education videos with a retention-first workflow.",
+      custom_instruction: {
+        prompt: "Share one similar explainer you worked on and what you personally handled.",
+        response: "I handled the pacing restructure, caption pass, sound cleanup, and final upload-ready export.",
+        links: ["https://portfolio.example.com/sample/retention-edit"],
+      },
+    },
     attachments: [
       { label: "Retention edit sample", url: "https://portfolio.example.com/sample/retention-edit" },
       { label: "Captions + sound style reel", url: "https://portfolio.example.com/sample/captions-reel" },
@@ -231,8 +265,16 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "5h ago",
     unread: true,
     message:
-      "I run a daily shorts pipeline for two faceless channels — hook-first cuts, beat-synced captions, and same-day delivery. I can take on 20–25 shorts a month and keep your caption style consistent across editors.",
-    proposedTerms: "₹1,200 per month · 20 shorts",
+      "I can run a daily shorts pipeline and keep your caption style consistent across editors.",
+    firstMessageAnswers: {
+      expected_rate: { amount: "1,200", unit: "per month" },
+      turnaround: { value: "24", unit: "hours" },
+      working_hours: "Mornings IST",
+      relevant_experience: "Daily shorts pipeline for two faceless channels.",
+      tools_workflow: ["CapCut", "Premiere Pro"],
+      start_availability: "Immediately",
+      fit_note: "I can run a daily shorts pipeline and keep your caption style consistent across editors.",
+    },
     attachments: [{ label: "Shorts pacing reel", url: "https://portfolio.example.com/sample/shorts-reel" }],
     response: {
       from: "Motivation Shorts",
@@ -321,7 +363,16 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "1d ago",
     message:
       "I write Hindi explainer scripts with a clear hook, simple analogies, and a tight 8–10 minute structure. I can match your conversational tone and include on-screen cue notes for the editor.",
-    proposedTerms: "₹1,500 per script",
+    firstMessageAnswers: {
+      relevant_experience: "Wrote 18 Hindi explainers across education and current-affairs channels.",
+      start_availability: "Within 2 weeks",
+      custom_instruction: {
+        prompt: "Share a tight opening hook for a phone review video.",
+        response:
+          "Most phone reviews answer specs. I would open by showing the one everyday moment where the phone either saves you time or annoys you immediately.",
+        links: [],
+      },
+    },
     job: {
       jobId: "5",
       title: "Script writer for Hindi explainers (8–10 mins)",
@@ -354,7 +405,24 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     unread: true,
     message:
       "I edit documentary-style finance videos — narrative pacing, archival overlays, and clean sound design. I've linked two deep dives I cut end to end and can adapt to your reference style.",
-    proposedTerms: "₹3,500 per video · 5-day turnaround",
+    firstMessageAnswers: {
+      expected_rate: { amount: "3,500", unit: "per video" },
+      relevant_portfolio: [
+        {
+          id: "t-app-sent-5-portfolio-1",
+          title: "Deep dive — market crash explainer",
+          url: "https://portfolio.example.com/sample/deep-dive-1",
+        },
+        {
+          id: "t-app-sent-5-portfolio-2",
+          title: "Deep dive — startup story",
+          url: "https://portfolio.example.com/sample/deep-dive-2",
+        },
+      ],
+      turnaround: { value: "5", unit: "days" },
+      tools_workflow: ["Premiere Pro", "After Effects", "Audition"],
+      fit_note: "Your documentary-style finance brief matches the pacing and archival work I already do.",
+    },
     attachments: [
       { label: "Deep dive — market crash explainer", url: "https://portfolio.example.com/sample/deep-dive-1" },
       { label: "Deep dive — startup story", url: "https://portfolio.example.com/sample/deep-dive-2" },
@@ -391,6 +459,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     direction: "received",
     kind: "hiring_request",
     status: "new",
+    managerNote: "Daily channel — confirm the Monday handoff works before accepting.",
     title: "Shorts editing package — 15 shorts per month",
     counterpartyName: "Motivation Shorts",
     counterpartyAvatarUrl: "https://picsum.photos/seed/motivation/96/96",
@@ -398,8 +467,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "1d ago",
     unread: true,
     message:
-      "Saw your listing and your retention work fits our daily channel. We need 15 shorts a month with captions in our house style — scripts and raw clips are ready every Monday. Could you share your availability for a kickoff call this week?",
-    proposedTerms: "₹1,400 per month · 15 shorts · 2 revision rounds",
+      "Hi, I came across your listing and would like to discuss a monthly Shorts package.",
     // Structured answers to the talent's first-message requirements (talent context).
     firstMessageAnswers: {
       project_budget: { amount: "1,400", unit: "per month" },
@@ -414,6 +482,12 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
       start_availability: "Immediately",
       fit_note: "Your retention work fits our daily channel and we already have a steady content pipeline.",
+      custom_instruction: {
+        prompt: "Share the channel context, one reference to match, and what success would look like in the first month.",
+        response:
+          "This is for a daily motivation Shorts channel. We want pacing close to the two references and success means 15 on-brand shorts delivered without daily hand-holding.",
+        links: ["https://youtube.com/watch?v=ref-short-1"],
+      },
     },
     recruiter: {
       profileSlug: "motivation-shorts",
@@ -441,7 +515,15 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "2d ago",
     message:
       "We publish one long-form explainer a week and want a single editor who owns pacing, captions, and sound. Your listing matches the brief — open to a monthly retainer starting next cycle.",
-    proposedTerms: "₹3,200 per month · 4 videos",
+    firstMessageAnswers: {
+      project_budget: { amount: "3,200", unit: "per month" },
+      project_brief:
+        "4 long-form finance explainers per month. Scripts and references are ready before kickoff; you own pacing, captions, and sound cleanup.",
+      turnaround: { value: "5", unit: "days" },
+      working_hours: "Weekly delivery",
+      channel_or_brand_link: "https://youtube.com/@financecreator",
+      start_availability: "Within 2 weeks",
+    },
     response: {
       from: "Finance Channel",
       body: "Great to have you on board. I'll share the first month's scripts and our brand kit on Monday so you can plan the batch.",
@@ -476,7 +558,17 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "6d ago",
     message:
       "Looking for one person to handle source pulls and a first assembly cut for a 25-minute documentary. Timeline is six weeks with weekly check-ins.",
-    proposedTerms: "₹6,000 per project · 6 weeks",
+    firstMessageAnswers: {
+      project_budget: { amount: "6,000", unit: "per project" },
+      project_brief:
+        "Source pulls, research board, and first assembly cut for a 25-minute documentary episode.",
+      turnaround: { value: "6", unit: "weeks" },
+      reference_links: [
+        "https://youtube.com/watch?v=history-reference-1",
+        "https://youtube.com/watch?v=history-reference-2",
+      ],
+      fit_note: "Your long-form structure work looks aligned with documentary research-heavy edits.",
+    },
     recruiter: {
       profileSlug: "history-deep-dives",
       name: "History Deep Dives",
@@ -506,7 +598,13 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "10h ago",
     unread: true,
     message: "",
-    proposedTerms: "₹1,000 per month · 10 thumbnails",
+    firstMessageAnswers: {
+      project_budget: { amount: "1,000", unit: "per month" },
+      project_brief: "10 gaming thumbnails per month with two concept directions for each main upload.",
+      turnaround: { value: "2", unit: "days" },
+      channel_or_brand_link: "https://youtube.com/@pixelrush",
+      fit_note: "Your retention and packaging work seems close to the style we need for our gaming channel.",
+    },
     recruiter: {
       profileSlug: "pixel-rush",
       name: "Pixel Rush",
@@ -534,8 +632,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "4h ago",
     unread: true,
     message:
-      "Your job matches the channels I already edit for — creator-led finance and education. I work hook-first, rebuild pacing around retention dips, and deliver with clean captions and mixed audio. I can share a test edit on one of your published videos before you commit.",
-    proposedTerms: "₹2,500 per video · 4-day turnaround",
+      "Hi, I came across the listing and would love to be considered for the long-form editor role.",
     attachments: [
       { label: "Retention case study", url: "https://portfolio.example.com/aarav/case-study" },
     ],
@@ -594,13 +691,31 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     direction: "received",
     kind: "application",
     status: "shortlisted",
+    managerNote: "Strong packaging systems — ask for the finance A/B board before an interview.",
     title: "Mira Shah",
     counterpartyName: "Mira Shah",
     createdAtLabel: "1d ago",
     updatedAtLabel: "8h ago",
     message:
       "I design CTR-focused thumbnails for tech and finance channels — 3 concepts per video with mobile-size legibility checks. I can slot into your weekly publish schedule and keep a shared concept board for fast approvals.",
-    proposedTerms: "₹1,000 per month · 8 thumbnails",
+    firstMessageAnswers: {
+      expected_rate: { amount: "1,000", unit: "per month" },
+      relevant_portfolio: [
+        {
+          id: "mira-packaging-board",
+          title: "A/B concept board — finance series",
+          url: "https://portfolio.example.com/mira/finance-board",
+        },
+        {
+          id: "mira-tech-packaging",
+          title: "Packaging refresh — tech reviews",
+          url: "https://portfolio.example.com/mira/tech-packaging",
+        },
+      ],
+      relevant_experience: "Packaging systems for 6 channels, usually 3 concepts per video within 24 hours.",
+      tools_workflow: ["Photoshop", "Figma", "Illustrator"],
+      fit_note: "Your weekly explainer cadence matches how I run thumbnail boards for retainers.",
+    },
     job: {
       jobId: null,
       title: "Thumbnail designer for weekly explainers",
@@ -688,7 +803,19 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     unread: true,
     message:
       "I edit shorts and long-form for education channels and can own your weekly batch. I've attached a before/after where I lifted average view duration by reworking the first 30 seconds.",
-    proposedTerms: "₹2,200 per video",
+    firstMessageAnswers: {
+      expected_rate: { amount: "2,200", unit: "per video" },
+      relevant_portfolio: [
+        {
+          id: "rhea-before-after",
+          title: "Retention rework — intro 30s",
+          url: "https://portfolio.example.com/rhea/before-after",
+        },
+      ],
+      turnaround: { value: "4", unit: "days" },
+      working_hours: "Flexible hours",
+      start_availability: "Next Monday",
+    },
     job: {
       jobId: null,
       title: "Long-form editor for weekly finance explainers",
@@ -745,7 +872,30 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     unread: true,
     message:
       "I've spent three years on creator-led finance and tech channels doing long-form edits, motion callouts, and thumbnail packaging. I work hook-first, keep a shared review board, and can deliver a paid test edit on a recent upload before you commit to anything.",
-    proposedTerms: "₹3,000 per video · 3-day turnaround",
+    firstMessageAnswers: {
+      expected_rate: { amount: "3,000", unit: "per video" },
+      relevant_portfolio: [
+        {
+          id: "ishaan-showreel",
+          title: "Showreel — finance long-form",
+          url: "https://portfolio.example.com/ishaan/showreel",
+        },
+        {
+          id: "ishaan-thumbnails",
+          title: "Thumbnail packaging set",
+          url: "https://portfolio.example.com/ishaan/thumbnails",
+        },
+      ],
+      turnaround: { value: "3", unit: "days" },
+      relevant_experience: "3 years on creator-led finance and tech channels from 80K to 1.2M subscribers.",
+      tools_workflow: ["Premiere Pro", "After Effects", "Photoshop", "Figma"],
+      custom_instruction: {
+        prompt: "Share how you would improve the first 30 seconds of a finance explainer.",
+        response:
+          "I would isolate the core viewer question, open on the consequence, then use a fast proof clip before the first chart so the video earns the analytical section.",
+        links: ["https://portfolio.example.com/ishaan/showreel"],
+      },
+    },
     attachments: [
       { label: "Showreel — finance long-form", url: "https://portfolio.example.com/ishaan/showreel" },
       { label: "Thumbnail packaging set", url: "https://portfolio.example.com/ishaan/thumbnails" },
@@ -831,7 +981,23 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "1d ago",
     message:
       "Your shorts work fits our daily channel. We need 15 shorts a month in a consistent caption style — raw clips and scripts arrive every Monday. Are you open to a trial month?",
-    proposedTerms: "₹1,400 per month · 15 shorts",
+    firstMessageAnswers: {
+      project_budget: { amount: "1,400", unit: "per month" },
+      project_brief:
+        "15 Shorts per month in a consistent caption style. Raw clips and scripts arrive every Monday.",
+      turnaround: { value: "2", unit: "days" },
+      working_hours: "Weekly delivery",
+      channel_or_brand_link: "https://youtube.com/@motivationshorts",
+      reference_links: ["https://youtube.com/watch?v=shorts-style-reference"],
+      start_availability: "Immediately",
+      fit_note: "Your daily shorts systems are close to the workflow we need.",
+      custom_instruction: {
+        prompt: "Share the channel context, one reference to match, and what success would look like in the first month.",
+        response:
+          "This is a daily faceless motivation channel. We want the captions and pacing matched to the reference, with the first month measured by consistent delivery and stable retention.",
+        links: ["https://youtube.com/watch?v=shorts-style-reference"],
+      },
+    },
     talent: {
       profileSlug: "anika-rao",
       name: "Anika Rao",
@@ -863,7 +1029,19 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     unread: true,
     message:
       "We're planning a 6-part explainer series and need outlines plus full scripts with sourced claims. Two scripts a month, research notes included. Would this fit your current load?",
-    proposedTerms: "₹1,800 per script · 2 per month",
+    firstMessageAnswers: {
+      project_budget: { amount: "1,800", unit: "per video" },
+      project_brief:
+        "A 6-part explainer series: outlines, full scripts, sourced claims, and research notes for two scripts per month.",
+      turnaround: { value: "2", unit: "weeks" },
+      working_hours: "Flexible hours",
+      channel_or_brand_link: "https://youtube.com/@contentbusiness",
+      reference_links: [
+        "https://youtube.com/watch?v=explainer-reference-1",
+        "https://youtube.com/watch?v=explainer-reference-2",
+      ],
+      start_availability: "Within 1 week",
+    },
     response: {
       from: "Kabir Sen",
       body: "This fits my schedule from next month. I can send a sample outline for your first topic this week so you can check structure and sourcing style.",
@@ -915,7 +1093,12 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "5d ago",
     message:
       "We want animated callouts and kinetic text for two videos a month — your lower-thirds style matches our brand. Open to a per-video arrangement?",
-    proposedTerms: "₹900 per video · 2 per month",
+    firstMessageAnswers: {
+      project_budget: { amount: "900", unit: "per video" },
+      project_brief: "Animated callouts and kinetic text for two explainers per month.",
+      reference_links: ["https://youtube.com/watch?v=motion-reference"],
+      fit_note: "Your lower-thirds style matches the visual language we want.",
+    },
     response: {
       from: "Nora Chen",
       body: "Thanks for thinking of me — your channel looks great. I'm fully booked through next quarter, but I'd be glad to revisit after that.",
@@ -955,7 +1138,15 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "2d ago",
     message:
       "Your packaging board for tech channels is exactly our style. We publish twice a week and want 8 thumbnails a month with a shared concept board for fast approvals. Open to a retainer?",
-    proposedTerms: "₹1,200 per month · 8 thumbnails",
+    firstMessageAnswers: {
+      project_budget: { amount: "1,200", unit: "per month" },
+      project_brief:
+        "8 thumbnails per month with a shared concept board and fast approvals for two uploads per week.",
+      working_hours: "Mornings IST",
+      channel_or_brand_link: "https://youtube.com/@techchannel",
+      start_availability: "Within 1 week",
+      fit_note: "Your packaging board for tech channels is exactly our style.",
+    },
     response: {
       from: "Tara Iyer",
       body: "Yes, I'd love to. I can start this week — I'll set up a shared board and send the first two concepts for your next upload.",
@@ -995,7 +1186,12 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     updatedAtLabel: "2w ago",
     message:
       "We're starting a horror-stories channel and need a deep, measured narration voice for weekly 10-minute episodes. Your demo fits the mood — would you be open to a per-episode rate?",
-    proposedTerms: "₹1,500 per episode",
+    firstMessageAnswers: {
+      project_budget: { amount: "1,500", unit: "per video" },
+      project_brief: "Weekly 10-minute horror story narration with a deep, measured tone.",
+      turnaround: { value: "3", unit: "days" },
+      channel_or_brand_link: "https://youtube.com/@nightstories",
+    },
     talent: {
       profileSlug: "arjun-nair",
       name: "Arjun Nair",
@@ -1063,6 +1259,21 @@ function applicationStatusToInteraction(
     case "withdrawn":
       return "withdrawn";
   }
+}
+
+/**
+ * Map a raw backend status to the inbox display vocabulary — used when a
+ * pipeline stage move commits locally after the backend confirms.
+ */
+export function interactionStatusFromBackend(
+  kind: InteractionKind,
+  direction: InteractionDirection,
+  backendStatus: string
+): InteractionStatus {
+  if (kind === "application") {
+    return applicationStatusToInteraction(backendStatus as BackendJobApplication["status"], direction);
+  }
+  return interestStatusToInteraction(backendStatus as BackendTalentInterest["status"], direction);
 }
 
 function interestStatusToInteraction(
@@ -1181,6 +1392,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         direction: "sent",
         kind: "application",
         status,
+        backendStatus: application.status,
         title: job?.title || "Job application",
         counterpartyName: job?.channel?.name || "Recruiter",
         counterpartyAvatarUrl: job?.channel?.logoUrl || null,
@@ -1215,6 +1427,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         direction: "received",
         kind: "application",
         status,
+        backendStatus: application.status,
+        managerNote: application.manager_note || null,
         title: applicantName,
         counterpartyName: applicantName,
         createdAtLabel: relativeTimeLabel(application.created_at),
@@ -1260,6 +1474,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         direction: "sent",
         kind: "hiring_request",
         status,
+        backendStatus: interest.status,
         title: talentName,
         contextLabel: listing?.title || null,
         counterpartyName: talentName,
@@ -1287,6 +1502,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         direction: "received",
         kind: "hiring_request",
         status,
+        backendStatus: interest.status,
+        managerNote: interest.manager_note || null,
         title: relatedJob?.title || "Hiring request",
         counterpartyName: recruiterName,
         counterpartyAvatarUrl: relatedJob?.channel?.logoUrl || null,

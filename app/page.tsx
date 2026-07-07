@@ -12,6 +12,7 @@ import { HomeRolesMarquee } from "../components/marketplace/HomeRolesMarquee";
 import { HomeWhySection } from "../components/marketplace/HomeWhySection";
 import { JobCard } from "../components/JobCard";
 import TalentCard from "../components/TalentCard";
+import { Icon } from "../components/Icons";
 import { Reveal } from "../components/ui";
 import {
   canUseLocalMockFallback,
@@ -78,7 +79,10 @@ export default async function Home() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
                   Marketplace · Jobs
                 </p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">Recent Job Listings</h2>
+                <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
+                  <Icon name="briefcase" className="h-5 w-5 text-white/55" />
+                  <span>Recent Job Listings</span>
+                </h2>
               </div>
               <Link
                 href="/jobs"
@@ -116,7 +120,10 @@ export default async function Home() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
                   Marketplace · Talent
                 </p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">Recent Talent Listings</h2>
+                <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
+                  <Icon name="user" className="h-5 w-5 text-white/55" />
+                  <span>Recent Talent Listings</span>
+                </h2>
               </div>
               <Link
                 href="/talent"

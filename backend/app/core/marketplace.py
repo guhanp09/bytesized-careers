@@ -17,11 +17,21 @@ TALENT_LISTING_STATUSES = ("draft", "published", "paused", "closed", "archived",
 
 TALENT_INTEREST_STATUSES = ("new", "reviewing", "contacted", "declined", "archived", "withdrawn")
 
-REPORT_TARGET_TYPES = ("job", "talent_listing", "profile")
+REPORT_TARGET_TYPES = ("job", "talent_listing", "profile", "message")
 
 REPORT_STATUSES = ("open", "dismissed", "action_taken")
 
-REPORT_ACTIONS = ("dismiss", "hide_listing", "pause_listing", "mark_verified", "mark_rejected")
+# Enforced by AdminReportResolveRequest in app/schemas/admin.py (the old
+# free-string action field is gone).
+REPORT_ACTIONS = (
+    "dismiss",
+    "no_action",
+    "pause_listing",
+    "hide_listing",
+    "warn_user",
+    "suspend_user",
+    "reopen",
+)
 
 ENTITLEMENT_KINDS = ("job_post", "talent_listing", "featured_job", "featured_talent_listing")
 

@@ -207,12 +207,18 @@ test("fit note: a blank/whitespace fit note falls through to a generated default
   assert.ok(body.includes("Tech Channel"));
 });
 
-test("fit note: the inbox drops the fit note from the details when it is the body", () => {
+test("fit note: inbox renders the event plus structured summary instead of duplicating a fit-note bubble", () => {
   const source = read("components/you/ApplicationsWorkspace.tsx");
-  // The dedup only removes fit_note when the body equals the fit note, and only
-  // the fit_note key is stripped (other answers still render below).
-  assert.match(source, /openingBody\.trim\(\) === fitNote/);
-  assert.match(source, /key !== "fit_note"/);
+  assert.match(source, /id: `\$\{item\.id\}-event`/);
+  assert.match(source, /body: openingEventLine\(item\)/);
+  assert.match(source, /const openingBody = answers \? "" : item\.message \|\| ""/);
+  assert.match(source, /firstMessageAnswers: answers/);
+});
+
+test("fit note: inbox no longer needs fuzzy fit-note stripping for structured answers", () => {
+  const source = read("components/you/ApplicationsWorkspace.tsx");
+  assert.doesNotMatch(source, /function normalizeOpeningText/);
+  assert.doesNotMatch(source, /key !== "fit_note"/);
 });
 
 // ── Hiring request opening messages (1–7) ─────────────────────────────────────
@@ -292,11 +298,12 @@ test("regression: selectOpeningMessageTemplate stays within bounds and handles e
   }
 });
 
-test("regression: the inbox only generates a fallback body for blank records with answers", () => {
+test("regression: the inbox starts every application/request with an event and keeps legacy plain text only", () => {
   const source = read("components/you/ApplicationsWorkspace.tsx");
-  // Generation is gated on an empty stored body AND structured answers being
-  // present, so normal messages and blank records without answers are untouched.
-  assert.match(source, /if \(!openingBody\.trim\(\) && rawAnswers\)/);
+  // Structured requirement answers render as a summary after the event; legacy
+  // free-text records can still render their stored body.
+  assert.match(source, /function openingEventLine/);
+  assert.match(source, /const openingBody = answers \? "" : item\.message \|\| ""/);
   // Responses and replies are still flattened verbatim (normal chat unchanged).
   assert.match(source, /id: `\$\{item\.id\}-response`/);
   assert.match(source, /id: `\$\{item\.id\}-reply-\$\{index\}`/);
@@ -317,24 +324,18 @@ test("regression: no wrapper/heading label is introduced around the details", ()
   }
 });
 
-test("regression: job submit stores a generated body and gates the fit-note override on the requirement", () => {
+test("regression: job submit relies on the inbox event and does not store generated cover text", () => {
   const source = read("components/job-details/JobActionsPanelClient.tsx");
-  assert.match(source, /buildOpeningMessageBody\(\{/);
-  assert.match(source, /resolveJobChannelName\(job\)/);
-  assert.match(source, /requirementKeys\.includes\("fit_note"\)/);
-  assert.match(source, /cover_note: coverNote/);
-  // No longer sends an empty cover note.
-  assert.ok(!/cover_note: "",/.test(source), "must not submit a blank cover note");
+  assert.ok(!source.includes("buildOpeningMessageBody"), "must not generate a synthetic cover note");
+  assert.match(source, /cover_note: null/);
+  assert.match(source, /first_message_answers: normalizedAnswers/);
 });
 
-test("regression: talent submit stores a generated body personalised by the talent name", () => {
+test("regression: talent submit relies on the inbox event and does not store generated note text", () => {
   const client = read("components/TalentListingActionsClient.tsx");
-  assert.match(client, /buildOpeningMessageBody\(\{/);
-  assert.match(client, /recipientName: talentName/);
-  assert.match(client, /keys\.includes\("fit_note"\)/);
-  // The note argument is the generated body, not an empty string.
-  assert.match(client, /sendTalentInterest\(\s*token,\s*listingId,\s*note,/);
-  // The talent page feeds the resolved display name in.
+  assert.ok(!client.includes("buildOpeningMessageBody"), "must not generate a synthetic hiring request note");
+  assert.match(client, /sendTalentInterest\(\s*token,\s*listingId,\s*null,/);
+  // The talent page no longer needs to feed a display name just to synthesize a note.
   const page = read("app/talent/[id]/page.tsx");
-  assert.match(page, /talentName=\{name\}/);
+  assert.ok(!page.includes("talentName={name}"));
 });

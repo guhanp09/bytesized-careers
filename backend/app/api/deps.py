@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -72,6 +73,33 @@ async def _resolve_user_from_credentials(
 
     stmt = select(User).where(User.id == user_id)
     user = (await session.execute(stmt)).scalar_one_or_none()
+    if user is None:
+        return None
+
+    # Suspended accounts are rejected at the door (admin panel enforcement —
+    # docs/ADMIN_PANEL_PLAN.md §12). 403, not 401: the token is valid, the
+    # account is locked.
+    if user.suspended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account suspended. Contact support for details.",
+        )
+
+    # Coarse activity signal for the admin directory: touch at most every 15
+    # minutes so authenticated traffic doesn't turn into constant writes.
+    # expire_on_commit=False on the session factory keeps `user` usable after
+    # this commit; the request handler starts its own transaction afterwards.
+    now = datetime.now(UTC)
+    last_active = user.last_active_at
+    if last_active is not None and last_active.tzinfo is None:
+        # SQLite returns naive datetimes; normalize before comparing.
+        last_active = last_active.replace(tzinfo=UTC)
+    if last_active is None or (now - last_active) > timedelta(minutes=15):
+        user.last_active_at = now
+        try:
+            await session.commit()
+        except Exception:  # pragma: no cover - activity tracking must never block auth
+            await session.rollback()
     return user
 
 

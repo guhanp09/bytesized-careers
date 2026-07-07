@@ -10,16 +10,19 @@ import {
   isBackendAuthError,
   saveTalentListing,
   sendTalentInterest,
+  type ReportCategory,
 } from "../lib/backendClient";
 import {
+  CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
   FirstMessageAnswers,
+  normalizeFirstMessageAnswers,
   sanitizeRequirementKeys,
   validateAnswers,
 } from "../lib/firstMessageRequirements";
 import { formatCompactNumber } from "../lib/format";
-import { buildOpeningMessageBody } from "../lib/openingMessage";
 import ActionSuccessModal from "./first-message/ActionSuccessModal";
 import FirstMessageRequirementsModal from "./first-message/FirstMessageRequirementsModal";
+import ReportDialog from "./ReportDialog";
 import { IconTooltip, Section, ToolChip } from "./ui";
 
 type ActionState = "idle" | "saving" | "sent" | "error";
@@ -148,19 +151,18 @@ function TalentMetadataCard({
 
 export default function TalentListingActionsClient({
   listingId,
-  talentName,
   views = 0,
   interestedRecruitersCount = 0,
   requirementKeys = [],
+  customInstructionPrompt = null,
   metadataRows = [],
   tools = [],
 }: {
   listingId: string;
-  /** Display name of the talent being hired, used to personalise the opening message. */
-  talentName?: string | null;
   views?: number;
   interestedRecruitersCount?: number;
   requirementKeys?: string[];
+  customInstructionPrompt?: string | null;
   metadataRows?: TalentMetadataRow[];
   tools?: string[];
 }) {
@@ -177,6 +179,11 @@ export default function TalentListingActionsClient({
     () => sanitizeRequirementKeys(requirementKeys, "talent"),
     [requirementKeys]
   );
+  const requirementPrompts = React.useMemo(() => {
+    const prompt = customInstructionPrompt?.trim();
+    if (!prompt || !keys.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)) return undefined;
+    return { [CUSTOM_INSTRUCTION_REQUIREMENT_KEY]: prompt };
+  }, [customInstructionPrompt, keys]);
   const [answers, setAnswers] = React.useState<FirstMessageAnswers>({});
   const [answerErrors, setAnswerErrors] = React.useState<Record<string, string>>({});
   const [requirementsOpen, setRequirementsOpen] = React.useState(false);
@@ -233,7 +240,8 @@ export default function TalentListingActionsClient({
     // Validate before auth so an incomplete attempt shows calm inline guidance
     // instead of bouncing a signed-out requester to the login screen.
     if (keys.length) {
-      const errors = validateAnswers(keys, "talent", answers);
+      const normalizedAnswers = normalizeFirstMessageAnswers(keys, "talent", answers, requirementPrompts);
+      const errors = validateAnswers(keys, "talent", normalizedAnswers);
       if (Object.keys(errors).length) {
         setAnswerErrors(errors);
         setInterestState("idle");
@@ -245,26 +253,20 @@ export default function TalentListingActionsClient({
     setInterestState("saving");
     setInterestError(null);
     try {
-      // Store a real opening message so the inbox never shows a blank bubble: a
-      // required fit note becomes the message, otherwise a natural default is
-      // generated (personalised with the talent's name, rotated deterministically
-      // per requester + listing so it's varied but stable).
-      const fitNote =
-        keys.includes("fit_note") && typeof answers.fit_note === "string" ? answers.fit_note : "";
-      const note = buildOpeningMessageBody({
-        context: "talent",
-        recipientName: talentName,
-        fitNote,
-        seed: `${listingId}:${session?.backendUserId ?? ""}`,
-      });
+      const normalizedAnswers = keys.length
+        ? normalizeFirstMessageAnswers(keys, "talent", answers, requirementPrompts)
+        : undefined;
+      // The inbox creates the opening system event. Structured requirement
+      // answers render as the first-message summary; no-requirement requests
+      // should not create an extra generated text bubble.
       // The backend reuses an existing active request, so the returned id always
       // points at the one conversation this hiring request created.
       const interest = await sendTalentInterest(
         token,
         listingId,
-        note,
         null,
-        keys.length ? answers : undefined
+        null,
+        normalizedAnswers
       );
       setConversationId(interest.id);
       setInterestState("sent");
@@ -290,20 +292,24 @@ export default function TalentListingActionsClient({
     }
   };
 
-  const reportListing = async () => {
-    if (reportState === "sent" || reportState === "saving") return;
+  // "Report this listing" opens the shared reason picker; the report submits
+  // from the dialog with the chosen category + optional note.
+  const [reportOpen, setReportOpen] = React.useState(false);
+  const reportListing = () => {
+    if (reportState === "sent") return;
+    setReportOpen(true);
+  };
+
+  const submitReport = async (category: ReportCategory, note: string | null) => {
+    if (reportState === "saving") return;
     setReportState("saving");
     try {
       await createReport(
-        {
-          target_type: "talent_listing",
-          target_id: listingId,
-          category: "suspicious_or_inaccurate",
-          note: null,
-        },
+        { target_type: "talent_listing", target_id: listingId, category, note },
         session?.backendAccessToken
       );
       setReportState("sent");
+      setReportOpen(false);
     } catch {
       setReportState("error");
     }
@@ -395,6 +401,7 @@ export default function TalentListingActionsClient({
         answers={answers}
         onAnswersChange={onAnswersChange}
         errors={answerErrors}
+        requirementPrompts={requirementPrompts}
         onSubmit={submitInterest}
         onClose={() => setRequirementsOpen(false)}
         submitState={interestState}
@@ -416,6 +423,14 @@ export default function TalentListingActionsClient({
         }
         onSecondary={() => setSuccessOpen(false)}
         onClose={() => setSuccessOpen(false)}
+      />
+      <ReportDialog
+        open={reportOpen}
+        targetLabel="this listing"
+        sending={reportState === "saving"}
+        error={reportState === "error" ? "Couldn’t send the report. Try again." : null}
+        onSubmit={(category, note) => void submitReport(category, note)}
+        onClose={() => setReportOpen(false)}
       />
     </div>
   );

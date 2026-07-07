@@ -38,8 +38,7 @@ export default function RequirementSelector({
 }) {
   const defs = requirementsForContext(context);
   const selected = new Set(selectedKeys);
-  const customInstructionSelected =
-    context === "job" && selected.has(CUSTOM_INSTRUCTION_REQUIREMENT_KEY);
+  const customInstructionSelected = selected.has(CUSTOM_INSTRUCTION_REQUIREMENT_KEY);
 
   const toggle = (key: string) => {
     if (selected.has(key)) {

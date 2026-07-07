@@ -173,6 +173,26 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         priority=PRIORITY_HIGH,
         notes="A participant sent a real message. Source: messaging_service.post_message.",
     ),
+    # ---- Admin / moderation ----
+    NotificationEvent(
+        key="account_warning",
+        category=CATEGORY_TRANSACTIONAL,
+        recipient="The warned user",
+        actor="An admin",
+        channels=_BOTH,
+        default_channels=(CHANNEL_IN_APP,),  # email once real delivery + prefs exist
+        priority=PRIORITY_HIGH,
+        notes="A recorded moderation notice (warn step of the triage ladder). Source: routers/admin.py.",
+    ),
+    NotificationEvent(
+        key="platform_notice",
+        category=CATEGORY_TRANSACTIONAL,
+        recipient="Targeted user(s)",
+        actor="An admin",
+        channels=_BOTH,
+        default_channels=(CHANNEL_IN_APP,),
+        notes="Admin-sent platform notice (support follow-ups, policy notices). Source: routers/admin.py.",
+    ),
 )
 
 EVENT_REGISTRY: dict[str, NotificationEvent] = {event.key: event for event in _EVENTS}

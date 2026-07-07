@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,6 +26,8 @@ class MessageRead(BaseModel):
     from_me: bool
     sender_name: str | None = None
     body: str
+    # "status_update" for platform-generated pipeline updates; None for user text.
+    kind: str | None = None
     created_at: str | None = None
 
 
@@ -45,6 +48,8 @@ class ConversationDetail(BaseModel):
 
 class SendMessageRequest(BaseModel):
     body: str = Field(min_length=1, max_length=ms.MAX_MESSAGE_LENGTH)
+    # Only the platform status-update kind is accepted; user text sends no kind.
+    kind: Literal["status_update"] | None = None
 
 
 # --- helpers ---------------------------------------------------------------
@@ -175,7 +180,7 @@ async def send_message(
     conversation = await _require_conversation(session, conversation_id)
     _require_participant(conversation, current_user)
     try:
-        message = await ms.post_message(session, conversation, current_user, payload.body)
+        message = await ms.post_message(session, conversation, current_user, payload.body, kind=payload.kind)
     except ms.EmptyMessageBody as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Message cannot be empty") from exc
     except ms.NotAParticipant as exc:

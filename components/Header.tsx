@@ -9,6 +9,7 @@ import Sidebar from "./Sidebar";
 import BrandLogo from "./BrandLogo";
 import DevDataSourceSwitch from "./dev/DevDataSourceSwitch";
 import { PostMenu } from "./marketplace/PostMenu";
+import { findSeoRouteForSearchQuery } from "../lib/seoFilterRoutes";
 import {
   getMyProfile,
   listNotifications,
@@ -220,7 +221,8 @@ export default function Header() {
                     event.preventDefault();
                     const query = searchValue.trim();
                     const target = searchMode === "talent" ? "/talent" : "/jobs";
-                    router.push(query ? `${target}?q=${encodeURIComponent(query)}` : target);
+                    const seoRoute = query ? findSeoRouteForSearchQuery(searchMode, query) : null;
+                    router.push(seoRoute ? seoRoute.path : query ? `${target}?q=${encodeURIComponent(query)}` : target);
                   }}
                 >
                   <div
@@ -542,6 +544,24 @@ export default function Header() {
                           <Icon name="inbox" className="w-4 h-4" />
                           Support
                         </button>
+
+                        {session?.user?.accountType === "ADMIN" ? (
+                          <button
+                            type="button"
+                            data-testid="header-admin-link"
+                            className="flex w-full cursor-pointer items-center justify-between rounded-lg px-2 py-2 text-sm text-white/85 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              router.push("/admin");
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Icon name="alert" className="w-4 h-4" />
+                              Admin
+                            </span>
+                            <span className="text-white/45">›</span>
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"

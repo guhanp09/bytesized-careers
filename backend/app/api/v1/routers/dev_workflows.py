@@ -135,10 +135,40 @@ async def _persona(session: AsyncSession, key: str) -> User:
     return user
 
 
-def _auto_answers(required_keys: list[str] | None) -> dict[str, str]:
-    """A non-empty answer per required first-message key (satisfies the server gate)."""
+def _auto_answers(required_keys: list[str] | None) -> dict[str, object]:
+    """Typed, realistic answers for required first-message keys."""
 
-    return {key: f"Dev workflow tester: auto-filled {key.replace('_', ' ')}." for key in (required_keys or [])}
+    sample_answers: dict[str, object] = {
+        "expected_rate": {"amount": "2500", "unit": "per video"},
+        "project_budget": {"amount": "40000", "unit": "per project"},
+        "relevant_portfolio": [
+            {
+                "id": "link:dev-workflow-portfolio",
+                "title": "Dev workflow portfolio sample",
+                "url": "https://portfolio.example.com/dev-workflow",
+            }
+        ],
+        "project_brief": "A focused creator workflow with clear scope, references, and weekly delivery.",
+        "turnaround": {"value": "4", "unit": "days"},
+        "working_hours": "Evenings IST",
+        "channel_or_brand_link": "https://youtube.com/@devworkflow",
+        "reference_links": [
+            "https://youtube.com/watch?v=dev-reference-1",
+            "https://youtube.com/watch?v=dev-reference-2",
+        ],
+        "relevant_experience": "3 years working on creator-led YouTube edits in adjacent niches.",
+        "tools_workflow": ["Premiere Pro", "After Effects", "Frame.io"],
+        "start_availability": "Within 1 week",
+        "fit_note": "The listing matches my current creator workflow and delivery style.",
+        "custom_instruction": {
+            "response": "I can share a short test edit and a concise production note before kickoff.",
+            "links": [],
+        },
+    }
+    return {
+        key: sample_answers.get(key, f"Dev workflow tester: {key.replace('_', ' ')}.")
+        for key in (required_keys or [])
+    }
 
 
 async def _recipient_notification(

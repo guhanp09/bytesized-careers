@@ -36,7 +36,7 @@ type Step =
 
 type TurnaroundUnit = "hours" | "days" | "weeks";
 type Turnaround = { value: number; unit: TurnaroundUnit } | null;
-type BudgetIntent = "" | "range" | "flexible";
+type BudgetIntent = "" | "range" | "flexible" | "contact";
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type JobPlatform = "youtube" | "instagram";
 
@@ -530,6 +530,7 @@ function ReferenceNotesEditor({
 
 function StepCard({
   title,
+  icon,
   hint,
   children,
   actions,
@@ -537,6 +538,7 @@ function StepCard({
   size = "compact",
 }: {
   title?: React.ReactNode;
+  icon?: IconName;
   hint?: string;
   optional?: boolean;
   children: React.ReactNode;
@@ -559,7 +561,14 @@ function StepCard({
       {title || hint ? (
         <div className="flex items-baseline justify-between gap-3">
           {typeof title === "string" ? (
-            <h2 className="text-sm font-semibold tracking-tight text-white/90 uppercase">{title}</h2>
+            <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-white/90 uppercase">
+              {icon ? (
+                <span aria-hidden="true" className="inline-flex shrink-0 text-white/58">
+                  <Icon name={icon} className="h-4 w-4" />
+                </span>
+              ) : null}
+              <span>{title}</span>
+            </h2>
           ) : (
             title
           )}
@@ -1287,6 +1296,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="BASICS"
+          icon="briefcase"
           bodyClassName="mt-8"
           size="compact"
           actions={
@@ -1567,6 +1577,22 @@ export default function PostJobForm({
                   <Icon name="refresh" className="h-[18px] w-[18px]" />
                   Flexible
                 </button>
+                <button
+                  type="button"
+                  className={[
+                    "inline-flex h-11 flex-[0_0_auto] cursor-pointer items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold shadow-[0_12px_28px_-22px_rgba(0,0,0,0.95)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014]",
+                    budgetIntent === "contact" && !budgetMin && !budgetMax
+                      ? "border-white bg-white text-black hover:bg-white/92"
+                      : "border-white/12 bg-white/[0.055] text-white/82 hover:border-white/22 hover:bg-white/[0.085] hover:text-white",
+                  ].join(" ")}
+                  onClick={() => {
+                    onBudgetMinChange("");
+                    onBudgetMaxChange("");
+                    onBudgetIntentChange("contact");
+                  }}
+                >
+                  Contact for pricing
+                </button>
               </div>
             </Field>
 
@@ -1642,6 +1668,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="Details"
+          icon="sliders-horizontal"
           bodyClassName="mt-4"
           size="compact"
           optional
@@ -1735,6 +1762,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="CREATOR CONTEXT"
+          icon="sparkles"
           bodyClassName="mt-4"
           size="compact"
           actions={
@@ -1791,6 +1819,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="TOOLS & TAGS"
+          icon="sliders-horizontal"
           bodyClassName="mt-4"
           size="compact"
           actions={
@@ -1836,6 +1865,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="About"
+          icon="notebook-text"
           bodyClassName="mt-4"
           size="compact"
           actions={
@@ -1931,6 +1961,7 @@ export default function PostJobForm({
       return (
         <StepCard
           title="APPLICATION REQUIREMENTS"
+          icon="clipboard-list"
           bodyClassName="mt-4"
           size="compact"
           actions={

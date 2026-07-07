@@ -20,10 +20,10 @@ test("header search switch flips the placeholder and routes with the selected ty
   await expect(talentInput).toBeVisible();
   await expect(talentInput).toHaveAttribute("placeholder", /Search talent, roles, tools/);
 
-  // Submitting routes to the canonical talent page with the query preserved.
+  // Strong known intents route to curated SEO landing pages.
   await talentInput.fill("video editor");
   await talentInput.press("Enter");
-  await expect(page).toHaveURL(/\/talent\?q=video(%20|\+)editor/);
+  await expect(page).toHaveURL(/\/talent\/video-editors$/);
 });
 
 // During React streaming SSR, the production server briefly injects a hidden

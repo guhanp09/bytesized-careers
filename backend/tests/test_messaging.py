@@ -162,3 +162,45 @@ async def test_lazy_conversation_for_preexisting_application(client: AsyncClient
     first = await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_h)
     second = await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_h)
     assert first.json()["conversation"]["id"] == second.json()["conversation"]["id"]
+
+
+async def test_status_update_kind_round_trips_and_rejects_arbitrary_kinds(client: AsyncClient) -> None:
+    # A pipeline stage notification is a normal message with kind="status_update",
+    # so both sides can render it apart from user-written text.
+    owner = await _register_verified_login(client, email="k_owner@example.com", username="k_owner")
+    applicant = await _register_verified_login(client, email="k_applicant@example.com", username="k_applicant")
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+
+    convo = await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h)
+    conversation_id = convo.json()["conversation"]["id"]
+
+    sent = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Shortlisted for “Editor for finance channel”.", "kind": "status_update"},
+    )
+    assert sent.status_code == 201
+    assert sent.json()["kind"] == "status_update"
+
+    # The other participant reads the same kind back.
+    view = await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h)
+    assert view.json()["messages"][-1]["kind"] == "status_update"
+
+    # Plain text stays kind-less; arbitrary kinds are rejected.
+    plain = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Looking forward to it."},
+    )
+    assert plain.status_code == 201
+    assert plain.json()["kind"] is None
+
+    invalid = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "hello", "kind": "system"},
+    )
+    assert invalid.status_code == 422

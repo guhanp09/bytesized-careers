@@ -527,13 +527,9 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
 
   const G = {
     basics: { key: "basics", label: "Basics" },
-    role: { key: "role", label: "Role / niche" },
+    services: { key: "services", label: "Services" },
     creatorContext: { key: "creatorContext", label: "Creator context" },
-    skills: { key: "skills", label: "Skills & tools" },
-    portfolio: { key: "portfolio", label: "Portfolio / media" },
-    rates: { key: "rates", label: "Rates / availability" },
-    location: { key: "location", label: "Location / work mode" },
-    experience: { key: "experience", label: "Experience / bio" },
+    toolsPortfolio: { key: "toolsPortfolio", label: "Tools & portfolio" },
   };
 
   const items: CompletionItemInput[] = [
@@ -552,26 +548,26 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: primaryRole.length >= 2,
       required: true,
       jump: "basics",
-      group: G.role.key,
-      groupLabel: G.role.label,
+      group: G.basics.key,
+      groupLabel: G.basics.label,
     },
     {
       key: "workMode",
       label: "Add work mode",
       done: truthy(listing.work_mode),
       required: true,
-      jump: "collaboration",
-      group: G.location.key,
-      groupLabel: G.location.label,
+      jump: "basics",
+      group: G.basics.key,
+      groupLabel: G.basics.label,
     },
     {
       key: "rate",
       label: "Add rate",
       done: hasRate,
       required: true,
-      jump: "collaboration",
-      group: G.rates.key,
-      groupLabel: G.rates.label,
+      jump: "basics",
+      group: G.basics.key,
+      groupLabel: G.basics.label,
     },
   ];
   if (cityRequired) {
@@ -581,8 +577,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: truthy(listing.location),
       required: true,
       jump: "basics",
-      group: G.location.key,
-      groupLabel: G.location.label,
+      group: G.basics.key,
+      groupLabel: G.basics.label,
     });
   }
 
@@ -593,8 +589,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: platforms.length > 0,
       required: false,
       jump: "niche",
-      group: G.role.key,
-      groupLabel: G.role.label,
+      group: G.creatorContext.key,
+      groupLabel: G.creatorContext.label,
       actionLabel: "Add platforms",
     },
     {
@@ -618,8 +614,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: tools.length > 0,
       required: false,
       jump: "tools",
-      group: G.skills.key,
-      groupLabel: G.skills.label,
+      group: G.toolsPortfolio.key,
+      groupLabel: G.toolsPortfolio.label,
     },
     {
       key: "portfolio",
@@ -627,8 +623,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: portfolio.length > 0,
       required: false,
       jump: "portfolio",
-      group: G.portfolio.key,
-      groupLabel: G.portfolio.label,
+      group: G.toolsPortfolio.key,
+      groupLabel: G.toolsPortfolio.label,
     },
     {
       key: "description",
@@ -636,8 +632,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: truthy(listing.description),
       required: false,
       jump: "description",
-      group: G.experience.key,
-      groupLabel: G.experience.label,
+      group: G.services.key,
+      groupLabel: G.services.label,
     },
     {
       key: "experience",
@@ -647,12 +643,12 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
       done: typeof listing.experience_years === "number" && listing.experience_years >= 0,
       required: false,
       jump: "experience",
-      group: G.experience.key,
-      groupLabel: G.experience.label,
+      group: G.basics.key,
+      groupLabel: G.basics.label,
     }
   );
 
-  const groups = [G.basics, G.role, G.creatorContext, G.skills, G.portfolio, G.rates, G.location, G.experience];
+  const groups = [G.basics, G.services, G.creatorContext, G.toolsPortfolio];
 
   const rateValue = hasRate
     ? truthy(listing.rate_note)
@@ -663,8 +659,8 @@ export function getTalentDraftCompletion(listing: Partial<BackendTalentListing>)
   const keyFacts: KeyFact[] = [
     { key: "type", label: "Type", value: "Talent listing", jump: null },
     { key: "role", label: "Primary role", value: primaryRole || null, jump: "basics" },
-    { key: "workMode", label: "Work mode", value: listing.work_mode || null, jump: "collaboration" },
-    { key: "rate", label: "Rate", value: rateValue, jump: "collaboration" },
+    { key: "workMode", label: "Work mode", value: listing.work_mode || null, jump: "basics" },
+    { key: "rate", label: "Rate", value: rateValue, jump: "basics" },
     {
       key: "creatorContext",
       label: "Creator context",

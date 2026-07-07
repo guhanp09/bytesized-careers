@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.routers.admin import router as admin_router
 from app.api.v1.routers.auth import router as auth_router
 from app.api.v1.routers.content_style import router as content_style_router
 from app.api.v1.routers.dev_emails import router as dev_emails_router
@@ -19,6 +20,7 @@ from app.api.v1.routers.user_profile import router as user_profile_router
 from app.api.v1.routers.users import router as users_router
 
 api_router = APIRouter()
+api_router.include_router(admin_router)
 api_router.include_router(auth_router)
 api_router.include_router(content_style_router)
 api_router.include_router(health_router)

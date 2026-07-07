@@ -33,7 +33,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
 
   if (aboutText) {
     textSections.push(
-      <BodySection key="about" title="About the brand">
+      <BodySection key="about" title="About the brand" icon="notebook-text">
         <p className="whitespace-pre-line">{aboutText}</p>
       </BodySection>
     );
@@ -41,7 +41,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
 
   if (responsibilities.length) {
     textSections.push(
-      <BodySection key="responsibilities" title="Responsibilities">
+      <BodySection key="responsibilities" title="Responsibilities" icon="list-checks">
         <BulletList items={responsibilities} />
       </BodySection>
     );
@@ -49,7 +49,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
 
   if (requirements.length) {
     textSections.push(
-      <BodySection key="requirements" title="Requirements">
+      <BodySection key="requirements" title="Requirements" icon="clipboard-check">
         <BulletList items={requirements} />
       </BodySection>
     );
@@ -57,7 +57,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
 
   if (howToApply) {
     textSections.push(
-      <BodySection key="how-to-apply" title="How to apply">
+      <BodySection key="how-to-apply" title="How to apply" icon="send">
         <p className="whitespace-pre-line">{howToApply}</p>
       </BodySection>
     );
@@ -70,7 +70,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   if (!hasText && !hasReference && !hasTags) {
     return (
       <section className={`${LISTING_PANEL_CLASS} min-w-0 py-8`}>
-        <SectionLabel>Listing details</SectionLabel>
+        <SectionLabel icon="file">Listing details</SectionLabel>
         <p className="mt-4 text-sm leading-relaxed text-white/55">
           This job does not have additional details yet.
         </p>
@@ -88,7 +88,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
 
       {hasReference ? (
         <section className={`${LISTING_PANEL_CLASS} min-w-0 py-8`}>
-          <SectionLabel>Reference videos</SectionLabel>
+          <SectionLabel icon="video">Reference videos</SectionLabel>
           <div className="mt-5 min-w-0">
             <ReferenceVideos videos={referenceVideos} />
           </div>

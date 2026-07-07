@@ -45,6 +45,11 @@ async def test_apply_workflow_creates_real_recipient_state(client: AsyncClient) 
     received = await client.get("/api/v1/me/applications/received", headers=recruiter)
     assert received.status_code == 200
     assert app_id in {a["id"] for a in received.json()}
+    created_application = next(a for a in received.json() if a["id"] == app_id)
+    answers = created_application["first_message_answers"]
+    assert isinstance(answers["expected_rate"], dict)
+    assert isinstance(answers["relevant_portfolio"], list)
+    assert isinstance(answers["fit_note"], str)
 
     # And the recruiter has a real new_applicant notification pointing at it (regression
     # guard for the resource_id='None' bug the workflow tester surfaced).
@@ -72,6 +77,11 @@ async def test_hiring_request_workflow_creates_real_recipient_state(client: Asyn
     talent = {"Authorization": f"Bearer {await _token(client, 'talent-complete', password)}"}
     received = await client.get("/api/v1/me/talent-interests", headers=talent)
     assert interest_id in {i["id"] for i in received.json()}
+    created_interest = next(i for i in received.json() if i["id"] == interest_id)
+    answers = created_interest["first_message_answers"]
+    assert isinstance(answers["project_budget"], dict)
+    assert isinstance(answers["reference_links"], list)
+    assert isinstance(answers["turnaround"], dict)
     notifs = await client.get("/api/v1/notifications", headers=talent)
     received_events = [n for n in notifs.json()["items"] if n["type"] == "talent_interest_received"]
     assert any(n.get("resource_id") == interest_id for n in received_events)

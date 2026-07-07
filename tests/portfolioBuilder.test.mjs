@@ -204,3 +204,23 @@ test("step transitions reuse the shared Post Job animation wrapper", () => {
   assert.match(shared, /export function AnimatedStep/);
   assert.match(shared, /export const stepTransitionVariants/);
 });
+
+test("owner portfolio cards open the shared detail popup; editing stays in the actions menu", () => {
+  const source = read(BUILDER);
+  assert.match(source, /usePortfolioDetailPopup\("owner-portfolio-detail-popup"\)/);
+  assert.match(source, /onActivate=\{portfolioDetailPopup\.open\}/);
+  assert.match(source, /onEdit=\{openEditorForProject\}/);
+  assert.match(source, /Edit project/);
+  assert.match(source, /\{!embedded \? portfolioDetailPopup\.popover : null\}/);
+  assert.doesNotMatch(source, /projectHref=\{`\/you\/projects/);
+  assert.doesNotMatch(source, /Edit portfolio project/);
+});
+
+test("owner overview portfolio rail uses the shared popup instead of project routes", () => {
+  const source = read("components/you/YouHubClient.tsx");
+  assert.match(source, /import PortfolioDetailRail from "\.\.\/profile\/PortfolioDetailRail"/);
+  assert.match(source, /function OwnerPortfolioPreviewList/);
+  assert.match(source, /<PortfolioDetailRail\s+items=\{items\}/);
+  assert.match(source, /itemControlsId="owner-overview-portfolio-popup"/);
+  assert.doesNotMatch(source, /href=\{`\/you\/projects/);
+});

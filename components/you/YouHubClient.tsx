@@ -56,6 +56,7 @@ import PlatformLogosRow, {
 } from "../profile/PlatformLogosRow";
 import ProfileExperienceEditor, { type ProfileExperienceDraft } from "../profile/ProfileExperienceEditor";
 import ProfileExperienceList from "../profile/ProfileExperienceList";
+import PortfolioDetailRail from "../profile/PortfolioDetailRail";
 import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "../profile/ProfileReviews";
 import SocialIconRow from "../profile/SocialIconRow";
 import { TagPill } from "../ui";
@@ -79,7 +80,6 @@ import {
   platformDisplayName,
 } from "../../lib/profileSocialLinks";
 import { formatListingTitle } from "../../lib/displayText";
-import { portfolioSummaryPreview } from "../../lib/portfolioCard";
 import { inferExperienceFromUrl, sortExperienceItems } from "../../lib/profileExperience";
 import { findLocalLocationByDisplayName } from "../../lib/localLocations";
 import { getCustomLocationValidationError, normalizeCustomLocationInput } from "../../lib/locationValidation";
@@ -176,6 +176,7 @@ const buildOfflineProfile = (identity: OfflineProfileIdentity): BackendProfileRe
     tone: [],
   },
   privacy_settings: {
+    show_bio: true,
     show_links: true,
     show_skills: true,
     show_location: true,
@@ -841,61 +842,12 @@ function OwnerMetadataSidebar({
 
 function OwnerPortfolioPreviewList({ items }: { items: BackendPortfolioItem[] }) {
   return (
-    <div className="min-w-0">
-      <div
-        aria-label="Portfolio preview"
-        className="flex snap-x snap-proximity gap-4 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {items.map((item) => (
-          <Link
-            key={`owner-overview-project-${item.id}`}
-            href={`/you/projects/${encodeURIComponent(item.id)}`}
-            aria-label={`Open project detail: ${item.title}`}
-            className="group block w-[340px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.045] transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.066] hover:shadow-[0_26px_70px_-38px_rgba(0,0,0,1)] focus:outline-none focus:ring-2 focus:ring-white/15 sm:w-[360px] lg:w-[380px]"
-          >
-            <div className="aspect-video overflow-hidden bg-[radial-gradient(circle_at_26%_22%,rgba(255,255,255,0.11),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.018)_52%,rgba(0,0,0,0.25))]">
-              {item.thumbnail_url ? (
-                <img
-                  src={item.thumbnail_url}
-                  alt={item.title}
-                  className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
-                />
-              ) : (
-                <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
-                  <Icon name="image" className="h-8 w-8" />
-                </div>
-              )}
-            </div>
-            <div className="p-4">
-              <p className="truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
-              {cleanOwnerText(item.role_name || item.role || item.user_role_in_project) ? (
-                <p className="mt-1 text-sm font-medium text-white/72">
-                  {cleanOwnerText(item.role_name || item.role || item.user_role_in_project)}
-                </p>
-              ) : null}
-              {(() => {
-                const views = formatCompactNumber((item.public_metrics as Record<string, unknown> | null)?.views ?? item.views);
-                const published = formatDateShort(item.published_at || item.published_date || item.created_at);
-                const sourceLine = [
-                  item.channel_name,
-                  views ? `${views} views` : null,
-                  published,
-                  item.duration,
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
-                return sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null;
-              })()}
-              {portfolioSummaryPreview(item) ? (
-                <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/65">
-                  {portfolioSummaryPreview(item)}
-                </p>
-              ) : null}
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+    <PortfolioDetailRail
+      items={items}
+      ariaLabel="Portfolio preview"
+      keyPrefix="owner-overview-project"
+      itemControlsId="owner-overview-portfolio-popup"
+    />
   );
 }
 

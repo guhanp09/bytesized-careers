@@ -81,7 +81,10 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
       "reference_links",
       "start_availability",
       "fit_note",
+      "custom_instruction",
     ],
+    first_message_custom_instruction:
+      "Share the channel context, one reference to match, and what success would look like in the first month.",
   }),
   makeTalent({
     id: "mock-talent-shorts-editor",
@@ -135,8 +138,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Notion", "Google Docs", "Perplexity"],
     rate_note: "₹8,000 per script",
     experience_years: 6,
-    // Smaller combination: start availability + fit note.
-    first_message_requirements: ["start_availability", "fit_note"],
+    // No required first-message details: hiring creates an event-only thread.
+    first_message_requirements: [],
+    first_message_custom_instruction: null,
   }),
   makeTalent({
     id: "mock-talent-motion-designer",
@@ -152,6 +156,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["After Effects", "Illustrator", "Premiere Pro"],
     rate_note: "₹12,000 per project",
     availability_status: "selective",
+    first_message_requirements: ["project_budget", "project_brief", "reference_links", "start_availability"],
   }),
   makeTalent({
     id: "mock-talent-podcast-producer",
@@ -167,6 +172,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     platforms: ["Spotify", "YouTube", "Apple Podcasts"],
     tools: ["Descript", "Riverside", "Premiere Pro"],
     rate_note: "₹18,000 per episode",
+    first_message_requirements: ["project_brief", "turnaround", "working_hours"],
   }),
   makeTalent({
     id: "mock-talent-channel-manager",
@@ -184,6 +190,12 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     experience_years: 8,
     is_featured: true,
     portfolio_item_ids: ["dev-patel-sample-1"],
+    first_message_requirements: [
+      "project_brief",
+      "working_hours",
+      "channel_or_brand_link",
+      "start_availability",
+    ],
   }),
   makeTalent({
     id: "mock-talent-content-strategist",
@@ -198,6 +210,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     formats: ["Strategy", "Packaging", "Content calendar"],
     tools: ["Notion", "YouTube Studio", "Sheets"],
     rate_note: "₹1,000/hr",
+    first_message_requirements: ["project_budget", "channel_or_brand_link", "fit_note", "custom_instruction"],
+    first_message_custom_instruction:
+      "Tell me what positioning problem you want solved and which existing creator account is closest to the direction.",
   }),
   makeTalent({
     id: "mock-talent-ugc-creator",
@@ -214,6 +229,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["CapCut", "iPhone", "Canva"],
     rate_note: "₹15,000 per video",
     availability_status: "available",
+    first_message_requirements: ["project_budget", "project_brief", "reference_links"],
   }),
   makeTalent({
     id: "mock-talent-social-editor",
@@ -230,6 +246,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Canva", "CapCut", "Buffer"],
     rate_note: "₹35,000 per project",
     availability_status: "available",
+    first_message_requirements: ["turnaround", "working_hours", "start_availability", "fit_note"],
   }),
   makeTalent({
     id: "mock-talent-retention-analyst",
@@ -244,6 +261,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     formats: ["Analytics", "Retention review"],
     tools: ["YouTube Studio", "Sheets", "Looker Studio"],
     rate_note: "₹25,000 per project",
+    first_message_requirements: ["project_brief", "channel_or_brand_link", "reference_links"],
   }),
   makeTalent({
     id: "mock-talent-faceless-editor",
@@ -259,6 +277,7 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Premiere Pro", "After Effects", "Audition"],
     rate_note: "₹18,000 per video",
     availability_status: "available",
+    first_message_requirements: ["project_budget", "project_brief", "turnaround", "working_hours"],
   }),
 ];
 

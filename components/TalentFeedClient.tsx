@@ -2,7 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BackendTalentListing } from "../lib/backendClient";
+import {
+  seoFilterRoutesForType,
+  seoSelectedChipLabels,
+  type SeoFilterRoute,
+} from "../lib/seoFilterRoutes";
 import TalentCard from "./TalentCard";
 import { Reveal } from "./ui";
 
@@ -44,19 +50,31 @@ function Chip({
   label,
   active,
   onClick,
+  href,
 }: {
   label: string;
   active?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  href?: string;
 }) {
+  const className = [
+    "cursor-pointer rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
+    active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
+  ].join(" ");
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {label}
+      </Link>
+    );
+  }
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={[
-        "cursor-pointer rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
-        active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
-      ].join(" ")}
+      className={className}
     >
       {label}
     </button>
@@ -71,14 +89,27 @@ export default function TalentFeedClient({
   items,
   notice,
   query,
+  seoRoute,
 }: {
   items: BackendTalentListing[];
   notice?: string | null;
   query?: string;
+  seoRoute?: SeoFilterRoute | null;
 }) {
-  const [active, setActive] = useState("All");
+  // Local (client-side) filters are single-select with the SEO chips. Landing on
+  // the base list with ?filter=<label> — how the local chips replace an SEO
+  // selection — restores that chip as active on mount.
+  const searchParams = useSearchParams();
+  const filterParam = searchParams.get("filter");
+  const [active, setActive] = useState(
+    filterParam && FILTERS.some((filter) => filter.label === filterParam) ? filterParam : "All"
+  );
   const [sort, setSort] = useState<TalentSortKey>("relevance");
-  const hasActiveFilter = active !== "All";
+  const activeSeoLabels = seoSelectedChipLabels(seoRoute);
+  const seoChips = seoFilterRoutesForType("talent");
+  const seoChipLabels = new Set(seoChips.map((route) => route.chipLabel.toLowerCase()));
+  const localFilters = FILTERS.filter((filter) => filter.label === "All" || !seoChipLabels.has(filter.label.toLowerCase()));
+  const hasActiveFilter = active !== "All" || activeSeoLabels.length > 0;
   const isSearchEmpty = Boolean(query?.trim()) && items.length === 0 && !hasActiveFilter;
 
   const filtered = useMemo(() => {
@@ -100,12 +131,47 @@ export default function TalentFeedClient({
         <div className="flex items-center gap-3 px-3 py-2 sm:px-4">
           <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex w-max items-center gap-2">
-            {FILTERS.map((filter) => (
+            {localFilters.map((filter) => {
+              // Single-select chip row. "All" always clears to the base list.
+              // On a curated SEO route the other local filters *replace* the SEO
+              // selection: they navigate to the base list with the filter applied
+              // (as a client-read ?filter= param) instead of silently narrowing
+              // the SEO subset with no visible highlight. On the base list they
+              // stay instant client-side toggles.
+              if (filter.label === "All") {
+                return (
+                  <Chip
+                    key={filter.label}
+                    label="All"
+                    href="/talent"
+                    active={active === "All" && activeSeoLabels.length === 0}
+                  />
+                );
+              }
+              if (seoRoute) {
+                return (
+                  <Chip
+                    key={filter.label}
+                    label={filter.label}
+                    href={`/talent?filter=${encodeURIComponent(filter.label)}`}
+                  />
+                );
+              }
+              return (
+                <Chip
+                  key={filter.label}
+                  label={filter.label}
+                  active={active === filter.label}
+                  onClick={() => setActive(filter.label)}
+                />
+              );
+            })}
+            {seoChips.map((route) => (
               <Chip
-                key={filter.label}
-                label={filter.label}
-                active={active === filter.label}
-                onClick={() => setActive(filter.label)}
+                key={route.path}
+                label={route.chipLabel}
+                active={activeSeoLabels.includes(route.chipLabel)}
+                href={route.path}
               />
             ))}
           </div>
@@ -126,6 +192,10 @@ export default function TalentFeedClient({
         </div>
       </div>
 
+      {/* A curated SEO route renders no visible title/intro — the highlighted
+          filter chip and the filtered results convey the niche, exactly like a
+          selected chip on the normal browse page (the SEO name lives only in
+          metadata/canonical). */}
       <section className="px-4 py-8 pt-24 sm:px-6">
         {notice ? (
           <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3 text-sm text-white/85 sm:flex-row sm:items-center sm:justify-between">
@@ -163,7 +233,14 @@ export default function TalentFeedClient({
                 ? "Try a different filter or clear filters."
                 : "Create the first talent listing."}
             </p>
-            {hasActiveFilter ? (
+            {activeSeoLabels.length > 0 ? (
+              <Link
+                href="/talent"
+                className="mt-4 inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+              >
+                Browse all talent
+              </Link>
+            ) : hasActiveFilter ? (
               <button
                 type="button"
                 onClick={() => setActive("All")}

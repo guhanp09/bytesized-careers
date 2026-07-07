@@ -59,6 +59,8 @@ export type BackendJob = {
   budget_amount?: string | number | null;
   budget_min?: string | number | null;
   budget_max?: string | number | null;
+  budget_note?: string | null;
+  budgetNote?: string | null;
   budget_currency?: string | null;
   budget_unit?: string | null;
   experience_level?: string | null;
@@ -152,6 +154,7 @@ export type BackendCreateJobPayload = {
   location?: string | null;
   budget_amount?: number | null;
   budget_max?: number | null;
+  budget_note?: string | null;
   budget_currency?: string | null;
   budget_unit?: "per project" | "per month";
   experience_level?: string | null;
@@ -288,6 +291,7 @@ export type BackendMeResponse = {
 };
 
 export type BackendPrivacySettings = {
+  show_bio: boolean;
   show_links: boolean;
   show_skills: boolean;
   show_location: boolean;
@@ -887,6 +891,8 @@ export type BackendJobApplication = {
   first_message_answers?: Record<string, unknown>;
   applicant_snapshot: Record<string, unknown>;
   status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
+  /** Job owner's private pipeline note. The backend blanks it on sender-facing reads. */
+  manager_note?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -924,6 +930,7 @@ export type BackendTalentListing = {
   description?: string | null;
   portfolio_item_ids: string[];
   first_message_requirements?: string[];
+  first_message_custom_instruction?: string | null;
   status: "draft" | "published" | "paused" | "closed" | "archived" | "featured";
   is_featured: boolean;
   featured_until?: string | null;
@@ -961,6 +968,7 @@ export type BackendTalentListingPayload = {
   description?: string | null;
   portfolio_item_ids?: string[];
   first_message_requirements?: string[];
+  first_message_custom_instruction?: string | null;
   status?: "draft" | "published" | "paused" | "closed" | "archived" | "featured";
   is_featured?: boolean;
   featured_until?: string | null;
@@ -998,6 +1006,8 @@ export type BackendTalentInterest = {
   note?: string | null;
   first_message_answers?: Record<string, unknown>;
   status: "new" | "reviewing" | "contacted" | "declined" | "archived" | "withdrawn";
+  /** Talent's (listing owner's) private pipeline note. Blanked on sender-facing reads. */
+  manager_note?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1187,14 +1197,18 @@ const asReferenceVideos = (value: unknown): ReferenceVideo[] => {
 const formatBudget = ({
   amount,
   maxAmount,
+  note,
   currency,
   unit,
 }: {
   amount?: number;
   maxAmount?: number;
+  note?: string;
   currency?: string;
   unit?: string;
 }) => {
+  const normalizedNote = note?.trim();
+  if (normalizedNote) return normalizedNote;
   if (amount === undefined) return "Flexible";
   const normalizedCurrency = (currency || "INR").toUpperCase();
   const normalizedUnit = unit === "per month" ? "per month" : "per project";
@@ -1212,6 +1226,7 @@ const toFrontendJob = (job: BackendJob): Job => {
     asNumber(job.budget_amount) ??
     asNumber(job.budget_min);
   const budgetMax = asNumber(job.budget_max);
+  const budgetNote = asString(job.budget_note) ?? asString(job.budgetNote);
   const budgetCurrency = asString(job.budget_currency);
   const budgetUnit = asString(job.budget_unit);
   const experience =
@@ -1249,6 +1264,7 @@ const toFrontendJob = (job: BackendJob): Job => {
     budget: formatBudget({
       amount: budgetAmount,
       maxAmount: budgetMax,
+      note: budgetNote,
       currency: budgetCurrency,
       unit: budgetUnit,
     }),
@@ -2104,6 +2120,32 @@ export async function updateApplicationStatus(
   });
 }
 
+/** Move several received applications to one pipeline stage (job owner only). */
+export async function bulkUpdateApplicationStatus(
+  accessToken: string,
+  applicationIds: string[],
+  statusValue: BackendJobApplication["status"]
+): Promise<BackendJobApplication[]> {
+  return requestJson<BackendJobApplication[]>("/applications/bulk-status", {
+    method: "POST",
+    body: JSON.stringify({ ids: applicationIds, status: statusValue }),
+    accessToken,
+  });
+}
+
+/** Set/clear the job owner's private note on a received application. */
+export async function updateApplicationManagerNote(
+  accessToken: string,
+  applicationId: string,
+  note: string | null
+): Promise<BackendJobApplication> {
+  return requestJson<BackendJobApplication>(`/applications/${encodeURIComponent(applicationId)}/note`, {
+    method: "PATCH",
+    body: JSON.stringify({ note }),
+    accessToken,
+  });
+}
+
 // Sender-only: the applicant withdraws their own application. Backend sets the
 // status to "withdrawn" and notifies the job owner.
 export async function withdrawApplication(
@@ -2255,6 +2297,32 @@ export async function updateTalentInterestStatus(
   });
 }
 
+/** Move several received hiring requests to one stage (listing owner only). */
+export async function bulkUpdateTalentInterestStatus(
+  accessToken: string,
+  interestIds: string[],
+  statusValue: BackendTalentInterest["status"]
+): Promise<BackendTalentInterest[]> {
+  return requestJson<BackendTalentInterest[]>("/talent-interests/bulk-status", {
+    method: "POST",
+    body: JSON.stringify({ ids: interestIds, status: statusValue }),
+    accessToken,
+  });
+}
+
+/** Set/clear the talent's private note on a received hiring request. */
+export async function updateTalentInterestManagerNote(
+  accessToken: string,
+  interestId: string,
+  note: string | null
+): Promise<BackendTalentInterest> {
+  return requestJson<BackendTalentInterest>(`/talent-interests/${encodeURIComponent(interestId)}/note`, {
+    method: "PATCH",
+    body: JSON.stringify({ note }),
+    accessToken,
+  });
+}
+
 // Sender-only: the recruiter withdraws their own hiring request. Backend sets the
 // status to "withdrawn" and notifies the talent (listing owner).
 export async function withdrawTalentInterest(
@@ -2297,6 +2365,8 @@ export type BackendMessage = {
   from_me: boolean;
   sender_name?: string | null;
   body: string;
+  /** "status_update" for platform-generated pipeline updates; absent for user text. */
+  kind?: string | null;
   created_at?: string | null;
 };
 
@@ -2342,11 +2412,12 @@ export async function getInterestConversation(
 export async function sendConversationMessage(
   accessToken: string,
   conversationId: string,
-  body: string
+  body: string,
+  kind?: "status_update"
 ): Promise<BackendMessage> {
   return requestJson<BackendMessage>(
     `/me/conversations/${encodeURIComponent(conversationId)}/messages`,
-    { method: "POST", body: JSON.stringify({ body }), accessToken }
+    { method: "POST", body: JSON.stringify(kind ? { body, kind } : { body }), accessToken }
   );
 }
 
@@ -2360,8 +2431,24 @@ export async function markConversationRead(
   );
 }
 
+/** User-facing report reasons, matching the backend `ReportCategory` enum. */
+export type ReportCategory =
+  | "spam"
+  | "scam_or_fraud"
+  | "harassment"
+  | "impersonation"
+  | "off_platform_payment"
+  | "inappropriate_content"
+  | "suspicious_or_inaccurate"
+  | "other";
+
 export async function createReport(
-  payload: { target_type: "job" | "talent_listing" | "profile"; target_id: string; category: string; note?: string | null },
+  payload: {
+    target_type: "job" | "talent_listing" | "profile" | "message";
+    target_id: string;
+    category: ReportCategory;
+    note?: string | null;
+  },
   accessToken?: string
 ): Promise<BackendReport> {
   return requestJson<BackendReport>("/reports", {
@@ -2371,30 +2458,480 @@ export async function createReport(
   });
 }
 
-export async function listAdminReports(
-  accessToken: string,
-  statusValue?: string
-): Promise<BackendReport[]> {
+// --- Admin panel API (backend/app/api/v1/routers/admin.py) -------------------
+// Every call requires an ADMIN session; non-admins receive 403 from the backend
+// regardless of what the UI shows.
+
+export type AdminUserRef = {
+  id: string;
+  display_name?: string | null;
+  username?: string | null;
+  email?: string | null;
+};
+
+export type AdminPageMeta = { total: number; limit: number; offset: number };
+
+export type AdminOverview = {
+  env: string;
+  email_mode: string;
+  email_delivery_enabled: boolean;
+  users_total: number;
+  users_new_7d: number;
+  users_suspended: number;
+  jobs_by_status: Record<string, number>;
+  jobs_deleted: number;
+  talent_by_status: Record<string, number>;
+  talent_deleted: number;
+  applications_total: number;
+  applications_new_7d: number;
+  interests_total: number;
+  interests_new_7d: number;
+  messages_total: number;
+  reports_open: number;
+  verifications_pending: number;
+  entitlements_active: number;
+};
+
+export type AdminUserItem = {
+  id: string;
+  email: string;
+  username?: string | null;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  account_type: string;
+  email_verified: boolean;
+  suspended_at?: string | null;
+  suspension_reason?: string | null;
+  last_active_at?: string | null;
+  created_at: string;
+  jobs_count: number;
+  talent_listings_count: number;
+  applications_sent_count: number;
+  profile_reports_count: number;
+};
+
+export type AdminIdentitySummary = {
+  id: string;
+  type: string;
+  platform: string;
+  display_name: string;
+  handle?: string | null;
+  url?: string | null;
+  proof_url?: string | null;
+  verification_status: string;
+  verification_method: string;
+  verification_attempt_count: number;
+  verification_last_error?: string | null;
+  verified_at?: string | null;
+  created_at: string;
+};
+
+export type AdminIdentityItem = AdminIdentitySummary & {
+  owner?: AdminUserRef | null;
+  jobs_count: number;
+};
+
+export type AdminEntitlementItem = {
+  id: string;
+  user_id: string;
+  kind: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  source: string;
+  status: string;
+  expires_at?: string | null;
+  created_at: string;
+};
+
+export type AdminReportItem = {
+  id: string;
+  target_type: "job" | "talent_listing" | "profile" | "message";
+  target_id: string;
+  category: string;
+  note?: string | null;
+  status: "open" | "dismissed" | "action_taken";
+  action?: string | null;
+  admin_note?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  reporter?: AdminUserRef | null;
+  target_label?: string | null;
+  target_status?: string | null;
+  target_owner?: AdminUserRef | null;
+  sibling_count: number;
+};
+
+export type AdminReportAction =
+  | "dismiss"
+  | "no_action"
+  | "pause_listing"
+  | "hide_listing"
+  | "warn_user"
+  | "suspend_user"
+  | "reopen";
+
+export type AdminAuditLogItem = {
+  id: string;
+  actor?: AdminUserRef | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  target_label?: string | null;
+  before_json?: Record<string, unknown> | null;
+  after_json?: Record<string, unknown> | null;
+  justification?: string | null;
+  report_id?: string | null;
+  created_at: string;
+};
+
+export type AdminUserDetail = {
+  user: AdminUserItem;
+  hiring_verification_status?: string | null;
+  onboarding_intent?: string | null;
+  interests_sent_count: number;
+  applications_received_count: number;
+  portfolio_items_count: number;
+  identities: AdminIdentitySummary[];
+  entitlements: AdminEntitlementItem[];
+  reports_about: AdminReportItem[];
+  recent_audit: AdminAuditLogItem[];
+};
+
+export type AdminJobItem = {
+  id: string;
+  title: string;
+  status: string;
+  is_verified: boolean;
+  channel_name?: string | null;
+  category?: string | null;
+  location?: string | null;
+  deleted_at?: string | null;
+  created_at: string;
+  owner?: AdminUserRef | null;
+  applications_count: number;
+  reports_count: number;
+};
+
+export type AdminTalentListingItem = {
+  id: string;
+  title: string;
+  status: string;
+  primary_role?: string | null;
+  location?: string | null;
+  deleted_at?: string | null;
+  created_at: string;
+  owner?: AdminUserRef | null;
+  interests_count: number;
+  reports_count: number;
+};
+
+export type AdminListingStateAction = "pause" | "unpause" | "hide" | "unhide" | "close";
+
+export type AdminApplicationItem = {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  job_id?: string | null;
+  job_title?: string | null;
+  applicant?: AdminUserRef | null;
+  owner?: AdminUserRef | null;
+};
+
+export type AdminInterestItem = {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  listing_id?: string | null;
+  listing_title?: string | null;
+  recruiter?: AdminUserRef | null;
+  owner?: AdminUserRef | null;
+};
+
+export type AdminAbuseSignals = {
+  days: number;
+  top_interest_senders: Array<{ user: AdminUserRef; count: number }>;
+  top_applicants: Array<{ user: AdminUserRef; count: number }>;
+};
+
+export type AdminConversationMessage = {
+  id: string;
+  sender?: AdminUserRef | null;
+  body: string;
+  kind?: string | null;
+  hidden: boolean;
+  created_at: string;
+};
+
+export type AdminReportedConversation = {
+  report_id: string;
+  conversation_id: string;
+  context_type: string;
+  participants: AdminUserRef[];
+  reported_message_id?: string | null;
+  messages: AdminConversationMessage[];
+};
+
+export type AdminRegistryEvent = {
+  key: string;
+  category: string;
+  recipient: string;
+  priority: string;
+  default_channels: string[];
+  wired: boolean;
+  notes?: string | null;
+};
+
+export type AdminOutboxItem = {
+  id: string;
+  to_email: string;
+  event_key: string;
+  subject: string;
+  preview?: string | null;
+  status: string;
+  error?: string | null;
+  created_at: string;
+  processed_at?: string | null;
+};
+
+function adminQuery(params: Record<string, string | number | boolean | undefined | null>): string {
   const query = new URLSearchParams();
-  if (statusValue) query.set("status", statusValue);
-  const suffix = query.toString() ? `?${query.toString()}` : "";
-  return requestJson<BackendReport[]>(`/admin/reports${suffix}`, { accessToken });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  const text = query.toString();
+  return text ? `?${text}` : "";
 }
 
-export async function updateAdminReport(
+export async function getAdminOverview(accessToken: string): Promise<AdminOverview> {
+  return requestJson<AdminOverview>("/admin/overview", { accessToken });
+}
+
+export async function listAdminUsers(
   accessToken: string,
-  reportId: string,
-  payload: { status?: BackendReport["status"]; action: string; admin_note?: string | null }
-): Promise<BackendReport> {
-  return requestJson<BackendReport>(`/admin/reports/${encodeURIComponent(reportId)}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: payload.status || "action_taken",
-      action: payload.action,
-      admin_note: payload.admin_note || null,
-    }),
+  params: { q?: string; suspended?: boolean; verified?: boolean; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminUserItem[] }> {
+  return requestJson(`/admin/users${adminQuery(params)}`, { accessToken });
+}
+
+export async function getAdminUserDetail(accessToken: string, userId: string): Promise<AdminUserDetail> {
+  return requestJson<AdminUserDetail>(`/admin/users/${encodeURIComponent(userId)}`, { accessToken });
+}
+
+export async function suspendAdminUser(
+  accessToken: string,
+  userId: string,
+  reason: string
+): Promise<AdminUserItem> {
+  return requestJson<AdminUserItem>(`/admin/users/${encodeURIComponent(userId)}/suspend`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
     accessToken,
   });
+}
+
+export async function unsuspendAdminUser(
+  accessToken: string,
+  userId: string,
+  reason?: string | null
+): Promise<AdminUserItem> {
+  return requestJson<AdminUserItem>(`/admin/users/${encodeURIComponent(userId)}/unsuspend`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+    accessToken,
+  });
+}
+
+export async function warnAdminUser(
+  accessToken: string,
+  userId: string,
+  payload: { title?: string; body: string; action_url?: string | null }
+): Promise<{ ok: boolean }> {
+  return requestJson(`/admin/users/${encodeURIComponent(userId)}/warn`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
+export async function listAdminJobs(
+  accessToken: string,
+  params: {
+    q?: string;
+    status?: string;
+    include_deleted?: boolean;
+    reported?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<AdminPageMeta & { items: AdminJobItem[] }> {
+  return requestJson(`/admin/jobs${adminQuery(params)}`, { accessToken });
+}
+
+export async function setAdminJobState(
+  accessToken: string,
+  jobId: string,
+  action: AdminListingStateAction,
+  reason: string
+): Promise<AdminJobItem> {
+  return requestJson<AdminJobItem>(`/admin/jobs/${encodeURIComponent(jobId)}/state`, {
+    method: "PATCH",
+    body: JSON.stringify({ action, reason }),
+    accessToken,
+  });
+}
+
+export async function listAdminTalentListings(
+  accessToken: string,
+  params: { q?: string; status?: string; include_deleted?: boolean; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminTalentListingItem[] }> {
+  return requestJson(`/admin/talent-listings${adminQuery(params)}`, { accessToken });
+}
+
+export async function setAdminTalentListingState(
+  accessToken: string,
+  listingId: string,
+  action: AdminListingStateAction,
+  reason: string
+): Promise<AdminTalentListingItem> {
+  return requestJson<AdminTalentListingItem>(
+    `/admin/talent-listings/${encodeURIComponent(listingId)}/state`,
+    { method: "PATCH", body: JSON.stringify({ action, reason }), accessToken }
+  );
+}
+
+export async function listAdminReports(
+  accessToken: string,
+  params: { status?: string; target_type?: string; category?: string; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminReportItem[] }> {
+  return requestJson(`/admin/reports${adminQuery(params)}`, { accessToken });
+}
+
+export async function resolveAdminReport(
+  accessToken: string,
+  reportId: string,
+  payload: { action: AdminReportAction; admin_note?: string | null; user_note?: string | null }
+): Promise<AdminReportItem> {
+  return requestJson<AdminReportItem>(`/admin/reports/${encodeURIComponent(reportId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
+export async function getAdminReportedConversation(
+  accessToken: string,
+  reportId: string
+): Promise<AdminReportedConversation> {
+  return requestJson<AdminReportedConversation>(
+    `/admin/reports/${encodeURIComponent(reportId)}/conversation`,
+    { accessToken }
+  );
+}
+
+export async function hideAdminMessage(
+  accessToken: string,
+  messageId: string,
+  payload: { reason: string; report_id?: string | null }
+): Promise<{ ok: boolean }> {
+  return requestJson(`/admin/messages/${encodeURIComponent(messageId)}/hide`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
+export async function unhideAdminMessage(
+  accessToken: string,
+  messageId: string,
+  payload: { reason: string; report_id?: string | null }
+): Promise<{ ok: boolean }> {
+  return requestJson(`/admin/messages/${encodeURIComponent(messageId)}/unhide`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
+export async function listAdminHiringIdentities(
+  accessToken: string,
+  params: { status?: string; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminIdentityItem[] }> {
+  return requestJson(`/admin/hiring-identities${adminQuery(params)}`, { accessToken });
+}
+
+export async function decideAdminHiringIdentity(
+  accessToken: string,
+  identityId: string,
+  payload: { decision: "approve" | "reject" | "revoke"; reason?: string | null }
+): Promise<AdminIdentityItem> {
+  return requestJson<AdminIdentityItem>(`/admin/hiring-identities/${encodeURIComponent(identityId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    accessToken,
+  });
+}
+
+export async function listAdminApplications(
+  accessToken: string,
+  params: { user_id?: string; days?: number; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminApplicationItem[] }> {
+  return requestJson(`/admin/applications${adminQuery(params)}`, { accessToken });
+}
+
+export async function listAdminTalentInterests(
+  accessToken: string,
+  params: { user_id?: string; days?: number; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminInterestItem[] }> {
+  return requestJson(`/admin/talent-interests${adminQuery(params)}`, { accessToken });
+}
+
+export async function getAdminAbuseSignals(accessToken: string, days = 7): Promise<AdminAbuseSignals> {
+  return requestJson<AdminAbuseSignals>(`/admin/abuse-signals${adminQuery({ days })}`, { accessToken });
+}
+
+export async function listAdminEntitlements(
+  accessToken: string,
+  params: { kind?: string; status?: string; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminEntitlementItem[] }> {
+  return requestJson(`/admin/entitlements${adminQuery(params)}`, { accessToken });
+}
+
+export async function revokeAdminEntitlement(
+  accessToken: string,
+  entitlementId: string,
+  reason: string
+): Promise<AdminEntitlementItem> {
+  return requestJson<AdminEntitlementItem>(
+    `/admin/entitlements/${encodeURIComponent(entitlementId)}/revoke`,
+    { method: "POST", body: JSON.stringify({ reason }), accessToken }
+  );
+}
+
+export async function sendAdminNotices(
+  accessToken: string,
+  payload: { user_ids: string[]; title: string; body: string; action_url?: string | null }
+): Promise<{ delivered: number }> {
+  return requestJson(`/admin/notices`, { method: "POST", body: JSON.stringify(payload), accessToken });
+}
+
+export async function getAdminNotificationRegistry(accessToken: string): Promise<AdminRegistryEvent[]> {
+  return requestJson<AdminRegistryEvent[]>("/admin/notifications/registry", { accessToken });
+}
+
+export async function getAdminEmailOutbox(
+  accessToken: string,
+  params: { status?: string; limit?: number } = {}
+): Promise<AdminOutboxItem[]> {
+  return requestJson<AdminOutboxItem[]>(`/admin/email-outbox${adminQuery(params)}`, { accessToken });
+}
+
+export async function getAdminAuditLog(
+  accessToken: string,
+  params: { action?: string; target_type?: string; actor_user_id?: string; limit?: number; offset?: number } = {}
+): Promise<AdminPageMeta & { items: AdminAuditLogItem[] }> {
+  return requestJson(`/admin/audit-log${adminQuery(params)}`, { accessToken });
 }
 
 export async function completeLaunchFreeCheckout(

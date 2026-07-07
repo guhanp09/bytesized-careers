@@ -7,6 +7,8 @@ export type ChatThreadMessage = {
   senderName: string;
   body: string;
   atLabel: string;
+  /** "status" for platform-generated pipeline updates rendered apart from bubbles. */
+  kind?: "status";
 };
 
 type BackendMessageLike = {
@@ -14,6 +16,7 @@ type BackendMessageLike = {
   from_me: boolean;
   sender_name?: string | null;
   body: string;
+  kind?: string | null;
   created_at?: string | null;
 };
 
@@ -32,6 +35,7 @@ export function mapBackendMessage(
     senderName: message.from_me ? "You" : message.sender_name || counterpartyName,
     body: message.body,
     atLabel: formatTime(message.created_at),
+    kind: message.kind === "status_update" ? "status" : undefined,
   };
 }
 

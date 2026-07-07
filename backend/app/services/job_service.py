@@ -169,6 +169,10 @@ class JobService:
 
     async def create_job(self, payload: JobCreate, *, actor_user_id: UUID | None = None) -> Job:
         data = self._to_payload(payload.model_dump())
+        # The verified badge is server-derived, never client-supplied: it is set
+        # only by _apply_hiring_identity_snapshot below (identity VERIFIED) or by
+        # an audited admin decision. A client-sent is_verified is discarded.
+        data["is_verified"] = False
         hiring_identity_id = data.get("hiring_identity_id")
         selected_identity: HiringIdentity | None = None
         if hiring_identity_id is not None:
@@ -256,6 +260,9 @@ class JobService:
         self, job: Job, payload: JobUpdate, *, actor_user_id: UUID | None = None
     ) -> Job:
         updates = self._to_payload(payload.model_dump(exclude_unset=True))
+        # Same rule as create_job: the badge only ever comes from an identity
+        # snapshot or an audited admin decision, never from the client payload.
+        updates.pop("is_verified", None)
         selected_identity: HiringIdentity | None = None
         if "hiring_identity_id" in updates:
             hiring_identity_id = updates.get("hiring_identity_id")
@@ -265,6 +272,7 @@ class JobService:
                 updates["hiring_verification_status_snapshot"] = None
                 updates["hiring_external_url_snapshot"] = None
                 updates["managed_by_agency_name_snapshot"] = None
+                updates["is_verified"] = False
             else:
                 if actor_user_id is None:
                     raise JobAuthRequiredError("Authentication required to update hiring identity")

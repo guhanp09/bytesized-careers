@@ -5,11 +5,17 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
+import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
-import { buildOpeningMessageBody, resolveTalentDisplayName } from "../../lib/openingMessage";
 import { buildUnreadByThread, formatBadgeCount, mapBackendMessage, totalUnread } from "../../lib/messaging";
-import type { FirstMessageAnswers, RequirementContext } from "../../lib/firstMessageRequirements";
 import {
+  filterStructuredPortfolioDuplicateAttachments,
+  type FirstMessageAnswers,
+  type RequirementContext,
+} from "../../lib/firstMessageRequirements";
+import {
+  bulkUpdateApplicationStatus,
+  bulkUpdateTalentInterestStatus,
   canUseLocalMockFallback,
   getActivitySummary,
   getApplicationConversation,
@@ -18,27 +24,45 @@ import {
   listConversations,
   markConversationRead,
   sendConversationMessage,
+  updateApplicationManagerNote,
   updateApplicationStatus,
+  updateTalentInterestManagerNote,
   updateTalentInterestStatus,
   withdrawApplication,
   withdrawTalentInterest,
+  type BackendJobApplication,
   type BackendMessage,
+  type BackendPortfolioItem,
+  type BackendTalentInterest,
 } from "../../lib/backendClient";
 import {
   MOCK_OWNER_INTERACTIONS,
   interactionKindLabel,
+  interactionStatusFromBackend,
   interactionStatusLabel,
   isArchivedInteraction,
   mapActivityToOwnerInteractions,
   relativeTimeLabel,
+  type InteractionKind,
   type InteractionStatus,
   type InteractionJobSnapshot,
   type InteractionTalentSnapshot,
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
+import {
+  directionLabelsFor,
+  pipelineContextLabelOf,
+  pipelineSummaryOf,
+  stageNotifyPolicyOf,
+  stageTargetsFor,
+} from "../../lib/applicationPipeline";
+import CompactChatDock from "./CompactChatDock";
+import PipelineBoard from "./PipelineBoard";
 
 type WorkspaceMode = "talent" | "hiring";
 type WorkspaceFilter = "all" | "sent" | "received" | "archived";
+type WorkspaceView = "inbox" | "pipeline";
+type PipelineDirection = "received" | "sent";
 type WorkspaceModeOption = { key: WorkspaceMode; label: string };
 
 type ApplicationsWorkspaceProps = {
@@ -54,6 +78,15 @@ type ApplicationsWorkspaceProps = {
   forceMock?: boolean;
   /** Thread to open on mount, e.g. from an "Open conversation" deep-link. */
   initialSelectedId?: string | null;
+  /** Controlled Inbox/Pipeline layout (falls back to internal state when omitted). */
+  view?: WorkspaceView;
+  onViewChange?: (view: WorkspaceView) => void;
+  /** Controlled pipeline direction (falls back to internal state when omitted). */
+  pipelineDirection?: PipelineDirection;
+  onPipelineDirectionChange?: (direction: PipelineDirection) => void;
+  /** Stage focus for the pipeline funnel, e.g. from a ?stage= deep link. */
+  pipelineStage?: string | null;
+  onPipelineStageChange?: (stage: string | null) => void;
 };
 
 type HeaderAction = {
@@ -70,22 +103,34 @@ type HeaderAction = {
   allowNote?: boolean;
 };
 
-const FILTER_OPTIONS: Array<{ key: WorkspaceFilter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "sent", label: "Sent" },
-  { key: "received", label: "Received" },
-  { key: "archived", label: "Archived" },
-];
+/**
+ * Inbox scope filters. The direction scopes carry workflow names instead of
+ * generic Sent/Received: within one mode each direction is one uniform kind,
+ * so "Applicants"/"Outreach" (recruiter) and "Hiring requests"/"Applications"
+ * (talent) say what the user is actually looking at. Received leads — it's
+ * the side being managed.
+ */
+function filterOptionsFor(mode: WorkspaceMode): Array<{ key: WorkspaceFilter; label: string }> {
+  const labels = directionLabelsFor(mode);
+  return [
+    { key: "all", label: "All" },
+    { key: "received", label: labels.received },
+    { key: "sent", label: labels.sent },
+    { key: "archived", label: "Archived" },
+  ];
+}
 const DEFAULT_MODE_OPTIONS: WorkspaceModeOption[] = [
   { key: "talent", label: "Talent" },
   { key: "hiring", label: "Recruiter" },
 ];
 
 function FilterBar({
+  mode,
   filter,
   counts,
   onSelect,
 }: {
+  mode: WorkspaceMode;
   filter: WorkspaceFilter;
   counts: Record<WorkspaceFilter, number>;
   onSelect: (key: WorkspaceFilter) => void;
@@ -93,7 +138,7 @@ function FilterBar({
   return (
     <div className="border-b border-white/[0.06] px-4">
       <div className="flex items-end gap-5 overflow-x-auto">
-        {FILTER_OPTIONS.map((option) => {
+        {filterOptionsFor(mode).map((option) => {
           const isActive = filter === option.key;
           const count = counts[option.key];
           return (
@@ -128,24 +173,29 @@ function FilterBar({
   );
 }
 
+/**
+ * Persistent workspace header: Talent/Recruiter context + Inbox/Pipeline layout.
+ * Rendered once above both views so the controls never move between them.
+ */
 function WorkspaceControls({
   mode,
   modeOptions,
   onModeChange,
-  allowDemo,
-  demoMode,
-  onToggleDemo,
+  view,
+  onViewChange,
 }: {
   mode: WorkspaceMode;
   modeOptions: WorkspaceModeOption[];
   onModeChange?: (mode: WorkspaceMode) => void;
-  allowDemo?: boolean;
-  demoMode?: boolean;
-  onToggleDemo?: () => void;
+  view: WorkspaceView;
+  onViewChange: (view: WorkspaceView) => void;
 }) {
   return (
-    <div className="border-b border-white/[0.06] px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
+    <div
+      className="shrink-0 border-b border-white/[0.06] px-4 py-3"
+      data-testid="applications-workspace-controls"
+    >
+      <div className="flex flex-wrap items-center gap-2.5">
         <div
           className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.1] bg-white/[0.03] p-1"
           role="group"
@@ -170,28 +220,66 @@ function WorkspaceControls({
           })}
         </div>
 
-        {allowDemo ? (
-          <button
-            type="button"
-            aria-pressed={demoMode}
-            onClick={onToggleDemo}
-            title="Preview the interface with sample data (development only)"
-            className={[
-              "inline-flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition-colors",
-              demoMode
-                ? "border-amber-200/30 bg-amber-200/[0.1] text-amber-100/90"
-                : "border-white/[0.1] bg-white/[0.03] text-white/60 hover:text-white",
-            ].join(" ")}
-          >
-            <span
-              className={["h-1.5 w-1.5 rounded-full", demoMode ? "bg-amber-300" : "bg-white/30"].join(" ")}
-              aria-hidden="true"
-            />
-            Sample data
-          </button>
-        ) : null}
+        {/* Inbox = conversation-first; Pipeline = stage-first management board. */}
+        <div
+          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.1] bg-white/[0.03] p-1"
+          role="group"
+          aria-label="Workspace layout"
+        >
+          {(
+            [
+              { key: "inbox", label: "Inbox", icon: "inbox" },
+              { key: "pipeline", label: "Pipeline", icon: "layers" },
+            ] as const
+          ).map((option) => {
+            const isActive = view === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                data-testid={`applications-view-${option.key}`}
+                aria-pressed={isActive}
+                onClick={() => onViewChange(option.key)}
+                className={[
+                  "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors",
+                  isActive ? "bg-white text-black" : "text-white/60 hover:text-white",
+                ].join(" ")}
+              >
+                <Icon name={option.icon} className="h-3.5 w-3.5" />
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Dev/demo utility, deliberately out of the primary workflow: a quiet floating
+ * chip in the workspace's bottom-right corner.
+ */
+function SampleDataChip({ demoMode, onToggleDemo }: { demoMode?: boolean; onToggleDemo?: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={demoMode}
+      onClick={onToggleDemo}
+      title="Preview the interface with sample data (development only)"
+      className={[
+        "hidden h-8 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-[11px] font-semibold shadow-[0_14px_40px_-20px_rgba(0,0,0,0.9)] backdrop-blur transition-colors lg:inline-flex",
+        demoMode
+          ? "border-amber-200/30 bg-amber-200/[0.12] text-amber-100/90"
+          : "border-white/[0.1] bg-[#131419]/90 text-white/45 hover:text-white/80",
+      ].join(" ")}
+    >
+      <span
+        className={["h-1.5 w-1.5 rounded-full", demoMode ? "bg-amber-300" : "bg-white/30"].join(" ")}
+        aria-hidden="true"
+      />
+      Sample data
+    </button>
   );
 }
 
@@ -249,7 +337,7 @@ function avatarInitials(name: string): string {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-function InteractionAvatar({
+export function InteractionAvatar({
   name,
   src,
   shape = "circle",
@@ -665,12 +753,14 @@ function subtitleFor(item: OwnerInteraction): {
 
 // ---- Conversation (chat) ----
 
-type ChatMessage = {
+export type ChatMessage = {
   id: string;
   fromMe: boolean;
   senderName: string;
   body: string;
   atLabel: string;
+  /** "status" renders as a centered platform update line instead of a bubble. */
+  kind?: "status";
   rate?: string | null;
   attachments?: OwnerInteraction["attachments"];
   firstMessageAnswers?: FirstMessageAnswers | null;
@@ -682,7 +772,7 @@ type ChatMessage = {
  * follow-up replies into a single chat thread. The opening message carries the
  * proposed rate + work samples so they read as part of the conversation.
  */
-function buildConversation(item: OwnerInteraction): ChatMessage[] {
+export function buildConversation(item: OwnerInteraction): ChatMessage[] {
   const messages: ChatMessage[] = [];
   // An application carries job-context answers; a hiring request carries talent-context.
   const context: RequirementContext = item.kind === "application" ? "job" : "talent";
@@ -690,33 +780,20 @@ function buildConversation(item: OwnerInteraction): ChatMessage[] {
     item.firstMessageAnswers && Object.keys(item.firstMessageAnswers).length
       ? item.firstMessageAnswers
       : null;
-  const fitNote =
-    rawAnswers && typeof rawAnswers.fit_note === "string" ? rawAnswers.fit_note.trim() : "";
+  messages.push({
+    id: `${item.id}-event`,
+    fromMe: false,
+    senderName: "CreatorJobs",
+    body: openingEventLine(item),
+    atLabel: item.createdAtLabel,
+    kind: "status",
+  });
 
-  // Opening message body. Real submissions store the body, but legacy records (or
-  // any saved blank) can arrive with only requirement answers — generate a natural
-  // default so the bubble never looks empty. A provided fit note *is* the message.
-  let openingBody = item.message || "";
-  if (!openingBody.trim() && rawAnswers) {
-    openingBody = buildOpeningMessageBody({
-      context,
-      recipientName: context === "job" ? item.job?.channelName : resolveTalentDisplayName(item.talent),
-      fitNote,
-      seed: item.id,
-    });
-  }
-
-  // When the fit note is the message body, drop it from the details so it doesn't
-  // appear twice (once as the bubble text, once as a "Fit note" item).
-  let answers = rawAnswers;
-  if (answers && fitNote && openingBody.trim() === fitNote) {
-    const rest = Object.fromEntries(
-      Object.entries(answers).filter(([key]) => key !== "fit_note")
-    ) as FirstMessageAnswers;
-    answers = Object.keys(rest).length ? rest : null;
-  }
-
-  const hasOpening = Boolean(openingBody) || (item.attachments?.length ?? 0) > 0 || Boolean(answers);
+  const answers = rawAnswers;
+  const visibleAttachments = filterStructuredPortfolioDuplicateAttachments(item.attachments, answers);
+  const openingBody = answers ? "" : item.message || "";
+  const rate = answers ? null : item.proposedTerms || null;
+  const hasOpening = Boolean(openingBody.trim()) || visibleAttachments.length > 0 || Boolean(answers) || Boolean(rate);
   if (hasOpening) {
     const openingFromMe = item.direction === "sent";
     messages.push({
@@ -725,8 +802,8 @@ function buildConversation(item: OwnerInteraction): ChatMessage[] {
       senderName: openingFromMe ? "You" : item.counterpartyName,
       body: openingBody,
       atLabel: item.createdAtLabel,
-      rate: item.proposedTerms || null,
-      attachments: item.attachments,
+      rate,
+      attachments: visibleAttachments.length ? visibleAttachments : undefined,
       firstMessageAnswers: answers,
       firstMessageContext: context,
     });
@@ -747,12 +824,204 @@ function buildConversation(item: OwnerInteraction): ChatMessage[] {
       senderName: reply.from,
       body: reply.body,
       atLabel: reply.atLabel,
+      kind: reply.kind,
     });
   });
   return messages;
 }
 
-function AttachmentChip({ label, url, onMe }: { label: string; url?: string | null; onMe: boolean }) {
+function openingEventLine(item: OwnerInteraction): string {
+  const contextLabel = pipelineContextLabelOf(item);
+  const suffix = contextLabel ? ` for ${contextLabel}` : "";
+  if (item.kind === "application") {
+    return item.direction === "sent"
+      ? `You applied${suffix}.`
+      : `${item.counterpartyName} applied${suffix}.`;
+  }
+  return item.direction === "sent"
+    ? `You sent a hiring request${suffix}.`
+    : `${item.counterpartyName} sent a hiring request${suffix}.`;
+}
+
+/**
+ * A platform-generated update in the thread (e.g. a confirmed pipeline stage
+ * change). Centered and chip-shaped so it reads as the product speaking —
+ * clearly apart from either side's bubbles — without an "automated" label.
+ */
+export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "atLabel"> }) {
+  return (
+    <div data-testid="chat-status-update" className="flex justify-center px-2">
+      <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60">
+        <Icon name="sparkles" className="h-3 w-3 shrink-0 text-white/40" />
+        <span className="min-w-0">{message.body}</span>
+        <span className="shrink-0 text-white/30">· {message.atLabel}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Post-move confirmation: the stage is already committed (internal tracking);
+ * this asks the one human question left — inform the other side or not. The
+ * preview shows the exact platform line that would land in the thread, and a
+ * confirmed send offers an optional personal follow-up without leaving the
+ * pipeline. Dismissing (Skip, ×, Escape) sends nothing.
+ */
+function StageNotifyPrompt({
+  items,
+  stageKey,
+  phase,
+  liveMode,
+  onSend,
+  onDismiss,
+  onFollowUp,
+}: {
+  items: OwnerInteraction[];
+  stageKey: string;
+  phase: "ask" | "sending" | "sent" | "error";
+  liveMode: boolean;
+  onSend: () => void;
+  onDismiss: () => void;
+  onFollowUp: (item: OwnerInteraction) => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDismiss();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onDismiss]);
+
+  if (items.length === 0) return null;
+  const kind = items[0].kind;
+  const stage = stageTargetsFor(kind).find((entry) => entry.key === stageKey);
+  const policy = stage?.notify;
+  if (!stage || !policy) return null;
+  const single = items.length === 1 ? items[0] : null;
+  const who = single ? single.counterpartyName : `${items.length} people`;
+  const preview = policy.notice({ contextLabel: pipelineContextLabelOf(items[0]) });
+
+  return (
+    <div
+      data-testid="stage-notify-prompt"
+      className="ui-crossfade pointer-events-auto w-[min(430px,calc(100vw-2rem))] rounded-2xl border border-white/14 bg-[#131419]/95 p-4 shadow-[0_24px_70px_-30px_rgba(0,0,0,1)] backdrop-blur-xl"
+    >
+      <div className="flex items-start gap-2.5">
+        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${stage.dot}`} aria-hidden />
+        <p className="min-w-0 flex-1 text-[13px] leading-snug text-white/85">
+          <span className="font-semibold text-white">{who}</span> moved to {stage.label}.
+        </p>
+        <button
+          type="button"
+          data-testid="stage-notify-close"
+          onClick={onDismiss}
+          aria-label="Dismiss without notifying"
+          className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white"
+        >
+          <Icon name="x" className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {phase === "sent" ? (
+        <div className="mt-3">
+          <p className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-200/85">
+            <Icon name="check" className="h-3.5 w-3.5" />
+            Update posted to the {items.length === 1 ? "thread" : "threads"}.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {single ? (
+              <button
+                type="button"
+                data-testid="stage-notify-followup"
+                onClick={() => onFollowUp(single)}
+                className="inline-flex h-8 cursor-pointer items-center rounded-lg bg-white px-3 text-[11px] font-semibold text-black transition-colors hover:bg-white/90"
+              >
+                Add a personal message
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="stage-notify-done"
+              onClick={onDismiss}
+              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* The exact line the other side would see — no surprises. */}
+          <p
+            data-testid="stage-notify-preview"
+            className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11.5px] text-white/60"
+          >
+            <Icon name="sparkles" className="h-3 w-3 shrink-0 text-white/40" />
+            <span className="min-w-0">{preview}</span>
+          </p>
+          {phase === "error" ? (
+            <p className="mt-2 text-[11px] text-rose-300/80">Couldn’t post the update — try again.</p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="stage-notify-send"
+              disabled={phase === "sending"}
+              onClick={onSend}
+              className="inline-flex h-8 cursor-pointer items-center rounded-lg bg-white px-3 text-[11px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {phase === "sending"
+                ? "Sending…"
+                : single
+                  ? `Let ${firstNameOf(single.counterpartyName)} know`
+                  : `Let ${items.length} people know`}
+            </button>
+            <button
+              type="button"
+              data-testid="stage-notify-skip"
+              onClick={onDismiss}
+              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              Skip
+            </button>
+            <span className="text-[10.5px] text-white/32">
+              {liveMode ? "Posts in the chat thread." : "Demo only — posts into the demo thread."}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function portfolioItemFromAttachment(label: string, url?: string | null): BackendPortfolioItem {
+  return {
+    id: url || label,
+    user_id: "first-message",
+    title: label,
+    source_type: "other",
+    source_url: url || null,
+    links: url ? [url] : [],
+    tags: [],
+    tools: [],
+    status: "past",
+    is_public: true,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function AttachmentChip({
+  label,
+  url,
+  onMe,
+  onOpenPortfolio,
+}: {
+  label: string;
+  url?: string | null;
+  onMe: boolean;
+  onOpenPortfolio?: (label: string, url: string | null | undefined, target: HTMLElement, point: { x: number; y: number }) => void;
+}) {
   const base =
     "inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors";
   const tone = onMe
@@ -765,7 +1034,17 @@ function AttachmentChip({ label, url, onMe }: { label: string; url?: string | nu
       {url ? <Icon name="external-link" className="h-3 w-3 shrink-0 opacity-50" /> : null}
     </>
   );
-  return url ? (
+  return url && onOpenPortfolio ? (
+    <button
+      type="button"
+      onClick={(event) =>
+        onOpenPortfolio(label, url, event.currentTarget, { x: event.clientX, y: event.clientY })
+      }
+      className={`${base} ${tone} cursor-pointer text-left`}
+    >
+      {inner}
+    </button>
+  ) : url ? (
     <a href={url} target="_blank" rel="noreferrer" className={`${base} ${tone} cursor-pointer`}>
       {inner}
     </a>
@@ -774,7 +1053,7 @@ function AttachmentChip({ label, url, onMe }: { label: string; url?: string | nu
   );
 }
 
-function MessageBubble({
+export function MessageBubble({
   message,
   counterpartyAvatarUrl,
   counterpartyHref,
@@ -784,6 +1063,15 @@ function MessageBubble({
   counterpartyHref?: string | null;
 }) {
   const me = message.fromMe;
+  const portfolioPopup = usePortfolioDetailPopup(`applications-message-portfolio-${message.id}`);
+  const openPortfolioAttachment = (
+    label: string,
+    url: string | null | undefined,
+    target: HTMLElement,
+    point: { x: number; y: number }
+  ) => {
+    portfolioPopup.open(portfolioItemFromAttachment(label, url), target, point);
+  };
   const avatar = (
     <InteractionAvatar
       name={message.senderName}
@@ -808,40 +1096,43 @@ function MessageBubble({
         <p className="px-1 text-[11px] font-medium text-white/40">
           {message.senderName} · {message.atLabel}
         </p>
-        <div
-          className={[
-            "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
-            me
-              ? "rounded-2xl rounded-br-md bg-white/[0.13] text-white/92"
-              : "rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] text-white/82",
-          ].join(" ")}
-        >
-          {message.body ? <p className="whitespace-pre-line break-words">{message.body}</p> : null}
-          {message.rate ? (
-            <p
-              className={[
-                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs",
-                message.body ? "mt-2.5" : "",
-                me ? "bg-black/20 text-white/82" : "border border-white/[0.09] bg-white/[0.03] text-white/72",
-              ].join(" ")}
-            >
-              <Icon name="cash" className="h-3.5 w-3.5 opacity-70" />
-              {message.rate}
-            </p>
-          ) : null}
-          {message.attachments && message.attachments.length > 0 ? (
-            <div className={["flex flex-wrap gap-1.5", message.body || message.rate ? "mt-2.5" : ""].join(" ")}>
-              {message.attachments.map((attachment) => (
-                <AttachmentChip
-                  key={`${message.id}-att-${attachment.label}`}
-                  label={attachment.label}
-                  url={attachment.url}
-                  onMe={me}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
+        {message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
+          <div
+            className={[
+              "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
+              me
+                ? "rounded-2xl rounded-br-md bg-white/[0.13] text-white/92"
+                : "rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] text-white/82",
+            ].join(" ")}
+          >
+            {message.body ? <p className="whitespace-pre-line break-words">{message.body}</p> : null}
+            {message.rate ? (
+              <p
+                className={[
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs",
+                  message.body ? "mt-2.5" : "",
+                  me ? "bg-black/20 text-white/82" : "border border-white/[0.09] bg-white/[0.03] text-white/72",
+                ].join(" ")}
+              >
+                <Icon name="cash" className="h-3.5 w-3.5 opacity-70" />
+                {message.rate}
+              </p>
+            ) : null}
+            {message.attachments && message.attachments.length > 0 ? (
+              <div className={["flex flex-col items-start gap-1.5", message.body || message.rate ? "mt-2.5" : ""].join(" ")}>
+                {message.attachments.map((attachment) => (
+                  <AttachmentChip
+                    key={`${message.id}-att-${attachment.label}`}
+                    label={attachment.label}
+                    url={attachment.url}
+                    onMe={me}
+                    onOpenPortfolio={openPortfolioAttachment}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {message.firstMessageAnswers && message.firstMessageContext ? (
           <FirstMessageSummary
             context={message.firstMessageContext}
@@ -849,6 +1140,7 @@ function MessageBubble({
             className="w-full"
           />
         ) : null}
+        {portfolioPopup.popover}
       </div>
     </div>
   );
@@ -865,6 +1157,12 @@ export default function ApplicationsWorkspace({
   backendAccessToken,
   forceMock = false,
   initialSelectedId = null,
+  view: viewProp,
+  onViewChange,
+  pipelineDirection: pipelineDirectionProp,
+  onPipelineDirectionChange,
+  pipelineStage = null,
+  onPipelineStageChange,
 }: ApplicationsWorkspaceProps) {
   // Live mode: authenticated against the real backend (local-mocks env always
   // stays in demo mode, matching the rest of the app's data strategy). The
@@ -887,11 +1185,41 @@ export default function ApplicationsWorkspace({
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
+  // View + direction are controlled by the page (persistence, deep links) when
+  // the props are provided; otherwise the workspace owns them locally.
+  const [internalView, setInternalView] = useState<WorkspaceView>("inbox");
+  const [internalDirection, setInternalDirection] = useState<PipelineDirection>("received");
+  const view = viewProp ?? internalView;
+  const pipelineDirection = pipelineDirectionProp ?? internalDirection;
+  const setView = (next: WorkspaceView) => {
+    // A pending notify prompt belongs to the board it was raised on.
+    setNotifyPrompt(null);
+    if (onViewChange) onViewChange(next);
+    else setInternalView(next);
+  };
+  const setPipelineDirection = (next: PipelineDirection) => {
+    setNotifyPrompt(null);
+    if (onPipelineDirectionChange) onPipelineDirectionChange(next);
+    else setInternalDirection(next);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(Boolean(initialSelectedId));
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
+  // Compact chat dock: bumped by card "Message" actions to open that thread.
+  const [chatRequest, setChatRequest] = useState<{ id: string; nonce: number } | null>(null);
+  // After a move into an externally meaningful stage, ask whether to inform the
+  // other side with a platform status update. Nothing sends without consent.
+  const [notifyPrompt, setNotifyPrompt] = useState<{
+    itemIds: string[];
+    stageKey: string;
+    kind: InteractionKind;
+    phase: "ask" | "sending" | "sent" | "error";
+  } | null>(null);
+  // Private manager note editor state for the selected received item.
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -1013,6 +1341,175 @@ export default function ApplicationsWorkspace({
     );
   };
 
+  // Keep the private-note editor in sync with whichever thread is open.
+  useEffect(() => {
+    const current = items.find((item) => item.id === selectedId) || null;
+    setNoteDraft(current?.managerNote ?? "");
+    setNoteState("idle");
+    // Only reset when the open thread changes — edits must survive item refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (noteState !== "saved") return;
+    const timer = window.setTimeout(() => setNoteState("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [noteState]);
+
+  /**
+   * Move one or many received items to a pipeline stage (backend vocabulary).
+   * Live mode persists through the bulk endpoint first — a thrown error keeps
+   * the board's selection so the user can retry; demo mode commits locally.
+   */
+  const handleMoveStage = async (moveItems: OwnerInteraction[], stageKey: string) => {
+    if (moveItems.length === 0) return;
+    const kind: InteractionKind = moveItems[0].kind;
+    setActionError(null);
+    if (liveMode && backendAccessToken) {
+      try {
+        const ids = moveItems.map((item) => item.id);
+        if (kind === "application") {
+          await bulkUpdateApplicationStatus(backendAccessToken, ids, stageKey as BackendJobApplication["status"]);
+        } else {
+          await bulkUpdateTalentInterestStatus(backendAccessToken, ids, stageKey as BackendTalentInterest["status"]);
+        }
+      } catch (error) {
+        setActionError(
+          moveItems.length > 1
+            ? "Couldn't move the selection — the backend is unreachable. Try again."
+            : "Couldn't update the stage — the backend is unreachable. Try again."
+        );
+        throw error;
+      }
+    }
+    const stageLabel = stageTargetsFor(kind).find((stage) => stage.key === stageKey)?.label ?? stageKey;
+    const movedIds = new Set(moveItems.map((item) => item.id));
+    setItems((prev) =>
+      prev.map((item) =>
+        movedIds.has(item.id)
+          ? {
+              ...item,
+              status: interactionStatusFromBackend(item.kind, item.direction, stageKey),
+              backendStatus: stageKey,
+              updatedAtLabel: "Just now",
+              unread: false,
+              timeline: [
+                ...item.timeline,
+                {
+                  id: `${item.id}-stage-${item.timeline.length}`,
+                  label: `Moved to ${stageLabel} by you`,
+                  at: "Just now",
+                },
+              ],
+            }
+          : item
+      )
+    );
+    // Externally meaningful stages ask whether to inform the other side;
+    // internal-only stages (reviewing, archived) simply clear any open prompt.
+    setNotifyPrompt(
+      stageNotifyPolicyOf(kind, stageKey)
+        ? { itemIds: moveItems.map((item) => item.id), stageKey, kind, phase: "ask" }
+        : null
+    );
+  };
+
+  /**
+   * Post the platform status update into each moved item's chat thread — only
+   * ever called from the prompt's explicit "Send update" action. Live mode
+   * persists a real kind="status_update" message; demo mode appends locally.
+   */
+  const sendStatusUpdates = async (targets: OwnerInteraction[], stageKey: string) => {
+    if (targets.length === 0) return;
+    const firstTarget = targets[0];
+    if (!firstTarget) return;
+    const kind = firstTarget.kind;
+    const policy = stageNotifyPolicyOf(kind, stageKey);
+    if (!policy) return;
+    const targetToOpen = targets.length === 1 ? firstTarget : null;
+    setNotifyPrompt((prev) => (prev ? { ...prev, phase: "sending" } : prev));
+    try {
+      if (liveMode && backendAccessToken) {
+        for (const target of targets) {
+          const notice = policy.notice({ contextLabel: pipelineContextLabelOf(target) });
+          const cached = liveThreads[target.id];
+          let conversationId = cached?.conversationId;
+          if (!conversationId) {
+            const detail =
+              target.kind === "hiring_request"
+                ? await getInterestConversation(backendAccessToken, target.id)
+                : await getApplicationConversation(backendAccessToken, target.id);
+            conversationId = detail.conversation.id;
+            setLiveThreads((prev) => ({
+              ...prev,
+              [target.id]: { conversationId: detail.conversation.id, messages: detail.messages },
+            }));
+          }
+          const message = await sendConversationMessage(
+            backendAccessToken,
+            conversationId,
+            notice,
+            "status_update"
+          );
+          setLiveThreads((prev) => {
+            const thread = prev[target.id];
+            if (!thread) return prev;
+            return { ...prev, [target.id]: { ...thread, messages: [...thread.messages, message] } };
+          });
+        }
+      } else {
+        const targetIds = new Set(targets.map((target) => target.id));
+        setItems((prev) =>
+          prev.map((item) => {
+            if (!targetIds.has(item.id)) return item;
+            const notice = policy.notice({ contextLabel: pipelineContextLabelOf(item) });
+            return {
+              ...item,
+              replies: [
+                ...(item.replies || []),
+                { from: "You", body: notice, atLabel: "Just now", kind: "status" as const },
+              ],
+              timeline: [
+                ...item.timeline,
+                {
+                  id: `${item.id}-notice-${item.timeline.length}`,
+                  label: `Status update sent to ${firstNameOf(item.counterpartyName)}`,
+                  at: "Just now",
+                },
+              ],
+            };
+          })
+        );
+      }
+      setNotifyPrompt((prev) => (prev ? { ...prev, phase: "sent" } : prev));
+      if (targetToOpen) {
+        setChatRequest((prev) => ({ id: targetToOpen.id, nonce: (prev?.nonce ?? 0) + 1 }));
+      }
+    } catch {
+      setNotifyPrompt((prev) => (prev ? { ...prev, phase: "error" } : prev));
+    }
+  };
+
+  /** Save/clear the manager's private note on the open received item. */
+  const handleSaveNote = async (target: OwnerInteraction) => {
+    const value = noteDraft.trim() || null;
+    setNoteState("saving");
+    if (liveMode && backendAccessToken) {
+      try {
+        if (target.kind === "application") {
+          await updateApplicationManagerNote(backendAccessToken, target.id, value);
+        } else {
+          await updateTalentInterestManagerNote(backendAccessToken, target.id, value);
+        }
+      } catch {
+        setNoteState("error");
+        return;
+      }
+    }
+    setItems((prev) => prev.map((item) => (item.id === target.id ? { ...item, managerNote: value } : item)));
+    setNoteState("saved");
+  };
+
   const commitStatusLocally = (target: OwnerInteraction, action: HeaderAction, trimmedNote?: string) => {
     setItems((prev) =>
       prev.map((item) =>
@@ -1111,9 +1608,15 @@ export default function ApplicationsWorkspace({
     }
 
     // Demo mode: append to the in-memory thread (no backend).
+    appendDemoReply(target.id, body);
+    setReplyDraft("");
+  };
+
+  /** Demo-mode reply persistence, shared by the inbox composer and the chat dock. */
+  const appendDemoReply = (id: string, body: string) => {
     setItems((prev) =>
       prev.map((item) =>
-        item.id === target.id
+        item.id === id
           ? {
               ...item,
               updatedAtLabel: "Just now",
@@ -1126,7 +1629,6 @@ export default function ApplicationsWorkspace({
           : item
       )
     );
-    setReplyDraft("");
   };
 
   if (liveMode && loadState === "loading") {
@@ -1250,9 +1752,129 @@ export default function ApplicationsWorkspace({
   const showProposalInRail = Boolean(selected?.proposedTerms) && !hasOpeningMessage;
   const totalUnreadCount = liveMode ? totalUnread(unreadByThread) : 0;
 
+  // ---- Pipeline view: full-width, stage-first management board ------------
+  // Within one mode+direction the interaction kind is uniform, so each board
+  // manages exactly one status vocabulary.
+  const pipelineKind: InteractionKind =
+    pipelineDirection === "received"
+      ? mode === "hiring"
+        ? "application"
+        : "hiring_request"
+      : mode === "hiring"
+        ? "hiring_request"
+        : "application";
+  const pipelineItems = modeItems.filter((item) => item.direction === pipelineDirection);
+  const directionLabels = directionLabelsFor(mode);
+  const pipelineSummary = pipelineSummaryOf(pipelineItems, pipelineKind, pipelineDirection, mode);
+  const notifyPromptItems = notifyPrompt
+    ? notifyPrompt.itemIds
+        .map((id) => items.find((item) => item.id === id))
+        .filter((item): item is OwnerInteraction => Boolean(item))
+    : [];
+
   return (
-    <div className={`w-full ${WORKSPACE_HEIGHT_CLASSES}`} data-testid="applications-workspace">
-      <div className="lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[390px_minmax(0,1fr)]">
+    // One stable shell for both views: the controls stay in the same top-left
+    // location, and the Inbox conversation header aligns with that workspace row.
+    <div className={`relative flex w-full flex-col ${WORKSPACE_HEIGHT_CLASSES}`} data-testid="applications-workspace">
+      {view === "pipeline" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <WorkspaceControls
+            mode={mode}
+            modeOptions={modeOptions}
+            onModeChange={onModeChange}
+            view={view}
+            onViewChange={setView}
+          />
+          <div className="shrink-0 border-b border-white/[0.06] px-4 sm:px-6">
+            <div className="flex items-end gap-5">
+              {(
+                [
+                  { key: "received", label: directionLabels.received, count: filterCounts.received },
+                  { key: "sent", label: directionLabels.sent, count: filterCounts.sent },
+                ] as const
+              ).map((option) => {
+                const isActive = pipelineDirection === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    data-testid={`pipeline-direction-${option.key}`}
+                    aria-pressed={isActive}
+                    onClick={() => setPipelineDirection(option.key)}
+                    className={[
+                      "group/direction relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-0.5 text-[13px] font-semibold transition-colors",
+                      isActive ? "text-white" : "text-white/50 hover:text-white/80",
+                    ].join(" ")}
+                  >
+                    {option.label}
+                    {option.count > 0 ? (
+                      <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-white/32"}`}>
+                        {option.count}
+                      </span>
+                    ) : null}
+                    <span
+                      className={[
+                        "absolute inset-x-0 bottom-0 h-[2px] rounded-full transition-colors",
+                        isActive ? "bg-white" : "bg-white/0 group-hover/direction:bg-white/20",
+                      ].join(" ")}
+                    />
+                  </button>
+                );
+              })}
+              {/* At-a-glance board readout: total · new arrivals · furthest active stage. */}
+              {pipelineSummary ? (
+                <p
+                  data-testid="pipeline-summary"
+                  className="ml-auto hidden min-w-0 self-center truncate pl-3 text-[11px] font-medium text-white/40 md:block"
+                >
+                  {pipelineSummary}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          {actionError ? (
+            <p className="mx-4 mt-3 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2.5 text-xs text-amber-100 sm:mx-6">
+              {actionError}
+            </p>
+          ) : null}
+          <div className="min-h-0 flex-1">
+            <PipelineBoard
+              key={`${mode}-${pipelineDirection}`}
+              items={pipelineItems}
+              kind={pipelineKind}
+              direction={pipelineDirection}
+              unreadByThread={unreadByThread}
+              initialStage={pipelineStage}
+              onStageFocusChange={onPipelineStageChange}
+              onOpen={(item) => {
+                setView("inbox");
+                handleSelect(item.id);
+              }}
+              onMessage={(item) =>
+                setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }))
+              }
+              onMoveStage={handleMoveStage}
+            />
+          </div>
+          {notifyPrompt && notifyPromptItems.length > 0 ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-4 z-50 flex justify-center px-4">
+              <StageNotifyPrompt
+                items={notifyPromptItems}
+                stageKey={notifyPrompt.stageKey}
+                phase={notifyPrompt.phase}
+                liveMode={liveMode}
+                onSend={() => void sendStatusUpdates(notifyPromptItems, notifyPrompt.stageKey)}
+                onDismiss={() => setNotifyPrompt(null)}
+                onFollowUp={(item) => {
+                  setNotifyPrompt(null);
+                  setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }));
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+      <div className="min-h-0 flex-1 lg:grid lg:grid-cols-[390px_minmax(0,1fr)]">
         <aside
           className={[
             "border-white/[0.06] lg:flex lg:min-h-0 lg:flex-col lg:border-r",
@@ -1263,11 +1885,10 @@ export default function ApplicationsWorkspace({
             mode={mode}
             modeOptions={modeOptions}
             onModeChange={onModeChange}
-            allowDemo={allowDemo}
-            demoMode={demoMode}
-            onToggleDemo={onToggleDemo}
+            view={view}
+            onViewChange={setView}
           />
-          <FilterBar filter={filter} counts={filterCounts} onSelect={selectFilter} />
+          <FilterBar mode={mode} filter={filter} counts={filterCounts} onSelect={selectFilter} />
           {totalUnreadCount > 0 ? (
             <div
               data-testid="inbox-unread-total"
@@ -1363,7 +1984,10 @@ export default function ApplicationsWorkspace({
               {/* Conversation column — the focus */}
               <div className="flex min-w-0 flex-col lg:min-h-0 lg:border-r lg:border-white/[0.06]">
                 {/* Header bar: subject + counterparty · status · overflow */}
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-3 sm:px-5">
+                <div
+                  className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-3 sm:px-5"
+                  data-testid="applications-detail-header"
+                >
                   <div className="flex min-w-0 items-center gap-2.5">
                     <button
                       type="button"
@@ -1446,14 +2070,18 @@ export default function ApplicationsWorkspace({
 
                       {conversation.length > 0 ? (
                         <div className="space-y-5">
-                          {conversation.map((message) => (
-                            <MessageBubble
-                              key={message.id}
-                              message={message}
-                              counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
-                              counterpartyHref={subtitle?.href ?? null}
-                            />
-                          ))}
+                          {conversation.map((message) =>
+                            message.kind === "status" ? (
+                              <StatusUpdateLine key={message.id} message={message} />
+                            ) : (
+                              <MessageBubble
+                                key={message.id}
+                                message={message}
+                                counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
+                                counterpartyHref={subtitle?.href ?? null}
+                              />
+                            )
+                          )}
                         </div>
                       ) : (
                         <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-12 text-center">
@@ -1570,6 +2198,51 @@ export default function ApplicationsWorkspace({
                         </div>
                       </section>
                     ) : null}
+                    {selected.direction === "received" ? (
+                      <section className={`rounded-2xl ${SURFACE} p-4`} data-testid="private-note-card">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={SECTION_LABEL_CLASSES}>Private notes</p>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/35">
+                            <Icon name="eye" className="h-3 w-3" />
+                            Only you can see this
+                          </span>
+                        </div>
+                        <textarea
+                          value={noteDraft}
+                          onChange={(event) => setNoteDraft(event.target.value)}
+                          rows={3}
+                          maxLength={5000}
+                          data-testid="private-note-input"
+                          aria-label="Private note"
+                          placeholder={`Jot down where ${firstNameOf(selected.counterpartyName)} stands — rates, fit, next steps…`}
+                          className="mt-2.5 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+                        />
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          {noteState === "error" ? (
+                            <p className="text-[11px] text-rose-300/80">Couldn’t save — try again.</p>
+                          ) : noteState === "saved" ? (
+                            <p className="inline-flex items-center gap-1 text-[11px] text-emerald-200/80">
+                              <Icon name="check" className="h-3 w-3" />
+                              Saved
+                            </p>
+                          ) : (
+                            <span />
+                          )}
+                          <button
+                            type="button"
+                            data-testid="private-note-save"
+                            onClick={() => void handleSaveNote(selected)}
+                            disabled={
+                              noteState === "saving" ||
+                              noteDraft.trim() === (selected.managerNote ?? "").trim()
+                            }
+                            className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            {noteState === "saving" ? "Saving…" : "Save note"}
+                          </button>
+                        </div>
+                      </section>
+                    ) : null}
                     <section className={`rounded-2xl ${SURFACE} p-4`}>
                       <InteractionTimeline item={selected} />
                     </section>
@@ -1582,6 +2255,26 @@ export default function ApplicationsWorkspace({
             </div>
           )}
         </section>
+      </div>
+      )}
+
+      {/* Bottom-right floating utilities: dev sample-data chip beside the chat
+          dock so the two never overlap (the dock stays right-anchored). */}
+      <div className="absolute bottom-4 right-4 z-40 flex items-end gap-2">
+        {allowDemo ? <SampleDataChip demoMode={demoMode} onToggleDemo={onToggleDemo} /> : null}
+        <CompactChatDock
+          items={modeItems}
+          mode={mode}
+          liveMode={liveMode}
+          backendAccessToken={backendAccessToken}
+          unreadByThread={unreadByThread}
+          openRequest={chatRequest}
+          onDemoReply={appendDemoReply}
+          onOpenInInbox={(id) => {
+            setView("inbox");
+            handleSelect(id);
+          }}
+        />
       </div>
     </div>
   );
