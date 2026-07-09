@@ -121,7 +121,7 @@ export default function RequirementSelector({
           data-testid="custom-instruction-editor"
         >
           <label className="text-xs font-semibold text-white/72" htmlFor="job-custom-instruction">
-            Custom instruction
+            Screening question
           </label>
           <textarea
             id="job-custom-instruction"

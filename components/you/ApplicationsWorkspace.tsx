@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
+import PrivateNotesPanel from "./PrivateNotesPanel";
+import type { PrivateNote } from "../../lib/privateNotes";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
 import { buildUnreadByThread, formatBadgeCount, mapBackendMessage, totalUnread } from "../../lib/messaging";
@@ -288,6 +290,8 @@ function SampleDataChip({ demoMode, onToggleDemo }: { demoMode?: boolean; onTogg
 const WORKSPACE_HEIGHT_CLASSES = "h-full min-h-0";
 const SECTION_LABEL_CLASSES = "text-[11px] font-semibold text-white/40";
 const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
+/** localStorage key for the last-open inbox conversation (restored on return). */
+const SELECTED_STORAGE_KEY = "cj.applications.selected";
 const GHOST_BUTTON_CLASSES =
   "inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/[0.08]";
 const PRIMARY_BUTTON_CLASSES =
@@ -768,6 +772,22 @@ export type ChatMessage = {
 };
 
 /**
+ * Seed notes for the private-notes stack: any mock `privateNotes` (newest first),
+ * otherwise the single `managerNote` as one earlier note. Used only until the user
+ * saves locally, after which the localStorage stack takes over.
+ */
+function seedNotesForInteraction(item: OwnerInteraction): PrivateNote[] {
+  if (item.privateNotes?.length) {
+    return item.privateNotes.map((note) => ({ ...note, conversationId: item.id }));
+  }
+  const managerNote = item.managerNote?.trim();
+  if (managerNote) {
+    return [{ id: `${item.id}-seed-note`, body: managerNote, createdAt: "Earlier", conversationId: item.id }];
+  }
+  return [];
+}
+
+/**
  * Flattens an interaction's opening message, the counterparty's response, and any
  * follow-up replies into a single chat thread. The opening message carries the
  * proposed rate + work samples so they read as part of the conversation.
@@ -1204,6 +1224,38 @@ export default function ApplicationsWorkspace({
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(Boolean(initialSelectedId));
+  // Remember the open inbox conversation across navigation so returning lands back
+  // on it (not the first thread / the list). A ?thread deep-link always wins.
+  const selectionRestored = useRef(false);
+  const skipFirstSelectionPersist = useRef(!initialSelectedId);
+  useEffect(() => {
+    if (selectionRestored.current) return;
+    selectionRestored.current = true;
+    if (initialSelectedId) return;
+    try {
+      const saved = window.localStorage.getItem(SELECTED_STORAGE_KEY);
+      if (saved) {
+        setSelectedId(saved);
+        setMobileDetailOpen(true);
+      }
+    } catch {
+      // storage unavailable; nothing to restore
+    }
+    // Restore runs once against the mount-time deep-link snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (skipFirstSelectionPersist.current) {
+      skipFirstSelectionPersist.current = false;
+      return;
+    }
+    try {
+      if (selectedId) window.localStorage.setItem(SELECTED_STORAGE_KEY, selectedId);
+      else window.localStorage.removeItem(SELECTED_STORAGE_KEY);
+    } catch {
+      // storage unavailable; selection still works in-session
+    }
+  }, [selectedId]);
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
@@ -1218,8 +1270,6 @@ export default function ApplicationsWorkspace({
     phase: "ask" | "sending" | "sent" | "error";
   } | null>(null);
   // Private manager note editor state for the selected received item.
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteState, setNoteState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -1340,21 +1390,6 @@ export default function ApplicationsWorkspace({
       prev.map((item) => (item.id === id && item.unread ? { ...item, unread: false } : item))
     );
   };
-
-  // Keep the private-note editor in sync with whichever thread is open.
-  useEffect(() => {
-    const current = items.find((item) => item.id === selectedId) || null;
-    setNoteDraft(current?.managerNote ?? "");
-    setNoteState("idle");
-    // Only reset when the open thread changes — edits must survive item refreshes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
-
-  useEffect(() => {
-    if (noteState !== "saved") return;
-    const timer = window.setTimeout(() => setNoteState("idle"), 2000);
-    return () => window.clearTimeout(timer);
-  }, [noteState]);
 
   /**
    * Move one or many received items to a pipeline stage (backend vocabulary).
@@ -1490,24 +1525,21 @@ export default function ApplicationsWorkspace({
     }
   };
 
-  /** Save/clear the manager's private note on the open received item. */
-  const handleSaveNote = async (target: OwnerInteraction) => {
-    const value = noteDraft.trim() || null;
-    setNoteState("saving");
+  /**
+   * Persist the latest private note on a received item. The rich note stack is
+   * local (see PrivateNotesPanel); this keeps the single-note backend field — and
+   * the pipeline note indicator that reads `managerNote` — in sync with the newest
+   * note. Throws on backend failure so the panel can keep the note locally.
+   */
+  const persistLatestNote = async (target: OwnerInteraction, body: string | null) => {
     if (liveMode && backendAccessToken) {
-      try {
-        if (target.kind === "application") {
-          await updateApplicationManagerNote(backendAccessToken, target.id, value);
-        } else {
-          await updateTalentInterestManagerNote(backendAccessToken, target.id, value);
-        }
-      } catch {
-        setNoteState("error");
-        return;
+      if (target.kind === "application") {
+        await updateApplicationManagerNote(backendAccessToken, target.id, body);
+      } else {
+        await updateTalentInterestManagerNote(backendAccessToken, target.id, body);
       }
     }
-    setItems((prev) => prev.map((item) => (item.id === target.id ? { ...item, managerNote: value } : item)));
-    setNoteState("saved");
+    setItems((prev) => prev.map((item) => (item.id === target.id ? { ...item, managerNote: body } : item)));
   };
 
   const commitStatusLocally = (target: OwnerInteraction, action: HeaderAction, trimmedNote?: string) => {
@@ -1846,10 +1878,6 @@ export default function ApplicationsWorkspace({
               unreadByThread={unreadByThread}
               initialStage={pipelineStage}
               onStageFocusChange={onPipelineStageChange}
-              onOpen={(item) => {
-                setView("inbox");
-                handleSelect(item.id);
-              }}
               onMessage={(item) =>
                 setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }))
               }
@@ -2199,49 +2227,13 @@ export default function ApplicationsWorkspace({
                       </section>
                     ) : null}
                     {selected.direction === "received" ? (
-                      <section className={`rounded-2xl ${SURFACE} p-4`} data-testid="private-note-card">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className={SECTION_LABEL_CLASSES}>Private notes</p>
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/35">
-                            <Icon name="eye" className="h-3 w-3" />
-                            Only you can see this
-                          </span>
-                        </div>
-                        <textarea
-                          value={noteDraft}
-                          onChange={(event) => setNoteDraft(event.target.value)}
-                          rows={3}
-                          maxLength={5000}
-                          data-testid="private-note-input"
-                          aria-label="Private note"
-                          placeholder={`Jot down where ${firstNameOf(selected.counterpartyName)} stands — rates, fit, next steps…`}
-                          className="mt-2.5 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
-                        />
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          {noteState === "error" ? (
-                            <p className="text-[11px] text-rose-300/80">Couldn’t save — try again.</p>
-                          ) : noteState === "saved" ? (
-                            <p className="inline-flex items-center gap-1 text-[11px] text-emerald-200/80">
-                              <Icon name="check" className="h-3 w-3" />
-                              Saved
-                            </p>
-                          ) : (
-                            <span />
-                          )}
-                          <button
-                            type="button"
-                            data-testid="private-note-save"
-                            onClick={() => void handleSaveNote(selected)}
-                            disabled={
-                              noteState === "saving" ||
-                              noteDraft.trim() === (selected.managerNote ?? "").trim()
-                            }
-                            className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            {noteState === "saving" ? "Saving…" : "Save note"}
-                          </button>
-                        </div>
-                      </section>
+                      <PrivateNotesPanel
+                        key={selected.id}
+                        conversationId={selected.id}
+                        counterpartyName={selected.counterpartyName}
+                        seedNotes={seedNotesForInteraction(selected)}
+                        onSaveLatest={(body) => persistLatestNote(selected, body)}
+                      />
                     ) : null}
                     <section className={`rounded-2xl ${SURFACE} p-4`}>
                       <InteractionTimeline item={selected} />

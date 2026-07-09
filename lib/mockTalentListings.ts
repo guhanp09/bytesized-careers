@@ -65,6 +65,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     availability_status: "available",
     experience_years: 5,
     is_featured: true,
+    views: 129,
+    saves: 18,
+    response_rate: 76,
     portfolio_item_ids: [
       "aarav-mehta-sample-1",
       "aarav-mehta-sample-2",
@@ -102,6 +105,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     rate_note: "₹3,000 per short",
     availability_status: "available",
     experience_years: 1,
+    views: 64,
+    saves: 9,
+    response_rate: 68,
     // Smaller combination: budget + brief + turnaround.
     first_message_requirements: ["project_budget", "project_brief", "turnaround"],
   }),
@@ -121,6 +127,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     rate_note: "₹1,500 per thumbnail",
     experience_years: 4,
     is_featured: true,
+    views: 98,
+    saves: 14,
+    response_rate: 82,
     // Smaller combination: working hours + channel/brand link + reference links.
     first_message_requirements: ["working_hours", "channel_or_brand_link", "reference_links"],
   }),
@@ -138,6 +147,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Notion", "Google Docs", "Perplexity"],
     rate_note: "₹8,000 per script",
     experience_years: 6,
+    views: 41,
+    saves: 0,
+    response_rate: 0,
     // No required first-message details: hiring creates an event-only thread.
     first_message_requirements: [],
     first_message_custom_instruction: null,
@@ -156,6 +168,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["After Effects", "Illustrator", "Premiere Pro"],
     rate_note: "₹12,000 per project",
     availability_status: "selective",
+    views: 73,
+    saves: 7,
+    response_rate: 61,
     first_message_requirements: ["project_budget", "project_brief", "reference_links", "start_availability"],
   }),
   makeTalent({
@@ -172,6 +187,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     platforms: ["Spotify", "YouTube", "Apple Podcasts"],
     tools: ["Descript", "Riverside", "Premiere Pro"],
     rate_note: "₹18,000 per episode",
+    views: 52,
+    saves: 5,
+    response_rate: 57,
     first_message_requirements: ["project_brief", "turnaround", "working_hours"],
   }),
   makeTalent({
@@ -190,6 +208,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     experience_years: 8,
     is_featured: true,
     portfolio_item_ids: ["dev-patel-sample-1"],
+    views: 87,
+    saves: 11,
+    response_rate: 72,
     first_message_requirements: [
       "project_brief",
       "working_hours",
@@ -210,6 +231,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     formats: ["Strategy", "Packaging", "Content calendar"],
     tools: ["Notion", "YouTube Studio", "Sheets"],
     rate_note: "₹1,000/hr",
+    views: 35,
+    saves: 4,
+    response_rate: 50,
     first_message_requirements: ["project_budget", "channel_or_brand_link", "fit_note", "custom_instruction"],
     first_message_custom_instruction:
       "Tell me what positioning problem you want solved and which existing creator account is closest to the direction.",
@@ -229,6 +253,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["CapCut", "iPhone", "Canva"],
     rate_note: "₹15,000 per video",
     availability_status: "available",
+    views: 69,
+    saves: 8,
+    response_rate: 63,
     first_message_requirements: ["project_budget", "project_brief", "reference_links"],
   }),
   makeTalent({
@@ -246,6 +273,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Canva", "CapCut", "Buffer"],
     rate_note: "₹35,000 per project",
     availability_status: "available",
+    views: 44,
+    saves: 6,
+    response_rate: 59,
     first_message_requirements: ["turnaround", "working_hours", "start_availability", "fit_note"],
   }),
   makeTalent({
@@ -261,6 +291,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     formats: ["Analytics", "Retention review"],
     tools: ["YouTube Studio", "Sheets", "Looker Studio"],
     rate_note: "₹25,000 per project",
+    views: 58,
+    saves: 10,
+    response_rate: 66,
     first_message_requirements: ["project_brief", "channel_or_brand_link", "reference_links"],
   }),
   makeTalent({
@@ -277,6 +310,9 @@ export const MOCK_TALENT_LISTINGS: BackendTalentListing[] = [
     tools: ["Premiere Pro", "After Effects", "Audition"],
     rate_note: "₹18,000 per video",
     availability_status: "available",
+    views: 81,
+    saves: 12,
+    response_rate: 70,
     first_message_requirements: ["project_budget", "project_brief", "turnaround", "working_hours"],
   }),
 ];

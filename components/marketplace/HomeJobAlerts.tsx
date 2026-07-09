@@ -1,44 +1,13 @@
 "use client";
 
-import { useState } from "react";
-
 import { Icon } from "../Icons";
 import { Reveal } from "../ui";
-
-type Status = "idle" | "loading" | "success" | "invalid" | "error";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { useJobAlerts } from "./useJobAlerts";
+import { markJobAlertsSubscribed } from "../../lib/jobAlertsPopup";
 
 export function HomeJobAlerts() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (status === "loading") return; // guard against duplicate rapid submits
-    const value = email.trim();
-    if (!EMAIL_RE.test(value)) {
-      setStatus("invalid");
-      return;
-    }
-    setStatus("loading");
-    try {
-      const res = await fetch("/api/job-alerts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: value }),
-      });
-      if (res.ok) {
-        setStatus("success");
-      } else if (res.status === 400) {
-        setStatus("invalid");
-      } else {
-        setStatus("error");
-      }
-    } catch {
-      setStatus("error");
-    }
-  };
+  // Subscribing here also stops the popup from nagging (shared subscribed flag).
+  const { email, setEmail, status, submit: handleSubmit, onEditClearError } = useJobAlerts(markJobAlertsSubscribed);
 
   return (
     <section className="space-y-6" data-testid="home-job-alerts">
@@ -77,7 +46,7 @@ export function HomeJobAlerts() {
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
-                    if (status === "invalid" || status === "error") setStatus("idle");
+                    onEditClearError();
                   }}
                   placeholder="your@email.com"
                   aria-invalid={status === "invalid"}

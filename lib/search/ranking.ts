@@ -17,6 +17,7 @@ export type JobLike = {
   workMode?: string | null;
   contractType?: string | null;
   platform?: string | null;
+  platforms?: string[] | null;
   postedPlatform?: string | null;
   contentNiches?: string[] | null;
   contentGenres?: string[] | null;

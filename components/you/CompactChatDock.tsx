@@ -36,6 +36,26 @@ import { directionLabelsFor, pipelineProfileHrefOf, type WorkspaceModeKey } from
 
 type DockFilter = "all" | "sent" | "received" | "archived";
 
+// Remembers the dock's open state + active thread across navigation, so returning
+// to the workspace reopens the same conversation instead of the default list.
+const DOCK_STORAGE_KEY = "cj.applications.chatdock";
+
+type DockPersistedState = { open: boolean; threadId: string | null };
+
+function readDockState(): DockPersistedState | null {
+  try {
+    const raw = window.localStorage.getItem(DOCK_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DockPersistedState>;
+    return {
+      open: Boolean(parsed.open),
+      threadId: typeof parsed.threadId === "string" ? parsed.threadId : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Same workflow names as the workspace filters (received leads). */
 function dockFiltersFor(mode: WorkspaceModeKey): Array<{ key: DockFilter; label: string }> {
   const labels = directionLabelsFor(mode);
@@ -83,6 +103,34 @@ export default function CompactChatDock({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const handledNonce = useRef(0);
+  const restoredDock = useRef(false);
+  const skipFirstPersist = useRef(true);
+
+  // Restore the last dock state on mount (client-only, once) so navigating away
+  // and back returns to the same open conversation.
+  useEffect(() => {
+    if (restoredDock.current) return;
+    restoredDock.current = true;
+    const saved = readDockState();
+    if (saved?.open) {
+      if (saved.threadId) setThreadId(saved.threadId);
+      setOpen(true);
+    }
+  }, []);
+
+  // Persist open + thread on change. Skip the very first run so the initial
+  // default render can't clobber the restored value before it lands.
+  useEffect(() => {
+    if (skipFirstPersist.current) {
+      skipFirstPersist.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify({ open, threadId }));
+    } catch {
+      // Storage can be unavailable (private mode); the dock still works in-session.
+    }
+  }, [open, threadId]);
 
   const thread = threadId ? items.find((item) => item.id === threadId) ?? null : null;
   const activeThreadId = thread?.id ?? null;

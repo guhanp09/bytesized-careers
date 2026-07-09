@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BackendTalentListing } from "../lib/backendClient";
 import {
-  seoFilterRoutesForType,
+  primaryRoleChipsForType,
   seoSelectedChipLabels,
+  subfiltersForRoute,
   type SeoFilterRoute,
 } from "../lib/seoFilterRoutes";
+import SubfilterRow from "./SubfilterRow";
 import TalentCard from "./TalentCard";
 import { Reveal } from "./ui";
 
@@ -106,7 +108,8 @@ export default function TalentFeedClient({
   );
   const [sort, setSort] = useState<TalentSortKey>("relevance");
   const activeSeoLabels = seoSelectedChipLabels(seoRoute);
-  const seoChips = seoFilterRoutesForType("talent");
+  const hasSubfilterRow = subfiltersForRoute(seoRoute).length > 0;
+  const seoChips = primaryRoleChipsForType("talent");
   const seoChipLabels = new Set(seoChips.map((route) => route.chipLabel.toLowerCase()));
   const localFilters = FILTERS.filter((filter) => filter.label === "All" || !seoChipLabels.has(filter.label.toLowerCase()));
   const hasActiveFilter = active !== "All" || activeSeoLabels.length > 0;
@@ -190,13 +193,14 @@ export default function TalentFeedClient({
             </select>
           </label>
         </div>
+        <SubfilterRow seoRoute={seoRoute} />
       </div>
 
       {/* A curated SEO route renders no visible title/intro — the highlighted
           filter chip and the filtered results convey the niche, exactly like a
           selected chip on the normal browse page (the SEO name lives only in
           metadata/canonical). */}
-      <section className="px-4 py-8 pt-24 sm:px-6">
+      <section className={`px-4 py-8 sm:px-6 ${hasSubfilterRow ? "pt-[8.5rem]" : "pt-24"}`}>
         {notice ? (
           <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3 text-sm text-white/85 sm:flex-row sm:items-center sm:justify-between">
             <span>{notice}</span>

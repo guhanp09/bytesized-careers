@@ -211,7 +211,7 @@ test.describe("applications pipeline view", () => {
     await expect(board.getByTestId("pipeline-row").first()).toBeVisible();
   });
 
-  test("clicking a pipeline row opens the conversation in the inbox", async ({ page }) => {
+  test("clicking a pipeline row opens the conversation in the chat dock, not the full inbox", async ({ page }) => {
     await openRecruiterPipeline(page);
     await page
       .getByTestId("pipeline-board")
@@ -219,9 +219,11 @@ test.describe("applications pipeline view", () => {
       .filter({ hasText: "Mira Shah" })
       .click();
 
-    const detail = page.getByTestId("applications-detail");
-    await expect(detail).toBeVisible();
-    await expect(detail).toContainText("Mira Shah");
+    // Opens the compact chatbox on that thread; the pipeline stays put behind it.
+    const dock = page.getByTestId("chat-dock-panel");
+    await expect(dock).toBeVisible();
+    await expect(dock).toContainText("Mira Shah");
+    await expect(page.getByTestId("pipeline-board")).toBeVisible();
   });
 
   test("the sent pipeline is read-only: stages visible, no checkboxes or stage menus", async ({ page }) => {
@@ -271,15 +273,17 @@ test.describe("applications pipeline view", () => {
     await expect(aarav.getByTestId("pipeline-fact").first()).toContainText("₹2,500 per video");
     await expect(aarav.getByTestId("pipeline-fact").nth(1)).toContainText("4-day turnaround");
     await expect(aarav).toContainText("2 portfolio");
-    // Opening-message snippet for context.
-    await expect(aarav).toContainText("I came across the listing");
+    // The teaser is the applicant's fit note (a structured requirement), not the
+    // optional free-text message — consistent with the newer first-message model.
+    await expect(aarav).toContainText("I already edit in your niche");
+    await expect(aarav).not.toContainText("I came across the listing");
     // The name links to the applicant's public profile in a new tab.
     const profileLink = aarav.getByTestId("pipeline-profile-link");
     await expect(profileLink).toHaveAttribute("href", "/u/aarav-mehta?view=talent");
     await expect(profileLink).toHaveAttribute("target", "_blank");
   });
 
-  test("hovering a truncated snippet shows and dismisses the full message preview", async ({ page }) => {
+  test("hovering the first message shows the requirements the applicant answered", async ({ page }) => {
     await openRecruiterPipeline(page);
     const aarav = page
       .getByTestId("pipeline-group-new")
@@ -290,7 +294,13 @@ test.describe("applications pipeline view", () => {
     await snippet.hover();
     const preview = page.getByTestId("pipeline-snippet-preview");
     await expect(preview).toBeVisible();
-    await expect(preview).toContainText("I came across the listing");
+    // The listing owner's structured requirements as the applicant answered them —
+    // the "first message" in the newer model — not the optional free-text note.
+    await expect(preview).toContainText("First message");
+    await expect(preview).toContainText("Portfolio");
+    await expect(preview).toContainText("Turnaround");
+    await expect(preview).toContainText("Fit note");
+    await expect(preview).not.toContainText("I came across the listing");
 
     await page.keyboard.press("Escape");
     await expect(preview).toHaveCount(0);
@@ -299,6 +309,26 @@ test.describe("applications pipeline view", () => {
     await expect(page.getByTestId("pipeline-snippet-preview")).toBeVisible();
     await snippet.blur();
     await expect(page.getByTestId("pipeline-snippet-preview")).toHaveCount(0);
+  });
+
+  test("the 'First message' affordance is a full-width hover target, not a tiny label", async ({ page }) => {
+    await openRecruiterPipeline(page);
+    // Rhea answered structured requirements but wrote no note → the card shows the
+    // "First message" affordance instead of a teaser line.
+    const rhea = page.getByTestId("pipeline-row").filter({ hasText: "Rhea Kapoor" }).first();
+    const trigger = rhea.getByTestId("pipeline-snippet-trigger");
+    await expect(trigger).toContainText("First message");
+
+    // The hover target spans the row (a bare w-fit label was too small to hit).
+    const triggerBox = await trigger.boundingBox();
+    const cardBox = await rhea.boundingBox();
+    expect(triggerBox && cardBox && triggerBox.width > cardBox.width * 0.6).toBeTruthy();
+
+    // Hovering anywhere on that row reveals the requirements.
+    await trigger.hover();
+    const preview = page.getByTestId("pipeline-snippet-preview");
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText("Turnaround");
   });
 
   test("a card drags into another stage section and the funnel updates", async ({ page }) => {
@@ -489,6 +519,42 @@ test.describe("applications pipeline view", () => {
     await expect(main.getByTestId("pipeline-board")).toBeVisible({ timeout: 15_000 });
     await expect(main.getByTestId("pipeline-direction-sent")).toHaveAttribute("aria-pressed", "true");
     await expect(main.getByTestId("pipeline-direction-received")).toContainText("Applicants");
+  });
+
+  test("leaving and returning reopens the same chat dock conversation", async ({ page }) => {
+    await openRecruiterPipeline(page);
+    await page
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Aarav Mehta" })
+      .getByTestId("pipeline-message")
+      .click();
+    await expect(page.getByTestId("chat-dock-panel")).toContainText("Aarav Mehta");
+
+    // Leave the workspace entirely, then return with a bare URL.
+    await page.goto("/jobs", { waitUntil: "domcontentloaded" });
+    await page.goto("/applications", { waitUntil: "domcontentloaded" });
+
+    // The dock is back on the same conversation, not the default list.
+    const dock = page.getByTestId("chat-dock-panel");
+    await expect(dock).toBeVisible({ timeout: 15_000 });
+    await expect(dock).toContainText("Aarav Mehta");
+  });
+
+  test("leaving and returning restores the open inbox conversation", async ({ page }) => {
+    await openWorkspace(page);
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Recruiter", exact: true }).click();
+    // Select a non-first thread so restoring it is distinguishable from the default.
+    await main.getByTestId("interaction-row").filter({ hasText: "Rhea Kapoor" }).first().click();
+    await expect(main.getByTestId("applications-detail-header")).toContainText("Rhea Kapoor");
+
+    await page.goto("/jobs", { waitUntil: "domcontentloaded" });
+    await page.goto("/applications", { waitUntil: "domcontentloaded" });
+
+    // Back on Rhea's conversation, not the first thread in the list.
+    await expect(main.getByTestId("applications-detail-header")).toContainText("Rhea Kapoor", {
+      timeout: 15_000,
+    });
   });
 
   test("deep links restore a specific pipeline state; legacy links keep working", async ({ page }) => {

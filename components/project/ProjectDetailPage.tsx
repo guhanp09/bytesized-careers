@@ -238,14 +238,23 @@ function Chip({ children }: { children: ReactNode }) {
 
 function Section({
   title,
+  icon,
   children,
 }: {
   title: string;
+  icon?: Parameters<typeof Icon>[0]["name"];
   children: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/42">{title}</h2>
+      <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-white/42">
+        {icon ? (
+          <span aria-hidden="true" className="inline-flex shrink-0 text-white/48">
+            <Icon name={icon} className="h-4 w-4" />
+          </span>
+        ) : null}
+        <span>{title}</span>
+      </h2>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -659,7 +668,7 @@ export default function ProjectDetailPage({
 
         <section className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-5">
-            <Section title="Project overview">
+            <Section title="Project overview" icon="notebook-text">
               {overviewText ? (
                 <p className="whitespace-pre-line text-base leading-relaxed text-white/76">{overviewText}</p>
               ) : owner ? (
@@ -668,7 +677,7 @@ export default function ProjectDetailPage({
             </Section>
 
             {(role || contributionTags.length || owner) ? (
-              <Section title="My role">
+              <Section title="My role" icon="user">
                 {role ? <p className="text-lg font-semibold text-white/86">{role}</p> : owner ? <EmptyOwnerPrompt>Add your role.</EmptyOwnerPrompt> : null}
                 {contributionTags.length ? (
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -681,7 +690,7 @@ export default function ProjectDetailPage({
             ) : null}
 
             {(tools.length || owner) ? (
-              <Section title="Tools used">
+              <Section title="Tools used" icon="sliders-horizontal">
                 {tools.length ? (
                   <div className="flex flex-wrap gap-2">
                     {tools.map((tool) => <Chip key={`tool-${tool}`}>{tool}</Chip>)}
@@ -693,7 +702,7 @@ export default function ProjectDetailPage({
             ) : null}
 
             {(hasOutcome || owner) ? (
-              <Section title="Outcome">
+              <Section title="Outcome" icon="trending-up">
                 {metricItems.length ? (
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {metricItems.map((metric) => (
@@ -711,7 +720,7 @@ export default function ProjectDetailPage({
             ) : null}
 
             {(tags.length || owner) ? (
-              <Section title="Tags">
+              <Section title="Tags" icon="tag">
                 {tags.length ? (
                   <div className="flex flex-wrap gap-2">
                     {tags.map((tag) => <Chip key={`tag-${tag}`}>{tag}</Chip>)}
@@ -723,7 +732,7 @@ export default function ProjectDetailPage({
             ) : null}
 
             {editing && owner ? (
-              <Section title="Edit project">
+              <Section title="Edit project" icon="pencil">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Project title">
                     <input className={fieldClass} value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
@@ -880,7 +889,12 @@ export default function ProjectDetailPage({
             </section>
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">
-              <h2 className="text-sm font-semibold text-white/90">Project facts</h2>
+              <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-white/90">
+                <span aria-hidden="true" className="inline-flex shrink-0 text-white/52">
+                  <Icon name="file" className="h-4 w-4" />
+                </span>
+                <span>Project facts</span>
+              </h2>
               <div className="mt-2">
                 <FactRow label="Source" value={source} />
                 <FactRow label="Channel" value={sourceName} />

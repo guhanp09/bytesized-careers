@@ -17,8 +17,9 @@ test("seo filter registry exposes the initial curated jobs and talent pages", ()
   const jobRoutes = seoFilterRoutesForType("jobs");
   const talentRoutes = seoFilterRoutesForType("talent");
 
-  assert.equal(jobRoutes.length, 10);
-  assert.equal(talentRoutes.length, 10);
+  // 10 original + 5 new curated combos each (new ones are sitemap-ineligible).
+  assert.equal(jobRoutes.length, 15);
+  assert.equal(talentRoutes.length, 15);
   assert.equal(getSeoFilterRoute("jobs", "video-editor-jobs")?.path, "/jobs/video-editor-jobs");
   assert.equal(getSeoFilterRoute("talent", "video-editors")?.path, "/talent/video-editors");
   assert.equal(getSeoFilterRoute("jobs", "1"), null);
@@ -83,9 +84,10 @@ test("browse clients and dynamic routes use the central seo registry", () => {
   assert.match(jobsDynamic, /<JobsBrowse/);
   assert.match(talentDynamic, /getSeoFilterRoute\("talent"/);
   assert.match(talentDynamic, /<TalentBrowse/);
-  assert.match(jobGrid, /seoFilterRoutesForType\("jobs"\)/);
-  assert.match(talentFeed, /seoFilterRoutesForType\("talent"\)/);
-  assert.match(header, /findSeoRouteForSearchQuery/);
+  // Row-1 chips come from the registry (deduped to one chip per role label).
+  assert.match(jobGrid, /primaryRoleChipsForType\("jobs"\)/);
+  assert.match(talentFeed, /primaryRoleChipsForType\("talent"\)/);
+  assert.match(header, /seoSearchTarget/);
   assert.match(sitemap, /seoFilterSitemapRoutes/);
 });
 

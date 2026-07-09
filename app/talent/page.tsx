@@ -8,7 +8,7 @@ import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { filterMockTalentListings } from "../../lib/mockTalentListings";
 import { parseQuery } from "../../lib/search/queryParser";
 import { rankTalent, relaxParsedQuery } from "../../lib/search/ranking";
-import { filterAndOrderTalentForSeoRoute } from "../../lib/seoFilterMatch";
+import { filterAndOrderTalentForSeoRoute, refinementCriteriaFromParams } from "../../lib/seoFilterMatch";
 import type { SeoFilterRoute } from "../../lib/seoFilterRoutes";
 
 export const dynamic = "force-dynamic";
@@ -49,9 +49,12 @@ export async function TalentBrowse({
   // as a filtered browse, not a failed search.
   const query = seoRoute ? "" : q.trim();
   const role = first(params.role);
-  const platform = first(params.platform);
-  const location = first(params.location);
-  const availability = first(params.availability);
+  // On an SEO route, platform/availability params are Row-2 refinements applied
+  // strictly in memory — keep the server fetch broad (no pre-narrowing).
+  const refinements = seoRoute ? refinementCriteriaFromParams(params) : null;
+  const platform = seoRoute ? "" : first(params.platform);
+  const location = seoRoute ? "" : first(params.location);
+  const availability = seoRoute ? "" : first(params.availability);
   const dataSource = await getMarketplaceDataSourceState();
   const usingMock = dataSource.source === "mock";
   const canUseMocks = canUseLocalMockFallback() && dataSource.overrideSource !== "backend";
@@ -66,9 +69,10 @@ export async function TalentBrowse({
     }
     return ranked.map((result) => result.item);
   };
-  // SEO route → hard eligibility gate + relevance ordering; otherwise free-text rank.
+  // SEO route → hard eligibility gate + Row-2 refinements + relevance ordering;
+  // otherwise free-text rank.
   const selectForView = (items: TalentItems) =>
-    seoRoute ? filterAndOrderTalentForSeoRoute(items, seoRoute) : rankForQuery(items);
+    seoRoute ? filterAndOrderTalentForSeoRoute(items, seoRoute, refinements) : rankForQuery(items);
 
   if (usingMock) {
     const items = selectForView(filterMockTalentListings({ role, platform, location, availability }));

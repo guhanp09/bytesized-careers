@@ -7,6 +7,7 @@ import {
   CurrencyAnswer,
   FirstMessageAnswers,
   PortfolioRef,
+  ReferenceLink,
   RequirementAnswerValue,
   RequirementContext,
   TurnaroundAnswer,
@@ -16,6 +17,7 @@ import {
   isCustomInstructionAnswer,
   isPortfolioAnswer,
   isStringArray,
+  referenceLinkUrl,
   isTurnaroundAnswer,
   requirementCopy,
   sanitizeRequirementKeys,
@@ -290,7 +292,7 @@ function CustomInstructionField({
   const answer: CustomInstructionAnswer = isCustomInstructionAnswer(value)
     ? value
     : { response: typeof value === "string" ? value : "", links: [] };
-  const resolvedPrompt = prompt?.trim() || answer.prompt?.trim() || "Custom instruction";
+  const resolvedPrompt = prompt?.trim() || answer.prompt?.trim() || "Screening question";
   const links = answer.links || [];
   const update = (patch: Partial<CustomInstructionAnswer>) => {
     onChange({
@@ -349,7 +351,7 @@ function CustomInstructionField({
                   }}
                   placeholder="https://..."
                   className={[inputBase, "flex-1"].join(" ")}
-                  aria-label={`Custom instruction link ${idx + 1}`}
+                  aria-label={`Screener link ${idx + 1}`}
                 />
                 <button
                   type="button"
@@ -506,7 +508,10 @@ export default function FirstMessageFields({
         }
 
         if (def.answerType === "multiLink") {
-          const arr: string[] = isStringArray(value) ? value : [];
+          // Accept the structured reference form (and mixes) too, editing as plain URLs.
+          const arr: string[] = Array.isArray(value)
+            ? (value as Array<string | ReferenceLink>).map(referenceLinkUrl).filter(Boolean)
+            : [];
           const rows = arr.length ? arr : [""];
           return (
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>

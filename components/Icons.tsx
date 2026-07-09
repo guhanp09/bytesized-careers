@@ -13,6 +13,8 @@ export function Icon({
     | "user"
     | "bell"
     | "bell-yt"
+    | "chevron-left"
+    | "chevron-right"
     | "briefcase"
     | "screen"
     | "laptop"
@@ -566,6 +568,20 @@ export function Icon({
       return (
         <svg viewBox="0 0 24 24" {...common}>
           <path strokeLinecap="round" d="M6 5l12 14M18 5L6 19" />
+        </svg>
+      );
+
+    case "chevron-left":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+        </svg>
+      );
+
+    case "chevron-right":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
         </svg>
       );
 

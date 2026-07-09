@@ -153,6 +153,7 @@ export default function TalentListingActionsClient({
   listingId,
   views = 0,
   interestedRecruitersCount = 0,
+  responseRate = 0,
   requirementKeys = [],
   customInstructionPrompt = null,
   metadataRows = [],
@@ -161,6 +162,7 @@ export default function TalentListingActionsClient({
   listingId: string;
   views?: number;
   interestedRecruitersCount?: number;
+  responseRate?: number;
   requirementKeys?: string[];
   customInstructionPrompt?: string | null;
   metadataRows?: TalentMetadataRow[];
@@ -367,14 +369,14 @@ export default function TalentListingActionsClient({
         <div className="mt-4 grid grid-cols-3 gap-3">
           <StatTile icon="eye" value={formatCompactNumber(views)} label="Currently viewing" />
           <StatTile icon="user-plus" value={formatCompactNumber(interestedRecruitersCount)} label="Interested recruiters" />
-          <StatTile icon="bolt" value="0%" label="Response rate" />
+          <StatTile icon="bolt" value={`${responseRate}%`} label="Response rate" />
         </div>
       </section>
 
       <TalentMetadataCard rows={metadataRows} tools={tools} />
 
       <div data-testid="talent-safety-card">
-        <Section title="Safety & expectations" bodyClassName="mt-3 text-sm leading-relaxed text-white/80">
+        <Section title="Safety & expectations" icon="shield" bodyClassName="mt-3 text-sm leading-relaxed text-white/80">
           Keep communication inside the platform, agree on scope, timeline, revisions, and payment terms before starting.
         </Section>
       </div>

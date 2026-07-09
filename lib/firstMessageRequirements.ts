@@ -7,6 +7,8 @@
 // inbox renders the opening-message summary. Adding or changing a requirement here
 // updates all of those workflows at once — do not scatter this logic elsewhere.
 
+import type { ReferenceTimestampNote } from "./types.ts";
+
 export type RequirementContext = "job" | "talent";
 
 // How an answer is captured + rendered. Each type has exactly one field renderer
@@ -86,7 +88,48 @@ export const CUSTOM_INSTRUCTION_REQUIREMENT_KEY = "custom_instruction";
 // ── Structured answer value shapes ─────────────────────────────────────────────
 export type CurrencyAnswer = { amount: string; unit: string };
 export type TurnaroundAnswer = { value: string; unit: "hours" | "days" | "weeks" };
-export type PortfolioRef = { id: string; title: string; url?: string };
+/**
+ * A portfolio item attached to an application. The real picker fills id/title/url;
+ * the extra fields are optional context (populated in richer/mock data) that the
+ * inbox surfaces without any of them being required — so existing consumers that
+ * only set id/title/url stay valid.
+ */
+export type PortfolioRef = {
+  id: string;
+  title: string;
+  url?: string;
+  /** e.g. "Long-form edit", "Thumbnail set", "Script sample". */
+  type?: string;
+  /** e.g. "YouTube", "Instagram", "Google Docs". */
+  platform?: string;
+  /** One or two sentences of context on the work. */
+  description?: string;
+  /** The applicant's contribution, e.g. "End-to-end edit, caption pass". */
+  role?: string;
+  /** Outcome bullets, e.g. ["42% retention lift", "1.8M views"]. */
+  metrics?: string[];
+  /** Short scannable tags, e.g. ["Retention", "Finance", "YouTube"]. */
+  tags?: string[];
+  /** Software used on the work, e.g. ["Premiere Pro", "After Effects"]. */
+  tools?: string[];
+  /** Moments worth watching (video items). Rendered in the detail popover. */
+  timestampNotes?: ReferenceTimestampNote[];
+};
+
+/**
+ * A reference the recruiter attaches to a hiring request. Historically a bare URL
+ * string; the object form adds optional context (title, note, timestamp notes)
+ * that the inbox surfaces in the reference detail popover. Both forms are accepted
+ * everywhere, so existing string[] data and the recruiter URL input keep working.
+ */
+export type ReferenceLink = {
+  url: string;
+  title?: string;
+  /** Why this is a reference / what to match, e.g. "Match pacing and captions". */
+  note?: string;
+  timestampNotes?: ReferenceTimestampNote[];
+};
+
 export type OpeningMessageAttachment = { label: string; url?: string | null };
 export type CustomInstructionAnswer = {
   prompt?: string;
@@ -100,6 +143,7 @@ export type RequirementAnswerValue =
   | CurrencyAnswer
   | TurnaroundAnswer
   | PortfolioRef[]
+  | ReferenceLink[]
   | CustomInstructionAnswer;
 
 export type FirstMessageAnswers = Record<string, RequirementAnswerValue>;
@@ -233,11 +277,11 @@ export const FIRST_MESSAGE_REQUIREMENTS: RequirementDef[] = [
     answerType: "multiLink",
     icon: "external-link",
     talent: {
-      owner: "Reference links",
+      owner: "Reference videos",
       ownerHint: "Recruiters share references for the style they want.",
-      requester: "Reference links",
+      requester: "Reference videos",
       placeholder: "https://…",
-      summary: "References",
+      summary: "Reference videos",
     },
   },
   {
@@ -283,18 +327,18 @@ export const FIRST_MESSAGE_REQUIREMENTS: RequirementDef[] = [
     answerType: "longText",
     icon: "message-square-plus",
     job: {
-      owner: "Custom instruction",
-      ownerHint: "Ask for something specific.",
-      requester: "Custom instruction",
-      placeholder: "Respond to the custom instruction from this listing.",
-      summary: "Custom instruction",
+      owner: "Screening question",
+      ownerHint: "Ask applicants one focused question to help screen fit.",
+      requester: "Screening question",
+      placeholder: "Answer the screening question from this listing.",
+      summary: "Screener",
     },
     talent: {
-      owner: "Custom instruction",
-      ownerHint: "Ask for something specific.",
-      requester: "Custom instruction",
-      placeholder: "Respond to the custom instruction from this listing.",
-      summary: "Custom instruction",
+      owner: "Screening question",
+      ownerHint: "Ask one focused question to help screen fit.",
+      requester: "Screening question",
+      placeholder: "Answer the screening question from this listing.",
+      summary: "Screener",
     },
   },
 ];
@@ -358,6 +402,14 @@ export function isStringArray(value: unknown): value is string[] {
 export function isCustomInstructionAnswer(value: unknown): value is CustomInstructionAnswer {
   return Boolean(value) && typeof value === "object" && "response" in (value as object);
 }
+/** A reference answer in structured form (URL + optional title/note/timestamps). */
+export function isReferenceLinkArray(value: unknown): value is ReferenceLink[] {
+  return Array.isArray(value) && value.length > 0 && value.every((v) => v && typeof v === "object" && "url" in v);
+}
+/** The URL of a reference entry, whether it's a bare string or a structured object. */
+export function referenceLinkUrl(value: string | ReferenceLink): string {
+  return typeof value === "string" ? value : value?.url ?? "";
+}
 
 function comparableText(value: string | null | undefined): string {
   return (value || "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -418,8 +470,8 @@ export function isAnswerComplete(def: RequirementDef, value: RequirementAnswerVa
     case "portfolio":
       return isPortfolioAnswer(value) && value.length > 0;
     case "multiLink": {
-      if (!isStringArray(value)) return false;
-      const links = value.map((l) => l.trim()).filter(Boolean);
+      if (!Array.isArray(value)) return false;
+      const links = (value as Array<string | ReferenceLink>).map((l) => referenceLinkUrl(l).trim()).filter(Boolean);
       return links.length > 0 && links.every(isValidUrl);
     }
     case "tools":
@@ -514,9 +566,31 @@ export type RequirementSummaryItem = {
   /** Single-line value for compact display, when applicable. */
   text?: string;
   /** Link/portfolio values for richer rendering. */
-  links?: { id?: string; label: string; url?: string; kind?: "portfolio" | "link" }[];
+  links?: {
+    id?: string;
+    label: string;
+    url?: string;
+    kind?: "portfolio" | "link";
+    /** Optional portfolio/reference context — see PortfolioRef / ReferenceLink. */
+    type?: string;
+    platform?: string;
+    description?: string;
+    role?: string;
+    metrics?: string[];
+    tags?: string[];
+    tools?: string[];
+    timestampNotes?: ReferenceTimestampNote[];
+    /** Reference-only: why this is a reference / what to match. */
+    note?: string;
+  }[];
   /** Headline value (e.g. the rate) shown without a label, since it reads on its own. */
   emphasis?: boolean;
+  /**
+   * The listing owner's screening prompt (custom instruction only), kept apart
+   * from `text` (the applicant's answer) so the inbox can show the question above
+   * the response under a "Screener" heading.
+   */
+  prompt?: string;
 };
 
 function formatCurrency(value: CurrencyAnswer): string {
@@ -561,6 +635,14 @@ export function summarizeAnswers(
         label: p.title || "Portfolio item",
         url: p.url,
         kind: "portfolio" as const,
+        type: p.type,
+        platform: p.platform,
+        description: p.description,
+        role: p.role,
+        metrics: p.metrics,
+        tags: p.tags,
+        tools: p.tools,
+        timestampNotes: p.timestampNotes,
       }));
       if (links.length) {
         items.push({
@@ -568,8 +650,28 @@ export function summarizeAnswers(
           links,
         });
       }
-    } else if (def.answerType === "multiLink" && isStringArray(value)) {
-      const links = value.map((l) => l.trim()).filter(Boolean).map((url) => ({ label: prettyLinkLabel(url), url }));
+    } else if (def.answerType === "multiLink" && Array.isArray(value) && value.length > 0) {
+      // References can be bare URL strings, structured objects (title/note/
+      // timestamp notes), or a mix. Normalise every entry into the same shape.
+      const links = (value as Array<string | ReferenceLink>)
+        .map((entry) =>
+          typeof entry === "string"
+            ? {
+                url: entry.trim(),
+                title: undefined as string | undefined,
+                note: undefined as string | undefined,
+                timestampNotes: undefined as ReferenceTimestampNote[] | undefined,
+              }
+            : { url: (entry.url || "").trim(), title: entry.title, note: entry.note, timestampNotes: entry.timestampNotes }
+        )
+        .filter((entry) => entry.url)
+        .map((entry) => ({
+          label: entry.title?.trim() || prettyLinkLabel(entry.url),
+          url: entry.url,
+          kind: "link" as const,
+          note: entry.note,
+          timestampNotes: entry.timestampNotes,
+        }));
       if (links.length) items.push({ ...base, text: `${links.length} link${links.length === 1 ? "" : "s"}`, links });
     } else if (def.answerType === "link" && typeof value === "string" && value.trim()) {
       items.push({ ...base, links: [{ label: prettyLinkLabel(value), url: value.trim() }] });
@@ -587,6 +689,7 @@ export function summarizeAnswers(
         items.push({
           ...base,
           label: prompt || base.label,
+          prompt: prompt || undefined,
           text,
           links: links.length ? links : undefined,
         });

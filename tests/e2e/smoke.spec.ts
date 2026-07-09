@@ -222,6 +222,47 @@ test("homepage job-alerts signup sits before FAQ, validates, and confirms on suc
   expect(order).toBe(true);
 });
 
+test("home job-alerts popup is gentle: hidden on load, opens on a trigger, remembers dismissal", async ({ page }) => {
+  await page.goto("/");
+  // Not aggressive: it never interrupts on arrival.
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+
+  // A trigger (exit-intent / delay / programmatic) opens it while eligible.
+  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
+  const popup = page.getByTestId("job-alerts-popup");
+  await expect(popup).toBeVisible();
+  await expect(popup.getByRole("heading", { name: "Get first pick of creator jobs" })).toBeVisible();
+  // Honest copy — no fabricated subscriber counts / social proof.
+  await expect(popup).not.toContainText(/creators (already )?subscribed|Join \d/i);
+
+  // Invalid email validates without submitting.
+  await popup.getByPlaceholder("your@email.com").fill("nope");
+  await popup.getByRole("button", { name: "Get job alerts" }).click();
+  await expect(popup.getByText("Enter a valid email address.")).toBeVisible();
+
+  // Dismiss, then confirm a fresh trigger no longer opens it (capped).
+  await popup.getByTestId("job-alerts-popup-close").click();
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+});
+
+test("home job-alerts popup subscribes, then stops appearing for that visitor", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
+  const popup = page.getByTestId("job-alerts-popup");
+  await expect(popup).toBeVisible();
+
+  await popup.getByPlaceholder("your@email.com").fill("creator@example.com");
+  await popup.getByRole("button", { name: "Get job alerts" }).click();
+  await expect(popup.getByTestId("job-alerts-popup-success")).toBeVisible();
+
+  // A subscribed visitor never sees it again, even after a reload + trigger.
+  await page.reload();
+  await page.evaluate(() => window.dispatchEvent(new Event("cj:job-alerts")));
+  await expect(page.getByTestId("job-alerts-popup")).toHaveCount(0);
+});
+
 test("homepage shows the honest beta banner, value, how-it-works, and FAQ sections without overflow", async ({
   page,
 }) => {

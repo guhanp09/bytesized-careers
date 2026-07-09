@@ -7,6 +7,7 @@ import { HomeComparison } from "../components/marketplace/HomeComparison";
 import { HomeFaq } from "../components/marketplace/HomeFaq";
 import { HomeHowItWorks } from "../components/marketplace/HomeHowItWorks";
 import { HomeJobAlerts } from "../components/marketplace/HomeJobAlerts";
+import { HomeJobAlertsPopup } from "../components/marketplace/HomeJobAlertsPopup";
 import { HomeMarketSignalHero } from "../components/marketplace/HomeMarketSignalHero";
 import { HomeRolesMarquee } from "../components/marketplace/HomeRolesMarquee";
 import { HomeWhySection } from "../components/marketplace/HomeWhySection";
@@ -164,6 +165,9 @@ export default async function Home() {
           <HomeClosingCta />
         </Reveal>
       </section>
+
+      {/* Gentle, capped email-capture popup for new visitors (see HomeJobAlertsPopup). */}
+      <HomeJobAlertsPopup />
     </main>
   );
 }

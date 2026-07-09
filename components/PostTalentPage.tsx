@@ -1235,7 +1235,7 @@ export default function PostTalentPage() {
       firstMessageRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
       !firstMessageCustomInstruction.trim()
     ) {
-      setFirstMessageError("Add the custom instruction recruiters should answer.");
+      setFirstMessageError("Add the screening question recruiters should answer.");
       setStep("hiringRequests");
       focusQualityTarget("talent-first-message");
       return;

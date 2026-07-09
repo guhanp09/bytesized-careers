@@ -29,7 +29,9 @@ test.describe("talent browse regression coverage", () => {
 
     await expect(page.getByText("Talent listings could not be loaded right now")).toHaveCount(0);
     await expect(page.getByText("No talent found")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "All" })).toBeVisible();
+    // The role chips are curated SEO routes now, so they render as <Link>
+    // (role=link), not <button>. "All" clears to the base list.
+    await expect(page.getByRole("link", { name: "All", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Featured" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Available" })).toHaveCount(0);
     await expect(page.getByText("Retention editor", { exact: false }).first()).toBeVisible();
@@ -45,7 +47,11 @@ test.describe("talent browse regression coverage", () => {
   test("valid talent filters keep showing matching listings", async ({ page }) => {
     await page.goto("/talent");
 
-    await page.getByRole("button", { name: "Thumbnail designer" }).click();
+    // "Thumbnail designer" is a curated SEO chip (role=link): clicking it
+    // navigates to /talent/thumbnail-designers, which hard-filters to
+    // thumbnail-design talent. `.first()` guards the streaming-SSR duplicate.
+    await page.getByRole("link", { name: "Thumbnail designer" }).first().click();
+    await expect(page).toHaveURL(/\/talent\/thumbnail-designers$/);
 
     // `.first()` is streaming-SSR safe: Next briefly renders a hidden duplicate of the
     // page content during hydration, so the unscoped text can resolve to two nodes.

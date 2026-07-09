@@ -938,6 +938,7 @@ export type BackendTalentListing = {
   closed_at?: string | null;
   views: number;
   saves: number;
+  response_rate?: number | null;
   created_at: string;
   updated_at: string;
 };

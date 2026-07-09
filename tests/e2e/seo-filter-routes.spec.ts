@@ -246,4 +246,95 @@ test.describe("SEO filtered browsing routes", () => {
       await expectNoHorizontalOverflow(page);
     }
   });
+
+  test("Row-2 subfilters appear only after a role is selected, never on the base list", async ({ page }) => {
+    // Base browse: no contextual subfilter row.
+    await page.goto("/talent", { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("subfilter-row")).toHaveCount(0);
+
+    // On a curated role route, the contextual Row-2 appears with role-relevant chips.
+    await page.goto("/talent/video-editors", { waitUntil: "domcontentloaded" });
+    const row2 = page.getByTestId("subfilter-row");
+    await expect(row2).toBeVisible();
+    await expect(row2.getByTestId("subfilter-chip").filter({ hasText: "Long-form" })).toBeVisible();
+    // Talent offers tool chips; jobs never do.
+    await expect(row2.getByTestId("subfilter-chip").filter({ hasText: "Premiere Pro" })).toBeVisible();
+
+    await page.goto("/jobs/video-editor-jobs", { waitUntil: "domcontentloaded" });
+    const jobRow2 = page.getByTestId("subfilter-row");
+    await expect(jobRow2).toBeVisible();
+    await expect(jobRow2.getByTestId("subfilter-chip").filter({ hasText: "Premiere Pro" })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("ad-hoc subfilter param filters strictly and is noindex; curated combo chip navigates", async ({ page }) => {
+    await page.goto("/talent/video-editors", { waitUntil: "domcontentloaded" });
+    const allEditors = await page.locator('[aria-label^="Open talent listing"]').count();
+
+    // An ad-hoc refinement (a param chip) narrows results and the page goes noindex.
+    await page.getByTestId("subfilter-row").getByTestId("subfilter-chip").filter({ hasText: "Long-form" }).first().click();
+    await expect(page).toHaveURL(/\/talent\/video-editors\?format=long-form$/);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/i);
+    // Canonical still points at the clean curated route (not the param URL).
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/talent\/video-editors$/);
+    // No visible SEO heading even with a refinement applied.
+    await expect(page.getByRole("heading", { name: "Video Editors" })).toHaveCount(0);
+    // Re-load the refined URL for a clean card count: a soft client-side nav
+    // briefly keeps the pre-nav cards in the DOM alongside the streaming-SSR
+    // copy, so counting right after the click double-counts.
+    await page.goto("/talent/video-editors?format=long-form", { waitUntil: "domcontentloaded" });
+    const narrowed = await page.locator('[aria-label^="Open talent listing"]').count();
+    expect(narrowed).toBeLessThanOrEqual(allEditors);
+
+    // A curated-combo subfilter chip navigates to its own self-canonical route.
+    await page.goto("/talent/video-editors", { waitUntil: "domcontentloaded" });
+    await page.getByTestId("subfilter-row").getByTestId("subfilter-chip").filter({ hasText: "Finance" }).first().click();
+    await expect(page).toHaveURL(/\/talent\/finance-video-editors$/);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/talent\/finance-video-editors$/);
+  });
+
+  test("an active curated-combo chip can be deselected back to the base role route (regression: was stuck)", async ({ page }) => {
+    // Reported bug: on /jobs/thumbnail-designer-jobs, selecting the "Finance"
+    // niche chip navigates to the finance combo, but clicking the now-active
+    // "Finance" chip again just re-linked to the same page — no way back.
+    await page.goto("/jobs/thumbnail-designer-jobs", { waitUntil: "domcontentloaded" });
+    const financeChip = page.getByTestId("subfilter-row").getByTestId("subfilter-chip").filter({ hasText: "Finance" }).first();
+    await financeChip.click();
+    await expect(page).toHaveURL(/\/jobs\/finance-thumbnail-designer-jobs$/);
+    await expect(financeChip).toHaveAttribute("aria-pressed", "true");
+
+    await financeChip.click();
+    await expect(page).toHaveURL(/\/jobs\/thumbnail-designer-jobs$/);
+    await expect(financeChip).toHaveAttribute("aria-pressed", "false");
+
+    // Same flow on talent, for a different role/combo, confirms it's not
+    // one-off-fixed for a single route.
+    await page.goto("/talent/video-editors", { waitUntil: "domcontentloaded" });
+    const gamingChip = page.getByTestId("subfilter-row").getByTestId("subfilter-chip").filter({ hasText: "Gaming" }).first();
+    await gamingChip.click();
+    await expect(page).toHaveURL(/\/talent\/gaming-video-editors$/);
+    await gamingChip.click();
+    await expect(page).toHaveURL(/\/talent\/video-editors$/);
+  });
+
+  test("unvouched curated combos are noindex and excluded from the sitemap", async ({ page, request }) => {
+    // A new curated combo works for users (renders the browse grid + its chip)
+    // but is held out of the index until vouched.
+    await page.goto("/talent/gaming-video-editors", { waitUntil: "domcontentloaded" });
+    // The Row-2 "Gaming" chip renders and reads as active (it isn't a self-link:
+    // an active curated-combo chip's href points back to the base role route so
+    // it can be deselected — see the dedicated deselect regression test above).
+    const gamingChip = page.getByTestId("subfilter-row").getByTestId("subfilter-chip").filter({ hasText: "Gaming" }).first();
+    await expect(gamingChip).toBeVisible();
+    await expect(gamingChip).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/i);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/talent\/gaming-video-editors$/);
+
+    const sitemap = await request.get("/sitemap.xml");
+    const xml = await sitemap.text();
+    // Vouched routes remain; unvouched combos are absent.
+    expect(xml).toContain("/talent/video-editors");
+    expect(xml).not.toContain("/talent/gaming-video-editors");
+    expect(xml).not.toContain("/jobs/remote-video-editor-jobs");
+  });
 });

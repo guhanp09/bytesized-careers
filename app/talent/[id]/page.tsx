@@ -21,8 +21,9 @@ import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfile
 import { MOCK_TALENT_LISTINGS } from "../../../lib/mockTalentListings";
 import { publicProfileFallbackSlug } from "../../../lib/profileSlug";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
-import { getSeoFilterRoute } from "../../../lib/seoFilterRoutes";
+import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import { formatTalentListingExperience } from "../../../lib/talentListing";
+import { getTalentInterestedRecruiters, getTalentResponseRate } from "../../../lib/listingStats";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -338,18 +339,26 @@ function collaborationRows(listing: BackendTalentListing) {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { id } = await params;
   const seoRoute = getSeoFilterRoute("talent", String(id));
   if (seoRoute) {
+    const sp = (await searchParams) ?? {};
+    const hasParams = Object.values(sp).some((v) => (Array.isArray(v) ? v.length > 0 : v != null && v !== ""));
+    // Index only vouched curated routes with a clean URL; un-vouched routes and
+    // Row-2 refinement variants are noindex,follow, canonical → the clean route.
+    const indexApproved = isSeoRouteIndexApproved(seoRoute) && !hasParams;
     return {
       title: seoRoute.metaTitle,
       description: seoRoute.metaDescription,
       alternates: {
         canonical: seoRoute.path,
       },
+      robots: indexApproved ? undefined : { index: false, follow: true },
       openGraph: {
         title: seoRoute.metaTitle,
         description: seoRoute.metaDescription,
@@ -498,6 +507,8 @@ export default async function TalentListingPage({
               <TalentListingActionsClient
                 listingId={listing.id}
                 views={listing.views}
+                interestedRecruitersCount={getTalentInterestedRecruiters(listing)}
+                responseRate={getTalentResponseRate(listing)}
                 requirementKeys={listing.first_message_requirements || []}
                 customInstructionPrompt={listing.first_message_custom_instruction || null}
                 metadataRows={creatorContextRows}

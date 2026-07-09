@@ -9,7 +9,7 @@ import { formatListingTitle } from "../../lib/displayText";
 import { jobDisplayChips } from "../../lib/jobCreatorContext";
 import { formatTalentListingExperience } from "../../lib/talentListing";
 import { Icon } from "../Icons";
-import { IconFact } from "../ui";
+import { CardActionFeedback, copyTextToClipboard, IconFact, useTransientCardFeedback } from "../ui";
 
 const initials = (value: string) =>
   value
@@ -135,6 +135,7 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const { feedback, showFeedback } = useTransientCardFeedback();
   const href = `/jobs/${encodeURIComponent(String(job.id))}`;
   const displayTitle = formatListingTitle(job.title);
   const meta = [job.budget, job.location, job.experience || job.contractType].filter(Boolean).join(" · ");
@@ -160,6 +161,7 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
       className={PREVIEW_CARD_CLASSES}
     >
       <div aria-hidden="true" className="home-card-sheen -z-10" />
+      <CardActionFeedback feedback={feedback} className="bottom-14 right-4" />
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.10] bg-white/[0.07] text-xs font-bold text-white/72">
           {initials(job.channel.name) || <Icon name="briefcase" className="h-4 w-4" />}
@@ -182,13 +184,29 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
             onClick={async (event) => {
               stop(event);
               if (!session?.backendAccessToken) {
-                router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                showFeedback("Sign in to save this job.", "info", "bookmark");
+                window.setTimeout(() => {
+                  router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                }, 900);
+                return;
+              }
+              if (saved) {
+                showFeedback("This job is already saved.", "info", "bookmark");
                 return;
               }
               setSaving(true);
               try {
                 await saveJob(session.backendAccessToken, String(job.id));
                 setSaved(true);
+                showFeedback("Job saved.", "success", "check", {
+                  visual: "check",
+                  actionLabel: "View",
+                  actionHref: "/you?tab=saved",
+                  durationMs: 4200,
+                });
+              } catch (error) {
+                console.error("Save job failed:", error);
+                showFeedback("Couldn’t save this job. Try again.", "error", "alert");
               } finally {
                 setSaving(false);
               }
@@ -200,9 +218,15 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
             label={copied ? "Copied" : "Share"}
             onClick={async (event) => {
               stop(event);
-              await navigator.clipboard?.writeText(`${window.location.origin}${href}`);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1400);
+              try {
+                await copyTextToClipboard(`${window.location.origin}${href}`);
+                setCopied(true);
+                showFeedback("Job link copied.", "success", "share", { visual: "copy" });
+                window.setTimeout(() => setCopied(false), 1800);
+              } catch (error) {
+                console.error("Share job failed:", error);
+                showFeedback("Couldn’t copy the link.", "error", "alert");
+              }
             }}
           >
             <Icon name="share" className="h-4 w-4" />
@@ -220,6 +244,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const { feedback, showFeedback } = useTransientCardFeedback();
   const href = `/talent/${encodeURIComponent(item.id)}`;
   const displayTitle = formatListingTitle(item.title);
   const publicProfileHref = item.owner_username ? `/u/${encodeURIComponent(item.owner_username)}?view=talent` : null;
@@ -257,6 +282,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
       className={PREVIEW_CARD_CLASSES}
     >
       <div aria-hidden="true" className="home-card-sheen -z-10" />
+      <CardActionFeedback feedback={feedback} className="bottom-14 right-4" />
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {item.owner_avatar_url ? (
@@ -315,13 +341,29 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
             onClick={async (event) => {
               stop(event);
               if (!session?.backendAccessToken) {
-                router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                showFeedback("Sign in to save this talent listing.", "info", "bookmark");
+                window.setTimeout(() => {
+                  router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                }, 900);
+                return;
+              }
+              if (saved) {
+                showFeedback("This talent listing is already saved.", "info", "bookmark");
                 return;
               }
               setSaving(true);
               try {
                 await saveTalentListing(session.backendAccessToken, item.id);
                 setSaved(true);
+                showFeedback("Talent listing saved.", "success", "check", {
+                  visual: "check",
+                  actionLabel: "View",
+                  actionHref: "/you?tab=saved",
+                  durationMs: 4200,
+                });
+              } catch (error) {
+                console.error("Save talent listing failed:", error);
+                showFeedback("Couldn’t save this listing. Try again.", "error", "alert");
               } finally {
                 setSaving(false);
               }
@@ -333,9 +375,15 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
             label={copied ? "Copied" : "Share"}
             onClick={async (event) => {
               stop(event);
-              await navigator.clipboard?.writeText(`${window.location.origin}${href}`);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1400);
+              try {
+                await copyTextToClipboard(`${window.location.origin}${href}`);
+                setCopied(true);
+                showFeedback("Talent link copied.", "success", "share", { visual: "copy" });
+                window.setTimeout(() => setCopied(false), 1800);
+              } catch (error) {
+                console.error("Share talent listing failed:", error);
+                showFeedback("Couldn’t copy the link.", "error", "alert");
+              }
             }}
           >
             <Icon name="share" className="h-4 w-4" />

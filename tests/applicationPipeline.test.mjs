@@ -8,6 +8,7 @@ import {
   pipelineCardFacts,
   pipelineContextLabelOf,
   pipelineContextOptions,
+  pipelineFirstMessageLines,
   pipelinePortfolioCountOf,
   pipelineProfileHrefOf,
   pipelineSearchMatch,
@@ -244,11 +245,54 @@ test("portfolio count reads structured portfolio answers, else attachments", () 
   assert.equal(pipelinePortfolioCountOf({ firstMessageAnswers: {}, attachments: [] }), 0);
 });
 
-test("card snippet uses the opening message, falling back to the fit note", () => {
+test("card teaser is the fit note once requirements exist, else the legacy message", () => {
+  // Legacy interaction (no structured answers): the written message is all there is.
   assert.equal(pipelineSnippetOf({ message: "  Hi there  ", firstMessageAnswers: null }), "Hi there");
+  assert.equal(pipelineSnippetOf({ message: "", firstMessageAnswers: {} }), null);
+
+  // Structured answers exist → the free-text message is ignored (newer model). The
+  // teaser is the fit note (the applicant's own words on fit), never the message.
   assert.equal(
-    pipelineSnippetOf({ message: "", firstMessageAnswers: { fit_note: "I edit in your niche." } }),
+    pipelineSnippetOf({
+      message: "Hi there — I'd love to be considered.",
+      firstMessageAnswers: { expected_rate: { amount: "1", unit: "x" }, fit_note: "I edit in your niche." },
+    }),
     "I edit in your niche."
   );
-  assert.equal(pipelineSnippetOf({ message: "", firstMessageAnswers: {} }), null);
+  // Requirements but no fit note → no single-line teaser (the card shows a "First
+  // message" affordance for the requirements instead).
+  assert.equal(
+    pipelineSnippetOf({
+      message: "Hi there",
+      firstMessageAnswers: { expected_rate: { amount: "1", unit: "x" } },
+    }),
+    null
+  );
+});
+
+test("first-message lines condense the listing owner's requirements as answered", () => {
+  const lines = pipelineFirstMessageLines({
+    kind: "application",
+    firstMessageAnswers: {
+      expected_rate: { amount: "2,500", unit: "per video" },
+      relevant_portfolio: [
+        { id: "p1", title: "A", url: "https://x/a" },
+        { id: "p2", title: "B", url: "https://x/b" },
+      ],
+      turnaround: { value: "3", unit: "days" },
+      fit_note: "I already edit in your niche.",
+      custom_instruction: { prompt: "Share a similar edit.", response: "I handled the full cut." },
+    },
+  });
+  const byLabel = Object.fromEntries(lines.map((l) => [l.label, l.value]));
+  assert.match(byLabel["Expected rate"], /^₹2,500 per video/);
+  assert.equal(byLabel["Portfolio"], "2 items");
+  assert.equal(byLabel["Turnaround"], "3 days");
+  assert.equal(byLabel["Fit note"], "I already edit in your niche.");
+  // The custom instruction is relabelled "Screener" and shows the applicant's answer.
+  assert.equal(byLabel["Screener"], "I handled the full cut.");
+
+  // No structured answers → no lines (the card falls back to the "First message" label).
+  assert.deepEqual(pipelineFirstMessageLines({ kind: "application", firstMessageAnswers: null }), []);
+  assert.deepEqual(pipelineFirstMessageLines({ kind: "application", firstMessageAnswers: {} }), []);
 });

@@ -7,11 +7,13 @@ import { CATEGORIES, START_TIME_VALUES } from "../lib/jobs";
 import { formatStartFilterLabel } from "../lib/format";
 import { StartTimeframe, Job } from "../lib/types";
 import {
-  seoFilterRoutesForType,
+  primaryRoleChipsForType,
   seoSelectedChipLabels,
+  subfiltersForRoute,
   type SeoFilterRoute,
 } from "../lib/seoFilterRoutes";
 import { JobCard } from "./JobCard";
+import SubfilterRow from "./SubfilterRow";
 import { Reveal } from "./ui";
 
 function Chip({
@@ -84,7 +86,10 @@ export default function JobGridClient({
   const [selectedStarts, setSelectedStarts] = useState<StartTimeframe[]>([]);
   const [sort, setSort] = useState<JobSortKey>("relevance");
   const activeSeoLabels = seoSelectedChipLabels(seoRoute);
-  const seoChips = seoFilterRoutesForType("jobs");
+  // Row-2 appears only on a curated SEO route that anchors a role; the fixed bar
+  // grows to fit it, so the content offset grows to match.
+  const hasSubfilterRow = subfiltersForRoute(seoRoute).length > 0;
+  const seoChips = primaryRoleChipsForType("jobs");
   const seoChipLabels = new Set(seoChips.map((route) => route.chipLabel.toLowerCase()));
   const localCategoryChips = CATEGORIES.filter((category) => category !== "All" && !seoChipLabels.has(category.toLowerCase()));
 
@@ -200,13 +205,14 @@ export default function JobGridClient({
             </select>
           </label>
         </div>
+        <SubfilterRow seoRoute={seoRoute} />
       </div>
 
       {/* Scrollable content starts BELOW the fixed filters bar. A curated SEO
           route renders no visible title/intro — the highlighted filter chip and
           the filtered results convey the niche, exactly like a selected chip on
           the normal browse page (the SEO name lives only in metadata/canonical). */}
-      <section className="px-4 sm:px-6 py-8 pt-24">
+      <section className={`px-4 sm:px-6 py-8 ${hasSubfilterRow ? "pt-[8.5rem]" : "pt-24"}`}>
         {notice ? (
           <div className="mb-6 rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3 text-sm text-white/85">
             {notice}

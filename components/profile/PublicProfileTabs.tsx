@@ -114,17 +114,26 @@ function cleanList(values: Array<string | null | undefined>) {
 
 function OverviewModule({
   title,
+  icon,
   actions,
   children,
 }: {
   title: string;
+  icon?: Parameters<typeof Icon>[0]["name"];
   actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <article className="border-b border-white/[0.08] py-7 first:pt-0 last:border-b-0 last:pb-0">
       <div className="flex items-start justify-between gap-4">
-        <h3 className="text-base font-semibold tracking-tight text-white/92">{title}</h3>
+        <h3 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
+          {icon ? (
+            <span aria-hidden="true" className="inline-flex shrink-0 text-white/48">
+              <Icon name={icon} className="h-4 w-4" />
+            </span>
+          ) : null}
+          <span>{title}</span>
+        </h3>
         {actions}
       </div>
       <div className="mt-4">{children}</div>
@@ -574,13 +583,13 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
     <div className="grid w-full max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
       <div className="min-w-0">
         {bioText ? (
-          <OverviewModule title="Bio">
+          <OverviewModule title="Bio" icon="notebook-text">
             <p className="max-w-3xl text-sm leading-6 text-white/68 sm:text-[15px]">{bioText}</p>
           </OverviewModule>
         ) : null}
 
         {profileMode === "talent" && profile.experience?.length ? (
-          <OverviewModule title="Experience">
+          <OverviewModule title="Experience" icon="briefcase">
             <ProfileExperienceList items={profile.experience} />
           </OverviewModule>
         ) : null}
@@ -588,6 +597,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
         {profileMode === "talent" && portfolioPreview.length ? (
           <OverviewModule
             title="Portfolio"
+            icon="images"
             actions={
               <button
                 type="button"
@@ -610,13 +620,13 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
         ) : null}
 
         {profileMode === "hiring" && hiringExperiencePreview.length ? (
-          <OverviewModule title="Recent Hires">
+          <OverviewModule title="Recent Hires" icon="users">
             <HiringExperienceList items={hiringExperiencePreview} />
           </OverviewModule>
         ) : null}
 
         {profileMode === "hiring" && hiringForChannels.length ? (
-          <OverviewModule title="Hiring For">
+          <OverviewModule title="Hiring For" icon="briefcase">
             <HiringForRail items={hiringForChannels} />
           </OverviewModule>
         ) : null}
@@ -624,6 +634,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
         {profileMode === "hiring" && jobsPreview.length ? (
           <OverviewModule
             title="Jobs"
+            icon="briefcase"
             actions={
               <button
                 type="button"
@@ -641,6 +652,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
         {reviewItems.length ? (
           <OverviewModule
             title="Reviews"
+            icon="badge-check"
             actions={
               <button
                 type="button"

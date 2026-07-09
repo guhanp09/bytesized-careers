@@ -9,7 +9,7 @@ import Sidebar from "./Sidebar";
 import BrandLogo from "./BrandLogo";
 import DevDataSourceSwitch from "./dev/DevDataSourceSwitch";
 import { PostMenu } from "./marketplace/PostMenu";
-import { findSeoRouteForSearchQuery } from "../lib/seoFilterRoutes";
+import { seoSearchTarget } from "../lib/seoFilterMatch";
 import {
   getMyProfile,
   listNotifications,
@@ -219,10 +219,9 @@ export default function Header() {
                   className="flex-1 flex items-center bg-white/6 border border-white/10 rounded-full overflow-hidden shadow-[0_10px_30px_-25px_rgba(0,0,0,0.9)]"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    const query = searchValue.trim();
-                    const target = searchMode === "talent" ? "/talent" : "/jobs";
-                    const seoRoute = query ? findSeoRouteForSearchQuery(searchMode, query) : null;
-                    router.push(seoRoute ? seoRoute.path : query ? `${target}?q=${encodeURIComponent(query)}` : target);
+                    // Central search-to-filter routing (curated route → role route
+                    // + refinement params → ranked ?q= search). See seoSearchTarget.
+                    router.push(seoSearchTarget(searchMode, searchValue).href);
                   }}
                 >
                   <div

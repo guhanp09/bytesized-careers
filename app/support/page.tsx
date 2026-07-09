@@ -1,3 +1,4 @@
+import { Icon } from "../../components/Icons";
 import { PageHeader, StateCard } from "../../components/ui";
 
 export const metadata = {
@@ -32,7 +33,12 @@ export default function SupportPage() {
         />
 
         <section className="rounded-[28px] border border-white/[0.08] bg-white/[0.04] p-6">
-          <h2 className="text-base font-semibold tracking-tight text-white/92">What support can help with</h2>
+          <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+              <Icon name="help" className="h-4 w-4" />
+            </span>
+            <span>What support can help with</span>
+          </h2>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-white/58">
             {topics.map((topic) => (
               <li key={topic}>{topic}</li>
@@ -41,7 +47,12 @@ export default function SupportPage() {
         </section>
 
         <section className="rounded-[28px] border border-white/[0.08] bg-white/[0.04] p-6">
-          <h2 className="text-base font-semibold tracking-tight text-white/92">Safety reports</h2>
+          <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+              <Icon name="shield" className="h-4 w-4" />
+            </span>
+            <span>Safety reports</span>
+          </h2>
           <p className="mt-2 text-sm leading-6 text-white/58">
             Use Report listing on job and talent listing pages when possible. For urgent beta issues, email support with the listing URL and the reason it should be reviewed.
           </p>

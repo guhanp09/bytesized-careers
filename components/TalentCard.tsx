@@ -8,10 +8,11 @@ import { BackendTalentListing, saveTalentListing } from "../lib/backendClient";
 import { formatListingTitle } from "../lib/displayText";
 import { publicProfileFallbackSlug } from "../lib/profileSlug";
 import { formatTalentListingExperience } from "../lib/talentListing";
+import { getTalentInterestedRecruiters, getTalentResponseRate, normalizeCount } from "../lib/listingStats";
 import { useCardSheen } from "../lib/useCardSheen";
 import { formatCompactNumber } from "../lib/format";
 import { Icon } from "./Icons";
-import { MetaRow, StatRow, TagPill } from "./ui";
+import { CardActionFeedback, copyTextToClipboard, MetaRow, StatRow, TagPill, useTransientCardFeedback } from "./ui";
 
 const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
 
@@ -164,6 +165,7 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { feedback, showFeedback } = useTransientCardFeedback();
   const sheen = useCardSheen();
   const href = `/talent/${encodeURIComponent(item.id)}`;
   const publicProfileSlug = (item.owner_username || publicProfileFallbackSlug(item.owner_display_name || item.id)).trim();
@@ -182,11 +184,16 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
     ...item.platforms,
     item.niche,
   ]);
-  const viewCount = Number.isFinite(item.views) ? Math.max(0, item.views) : 0;
-  const interestedRecruitersCount = 0;
-  const responseRate = 0;
+  const viewCount = normalizeCount(item.views);
+  const initialInterestedRecruitersCount = getTalentInterestedRecruiters(item);
+  const [interestedRecruitersCount, setInterestedRecruitersCount] = useState(initialInterestedRecruitersCount);
+  const responseRate = getTalentResponseRate(item);
   const modeOrLocation = workMode || location || "Remote";
   const displayTitle = formatListingTitle(item.title);
+
+  React.useEffect(() => {
+    setInterestedRecruitersCount(initialInterestedRecruitersCount);
+  }, [initialInterestedRecruitersCount]);
 
   const open = () => {
     router.push(href);
@@ -222,6 +229,7 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
         title="Open talent listing"
       >
         <div aria-hidden="true" className="home-card-sheen -z-10" />
+        <CardActionFeedback feedback={feedback} />
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {item.owner_avatar_url ? (
@@ -309,13 +317,30 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
               onClick={async (event) => {
                 stop(event);
                 if (!session?.backendAccessToken) {
-                  router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                  showFeedback("Sign in to save this talent listing.", "info", "bookmark");
+                  window.setTimeout(() => {
+                    router.push(`/auth?mode=login&next=${encodeURIComponent(href)}`);
+                  }, 900);
+                  return;
+                }
+                if (saved) {
+                  showFeedback("This talent listing is already saved.", "info", "bookmark");
                   return;
                 }
                 setSaving(true);
                 try {
                   await saveTalentListing(session.backendAccessToken, item.id);
                   setSaved(true);
+                  setInterestedRecruitersCount((count) => count + 1);
+                  showFeedback("Talent listing saved.", "success", "check", {
+                    visual: "check",
+                    actionLabel: "View",
+                    actionHref: "/you?tab=saved",
+                    durationMs: 4200,
+                  });
+                } catch (error) {
+                  console.error("Save talent listing failed:", error);
+                  showFeedback("Couldn’t save this listing. Try again.", "error", "alert");
                 } finally {
                   setSaving(false);
                 }
@@ -327,9 +352,15 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
               label={copied ? "Copied" : "Share"}
               onClick={async (event) => {
                 stop(event);
-                await navigator.clipboard?.writeText(`${window.location.origin}${href}`);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1400);
+                try {
+                  await copyTextToClipboard(`${window.location.origin}${href}`);
+                  setCopied(true);
+                  showFeedback("Talent link copied.", "success", "share", { visual: "copy" });
+                  window.setTimeout(() => setCopied(false), 1800);
+                } catch (error) {
+                  console.error("Share talent listing failed:", error);
+                  showFeedback("Couldn’t copy the link.", "error", "alert");
+                }
               }}
             >
               <Icon name="share" className="h-4 w-4" />

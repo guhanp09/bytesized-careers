@@ -114,6 +114,45 @@ test("talent answers summarise with budget headline and clickable reference link
   assert.equal(items.find((i) => i.key === "turnaround").text, "1 week");
 });
 
+test("portfolio items carry tools + timestamp notes through to the summary link", () => {
+  const items = summarizeAnswers(["relevant_portfolio"], "job", {
+    relevant_portfolio: [
+      {
+        id: "p1",
+        title: "Retention edit",
+        url: "https://www.youtube.com/watch?v=abc123",
+        tools: ["Premiere Pro", "After Effects"],
+        timestampNotes: [{ time: "0:00", seconds: 0, title: "Hook", description: "New cold open." }],
+      },
+    ],
+  });
+  const link = items.find((i) => i.key === "relevant_portfolio").links[0];
+  assert.deepEqual(link.tools, ["Premiere Pro", "After Effects"]);
+  assert.equal(link.timestampNotes.length, 1);
+  assert.equal(link.timestampNotes[0].title, "Hook");
+});
+
+test("structured references keep title + timestamp notes; bare-string references still work", () => {
+  const items = summarizeAnswers(["reference_links"], "talent", {
+    reference_links: [
+      {
+        url: "https://www.youtube.com/watch?v=abc123",
+        title: "Fast motivation short",
+        note: "Match the pacing.",
+        timestampNotes: [{ time: "0:03", seconds: 3, title: "Hook", description: "Opens on the payoff." }],
+      },
+      "https://www.youtube.com/watch?v=def456",
+    ],
+  });
+  const links = items.find((i) => i.key === "reference_links").links;
+  assert.equal(links.length, 2);
+  // The structured entry keeps its title as the label and carries timestamp notes.
+  assert.equal(links[0].label, "Fast motivation short");
+  assert.equal(links[0].timestampNotes.length, 1);
+  // The bare URL still resolves to a clickable link.
+  assert.equal(links[1].url, "https://www.youtube.com/watch?v=def456");
+});
+
 test("rendered values never expose raw requirement keys", () => {
   const items = summarizeAnswers(
     ["expected_rate", "relevant_portfolio", "working_hours"],

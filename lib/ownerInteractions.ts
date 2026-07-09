@@ -100,6 +100,13 @@ export type OwnerInteraction = {
   backendStatus?: string | null;
   /** The manager's private note on a received item. Never present on sent items. */
   managerNote?: string | null;
+  /**
+   * Seed notes for the private-notes stack on a received item (demo/mock only).
+   * The panel is local-first (localStorage per conversation); these seed it so the
+   * stacked-note experience has believable history before the user adds their own.
+   * Newest first.
+   */
+  privateNotes?: Array<{ id: string; body: string; createdAt: string }>;
   title: string;
   /** Short subject line for rows where the title is a person's name. */
   contextLabel?: string | null;
@@ -212,13 +219,50 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       relevant_portfolio: [
         {
           id: "t-app-sent-1-portfolio-1",
-          title: "Retention edit sample",
-          url: "https://portfolio.example.com/sample/retention-edit",
+          title: "Retention edit — Finance explainer",
+          url: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+          type: "Long-form edit",
+          platform: "YouTube",
+          description:
+            "Edited a 14-minute personal-finance explainer: hook rewrite, pacing restructure, captions, B-roll, and final export.",
+          role: "End-to-end edit, caption pass, sound cleanup",
+          metrics: ["42% average retention lift", "1.8M views", "Edited end-to-end"],
+          tags: ["Retention", "Finance", "YouTube"],
+          tools: ["Premiere Pro", "After Effects", "DaVinci Resolve"],
+          timestampNotes: [
+            { time: "0:00", seconds: 0, title: "Rewritten hook", description: "New cold-open that reframes the question in the first 8 seconds." },
+            { time: "3:42", seconds: 222, title: "Pacing restructure", description: "Cut two minutes of setup and tightened the middle third." },
+            { time: "9:15", seconds: 555, title: "B-roll + callouts", description: "Motion callouts over the data section for retention." },
+          ],
         },
         {
           id: "t-app-sent-1-portfolio-2",
           title: "Captions + sound style reel",
-          url: "https://portfolio.example.com/sample/captions-reel",
+          url: "https://portfolio.example.com/reels/caption-sound-style",
+          type: "Shorts reel",
+          platform: "Instagram",
+          description:
+            "A compilation of caption-heavy short-form edits with music ducking and punch-in timing.",
+          role: "Caption design, sound design",
+          tags: ["Captions", "Sound design"],
+          tools: ["Premiere Pro", "CapCut"],
+        },
+        {
+          id: "t-app-sent-1-portfolio-3",
+          title: "Education series — 8-video pack",
+          url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+          type: "Channel package",
+          platform: "YouTube",
+          description:
+            "Full-season edit for a beginner-investing series with a repeatable template and consistent lower-thirds.",
+          role: "Series lead editor",
+          metrics: ["8-video series", "Delivered in 6 weeks"],
+          tags: ["Education", "Explainer"],
+          tools: ["Premiere Pro", "After Effects"],
+          timestampNotes: [
+            { time: "0:05", seconds: 5, title: "Series intro template", description: "Reusable animated intro built once and re-timed per episode." },
+            { time: "6:30", seconds: 390, title: "Lower-thirds system", description: "Consistent lower-thirds and chapter cards across the pack." },
+          ],
         },
       ],
       turnaround: { value: "3", unit: "days" },
@@ -230,12 +274,12 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       custom_instruction: {
         prompt: "Share one similar explainer you worked on and what you personally handled.",
         response: "I handled the pacing restructure, caption pass, sound cleanup, and final upload-ready export.",
-        links: ["https://portfolio.example.com/sample/retention-edit"],
+        links: ["https://www.youtube.com/watch?v=jNQXAC9IVRw"],
       },
     },
     attachments: [
-      { label: "Retention edit sample", url: "https://portfolio.example.com/sample/retention-edit" },
-      { label: "Captions + sound style reel", url: "https://portfolio.example.com/sample/captions-reel" },
+      { label: "Retention edit — Finance explainer", url: "https://www.youtube.com/watch?v=jNQXAC9IVRw" },
+      { label: "Captions + sound style reel", url: "https://portfolio.example.com/reels/caption-sound-style" },
     ],
     job: {
       jobId: "1",
@@ -411,12 +455,24 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         {
           id: "t-app-sent-5-portfolio-1",
           title: "Deep dive — market crash explainer",
-          url: "https://portfolio.example.com/sample/deep-dive-1",
+          url: "https://portfolio.example.com/docs/market-crash-deep-dive",
+          type: "Documentary edit",
+          platform: "YouTube",
+          description:
+            "22-minute documentary-style breakdown with archival overlays, narration timing, and layered sound design.",
+          role: "Narrative edit, archival research, sound design",
+          metrics: ["Avg view duration 11:04", "94% of runtime is original edit"],
+          tags: ["Documentary", "Finance", "Sound design"],
         },
         {
           id: "t-app-sent-5-portfolio-2",
           title: "Deep dive — startup story",
-          url: "https://portfolio.example.com/sample/deep-dive-2",
+          url: "https://portfolio.example.com/docs/startup-story",
+          type: "Documentary edit",
+          platform: "YouTube",
+          description: "Founder-story cut with interview weaving, B-roll pacing, and a cold-open hook.",
+          role: "Lead editor",
+          tags: ["Documentary", "Retention"],
         },
       ],
       turnaround: { value: "5", unit: "days" },
@@ -424,8 +480,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       fit_note: "Your documentary-style finance brief matches the pacing and archival work I already do.",
     },
     attachments: [
-      { label: "Deep dive — market crash explainer", url: "https://portfolio.example.com/sample/deep-dive-1" },
-      { label: "Deep dive — startup story", url: "https://portfolio.example.com/sample/deep-dive-2" },
+      { label: "Deep dive — market crash explainer", url: "https://portfolio.example.com/docs/market-crash-deep-dive" },
+      { label: "Deep dive — startup story", url: "https://portfolio.example.com/docs/startup-story" },
     ],
     response: {
       from: "Moneywise India",
@@ -477,8 +533,23 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       working_hours: "Weekly delivery",
       channel_or_brand_link: "https://youtube.com/@motivationshorts",
       reference_links: [
-        "https://youtube.com/watch?v=ref-short-1",
-        "https://youtube.com/watch?v=ref-short-2",
+        {
+          url: "https://www.youtube.com/watch?v=9bZkp7q19f0",
+          title: "Fast-paced motivation short",
+          note: "Match the pacing, punch-in captions, and quick motivational payoff.",
+          timestampNotes: [
+            { time: "0:03", seconds: 3, title: "Hook", description: "Opens on the payoff line, not a slow build." },
+            { time: "0:18", seconds: 18, title: "Caption density", description: "Two-word punch-in captions synced to the beat." },
+          ],
+        },
+        {
+          url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
+          title: "Caption + sound benchmark",
+          note: "Use this as the sound-design and music-ducking benchmark.",
+          timestampNotes: [
+            { time: "0:24", seconds: 24, title: "Music duck", description: "Music dips under the voice line — match this feel." },
+          ],
+        },
       ],
       start_availability: "Immediately",
       fit_note: "Your retention work fits our daily channel and we already have a steady content pipeline.",
@@ -486,7 +557,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         prompt: "Share the channel context, one reference to match, and what success would look like in the first month.",
         response:
           "This is for a daily motivation Shorts channel. We want pacing close to the two references and success means 15 on-brand shorts delivered without daily hand-holding.",
-        links: ["https://youtube.com/watch?v=ref-short-1"],
+        links: ["https://www.youtube.com/watch?v=9bZkp7q19f0"],
       },
     },
     recruiter: {
@@ -564,8 +635,20 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         "Source pulls, research board, and first assembly cut for a 25-minute documentary episode.",
       turnaround: { value: "6", unit: "weeks" },
       reference_links: [
-        "https://youtube.com/watch?v=history-reference-1",
-        "https://youtube.com/watch?v=history-reference-2",
+        {
+          url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+          title: "Archival-heavy documentary",
+          note: "Reference for archival overlay density and narration pacing — not the exact visual style.",
+          timestampNotes: [
+            { time: "1:12", seconds: 72, title: "Archival overlay", description: "Layered stills with subtle motion under the VO." },
+            { time: "4:30", seconds: 270, title: "Chapter transition", description: "Clean act break with a title card and music swell." },
+          ],
+        },
+        {
+          url: "https://vimeo.com/76979871",
+          title: "Assembly pacing reference",
+          note: "Use this only for the first-assembly rhythm — how scenes are ordered before polish.",
+        },
       ],
       fit_note: "Your long-form structure work looks aligned with documentary research-heavy edits.",
     },
@@ -643,12 +726,36 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         {
           id: "demo-portfolio-1",
           title: "Retention rebuild — market explainer",
-          url: "https://portfolio.example.com/aarav/market-explainer",
+          url: "https://www.youtube.com/watch?v=9bZkp7q19f0",
+          type: "Retention edit",
+          platform: "YouTube",
+          description:
+            "Re-cut of a finance explainer that was losing viewers at the intro — new hook, tighter pacing, on-screen callouts.",
+          role: "Edit rebuild, hook rewrite, motion callouts",
+          metrics: ["Retention 38% → 54%", "1.2M views"],
+          tags: ["Retention", "Finance", "Explainer"],
+          tools: ["Premiere Pro", "After Effects"],
+          timestampNotes: [
+            { time: "0:00", seconds: 0, title: "New hook", description: "Original opened on a logo sting; replaced with a question hook." },
+            { time: "2:10", seconds: 130, title: "Tightened setup", description: "Removed ~40s of repetition before the first payoff." },
+            { time: "5:48", seconds: 348, title: "Motion callouts", description: "On-screen numbers to hold attention through the data." },
+          ],
         },
         {
           id: "demo-portfolio-2",
           title: "Series packaging — education channel",
-          url: "https://portfolio.example.com/aarav/series-packaging",
+          url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
+          type: "Channel package",
+          platform: "YouTube",
+          description: "Built a reusable intro, lower-thirds, and end-screen system for a 12-video education series.",
+          role: "Motion graphics, template system",
+          metrics: ["12-video series", "Motion graphics"],
+          tags: ["Motion graphics", "Education"],
+          tools: ["After Effects", "Illustrator"],
+          timestampNotes: [
+            { time: "0:03", seconds: 3, title: "Animated intro", description: "Template intro that re-times to each episode's title." },
+            { time: "8:20", seconds: 500, title: "End-screen system", description: "Consistent end-screen with next-video + subscribe." },
+          ],
         },
       ],
       turnaround: { value: "4", unit: "days" },
@@ -683,6 +790,23 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         { title: "Series packaging — education channel", detail: "4-video series · structure + sound design" },
       ],
     },
+    privateNotes: [
+      {
+        id: "r-app-recv-1-note-3",
+        body: "Portfolio retention numbers check out. Shortlist for a paid test edit on last week's upload.",
+        createdAt: "Today, 9:12 AM",
+      },
+      {
+        id: "r-app-recv-1-note-2",
+        body: "Asked for the finance A/B board — waiting to see CTR variations before an interview.",
+        createdAt: "Yesterday, 6:40 PM",
+      },
+      {
+        id: "r-app-recv-1-note-1",
+        body: "Rate is ₹2,500/video, a bit above budget. Worth it if the retention rebuild is real.",
+        createdAt: "2 days ago",
+      },
+    ],
     timeline: [{ id: "r-app-recv-1-applied", label: "Application received", at: "4h ago" }],
   },
   {
@@ -703,13 +827,26 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       relevant_portfolio: [
         {
           id: "mira-packaging-board",
-          title: "A/B concept board — finance series",
-          url: "https://portfolio.example.com/mira/finance-board",
+          title: "Finance thumbnail A/B set",
+          url: "https://portfolio.example.com/thumbnails/finance-ab-test",
+          type: "Thumbnail set",
+          platform: "YouTube",
+          description: "12 thumbnail concepts for a finance channel with CTR-oriented layout variations tested over 4 weeks.",
+          role: "Concepting, design, A/B testing",
+          metrics: ["12 thumbnails tested", "CTR 4.1% → 6.8%"],
+          tags: ["CTR", "Finance", "YouTube"],
+          tools: ["Photoshop", "Figma", "Midjourney"],
         },
         {
           id: "mira-tech-packaging",
           title: "Packaging refresh — tech reviews",
-          url: "https://portfolio.example.com/mira/tech-packaging",
+          url: "https://portfolio.example.com/thumbnails/tech-packaging",
+          type: "Thumbnail set",
+          platform: "YouTube",
+          description: "Rebuilt title + thumbnail system for a tech-review channel to improve mobile legibility.",
+          role: "Design system, mobile legibility pass",
+          tags: ["CTR", "Tech"],
+          tools: ["Photoshop", "Illustrator"],
         },
       ],
       relevant_experience: "Packaging systems for 6 channels, usually 3 concepts per video within 24 hours.",
@@ -808,8 +945,20 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       relevant_portfolio: [
         {
           id: "rhea-before-after",
-          title: "Retention rework — intro 30s",
-          url: "https://portfolio.example.com/rhea/before-after",
+          title: "Retention rework — first 30 seconds",
+          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          type: "Retention edit",
+          platform: "YouTube",
+          description:
+            "Before/after of an education video's opening: rewrote the hook, cut dead air, and added a cold-open payoff.",
+          role: "Re-edit, hook rewrite",
+          metrics: ["Avg view duration +34%", "Before/after included"],
+          tags: ["Retention", "Education", "Hook"],
+          tools: ["Final Cut Pro", "Motion"],
+          timestampNotes: [
+            { time: "0:00", seconds: 0, title: "Before", description: "Original opening — slow logo intro and a soft question." },
+            { time: "0:32", seconds: 32, title: "After", description: "Reworked cold open with a payoff promise in the first line." },
+          ],
         },
       ],
       turnaround: { value: "4", unit: "days" },
@@ -988,14 +1137,23 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       turnaround: { value: "2", unit: "days" },
       working_hours: "Weekly delivery",
       channel_or_brand_link: "https://youtube.com/@motivationshorts",
-      reference_links: ["https://youtube.com/watch?v=shorts-style-reference"],
+      reference_links: [
+        {
+          url: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+          title: "Caption style to match",
+          note: "Match this caption density and the punch-in timing on the beat.",
+          timestampNotes: [
+            { time: "0:06", seconds: 6, title: "Caption rhythm", description: "Captions land on stressed words, not every word." },
+          ],
+        },
+      ],
       start_availability: "Immediately",
       fit_note: "Your daily shorts systems are close to the workflow we need.",
       custom_instruction: {
         prompt: "Share the channel context, one reference to match, and what success would look like in the first month.",
         response:
           "This is a daily faceless motivation channel. We want the captions and pacing matched to the reference, with the first month measured by consistent delivery and stable retention.",
-        links: ["https://youtube.com/watch?v=shorts-style-reference"],
+        links: ["https://www.youtube.com/watch?v=jNQXAC9IVRw"],
       },
     },
     talent: {
@@ -1037,8 +1195,20 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       working_hours: "Flexible hours",
       channel_or_brand_link: "https://youtube.com/@contentbusiness",
       reference_links: [
-        "https://youtube.com/watch?v=explainer-reference-1",
-        "https://youtube.com/watch?v=explainer-reference-2",
+        {
+          url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
+          title: "Explainer intro structure",
+          note: "Use the intro structure only — question, stakes, then roadmap.",
+          timestampNotes: [
+            { time: "0:00", seconds: 0, title: "Question first", description: "States the viewer question before any branding." },
+            { time: "0:40", seconds: 40, title: "Roadmap", description: "Previews the three sections to set expectations." },
+          ],
+        },
+        {
+          url: "https://drive.google.com/file/d/1mock-broll-density/view",
+          title: "B-roll density doc",
+          note: "Our target B-roll density per minute — reference only, not pacing.",
+        },
       ],
       start_availability: "Within 1 week",
     },
@@ -1096,7 +1266,17 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     firstMessageAnswers: {
       project_budget: { amount: "900", unit: "per video" },
       project_brief: "Animated callouts and kinetic text for two explainers per month.",
-      reference_links: ["https://youtube.com/watch?v=motion-reference"],
+      reference_links: [
+        {
+          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          title: "Lower-thirds + kinetic text",
+          note: "Reference for lower-thirds motion and kinetic-text timing.",
+          timestampNotes: [
+            { time: "0:14", seconds: 14, title: "Lower-third in", description: "Ease-in with a subtle blur — match this weight." },
+            { time: "1:02", seconds: 62, title: "Kinetic emphasis", description: "Key words scale up on beat without feeling busy." },
+          ],
+        },
+      ],
       fit_note: "Your lower-thirds style matches the visual language we want.",
     },
     response: {

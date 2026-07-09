@@ -211,7 +211,7 @@ function PortfolioDetailPopup({
           ) : null}
 
           {tools.length ? (
-            <GlassDetailSection title="Tools Used" icon="settings">
+            <GlassDetailSection title="Tools Used" icon="sliders-horizontal">
               <div className="flex flex-wrap gap-x-6 gap-y-4">
                 {tools.map((tool) => (
                   <ToolToken key={tool} toolName={tool} />

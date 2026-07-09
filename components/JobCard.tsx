@@ -7,9 +7,10 @@ import { Job } from "../lib/types";
 import { formatCompactNumber, formatPostedLabel } from "../lib/format";
 import { formatListingTitle } from "../lib/displayText";
 import { jobDisplayChips } from "../lib/jobCreatorContext";
+import { normalizeCount, normalizePercent } from "../lib/listingStats";
 import { saveJob } from "../lib/backendClient";
 import { useCardSheen } from "../lib/useCardSheen";
-import { MetaRow, StatRow, TagPill } from "./ui";
+import { CardActionFeedback, copyTextToClipboard, MetaRow, StatRow, TagPill, useTransientCardFeedback } from "./ui";
 import { Icon } from "./Icons";
 import ChannelAttribution from "./jobs/ChannelAttribution";
 
@@ -121,12 +122,14 @@ export function JobCard({ job }: { job: Job }) {
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const { feedback, showFeedback } = useTransientCardFeedback();
   const sheen = useCardSheen();
   const cardHref = `/jobs/${encodeURIComponent(String(job.id))}`;
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   const postedLabel = formatPostedLabel(job.postedShort);
-  const currentlyViewing = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
-  const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
+  const currentlyViewing = normalizeCount(job.views);
+  const applicantCount = normalizeCount(job.applicants);
+  const responseRate = normalizePercent(job.responseRate);
   const displayTitle = formatListingTitle(job.title);
   const displayChips = jobDisplayChips(job);
 
@@ -162,6 +165,7 @@ export function JobCard({ job }: { job: Job }) {
         title="Click to open"
       >
         <div aria-hidden="true" className="home-card-sheen -z-10" />
+        <CardActionFeedback feedback={feedback} />
         {/* Header row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -240,7 +244,7 @@ export function JobCard({ job }: { job: Job }) {
               label="Currently viewing"
               interactive
             />
-            <StatRow icon="users" value={`${job.applicants}`} label="Applicants" interactive />
+            <StatRow icon="users" value={formatCompactNumber(applicantCount)} label="Applicants" interactive />
             <StatRow icon="bolt" value={`${responseRate}%`} label="Response rate" interactive />
           </div>
 
@@ -251,13 +255,29 @@ export function JobCard({ job }: { job: Job }) {
                 stop(e);
                 if (!job.id) return;
                 if (!session?.backendAccessToken) {
-                  router.push(`/auth?mode=login&next=${encodeURIComponent(cardHref)}`);
+                  showFeedback("Sign in to save this job.", "info", "bookmark");
+                  window.setTimeout(() => {
+                    router.push(`/auth?mode=login&next=${encodeURIComponent(cardHref)}`);
+                  }, 900);
+                  return;
+                }
+                if (saved) {
+                  showFeedback("This job is already saved.", "info", "bookmark");
                   return;
                 }
                 setSaving(true);
                 try {
                   await saveJob(session.backendAccessToken, String(job.id));
                   setSaved(true);
+                  showFeedback("Job saved.", "success", "check", {
+                    visual: "check",
+                    actionLabel: "View",
+                    actionHref: "/you?tab=saved",
+                    durationMs: 4200,
+                  });
+                } catch (error) {
+                  console.error("Save job failed:", error);
+                  showFeedback("Couldn’t save this job. Try again.", "error", "alert");
                 } finally {
                   setSaving(false);
                 }
@@ -271,9 +291,15 @@ export function JobCard({ job }: { job: Job }) {
               onClick={async (e) => {
                 stop(e);
                 const url = `${window.location.origin}${cardHref}`;
-                await navigator.clipboard?.writeText(url);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1400);
+                try {
+                  await copyTextToClipboard(url);
+                  setCopied(true);
+                  showFeedback("Job link copied.", "success", "share", { visual: "copy" });
+                  window.setTimeout(() => setCopied(false), 1800);
+                } catch (error) {
+                  console.error("Share job failed:", error);
+                  showFeedback("Couldn’t copy the link.", "error", "alert");
+                }
               }}
             >
               <Icon name="share" className="w-4 h-4" />

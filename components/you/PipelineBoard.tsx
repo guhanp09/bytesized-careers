@@ -10,12 +10,14 @@ import {
   pipelineCardFacts,
   pipelineContextLabelOf,
   pipelineContextOptions,
+  pipelineFirstMessageLines,
   pipelinePortfolioCountOf,
   pipelineProfileHrefOf,
   pipelineSearchMatch,
   pipelineSnippetOf,
   pipelineStagesFor,
   stageTargetsFor,
+  type PipelineFirstMessageLine,
   type PipelineStage,
 } from "../../lib/applicationPipeline";
 import type { InteractionDirection, InteractionKind, OwnerInteraction } from "../../lib/ownerInteractions";
@@ -39,8 +41,7 @@ type PipelineBoardProps = {
   initialStage?: string | null;
   /** Reports funnel focus changes so the page can keep the URL shareable. */
   onStageFocusChange?: (stage: string | null) => void;
-  onOpen: (item: OwnerInteraction) => void;
-  /** Open the compact chat dock on this thread. */
+  /** Open the compact chat dock on this thread (also the card's primary click). */
   onMessage: (item: OwnerInteraction) => void;
   /** Move one or many items to a backend stage. Resolves when committed. */
   onMoveStage: (items: OwnerInteraction[], stageKey: string) => Promise<void>;
@@ -188,13 +189,27 @@ function StageMenu({
   );
 }
 
-function SnippetPreview({ text, itemId }: { text: string; itemId: string }) {
+/**
+ * The card's first-message affordance. Visible: the applicant's snippet (their
+ * optional written note or fit note) when present, otherwise a muted "First
+ * message" label — so the affordance exists even though, in the newer model, the
+ * written message is optional. On hover/focus a tooltip reveals the full first
+ * message: the written note (if any) plus the listing owner's structured
+ * requirements as the applicant answered them (rate, portfolio, turnaround…).
+ */
+function FirstMessagePreview({
+  itemId,
+  teaser,
+  message,
+  lines,
+}: {
+  itemId: string;
+  teaser: string | null;
+  message: string | null;
+  lines: PipelineFirstMessageLine[];
+}) {
   const triggerRef = useRef<HTMLSpanElement | null>(null);
-  const [preview, setPreview] = useState<{
-    left: number;
-    top: number;
-    width: number;
-  } | null>(null);
+  const [preview, setPreview] = useState<{ left: number; top: number; width: number } | null>(null);
   const previewId = `pipeline-snippet-preview-${itemId}`;
 
   const closePreview = () => setPreview(null);
@@ -202,9 +217,13 @@ function SnippetPreview({ text, itemId }: { text: string; itemId: string }) {
     if (typeof window === "undefined") return;
     const viewportPadding = 8;
     const offset = 10;
-    const width = Math.min(300, window.innerWidth - viewportPadding * 2);
-    const estimatedLineCount = Math.max(1, Math.ceil(text.length / 46));
-    const estimatedHeight = Math.min(190, Math.max(42, estimatedLineCount * 16 + 18));
+    const width = Math.min(320, window.innerWidth - viewportPadding * 2);
+    // Estimate height from the message (wrapped) plus one row per requirement.
+    const messageRows = message ? Math.min(4, Math.max(1, Math.ceil(message.length / 44))) : 0;
+    const estimatedHeight = Math.min(
+      300,
+      22 /* header */ + messageRows * 15 + (message ? 8 : 0) + lines.length * 20 + 20 /* padding */
+    );
     const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min, value), max);
     const hasRightSpace = clientX + offset + width <= window.innerWidth - viewportPadding;
     const hasBottomSpace = clientY + offset + estimatedHeight <= window.innerHeight - viewportPadding;
@@ -266,26 +285,49 @@ function SnippetPreview({ text, itemId }: { text: string; itemId: string }) {
         onMouseLeave={closePreview}
         onFocus={openPreviewFromFocus}
         onBlur={closePreview}
-        className="line-clamp-2 text-[11.5px] leading-relaxed text-white/48 transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70"
+        className={
+          teaser
+            ? "line-clamp-2 w-full text-[11.5px] leading-relaxed text-white/48 transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70"
+            : // Full-width, slightly taller target so hovering anywhere on the row
+              // reveals the requirements — a bare w-fit label was too small to hit.
+              "flex w-full items-center gap-1 py-0.5 text-[11px] font-medium text-white/40 transition-colors hover:text-white/65 focus:outline-none focus-visible:text-white/70"
+        }
       >
-        {text}
+        {teaser ?? (
+          <>
+            <Icon name="message-square-text" className="h-3 w-3 shrink-0 opacity-70" />
+            First message
+          </>
+        )}
       </span>
-      {preview && typeof document !== "undefined" ? createPortal(
-        <div
-          id={previewId}
-          role="tooltip"
-          data-testid="pipeline-snippet-preview"
-          className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-black/80 px-2 py-1.5 text-[11px] font-medium leading-snug text-white/90 shadow-[0_8px_18px_-10px_rgba(0,0,0,0.9)]"
-          style={{
-            left: preview.left,
-            top: preview.top,
-            width: preview.width,
-          }}
-        >
-          {text}
-        </div>,
-        document.body
-      ) : null}
+      {preview && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              id={previewId}
+              role="tooltip"
+              data-testid="pipeline-snippet-preview"
+              className="pointer-events-none fixed z-[9999] rounded-lg border border-white/12 bg-[#12131a]/95 px-2.5 py-2 text-[11px] leading-snug text-white/90 shadow-[0_14px_30px_-14px_rgba(0,0,0,0.95)] backdrop-blur-sm"
+              style={{ left: preview.left, top: preview.top, width: preview.width }}
+            >
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-white/35">First message</p>
+              {message ? (
+                <p className="mt-1 line-clamp-4 italic text-white/70">“{message}”</p>
+              ) : null}
+              {lines.length ? (
+                <div className={`space-y-1 ${message ? "mt-2 border-t border-white/[0.08] pt-2" : "mt-1.5"}`}>
+                  {lines.map((line) => (
+                    <div key={`${line.label}-${line.value}`} className="flex items-start gap-1.5">
+                      <Icon name={line.icon} className="mt-[1px] h-3 w-3 shrink-0 text-white/40" />
+                      <span className="shrink-0 text-white/45">{line.label}</span>
+                      <span className="min-w-0 flex-1 line-clamp-2 text-right font-medium text-white/85">{line.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </>
   );
 }
@@ -297,7 +339,6 @@ export default function PipelineBoard({
   unreadByThread,
   initialStage = null,
   onStageFocusChange,
-  onOpen,
   onMessage,
   onMoveStage,
 }: PipelineBoardProps) {
@@ -632,6 +673,11 @@ export default function PipelineBoard({
                         const facts = pipelineCardFacts(item);
                         const portfolioCount = pipelinePortfolioCountOf(item);
                         const snippet = pipelineSnippetOf(item);
+                        const firstMessageLines = pipelineFirstMessageLines(item);
+                        // The free-text note is only the "first message" on legacy
+                        // interactions with no structured requirements; otherwise the
+                        // requirements are the first message (matching the inbox).
+                        const legacyMessage = firstMessageLines.length ? null : item.message?.trim() || null;
                         const isDragging = dragId === item.id || (dragId !== null && draggedItems.some((entry) => entry.id === item.id));
                         const name = direction === "received" ? item.counterpartyName : item.title;
                         return (
@@ -643,11 +689,11 @@ export default function PipelineBoard({
                             draggable={manageable}
                             onDragStart={(event) => handleCardDragStart(event, item)}
                             onDragEnd={endDrag}
-                            onClick={() => onOpen(item)}
+                            onClick={() => onMessage(item)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                onOpen(item);
+                                onMessage(item);
                               }
                             }}
                             className={[
@@ -723,7 +769,14 @@ export default function PipelineBoard({
                               </div>
                             ) : null}
 
-                            {snippet ? <SnippetPreview itemId={item.id} text={snippet} /> : null}
+                            {snippet || firstMessageLines.length ? (
+                              <FirstMessagePreview
+                                itemId={item.id}
+                                teaser={snippet}
+                                message={legacyMessage}
+                                lines={firstMessageLines}
+                              />
+                            ) : null}
 
                             {item.managerNote ? (
                               <p
@@ -740,8 +793,9 @@ export default function PipelineBoard({
                               <span className="shrink-0 text-[11px] text-white/35">{item.updatedAtLabel}</span>
                               <div className="flex items-center gap-1.5" data-no-drag>
                                 {(() => {
-                                  // Unread replies are a decision signal: light the
-                                  // message action up with the count.
+                                  // Messaging is the frequent action, so it's the card's
+                                  // prominent labelled CTA (and the whole-card click).
+                                  // Unread replies are a decision signal: emphasise it.
                                   const messageUnread = unreadByThread?.[item.id] ?? 0;
                                   return (
                                     <button
@@ -758,17 +812,18 @@ export default function PipelineBoard({
                                         onMessage(item);
                                       }}
                                       className={[
-                                        "inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg border transition-colors",
+                                        "inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-semibold transition-colors",
                                         messageUnread > 0
-                                          ? "border-white/25 bg-white/[0.07] px-1.5 text-white/90 hover:border-white/40"
-                                          : "w-7 border-white/[0.1] bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white",
+                                          ? "bg-white text-black hover:bg-white/90"
+                                          : "border border-white/[0.16] bg-white/[0.06] text-white/85 hover:border-white/30 hover:bg-white/[0.11] hover:text-white",
                                       ].join(" ")}
                                     >
                                       <Icon name="message-square-text" className="h-3.5 w-3.5" />
+                                      Message
                                       {messageUnread > 0 ? (
                                         <span
                                           data-testid="pipeline-message-unread"
-                                          className="text-[10px] font-semibold leading-none"
+                                          className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-black/15 px-1 text-[10px] font-bold leading-none"
                                         >
                                           {messageUnread > 9 ? "9+" : messageUnread}
                                         </span>

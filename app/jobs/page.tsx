@@ -5,7 +5,7 @@ import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { JOBS } from "../../lib/jobs";
 import { parseQuery } from "../../lib/search/queryParser";
 import { rankJobs, relaxParsedQuery } from "../../lib/search/ranking";
-import { filterAndOrderJobsForSeoRoute } from "../../lib/seoFilterMatch";
+import { filterAndOrderJobsForSeoRoute, refinementCriteriaFromParams } from "../../lib/seoFilterMatch";
 import type { SeoFilterRoute } from "../../lib/seoFilterRoutes";
 import { Job } from "../../lib/types";
 
@@ -44,10 +44,14 @@ export async function JobsBrowse({
   const q = first(params.q);
   // Curated SEO routes are a hard filter (see below); free-text search is ranked.
   const query = seoRoute ? "" : q.trim();
-  const platform = first(params.platform);
-  const location = first(params.location);
-  const startTimeframe = first(params.start_timeframe);
   const posted = first(params.posted);
+  // Row-2 subfilter refinements (only meaningful on a curated route). On an SEO
+  // route we fetch broadly and apply role + refinements strictly in memory, so
+  // no refinement param pre-narrows the server fetch (and risks case-mismatch drops).
+  const refinements = seoRoute ? refinementCriteriaFromParams(params) : null;
+  const platform = seoRoute ? "" : first(params.platform);
+  const location = seoRoute ? "" : first(params.location);
+  const startTimeframe = seoRoute ? "" : first(params.start_timeframe);
 
   let jobs: Job[] = [];
   let notice: string | null = null;
@@ -80,9 +84,10 @@ export async function JobsBrowse({
   }
 
   if (seoRoute) {
-    // Hard eligibility gate first, then relevance ordering — a curated route
-    // must not leak weak/irrelevant matches just because they share a broad tag.
-    jobs = filterAndOrderJobsForSeoRoute(jobs, seoRoute);
+    // Hard eligibility gate (role + curated combo) then any Row-2 refinements,
+    // then relevance ordering — a curated route must not leak weak/irrelevant
+    // matches just because they share a broad tag.
+    jobs = filterAndOrderJobsForSeoRoute(jobs, seoRoute, refinements);
   } else if (query) {
     const parsed = parseQuery(query);
     let ranked = rankJobs(jobs, parsed);

@@ -13,7 +13,7 @@ import { formatPostedLabel } from "../../../lib/format";
 import { JOBS } from "../../../lib/jobs";
 import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
-import { getSeoFilterRoute } from "../../../lib/seoFilterRoutes";
+import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import type { Job } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
@@ -47,18 +47,27 @@ async function getJobChannelRating(job: Job, dataSource: "backend" | "mock") {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { id } = await params;
   const seoRoute = getSeoFilterRoute("jobs", String(id));
   if (seoRoute) {
+    const sp = (await searchParams) ?? {};
+    const hasParams = Object.values(sp).some((v) => (Array.isArray(v) ? v.length > 0 : v != null && v !== ""));
+    // Index only vouched curated routes with a clean URL. Un-vouched routes and
+    // any Row-2 refinement variant (params) are noindex,follow with canonical
+    // pointing at the clean route — never thin indexable pages.
+    const indexApproved = isSeoRouteIndexApproved(seoRoute) && !hasParams;
     return {
       title: seoRoute.metaTitle,
       description: seoRoute.metaDescription,
       alternates: {
         canonical: seoRoute.path,
       },
+      robots: indexApproved ? undefined : { index: false, follow: true },
       openGraph: {
         title: seoRoute.metaTitle,
         description: seoRoute.metaDescription,

@@ -2417,7 +2417,7 @@ export default function PostJobPage() {
       applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
       !howToApply.trim()
     ) {
-      setFirstMessageError("Add the custom instruction or remove it.");
+      setFirstMessageError("Add the screening question or remove it.");
       setDirection(STEPS.indexOf("applicationRequirements") < STEPS.indexOf(step) ? "back" : "forward");
       setStep("applicationRequirements");
       return;
@@ -2736,7 +2736,7 @@ export default function PostJobPage() {
       applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
       !howToApply.trim()
     ) {
-      setFirstMessageError("Add the custom instruction or remove it.");
+      setFirstMessageError("Add the screening question or remove it.");
       return;
     }
     setDirection("forward");

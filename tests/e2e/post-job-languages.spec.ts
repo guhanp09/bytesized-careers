@@ -47,8 +47,8 @@ test("post-job splits application requirements and reference videos into separat
   await expect(form.getByRole("heading", { name: "APPLICATION REQUIREMENTS" })).toBeVisible();
   await expect(form.getByText("How to apply")).toHaveCount(0);
   await expect(form.getByText("What applicants must include")).toBeVisible();
-  await expect(form.getByRole("button", { name: /Custom instruction/ })).toBeVisible();
-  await form.getByRole("button", { name: /Custom instruction/ }).click();
+  await expect(form.getByRole("button", { name: /Screening question/ })).toBeVisible();
+  await form.getByRole("button", { name: /Screening question/ }).click();
   await expect(form.getByTestId("custom-instruction-editor")).toBeVisible();
   await expect(form.getByText("Reference videos")).toHaveCount(0);
 

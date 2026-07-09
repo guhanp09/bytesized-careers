@@ -1,7 +1,12 @@
 import {
+  CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
   isCurrencyAnswer,
   isPortfolioAnswer,
   isTurnaroundAnswer,
+  summarizeAnswers,
+  type RequirementContext,
+  type RequirementIcon,
+  type RequirementSummaryItem,
 } from "./firstMessageRequirements.ts";
 import type {
   InteractionDirection,
@@ -394,13 +399,65 @@ export function pipelinePortfolioCountOf(
   return item.attachments?.length ?? 0;
 }
 
-/** Opening-message snippet for the card (falls back to the structured fit note). */
+/**
+ * The card's first-message teaser. In the newer model the free-text message is
+ * optional (only a system notification is sent by default) and the real "first
+ * message" is the listing owner's structured requirements — so once those exist
+ * the teaser is the fit note (the applicant's own words on fit), never the raw
+ * message. Only a legacy interaction with no structured answers falls back to the
+ * written message. Returns null when there's no single line to preview (the card
+ * then shows a "First message" affordance for the requirements).
+ */
 export function pipelineSnippetOf(
   item: Pick<OwnerInteraction, "message" | "firstMessageAnswers">
 ): string | null {
-  const message = item.message?.trim();
-  if (message) return message;
-  const fitNote = item.firstMessageAnswers?.["fit_note"];
-  if (typeof fitNote === "string" && fitNote.trim()) return fitNote.trim();
-  return null;
+  const answers = item.firstMessageAnswers;
+  if (answers && Object.keys(answers).length > 0) {
+    const fitNote = answers["fit_note"];
+    return typeof fitNote === "string" && fitNote.trim() ? fitNote.trim() : null;
+  }
+  return item.message?.trim() || null;
+}
+
+/** The first-message context implied by the interaction kind. */
+export function pipelineFirstMessageContext(item: Pick<OwnerInteraction, "kind">): RequirementContext {
+  return item.kind === "application" ? "job" : "talent";
+}
+
+/** One condensed requirement line for the pipeline card's first-message tooltip. */
+export type PipelineFirstMessageLine = {
+  icon: RequirementIcon;
+  label: string;
+  value: string;
+};
+
+function firstMessageLineValue(entry: RequirementSummaryItem): string {
+  if (entry.text?.trim()) return entry.text.trim();
+  if (entry.links?.length) {
+    const count = entry.links.length;
+    const noun = entry.key === "relevant_portfolio" ? "item" : "link";
+    return `${count} ${count === 1 ? noun : `${noun}s`}`;
+  }
+  return "";
+}
+
+/**
+ * The listing owner's first-message requirements as the applicant answered them,
+ * condensed to icon·label·value lines for the pipeline card tooltip. In the newer
+ * model the free-text message is optional and the "first message" is really these
+ * structured requirements — so the card surfaces them instead of assuming a
+ * written cover note. Empty when the interaction carries no structured answers.
+ */
+export function pipelineFirstMessageLines(
+  item: Pick<OwnerInteraction, "kind" | "firstMessageAnswers">
+): PipelineFirstMessageLine[] {
+  const answers = item.firstMessageAnswers;
+  if (!answers || Object.keys(answers).length === 0) return [];
+  return summarizeAnswers(Object.keys(answers), pipelineFirstMessageContext(item), answers)
+    .map((entry) => ({
+      icon: entry.icon,
+      label: entry.key === CUSTOM_INSTRUCTION_REQUIREMENT_KEY ? "Screener" : entry.label,
+      value: firstMessageLineValue(entry),
+    }))
+    .filter((line) => line.value);
 }
