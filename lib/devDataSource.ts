@@ -29,6 +29,8 @@ const normalizeSource = (value?: string | null): MarketplaceDataSource | null =>
 };
 
 export const evaluateDevDataSwitchAllowed = (env: Env): boolean => {
+  const appEnv = env.APP_ENV || env.NEXT_PUBLIC_APP_ENV;
+
   if (
     env.APP_ENV === "production" ||
     env.NEXT_PUBLIC_APP_ENV === "production" ||
@@ -39,15 +41,14 @@ export const evaluateDevDataSwitchAllowed = (env: Env): boolean => {
 
   if (truthy(env.NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH)) return true;
 
+  if (appEnv === "staging") return false;
+
   if (
     env.NODE_ENV === "development" ||
     env.NODE_ENV === "test" ||
-    env.APP_ENV === "development" ||
-    env.APP_ENV === "test" ||
-    env.APP_ENV === "preview" ||
-    env.NEXT_PUBLIC_APP_ENV === "development" ||
-    env.NEXT_PUBLIC_APP_ENV === "test" ||
-    env.NEXT_PUBLIC_APP_ENV === "preview" ||
+    appEnv === "development" ||
+    appEnv === "test" ||
+    appEnv === "preview" ||
     env.VERCEL_ENV === "preview"
   ) {
     return true;
@@ -77,4 +78,3 @@ export const resolveMarketplaceDataSource = ({
     overrideSource,
   };
 };
-

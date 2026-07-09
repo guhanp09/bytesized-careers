@@ -32,6 +32,23 @@ test("development, test, preview, and explicit opt-in enable the switch", () => 
   assert.equal(evaluateDevDataSwitchAllowed({ NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH: "1" }), true);
 });
 
+test("staging hides the marketplace data switch unless explicitly enabled", () => {
+  assert.equal(evaluateDevDataSwitchAllowed({ APP_ENV: "staging" }), false);
+  assert.equal(evaluateDevDataSwitchAllowed({ NEXT_PUBLIC_APP_ENV: "staging" }), false);
+  assert.equal(
+    evaluateDevDataSwitchAllowed({ APP_ENV: "staging", VERCEL_ENV: "preview" }),
+    false
+  );
+  assert.equal(
+    evaluateDevDataSwitchAllowed({
+      APP_ENV: "staging",
+      VERCEL_ENV: "preview",
+      NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH: "true",
+    }),
+    true
+  );
+});
+
 test("default marketplace data source follows NEXT_PUBLIC_USE_LOCAL_MOCKS", () => {
   assert.equal(getDefaultMarketplaceDataSourceFromEnv({}), "backend");
   assert.equal(getDefaultMarketplaceDataSourceFromEnv({ NEXT_PUBLIC_USE_LOCAL_MOCKS: "false" }), "backend");
@@ -101,4 +118,3 @@ test("the dev API route and header switch use the shared cookie/source contract"
   assert.match(switcher, /\/api\/dev\/data-source/);
   assert.match(switcher, /router\.refresh\(\)/);
 });
-

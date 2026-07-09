@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Icon } from "../components/Icons";
+import { isEmailAuthEnabled } from "../lib/authVisibility";
 import { registerWithEmail, resendVerification } from "../lib/backendClient";
 import { shouldShowDevEmailInboxLink } from "../lib/devEmailInbox";
 
@@ -84,6 +85,10 @@ export default function AuthPage() {
   const modeFromQuery = useMemo(() => parseMode(searchParams.get("mode")), [searchParams]);
   const nextAfterAuth = searchParams.get("next") || "/you";
   const authError = searchParams.get("error");
+  const emailAuthEnabled = isEmailAuthEnabled({
+    NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
+    NEXT_PUBLIC_ENABLE_EMAIL_AUTH: process.env.NEXT_PUBLIC_ENABLE_EMAIL_AUTH,
+  });
 
   const [mode, setMode] = useState<AuthMode>(modeFromQuery);
   const [email, setEmail] = useState("");
@@ -239,26 +244,28 @@ export default function AuthPage() {
     <main className="min-h-[calc(100vh-56px)] bg-[#0b0b0f] text-white px-4 sm:px-6 py-10">
       <section className="mx-auto w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.06] p-6 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.9)]">
         <h1 className="text-xl font-semibold text-white">
-          {mode === "signup" ? "Create your account" : "Welcome back"}
+          {emailAuthEnabled && mode === "signup" ? "Create your account" : "Welcome back"}
         </h1>
         <p className="mt-2 text-sm text-white/60">
           Login is separate from channel verification. You can connect YouTube later from Post Job.
         </p>
 
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <ModeButton
-            active={mode === "login"}
-            icon="log-in"
-            label="Log in"
-            onClick={() => switchMode("login")}
-          />
-          <ModeButton
-            active={mode === "signup"}
-            icon="user-plus"
-            label="Sign up"
-            onClick={() => switchMode("signup")}
-          />
-        </div>
+        {emailAuthEnabled ? (
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <ModeButton
+              active={mode === "login"}
+              icon="log-in"
+              label="Log in"
+              onClick={() => switchMode("login")}
+            />
+            <ModeButton
+              active={mode === "signup"}
+              icon="user-plus"
+              label="Sign up"
+              onClick={() => switchMode("signup")}
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-4 rounded-lg border border-amber-200/25 bg-amber-200/10 px-3 py-2 text-xs text-amber-100">
@@ -287,7 +294,7 @@ export default function AuthPage() {
           </div>
         ) : null}
 
-        {mode === "login" ? (
+        {emailAuthEnabled && mode === "login" ? (
           <form className="mt-5 space-y-3" onSubmit={loginWithCredentials}>
             <input
               type="email"
@@ -340,7 +347,7 @@ export default function AuthPage() {
               {busy ? "Logging in..." : "Log in"}
             </button>
           </form>
-        ) : (
+        ) : emailAuthEnabled ? (
           <form className="mt-5 space-y-3" onSubmit={registerAccount}>
             <input
               type="text"
@@ -408,19 +415,22 @@ export default function AuthPage() {
               {busy ? "Creating account..." : "Sign up"}
             </button>
           </form>
-        )}
+        ) : null}
 
-        <div className="my-5 flex items-center gap-3 text-xs text-white/45">
-          <span className="h-px flex-1 bg-white/10" />
-          <span>or</span>
-          <span className="h-px flex-1 bg-white/10" />
-        </div>
+        {emailAuthEnabled ? (
+          <div className="my-5 flex items-center gap-3 text-xs text-white/45">
+            <span className="h-px flex-1 bg-white/10" />
+            <span>or</span>
+            <span className="h-px flex-1 bg-white/10" />
+          </div>
+        ) : null}
 
         <button
           type="button"
           onClick={continueWithYouTube}
           disabled={busy}
           className={[
+            emailAuthEnabled ? "" : "mt-5",
             "h-11 w-full rounded-xl border border-white/15 bg-white/[0.04] text-sm font-semibold text-white/90 transition-colors inline-flex items-center justify-center gap-2 cursor-pointer",
             busy ? "opacity-60 pointer-events-none" : "hover:bg-white/[0.08]",
           ].join(" ")}
