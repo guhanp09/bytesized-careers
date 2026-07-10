@@ -170,6 +170,8 @@ This is still not full production media storage. Future production should use ob
 
 Create a Vercel project from the GitHub repo.
 
+Vercel production deployment is triggered from the `main` branch.
+
 Use these exact settings:
 
 - **Root Directory:** repo root
