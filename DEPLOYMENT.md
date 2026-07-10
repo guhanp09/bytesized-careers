@@ -52,13 +52,13 @@ Use these exact settings:
 - **Docker Command:** leave blank unless you intentionally override the Dockerfile command
 - **Health Check Path:** `/api/v1/health`
 
-The Dockerfile starts FastAPI with:
+The Dockerfile starts the Render-safe startup script:
 
 ```dockerfile
-CMD sh -c "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+CMD ["sh", "scripts/start_render.sh"]
 ```
 
-Render sets `PORT`; local Docker falls back to `8000`.
+The script starts Uvicorn with Render's `PORT`; local Docker falls back to `8000`.
 
 ### Render Environment Variables
 
@@ -73,20 +73,63 @@ CORS_ORIGINS=["https://your-vercel-url"]
 EMAIL_MODE=log
 EMAIL_DELIVERY_ENABLED=false
 RATE_LIMIT_BACKEND=memory
+RUN_DB_MIGRATIONS=true
+RUN_STAGING_SEED=true
 ```
 
 `CORS_ORIGINS` may be a JSON array or comma-separated string. Use the JSON array form above for staging.
 
-### Backend Migration
+### Render Free: Migrations And Staging Seed Without Shell Access
 
-Run this from the Render shell or as a one-off command:
+Render Free does not provide an interactive Shell. Instead of manually running
+migrations and the demo seed after deploy, the Docker container can run them
+before FastAPI starts.
 
-```bash
-cd /app
-uv run alembic upgrade head
+For the first staging deployment, add these two environment variables in the
+Render dashboard:
+
+```env
+RUN_DB_MIGRATIONS=true
+RUN_STAGING_SEED=true
 ```
 
-If running locally against Neon:
+Then click **Manual Deploy** and select **Deploy latest commit**. The service
+will run Alembic, add deterministic investor demo data, and then start the API.
+The startup logs print the environment and whether migrations and seeding are
+enabled, but never print secrets.
+
+`RUN_STAGING_SEED=true` is only accepted for `APP_ENV=staging`,
+`development`, or `test`. It is explicitly refused for `APP_ENV=production`.
+It never performs a destructive reset.
+
+Use this automatic startup flow for the single-service investor staging
+prototype only. Do not adopt automatic seed-on-start behavior for future
+customer production; that environment needs a controlled migration process.
+
+After the first successful seed, you can change this in Render:
+
+```env
+RUN_STAGING_SEED=false
+```
+
+That skips the idempotent demo-seed check on future deploys. Leave
+`RUN_DB_MIGRATIONS=true` while preparing staging so new schema migrations are
+applied automatically on future deploys.
+
+After the service becomes healthy, open:
+
+```text
+https://skizh-api.onrender.com/api/v1/health
+https://skizh-api.onrender.com/api/v1/health/db
+```
+
+Both should return `{"status":"ok"}`. Replace `skizh-api` if Render gives
+your service a different public hostname.
+
+### Backend Migration Outside Render Free
+
+If you are running a local command against Neon instead of using the Render
+Free startup flow, run:
 
 ```bash
 cd backend
@@ -95,7 +138,7 @@ APP_ENV=staging DATABASE_URL="postgresql+asyncpg://USER:PASSWORD@HOST/DBNAME" uv
 
 ### Backend Health Checks
 
-After deploy and migration:
+After deploy, migrations, and optional seeding:
 
 ```text
 https://your-render-api/api/v1/health
@@ -193,7 +236,12 @@ The backend email/password endpoints still exist, but `EMAIL_MODE=log` means ver
 
 ## 7. Seed Staging Demo Data
 
-After backend deployment and migrations, seed deterministic demo data:
+For the first Render Free staging deploy, you do not need to run a manual seed
+command. With `RUN_STAGING_SEED=true`, the backend startup script performs the
+same safe, deterministic seed before the API starts.
+
+Use the command below only when you intentionally need to seed Neon from your
+own terminal, such as when preparing the database before connecting Render:
 
 ```bash
 cd backend
@@ -267,4 +315,3 @@ Before real customer production, CreatorJobs still needs:
 - privacy/legal deletion policy
 - production domain hardening
 - real customer onboarding controls
-
