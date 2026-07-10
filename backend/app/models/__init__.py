@@ -17,6 +17,7 @@ from app.models.marketplace import (
 from app.models.oauth_account import OAuthAccount
 from app.models.password_reset_token import PasswordResetToken
 from app.models.portfolio_item import PortfolioItem
+from app.models.review import Engagement, EngagementReview
 from app.models.role_system import (
     Role,
     RoleQuestion,
@@ -38,6 +39,8 @@ __all__ = [
     "EmailVerificationToken",
     "HiringIdentity",
     "Entitlement",
+    "Engagement",
+    "EngagementReview",
     "Job",
     "JobApplication",
     "Notification",

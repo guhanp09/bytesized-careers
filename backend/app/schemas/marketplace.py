@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.job import JobRead, normalize_creator_context_items
+from app.schemas.reviews import EngagementSummary
 
 ApplicationStatus = Literal[
     "new", "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived", "withdrawn"
@@ -15,7 +16,7 @@ TalentListingStatus = Literal["draft", "published", "paused", "closed", "archive
 TalentInterestStatus = Literal[
     "new", "reviewing", "contacted", "declined", "archived", "withdrawn"
 ]
-ReportTargetType = Literal["job", "talent_listing", "profile", "message"]
+ReportTargetType = Literal["job", "talent_listing", "profile", "message", "review"]
 ReportStatus = Literal["open", "dismissed", "action_taken"]
 # User-facing report reasons. "suspicious" predates the richer set and stays
 # valid so old clients/tests keep working; the reason picker offers the rest.
@@ -104,6 +105,7 @@ class JobApplicationRead(BaseModel):
     manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
+    engagement: EngagementSummary | None = None
 
 
 class TalentListingBase(BaseModel):
@@ -266,6 +268,7 @@ class TalentInterestRead(BaseModel):
     manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
+    engagement: EngagementSummary | None = None
 
 
 class NotificationRead(BaseModel):

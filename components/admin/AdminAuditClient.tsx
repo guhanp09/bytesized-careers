@@ -24,7 +24,7 @@ import {
 
 const PAGE = 30;
 
-const TARGET_FILTERS = ["", "report", "user", "job", "talent_listing", "hiring_identity", "message", "conversation", "entitlement"] as const;
+const TARGET_FILTERS = ["", "report", "user", "job", "talent_listing", "hiring_identity", "message", "review", "conversation", "entitlement"] as const;
 
 export default function AdminAuditClient({ accessToken }: { accessToken: string }) {
   const [targetType, setTargetType] = useState<string>("");

@@ -7,7 +7,6 @@ import { formatCompactNumber } from "../../lib/format";
 import { Icon } from "../Icons";
 import { IconTooltip, Section } from "../ui";
 
-const EMPTY_REVIEW_STARS = "☆☆☆☆☆";
 
 // Secondary action buttons (Save / Share): clearly pressable — filled surface
 // with a subtle lift + shadow — but deliberately subordinate to the solid white
@@ -199,9 +198,9 @@ function PostedByCard({ job }: { job: Job }) {
           )}
           <p
             className="mt-2 text-xs font-medium tracking-[0.04em] text-white/52"
-            aria-label="0 reviews as recruiter"
+            aria-label="No reviews yet as recruiter"
           >
-            {EMPTY_REVIEW_STARS} 0 reviews as recruiter
+            No reviews yet
           </p>
         </div>
       </div>

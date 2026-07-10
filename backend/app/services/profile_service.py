@@ -72,6 +72,7 @@ from app.services.profile_rules import (
     normalize_username,
     validate_username_format,
 )
+from app.services import review_service
 from app.services.youtube_service import (
     extract_video_id,
     fetch_youtube_video_metadata,
@@ -1196,6 +1197,14 @@ class ProfileService:
         content_style = await self._resolve_content_style_for_user(user_id=user.id)
         portfolio_metadata = self._portfolio_metadata(portfolio_rows)
         content_style = self._content_style_with_portfolio_metadata(content_style, portfolio_metadata)
+        reviews_by_mode = await review_service.profile_reviews_by_mode(self.repository.session, user.id)
+        combined_review_items = [*reviews_by_mode.talent.items, *reviews_by_mode.hiring.items]
+        combined_average = (
+            round(sum(item.rating for item in combined_review_items) / len(combined_review_items), 1)
+            if combined_review_items
+            else 0.0
+        )
+        await self.repository.commit()
 
         social_connections = self._build_social_connections(
             user=user,
@@ -1232,7 +1241,9 @@ class ProfileService:
             banner_url=user.banner_url,
             social_connections=social_connections,
             stats=self._build_stats(jobs=jobs, projects_count=len(portfolio_rows)),
-            reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
+            reviews=ReviewsSummary(avg_rating=combined_average, review_count=len(combined_review_items)),
+            review_items=combined_review_items,
+            reviews_by_mode=reviews_by_mode,
             collaboration_preferences=self._build_collaboration_preferences(user),
             hiring_info=self._build_hiring_info(user),
             creator_platforms=_normalize_unique_list([*(user.creator_platforms or []), *portfolio_metadata["platforms"]]),
@@ -2315,6 +2326,14 @@ class ProfileService:
         jobs_preview = (jobs_active + jobs_past)[:2]
         portfolio_preview = (portfolio_now + portfolio_past)[:2]
         talent_listings_preview = talent_listings_active[:2]
+        reviews_by_mode = await review_service.profile_reviews_by_mode(self.repository.session, user.id)
+        combined_review_items = [*reviews_by_mode.talent.items, *reviews_by_mode.hiring.items]
+        combined_average = (
+            round(sum(item.rating for item in combined_review_items) / len(combined_review_items), 1)
+            if combined_review_items
+            else 0.0
+        )
+        await self.repository.commit()
 
         return PublicProfileResponse(
             username=user.username or normalized_username,
@@ -2336,7 +2355,9 @@ class ProfileService:
             timezone=user.timezone,
             social_connections=social_connections,
             stats=self._build_stats(jobs=jobs, projects_count=len(portfolio_rows)),
-            reviews=ReviewsSummary(avg_rating=0.0, review_count=0),
+            reviews=ReviewsSummary(avg_rating=combined_average, review_count=len(combined_review_items)),
+            review_items=combined_review_items,
+            reviews_by_mode=reviews_by_mode,
             collaboration_preferences=self._build_collaboration_preferences(user),
             hiring_info=self._build_hiring_info(user),
             creator_platforms=_normalize_unique_list([*(user.creator_platforms or []), *portfolio_metadata["platforms"]]),

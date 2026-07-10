@@ -13,6 +13,7 @@ from app.api.deps import get_current_user, get_db, get_optional_current_user
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
     Entitlement,
+    EngagementReview,
     Job,
     JobApplication,
     Message,
@@ -29,6 +30,7 @@ from app.services.messaging_service import (
     get_or_create_conversation_for_application,
     get_or_create_conversation_for_interest,
 )
+from app.services import review_service
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -77,6 +79,62 @@ def _interest_read_for_sender(interest: TalentInterest) -> TalentInterestRead:
     read = TalentInterestRead.model_validate(interest)
     read.manager_note = None
     return read
+
+
+async def _application_read(
+    session: AsyncSession,
+    application: JobApplication,
+    viewer_id: UUID,
+    *,
+    sender_view: bool,
+) -> JobApplicationRead:
+    read = _application_read_for_sender(application) if sender_view else JobApplicationRead.model_validate(application)
+    engagement = await review_service.engagement_for_application(session, application.id)
+    if engagement is not None:
+        read.engagement = await review_service.engagement_summary(session, engagement, viewer_id)
+    return read
+
+
+async def _interest_read(
+    session: AsyncSession,
+    interest: TalentInterest,
+    viewer_id: UUID,
+    *,
+    sender_view: bool,
+) -> TalentInterestRead:
+    read = _interest_read_for_sender(interest) if sender_view else TalentInterestRead.model_validate(interest)
+    engagement = await review_service.engagement_for_interest(session, interest.id)
+    if engagement is not None:
+        read.engagement = await review_service.engagement_summary(session, engagement, viewer_id)
+    return read
+
+
+async def _assert_application_transition_allowed(
+    session: AsyncSession, application: JobApplication, next_status: str
+) -> None:
+    engagement = await review_service.engagement_for_application(session, application.id)
+    if engagement is None or next_status == application.status:
+        return
+    if next_status == "archived" and engagement.status in review_service.TERMINAL_STATES:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Use the engagement controls after a candidate has been hired.",
+    )
+
+
+async def _assert_interest_transition_allowed(
+    session: AsyncSession, interest: TalentInterest, next_status: str
+) -> None:
+    engagement = await review_service.engagement_for_interest(session, interest.id)
+    if engagement is None or next_status == interest.status:
+        return
+    if next_status == "archived" and engagement.status in review_service.TERMINAL_STATES:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Use the engagement controls after a hiring request has been accepted.",
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -449,7 +507,9 @@ async def list_sent_applications(
             .order_by(JobApplication.created_at.desc())
         )
     ).scalars().all()
-    return [_application_read_for_sender(row) for row in rows]
+    result = [await _application_read(session, row, current_user.id, sender_view=True) for row in rows]
+    await session.commit()
+    return result
 
 
 @router.get("/me/applications/received", response_model=list[JobApplicationRead])
@@ -464,7 +524,9 @@ async def list_received_applications(
             .order_by(JobApplication.created_at.desc())
         )
     ).scalars().all()
-    return [JobApplicationRead.model_validate(row) for row in rows]
+    result = [await _application_read(session, row, current_user.id, sender_view=False) for row in rows]
+    await session.commit()
+    return result
 
 
 @router.patch("/applications/{application_id}/status", response_model=JobApplicationRead)
@@ -481,7 +543,10 @@ async def update_application_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     if application.job_owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    await _assert_application_transition_allowed(session, application, payload.status)
     application.status = payload.status
+    if payload.status == "hired":
+        await review_service.ensure_for_application(session, application)
     await _create_notification(
         session,
         user_id=application.applicant_user_id,
@@ -495,9 +560,13 @@ async def update_application_status(
         actor_user_id=current_user.id,
         payload={"status": payload.status},
     )
-    await session.commit()
+    # Persist every status transition before refresh. Hired transitions already
+    # flush while creating the engagement; ordinary pipeline moves do not.
+    await session.flush()
     await session.refresh(application)
-    return JobApplicationRead.model_validate(application)
+    result = await _application_read(session, application, current_user.id, sender_view=False)
+    await session.commit()
+    return result
 
 
 @router.post("/applications/{application_id}/withdraw", response_model=JobApplicationRead)
@@ -598,8 +667,13 @@ async def bulk_update_application_status(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
     for application in applications:
         if application.status == payload.status:
+            if payload.status == "hired":
+                await review_service.ensure_for_application(session, application)
             continue
+        await _assert_application_transition_allowed(session, application, payload.status)
         application.status = payload.status
+        if payload.status == "hired":
+            await review_service.ensure_for_application(session, application)
         if not payload.notify:
             continue
         await _create_notification(
@@ -615,10 +689,12 @@ async def bulk_update_application_status(
             actor_user_id=current_user.id,
             payload={"status": payload.status},
         )
+    result = [
+        await _application_read(session, application, current_user.id, sender_view=False)
+        for application in applications
+    ]
     await session.commit()
-    for application in applications:
-        await session.refresh(application)
-    return [JobApplicationRead.model_validate(application) for application in applications]
+    return result
 
 
 @router.get("/talent-listings", response_model=TalentListingListResponse)
@@ -1034,7 +1110,9 @@ async def list_received_talent_interests(
             .order_by(TalentInterest.created_at.desc())
         )
     ).scalars().all()
-    return [TalentInterestRead.model_validate(row) for row in rows]
+    result = [await _interest_read(session, row, current_user.id, sender_view=False) for row in rows]
+    await session.commit()
+    return result
 
 
 @router.get("/me/talent-interests/sent", response_model=list[TalentInterestRead])
@@ -1049,7 +1127,9 @@ async def list_sent_talent_interests(
             .order_by(TalentInterest.created_at.desc())
         )
     ).scalars().all()
-    return [_interest_read_for_sender(row) for row in rows]
+    result = [await _interest_read(session, row, current_user.id, sender_view=True) for row in rows]
+    await session.commit()
+    return result
 
 
 @router.get("/me/activity/summary", response_model=ActivitySummaryResponse)
@@ -1125,18 +1205,32 @@ async def activity_summary(
     )
     related_listing_rows = list(related_listings.scalars().all()) if related_listings is not None else []
 
-    return ActivitySummaryResponse(
+    response = ActivitySummaryResponse(
         my_jobs=[JobRead.model_validate(row) for row in my_jobs],
         my_talent_listings=await _talent_reads_with_owners(session, list(my_talent_listings)),
-        sent_applications=[_application_read_for_sender(row) for row in sent_applications],
-        received_applications=[JobApplicationRead.model_validate(row) for row in received_applications],
-        received_interests=[TalentInterestRead.model_validate(row) for row in received_interests],
-        sent_interests=[_interest_read_for_sender(row) for row in sent_interests],
+        sent_applications=[
+            await _application_read(session, row, current_user.id, sender_view=True)
+            for row in sent_applications
+        ],
+        received_applications=[
+            await _application_read(session, row, current_user.id, sender_view=False)
+            for row in received_applications
+        ],
+        received_interests=[
+            await _interest_read(session, row, current_user.id, sender_view=False)
+            for row in received_interests
+        ],
+        sent_interests=[
+            await _interest_read(session, row, current_user.id, sender_view=True)
+            for row in sent_interests
+        ],
         related_jobs=[
             JobRead.model_validate(row) for row in (related_jobs.scalars().all() if related_jobs is not None else [])
         ],
         related_talent_listings=await _talent_reads_with_owners(session, related_listing_rows),
     )
+    await session.commit()
+    return response
 
 
 @router.patch("/talent-interests/{interest_id}/status", response_model=TalentInterestRead)
@@ -1153,7 +1247,10 @@ async def update_talent_interest_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
     if interest.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    await _assert_interest_transition_allowed(session, interest, payload.status)
     interest.status = payload.status
+    if payload.status == "contacted":
+        await review_service.ensure_for_interest(session, interest)
     await _create_notification(
         session,
         user_id=interest.recruiter_user_id,
@@ -1167,9 +1264,11 @@ async def update_talent_interest_status(
         actor_user_id=current_user.id,
         payload={"status": payload.status},
     )
-    await session.commit()
+    await session.flush()
     await session.refresh(interest)
-    return TalentInterestRead.model_validate(interest)
+    result = await _interest_read(session, interest, current_user.id, sender_view=False)
+    await session.commit()
+    return result
 
 
 @router.post("/talent-interests/{interest_id}/withdraw", response_model=TalentInterestRead)
@@ -1191,6 +1290,11 @@ async def withdraw_talent_interest(
         )
     if interest.status == "withdrawn":
         return _interest_read_for_sender(interest)  # idempotent
+    if await review_service.engagement_for_interest(session, interest.id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Use the engagement controls after a hiring request has been accepted",
+        )
     interest.status = "withdrawn"
     await _create_notification(
         session,
@@ -1259,8 +1363,13 @@ async def bulk_update_talent_interest_status(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
     for interest in interests:
         if interest.status == payload.status:
+            if payload.status == "contacted":
+                await review_service.ensure_for_interest(session, interest)
             continue
+        await _assert_interest_transition_allowed(session, interest, payload.status)
         interest.status = payload.status
+        if payload.status == "contacted":
+            await review_service.ensure_for_interest(session, interest)
         if not payload.notify:
             continue
         await _create_notification(
@@ -1276,10 +1385,12 @@ async def bulk_update_talent_interest_status(
             actor_user_id=current_user.id,
             payload={"status": payload.status},
         )
+    result = [
+        await _interest_read(session, interest, current_user.id, sender_view=False)
+        for interest in interests
+    ]
     await session.commit()
-    for interest in interests:
-        await session.refresh(interest)
-    return [TalentInterestRead.model_validate(interest) for interest in interests]
+    return result
 
 
 @router.get("/notifications", response_model=NotificationListResponse)
@@ -1359,6 +1470,7 @@ async def _report_target_exists(session: AsyncSession, target_type: str, target_
         "talent_listing": TalentListing,
         "profile": User,
         "message": Message,
+        "review": EngagementReview,
     }.get(target_type)
     if model is None:
         return False

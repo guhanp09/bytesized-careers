@@ -37,6 +37,7 @@ app = FastAPI(
         {"name": "portfolio", "description": "Portfolio ingestion and listing endpoints"},
         {"name": "content-style", "description": "Content style reference endpoints"},
         {"name": "users", "description": "Public profile endpoints"},
+        {"name": "reviews", "description": "Verified engagement and two-sided review endpoints"},
         {"name": "dev", "description": "Development-only utility endpoints"},
     ],
 )

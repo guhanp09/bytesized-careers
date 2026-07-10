@@ -17,7 +17,7 @@ TALENT_LISTING_STATUSES = ("draft", "published", "paused", "closed", "archived",
 
 TALENT_INTEREST_STATUSES = ("new", "reviewing", "contacted", "declined", "archived", "withdrawn")
 
-REPORT_TARGET_TYPES = ("job", "talent_listing", "profile", "message")
+REPORT_TARGET_TYPES = ("job", "talent_listing", "profile", "message", "review")
 
 REPORT_STATUSES = ("open", "dismissed", "action_taken")
 
@@ -31,6 +31,8 @@ REPORT_ACTIONS = (
     "warn_user",
     "suspend_user",
     "reopen",
+    "hide_review",
+    "restore_review",
 )
 
 ENTITLEMENT_KINDS = ("job_post", "talent_listing", "featured_job", "featured_talent_listing")
@@ -46,4 +48,3 @@ NOTIFICATION_CATEGORIES = (
 )
 
 WORK_MODES = ("remote", "hybrid", "onsite")
-

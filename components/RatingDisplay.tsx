@@ -5,8 +5,6 @@ type RatingDisplayProps = {
   className?: string;
 };
 
-const EMPTY_STARS = "☆☆☆☆☆";
-
 const filledStars = (rating: number) => {
   const filled = Math.max(0, Math.min(5, Math.round(rating)));
   return `${"★".repeat(filled)}${"☆".repeat(5 - filled)}`;
@@ -23,7 +21,7 @@ export default function RatingDisplay({
 
   const label = hasRealRating
     ? `${filledStars(averageRating || 0)} ${averageRating?.toFixed(1)} · ${count} reviews`
-    : `${EMPTY_STARS} 0 reviews`;
+    : "No reviews yet";
 
   return (
     <span
@@ -33,7 +31,7 @@ export default function RatingDisplay({
       ]
         .filter(Boolean)
         .join(" ")}
-      aria-label={hasRealRating ? `${averageRating} rating from ${count} reviews` : "0 reviews"}
+      aria-label={hasRealRating ? `${averageRating} rating from ${count} reviews` : "No reviews yet"}
     >
       {label}
     </span>

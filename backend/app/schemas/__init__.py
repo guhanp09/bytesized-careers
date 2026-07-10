@@ -112,6 +112,20 @@ from app.schemas.profile import (
     SocialYouTubeConnection,
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
+from app.schemas.reviews import (
+    CompletionRequest,
+    CompletionResponseRequest,
+    EngagementSummary,
+    MyReviewRead,
+    ProfileReviewCollection,
+    PublicReviewItem,
+    ReviewOpportunity,
+    ReviewsByMode,
+    ReviewSummary,
+    ReviewUpsertRequest,
+    ReviewWorkspaceResponse,
+    StartResponseRequest,
+)
 
 __all__ = [
     "AuthStatusResponse",
@@ -124,6 +138,7 @@ __all__ = [
     "ContentStyleRead",
     "ContentStyleUpsertRequest",
     "EntitlementRead",
+    "EngagementSummary",
     "HiringInfo",
     "HiringIdentitiesResponse",
     "HiringIdentityCreate",
@@ -188,6 +203,17 @@ __all__ = [
     "RoleQuestionsResponse",
     "RoleRead",
     "ReviewsSummary",
+    "ReviewSummary",
+    "ReviewsByMode",
+    "ProfileReviewCollection",
+    "PublicReviewItem",
+    "ReviewOpportunity",
+    "ReviewUpsertRequest",
+    "ReviewWorkspaceResponse",
+    "MyReviewRead",
+    "StartResponseRequest",
+    "CompletionRequest",
+    "CompletionResponseRequest",
     "ResendVerificationRequest",
     "ResendVerificationResponse",
     "RegisterRequest",

@@ -35,7 +35,7 @@ export function mapBackendMessage(
     senderName: message.from_me ? "You" : message.sender_name || counterpartyName,
     body: message.body,
     atLabel: formatTime(message.created_at),
-    kind: message.kind === "status_update" ? "status" : undefined,
+    kind: message.kind === "status_update" || message.kind === "engagement_update" ? "status" : undefined,
   };
 }
 

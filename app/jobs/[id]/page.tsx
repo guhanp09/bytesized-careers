@@ -42,7 +42,7 @@ async function getJobChannelRating(job: Job, dataSource: "backend" | "mock") {
     dataSource === "mock"
       ? getMockPublicTalentProfile(channelSlug)
       : await getPublicProfile(channelSlug).catch(() => null);
-  return profileRatingSummaryFromProfile(profile, href);
+  return profileRatingSummaryFromProfile(profile, href, "hiring");
 }
 
 export async function generateMetadata({

@@ -10,6 +10,7 @@ from app.core.account_types import AccountType
 from app.core.onboarding_intent import OnboardingIntent
 from app.schemas.creator_profile import ContentStyleRead, RoleAnswerSummary, RoleRead
 from app.schemas.profile_capabilities import ProfileCapabilities
+from app.schemas.reviews import PublicReviewItem, ReviewsByMode
 
 AvatarMode = Literal["generic", "youtube_channel"]
 PortfolioStatus = Literal["now", "past"]
@@ -146,6 +147,8 @@ class ProfileRead(BaseModel):
     social_connections: SocialConnections = Field(default_factory=SocialConnections)
     stats: ProfileStats = Field(default_factory=ProfileStats)
     reviews: ReviewsSummary = Field(default_factory=ReviewsSummary)
+    review_items: list[PublicReviewItem] = Field(default_factory=list)
+    reviews_by_mode: ReviewsByMode = Field(default_factory=ReviewsByMode)
     collaboration_preferences: CollaborationPreferences = Field(
         default_factory=CollaborationPreferences
     )
@@ -474,6 +477,8 @@ class PublicProfileResponse(BaseModel):
     social_connections: SocialConnections = Field(default_factory=SocialConnections)
     stats: ProfileStats = Field(default_factory=ProfileStats)
     reviews: ReviewsSummary = Field(default_factory=ReviewsSummary)
+    review_items: list[PublicReviewItem] = Field(default_factory=list)
+    reviews_by_mode: ReviewsByMode = Field(default_factory=ReviewsByMode)
     collaboration_preferences: CollaborationPreferences = Field(
         default_factory=CollaborationPreferences
     )

@@ -11,7 +11,6 @@ import {
   BackendHiringPrimaryPlatform,
   BackendHiringType,
   BackendProfileExperienceItem,
-  BackendProfileReviewItem,
   BackendProfileUpdatePayload,
   BackendProfileResponse,
   BackendRole,
@@ -57,7 +56,8 @@ import PlatformLogosRow, {
 import ProfileExperienceEditor, { type ProfileExperienceDraft } from "../profile/ProfileExperienceEditor";
 import ProfileExperienceList from "../profile/ProfileExperienceList";
 import PortfolioDetailRail from "../profile/PortfolioDetailRail";
-import { ProfileReviewsPreviewRail, ProfileReviewsTabContent } from "../profile/ProfileReviews";
+import { ProfileReviewsPreviewRail } from "../profile/ProfileReviews";
+import OwnerReviewsWorkspace from "../reviews/OwnerReviewsWorkspace";
 import SocialIconRow from "../profile/SocialIconRow";
 import { TagPill } from "../ui";
 import OwnerSavedTab from "./OwnerSavedTab";
@@ -3082,7 +3082,14 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const ownerBioText = cleanOwnerText(profile?.bio);
   const ownerBioTooltip =
     effectiveOwnerProfileMode === "hiring" ? RECRUITER_BIO_HELP_TOOLTIP : TALENT_BIO_HELP_TOOLTIP;
-  const ownerReviewItems = useMemo<BackendProfileReviewItem[]>(() => profile?.review_items || [], [profile?.review_items]);
+  const ownerReviewCollection = useMemo(() => {
+    const scoped = profile?.reviews_by_mode?.[effectiveOwnerProfileMode];
+    return scoped || {
+      summary: profile?.reviews || { avg_rating: 0, review_count: 0 },
+      items: profile?.review_items || [],
+    };
+  }, [effectiveOwnerProfileMode, profile?.review_items, profile?.reviews, profile?.reviews_by_mode]);
+  const ownerReviewItems = ownerReviewCollection.items;
   const closeOwnerInlineEditor = () => setActiveOwnerInlineEditor(null);
   const updateDraftLocationValue = useCallback((value: string) => {
     setDraftLocation(value);
@@ -5719,10 +5726,10 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
           ) : null}
 
           {visibleOwnerTab === "reviews" ? (
-            <ProfileReviewsTabContent
-              items={ownerReviewItems}
-              averageRating={profile?.reviews?.avg_rating || 0}
-              reviewCount={profile?.reviews?.review_count || 0}
+            <OwnerReviewsWorkspace
+              mode={effectiveOwnerProfileMode}
+              accessToken={backendToken ?? undefined}
+              initialReceived={ownerReviewCollection}
             />
           ) : null}
 

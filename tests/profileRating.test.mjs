@@ -32,3 +32,21 @@ test("profileRatingSummaryFromProfile reads the profile review summary only", ()
     { average: 4.2, count: 7, href: "/u/sample-profile?view=talent&tab=reviews" }
   );
 });
+
+test("profileRatingSummaryFromProfile uses role-specific reputation when available", () => {
+  const profile = {
+    reviews: { avg_rating: 3.5, review_count: 4 },
+    reviews_by_mode: {
+      talent: { summary: { avg_rating: 4.8, review_count: 3 }, items: [] },
+      hiring: { summary: { avg_rating: 4.1, review_count: 1 }, items: [] },
+    },
+  };
+  assert.deepEqual(
+    profileRatingSummaryFromProfile(profile, "/u/sample?view=talent&tab=reviews", "talent"),
+    { average: 4.8, count: 3, href: "/u/sample?view=talent&tab=reviews" }
+  );
+  assert.deepEqual(
+    profileRatingSummaryFromProfile(profile, "/u/sample?view=hiring&tab=reviews", "hiring"),
+    { average: 4.1, count: 1, href: "/u/sample?view=hiring&tab=reviews" }
+  );
+});

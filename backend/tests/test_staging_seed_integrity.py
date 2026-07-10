@@ -12,9 +12,13 @@ from app.db.seed import seed_full_demo
 from app.db.seed_data_jobs import SEEDED_JOBS
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
+    Conversation,
+    Engagement,
+    EngagementReview,
     HiringIdentity,
     Job,
     JobApplication,
+    Message,
     Notification,
     PortfolioItem,
     Report,
@@ -64,6 +68,10 @@ async def _assert_foreign_keys_resolve(session: AsyncSession) -> None:
     listing_ids = await _all_ids(session, TalentListing)
     identity_ids = await _all_ids(session, HiringIdentity)
     role_ids = await _all_ids(session, Role)
+    application_ids = await _all_ids(session, JobApplication)
+    interest_ids = await _all_ids(session, TalentInterest)
+    engagement_ids = await _all_ids(session, Engagement)
+    conversation_ids = await _all_ids(session, Conversation)
 
     for identity in (await session.execute(select(HiringIdentity))).scalars().all():
         assert identity.owner_user_id in user_ids
@@ -96,6 +104,23 @@ async def _assert_foreign_keys_resolve(session: AsyncSession) -> None:
     for report in (await session.execute(select(Report))).scalars().all():
         assert report.reporter_user_id is None or report.reporter_user_id in user_ids
         assert report.resolved_by_user_id is None or report.resolved_by_user_id in user_ids
+    for engagement in (await session.execute(select(Engagement))).scalars().all():
+        assert engagement.application_id is None or engagement.application_id in application_ids
+        assert engagement.talent_interest_id is None or engagement.talent_interest_id in interest_ids
+        assert engagement.recruiter_user_id is None or engagement.recruiter_user_id in user_ids
+        assert engagement.talent_user_id is None or engagement.talent_user_id in user_ids
+    for review in (await session.execute(select(EngagementReview))).scalars().all():
+        assert review.engagement_id in engagement_ids
+        assert review.reviewer_user_id is None or review.reviewer_user_id in user_ids
+        assert review.reviewee_user_id is None or review.reviewee_user_id in user_ids
+    for conversation in (await session.execute(select(Conversation))).scalars().all():
+        assert conversation.application_id is None or conversation.application_id in application_ids
+        assert conversation.talent_interest_id is None or conversation.talent_interest_id in interest_ids
+        assert conversation.participant_a_user_id in user_ids
+        assert conversation.participant_b_user_id in user_ids
+    for message in (await session.execute(select(Message))).scalars().all():
+        assert message.conversation_id in conversation_ids
+        assert message.sender_user_id in user_ids
 
 
 @pytest.mark.asyncio
@@ -115,6 +140,8 @@ async def test_full_staging_seed_is_fk_safe_on_a_fresh_database(tmp_path: Path) 
             assert await _count_rows(session, Job) == (
                 len(SEEDED_JOBS) + len(personas.build_persona_jobs())
             )
+            assert await _count_rows(session, Engagement) == len(personas.build_persona_engagements()) == 8
+            assert await _count_rows(session, EngagementReview) == len(personas.build_persona_engagement_reviews()) == 3
     finally:
         await engine.dispose()
 
@@ -140,6 +167,10 @@ async def test_full_staging_seed_recovers_from_partial_users_and_is_idempotent(
                 "applications": await _count_rows(session, JobApplication),
                 "interests": await _count_rows(session, TalentInterest),
                 "portfolio": await _count_rows(session, PortfolioItem),
+                "engagements": await _count_rows(session, Engagement),
+                "reviews": await _count_rows(session, EngagementReview),
+                "conversations": await _count_rows(session, Conversation),
+                "messages": await _count_rows(session, Message),
             }
             await _assert_foreign_keys_resolve(session)
 
@@ -152,6 +183,10 @@ async def test_full_staging_seed_recovers_from_partial_users_and_is_idempotent(
                 "applications": await _count_rows(session, JobApplication),
                 "interests": await _count_rows(session, TalentInterest),
                 "portfolio": await _count_rows(session, PortfolioItem),
+                "engagements": await _count_rows(session, Engagement),
+                "reviews": await _count_rows(session, EngagementReview),
+                "conversations": await _count_rows(session, Conversation),
+                "messages": await _count_rows(session, Message),
             }
             await _assert_foreign_keys_resolve(session)
 

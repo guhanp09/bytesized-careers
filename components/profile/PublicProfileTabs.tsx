@@ -530,9 +530,13 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
     ...pastJobs.map((job) => job.category),
   ]).slice(0, 5);
   const bioText = cleanText(profile.bio);
-  const reviewCount = profile.reviews?.review_count || 0;
-  const reviewAverage = profile.reviews?.avg_rating || 0;
-  const reviewItems = useMemo<BackendProfileReviewItem[]>(() => profile.review_items || [], [profile.review_items]);
+  const modeReviews = profile.reviews_by_mode?.[profileMode];
+  const reviewCount = modeReviews?.summary.review_count ?? profile.reviews?.review_count ?? 0;
+  const reviewAverage = modeReviews?.summary.avg_rating ?? profile.reviews?.avg_rating ?? 0;
+  const reviewItems = useMemo<BackendProfileReviewItem[]>(
+    () => modeReviews?.items || profile.review_items || [],
+    [modeReviews?.items, profile.review_items]
+  );
 
   const talentMetadataGroups = [
     { label: "Specialization", values: cleanList([activeRole, ...roleNames]) },

@@ -15,6 +15,7 @@ from app.api.v1.routers.messaging import router as messaging_router
 from app.api.v1.routers.portfolio import router as portfolio_router
 from app.api.v1.routers.profile_completion import router as profile_completion_router
 from app.api.v1.routers.roles import router as roles_router
+from app.api.v1.routers.reviews import router as reviews_router
 from app.api.v1.routers.tools import router as tools_router
 from app.api.v1.routers.user_profile import router as user_profile_router
 from app.api.v1.routers.users import router as users_router
@@ -31,6 +32,7 @@ api_router.include_router(messaging_router)
 api_router.include_router(portfolio_router)
 api_router.include_router(profile_completion_router)
 api_router.include_router(roles_router)
+api_router.include_router(reviews_router)
 api_router.include_router(tools_router)
 api_router.include_router(user_profile_router)
 api_router.include_router(users_router)

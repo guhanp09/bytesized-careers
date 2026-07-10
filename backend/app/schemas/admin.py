@@ -224,6 +224,8 @@ AdminReportAction = Literal[
     "no_action",
     "pause_listing",
     "hide_listing",
+    "hide_review",
+    "restore_review",
     "warn_user",
     "suspend_user",
     "reopen",

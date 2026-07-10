@@ -56,6 +56,7 @@ const TARGET_TABS = [
   { key: "talent_listing", label: "Talent" },
   { key: "profile", label: "Profiles" },
   { key: "message", label: "Messages" },
+  { key: "review", label: "Reviews" },
 ] as const;
 
 const HIGH_RISK = new Set(["scam_or_fraud", "off_platform_payment", "impersonation", "harassment"]);
@@ -84,6 +85,8 @@ type ActionConfig = {
   /** Where the dialog text goes: the private audit note or the user-facing note. */
   reasonField: "admin_note" | "user_note";
   listingOnly?: boolean;
+  reviewOnly?: boolean;
+  reviewState?: "visible" | "hidden";
 };
 
 const ACTIONS: ActionConfig[] = [
@@ -125,6 +128,29 @@ const ACTIONS: ActionConfig[] = [
     requireReason: true,
     reasonField: "admin_note",
     listingOnly: true,
+  },
+  {
+    action: "hide_review",
+    label: "Hide review",
+    title: "Hide this review?",
+    description: "Removes it from public profiles and rating aggregates. This can be reversed.",
+    confirmLabel: "Hide review",
+    destructive: true,
+    requireReason: true,
+    reasonField: "admin_note",
+    reviewOnly: true,
+    reviewState: "visible",
+  },
+  {
+    action: "restore_review",
+    label: "Restore review",
+    title: "Restore this review?",
+    description: "Returns the review to public profiles and rating aggregates.",
+    confirmLabel: "Restore review",
+    requireReason: true,
+    reasonField: "admin_note",
+    reviewOnly: true,
+    reviewState: "hidden",
   },
   {
     action: "warn_user",
@@ -237,6 +263,8 @@ export default function AdminReportsClient({ accessToken }: { accessToken: strin
     ? ACTIONS.filter((config) => {
         if (config.listingOnly && selected.target_type !== "job" && selected.target_type !== "talent_listing")
           return false;
+        if (config.reviewOnly && selected.target_type !== "review") return false;
+        if (config.reviewState && selected.target_status !== config.reviewState) return false;
         return true;
       })
     : [];

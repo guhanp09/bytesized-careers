@@ -12,6 +12,8 @@ from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import Conversation, JobApplication, Message, TalentInterest, User
 from app.services import messaging_service as ms
+from app.services import review_service
+from app.schemas.reviews import EngagementSummary
 
 router = APIRouter(prefix="/me", tags=["messaging"])
 
@@ -44,6 +46,7 @@ class ConversationRead(BaseModel):
 class ConversationDetail(BaseModel):
     conversation: ConversationRead
     messages: list[MessageRead]
+    engagement: EngagementSummary | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -61,12 +64,22 @@ async def _conversation_detail(
     names = await ms.participant_names(session, conversation)
     messages = await ms.list_messages(session, conversation)
     unread = await ms.unread_count(session, conversation, viewer.id)
+    engagement = None
+    if conversation.application_id:
+        engagement = await review_service.engagement_for_application(session, conversation.application_id)
+    elif conversation.talent_interest_id:
+        engagement = await review_service.engagement_for_interest(session, conversation.talent_interest_id)
     return ConversationDetail(
         conversation=ConversationRead(**ms.serialize_conversation(conversation, viewer.id, unread)),
         messages=[
             MessageRead(**ms.serialize_message(m, viewer.id, names.get(m.sender_user_id)))
             for m in messages
         ],
+        engagement=(
+            await review_service.engagement_summary(session, engagement, viewer.id)
+            if engagement is not None
+            else None
+        ),
     )
 
 
@@ -131,8 +144,9 @@ async def get_application_conversation(
     if current_user.id not in (application.applicant_user_id, application.job_owner_user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation participant")
     conversation = await ms.get_or_create_conversation_for_application(session, application)
-    await session.commit()  # persist lazy-created conversation
-    return await _conversation_detail(session, conversation, current_user)
+    detail = await _conversation_detail(session, conversation, current_user)
+    await session.commit()  # persist lazy-created conversation and deadline reconciliation
+    return detail
 
 
 @router.get("/talent-interests/{interest_id}/conversation", response_model=ConversationDetail)
@@ -145,8 +159,9 @@ async def get_interest_conversation(
     if current_user.id not in (interest.recruiter_user_id, interest.owner_user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation participant")
     conversation = await ms.get_or_create_conversation_for_interest(session, interest)
+    detail = await _conversation_detail(session, conversation, current_user)
     await session.commit()
-    return await _conversation_detail(session, conversation, current_user)
+    return detail
 
 
 async def _require_conversation(session: AsyncSession, conversation_id: UUID) -> Conversation:
@@ -166,7 +181,9 @@ async def get_conversation(
 ) -> ConversationDetail:
     conversation = await _require_conversation(session, conversation_id)
     _require_participant(conversation, current_user)
-    return await _conversation_detail(session, conversation, current_user)
+    detail = await _conversation_detail(session, conversation, current_user)
+    await session.commit()
+    return detail
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageRead, status_code=201)

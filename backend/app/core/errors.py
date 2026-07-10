@@ -54,13 +54,20 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
+    details = exc.errors()
+    # Pydantic model validators place the original ValueError in ctx.error.
+    # Starlette's JSONResponse cannot serialize exception instances directly.
+    for detail in details:
+        context = detail.get("ctx")
+        if context and isinstance(context.get("error"), Exception):
+            detail["ctx"] = {**context, "error": str(context["error"])}
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=error_payload(
             code="validation_error",
             message="Request validation failed",
             request=request,
-            details=exc.errors(),
+            details=details,
         ),
     )
 

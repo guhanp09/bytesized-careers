@@ -13,9 +13,13 @@ from app.db.seed_data_jobs import SEEDED_JOBS
 from app.db.seed_data_roles import seeded_roles
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
+    Conversation,
+    Engagement,
+    EngagementReview,
     HiringIdentity,
     Job,
     JobApplication,
+    Message,
     Notification,
     PortfolioItem,
     Report,
@@ -254,6 +258,32 @@ async def seed_applications_workspace(session: AsyncSession) -> dict[str, dict[s
     return counts
 
 
+async def seed_review_scenarios(session: AsyncSession) -> dict[str, dict[str, int]]:
+    """Insert deterministic lifecycle states after their users and sources exist."""
+
+    await seed_applications_workspace(session)
+    counts = {
+        "engagements": await _insert_missing(
+            session, Engagement, personas.build_persona_engagements()
+        )
+    }
+    await session.flush()
+    counts["reviews"] = await _insert_missing(
+        session, EngagementReview, personas.build_persona_engagement_reviews()
+    )
+    await session.flush()
+    counts["conversations"] = await _insert_missing(
+        session, Conversation, personas.build_persona_review_conversations()
+    )
+    await session.flush()
+    counts["messages"] = await _insert_missing(
+        session, Message, personas.build_persona_review_messages()
+    )
+    await session.flush()
+    await session.commit()
+    return counts
+
+
 async def seed_drafts(session: AsyncSession) -> dict[str, dict[str, int]]:
     # Draft jobs + a draft talent listing live on the recruiter-drafts persona, so
     # ensuring personas materialises the drafts scenario.
@@ -306,6 +336,7 @@ async def seed_full_demo(session: AsyncSession) -> dict[str, object]:
     persona_counts = await seed_personas_if_missing(session)
     marketplace = await seed_marketplace_demo_data_if_missing(session)
     applications = await seed_applications_workspace(session)
+    reviews = await seed_review_scenarios(session)
     saved = await seed_saved_items(session)
     notifications = await seed_notifications_scenario(session)
     reports = await seed_reports_scenario(session)
@@ -314,6 +345,7 @@ async def seed_full_demo(session: AsyncSession) -> dict[str, object]:
         "marketplace": marketplace,
         "personas": persona_counts,
         "applications": applications,
+        "reviews": reviews,
         "saved": saved,
         "notifications": notifications,
         "reports": reports,
@@ -339,6 +371,22 @@ async def reset_dev_seed_data(session: AsyncSession) -> dict[str, object]:
 
     # Children first; jobs/listings reference users via SET NULL so they need an
     # explicit owner-scoped delete (a user delete would orphan, not remove them).
+    await session.execute(
+        delete(EngagementReview).where(
+            EngagementReview.engagement_id.in_(personas.all_review_engagement_ids())
+        )
+    )
+    await session.execute(
+        delete(Message).where(
+            Message.conversation_id.in_(personas.all_review_conversation_ids())
+        )
+    )
+    await session.execute(
+        delete(Conversation).where(Conversation.id.in_(personas.all_review_conversation_ids()))
+    )
+    await session.execute(
+        delete(Engagement).where(Engagement.id.in_(personas.all_review_engagement_ids()))
+    )
     await session.execute(
         delete(Notification).where(
             or_(

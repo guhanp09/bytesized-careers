@@ -343,6 +343,16 @@ export type BackendProfileReviewItem = {
   verified?: boolean | null;
 };
 
+export type BackendProfileReviewCollection = {
+  summary: BackendReviewsSummary;
+  items: BackendProfileReviewItem[];
+};
+
+export type BackendReviewsByMode = {
+  talent: BackendProfileReviewCollection;
+  hiring: BackendProfileReviewCollection;
+};
+
 export type BackendProfileExperienceItem = {
   id: string;
   role: string;
@@ -571,6 +581,7 @@ export type BackendProfileResponse = {
   stats: BackendProfileStats;
   reviews: BackendReviewsSummary;
   review_items?: BackendProfileReviewItem[];
+  reviews_by_mode?: BackendReviewsByMode;
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info: BackendHiringInfo;
   creator_platforms?: string[] | null;
@@ -841,6 +852,7 @@ export type BackendPublicProfileResponse = {
   stats: BackendProfileStats;
   reviews: BackendReviewsSummary;
   review_items?: BackendProfileReviewItem[];
+  reviews_by_mode?: BackendReviewsByMode;
   collaboration_preferences: BackendCollaborationPreferences;
   hiring_info?: BackendHiringInfo | null;
   creator_platforms?: string[] | null;
@@ -895,6 +907,7 @@ export type BackendJobApplication = {
   manager_note?: string | null;
   created_at: string;
   updated_at: string;
+  engagement?: BackendEngagementSummary | null;
 };
 
 export type BackendTalentListing = {
@@ -1011,6 +1024,70 @@ export type BackendTalentInterest = {
   manager_note?: string | null;
   created_at: string;
   updated_at: string;
+  engagement?: BackendEngagementSummary | null;
+};
+
+export type BackendEngagementStatus =
+  | "ready_to_start"
+  | "start_pending"
+  | "active"
+  | "completion_pending"
+  | "completed"
+  | "ended_after_start"
+  | "cancelled_before_start";
+
+export type BackendEngagementAction =
+  | "request_start"
+  | "confirm_start"
+  | "decline_start"
+  | "cancel_before_start"
+  | "request_completion"
+  | "confirm_completion"
+  | "flag_completion_issue"
+  | "write_review"
+  | "edit_review";
+
+export type BackendReviewState = "not_eligible" | "available" | "submitted" | "published" | "expired";
+
+export type BackendEngagementSummary = {
+  id: string;
+  source_type: "job_application" | "talent_interest";
+  source_record_id: string;
+  status: BackendEngagementStatus;
+  context_label: string;
+  counterpart_name: string;
+  started_at?: string | null;
+  response_due_at?: string | null;
+  finalized_at?: string | null;
+  review_window_ends_at?: string | null;
+  available_actions: BackendEngagementAction[];
+  review_state: BackendReviewState;
+};
+
+export type BackendMyReview = {
+  id: string;
+  engagement_id: string;
+  direction: "recruiter_to_talent" | "talent_to_recruiter";
+  overall_rating: number;
+  dimension_ratings: Record<string, number>;
+  public_feedback?: string | null;
+  status: "submitted" | "published" | "hidden";
+  submitted_at: string;
+  published_at?: string | null;
+  editable: boolean;
+};
+
+export type BackendReviewOpportunity = {
+  engagement: BackendEngagementSummary;
+  direction: "recruiter_to_talent" | "talent_to_recruiter";
+  my_review?: BackendMyReview | null;
+};
+
+export type BackendReviewWorkspace = {
+  mode: "talent" | "hiring";
+  received: BackendProfileReviewCollection;
+  opportunities: BackendReviewOpportunity[];
+  written: BackendReviewOpportunity[];
 };
 
 export type BackendActivitySummaryResponse = {
@@ -1062,7 +1139,7 @@ export type BackendNotificationListResponse = {
 export type BackendReport = {
   id: string;
   reporter_user_id?: string | null;
-  target_type: "job" | "talent_listing" | "profile";
+  target_type: "job" | "talent_listing" | "profile" | "message" | "review";
   target_id: string;
   category: string;
   note?: string | null;
@@ -2384,6 +2461,7 @@ export type BackendConversation = {
 export type BackendConversationDetail = {
   conversation: BackendConversation;
   messages: BackendMessage[];
+  engagement?: BackendEngagementSummary | null;
 };
 
 export async function listConversations(accessToken: string): Promise<BackendConversation[]> {
@@ -2408,6 +2486,85 @@ export async function getInterestConversation(
     `/me/talent-interests/${encodeURIComponent(interestId)}/conversation`,
     { accessToken }
   );
+}
+
+export async function requestEngagementStart(
+  accessToken: string,
+  sourceType: BackendEngagementSummary["source_type"],
+  sourceRecordId: string
+): Promise<BackendEngagementSummary> {
+  const sourcePath = sourceType === "job_application" ? "applications" : "talent-interests";
+  return requestJson<BackendEngagementSummary>(
+    `/me/${sourcePath}/${encodeURIComponent(sourceRecordId)}/engagement/start-request`,
+    { method: "POST", accessToken }
+  );
+}
+
+export async function respondToEngagementStart(
+  accessToken: string,
+  engagementId: string,
+  decision: "confirm" | "not_started"
+): Promise<BackendEngagementSummary> {
+  return requestJson<BackendEngagementSummary>(
+    `/me/engagements/${encodeURIComponent(engagementId)}/start-response`,
+    { method: "POST", body: JSON.stringify({ decision }), accessToken }
+  );
+}
+
+export async function cancelEngagementBeforeStart(
+  accessToken: string,
+  engagementId: string
+): Promise<BackendEngagementSummary> {
+  return requestJson<BackendEngagementSummary>(
+    `/me/engagements/${encodeURIComponent(engagementId)}/cancel`,
+    { method: "POST", accessToken }
+  );
+}
+
+export async function requestEngagementCompletion(
+  accessToken: string,
+  engagementId: string,
+  outcome: "completed" | "ended_after_start",
+  note?: string | null
+): Promise<BackendEngagementSummary> {
+  return requestJson<BackendEngagementSummary>(
+    `/me/engagements/${encodeURIComponent(engagementId)}/completion-request`,
+    { method: "POST", body: JSON.stringify({ outcome, note: note || null }), accessToken }
+  );
+}
+
+export async function respondToEngagementCompletion(
+  accessToken: string,
+  engagementId: string,
+  decision: "confirm" | "needs_attention",
+  note?: string | null
+): Promise<BackendEngagementSummary> {
+  return requestJson<BackendEngagementSummary>(
+    `/me/engagements/${encodeURIComponent(engagementId)}/completion-response`,
+    { method: "POST", body: JSON.stringify({ decision, note: note || null }), accessToken }
+  );
+}
+
+export async function saveEngagementReview(
+  accessToken: string,
+  engagementId: string,
+  payload: {
+    overall_rating: number;
+    dimension_ratings: Record<string, number>;
+    public_feedback?: string | null;
+  }
+): Promise<BackendMyReview> {
+  return requestJson<BackendMyReview>(
+    `/me/engagements/${encodeURIComponent(engagementId)}/review`,
+    { method: "PUT", body: JSON.stringify(payload), accessToken }
+  );
+}
+
+export async function getMyReviewWorkspace(
+  accessToken: string,
+  mode: "talent" | "hiring"
+): Promise<BackendReviewWorkspace> {
+  return requestJson<BackendReviewWorkspace>(`/me/reviews?mode=${encodeURIComponent(mode)}`, { accessToken });
 }
 
 export async function sendConversationMessage(
@@ -2445,7 +2602,7 @@ export type ReportCategory =
 
 export async function createReport(
   payload: {
-    target_type: "job" | "talent_listing" | "profile" | "message";
+    target_type: "job" | "talent_listing" | "profile" | "message" | "review";
     target_id: string;
     category: ReportCategory;
     note?: string | null;
@@ -2546,7 +2703,7 @@ export type AdminEntitlementItem = {
 
 export type AdminReportItem = {
   id: string;
-  target_type: "job" | "talent_listing" | "profile" | "message";
+  target_type: "job" | "talent_listing" | "profile" | "message" | "review";
   target_id: string;
   category: string;
   note?: string | null;
@@ -2567,6 +2724,8 @@ export type AdminReportAction =
   | "no_action"
   | "pause_listing"
   | "hide_listing"
+  | "hide_review"
+  | "restore_review"
   | "warn_user"
   | "suspend_user"
   | "reopen";

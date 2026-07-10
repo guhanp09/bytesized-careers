@@ -27,6 +27,7 @@ from app.models import (
     Conversation,
     EmailOutbox,
     Entitlement,
+    EngagementReview,
     HiringIdentity,
     AdminAuditLog,
     Job,
@@ -758,6 +759,7 @@ async def _hydrate_reports(session: AsyncSession, reports: list[Report]) -> list
     listings: dict[uuid.UUID, TalentListing] = {}
     profiles: dict[uuid.UUID, User] = {}
     messages: dict[uuid.UUID, Message] = {}
+    reviews: dict[uuid.UUID, EngagementReview] = {}
     if ids_by_type.get("job"):
         rows = (await session.execute(select(Job).where(Job.id.in_(ids_by_type["job"])))).scalars().all()
         jobs = {row.id: row for row in rows}
@@ -773,11 +775,19 @@ async def _hydrate_reports(session: AsyncSession, reports: list[Report]) -> list
     if ids_by_type.get("message"):
         rows = (await session.execute(select(Message).where(Message.id.in_(ids_by_type["message"])))).scalars().all()
         messages = {row.id: row for row in rows}
+    if ids_by_type.get("review"):
+        rows = (
+            await session.execute(
+                select(EngagementReview).where(EngagementReview.id.in_(ids_by_type["review"]))
+            )
+        ).scalars().all()
+        reviews = {row.id: row for row in rows}
 
     owner_ids: list[uuid.UUID] = []
     owner_ids.extend(job.posted_by_user_id for job in jobs.values())
     owner_ids.extend(listing.owner_user_id for listing in listings.values())
     owner_ids.extend(message.sender_user_id for message in messages.values())
+    owner_ids.extend(review.reviewer_user_id for review in reviews.values() if review.reviewer_user_id)
     owners = await _users_by_ids(session, owner_ids)
 
     sibling_counts: dict[str, int] = {}
@@ -815,6 +825,11 @@ async def _hydrate_reports(session: AsyncSession, reports: list[Report]) -> list
             target_label = "Message in a conversation"
             target_status = "hidden" if message.deleted_at else "visible"
             target_owner = _user_ref(owners.get(message.sender_user_id))
+        elif report.target_type == "review" and parsed in reviews:
+            review = reviews[parsed]
+            target_label = "Published engagement review"
+            target_status = "hidden" if review.status == "hidden" else "visible"
+            target_owner = _user_ref(owners.get(review.reviewer_user_id)) if review.reviewer_user_id else None
         items.append(
             AdminReportItem(
                 id=report.id,
@@ -883,6 +898,15 @@ async def _report_target_owner(session: AsyncSession, report: Report) -> User | 
     if report.target_type == "message":
         message = (await session.execute(select(Message).where(Message.id == parsed))).scalar_one_or_none()
         return None if message is None else (await session.execute(select(User).where(User.id == message.sender_user_id))).scalar_one_or_none()
+    if report.target_type == "review":
+        review = (
+            await session.execute(select(EngagementReview).where(EngagementReview.id == parsed))
+        ).scalar_one_or_none()
+        if review is None or review.reviewer_user_id is None:
+            return None
+        return (
+            await session.execute(select(User).where(User.id == review.reviewer_user_id))
+        ).scalar_one_or_none()
     return None
 
 
@@ -921,6 +945,49 @@ async def admin_resolve_report(
             target_label=f"{'Job' if report.target_type == 'job' else 'Talent listing'} — {target.title}",
             before=before,
             after=after,
+            justification=payload.admin_note or f"Report {report.id} — {report.category}",
+            report_id=report.id,
+        )
+    elif action in {"hide_review", "restore_review"}:
+        if report.target_type != "review":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{action} applies only to review reports",
+            )
+        review = (
+            await session.execute(
+                select(EngagementReview).where(EngagementReview.id == parsed_target).with_for_update()
+            )
+        ).scalar_one_or_none() if parsed_target else None
+        if review is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report target no longer exists")
+        before = {
+            "status": review.status,
+            "hidden_at": review.hidden_at.isoformat() if review.hidden_at else None,
+        }
+        if action == "hide_review":
+            if review.status != "hidden":
+                review.status = "hidden"
+                review.hidden_at = _now()
+                review.hidden_by_user_id = admin_user.id
+                review.hidden_reason = payload.admin_note or f"Report {report.id} — {report.category}"
+        else:
+            review.status = "published"
+            review.hidden_at = None
+            review.hidden_by_user_id = None
+            review.hidden_reason = None
+        record_admin_action(
+            session,
+            actor=admin_user,
+            action=f"review.{action.removesuffix('_review')}",
+            target_type="review",
+            target_id=review.id,
+            target_label="Published engagement review",
+            before=before,
+            after={
+                "status": review.status,
+                "hidden_at": review.hidden_at.isoformat() if review.hidden_at else None,
+            },
             justification=payload.admin_note or f"Report {report.id} — {report.category}",
             report_id=report.id,
         )

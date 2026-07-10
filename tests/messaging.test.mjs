@@ -40,6 +40,15 @@ test("the other participant's message uses their name (or the counterparty fallb
   assert.equal(unnamed.senderName, "Fallback Name");
 });
 
+test("engagement lifecycle messages render as trusted centered status events", () => {
+  const mapped = mapBackendMessage(
+    { id: "event-1", from_me: false, body: "Work started.", kind: "engagement_update" },
+    "Collaborator",
+    fixedTime
+  );
+  assert.equal(mapped.kind, "status");
+});
+
 test("unread detection reflects the backend count", () => {
   assert.equal(conversationHasUnread({ unread_count: 2 }), true);
   assert.equal(conversationHasUnread({ unread_count: 0 }), false);

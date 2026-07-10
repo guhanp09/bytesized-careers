@@ -126,7 +126,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(postedByCard.getByRole("heading", { name: "Posted by" })).toHaveClass(/sr-only/);
     await expect(postedByCard.getByText("Example Creator Agency")).toBeVisible();
     await expect(postedByCard.getByText(/Agency · Hiring for Finance/)).toBeVisible();
-    await expect(postedByCard.getByText("☆☆☆☆☆ 0 reviews as recruiter")).toBeVisible();
+    await expect(postedByCard.getByText("No reviews yet")).toBeVisible();
     await expect(postedByCard.getByRole("link", { name: "Example Creator Agency" })).toHaveAttribute(
       "href",
       "/u/example-agency?view=hiring"
@@ -158,7 +158,7 @@ test.describe("phase 3b detail and post surface polish", () => {
       "/u/edu-hindi?view=hiring"
     );
     await expect(postedByCard.getByText("Creator", { exact: true })).toBeVisible();
-    await expect(postedByCard.getByText("☆☆☆☆☆ 0 reviews as recruiter")).toBeVisible();
+    await expect(postedByCard.getByText("No reviews yet")).toBeVisible();
     await expect(postedByCard).not.toContainText("Posted by agency");
     await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
     const channelRating = page.getByTestId("job-channel-rating");

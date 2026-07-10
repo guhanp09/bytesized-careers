@@ -1,7 +1,10 @@
 "use client";
 
-import { type BackendProfileReviewItem } from "../../lib/backendClient";
+import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { createReport, type BackendProfileReviewItem, type ReportCategory } from "../../lib/backendClient";
 import { Icon } from "../Icons";
+import ReportDialog from "../ReportDialog";
 
 const clampRating = (value: number) => Math.max(0, Math.min(5, value));
 
@@ -118,6 +121,11 @@ export function ProfileReviewsTabContent({
   reviewCount?: number;
   emptyMessage?: string;
 }) {
+  const { data: session } = useSession();
+  const [reportingReviewId, setReportingReviewId] = useState<string | null>(null);
+  const [reportSending, setReportSending] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSent, setReportSent] = useState<string | null>(null);
   const normalizedItems = [...items].sort(
     (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
   );
@@ -180,11 +188,56 @@ export function ProfileReviewsTabContent({
                 </div>
                 {meta ? <p className="mt-4 text-xs text-white/45">{meta}</p> : null}
                 <p className="mt-4 text-sm leading-7 text-white/68">{item.body}</p>
+                <div className="mt-4 flex justify-end">
+                  {reportSent === item.id ? (
+                    <span className="text-[11px] text-emerald-200/70">Report sent</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReportError(null);
+                        setReportingReviewId(item.id);
+                      }}
+                      className="cursor-pointer text-[11px] font-medium text-white/32 transition-colors hover:text-white/60"
+                    >
+                      Report review
+                    </button>
+                  )}
+                </div>
               </article>
             );
           })}
         </div>
       ) : null}
+      <ReportDialog
+        open={Boolean(reportingReviewId)}
+        targetLabel="this review"
+        sending={reportSending}
+        error={reportError}
+        onClose={() => {
+          if (reportSending) return;
+          setReportingReviewId(null);
+          setReportError(null);
+        }}
+        onSubmit={(category: ReportCategory, note) => {
+          if (!reportingReviewId) return;
+          const reviewId = reportingReviewId;
+          setReportSending(true);
+          setReportError(null);
+          void createReport(
+            { target_type: "review", target_id: reviewId, category, note },
+            session?.backendAccessToken
+          )
+            .then(() => {
+              setReportSent(reviewId);
+              setReportingReviewId(null);
+            })
+            .catch((error: unknown) => {
+              setReportError(error instanceof Error ? error.message : "Couldn’t send this report.");
+            })
+            .finally(() => setReportSending(false));
+        }}
+      />
     </div>
   );
 }

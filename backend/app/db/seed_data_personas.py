@@ -17,7 +17,7 @@ fabricated. Verification states appear only on the explicit verification persona
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from app.core.security import hash_password
@@ -800,7 +800,7 @@ def _application(
 
 
 def build_persona_applications() -> list[dict[str, object]]:
-    return [
+    applications = [
         _application(
             "talent-complete", "recruiter-active-1", "recruiter-active", "shortlisted",
             "Hi, I came across the listing and would love to help with the finance channel edits.",
@@ -874,6 +874,225 @@ def build_persona_applications() -> list[dict[str, object]]:
             },
         ),
     ]
+    # Review-system scenarios. These are real hired source records so Inbox and
+    # Pipeline exercise the same contracts as user-created engagements.
+    for applicant, job_key, owner, label in (
+        ("both-sides", "recruiter-active-3", "recruiter-active", "active"),
+        ("talent-incomplete", "recruiter-active-1", "recruiter-active", "start-pending"),
+        ("talent-incomplete", "recruiter-active-2", "recruiter-active", "completion-pending"),
+        ("both-sides", "recruiter-active-2", "recruiter-active", "review-eligible"),
+        ("notifications", "recruiter-active-1", "recruiter-active", "blind-review"),
+        ("notifications", "recruiter-active-2", "recruiter-active", "published-reviews"),
+        ("talent-incomplete", "recruiter-active-3", "recruiter-active", "cancelled"),
+        ("notifications", "recruiter-active-3", "recruiter-active", "ended-after-start"),
+    ):
+        applications.append(
+            _application(
+                applicant,
+                job_key,
+                owner,
+                "hired",
+                f"Review-system demo application: {label}.",
+                answers={
+                    "expected_rate": {"amount": "25000", "unit": "per project"},
+                    "fit_note": f"Deterministic {label} engagement for UI testing.",
+                },
+            )
+        )
+    return applications
+
+
+# --- Engagement and blind-review scenarios ---------------------------------
+
+REVIEW_WINDOW_END = SEED_TIME.replace(year=2030)
+RESPONSE_DEADLINE = REVIEW_WINDOW_END
+
+REVIEW_SCENARIOS: tuple[dict[str, object], ...] = (
+    {"key": "active", "applicant": "both-sides", "job": "recruiter-active-3", "status": "active"},
+    {"key": "start-pending", "applicant": "talent-incomplete", "job": "recruiter-active-1", "status": "start_pending"},
+    {"key": "completion-pending", "applicant": "talent-incomplete", "job": "recruiter-active-2", "status": "completion_pending"},
+    {"key": "review-eligible", "applicant": "both-sides", "job": "recruiter-active-2", "status": "completed"},
+    {"key": "blind-review", "applicant": "notifications", "job": "recruiter-active-1", "status": "completed"},
+    {"key": "published-reviews", "applicant": "notifications", "job": "recruiter-active-2", "status": "completed"},
+    {"key": "cancelled", "applicant": "talent-incomplete", "job": "recruiter-active-3", "status": "cancelled_before_start"},
+    {"key": "ended-after-start", "applicant": "notifications", "job": "recruiter-active-3", "status": "ended_after_start"},
+)
+
+
+def build_persona_engagements() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for scenario in REVIEW_SCENARIOS:
+        key = str(scenario["key"])
+        applicant = str(scenario["applicant"])
+        job_key = str(scenario["job"])
+        state = str(scenario["status"])
+        application_id = persona_uuid(f"application:{applicant}:{job_key}")
+        row: dict[str, object] = {
+            "id": persona_uuid(f"engagement:{key}"),
+            "source_type": "job_application",
+            "source_record_id": application_id,
+            "application_id": application_id,
+            "recruiter_user_id": persona_user_id("recruiter-active"),
+            "talent_user_id": persona_user_id(applicant),
+            "context_snapshot": {
+                "context_label": f"Review demo · {key.replace('-', ' ')}",
+                "recruiter_name": "Finance Simplified",
+                "talent_name": next(
+                    str(user.get("display_name") or "Talent")
+                    for user in build_persona_users()
+                    if user["id"] == persona_user_id(applicant)
+                ),
+            },
+            "status": state,
+            "created_at": SEED_TIME,
+        }
+        if state == "start_pending":
+            row.update(
+                start_requested_by_user_id=persona_user_id(applicant),
+                start_requested_at=SEED_TIME,
+                start_response_due_at=RESPONSE_DEADLINE,
+            )
+        if state in {"active", "completion_pending", "completed", "ended_after_start"}:
+            row["started_at"] = SEED_TIME + timedelta(days=1)
+        if state == "completion_pending":
+            row.update(
+                completion_requested_by_user_id=persona_user_id(applicant),
+                completion_requested_at=SEED_TIME + timedelta(days=6),
+                completion_response_due_at=RESPONSE_DEADLINE,
+                requested_outcome="completed",
+                completion_note="All agreed deliverables were sent.",
+            )
+        if state in {"completed", "ended_after_start"}:
+            row.update(
+                finalized_at=SEED_TIME + timedelta(days=7),
+                review_window_ends_at=REVIEW_WINDOW_END,
+            )
+        if state == "cancelled_before_start":
+            row["finalized_at"] = SEED_TIME + timedelta(days=1)
+        rows.append(row)
+    return rows
+
+
+def build_persona_engagement_reviews() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+
+    def review(
+        key: str,
+        direction: str,
+        reviewer: str,
+        reviewee: str,
+        status: str,
+        rating: int,
+        feedback: str,
+    ) -> dict[str, object]:
+        reviewer_user = next(user for user in build_persona_users() if user["id"] == persona_user_id(reviewer))
+        published_at = SEED_TIME + timedelta(days=8) if status == "published" else None
+        return {
+            "id": persona_uuid(f"engagement-review:{key}:{direction}"),
+            "engagement_id": persona_uuid(f"engagement:{key}"),
+            "reviewer_user_id": persona_user_id(reviewer),
+            "reviewee_user_id": persona_user_id(reviewee),
+            "direction": direction,
+            "reviewer_snapshot": {
+                "display_name": reviewer_user.get("display_name") or reviewer_user.get("username"),
+                "avatar_url": reviewer_user.get("avatar_url"),
+                "role": "Hiring team" if direction == "recruiter_to_talent" else "Creator talent",
+            },
+            "overall_rating": rating,
+            "dimension_ratings": {},
+            "public_feedback": feedback,
+            "status": status,
+            "submitted_at": SEED_TIME + timedelta(days=8),
+            "published_at": published_at,
+            "created_at": SEED_TIME + timedelta(days=8),
+        }
+
+    rows.append(
+        review(
+            "blind-review",
+            "talent_to_recruiter",
+            "notifications",
+            "recruiter-active",
+            "submitted",
+            4,
+            "The brief was clear and decisions were prompt throughout the project.",
+        )
+    )
+    rows.extend(
+        [
+            review(
+                "published-reviews",
+                "talent_to_recruiter",
+                "notifications",
+                "recruiter-active",
+                "published",
+                5,
+                "Clear expectations, thoughtful feedback, and a professional collaboration.",
+            ),
+            review(
+                "published-reviews",
+                "recruiter_to_talent",
+                "recruiter-active",
+                "notifications",
+                "published",
+                4,
+                "Reliable delivery and strong attention to the intended audience.",
+            ),
+        ]
+    )
+    return rows
+
+
+def build_persona_review_conversations() -> list[dict[str, object]]:
+    return [
+        {
+            "id": persona_uuid(f"conversation:engagement:{scenario['key']}"),
+            "context_type": "job_application",
+            "application_id": persona_uuid(f"application:{scenario['applicant']}:{scenario['job']}"),
+            "job_id": persona_uuid(f"job:{scenario['job']}"),
+            "participant_a_user_id": persona_user_id(str(scenario["applicant"])),
+            "participant_b_user_id": persona_user_id("recruiter-active"),
+            "last_message_at": SEED_TIME + timedelta(days=7),
+            "metadata_json": {},
+            "created_at": SEED_TIME,
+        }
+        for scenario in REVIEW_SCENARIOS
+    ]
+
+
+def build_persona_review_messages() -> list[dict[str, object]]:
+    event_copy = {
+        "active": "Work started.",
+        "start-pending": "Work start confirmation requested.",
+        "completion-pending": "Completion confirmation requested.",
+        "review-eligible": "Engagement completed.",
+        "blind-review": "Engagement completed. Feedback is available.",
+        "published-reviews": "Engagement feedback published.",
+        "cancelled": "Engagement cancelled before work started.",
+        "ended-after-start": "Engagement ended after work began.",
+    }
+    return [
+        {
+            "id": persona_uuid(f"message:engagement:{scenario['key']}"),
+            "conversation_id": persona_uuid(f"conversation:engagement:{scenario['key']}"),
+            "sender_user_id": persona_user_id(str(scenario["applicant"])),
+            "body": event_copy[str(scenario["key"])],
+            "metadata_json": {
+                "kind": "engagement_update",
+                "engagement_id": str(persona_uuid(f"engagement:{scenario['key']}")),
+            },
+            "created_at": SEED_TIME + timedelta(days=7),
+        }
+        for scenario in REVIEW_SCENARIOS
+    ]
+
+
+def all_review_engagement_ids() -> list[uuid.UUID]:
+    return [persona_uuid(f"engagement:{scenario['key']}") for scenario in REVIEW_SCENARIOS]
+
+
+def all_review_conversation_ids() -> list[uuid.UUID]:
+    return [persona_uuid(f"conversation:engagement:{scenario['key']}") for scenario in REVIEW_SCENARIOS]
 
 
 # --- Hiring requests / talent interests -------------------------------------

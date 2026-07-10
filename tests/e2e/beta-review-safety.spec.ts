@@ -29,7 +29,7 @@ test.describe("beta review and trust-copy safety", () => {
       waitUntil: "domcontentloaded",
     });
 
-    await expect(page.locator("body")).toContainText("☆☆☆☆☆ 0 reviews");
+    await expect(page.locator("body")).toContainText("No reviews yet");
     await expect(page.locator("body")).not.toContainText(/★★★★★|4\.[5-9]|5\.0|[1-9][0-9]* reviews/i);
   });
 
@@ -37,7 +37,7 @@ test.describe("beta review and trust-copy safety", () => {
     await page.goto("/u/anika-rao", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "Anika Rao" })).toBeVisible();
-    await expect(page.locator("body")).toContainText("☆☆☆☆☆ 0 reviews");
+    await expect(page.locator("body")).toContainText("No reviews yet");
     await expect(page.locator("body")).not.toContainText(/★★★★★|4\.[5-9]|5\.0|[1-9][0-9]* reviews/i);
   });
 });

@@ -22,6 +22,7 @@ import {
   getActivitySummary,
   getApplicationConversation,
   getInterestConversation,
+  getMyReviewWorkspace,
   isLocalMocksEnabled,
   listConversations,
   markConversationRead,
@@ -34,7 +35,9 @@ import {
   withdrawTalentInterest,
   type BackendJobApplication,
   type BackendMessage,
+  type BackendEngagementSummary,
   type BackendPortfolioItem,
+  type BackendReviewOpportunity,
   type BackendTalentInterest,
 } from "../../lib/backendClient";
 import {
@@ -60,6 +63,8 @@ import {
 } from "../../lib/applicationPipeline";
 import CompactChatDock from "./CompactChatDock";
 import PipelineBoard from "./PipelineBoard";
+import EngagementStatusRow from "../reviews/EngagementStatusRow";
+import ReviewDialog from "../reviews/ReviewDialog";
 
 type WorkspaceMode = "talent" | "hiring";
 type WorkspaceFilter = "all" | "sent" | "received" | "archived";
@@ -1196,7 +1201,7 @@ export default function ApplicationsWorkspace({
   // Real message threads loaded per interaction in live mode (keyed by record id ==
   // OwnerInteraction id). Demo mode keeps using the in-memory `replies` on the item.
   const [liveThreads, setLiveThreads] = useState<
-    Record<string, { conversationId: string; messages: BackendMessage[] }>
+    Record<string, { conversationId: string; messages: BackendMessage[]; engagement?: BackendEngagementSummary | null }>
   >({});
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -1204,6 +1209,7 @@ export default function ApplicationsWorkspace({
   // sourced from the real GET /me/conversations endpoint in live mode.
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewOpportunity, setReviewOpportunity] = useState<BackendReviewOpportunity | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
   // View + direction are controlled by the page (persistence, deep links) when
   // the props are provided; otherwise the workspace owns them locally.
@@ -1337,7 +1343,11 @@ export default function ApplicationsWorkspace({
         if (cancelled) return;
         setLiveThreads((prev) => ({
           ...prev,
-          [recordId]: { conversationId: detail.conversation.id, messages: detail.messages },
+          [recordId]: {
+            conversationId: detail.conversation.id,
+            messages: detail.messages,
+            engagement: detail.engagement,
+          },
         }));
         if (detail.conversation.unread_count > 0) {
           void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
@@ -1740,6 +1750,7 @@ export default function ApplicationsWorkspace({
   // The composer is active for any open, non-archived thread. In live mode it sends
   // real messages once the conversation has loaded; in demo mode it appends locally.
   const liveThread = selected && liveMode ? liveThreads[selected.id] : undefined;
+  const selectedEngagement = liveThread?.engagement || null;
   const selectedActive = selected ? !selectedArchived && (!liveMode || Boolean(liveThread)) : false;
   const liveMessages: ChatMessage[] =
     selected && liveMode && liveThread
@@ -1783,6 +1794,20 @@ export default function ApplicationsWorkspace({
   const contextCard = selected ? contextCardFor(selected) : null;
   const showProposalInRail = Boolean(selected?.proposedTerms) && !hasOpeningMessage;
   const totalUnreadCount = liveMode ? totalUnread(unreadByThread) : 0;
+  const openEngagementReview = async (engagement: BackendEngagementSummary) => {
+    if (!backendAccessToken) return;
+    setActionError(null);
+    try {
+      const workspace = await getMyReviewWorkspace(backendAccessToken, mode);
+      const opportunity = [...workspace.opportunities, ...workspace.written].find(
+        (item) => item.engagement.id === engagement.id
+      );
+      if (!opportunity) throw new Error("This feedback opportunity is no longer available.");
+      setReviewOpportunity(opportunity);
+    } catch (reviewError) {
+      setActionError(reviewError instanceof Error ? reviewError.message : "Couldn’t open feedback.");
+    }
+  };
 
   // ---- Pipeline view: full-width, stage-first management board ------------
   // Within one mode+direction the interaction kind is uniform, so each board
@@ -2062,6 +2087,21 @@ export default function ApplicationsWorkspace({
                           {actionError}
                         </p>
                       ) : null}
+                      {selectedEngagement && backendAccessToken ? (
+                        <EngagementStatusRow
+                          engagement={selectedEngagement}
+                          accessToken={backendAccessToken}
+                          onChange={(engagement) => {
+                            setLiveThreads((current) => {
+                              const thread = current[selected.id];
+                              if (!thread) return current;
+                              return { ...current, [selected.id]: { ...thread, engagement } };
+                            });
+                            setReloadNonce((value) => value + 1);
+                          }}
+                          onReview={() => void openEngagementReview(selectedEngagement)}
+                        />
+                      ) : null}
                       {pendingAction ? (
                         <section className={`mb-6 rounded-xl ${SURFACE} p-4`}>
                           <p className="text-sm font-semibold text-white/90">{pendingAction.panelTitle}</p>
@@ -2268,6 +2308,33 @@ export default function ApplicationsWorkspace({
           }}
         />
       </div>
+      {backendAccessToken ? (
+        <ReviewDialog
+          open={Boolean(reviewOpportunity)}
+          opportunity={reviewOpportunity}
+          accessToken={backendAccessToken}
+          onClose={() => setReviewOpportunity(null)}
+          onSaved={(review) => {
+            if (!reviewOpportunity || !selected) return;
+            const reviewState = review.status === "submitted" ? "submitted" : "published";
+            setLiveThreads((current) => {
+              const thread = current[selected.id];
+              if (!thread?.engagement) return current;
+              return {
+                ...current,
+                [selected.id]: {
+                  ...thread,
+                  engagement: {
+                    ...thread.engagement,
+                    review_state: reviewState,
+                    available_actions: review.status === "submitted" && review.editable ? ["edit_review"] : [],
+                  },
+                },
+              };
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

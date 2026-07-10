@@ -317,14 +317,14 @@ async function ratingFor(
   const href = buildProfileReviewsHref(publicProfileSlug, "talent");
 
   if (dataSource.source === "mock") {
-    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href);
+    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href, "talent");
   }
 
   const profile = await getPublicProfile(publicProfileSlug).catch(() => null);
-  if (profile) return profileRatingSummaryFromProfile(profile, href);
+  if (profile) return profileRatingSummaryFromProfile(profile, href, "talent");
 
   if (dataSource.overrideSource !== "backend" && canUseLocalMockFallback()) {
-    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href);
+    return profileRatingSummaryFromProfile(getMockPublicTalentProfile(publicProfileSlug), href, "talent");
   }
   return null;
 }

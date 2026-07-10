@@ -29,8 +29,10 @@ export function profileRatingSummaryFromReviews(
 }
 
 export function profileRatingSummaryFromProfile(
-  profile: Pick<BackendPublicProfileResponse, "reviews"> | null | undefined,
-  href: string | null | undefined
+  profile: Pick<BackendPublicProfileResponse, "reviews" | "reviews_by_mode"> | null | undefined,
+  href: string | null | undefined,
+  mode?: ProfileViewForReviews
 ) {
-  return profileRatingSummaryFromReviews(profile?.reviews, href);
+  const scoped = mode ? profile?.reviews_by_mode?.[mode]?.summary : null;
+  return profileRatingSummaryFromReviews(scoped || profile?.reviews, href);
 }
