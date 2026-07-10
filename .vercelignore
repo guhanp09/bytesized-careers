@@ -31,6 +31,9 @@ app/dev/
 backend/
 tests/
 docs/
-seed/
+# The homepage imports this static role catalog at build time. Keep every other
+# seed entry out of the Vercel upload.
+seed/*
+!seed/roles_batch_1.json
 reference-homepage/
 .github/
