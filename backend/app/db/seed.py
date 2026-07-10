@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import TypedDict
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import hash_password
 from app.db import seed_data_personas as personas
 from app.db.seed_data_jobs import SEEDED_JOBS
 from app.db.seed_data_roles import seeded_roles
@@ -240,6 +242,29 @@ async def seed_personas_if_missing(session: AsyncSession) -> dict[str, dict[str,
     await session.commit()
     logger.info("seed_personas_complete", extra={"counts": counts})
     return counts
+
+
+async def disable_staging_persona_passwords(session: AsyncSession) -> int:
+    """Make deterministic demo personas unusable as shared staging accounts.
+
+    The public staging seed reuses persona-owned rows to demonstrate lifecycle
+    outcomes, but their development password is intentionally documented in the
+    repository. Replace it with an unlogged random credential after every staging
+    seed, including idempotent reruns over an existing database.
+    """
+
+    rows = await session.execute(
+        select(User).where(User.id.in_(personas.all_persona_user_ids()))
+    )
+    users = list(rows.scalars().all())
+    if not users:
+        return 0
+
+    disabled_hash = hash_password(secrets.token_urlsafe(48))
+    for user in users:
+        user.password_hash = disabled_hash
+    await session.commit()
+    return len(users)
 
 
 async def seed_applications_workspace(session: AsyncSession) -> dict[str, dict[str, int]]:

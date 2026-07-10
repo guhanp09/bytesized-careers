@@ -12,7 +12,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.config import settings  # noqa: E402
-from app.db.seed import reset_dev_seed_data, seed_full_demo  # noqa: E402
+from app.db.seed import (  # noqa: E402
+    disable_staging_persona_passwords,
+    reset_dev_seed_data,
+    seed_full_demo,
+)
 from app.db.session import SessionLocal, engine  # noqa: E402
 
 ALLOWED_ENVIRONMENTS = {"development", "staging", "test"}
@@ -62,9 +66,12 @@ def fail(message: str) -> NoReturn:
 
 async def run_seed(reset: bool) -> dict[str, object]:
     async with SessionLocal() as session:
-        if reset:
-            return await reset_dev_seed_data(session)
-        return await seed_full_demo(session)
+        result = await reset_dev_seed_data(session) if reset else await seed_full_demo(session)
+        if settings.app_env.strip().lower() == "staging":
+            result["staging_persona_logins_disabled"] = (
+                await disable_staging_persona_passwords(session)
+            )
+        return result
 
 
 async def main() -> None:
@@ -84,4 +91,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

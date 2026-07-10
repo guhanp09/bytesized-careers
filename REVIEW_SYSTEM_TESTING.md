@@ -58,6 +58,8 @@ Expected in-app notifications include start requested, work started, completion 
 
 Hosted staging uses real backend data and must not expose dev persona or data-source controls. The deterministic seed provides public published-review examples, but an interactive lifecycle test must use two real authenticated staging accounts. Do not deploy a shared persona password or public persona switcher.
 
+The staging seed automatically replaces every deterministic persona password with an unlogged random credential after seeding. The public examples remain visible, but the development persona password cannot be used to sign in on staging.
+
 ## Automated checks
 
 ```bash

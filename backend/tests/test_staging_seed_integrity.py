@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db import seed_data_personas as personas
 from app.db.base import Base
-from app.db.seed import seed_full_demo
+from app.core.security import verify_password
+from app.db.seed import disable_staging_persona_passwords, seed_full_demo
 from app.db.seed_data_jobs import SEEDED_JOBS
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
@@ -191,5 +192,32 @@ async def test_full_staging_seed_recovers_from_partial_users_and_is_idempotent(
             await _assert_foreign_keys_resolve(session)
 
         assert second_counts == first_counts
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_staging_persona_passwords_are_disabled_after_seeding(tmp_path: Path) -> None:
+    engine, Session = await _create_seed_database(tmp_path)
+    try:
+        async with Session() as session:
+            await seed_full_demo(session)
+            persona_id = personas.persona_user_id("recruiter-active")
+            persona = await session.get(User, persona_id)
+            assert persona is not None
+            assert verify_password(personas.DEV_PERSONA_PASSWORD, persona.password_hash)
+
+            disabled = await disable_staging_persona_passwords(session)
+            assert disabled == len(personas.build_persona_users())
+
+        async with Session() as session:
+            persona = await session.get(User, persona_id)
+            assert persona is not None
+            assert not verify_password(personas.DEV_PERSONA_PASSWORD, persona.password_hash)
+
+            # Idempotent reruns continue to invalidate the known development password.
+            assert await disable_staging_persona_passwords(session) == disabled
+            await session.refresh(persona)
+            assert not verify_password(personas.DEV_PERSONA_PASSWORD, persona.password_hash)
     finally:
         await engine.dispose()
