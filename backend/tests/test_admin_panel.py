@@ -185,7 +185,7 @@ async def test_suspension_locks_account_and_hides_public_content(client: AsyncCl
 
 async def test_admin_accounts_cannot_be_suspended(client: AsyncClient) -> None:
     admin = await _admin_token(client)
-    me_listing = await client.get("/api/v1/admin/users?q=dev-admin", headers=_auth(admin))
+    me_listing = await client.get("/api/v1/admin/users?q=dev_admin", headers=_auth(admin))
     admin_id = me_listing.json()["items"][0]["id"]
     response = await client.post(
         f"/api/v1/admin/users/{admin_id}/suspend", headers=_auth(admin), json={"reason": "nope"}

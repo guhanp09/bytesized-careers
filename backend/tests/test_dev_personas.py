@@ -64,6 +64,14 @@ async def test_persona_relationship_data_serializes_through_read_schemas(client:
     # that the model rejects — a failure only visible when the lists are fetched.
     assert (await client.post(SEED_URL, json={"scenario": "full_demo"})).status_code == 200
 
+    recruiter_profile = await client.get("/api/v1/users/dev_recruiter/public-profile")
+    assert recruiter_profile.status_code == 200, recruiter_profile.text
+    assert recruiter_profile.json()["reviews_by_mode"]["hiring"]["summary"]["review_count"] == 1
+
+    talent_profile = await client.get("/api/v1/users/dev_notify/public-profile")
+    assert talent_profile.status_code == 200, talent_profile.text
+    assert talent_profile.json()["reviews_by_mode"]["talent"]["summary"]["review_count"] == 1
+
     _, recruiter_token = await _login(client, "recruiter-active")
     recruiter_headers = {"Authorization": f"Bearer {recruiter_token}"}
     received = await client.get("/api/v1/me/applications/received", headers=recruiter_headers)

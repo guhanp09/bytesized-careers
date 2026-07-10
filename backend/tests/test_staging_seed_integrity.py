@@ -30,6 +30,7 @@ from app.models import (
     TalentListing,
     User,
 )
+from app.services.profile_rules import validate_username_format
 
 
 async def _create_seed_database(
@@ -143,6 +144,17 @@ async def test_full_staging_seed_is_fk_safe_on_a_fresh_database(tmp_path: Path) 
             )
             assert await _count_rows(session, Engagement) == len(personas.build_persona_engagements()) == 8
             assert await _count_rows(session, EngagementReview) == len(personas.build_persona_engagement_reviews()) == 3
+            seeded_persona_users = (
+                await session.execute(select(User).where(User.id.in_(personas.all_persona_user_ids())))
+            ).scalars().all()
+            expected_usernames = {
+                str(payload["id"]): str(payload["username"])
+                for payload in personas.build_persona_users()
+            }
+            assert all(validate_username_format(user.username or "") for user in seeded_persona_users)
+            assert {
+                str(user.id): user.username for user in seeded_persona_users
+            } == expected_usernames
     finally:
         await engine.dispose()
 

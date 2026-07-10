@@ -55,7 +55,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "new-empty",
         "label": "New empty user",
-        "username": "dev-new",
+        "username": "dev_new",
         "account_type": "TALENT",
         "onboarding_intent": "DECIDE_LATER",
         "description": "Fresh account: empty profile, no listings/jobs/portfolio. Tests onboarding + empty states.",
@@ -63,7 +63,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "talent-complete",
         "label": "Talent — complete profile",
-        "username": "dev-talent-pro",
+        "username": "dev_talent_pro",
         "account_type": "TALENT",
         "onboarding_intent": "LOOKING_FOR_WORK",
         "description": "Full talent profile, portfolio, a published listing, sent applications, received hiring requests.",
@@ -71,7 +71,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "talent-incomplete",
         "label": "Talent — incomplete profile",
-        "username": "dev-talent-wip",
+        "username": "dev_talent_wip",
         "account_type": "TALENT",
         "onboarding_intent": "LOOKING_FOR_WORK",
         "description": "Minimal talent profile, no portfolio, missing tools/niches. Tests the completion checklist.",
@@ -79,7 +79,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "recruiter-active",
         "label": "Recruiter — active jobs",
-        "username": "dev-recruiter",
+        "username": "dev_recruiter",
         "account_type": "EMPLOYER",
         "onboarding_intent": "HIRING_CREATOR_TALENT",
         "description": "Verified hiring identity, several live jobs, received applications, saved talent, sent hiring requests.",
@@ -87,7 +87,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "recruiter-drafts",
         "label": "Recruiter — drafts/access pending",
-        "username": "dev-recruiter-wip",
+        "username": "dev_recruiter_wip",
         "account_type": "EMPLOYER",
         "onboarding_intent": "HIRING_CREATOR_TALENT",
         "description": "Job drafts, a pending channel verification, and a talent-listing draft. Tests drafts + access states.",
@@ -95,7 +95,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "both-sides",
         "label": "Both sides user",
-        "username": "dev-both-sides",
+        "username": "dev_both_sides",
         "account_type": "BOTH",
         "onboarding_intent": "BOTH",
         "description": "Hires and gets hired on one login: talent listing + posted job, sent + received applications/requests.",
@@ -103,7 +103,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "admin",
         "label": "Admin",
-        "username": "dev-admin",
+        "username": "dev_admin",
         "account_type": "ADMIN",
         "onboarding_intent": "DECIDE_LATER",
         "description": "Admin account with queued moderation reports. (Admin UI is backend-only today.)",
@@ -111,7 +111,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     {
         "key": "notifications",
         "label": "Notifications test user",
-        "username": "dev-notify",
+        "username": "dev_notify",
         "account_type": "TALENT",
         "onboarding_intent": "LOOKING_FOR_WORK",
         "description": "A spread of read/unread notifications across event types. Tests the bell + notifications page.",

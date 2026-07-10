@@ -14,10 +14,10 @@ The command is idempotent and inserts only deterministic demo records. It refuse
 
 Local persona login is available through the existing dev persona tools. The useful review personas are:
 
-- `Recruiter — active jobs` (`dev-recruiter`): owns all seeded review engagements.
-- `Talent — incomplete profile` (`dev-talent-wip`): has start-pending, completion-pending, and pre-start-cancelled examples.
-- `Both sides user` (`dev-both-sides`): has active and completed review-opportunity examples.
-- `Notifications test user` (`dev-notify`): has blind-submitted, reciprocal-published, and ended-after-start examples.
+- `Recruiter — active jobs` (`dev_recruiter`): owns all seeded review engagements.
+- `Talent — incomplete profile` (`dev_talent_wip`): has start-pending, completion-pending, and pre-start-cancelled examples.
+- `Both sides user` (`dev_both_sides`): has active and completed review-opportunity examples.
+- `Notifications test user` (`dev_notify`): has blind-submitted, reciprocal-published, and ended-after-start examples.
 
 ## Seeded states
 

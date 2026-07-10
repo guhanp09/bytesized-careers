@@ -218,7 +218,25 @@ async def seed_personas_if_missing(session: AsyncSession) -> dict[str, dict[str,
     """Create the dev login personas and everything they own (insert order is FK-safe)."""
 
     counts: dict[str, dict[str, int]] = {}
-    counts["users"] = await _insert_missing(session, User, personas.build_persona_users())
+    user_payloads = personas.build_persona_users()
+    counts["users"] = await _insert_missing(session, User, user_payloads)
+    await session.flush()
+
+    # Older persona fixtures used hyphenated handles, which the public username
+    # contract rejects. Reconcile only deterministic seed-owned users so rerunning
+    # the staging seed repairs existing databases without touching real accounts.
+    seeded_user_rows = await session.execute(
+        select(User).where(User.id.in_([payload["id"] for payload in user_payloads]))
+    )
+    seeded_users_by_id = {row.id: row for row in seeded_user_rows.scalars().all()}
+    usernames_updated = 0
+    for payload in user_payloads:
+        row = seeded_users_by_id.get(payload["id"])
+        desired_username = str(payload["username"])
+        if row is not None and row.username != desired_username:
+            row.username = desired_username
+            usernames_updated += 1
+    counts["users"]["updated"] = usernames_updated
     await session.flush()
 
     counts["hiring_identities"] = await _insert_missing(
