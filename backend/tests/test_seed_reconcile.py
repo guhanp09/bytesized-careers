@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
@@ -15,7 +15,17 @@ from app.models import Job, TalentListing
 async def test_seed_reconciles_first_message_requirements_onto_existing_rows(tmp_path) -> None:
     # An isolated, throwaway DB so this never contaminates the shared test fixtures.
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'reconcile.db'}", future=True)
-    Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    event.listen(
+        engine.sync_engine,
+        "connect",
+        lambda dbapi_connection, _: dbapi_connection.execute("PRAGMA foreign_keys=ON"),
+    )
+    Session = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
     job_id = job_stable_uuid("job_1")
     listing_id = talent_stable_uuid("talent_01")
 

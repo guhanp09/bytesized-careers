@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db import seed_data_personas as personas
 from app.db.seed_data_jobs import SEEDED_JOBS
-from app.db.seed_data_jobs import SEED_NAMESPACE as JOBS_SEED_NAMESPACE
 from app.db.seed_data_roles import seeded_roles
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
@@ -94,6 +93,11 @@ async def seed_talent_from_seed_data_if_missing(session: AsyncSession) -> SeedRe
         if user_id in existing_user_ids:
             continue
         session.add(User(**payload))
+
+    # SessionLocal deliberately disables autoflush. Flush parent users before
+    # inserting the listings that reference them so fresh Postgres/Neon databases
+    # never observe an unresolved owner_user_id.
+    await session.flush()
 
     listing_ids = [UUID(str(item["id"])) for item in SEEDED_TALENT_LISTINGS]
     existing_listing_rows = await session.execute(select(TalentListing).where(TalentListing.id.in_(listing_ids)))
@@ -209,16 +213,26 @@ async def seed_personas_if_missing(session: AsyncSession) -> dict[str, dict[str,
 
     counts: dict[str, dict[str, int]] = {}
     counts["users"] = await _insert_missing(session, User, personas.build_persona_users())
+    await session.flush()
+
     counts["hiring_identities"] = await _insert_missing(
         session, HiringIdentity, personas.build_persona_hiring_identities()
     )
+    await session.flush()
+
     counts["talent_listings"] = await _insert_missing(
         session, TalentListing, personas.build_persona_talent_listings()
     )
+    await session.flush()
+
     counts["jobs"] = await _insert_missing(session, Job, personas.build_persona_jobs())
+    await session.flush()
+
     counts["portfolio_items"] = await _insert_missing(
         session, PortfolioItem, personas.build_persona_portfolio_items()
     )
+    await session.flush()
+
     await session.commit()
     logger.info("seed_personas_complete", extra={"counts": counts})
     return counts
@@ -229,11 +243,13 @@ async def seed_applications_workspace(session: AsyncSession) -> dict[str, dict[s
     counts = {
         "applications": await _insert_missing(
             session, JobApplication, personas.build_persona_applications()
-        ),
-        "interests": await _insert_missing(
-            session, TalentInterest, personas.build_persona_interests()
-        ),
+        )
     }
+    await session.flush()
+    counts["interests"] = await _insert_missing(
+        session, TalentInterest, personas.build_persona_interests()
+    )
+    await session.flush()
     await session.commit()
     return counts
 
@@ -251,6 +267,7 @@ async def seed_notifications_scenario(session: AsyncSession) -> dict[str, dict[s
             session, Notification, personas.build_persona_notifications()
         )
     }
+    await session.flush()
     await session.commit()
     return counts
 
@@ -258,11 +275,13 @@ async def seed_notifications_scenario(session: AsyncSession) -> dict[str, dict[s
 async def seed_saved_items(session: AsyncSession) -> dict[str, dict[str, int]]:
     await seed_personas_if_missing(session)
     counts = {
-        "saved_jobs": await _insert_missing(session, SavedJob, personas.build_persona_saved_jobs()),
-        "saved_talent": await _insert_missing(
-            session, SavedTalentListing, personas.build_persona_saved_talent()
-        ),
+        "saved_jobs": await _insert_missing(session, SavedJob, personas.build_persona_saved_jobs())
     }
+    await session.flush()
+    counts["saved_talent"] = await _insert_missing(
+        session, SavedTalentListing, personas.build_persona_saved_talent()
+    )
+    await session.flush()
     await session.commit()
     return counts
 
@@ -275,6 +294,7 @@ async def seed_verification_states(session: AsyncSession) -> dict[str, dict[str,
 async def seed_reports_scenario(session: AsyncSession) -> dict[str, dict[str, int]]:
     await seed_personas_if_missing(session)
     counts = {"reports": await _insert_missing(session, Report, personas.build_persona_reports())}
+    await session.flush()
     await session.commit()
     return counts
 
@@ -283,8 +303,8 @@ async def seed_full_demo(session: AsyncSession) -> dict[str, object]:
     """One deterministic dataset: roles + marketplace demo + all personas + relationships."""
 
     roles = await seed_roles_if_missing(session)
-    marketplace = await seed_marketplace_demo_data_if_missing(session)
     persona_counts = await seed_personas_if_missing(session)
+    marketplace = await seed_marketplace_demo_data_if_missing(session)
     applications = await seed_applications_workspace(session)
     saved = await seed_saved_items(session)
     notifications = await seed_notifications_scenario(session)
