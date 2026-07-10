@@ -116,5 +116,6 @@ test("the dev API route and header switch use the shared cookie/source contract"
   assert.match(route, /sourceFromBody/);
   assert.match(header, /<DevDataSourceSwitch \/>/);
   assert.match(switcher, /\/api\/dev\/data-source/);
+  assert.match(switcher, /if \(!CLIENT_SWITCH_ENABLED\) return/);
   assert.match(switcher, /router\.refresh\(\)/);
 });

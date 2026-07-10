@@ -3,7 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import type { MarketplaceDataSource, MarketplaceDataSourceState } from "../../lib/devDataSource";
+import {
+  evaluateDevDataSwitchAllowed,
+  type MarketplaceDataSource,
+  type MarketplaceDataSourceState,
+} from "../../lib/devDataSource";
 
 type Status = MarketplaceDataSourceState & {
   error?: string;
@@ -14,12 +18,20 @@ const LABELS: Record<MarketplaceDataSource, string> = {
   mock: "Mock",
 };
 
+const CLIENT_SWITCH_ENABLED = evaluateDevDataSwitchAllowed({
+  NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
+  NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH: process.env.NEXT_PUBLIC_ENABLE_DEV_DATA_SWITCH,
+  NODE_ENV: process.env.NODE_ENV,
+});
+
 export default function DevDataSourceSwitch() {
   const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
   const [busySource, setBusySource] = useState<MarketplaceDataSource | null>(null);
 
   useEffect(() => {
+    if (!CLIENT_SWITCH_ENABLED) return;
+
     let mounted = true;
     void fetch("/api/dev/data-source", { cache: "no-store" })
       .then(async (response) => {
@@ -94,4 +106,3 @@ export default function DevDataSourceSwitch() {
     </div>
   );
 }
-
