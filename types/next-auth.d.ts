@@ -15,6 +15,20 @@ declare module "next-auth" {
     backendUserId?: string;
     backendAccessTokenExpiresAt?: number;
     backendAuthError?: "refresh_failed";
+    qaPersonaAction?: "switch" | "exit";
+    qaPersonaKey?: string;
+    qaPersona?: {
+      key: string;
+      sessionId: string;
+      displayName: string;
+      accountType: CreatorJobsAccountType;
+    };
+    qaController?: {
+      backendUserId?: string;
+      email?: string;
+      name?: string;
+    };
+    qaPersonaError?: "switch_failed" | "session_expired";
     user?: {
       name?: string | null;
       email?: string | null;
@@ -60,5 +74,20 @@ declare module "next-auth/jwt" {
     onboardingIntent?: CreatorJobsOnboardingIntent;
     onboardingIntentSelectedAt?: string | null;
     profile?: Record<string, unknown>;
+    qaPersonaAccessToken?: string;
+    qaPersonaAccessTokenExpiresAt?: number;
+    qaPersonaKey?: string;
+    qaPersonaSessionId?: string;
+    qaPersonaUser?: {
+      id: string;
+      email: string;
+      username?: string | null;
+      display_name?: string | null;
+      account_type?: CreatorJobsAccountType;
+      account_type_selected_at?: string | null;
+      onboarding_intent?: CreatorJobsOnboardingIntent;
+      onboarding_intent_selected_at?: string | null;
+    };
+    qaPersonaError?: "switch_failed" | "session_expired";
   }
 }

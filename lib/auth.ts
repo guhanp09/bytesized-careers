@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import {
+  BACKEND_TOKEN_REFRESH_BUFFER_MS,
   applyBackendLoginPayload,
   buildSafeBackendSessionFields,
   markBackendRefreshFailed,
@@ -9,6 +10,7 @@ import {
   shouldRefreshBackendToken,
   type BackendLoginPayload,
 } from "./backendTokenRefresh";
+import { isQaPersonaUiAllowed } from "./qaPersonas";
 
 const getBackendBaseUrl = () => {
   const raw =
@@ -49,6 +51,61 @@ type BackendLoginResponse = BackendLoginPayload & {
   access_token: string;
   token_type: string;
   user: BackendAuthUser;
+};
+
+type BackendQaSessionResponse = {
+  access_token: string;
+  token_type: string;
+  access_token_expires_at?: number | null;
+  qa_session_id: string;
+  persona_key: string;
+  user: BackendAuthUser;
+};
+
+const requestQaPersonaSession = async ({
+  path,
+  accessToken,
+  body,
+}: {
+  path: "/qa/session/switch" | "/qa/session/refresh" | "/qa/session/exit";
+  accessToken: string;
+  body: Record<string, unknown>;
+}): Promise<BackendQaSessionResponse | null> => {
+  const response = await fetch(`${getBackendBaseUrl()}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`QA session request failed with ${response.status}`);
+  if (path === "/qa/session/exit") return null;
+  return (await response.json()) as BackendQaSessionResponse;
+};
+
+const clearQaPersonaState = (token: Record<string, unknown>) => {
+  delete token.qaPersonaAccessToken;
+  delete token.qaPersonaAccessTokenExpiresAt;
+  delete token.qaPersonaKey;
+  delete token.qaPersonaSessionId;
+  delete token.qaPersonaUser;
+};
+
+const applyQaPersonaState = (
+  token: Record<string, unknown>,
+  payload: BackendQaSessionResponse
+) => {
+  token.qaPersonaAccessToken = payload.access_token;
+  token.qaPersonaAccessTokenExpiresAt =
+    typeof payload.access_token_expires_at === "number"
+      ? payload.access_token_expires_at * 1000
+      : undefined;
+  token.qaPersonaKey = payload.persona_key;
+  token.qaPersonaSessionId = payload.qa_session_id;
+  token.qaPersonaUser = payload.user;
+  delete token.qaPersonaError;
 };
 
 type CredentialsAuthUser = {
@@ -365,6 +422,74 @@ export const authOptions: NextAuthOptions = {
             console.warn(`[auth] Backend token refresh failed: ${message}`);
           }
           markBackendRefreshFailed(token);
+          clearQaPersonaState(token);
+        }
+      }
+
+      const qaAction =
+        trigger === "update" && session?.qaPersonaAction
+          ? session.qaPersonaAction
+          : undefined;
+      if (!isQaPersonaUiAllowed()) {
+        clearQaPersonaState(token);
+      } else if (qaAction === "exit") {
+        try {
+          if (
+            typeof token.qaPersonaAccessToken === "string" &&
+            typeof token.qaPersonaSessionId === "string" &&
+            typeof token.qaPersonaKey === "string"
+          ) {
+            await requestQaPersonaSession({
+              path: "/qa/session/exit",
+              accessToken: token.qaPersonaAccessToken,
+              body: {
+                qa_session_id: token.qaPersonaSessionId,
+                persona_key: token.qaPersonaKey,
+              },
+            });
+          }
+        } catch {
+          // Exiting locally is still safer than trapping the controller in an
+          // expired persona session. The backend token is short lived anyway.
+        }
+        clearQaPersonaState(token);
+      } else if (
+        qaAction === "switch" &&
+        typeof session.qaPersonaKey === "string" &&
+        typeof token.backendAccessToken === "string"
+      ) {
+        try {
+          const payload = await requestQaPersonaSession({
+            path: "/qa/session/switch",
+            accessToken: token.backendAccessToken,
+            body: { persona_key: session.qaPersonaKey },
+          });
+          if (payload) applyQaPersonaState(token, payload);
+        } catch {
+          clearQaPersonaState(token);
+          token.qaPersonaError = "switch_failed";
+        }
+      } else if (
+        typeof token.qaPersonaAccessToken === "string" &&
+        typeof token.qaPersonaAccessTokenExpiresAt === "number" &&
+        token.qaPersonaAccessTokenExpiresAt <= Date.now() + BACKEND_TOKEN_REFRESH_BUFFER_MS &&
+        typeof token.qaPersonaSessionId === "string" &&
+        typeof token.qaPersonaKey === "string" &&
+        typeof token.backendAccessToken === "string"
+      ) {
+        try {
+          const payload = await requestQaPersonaSession({
+            path: "/qa/session/refresh",
+            accessToken: token.backendAccessToken,
+            body: {
+              persona_key: token.qaPersonaKey,
+              qa_session_id: token.qaPersonaSessionId,
+            },
+          });
+          if (payload) applyQaPersonaState(token, payload);
+        } catch {
+          clearQaPersonaState(token);
+          token.qaPersonaError = "session_expired";
         }
       }
       return token;
@@ -399,6 +524,56 @@ export const authOptions: NextAuthOptions = {
         onboardingIntentSelectedAt: token.onboardingIntentSelectedAt as string | null | undefined,
         name: (token.displayName as string | undefined) || session.user?.name || undefined,
       };
+
+      const qaUser = token.qaPersonaUser as BackendAuthUser | undefined;
+      if (
+        qaUser?.id &&
+        typeof token.qaPersonaAccessToken === "string" &&
+        typeof token.qaPersonaKey === "string" &&
+        typeof token.qaPersonaSessionId === "string"
+      ) {
+        session.qaController = {
+          backendUserId: token.backendUserId as string | undefined,
+          email: token.email as string | undefined,
+          name:
+            (token.displayName as string | undefined) ||
+            (token.name as string | undefined) ||
+            (token.email as string | undefined),
+        };
+        session.qaPersona = {
+          key: token.qaPersonaKey,
+          sessionId: token.qaPersonaSessionId,
+          displayName: qaUser.display_name || qaUser.username || qaUser.email,
+          accountType: qaUser.account_type || "TALENT",
+        };
+        session.qaPersonaError = token.qaPersonaError as
+          | "switch_failed"
+          | "session_expired"
+          | undefined;
+        session.backendAccessToken = token.qaPersonaAccessToken;
+        session.backendUserId = qaUser.id;
+        session.backendAccessTokenExpiresAt = token.qaPersonaAccessTokenExpiresAt as
+          | number
+          | undefined;
+        session.backendAuthError = undefined;
+        session.user = {
+          ...session.user,
+          userId: qaUser.id,
+          backendUserId: qaUser.id,
+          email: qaUser.email,
+          username: qaUser.username || undefined,
+          name: qaUser.display_name || qaUser.username || qaUser.email,
+          accountType: qaUser.account_type || "TALENT",
+          accountTypeSelectedAt: qaUser.account_type_selected_at || null,
+          onboardingIntent: qaUser.onboarding_intent || "DECIDE_LATER",
+          onboardingIntentSelectedAt: qaUser.onboarding_intent_selected_at || null,
+        };
+      } else {
+        session.qaPersonaError = token.qaPersonaError as
+          | "switch_failed"
+          | "session_expired"
+          | undefined;
+      }
       return session;
     },
   },

@@ -19,11 +19,16 @@ type DevEnv = {
   NEXTAUTH_URL?: string;
   NEXT_PUBLIC_BACKEND_URL?: string;
   FRONTEND_BASE_URL?: string;
+  ENABLE_QA_PERSONA_SWITCHER?: string;
 };
 
 const isLocalUrl = (value?: string) => Boolean(value && /localhost|127\.0\.0\.1/.test(value));
 
 export const evaluateDevToolsAllowed = (env: DevEnv): boolean => {
+  // The authenticated QA drawer supersedes the shared-password local panel in
+  // isolated QA runs. Keeping both visible would make the active identity
+  // ambiguous and could route a tester through the wrong switching mechanism.
+  if (/^(1|true|yes|on)$/i.test(env.ENABLE_QA_PERSONA_SWITCHER || "")) return false;
   // Any explicit production signal wins — never expose the tooling in production.
   if (
     env.APP_ENV === "production" ||
@@ -60,4 +65,5 @@ export const isDevToolsAllowed = (): boolean =>
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
     FRONTEND_BASE_URL: process.env.FRONTEND_BASE_URL,
+    ENABLE_QA_PERSONA_SWITCHER: process.env.ENABLE_QA_PERSONA_SWITCHER,
   });
