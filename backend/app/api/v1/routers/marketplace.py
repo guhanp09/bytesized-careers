@@ -1385,6 +1385,13 @@ async def bulk_update_talent_interest_status(
             actor_user_id=current_user.id,
             payload={"status": payload.status},
         )
+    await session.flush()
+    for interest in interests:
+        # Creating an engagement flushes the session and expires server-managed
+        # timestamp attributes on SQLite/Postgres. Refresh before Pydantic reads
+        # the row so bulk acceptance follows the same safe path as the single
+        # status endpoint instead of attempting async IO during serialization.
+        await session.refresh(interest)
     result = [
         await _interest_read(session, interest, current_user.id, sender_view=False)
         for interest in interests

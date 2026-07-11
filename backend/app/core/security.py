@@ -17,13 +17,20 @@ ACCESS_TOKEN_TYPE = "access"
 REFRESH_TOKEN_TYPE = "refresh"
 
 
-def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
+def create_access_token(
+    subject: str,
+    expires_delta: timedelta | None = None,
+    *,
+    additional_claims: dict[str, Any] | None = None,
+) -> str:
     expire = datetime.now(UTC) + (
         expires_delta
         if expires_delta is not None
         else timedelta(minutes=settings.jwt_access_token_expires_minutes)
     )
-    payload: dict[str, Any] = {"sub": subject, "exp": expire, "typ": ACCESS_TOKEN_TYPE}
+    payload: dict[str, Any] = dict(additional_claims or {})
+    # Callers cannot override the security-critical standard claims.
+    payload.update({"sub": subject, "exp": expire, "typ": ACCESS_TOKEN_TYPE})
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

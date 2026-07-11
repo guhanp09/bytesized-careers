@@ -13,6 +13,7 @@ from app.api.v1.routers.marketplace import router as marketplace_router
 from app.api.v1.routers.me import router as me_router
 from app.api.v1.routers.messaging import router as messaging_router
 from app.api.v1.routers.portfolio import router as portfolio_router
+from app.api.v1.routers.qa_personas import router as qa_personas_router
 from app.api.v1.routers.profile_completion import router as profile_completion_router
 from app.api.v1.routers.roles import router as roles_router
 from app.api.v1.routers.reviews import router as reviews_router
@@ -30,6 +31,7 @@ api_router.include_router(marketplace_router)
 api_router.include_router(me_router)
 api_router.include_router(messaging_router)
 api_router.include_router(portfolio_router)
+api_router.include_router(qa_personas_router)
 api_router.include_router(profile_completion_router)
 api_router.include_router(roles_router)
 api_router.include_router(reviews_router)

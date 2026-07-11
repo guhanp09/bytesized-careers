@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     media_root: str = Field(default=".local-data/media", alias="MEDIA_ROOT")
     media_base_path: str = Field(default="/media", alias="MEDIA_BASE_PATH")
 
+    # Controlled staging/test impersonation for deterministic QA personas. This
+    # is intentionally server-only: the frontend flag merely decides whether to
+    # mount the drawer, while these settings are the authorization boundary.
+    enable_qa_persona_switcher: bool = Field(
+        default=False, alias="ENABLE_QA_PERSONA_SWITCHER"
+    )
+    qa_persona_controller_emails: str = Field(
+        default="", alias="QA_PERSONA_CONTROLLER_EMAILS"
+    )
+    qa_persona_access_token_minutes: int = Field(
+        default=30, ge=5, le=120, alias="QA_PERSONA_ACCESS_TOKEN_MINUTES"
+    )
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: str | list[str] | None) -> list[str]:
@@ -72,6 +85,7 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS JSON value must be a list.")
             return [str(item).strip() for item in parsed if str(item).strip()]
         return [item.strip() for item in raw.split(",") if item.strip()]
+
 
     @field_validator("debug", mode="before")
     @classmethod

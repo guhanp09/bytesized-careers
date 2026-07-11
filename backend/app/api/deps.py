@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.account_types import isAdmin
 from app.core.security import TokenError, decode_access_token
+from app.core.qa_personas import (
+    is_qa_controller_email,
+    parse_qa_token_claims,
+    qa_persona_feature_enabled,
+    qa_session_is_revoked,
+)
 from app.db.session import get_db_session
+from app.db import seed_data_personas as qa_personas
 from app.models import Job, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.job_repository import JobRepository
@@ -70,6 +77,27 @@ async def _resolve_user_from_credentials(
         user_id = UUID(subject)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from exc
+
+    if "qa" in payload:
+        claims = parse_qa_token_claims(payload)
+        if claims is None or not qa_persona_feature_enabled():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid QA session")
+        if (
+            claims.persona_user_id != user_id
+            or claims.persona_key not in qa_personas.PERSONA_KEYS
+            or qa_personas.persona_user_id(claims.persona_key) != user_id
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid QA persona")
+        controller = (
+            await session.execute(select(User).where(User.id == claims.controller_user_id))
+        ).scalar_one_or_none()
+        if (
+            controller is None
+            or controller.suspended_at is not None
+            or not is_qa_controller_email(controller.email)
+            or await qa_session_is_revoked(session, claims.session_id)
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="QA session revoked")
 
     stmt = select(User).where(User.id == user_id)
     user = (await session.execute(stmt)).scalar_one_or_none()

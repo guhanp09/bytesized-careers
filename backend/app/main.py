@@ -15,6 +15,7 @@ from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
 from app.db.seed import seed_roles_if_missing
 from app.db.session import SessionLocal, engine
 from app.middleware.request_id import RequestIDMiddleware
+from app.middleware.qa_audit import QaPersonaAuditMiddleware
 
 validate_production_settings()
 configure_logging(settings.log_level)
@@ -38,11 +39,13 @@ app = FastAPI(
         {"name": "content-style", "description": "Content style reference endpoints"},
         {"name": "users", "description": "Public profile endpoints"},
         {"name": "reviews", "description": "Verified engagement and two-sided review endpoints"},
+        {"name": "qa", "description": "Allowlisted staging/test QA persona controls"},
         {"name": "dev", "description": "Development-only utility endpoints"},
     ],
 )
 
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(QaPersonaAuditMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins or ["http://localhost:3000"],

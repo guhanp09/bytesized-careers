@@ -272,7 +272,7 @@ async def disable_staging_persona_passwords(session: AsyncSession) -> int:
     """
 
     rows = await session.execute(
-        select(User).where(User.id.in_(personas.all_persona_user_ids()))
+        select(User).where(User.id.in_(personas.all_qa_seed_user_ids()))
     )
     users = list(rows.scalars().all())
     if not users:
@@ -406,7 +406,7 @@ async def reset_dev_seed_data(session: AsyncSession) -> dict[str, object]:
     if settings.app_env == "production":
         raise RuntimeError("reset_dev_seed_data is not allowed in production.")
 
-    persona_user_ids = personas.all_persona_user_ids()
+    persona_user_ids = personas.all_qa_seed_user_ids()
     seed_talent_user_ids = [UUID(str(item["id"])) for item in SEEDED_TALENT_USERS]
     target_user_ids = persona_user_ids + seed_talent_user_ids
     seed_job_ids = [UUID(str(item["id"])) for item in SEEDED_JOBS]

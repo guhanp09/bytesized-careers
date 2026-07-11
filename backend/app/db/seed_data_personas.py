@@ -1,14 +1,15 @@
 """Dev-only persona seed data.
 
-Realistic, deterministic CreatorJobs personas used by the dev persona switcher
-(see ``backend/app/api/v1/routers/dev_personas.py``). Every record uses a stable
+Realistic, deterministic CreatorJobs personas used by local dev workflows and the
+controlled QA persona system. Every record uses a stable
 ``uuid5`` id derived from ``PERSONA_NAMESPACE`` so seeding is idempotent and reset
 can target exactly the rows we created — never arbitrary user data.
 
-Unlike the marketplace demo talent users (display-only, no credentials), these
-personas are real *logged-in-able* accounts: verified email + a shared known dev
-password, so a developer can switch between them with one click. They only ever
-exist in development/test because the seeders are environment-gated.
+Unlike display-only marketplace samples, these are real persisted users. Direct
+password login is development/test compatibility only; staging seed paths disable
+persona passwords and the QA controller receives short-lived impersonation tokens.
+They never become ordinary production accounts because seed and QA gates refuse
+production.
 
 No fake trust signals: ratings, response rates, and live viewer counts are never
 fabricated. Verification states appear only on the explicit verification persona.
@@ -86,11 +87,11 @@ PERSONA_DEFS: list[dict[str, str]] = [
     },
     {
         "key": "recruiter-drafts",
-        "label": "Recruiter — drafts/access pending",
-        "username": "dev_recruiter_wip",
+        "label": "BrightLab Media — agency",
+        "username": "dev_brightlab",
         "account_type": "EMPLOYER",
         "onboarding_intent": "HIRING_CREATOR_TALENT",
-        "description": "Job drafts, a pending channel verification, and a talent-listing draft. Tests drafts + access states.",
+        "description": "Agency operator with draft jobs and verified, pending, and failed represented identities.",
     },
     {
         "key": "both-sides",
@@ -102,7 +103,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
     },
     {
         "key": "admin",
-        "label": "Admin",
+        "label": "QA Moderator",
         "username": "dev_admin",
         "account_type": "ADMIN",
         "onboarding_intent": "DECIDE_LATER",
@@ -119,6 +120,7 @@ PERSONA_DEFS: list[dict[str, str]] = [
 ]
 
 PERSONA_KEYS = [item["key"] for item in PERSONA_DEFS]
+QA_FIXTURE_KEYS = ("suspended-fixture",)
 
 
 def persona_email(key: str) -> str:
@@ -234,17 +236,17 @@ def build_persona_users() -> list[dict[str, object]]:
     recruiter_drafts = _base_user("recruiter-drafts")
     recruiter_drafts.update(
         {
-            "display_name": "Science Daily",
-            "headline": "Setting up hiring for a science explainer channel",
+            "display_name": "BrightLab Media",
+            "headline": "Creator agency hiring for science, fitness, and education channels",
             "location": "Remote",
             "timezone": "IST",
-            "hiring_type": "own_channel",
+            "hiring_type": "agency",
             "hiring_primary_platform": "youtube",
             "hiring_platforms": ["youtube"],
             "hiring_niches": ["Science"],
             "hiring_formats": ["Long-form", "Motion graphics"],
             "hiring_website_or_social_url": "https://www.youtube.com/@sciencedaily",
-            "hiring_channels_or_pages_managed": "Science Daily (verification pending)",
+            "hiring_channels_or_pages_managed": "Science Daily, FitLab, BrightLab Education",
             "hiring_verification_status": "pending",
         }
     )
@@ -279,7 +281,7 @@ def build_persona_users() -> list[dict[str, object]]:
     admin = _base_user("admin")
     admin.update(
         {
-            "display_name": "Dev Admin",
+            "display_name": "QA Moderator",
             "headline": "Platform moderation (dev)",
             "location": "Remote",
         }
@@ -300,6 +302,26 @@ def build_persona_users() -> list[dict[str, object]]:
         }
     )
     users.append(notifications)
+
+    # Non-switchable moderation target. It exists only so QA can verify hidden
+    # profiles and suspended-account behavior without locking a usable persona.
+    suspended = {
+        "id": persona_user_id("suspended-fixture"),
+        "email": persona_email("suspended-fixture"),
+        "username": "qa_suspended",
+        "display_name": "Suspended QA Fixture",
+        "account_type": "TALENT",
+        "account_type_selected_at": SEED_TIME,
+        "onboarding_intent": "LOOKING_FOR_WORK",
+        "onboarding_intent_selected_at": SEED_TIME,
+        "password_hash": _password_hash(),
+        "email_verified_at": SEED_TIME,
+        "suspended_at": SEED_TIME,
+        "suspension_reason": "Deterministic moderation fixture",
+        "headline": "Non-switchable moderation test profile",
+        "created_at": SEED_TIME,
+    }
+    users.append(suspended)
 
     return users
 
@@ -337,12 +359,15 @@ def build_persona_hiring_identities() -> list[dict[str, object]]:
         _identity(
             "recruiter-drafts-pending",
             "recruiter-drafts",
+            type="represented",
             display_name="Science Daily",
             handle="@sciencedaily",
             url="https://www.youtube.com/@sciencedaily",
             verification_status="PENDING",
             verification_method="CODE_IN_DESCRIPTION",
             verification_code="CJ-DEV-SCI-2026",
+            is_agency_represented=True,
+            managed_by_agency_name="BrightLab Media",
         ),
         # An explicit failed-verification identity for the verification-states scenario.
         _identity(
@@ -358,6 +383,20 @@ def build_persona_hiring_identities() -> list[dict[str, object]]:
             verification_status="UNVERIFIED",
             verification_method="CODE_IN_DESCRIPTION",
             verification_last_error="Verification code not found in the page bio.",
+        ),
+        _identity(
+            "recruiter-drafts-verified",
+            "recruiter-drafts",
+            type="represented",
+            platform="youtube",
+            display_name="FitLab",
+            handle="@fitlab",
+            url="https://www.youtube.com/@fitlab",
+            is_agency_represented=True,
+            managed_by_agency_name="BrightLab Media",
+            verification_status="VERIFIED",
+            verification_method="CODE_IN_DESCRIPTION",
+            verified_at=SEED_TIME,
         ),
         _identity(
             "both-sides",
@@ -485,6 +524,31 @@ def build_persona_talent_listings() -> list[dict[str, object]]:
             timezone="IST",
             description="Draft listing — still adding tools, rate, and availability.",
             status="draft",
+        ),
+        _listing(
+            "notifications",
+            "notifications",
+            title="Hindi explainer scriptwriter for science and business channels",
+            primary_role="Script writer",
+            experience_years=3,
+            roles=["Script writer", "Researcher"],
+            niche="Education",
+            content_niches=["Education", "Science", "Business"],
+            content_genres=["Explainers"],
+            formats=["Long-form", "Shorts"],
+            platforms=["YouTube", "Instagram"],
+            tools=["Google Docs", "Notion"],
+            languages=["Hindi", "English"],
+            work_mode="remote",
+            location="Delhi, India",
+            timezone="IST",
+            availability_status="available",
+            rate_note="Contact for pricing",
+            turnaround="3–5 days",
+            description="Research-led Hindi scripts with clear hooks, simple explanations, and creator-ready structure.",
+            first_message_requirements=["project_brief", "channel_or_brand_link", "custom_instruction"],
+            first_message_custom_instruction="Share the topic and one reference whose tone you want to match.",
+            status="published",
         ),
     ]
 
@@ -678,6 +742,19 @@ def build_persona_jobs() -> list[dict[str, object]]:
             content_niches=["History"],
             status="draft",
         ),
+        # Non-public listing retained for moderation and soft-delete QA.
+        _job(
+            "hidden-moderation",
+            "recruiter-active",
+            title="Hidden moderation fixture — do not publish",
+            category="Editing",
+            budget_amount=10000,
+            platforms=["youtube"],
+            work_mode="remote",
+            about_channel="Deterministic soft-deleted listing for moderation QA.",
+            status="published",
+            deleted_at=SEED_TIME,
+        ),
     ]
 
 
@@ -785,6 +862,10 @@ def _application(
     cover_note: str,
     answers: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    applicant_user = next(
+        user for user in build_persona_users()
+        if user["id"] == persona_user_id(applicant)
+    )
     return {
         "id": persona_uuid(f"application:{applicant}:{job_key}"),
         "job_id": persona_uuid(f"job:{job_key}"),
@@ -793,7 +874,14 @@ def _application(
         "cover_note": cover_note,
         "portfolio_item_ids": [],
         "first_message_answers": answers or {},
-        "applicant_snapshot": {},
+        "applicant_snapshot": {
+            "display_name": applicant_user.get("display_name"),
+            "username": applicant_user.get("username"),
+            "headline": applicant_user.get("headline"),
+            "skills": applicant_user.get("skills") or [],
+            "location": applicant_user.get("location"),
+            "timezone": applicant_user.get("timezone"),
+        },
         "status": status,
         "created_at": SEED_TIME,
     }
@@ -873,6 +961,38 @@ def build_persona_applications() -> list[dict[str, object]]:
                 "tools_workflow": ["Premiere Pro", "Frame.io"],
             },
         ),
+        _application(
+            "new-empty", "recruiter-active-1", "recruiter-active", "reviewing",
+            "I am building my first public portfolio and can complete a short paid editing test.",
+            answers={
+                "expected_rate": {"amount": "9000", "unit": "per video"},
+                "turnaround": {"value": "6", "unit": "days"},
+                "fit_note": "I am ready to demonstrate my workflow through a scoped paid test.",
+            },
+        ),
+        _application(
+            "talent-incomplete", "both-sides-1", "both-sides", "interviewing",
+            "I am early in my career and would like to complete a short paid editing test.",
+            answers={
+                "expected_rate": {"amount": "8000", "unit": "per episode"},
+                "turnaround": {"value": "7", "unit": "days"},
+                "tools_workflow": ["Premiere Pro"],
+            },
+        ),
+        _application(
+            "notifications", "both-sides-1", "both-sides", "archived",
+            "I write interview research briefs and can also support chapter planning.",
+            answers={
+                "expected_rate": {"amount": "6000", "unit": "per episode"},
+                "turnaround": {"value": "4", "unit": "days"},
+                "tools_workflow": ["Google Docs", "Notion"],
+            },
+        ),
+        _application(
+            "new-empty", "recruiter-active-2", "recruiter-active", "withdrawn",
+            "Historical withdrawn application used to verify empty-profile edge handling.",
+            answers={},
+        ),
     ]
     # Review-system scenarios. These are real hired source records so Inbox and
     # Pipeline exercise the same contracts as user-created engagements.
@@ -885,6 +1005,7 @@ def build_persona_applications() -> list[dict[str, object]]:
         ("notifications", "recruiter-active-2", "recruiter-active", "published-reviews"),
         ("talent-incomplete", "recruiter-active-3", "recruiter-active", "cancelled"),
         ("notifications", "recruiter-active-3", "recruiter-active", "ended-after-start"),
+        ("notifications", "hidden-moderation", "recruiter-active", "moderated-review"),
     ):
         applications.append(
             _application(
@@ -916,6 +1037,7 @@ REVIEW_SCENARIOS: tuple[dict[str, object], ...] = (
     {"key": "published-reviews", "applicant": "notifications", "job": "recruiter-active-2", "status": "completed"},
     {"key": "cancelled", "applicant": "talent-incomplete", "job": "recruiter-active-3", "status": "cancelled_before_start"},
     {"key": "ended-after-start", "applicant": "notifications", "job": "recruiter-active-3", "status": "ended_after_start"},
+    {"key": "moderated-review", "applicant": "notifications", "job": "hidden-moderation", "status": "completed"},
 )
 
 
@@ -979,23 +1101,31 @@ def build_persona_engagement_reviews() -> list[dict[str, object]]:
     def review(
         key: str,
         direction: str,
-        reviewer: str,
+        reviewer: str | None,
         reviewee: str,
         status: str,
         rating: int,
         feedback: str,
     ) -> dict[str, object]:
-        reviewer_user = next(user for user in build_persona_users() if user["id"] == persona_user_id(reviewer))
-        published_at = SEED_TIME + timedelta(days=8) if status == "published" else None
-        return {
+        reviewer_user = (
+            next(user for user in build_persona_users() if user["id"] == persona_user_id(reviewer))
+            if reviewer is not None
+            else None
+        )
+        published_at = SEED_TIME + timedelta(days=8) if status in {"published", "hidden"} else None
+        row: dict[str, object] = {
             "id": persona_uuid(f"engagement-review:{key}:{direction}"),
             "engagement_id": persona_uuid(f"engagement:{key}"),
-            "reviewer_user_id": persona_user_id(reviewer),
+            "reviewer_user_id": persona_user_id(reviewer) if reviewer is not None else None,
             "reviewee_user_id": persona_user_id(reviewee),
             "direction": direction,
             "reviewer_snapshot": {
-                "display_name": reviewer_user.get("display_name") or reviewer_user.get("username"),
-                "avatar_url": reviewer_user.get("avatar_url"),
+                "display_name": (
+                    reviewer_user.get("display_name") or reviewer_user.get("username")
+                    if reviewer_user is not None
+                    else "Former collaborator"
+                ),
+                "avatar_url": reviewer_user.get("avatar_url") if reviewer_user is not None else None,
                 "role": "Hiring team" if direction == "recruiter_to_talent" else "Creator talent",
             },
             "overall_rating": rating,
@@ -1006,6 +1136,13 @@ def build_persona_engagement_reviews() -> list[dict[str, object]]:
             "published_at": published_at,
             "created_at": SEED_TIME + timedelta(days=8),
         }
+        if status == "hidden":
+            row.update(
+                hidden_at=SEED_TIME + timedelta(days=9),
+                hidden_by_user_id=persona_user_id("admin"),
+                hidden_reason="Deterministic hidden review for moderation QA.",
+            )
+        return row
 
     rows.append(
         review(
@@ -1040,6 +1177,30 @@ def build_persona_engagement_reviews() -> list[dict[str, object]]:
             ),
         ]
     )
+    # One moderated review and one published review whose author no longer exists
+    # exercise hidden-content exclusion and the "Former collaborator" fallback.
+    rows.extend(
+        [
+            review(
+                "moderated-review",
+                "talent_to_recruiter",
+                "notifications",
+                "recruiter-active",
+                "hidden",
+                2,
+                "This review stays out of public aggregates while moderation is active.",
+            ),
+            review(
+                "moderated-review",
+                "recruiter_to_talent",
+                None,
+                "notifications",
+                "published",
+                4,
+                "Clear communication and a thoughtful final handoff.",
+            ),
+        ]
+    )
     return rows
 
 
@@ -1070,6 +1231,7 @@ def build_persona_review_messages() -> list[dict[str, object]]:
         "published-reviews": "Engagement feedback published.",
         "cancelled": "Engagement cancelled before work started.",
         "ended-after-start": "Engagement ended after work began.",
+        "moderated-review": "Engagement feedback entered moderation.",
     }
     return [
         {
@@ -1104,12 +1266,14 @@ def _interest(
     status: str,
     note: str,
     answers: dict[str, object] | None = None,
+    job_key: str | None = None,
 ) -> dict[str, object]:
     return {
         "id": persona_uuid(f"interest:{recruiter}:{listing_key}"),
         "talent_listing_id": persona_uuid(f"listing:{listing_key}"),
         "recruiter_user_id": persona_user_id(recruiter),
         "owner_user_id": persona_user_id(owner),
+        "job_id": persona_uuid(f"job:{job_key}") if job_key else None,
         "note": note,
         "first_message_answers": answers or {},
         "status": status,
@@ -1139,6 +1303,7 @@ def build_persona_interests() -> list[dict[str, object]]:
                 "start_availability": "Within 2 weeks",
                 "fit_note": "Your finance and education pacing work looks relevant to our interview edits.",
             },
+            job_key="both-sides-1",
         ),
         # recruiter-active reaches out to both-sides' listing → both-sides received a hiring request.
         _interest(
@@ -1150,6 +1315,41 @@ def build_persona_interests() -> list[dict[str, object]]:
                 "turnaround": {"value": "5", "unit": "days"},
                 "fit_note": "Your interview-production background matches the format we publish weekly.",
             },
+            job_key="recruiter-active-1",
+        ),
+        _interest(
+            "recruiter-active", "notifications", "notifications", "reviewing",
+            "We are reviewing writers for a six-video Hindi finance series.",
+            answers={
+                "project_brief": "Six Hindi finance explainers for first-time investors.",
+                "channel_or_brand_link": "https://youtube.com/@financesimplified",
+                "custom_instruction": "Begin with one topic you would simplify first and explain why.",
+            },
+            job_key="recruiter-active-3",
+        ),
+        _interest(
+            "recruiter-drafts", "notifications", "notifications", "declined",
+            "BrightLab invited you to a science Shorts scripting sprint.",
+            answers={
+                "project_brief": "Ten science Shorts scripts for a represented creator.",
+                "channel_or_brand_link": "https://youtube.com/@sciencedaily",
+                "custom_instruction": "Share one science myth you would turn into a 45-second script.",
+            },
+        ),
+        _interest(
+            "both-sides", "notifications", "notifications", "archived",
+            "Archived outreach for a completed podcast research batch.",
+            answers={
+                "project_brief": "Interview research and chapter notes for four episodes.",
+                "channel_or_brand_link": "https://youtube.com/@theinterviewroom",
+                "custom_instruction": "Name one interview you would use as a structural reference.",
+            },
+            job_key="both-sides-1",
+        ),
+        _interest(
+            "new-empty", "notifications", "notifications", "withdrawn",
+            "Withdrawn test outreach used to verify sender-side history states.",
+            answers={},
         ),
     ]
 
@@ -1248,8 +1448,68 @@ def build_persona_reports() -> list[dict[str, object]]:
             "status": "open",
             "created_at": SEED_TIME,
         },
+        {
+            "id": persona_uuid("report:moderated-review"),
+            "reporter_user_id": persona_user_id("both-sides"),
+            "target_type": "review",
+            "target_id": str(
+                persona_uuid("engagement-review:moderated-review:talent_to_recruiter")
+            ),
+            "category": "harassment",
+            "note": "Resolved deterministic report for hidden-review QA.",
+            "status": "resolved",
+            "admin_note": "Hidden while the moderation fixture is active.",
+            "resolved_by_user_id": persona_user_id("admin"),
+            "resolved_at": SEED_TIME + timedelta(days=9),
+            "action": "hide_review",
+            "created_at": SEED_TIME,
+        },
     ]
 
 
 def all_persona_user_ids() -> list[uuid.UUID]:
     return [persona_user_id(key) for key in PERSONA_KEYS]
+
+
+def all_qa_seed_user_ids() -> list[uuid.UUID]:
+    return all_persona_user_ids() + [persona_user_id(key) for key in QA_FIXTURE_KEYS]
+
+
+def all_persona_hiring_identity_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_hiring_identities()]
+
+
+def all_persona_talent_listing_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_talent_listings()]
+
+
+def all_persona_job_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_jobs()]
+
+
+def all_persona_portfolio_item_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_portfolio_items()]
+
+
+def all_persona_application_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_applications()]
+
+
+def all_persona_interest_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_interests()]
+
+
+def all_persona_saved_job_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_saved_jobs()]
+
+
+def all_persona_saved_talent_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_saved_talent()]
+
+
+def all_persona_notification_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_notifications()]
+
+
+def all_persona_report_ids() -> list[uuid.UUID]:
+    return [uuid.UUID(str(item["id"])) for item in build_persona_reports()]
