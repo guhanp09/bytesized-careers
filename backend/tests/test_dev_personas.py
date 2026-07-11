@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.core import config
+from app.db import seed_data_personas
 
 PERSONAS_URL = "/api/v1/dev/personas"
 STATUS_URL = "/api/v1/dev/status"
@@ -70,7 +71,9 @@ async def test_persona_relationship_data_serializes_through_read_schemas(client:
 
     talent_profile = await client.get("/api/v1/users/dev_notify/public-profile")
     assert talent_profile.status_code == 200, talent_profile.text
-    assert talent_profile.json()["reviews_by_mode"]["talent"]["summary"]["review_count"] == 1
+    talent_reviews = talent_profile.json()["reviews_by_mode"]["talent"]
+    assert talent_reviews["summary"]["review_count"] == 2
+    assert "Former collaborator" in {item["reviewer_name"] for item in talent_reviews["items"]}
 
     _, recruiter_token = await _login(client, "recruiter-active")
     recruiter_headers = {"Authorization": f"Bearer {recruiter_token}"}
@@ -135,8 +138,11 @@ async def test_reset_requires_confirmation_and_recreates_baseline(client: AsyncC
     assert confirmed.status_code == 200
     result = confirmed.json()["result"]
     assert result["status"] == "reset"
-    # Baseline is recreated: all 8 personas exist again after the wipe.
-    assert result["recreated"]["personas"]["users"]["inserted"] == 8
+    # Baseline is recreated: switchable personas and non-switchable QA fixtures
+    # exist again after the wipe.
+    assert result["recreated"]["personas"]["users"]["inserted"] == len(
+        seed_data_personas.build_persona_users()
+    )
 
     # And a persona still logs in after a reset round-trip.
     personas = (await client.get(PERSONAS_URL)).json()

@@ -142,10 +142,10 @@ async def test_full_staging_seed_is_fk_safe_on_a_fresh_database(tmp_path: Path) 
             assert await _count_rows(session, Job) == (
                 len(SEEDED_JOBS) + len(personas.build_persona_jobs())
             )
-            assert await _count_rows(session, Engagement) == len(personas.build_persona_engagements()) == 8
-            assert await _count_rows(session, EngagementReview) == len(personas.build_persona_engagement_reviews()) == 3
+            assert await _count_rows(session, Engagement) == len(personas.build_persona_engagements()) == 9
+            assert await _count_rows(session, EngagementReview) == len(personas.build_persona_engagement_reviews()) == 5
             seeded_persona_users = (
-                await session.execute(select(User).where(User.id.in_(personas.all_persona_user_ids())))
+                await session.execute(select(User).where(User.id.in_(personas.all_qa_seed_user_ids())))
             ).scalars().all()
             expected_usernames = {
                 str(payload["id"]): str(payload["username"])

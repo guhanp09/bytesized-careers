@@ -286,6 +286,15 @@ async def test_bulk_interest_status_moves_stage_for_talent_owner(client: AsyncCl
     assert moved.status_code == 200
     assert sorted(item["status"] for item in moved.json()) == ["declined", "declined"]
 
+    accepted = await client.post(
+        "/api/v1/talent-interests/bulk-status",
+        headers={"Authorization": f"Bearer {talent_token}"},
+        json={"ids": ids, "status": "contacted"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert sorted(item["status"] for item in accepted.json()) == ["contacted", "contacted"]
+    assert all(item["engagement"]["status"] == "ready_to_start" for item in accepted.json())
+
     # Quiet by default — informing the recruiter is a separate, explicit act.
     notifications = await client.get(
         "/api/v1/notifications", headers={"Authorization": f"Bearer {first_recruiter}"}

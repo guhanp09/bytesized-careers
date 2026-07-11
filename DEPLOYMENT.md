@@ -317,3 +317,63 @@ Before real customer production, CreatorJobs still needs:
 - privacy/legal deletion policy
 - production domain hardening
 - real customer onboarding controls
+
+## 11. Controlled QA Personas (Future Staging Option — Not Applied)
+
+The repository includes a controlled QA persona workspace for testing both sides
+of persisted workflows. **This section documents a possible future staging setup;
+these values have not been applied to Vercel, Render, or Neon.** The normal
+investor prototype should leave the feature disabled unless a supervised QA
+session is planned.
+
+Safety properties:
+
+- the frontend and backend both require an explicit enable flag
+- only `staging` and isolated `test` environments are accepted
+- `production` is always rejected, even if a flag is set accidentally
+- the controller signs in normally and must be in a backend email allowlist
+- only deterministic registered persona keys can be selected
+- persona access tokens are short lived and contain no refresh token
+- the encrypted NextAuth session retains the controller identity for safe return
+- switches, exits, restores, and successful persona writes are audit logged
+- scenario restore removes only stable QA-owned IDs and preserves ordinary users
+- persona passwords are disabled by the staging seed and are never shown in UI
+
+To enable this later on **Render staging only**, add:
+
+```env
+APP_ENV=staging
+ENABLE_QA_PERSONA_SWITCHER=true
+QA_PERSONA_CONTROLLER_EMAILS=your-authorized-google-account@example.com
+QA_PERSONA_ACCESS_TOKEN_MINUTES=30
+```
+
+To enable the matching **Vercel staging UI**, add:
+
+```env
+APP_ENV=staging
+NEXT_PUBLIC_APP_ENV=staging
+ENABLE_QA_PERSONA_SWITCHER=true
+NEXT_PUBLIC_USE_LOCAL_MOCKS=false
+```
+
+Do not add persona emails to the controller allowlist. Do not create a shared QA
+password. The controller must use the platform's normal authenticated session.
+After changing these variables, redeploy both services so the two independent
+gates agree.
+
+The deterministic baseline comes from the existing staging seed command in
+section 7. Targeted scenario restores are then available only to the authorized
+controller through the QA drawer/API. They are not public dev endpoints.
+
+Emergency disable:
+
+1. In Render, set `ENABLE_QA_PERSONA_SWITCHER=false` and redeploy the backend.
+2. In Vercel, set `ENABLE_QA_PERSONA_SWITCHER=false` and redeploy the frontend.
+3. Existing persona tokens immediately fail backend authorization after the
+   backend flag is disabled; the drawer disappears after the frontend redeploy.
+4. If controller access is the concern, remove its email from
+   `QA_PERSONA_CONTROLLER_EMAILS` and redeploy Render first.
+
+For local setup, personas, restore phrases, and complete workflow walkthroughs,
+see `QA_PERSONA_TESTING.md`.
