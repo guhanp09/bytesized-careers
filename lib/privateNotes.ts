@@ -1,8 +1,6 @@
-// Local-first private notes for the Applications inbox. Notes are a per-conversation
-// stack (newest first) kept in localStorage — there is no multi-note backend, so this
-// mirrors how the rest of the workspace persists local UI state (see
-// ApplicationsPageClient). The existing single `managerNote` field stays the
-// backend-synced "latest note"; this stack is the richer local browsing surface.
+// Private-note presentation and local cache helpers. In live mode the backend is
+// authoritative; localStorage only keeps a fast per-thread cache. Demo mode still
+// uses the same helpers as its local source of truth.
 
 export type PrivateNote = {
   id: string;
@@ -47,8 +45,10 @@ export function makeNoteId(): string {
   return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** "Today, 4:20 PM" for a just-created note. */
+/** Compact display timestamp for a freshly-created or persisted note. */
 export function formatNoteTimestamp(date: Date = new Date()): string {
   const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `Today, ${time}`;
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return `Today, ${time}`;
+  return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}, ${time}`;
 }

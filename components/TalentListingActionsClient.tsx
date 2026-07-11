@@ -7,11 +7,14 @@ import { Icon } from "./Icons";
 import {
   createReport,
   describeActionError,
+  getMyTalentInterestForListing,
   isBackendAuthError,
   saveTalentListing,
   sendTalentInterest,
+  type BackendTalentInterest,
   type ReportCategory,
 } from "../lib/backendClient";
+import { talentInterestRelationshipPresentation } from "../lib/applicationRelationship";
 import {
   CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
   FirstMessageAnswers,
@@ -169,7 +172,7 @@ export default function TalentListingActionsClient({
   tools?: string[];
 }) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [saveState, setSaveState] = React.useState<ActionState>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [interestState, setInterestState] = React.useState<ActionState>("idle");
@@ -191,6 +194,9 @@ export default function TalentListingActionsClient({
   const [requirementsOpen, setRequirementsOpen] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
   const [conversationId, setConversationId] = React.useState<string | null>(null);
+  const [existingInterest, setExistingInterest] = React.useState<BackendTalentInterest | null>(null);
+  const [relationshipState, setRelationshipState] = React.useState<"loading" | "ready" | "error">("loading");
+  const [relationshipReload, setRelationshipReload] = React.useState(0);
 
   const onAnswersChange = (next: FirstMessageAnswers) => {
     setAnswers(next);
@@ -207,6 +213,45 @@ export default function TalentListingActionsClient({
       return null;
     }
     return token;
+  };
+
+  React.useEffect(() => {
+    if (sessionStatus === "loading") {
+      setRelationshipState("loading");
+      return;
+    }
+    const token = session?.backendAccessToken;
+    if (!token) {
+      setExistingInterest(null);
+      setRelationshipState("ready");
+      return;
+    }
+    let cancelled = false;
+    setRelationshipState("loading");
+    setInterestError(null);
+    void getMyTalentInterestForListing(token, listingId)
+      .then((interest) => {
+        if (cancelled) return;
+        setExistingInterest(interest);
+        setConversationId(interest?.id ?? null);
+        setInterestState("idle");
+        setRelationshipState("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRelationshipState("error");
+        setInterestState("error");
+        setInterestError(describeActionError(error, "Couldn’t check your hiring-request status. Try again."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, relationshipReload, session?.backendAccessToken, sessionStatus]);
+
+  const openInterest = (interestId: string) => {
+    router.push(
+      `/applications?view=inbox&mode=recruiter&thread=${encodeURIComponent(interestId)}`
+    );
   };
 
   const saveListing = async () => {
@@ -228,6 +273,16 @@ export default function TalentListingActionsClient({
   // modal (the modal is the submission step). With no requirements, the request is
   // sent immediately. Opening the modal needs no session; auth is enforced at submit.
   const sendInterest = async () => {
+    if (existingInterest) {
+      openInterest(existingInterest.id);
+      return;
+    }
+    if (relationshipState === "loading") return;
+    if (relationshipState === "error") {
+      setInterestState("idle");
+      setRelationshipReload((value) => value + 1);
+      return;
+    }
     if (keys.length) {
       setInterestState("idle");
       setInterestError(null);
@@ -270,6 +325,7 @@ export default function TalentListingActionsClient({
         null,
         normalizedAnswers
       );
+      setExistingInterest(interest);
       setConversationId(interest.id);
       setInterestState("sent");
       setRequirementsOpen(false);
@@ -281,6 +337,24 @@ export default function TalentListingActionsClient({
       if (isBackendAuthError(err)) loginRedirect();
     }
   };
+
+  const interestPresentation = existingInterest
+    ? talentInterestRelationshipPresentation(existingInterest.status)
+    : null;
+  const primaryLabel = existingInterest
+    ? interestPresentation?.actionLabel ?? "Open conversation"
+    : relationshipState === "loading"
+      ? "Checking request…"
+      : relationshipState === "error"
+        ? "Retry"
+        : interestState === "saving"
+          ? "Sending..."
+          : "Hire Me";
+  const primaryIcon = existingInterest
+    ? "inbox"
+    : relationshipState === "loading" || relationshipState === "error"
+      ? "refresh"
+      : "briefcase";
 
   const shareListing = async () => {
     try {
@@ -326,17 +400,19 @@ export default function TalentListingActionsClient({
         <button
           type="button"
           onClick={sendInterest}
-          disabled={interestState === "saving" || interestState === "sent"}
+          disabled={interestState === "saving" || relationshipState === "loading"}
           data-testid="talent-hire-button"
           className="inline-flex h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white text-lg font-extrabold text-black shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] transition-transform duration-150 hover:-translate-y-[1px] hover:bg-white/95 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65"
         >
-          <Icon name="briefcase" className="h-5 w-5" />
-          {interestState === "saving" ? "Sending..." : interestState === "sent" ? "Request sent" : "Hire Me"}
+          <Icon name={primaryIcon} className="h-5 w-5" />
+          {primaryLabel}
         </button>
         {interestState === "error" ? (
           <p className="mt-2 text-xs text-amber-200/80">{interestError || "Couldn’t contact talent. Try again."}</p>
         ) : null}
-        {interestState === "sent" ? (
+        {interestPresentation?.statusLabel ? (
+          <p className="mt-2 text-xs text-white/52">{interestPresentation.statusLabel}</p>
+        ) : interestState === "sent" ? (
           <p className="mt-2 text-xs text-white/52">
             Your hiring request is now visible in Inbox.
           </p>
@@ -420,7 +496,7 @@ export default function TalentListingActionsClient({
           // A sent hiring request surfaces in the requester's Recruiter inbox;
           // deep-link straight to its thread.
           router.push(
-            `/applications?view=hiring${conversationId ? `&thread=${encodeURIComponent(conversationId)}` : ""}`
+            `/applications?view=inbox&mode=recruiter${conversationId ? `&thread=${encodeURIComponent(conversationId)}` : ""}`
           )
         }
         onSecondary={() => setSuccessOpen(false)}

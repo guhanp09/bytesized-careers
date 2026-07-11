@@ -596,7 +596,14 @@ export type RequirementSummaryItem = {
 function formatCurrency(value: CurrencyAnswer): string {
   const amount = value.amount.trim();
   if (!amount) return "";
-  const withSymbol = /^[₹$€£]/.test(amount) ? amount : `₹${amount}`;
+  const symbol = amount.match(/^[₹$€£]/)?.[0] ?? "₹";
+  const numeric = amount.replace(/^[₹$€£]/, "").replace(/,/g, "").trim();
+  const parsed = Number(numeric);
+  const displayAmount =
+    Number.isFinite(parsed) && numeric !== ""
+      ? parsed.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+      : amount.replace(/^[₹$€£]/, "");
+  const withSymbol = `${symbol}${displayAmount}`;
   return value.unit ? `${withSymbol} ${value.unit}` : withSymbol;
 }
 

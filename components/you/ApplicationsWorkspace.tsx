@@ -1,15 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
 import PrivateNotesPanel from "./PrivateNotesPanel";
-import type { PrivateNote } from "../../lib/privateNotes";
+import { formatNoteTimestamp, type PrivateNote } from "../../lib/privateNotes";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
-import { buildUnreadByThread, formatBadgeCount, mapBackendMessage, totalUnread } from "../../lib/messaging";
+import {
+  buildUnreadByThread,
+  formatBadgeCount,
+  isMessagingClosedStatus,
+  mapBackendMessage,
+  shouldUseLiveApplicationsData,
+  totalUnread,
+} from "../../lib/messaging";
 import {
   filterStructuredPortfolioDuplicateAttachments,
   type FirstMessageAnswers,
@@ -18,24 +25,28 @@ import {
 import {
   bulkUpdateApplicationStatus,
   bulkUpdateTalentInterestStatus,
-  canUseLocalMockFallback,
+  createApplicationPrivateNote,
+  createTalentInterestPrivateNote,
+  deleteApplicationPrivateNote,
+  deleteTalentInterestPrivateNote,
   getActivitySummary,
   getApplicationConversation,
   getInterestConversation,
   getMyReviewWorkspace,
-  isLocalMocksEnabled,
+  listApplicationPrivateNotes,
   listConversations,
+  listTalentInterestPrivateNotes,
   markConversationRead,
   sendConversationMessage,
-  updateApplicationManagerNote,
+  sendConversationStatusUpdate,
   updateApplicationStatus,
-  updateTalentInterestManagerNote,
   updateTalentInterestStatus,
   withdrawApplication,
   withdrawTalentInterest,
   type BackendJobApplication,
   type BackendMessage,
   type BackendEngagementSummary,
+  type BackendInteractionPrivateNote,
   type BackendPortfolioItem,
   type BackendReviewOpportunity,
   type BackendTalentInterest,
@@ -71,6 +82,9 @@ type WorkspaceFilter = "all" | "sent" | "received" | "archived";
 type WorkspaceView = "inbox" | "pipeline";
 type PipelineDirection = "received" | "sent";
 type WorkspaceModeOption = { key: WorkspaceMode; label: string };
+
+const UNREAD_POLL_INTERVAL_MS = 5_000;
+const CONVERSATION_POLL_INTERVAL_MS = 3_000;
 
 type ApplicationsWorkspaceProps = {
   mode: WorkspaceMode;
@@ -1189,10 +1203,10 @@ export default function ApplicationsWorkspace({
   pipelineStage = null,
   onPipelineStageChange,
 }: ApplicationsWorkspaceProps) {
-  // Live mode: authenticated against the real backend (local-mocks env always
-  // stays in demo mode, matching the rest of the app's data strategy). The
-  // demo override (?demo=1) flips back to the mock dataset for UI preview.
-  const liveMode = Boolean(backendAccessToken) && !isLocalMocksEnabled() && !forceMock;
+  // Authenticated application data always comes from the real backend. Public
+  // marketplace mock browsing must not hide a newly persisted private Inbox.
+  // The explicit sample-data control remains the only way to opt into demo rows.
+  const liveMode = shouldUseLiveApplicationsData(backendAccessToken, forceMock);
   const [items, setItems] = useState<OwnerInteraction[]>(() =>
     liveMode ? [] : interactions ?? MOCK_OWNER_INTERACTIONS
   );
@@ -1203,11 +1217,20 @@ export default function ApplicationsWorkspace({
   const [liveThreads, setLiveThreads] = useState<
     Record<string, { conversationId: string; messages: BackendMessage[]; engagement?: BackendEngagementSummary | null }>
   >({});
+  const [threadLoadErrors, setThreadLoadErrors] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // Unread message count per inbox thread (keyed by record id == OwnerInteraction id),
   // sourced from the real GET /me/conversations endpoint in live mode.
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
+  const handleThreadRead = useCallback((id: string) => {
+    setUnreadByThread((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reviewOpportunity, setReviewOpportunity] = useState<BackendReviewOpportunity | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
@@ -1230,6 +1253,7 @@ export default function ApplicationsWorkspace({
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(Boolean(initialSelectedId));
+  const [selectionReady, setSelectionReady] = useState(Boolean(initialSelectedId));
   // Remember the open inbox conversation across navigation so returning lands back
   // on it (not the first thread / the list). A ?thread deep-link always wins.
   const selectionRestored = useRef(false);
@@ -1247,6 +1271,7 @@ export default function ApplicationsWorkspace({
     } catch {
       // storage unavailable; nothing to restore
     }
+    setSelectionReady(true);
     // Restore runs once against the mount-time deep-link snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1265,6 +1290,8 @@ export default function ApplicationsWorkspace({
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
+  const pendingSendRef = useRef<{ targetId: string; body: string; id: string } | null>(null);
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // Compact chat dock: bumped by card "Message" actions to open that thread.
   const [chatRequest, setChatRequest] = useState<{ id: string; nonce: number } | null>(null);
   // After a move into an externally meaningful stage, ask whether to inform the
@@ -1289,25 +1316,41 @@ export default function ApplicationsWorkspace({
       })
       .catch(() => {
         if (cancelled) return;
-        if (allowDemo || canUseLocalMockFallback()) {
-          setItems(interactions ?? MOCK_OWNER_INTERACTIONS);
-          setLoadState("ready");
-          return;
-        }
+        // Private application data must never silently turn into sample rows.
+        // Sample data is an explicit mode (`?demo=1`) so actions cannot appear
+        // live while writes are actually failing against the backend.
         setLoadState("error");
       });
-    // Unread badges are non-critical: fetch independently so a failure here never
-    // disturbs the main inbox list or its demo fallback.
-    listConversations(backendAccessToken)
-      .then((conversations) => {
-        if (cancelled) return;
-        setUnreadByThread(buildUnreadByThread(conversations));
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [liveMode, backendAccessToken, allowDemo, interactions, reloadNonce]);
+  }, [liveMode, backendAccessToken, reloadNonce]);
+
+  // Keep unread badges current while another participant is messaging. This is
+  // intentionally lightweight polling: it works on the current REST backend and
+  // stops with the workspace, without pretending to provide a WebSocket channel.
+  useEffect(() => {
+    if (!liveMode || !backendAccessToken) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshUnread = async () => {
+      try {
+        const conversations = await listConversations(backendAccessToken);
+        if (!cancelled) setUnreadByThread(buildUnreadByThread(conversations));
+      } catch {
+        // Unread badges are non-critical and recover on the next poll.
+      } finally {
+        if (!cancelled) timer = setTimeout(refreshUnread, UNREAD_POLL_INTERVAL_MS);
+      }
+    };
+
+    void refreshUnread();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [liveMode, backendAccessToken, reloadNonce]);
 
   const modeItems = useMemo(() => items.filter((item) => item.mode === mode), [items, mode]);
 
@@ -1318,6 +1361,16 @@ export default function ApplicationsWorkspace({
     return modeItems;
   }, [modeItems, filter]);
 
+  // A saved selection may belong to the other mode/filter. Normalize it to a
+  // visible row so the highlighted row, detail pane, and loaded conversation
+  // always refer to the same record.
+  useEffect(() => {
+    if (loadState !== "ready" || !selectionReady) return;
+    if (selectedId && visibleItems.some((item) => item.id === selectedId)) return;
+    const nextId = visibleItems[0]?.id ?? null;
+    if (nextId !== selectedId) setSelectedId(nextId);
+  }, [loadState, selectedId, selectionReady, visibleItems]);
+
   // Selection falls back to the first visible row so the detail pane is never
   // empty while the filtered list has items.
   const selected = useMemo(
@@ -1327,19 +1380,26 @@ export default function ApplicationsWorkspace({
   const selectedItemId = selected?.id ?? null;
   const selectedKind = selected?.kind ?? null;
 
-  // Load the real conversation for the open thread (live mode only) and mark it read.
-  // The record id == OwnerInteraction id; the kind decides which endpoint to call.
+  // Load and refresh the open thread. Polling keeps two active participants in
+  // sync without a page reload; requests are sequential and pause while a send is
+  // in flight so an older poll cannot overwrite the newly returned message.
   useEffect(() => {
-    if (!liveMode || !backendAccessToken || !selectedItemId || !selectedKind) return;
+    if (
+      !liveMode ||
+      !backendAccessToken ||
+      !selectedItemId ||
+      !selectedKind ||
+      sending
+    ) return;
     const recordId = selectedItemId;
     let cancelled = false;
-    setSendError(null);
-    const loader =
-      selectedKind === "hiring_request"
-        ? getInterestConversation(backendAccessToken, recordId)
-        : getApplicationConversation(backendAccessToken, recordId);
-    loader
-      .then((detail) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshConversation = async () => {
+      try {
+        const detail = await (selectedKind === "hiring_request"
+          ? getInterestConversation(backendAccessToken, recordId)
+          : getApplicationConversation(backendAccessToken, recordId));
         if (cancelled) return;
         setLiveThreads((prev) => ({
           ...prev,
@@ -1349,6 +1409,12 @@ export default function ApplicationsWorkspace({
             engagement: detail.engagement,
           },
         }));
+        setThreadLoadErrors((prev) => {
+          if (!prev[recordId]) return prev;
+          const next = { ...prev };
+          delete next[recordId];
+          return next;
+        });
         if (detail.conversation.unread_count > 0) {
           void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
         }
@@ -1359,15 +1425,32 @@ export default function ApplicationsWorkspace({
           delete next[recordId];
           return next;
         });
-      })
-      .catch(() => {
-        // Leaving the thread without a loaded conversation simply keeps the composer
-        // disabled; the opening message (application detail) still renders.
-      });
+      } catch {
+        if (!cancelled) {
+          setThreadLoadErrors((prev) => ({ ...prev, [recordId]: true }));
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(refreshConversation, CONVERSATION_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    void refreshConversation();
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [liveMode, backendAccessToken, selectedItemId, selectedKind, reloadNonce]);
+  }, [liveMode, backendAccessToken, selectedItemId, selectedKind, reloadNonce, sending]);
+
+  const latestPersistedMessageId = selectedItemId
+    ? liveThreads[selectedItemId]?.messages.at(-1)?.id ?? null
+    : null;
+  useEffect(() => {
+    const node = conversationScrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [selectedItemId, latestPersistedMessageId]);
 
   const filterCounts = useMemo(
     () => ({
@@ -1396,6 +1479,7 @@ export default function ApplicationsWorkspace({
     setSelectedId(id);
     setMobileDetailOpen(true);
     resetComposition();
+    setSendError(null);
     setItems((prev) =>
       prev.map((item) => (item.id === id && item.unread ? { ...item, unread: false } : item))
     );
@@ -1462,7 +1546,7 @@ export default function ApplicationsWorkspace({
   /**
    * Post the platform status update into each moved item's chat thread — only
    * ever called from the prompt's explicit "Send update" action. Live mode
-   * persists a real kind="status_update" message; demo mode appends locally.
+   * asks the backend to generate a trusted status event; demo mode appends locally.
    */
   const sendStatusUpdates = async (targets: OwnerInteraction[], stageKey: string) => {
     if (targets.length === 0) return;
@@ -1476,7 +1560,6 @@ export default function ApplicationsWorkspace({
     try {
       if (liveMode && backendAccessToken) {
         for (const target of targets) {
-          const notice = policy.notice({ contextLabel: pipelineContextLabelOf(target) });
           const cached = liveThreads[target.id];
           let conversationId = cached?.conversationId;
           if (!conversationId) {
@@ -1490,11 +1573,10 @@ export default function ApplicationsWorkspace({
               [target.id]: { conversationId: detail.conversation.id, messages: detail.messages },
             }));
           }
-          const message = await sendConversationMessage(
+          const message = await sendConversationStatusUpdate(
             backendAccessToken,
             conversationId,
-            notice,
-            "status_update"
+            stageKey as "shortlisted" | "interviewing" | "hired" | "rejected" | "contacted" | "declined"
           );
           setLiveThreads((prev) => {
             const thread = prev[target.id];
@@ -1535,21 +1617,60 @@ export default function ApplicationsWorkspace({
     }
   };
 
-  /**
-   * Persist the latest private note on a received item. The rich note stack is
-   * local (see PrivateNotesPanel); this keeps the single-note backend field — and
-   * the pipeline note indicator that reads `managerNote` — in sync with the newest
-   * note. Throws on backend failure so the panel can keep the note locally.
-   */
-  const persistLatestNote = async (target: OwnerInteraction, body: string | null) => {
-    if (liveMode && backendAccessToken) {
-      if (target.kind === "application") {
-        await updateApplicationManagerNote(backendAccessToken, target.id, body);
-      } else {
-        await updateTalentInterestManagerNote(backendAccessToken, target.id, body);
-      }
+  const selectedPrivateNotePersistence = useMemo(() => {
+    if (!liveMode || !backendAccessToken || !selectedItemId || selected?.direction !== "received") {
+      return null;
     }
-    setItems((prev) => prev.map((item) => (item.id === target.id ? { ...item, managerNote: body } : item)));
+
+    const interactionId = selectedItemId;
+    const interactionKind = selectedKind;
+    const toPrivateNote = (note: BackendInteractionPrivateNote): PrivateNote => ({
+      id: note.id,
+      body: note.body,
+      createdAt: formatNoteTimestamp(new Date(note.created_at)),
+      conversationId: interactionId,
+    });
+    const load = async () => {
+      const notes =
+        interactionKind === "application"
+          ? await listApplicationPrivateNotes(backendAccessToken, interactionId)
+          : await listTalentInterestPrivateNotes(backendAccessToken, interactionId);
+      return notes.map(toPrivateNote);
+    };
+
+    return {
+      load,
+      create: async (body: string) => {
+        const note =
+          interactionKind === "application"
+            ? await createApplicationPrivateNote(backendAccessToken, interactionId, body)
+            : await createTalentInterestPrivateNote(backendAccessToken, interactionId, body);
+        setItems((prev) =>
+          prev.map((item) => (item.id === interactionId ? { ...item, managerNote: note.body } : item))
+        );
+        return toPrivateNote(note);
+      },
+      delete: async (noteId: string) => {
+        if (interactionKind === "application") {
+          await deleteApplicationPrivateNote(backendAccessToken, interactionId, noteId);
+        } else {
+          await deleteTalentInterestPrivateNote(backendAccessToken, interactionId, noteId);
+        }
+        const remaining = await load();
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === interactionId ? { ...item, managerNote: remaining[0]?.body ?? null } : item
+          )
+        );
+      },
+    };
+  }, [backendAccessToken, liveMode, selected?.direction, selectedItemId, selectedKind]);
+
+  const persistDemoLatestNote = async (body: string | null) => {
+    if (!selectedItemId) return;
+    setItems((prev) =>
+      prev.map((item) => (item.id === selectedItemId ? { ...item, managerNote: body } : item))
+    );
   };
 
   const commitStatusLocally = (target: OwnerInteraction, action: HeaderAction, trimmedNote?: string) => {
@@ -1623,7 +1744,7 @@ export default function ApplicationsWorkspace({
 
   const handleSendReply = async (target: OwnerInteraction) => {
     const body = replyDraft.trim();
-    if (!body) return;
+    if (!body || sending) return;
 
     // Live mode: persist a real message through the backend conversation.
     if (liveMode && backendAccessToken) {
@@ -1634,12 +1755,24 @@ export default function ApplicationsWorkspace({
       }
       setSending(true);
       setSendError(null);
+      const previousAttempt = pendingSendRef.current;
+      const clientMessageId =
+        previousAttempt?.targetId === target.id && previousAttempt.body === body
+          ? previousAttempt.id
+          : window.crypto.randomUUID();
+      pendingSendRef.current = { targetId: target.id, body, id: clientMessageId };
       try {
-        const message = await sendConversationMessage(backendAccessToken, thread.conversationId, body);
+        const message = await sendConversationMessage(
+          backendAccessToken,
+          thread.conversationId,
+          body,
+          clientMessageId
+        );
         setLiveThreads((prev) => ({
           ...prev,
           [target.id]: { ...thread, messages: [...thread.messages, message] },
         }));
+        if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
         setReplyDraft("");
       } catch {
         setSendError("Message could not be sent. Please try again.");
@@ -1744,14 +1877,19 @@ export default function ApplicationsWorkspace({
     (action) => action.flow === "confirm" && action.key === pendingActionKey
   );
   const replyTemplates = selected ? quickReplyTemplates(selected) : [];
-  // The reply composer is demo-only: there is no messaging backend yet, so in
-  // live mode it is shown disabled rather than pretending to deliver.
-  const selectedArchived = selected ? isArchivedInteraction(selected) : false;
-  // The composer is active for any open, non-archived thread. In live mode it sends
-  // real messages once the conversation has loaded; in demo mode it appends locally.
+  // Accepted/hired interactions stay messageable while work is underway, even
+  // though the pipeline groups them with completed outcomes.
+  const selectedMessagingClosed = selected ? isMessagingClosedStatus(selected.status) : false;
+  // In live mode the composer becomes active after the conversation loads; in
+  // demo mode it appends locally.
   const liveThread = selected && liveMode ? liveThreads[selected.id] : undefined;
   const selectedEngagement = liveThread?.engagement || null;
-  const selectedActive = selected ? !selectedArchived && (!liveMode || Boolean(liveThread)) : false;
+  const selectedActive = selected
+    ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
+    : false;
+  const selectedConversationLoadFailed = selected
+    ? Boolean(threadLoadErrors[selected.id]) && !liveThread
+    : false;
   const liveMessages: ChatMessage[] =
     selected && liveMode && liveThread
       ? liveThread.messages.map((message) =>
@@ -2080,7 +2218,10 @@ export default function ApplicationsWorkspace({
                   </div>
                 </div>
 
-                <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <div
+                  ref={conversationScrollRef}
+                  className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+                >
                     <div className="mx-auto w-full max-w-[860px] px-4 py-6 sm:px-6">
                       {actionError ? (
                         <p className="mb-5 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-3 text-xs text-amber-100">
@@ -2167,7 +2308,7 @@ export default function ApplicationsWorkspace({
                   {/* Composer / resolution — pinned to the foot of the conversation */}
                   <div className="shrink-0 border-t border-white/[0.06] px-4 py-3 sm:px-6">
                     <div className="mx-auto w-full max-w-[860px]">
-                      {selectedArchived ? (
+                      {selectedMessagingClosed ? (
                         <div className="flex flex-col items-center gap-1.5 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
                           <p className="text-xs text-white/50">{resolutionLine(selected)}</p>
                           {forward ? (
@@ -2206,6 +2347,7 @@ export default function ApplicationsWorkspace({
                               ref={composerRef}
                               value={replyDraft}
                               onChange={(event) => setReplyDraft(event.target.value)}
+                              maxLength={5000}
                               rows={1}
                               aria-label="Reply message"
                               placeholder={`Message ${firstNameOf(selected.counterpartyName)}…`}
@@ -2233,16 +2375,20 @@ export default function ApplicationsWorkspace({
                             </p>
                           ) : null}
                         </div>
-                      ) : liveMode && selected && !selectedArchived ? (
+                      ) : liveMode && selected && !selectedMessagingClosed ? (
                         <div className="flex items-center gap-2 py-1">
                           <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
-                          <p className="text-[11px] text-white/40">Loading conversation…</p>
+                          <p className="text-[11px] text-white/40">
+                            {selectedConversationLoadFailed
+                              ? "Couldn’t load this conversation. Retrying…"
+                              : "Loading conversation…"}
+                          </p>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 py-1">
                           <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
                           <p className="text-[11px] text-white/40">
-                            {selectedArchived
+                            {selectedMessagingClosed
                               ? "This thread is closed to new messages."
                               : "Messaging will open up here once the thread is active."}
                           </p>
@@ -2272,7 +2418,10 @@ export default function ApplicationsWorkspace({
                         conversationId={selected.id}
                         counterpartyName={selected.counterpartyName}
                         seedNotes={seedNotesForInteraction(selected)}
-                        onSaveLatest={(body) => persistLatestNote(selected, body)}
+                        onSaveLatest={liveMode ? undefined : persistDemoLatestNote}
+                        loadPersistedNotes={selectedPrivateNotePersistence?.load}
+                        createPersistedNote={selectedPrivateNotePersistence?.create}
+                        deletePersistedNote={selectedPrivateNotePersistence?.delete}
                       />
                     ) : null}
                     <section className={`rounded-2xl ${SURFACE} p-4`}>
@@ -2300,6 +2449,7 @@ export default function ApplicationsWorkspace({
           liveMode={liveMode}
           backendAccessToken={backendAccessToken}
           unreadByThread={unreadByThread}
+          onThreadRead={handleThreadRead}
           openRequest={chatRequest}
           onDemoReply={appendDemoReply}
           onOpenInInbox={(id) => {

@@ -7,7 +7,13 @@ import {
   buildUnreadByThread,
   totalUnread,
   formatBadgeCount,
+  isMessagingClosedStatus,
+  shouldUseLiveApplicationsData,
 } from "../lib/messaging.ts";
+import {
+  applicationRelationshipPresentation,
+  talentInterestRelationshipPresentation,
+} from "../lib/applicationRelationship.ts";
 
 const fixedTime = () => "just now";
 
@@ -76,4 +82,41 @@ test("formatBadgeCount caps at 9+", () => {
   assert.equal(formatBadgeCount(9), "9");
   assert.equal(formatBadgeCount(10), "9+");
   assert.equal(formatBadgeCount(42), "9+");
+});
+
+test("hired and accepted work threads remain open while terminal outcomes close", () => {
+  assert.equal(isMessagingClosedStatus("hired"), false);
+  assert.equal(isMessagingClosedStatus("accepted"), false);
+  assert.equal(isMessagingClosedStatus("shortlisted"), false);
+  assert.equal(isMessagingClosedStatus("declined"), true);
+  assert.equal(isMessagingClosedStatus("withdrawn"), true);
+  assert.equal(isMessagingClosedStatus("closed"), true);
+});
+
+test("authenticated application workspaces stay backend-backed unless demo is explicit", () => {
+  assert.equal(shouldUseLiveApplicationsData("backend-token", false), true);
+  assert.equal(shouldUseLiveApplicationsData("backend-token", true), false);
+  assert.equal(shouldUseLiveApplicationsData(undefined, false), false);
+});
+
+test("persisted application states replace re-apply with the correct Inbox action", () => {
+  assert.deepEqual(applicationRelationshipPresentation("new"), {
+    closed: false,
+    statusLabel: "Application submitted",
+    actionLabel: "Open conversation",
+  });
+  assert.equal(applicationRelationshipPresentation("hired").actionLabel, "Open conversation");
+  assert.equal(applicationRelationshipPresentation("withdrawn").actionLabel, "View application");
+  assert.equal(applicationRelationshipPresentation("rejected").statusLabel, "Application not selected");
+});
+
+test("persisted hiring-request states replace repeat outreach with the existing thread", () => {
+  assert.deepEqual(talentInterestRelationshipPresentation("new"), {
+    closed: false,
+    statusLabel: "Hiring request sent",
+    actionLabel: "Open conversation",
+  });
+  assert.equal(talentInterestRelationshipPresentation("contacted").actionLabel, "Open conversation");
+  assert.equal(talentInterestRelationshipPresentation("withdrawn").actionLabel, "View request");
+  assert.equal(talentInterestRelationshipPresentation("declined").statusLabel, "Hiring request declined");
 });

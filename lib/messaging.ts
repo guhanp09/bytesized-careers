@@ -44,6 +44,14 @@ export function conversationHasUnread(conversation: { unread_count?: number } | 
   return Boolean(conversation && (conversation.unread_count ?? 0) > 0);
 }
 
+/** Private application data stays backend-backed even if public browse uses mocks. */
+export function shouldUseLiveApplicationsData(
+  backendAccessToken?: string | null,
+  forceMock = false
+): boolean {
+  return Boolean(backendAccessToken) && !forceMock;
+}
+
 /**
  * Map of inbox-thread id -> unread message count, for badging the conversation list.
  * The thread id is the application/interest id (== OwnerInteraction id). Only threads
@@ -67,4 +75,10 @@ export function totalUnread(unreadByThread: Record<string, number>): number {
 /** Cap a badge count for display, e.g. 9+ for anything over the cap. */
 export function formatBadgeCount(count: number, cap = 9): string {
   return count > cap ? `${cap}+` : String(count);
+}
+
+/** Pipeline presentation may archive successful outcomes, but chat closes only
+ * for terminal outcomes where no ongoing collaboration exists. */
+export function isMessagingClosedStatus(status: string): boolean {
+  return ["declined", "withdrawn", "closed"].includes(status);
 }

@@ -114,6 +114,15 @@ test("talent answers summarise with budget headline and clickable reference link
   assert.equal(items.find((i) => i.key === "turnaround").text, "1 week");
 });
 
+test("plain numeric first-message rates use Indian digit grouping", () => {
+  const [budget] = summarizeAnswers(
+    ["project_budget"],
+    "talent",
+    { project_budget: { amount: "40000", unit: "per project" } }
+  );
+  assert.equal(budget.text, "₹40,000 per project");
+});
+
 test("portfolio items carry tools + timestamp notes through to the summary link", () => {
   const items = summarizeAnswers(["relevant_portfolio"], "job", {
     relevant_portfolio: [
@@ -337,7 +346,7 @@ test("job apply success shows the exact copy and deep-links to the talent inbox 
   // Captures the created application id (idempotent) and routes to its thread.
   assert.match(source, /const application = await applyToJob\(/);
   assert.match(source, /setConversationId\(application\.id\)/);
-  assert.match(source, /\/applications\?view=talent/);
+  assert.match(source, /\/applications\?view=inbox&mode=talent/);
   assert.match(source, /thread=\$\{encodeURIComponent\(conversationId\)\}/);
   // "Keep browsing" closes without navigating.
   assert.match(source, /onSecondary=\{\(\) => setSuccessOpen\(false\)\}/);
@@ -351,7 +360,7 @@ test("talent hire success shows the exact copy and deep-links to the recruiter i
   assert.match(source, /secondaryLabel="Keep browsing talent"/);
   assert.match(source, /const interest = await sendTalentInterest\(/);
   assert.match(source, /setConversationId\(interest\.id\)/);
-  assert.match(source, /\/applications\?view=hiring/);
+  assert.match(source, /\/applications\?view=inbox&mode=recruiter/);
   assert.match(source, /thread=\$\{encodeURIComponent\(conversationId\)\}/);
   assert.match(source, /onSecondary=\{\(\) => setSuccessOpen\(false\)\}/);
 });

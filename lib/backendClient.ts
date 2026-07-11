@@ -1015,6 +1015,9 @@ export type BackendTalentInterest = {
   id: string;
   talent_listing_id: string;
   recruiter_user_id: string;
+  recruiter_display_name?: string | null;
+  recruiter_username?: string | null;
+  recruiter_avatar_url?: string | null;
   job_id?: string | null;
   owner_user_id: string;
   note?: string | null;
@@ -1025,6 +1028,14 @@ export type BackendTalentInterest = {
   created_at: string;
   updated_at: string;
   engagement?: BackendEngagementSummary | null;
+};
+
+export type BackendInteractionPrivateNote = {
+  id: string;
+  application_id?: string | null;
+  talent_interest_id?: string | null;
+  body: string;
+  created_at: string;
 };
 
 export type BackendEngagementStatus =
@@ -2178,6 +2189,16 @@ export async function applyToJob(
   });
 }
 
+export async function getMyApplicationForJob(
+  accessToken: string,
+  jobId: string
+): Promise<BackendJobApplication | null> {
+  return requestJson<BackendJobApplication | null>(
+    `/jobs/${encodeURIComponent(jobId)}/application`,
+    { accessToken }
+  );
+}
+
 export async function listMySentApplications(accessToken: string): Promise<BackendJobApplication[]> {
   return requestJson<BackendJobApplication[]>("/me/applications/sent", { accessToken });
 }
@@ -2222,6 +2243,38 @@ export async function updateApplicationManagerNote(
     body: JSON.stringify({ note }),
     accessToken,
   });
+}
+
+export async function listApplicationPrivateNotes(
+  accessToken: string,
+  applicationId: string
+): Promise<BackendInteractionPrivateNote[]> {
+  return requestJson<BackendInteractionPrivateNote[]>(
+    `/applications/${encodeURIComponent(applicationId)}/notes`,
+    { accessToken }
+  );
+}
+
+export async function createApplicationPrivateNote(
+  accessToken: string,
+  applicationId: string,
+  body: string
+): Promise<BackendInteractionPrivateNote> {
+  return requestJson<BackendInteractionPrivateNote>(
+    `/applications/${encodeURIComponent(applicationId)}/notes`,
+    { method: "POST", body: JSON.stringify({ body }), accessToken }
+  );
+}
+
+export async function deleteApplicationPrivateNote(
+  accessToken: string,
+  applicationId: string,
+  noteId: string
+): Promise<void> {
+  return requestJson<void>(
+    `/applications/${encodeURIComponent(applicationId)}/notes/${encodeURIComponent(noteId)}`,
+    { method: "DELETE", accessToken }
+  );
 }
 
 // Sender-only: the applicant withdraws their own application. Backend sets the
@@ -2337,6 +2390,16 @@ export async function sendTalentInterest(
   });
 }
 
+export async function getMyTalentInterestForListing(
+  accessToken: string,
+  listingId: string
+): Promise<BackendTalentInterest | null> {
+  return requestJson<BackendTalentInterest | null>(
+    `/talent-listings/${encodeURIComponent(listingId)}/interest`,
+    { accessToken }
+  );
+}
+
 export async function listMySavedTalent(accessToken: string): Promise<BackendSavedTalentListing[]> {
   return requestJson<BackendSavedTalentListing[]>("/me/saved-talent", { accessToken });
 }
@@ -2399,6 +2462,38 @@ export async function updateTalentInterestManagerNote(
     body: JSON.stringify({ note }),
     accessToken,
   });
+}
+
+export async function listTalentInterestPrivateNotes(
+  accessToken: string,
+  interestId: string
+): Promise<BackendInteractionPrivateNote[]> {
+  return requestJson<BackendInteractionPrivateNote[]>(
+    `/talent-interests/${encodeURIComponent(interestId)}/notes`,
+    { accessToken }
+  );
+}
+
+export async function createTalentInterestPrivateNote(
+  accessToken: string,
+  interestId: string,
+  body: string
+): Promise<BackendInteractionPrivateNote> {
+  return requestJson<BackendInteractionPrivateNote>(
+    `/talent-interests/${encodeURIComponent(interestId)}/notes`,
+    { method: "POST", body: JSON.stringify({ body }), accessToken }
+  );
+}
+
+export async function deleteTalentInterestPrivateNote(
+  accessToken: string,
+  interestId: string,
+  noteId: string
+): Promise<void> {
+  return requestJson<void>(
+    `/talent-interests/${encodeURIComponent(interestId)}/notes/${encodeURIComponent(noteId)}`,
+    { method: "DELETE", accessToken }
+  );
 }
 
 // Sender-only: the recruiter withdraws their own hiring request. Backend sets the
@@ -2571,11 +2666,28 @@ export async function sendConversationMessage(
   accessToken: string,
   conversationId: string,
   body: string,
-  kind?: "status_update"
+  clientMessageId?: string
 ): Promise<BackendMessage> {
   return requestJson<BackendMessage>(
     `/me/conversations/${encodeURIComponent(conversationId)}/messages`,
-    { method: "POST", body: JSON.stringify(kind ? { body, kind } : { body }), accessToken }
+    {
+      method: "POST",
+      body: JSON.stringify(
+        clientMessageId ? { body, client_message_id: clientMessageId } : { body }
+      ),
+      accessToken,
+    }
+  );
+}
+
+export async function sendConversationStatusUpdate(
+  accessToken: string,
+  conversationId: string,
+  stage: "shortlisted" | "interviewing" | "hired" | "rejected" | "contacted" | "declined"
+): Promise<BackendMessage> {
+  return requestJson<BackendMessage>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/status-update`,
+    { method: "POST", body: JSON.stringify({ stage }), accessToken }
   );
 }
 

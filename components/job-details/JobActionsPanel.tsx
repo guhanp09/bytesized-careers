@@ -266,6 +266,8 @@ export default function JobActionsPanel({
   reportState = "idle",
   shareState = "idle",
   isOwner = false,
+  primaryAction,
+  applicationStatusLabel,
 }: {
   job: Job;
   onShare: () => void;
@@ -279,6 +281,12 @@ export default function JobActionsPanel({
   reportState?: "idle" | "sending" | "sent" | "error";
   shareState?: "idle" | "copied";
   isOwner?: boolean;
+  primaryAction?: {
+    label: string;
+    icon: "send" | "inbox" | "refresh";
+    disabled?: boolean;
+  };
+  applicationStatusLabel?: string | null;
 }) {
   const responseRate = Number.isFinite(job.responseRate) ? Math.max(0, job.responseRate) : 0;
   const currentlyViewing = Number.isFinite(job.views) ? Math.max(0, job.views) : 0;
@@ -298,14 +306,21 @@ export default function JobActionsPanel({
             "active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-65",
           ].join(" ")}
           onClick={onApply}
-          disabled={applyState === "saving" || applyState === "sent"}
+          disabled={primaryAction?.disabled || applyState === "saving" || (applyState === "sent" && !primaryAction)}
           data-testid="job-apply-button"
         >
           <span className="inline-flex items-center justify-center gap-2">
-            <Icon name="send" className="w-5 h-5" />
-            {applyState === "saving" ? "Sending..." : applyState === "sent" ? "Applied" : "Apply"}
+            <Icon name={primaryAction?.icon ?? "send"} className="w-5 h-5" />
+            {applyState === "saving"
+              ? "Sending..."
+              : primaryAction?.label ?? (applyState === "sent" ? "Applied" : "Apply")}
           </span>
         </button>
+        {applicationStatusLabel ? (
+          <p data-testid="job-application-status" className="mt-2 text-center text-xs font-medium text-white/52">
+            {applicationStatusLabel}
+          </p>
+        ) : null}
         {applyState === "error" ? (
           <p className="mt-2 text-xs text-amber-200/80">
             {applyError || "Couldn’t send the application. Try again."}

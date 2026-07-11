@@ -1672,7 +1672,11 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
   for (const interest of summary.receivedInterests) {
     const listing = myListingsById.get(interest.talent_listing_id) || null;
     const relatedJob = interest.job_id ? relatedJobsById.get(String(interest.job_id)) || null : null;
-    const recruiterName = relatedJob?.channel?.name || "Recruiter";
+    const recruiterName =
+      interest.recruiter_display_name ||
+      interest.recruiter_username ||
+      relatedJob?.channel?.name ||
+      "Recruiter";
     const status = interestStatusToInteraction(interest.status, "received");
     entries.push({
       sortKey: sortKeyOf(interest.updated_at || interest.created_at),
@@ -1686,20 +1690,20 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         managerNote: interest.manager_note || null,
         title: relatedJob?.title || "Hiring request",
         counterpartyName: recruiterName,
-        counterpartyAvatarUrl: relatedJob?.channel?.logoUrl || null,
+        counterpartyAvatarUrl: interest.recruiter_avatar_url || relatedJob?.channel?.logoUrl || null,
         createdAtLabel: relativeTimeLabel(interest.created_at),
         updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
         message: interest.note || "",
         firstMessageAnswers: coerceAnswers(interest.first_message_answers),
-        recruiter: relatedJob
+        recruiter: relatedJob || interest.recruiter_username
           ? {
-              profileSlug: relatedJob.channelProfileSlug || null,
+              profileSlug: interest.recruiter_username || relatedJob?.channelProfileSlug || null,
               name: recruiterName,
-              avatarUrl: relatedJob.channel?.logoUrl || null,
-              channelName: relatedJob.channel?.name || null,
+              avatarUrl: interest.recruiter_avatar_url || relatedJob?.channel?.logoUrl || null,
+              channelName: relatedJob?.channel?.name || null,
               audienceLabel: null,
-              platform: relatedJob.platform || null,
-              hiringFor: relatedJob.title,
+              platform: relatedJob?.platform || null,
+              hiringFor: relatedJob?.title || listing?.title || null,
             }
           : null,
         // The context card is the viewer's own listing the recruiter is interested in.

@@ -10,7 +10,12 @@ import {
   StatusUpdateLine,
   type ChatMessage,
 } from "./ApplicationsWorkspace";
-import { formatBadgeCount, mapBackendMessage, totalUnread } from "../../lib/messaging";
+import {
+  formatBadgeCount,
+  isMessagingClosedStatus,
+  mapBackendMessage,
+  totalUnread,
+} from "../../lib/messaging";
 import {
   getApplicationConversation,
   getInterestConversation,
@@ -35,6 +40,7 @@ import { directionLabelsFor, pipelineProfileHrefOf, type WorkspaceModeKey } from
  */
 
 type DockFilter = "all" | "sent" | "received" | "archived";
+const CONVERSATION_POLL_INTERVAL_MS = 3_000;
 
 // Remembers the dock's open state + active thread across navigation, so returning
 // to the workspace reopens the same conversation instead of the default list.
@@ -73,6 +79,7 @@ type CompactChatDockProps = {
   liveMode: boolean;
   backendAccessToken?: string;
   unreadByThread: Record<string, number>;
+  onThreadRead: (id: string) => void;
   /** Bumped by "Message" actions elsewhere (e.g. pipeline cards) to open a thread. */
   openRequest: { id: string; nonce: number } | null;
   /** Demo-mode reply persistence (parent owns the items state). */
@@ -87,6 +94,7 @@ export default function CompactChatDock({
   liveMode,
   backendAccessToken,
   unreadByThread,
+  onThreadRead,
   openRequest,
   onDemoReply,
   onOpenInInbox,
@@ -97,6 +105,7 @@ export default function CompactChatDock({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [liveThreads, setLiveThreads] = useState<
     Record<string, { conversationId: string; messages: BackendMessage[] }>
   >({});
@@ -105,6 +114,7 @@ export default function CompactChatDock({
   const handledNonce = useRef(0);
   const restoredDock = useRef(false);
   const skipFirstPersist = useRef(true);
+  const pendingSendRef = useRef<{ threadId: string; body: string; id: string } | null>(null);
 
   // Restore the last dock state on mount (client-only, once) so navigating away
   // and back returns to the same open conversation.
@@ -153,34 +163,53 @@ export default function CompactChatDock({
     return () => window.clearTimeout(timer);
   }, [open, activeThreadId, openRequestId, openRequestNonce]);
 
-  // Load the real conversation for the open thread (live mode) and mark it read —
-  // the same contract the full Inbox uses (record id == OwnerInteraction id).
+  // Keep the dock's open conversation current and mark it read. Requests are
+  // sequential and pause while sending so a stale poll cannot replace a message
+  // that was just returned by the backend.
   const threadKind = thread?.kind ?? null;
   useEffect(() => {
-    if (!open || !liveMode || !backendAccessToken || !threadId || !threadKind) return;
+    if (
+      !open ||
+      !liveMode ||
+      !backendAccessToken ||
+      !threadId ||
+      !threadKind ||
+      sending
+    ) return;
     let cancelled = false;
-    const loader =
-      threadKind === "hiring_request"
-        ? getInterestConversation(backendAccessToken, threadId)
-        : getApplicationConversation(backendAccessToken, threadId);
-    loader
-      .then((detail) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setLoadFailed(false);
+
+    const refreshConversation = async () => {
+      try {
+        const detail = await (threadKind === "hiring_request"
+          ? getInterestConversation(backendAccessToken, threadId)
+          : getApplicationConversation(backendAccessToken, threadId));
         if (cancelled) return;
         setLiveThreads((prev) => ({
           ...prev,
           [threadId]: { conversationId: detail.conversation.id, messages: detail.messages },
         }));
+        setLoadFailed(false);
         if (detail.conversation.unread_count > 0) {
           void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
         }
-      })
-      .catch(() => {
-        // Composer stays disabled until the conversation loads; opening message still renders.
-      });
+        onThreadRead(threadId);
+      } catch {
+        if (!cancelled) setLoadFailed(true);
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(refreshConversation, CONVERSATION_POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    void refreshConversation();
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [open, liveMode, backendAccessToken, threadId, threadKind]);
+  }, [open, liveMode, backendAccessToken, threadId, threadKind, sending, onThreadRead]);
 
   const conversation: ChatMessage[] = useMemo(() => {
     if (!thread) return [];
@@ -209,9 +238,9 @@ export default function CompactChatDock({
 
   const unreadCount = liveMode ? totalUnread(unreadByThread) : items.filter((item) => item.unread).length;
 
-  const threadArchived = thread ? isArchivedInteraction(thread) : false;
+  const threadMessagingClosed = thread ? isMessagingClosedStatus(thread.status) : false;
   const threadLive = thread && liveMode ? liveThreads[thread.id] : undefined;
-  const composerReady = Boolean(thread) && !threadArchived && (!liveMode || Boolean(threadLive));
+  const composerReady = Boolean(thread) && !threadMessagingClosed && (!liveMode || Boolean(threadLive));
 
   const send = async () => {
     const body = draft.trim();
@@ -221,12 +250,24 @@ export default function CompactChatDock({
       if (!cache) return;
       setSending(true);
       setSendError(null);
+      const previousAttempt = pendingSendRef.current;
+      const clientMessageId =
+        previousAttempt?.threadId === thread.id && previousAttempt.body === body
+          ? previousAttempt.id
+          : window.crypto.randomUUID();
+      pendingSendRef.current = { threadId: thread.id, body, id: clientMessageId };
       try {
-        const message = await sendConversationMessage(backendAccessToken, cache.conversationId, body);
+        const message = await sendConversationMessage(
+          backendAccessToken,
+          cache.conversationId,
+          body,
+          clientMessageId
+        );
         setLiveThreads((prev) => ({
           ...prev,
           [thread.id]: { ...cache, messages: [...cache.messages, message] },
         }));
+        if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
         setDraft("");
       } catch {
         setSendError("Message could not be sent. Please try again.");
@@ -370,7 +411,7 @@ export default function CompactChatDock({
           </div>
           {/* Composer */}
           <div className="shrink-0 border-t border-white/[0.07] px-2.5 py-2">
-            {threadArchived ? (
+            {threadMessagingClosed ? (
               <p className="px-1.5 py-1 text-[11px] text-white/40">This thread is closed to new messages.</p>
             ) : (
               <>
@@ -379,6 +420,7 @@ export default function CompactChatDock({
                     ref={composerRef}
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
+                    maxLength={5000}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -409,7 +451,9 @@ export default function CompactChatDock({
                 {sendError ? (
                   <p className="mt-1 px-1 text-[10px] text-rose-300/80">{sendError}</p>
                 ) : liveMode && !threadLive ? (
-                  <p className="mt-1 px-1 text-[10px] text-white/35">Loading conversation…</p>
+                  <p className="mt-1 px-1 text-[10px] text-white/35">
+                    {loadFailed ? "Couldn’t load this conversation. Retrying…" : "Loading conversation…"}
+                  </p>
                 ) : !liveMode ? (
                   <p className="mt-1 px-1 text-[10px] text-white/30">Demo only — replies aren’t delivered yet.</p>
                 ) : null}

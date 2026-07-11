@@ -9,12 +9,14 @@ import {
   applyToJob,
   createReport,
   describeActionError,
+  getMyApplicationForJob,
   isBackendAuthError,
   listMyPortfolio,
   listRoles,
   previewPortfolioLink,
   saveJob,
   type BackendPortfolioItem,
+  type BackendJobApplication,
   type BackendRole,
   type ReportCategory,
 } from "../../lib/backendClient";
@@ -28,6 +30,7 @@ import {
   validateAnswers,
 } from "../../lib/firstMessageRequirements";
 import { toPortfolioOption, toPortfolioOptions } from "../../lib/firstMessagePortfolio";
+import { applicationRelationshipPresentation } from "../../lib/applicationRelationship";
 import type { PortfolioState } from "../first-message/FirstMessageFields";
 import ActionSuccessModal from "../first-message/ActionSuccessModal";
 import FirstMessageRequirementsModal from "../first-message/FirstMessageRequirementsModal";
@@ -43,7 +46,7 @@ export default function JobActionsPanelClient({
   isOwner?: boolean;
 }) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [applyState, setApplyState] = React.useState<"idle" | "saving" | "sent" | "error">("idle");
   const [applyError, setApplyError] = React.useState<string | null>(null);
   const [saveState, setSaveState] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -68,6 +71,11 @@ export default function JobActionsPanelClient({
   const [requirementsOpen, setRequirementsOpen] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
   const [conversationId, setConversationId] = React.useState<string | null>(null);
+  const [existingApplication, setExistingApplication] = React.useState<BackendJobApplication | null>(null);
+  const [relationshipState, setRelationshipState] = React.useState<"loading" | "ready" | "error">(
+    isOwner ? "ready" : "loading"
+  );
+  const [relationshipReload, setRelationshipReload] = React.useState(0);
   const [portfolio, setPortfolio] = React.useState<PortfolioState | undefined>(
     needsPortfolio ? { items: [], loading: true } : undefined
   );
@@ -241,6 +249,51 @@ export default function JobActionsPanelClient({
   const loginRedirect = () =>
     router.push(`/auth?mode=login&next=${encodeURIComponent(`/jobs/${job.id}`)}`);
 
+  React.useEffect(() => {
+    if (isOwner) {
+      setExistingApplication(null);
+      setRelationshipState("ready");
+      return;
+    }
+    if (sessionStatus === "loading") {
+      setRelationshipState("loading");
+      return;
+    }
+    const token = session?.backendAccessToken;
+    if (!token) {
+      setExistingApplication(null);
+      setRelationshipState("ready");
+      return;
+    }
+    let cancelled = false;
+    setRelationshipState("loading");
+    setApplyError(null);
+    void getMyApplicationForJob(token, String(job.id))
+      .then((application) => {
+        if (cancelled) return;
+        setExistingApplication(application);
+        setConversationId(application?.id ?? null);
+        setApplyState("idle");
+        setApplyError(null);
+        setRelationshipState("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRelationshipState("error");
+        setApplyState("error");
+        setApplyError(describeActionError(error, "Couldn’t check your application status. Try again."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, job.id, relationshipReload, session?.backendAccessToken, sessionStatus]);
+
+  const openApplication = (applicationId: string) => {
+    router.push(
+      `/applications?view=inbox&mode=talent&thread=${encodeURIComponent(applicationId)}`
+    );
+  };
+
   const requireToken = () => {
     const token = session?.backendAccessToken;
     if (!token) {
@@ -282,6 +335,16 @@ export default function JobActionsPanelClient({
   // proceeds immediately as before. Opening the modal does not require a session —
   // the requester can see and fill what's asked; auth is enforced at submit.
   const onApply = async () => {
+    if (existingApplication) {
+      openApplication(existingApplication.id);
+      return;
+    }
+    if (relationshipState === "loading") return;
+    if (relationshipState === "error") {
+      setApplyState("idle");
+      setRelationshipReload((value) => value + 1);
+      return;
+    }
     if (requirementKeys.length) {
       setApplyState("idle");
       setApplyError(null);
@@ -330,6 +393,7 @@ export default function JobActionsPanelClient({
         ...(portfolioItemIds.length ? { portfolio_item_ids: portfolioItemIds } : {}),
         ...(requirementKeys.length ? { first_message_answers: normalizedAnswers } : {}),
       });
+      setExistingApplication(application);
       setConversationId(application.id);
       setApplyState("sent");
       setRequirementsOpen(false);
@@ -342,6 +406,20 @@ export default function JobActionsPanelClient({
       if (isBackendAuthError(err)) loginRedirect();
     }
   };
+
+  const applicationPresentation = existingApplication
+    ? applicationRelationshipPresentation(existingApplication.status)
+    : null;
+  const primaryAction = existingApplication
+    ? {
+        label: applicationPresentation?.actionLabel ?? "Open conversation",
+        icon: "inbox" as const,
+      }
+    : relationshipState === "loading"
+      ? { label: "Checking application…", icon: "refresh" as const, disabled: true }
+      : relationshipState === "error"
+        ? { label: "Retry", icon: "refresh" as const }
+        : undefined;
 
   // "Report this listing" opens the shared reason picker; the report itself is
   // submitted from the dialog with the chosen category + optional note.
@@ -381,6 +459,8 @@ export default function JobActionsPanelClient({
         reportState={reportState}
         shareState={shareState}
         isOwner={isOwner}
+        primaryAction={primaryAction}
+        applicationStatusLabel={applicationPresentation?.statusLabel ?? null}
       />
       <FirstMessageRequirementsModal
         open={requirementsOpen}
@@ -449,7 +529,7 @@ export default function JobActionsPanelClient({
           // A sent application surfaces in the applicant's Talent inbox; deep-link
           // straight to its thread.
           router.push(
-            `/applications?view=talent${conversationId ? `&thread=${encodeURIComponent(conversationId)}` : ""}`
+            `/applications?view=inbox&mode=talent${conversationId ? `&thread=${encodeURIComponent(conversationId)}` : ""}`
           )
         }
         onSecondary={() => setSuccessOpen(false)}

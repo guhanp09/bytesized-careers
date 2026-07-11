@@ -14,44 +14,77 @@ const INPUT_SURFACE = "rounded-2xl border border-white/[0.08] bg-white/[0.035]";
 const LABEL = "text-[11px] font-semibold text-white/40";
 
 /**
- * Private notes for a received interaction: a calm, local-first note surface.
+ * Private notes for a received interaction: a calm, persistent note surface.
  *
  * Saved notes appear as a small stack of pasted notes above the input — newest in
  * front, older ones hinted behind, browsable with Prev/Next (and ←/→ keys) with a
- * subtle page-turn. The stack is stored per conversation in localStorage; the
- * newest note is also pushed to `onSaveLatest` so the existing single-note backend
- * field (and the pipeline note indicator) stay in sync. Seeded from prior notes so
- * the experience has history before the user writes anything.
+ * subtle page-turn. In live mode the parent provides owner-scoped persistence;
+ * localStorage is a display cache. Explicit demo mode remains local-only. Seeded
+ * prior notes provide backward compatibility while legacy single notes migrate.
  */
 export default function PrivateNotesPanel({
   conversationId,
   counterpartyName,
   seedNotes = [],
   onSaveLatest,
+  loadPersistedNotes,
+  createPersistedNote,
+  deletePersistedNote,
 }: {
   conversationId: string;
   counterpartyName: string;
   seedNotes?: PrivateNote[];
   onSaveLatest?: (body: string | null) => Promise<void> | void;
+  loadPersistedNotes?: () => Promise<PrivateNote[]>;
+  createPersistedNote?: (body: string) => Promise<PrivateNote>;
+  deletePersistedNote?: (noteId: string) => Promise<void>;
 }) {
   const [notes, setNotes] = useState<PrivateNote[]>(seedNotes);
   const [draft, setDraft] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [loadState, setLoadState] = useState<"ready" | "loading" | "error">("ready");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   // Direction of travel for the page-turn: +1 older (slide from right), -1 newer.
   const [flipFrom, setFlipFrom] = useState("-10px");
 
   // Load this conversation's stored stack on mount / when the thread changes.
   // (Runs client-side only, so localStorage access stays out of SSR.)
   useEffect(() => {
+    let cancelled = false;
     const stored = loadNotes(conversationId);
     setNotes(stored ?? seedNotes);
     setActiveIndex(0);
     setDraft("");
     setSaveState("idle");
-    // seedNotes is derived from the same conversation; keying on the id is enough.
+    setActionError(null);
+    if (!loadPersistedNotes) {
+      setLoadState("ready");
+      return () => {
+        cancelled = true;
+      };
+    }
+    setLoadState("loading");
+    void loadPersistedNotes()
+      .then((persisted) => {
+        if (cancelled) return;
+        setNotes(persisted);
+        saveNotes(conversationId, persisted);
+        setLoadState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // seedNotes is the legacy fallback for this conversation. Persisted callbacks
+    // are keyed by the same id in the parent, so reloading on those two identities
+    // is sufficient and avoids a loop from a freshly-created fallback array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]);
+  }, [conversationId, loadPersistedNotes]);
 
   useEffect(() => {
     if (saveState !== "saved") return;
@@ -68,35 +101,48 @@ export default function PrivateNotesPanel({
 
   const handleSave = async () => {
     const body = draft.trim();
-    if (!body) return;
-    const note: PrivateNote = {
-      id: makeNoteId(),
-      body,
-      createdAt: formatNoteTimestamp(),
-      conversationId,
-    };
-    const next = [note, ...notes];
-    setNotes(next);
-    saveNotes(conversationId, next);
-    setDraft("");
-    setFlipFrom("-10px");
-    setActiveIndex(0);
-    // Local save is the source of truth for the stack; sync the latest note to the
-    // backend/pipeline field but never let a sync failure lose the local note.
-    setSaveState("saved");
+    if (!body || saveState === "saving") return;
+    setSaveState("saving");
+    setActionError(null);
     try {
-      await onSaveLatest?.(body);
+      const note = createPersistedNote
+        ? await createPersistedNote(body)
+        : {
+            id: makeNoteId(),
+            body,
+            createdAt: formatNoteTimestamp(),
+            conversationId,
+          };
+      const next = [note, ...notes.filter((item) => item.id !== note.id)];
+      setNotes(next);
+      saveNotes(conversationId, next);
+      setDraft("");
+      setFlipFrom("-10px");
+      setActiveIndex(0);
+      if (!createPersistedNote) await onSaveLatest?.(body);
+      setSaveState("saved");
     } catch {
-      /* kept locally */
+      setSaveState("idle");
+      setActionError("Couldn’t save this note. Try again.");
     }
   };
 
-  const handleDelete = (id: string) => {
-    const next = notes.filter((note) => note.id !== id);
-    setNotes(next);
-    saveNotes(conversationId, next);
-    setActiveIndex((index) => clampIndex(index, next.length));
-    void onSaveLatest?.(next[0]?.body ?? null);
+  const handleDelete = async (id: string) => {
+    if (deletingId) return;
+    setDeletingId(id);
+    setActionError(null);
+    try {
+      await deletePersistedNote?.(id);
+      const next = notes.filter((note) => note.id !== id);
+      setNotes(next);
+      saveNotes(conversationId, next);
+      setActiveIndex((index) => clampIndex(index, next.length));
+      if (!deletePersistedNote) await onSaveLatest?.(next[0]?.body ?? null);
+    } catch {
+      setActionError("Couldn’t delete this note. Try again.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const hasNotes = notes.length > 0;
@@ -160,7 +206,8 @@ export default function PrivateNotesPanel({
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleDelete(activeNote.id)}
+                  onClick={() => void handleDelete(activeNote.id)}
+                  disabled={deletingId === activeNote.id}
                   aria-label="Delete this note"
                   className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/60"
                 >
@@ -256,12 +303,18 @@ export default function PrivateNotesPanel({
             type="button"
             data-testid="private-note-save"
             onClick={() => void handleSave()}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || saveState === "saving"}
             className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Save note
+            {saveState === "saving" ? "Saving…" : "Save note"}
           </button>
         </div>
+        {loadState === "loading" ? (
+          <p className="mt-2 text-[11px] text-white/35">Loading saved notes…</p>
+        ) : loadState === "error" ? (
+          <p className="mt-2 text-[11px] text-amber-200/75">Couldn’t refresh saved notes.</p>
+        ) : null}
+        {actionError ? <p className="mt-2 text-[11px] text-rose-300/80">{actionError}</p> : null}
       </section>
     </div>
   );
