@@ -35,7 +35,7 @@ async function signInAsOwner(context: BrowserContext) {
 }
 
 async function openApplicationsTab(page: Page) {
-  await page.goto("/applications");
+  await page.goto("/applications?demo=1");
   await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 15_000 });
 }
 

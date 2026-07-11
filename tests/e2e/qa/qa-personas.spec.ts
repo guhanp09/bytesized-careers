@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const CONTROLLER_EMAIL = "qa-controller@example.com";
 const CONTROLLER_PASSWORD = "LocalQaController123!";
+const QA_BASE_URL = "http://127.0.0.1:3200";
 
 async function loginController(page: Page) {
   await page.goto("/auth?mode=login", { waitUntil: "domcontentloaded" });
@@ -140,6 +141,271 @@ test("an application stage update and message carry across both real personas", 
   );
 });
 
+test("two online personas receive and reply to messages without reloading", async ({ page, browser }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+
+  const talentContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const talentPage = await talentContext.newPage();
+  try {
+    await loginController(talentPage);
+    await switchPersona(talentPage, "talent-complete", "Priya Nair");
+    await talentPage.goto("/applications?view=inbox&mode=talent", {
+      waitUntil: "domcontentloaded",
+    });
+    await talentPage.getByTestId("applications-filter-sent").click();
+    await talentPage
+      .getByTestId("interaction-row")
+      .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+      .first()
+      .click();
+    const talentDetail = talentPage.getByTestId("applications-detail");
+    await expect(talentDetail.getByRole("textbox", { name: "Reply message" })).toBeVisible();
+
+    await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+      waitUntil: "domcontentloaded",
+    });
+    const priya = page
+      .getByTestId("pipeline-group-shortlisted")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Priya Nair" })
+      .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+      .first();
+    await priya.getByTestId("pipeline-message").click();
+    const dock = page.getByTestId("chat-dock-panel");
+    await dock.getByTestId("chat-dock-composer").fill("Live delivery check from Finance.");
+    await dock.getByTestId("chat-dock-send").click();
+    await expect(dock.getByTestId("chat-message").last()).toContainText(
+      "Live delivery check from Finance."
+    );
+
+    // The second browser receives the persisted message through active-thread
+    // refresh; no navigation, reload, or persona switch is used here.
+    await expect(talentDetail).toContainText("Live delivery check from Finance.", {
+      timeout: 12_000,
+    });
+    const talentComposer = talentDetail.getByRole("textbox", { name: "Reply message" });
+    await talentComposer.fill("Received — replying live from Priya.");
+    await talentDetail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(talentComposer).toHaveValue("");
+
+    // The compact dock independently refreshes the same backend conversation.
+    await expect(dock).toContainText("Received — replying live from Priya.", {
+      timeout: 12_000,
+    });
+  } finally {
+    await talentContext.close();
+  }
+});
+
+test("a fresh job application appears in both inboxes and cannot be duplicated", async ({ page, browser }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "talent-complete", "Priya Nair");
+
+  await page.goto("/jobs", { waitUntil: "domcontentloaded" });
+  const targetJob = page
+    .getByRole("link")
+    .filter({ hasText: "Thumbnail designer for a gaming channel" })
+    .first();
+  await expect(targetJob).toBeVisible();
+  await targetJob.click();
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+$/);
+  const jobHref = new URL(page.url()).pathname;
+
+  const applyButton = page.getByTestId("job-apply-button");
+  await expect(applyButton).toHaveText(/Apply/);
+  await applyButton.click();
+  const modal = page.getByTestId("first-message-modal-job");
+  await expect(modal).toBeVisible();
+  await modal.locator('[data-requirement-key="expected_rate"] input').fill("1800");
+  const portfolioField = modal.locator('[data-requirement-key="relevant_portfolio"]');
+  await expect(portfolioField.locator('button[aria-pressed="false"]').first()).toBeVisible();
+  await portfolioField.locator('button[aria-pressed="false"]').first().click();
+  await modal
+    .locator('[data-requirement-key="fit_note"] textarea')
+    .fill("My education packaging work translates well to fast gaming thumbnail iteration.");
+  await modal.getByTestId("first-message-modal-submit").click();
+
+  const success = page.getByTestId("apply-success-modal");
+  await expect(success).toBeVisible();
+  await success.getByTestId("action-success-primary").click();
+  await expect(page).toHaveURL(/\/applications\?.*mode=talent.*thread=/);
+  const applicationId = new URL(page.url()).searchParams.get("thread");
+  expect(applicationId).toBeTruthy();
+  const talentDetail = page.getByTestId("applications-detail");
+  await expect(talentDetail).toContainText("Thumbnail designer for a gaming channel");
+  await expect(talentDetail).toContainText("You applied");
+  await expect(talentDetail).toContainText("₹1,800");
+  await expect(talentDetail.getByTestId("private-note-card")).toHaveCount(0);
+
+  // Refresh/revisit is backend-derived: the CTA opens the one existing record
+  // instead of reopening the application form or creating another application.
+  await page.goto(jobHref, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("job-application-status")).toHaveText("Application submitted");
+  const openConversation = page.getByRole("button", { name: "Open conversation", exact: true });
+  await expect(openConversation).toBeVisible();
+  await openConversation.click();
+  await expect(page).toHaveURL(new RegExp(`thread=${applicationId}`));
+
+  const recruiterContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const recruiterPage = await recruiterContext.newPage();
+  try {
+    await loginController(recruiterPage);
+    await switchPersona(recruiterPage, "recruiter-active", "Finance Simplified");
+    await recruiterPage.goto(
+      `/applications?view=inbox&mode=recruiter&thread=${encodeURIComponent(applicationId!)}`,
+      { waitUntil: "domcontentloaded" }
+    );
+    const recruiterDetail = recruiterPage.getByTestId("applications-detail");
+    await expect(recruiterDetail).toContainText("Priya Nair");
+    await expect(recruiterDetail).toContainText("Thumbnail designer for a gaming channel");
+
+    const privateNote = recruiterDetail.getByTestId("private-note-input");
+    await privateNote.fill("Fresh application QA note — visible only to the hiring side.");
+    await recruiterDetail.getByTestId("private-note-save").click();
+    await expect(recruiterDetail.getByTestId("saved-notes-card")).toContainText(
+      "Fresh application QA note"
+    );
+    await privateNote.fill("Second hiring-side note — ask about source-file handoff.");
+    await recruiterDetail.getByTestId("private-note-save").click();
+    await expect(recruiterDetail.getByTestId("saved-notes-count")).toHaveText("2");
+
+    // Prove that live history comes from the backend, not the browser cache.
+    await recruiterPage.evaluate(() => window.localStorage.removeItem("cj.applications.notes"));
+    await recruiterPage.reload({ waitUntil: "domcontentloaded" });
+    const reloadedRecruiterDetail = recruiterPage.getByTestId("applications-detail");
+    await expect(reloadedRecruiterDetail.getByTestId("saved-notes-count")).toHaveText("2");
+    await expect(reloadedRecruiterDetail.getByTestId("saved-notes-card")).toContainText(
+      "Second hiring-side note"
+    );
+    await reloadedRecruiterDetail.getByRole("button", { name: "Older note" }).click();
+    await expect(reloadedRecruiterDetail.getByTestId("saved-notes-card")).toContainText(
+      "Fresh application QA note"
+    );
+
+    const recruiterComposer = reloadedRecruiterDetail.getByRole("textbox", { name: "Reply message" });
+    const retriedMessage = "Thanks Priya — this retry should arrive exactly once.";
+    await recruiterComposer.fill(retriedMessage);
+    const messageRoute = "**/api/v1/me/conversations/*/messages";
+    await recruiterPage.route(messageRoute, (route) =>
+      route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Temporary outage"}' })
+    );
+    await reloadedRecruiterDetail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(reloadedRecruiterDetail).toContainText("Message could not be sent. Please try again.");
+    await expect(recruiterComposer).toHaveValue(retriedMessage);
+    await recruiterPage.unroute(messageRoute);
+    await reloadedRecruiterDetail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(recruiterComposer).toHaveValue("");
+
+    const applicantThread = page.getByTestId("applications-detail");
+    await expect(applicantThread).toContainText(retriedMessage, { timeout: 12_000 });
+    await expect(applicantThread.getByText(retriedMessage, { exact: true })).toHaveCount(1);
+    await expect(page.getByTestId("applications-detail").getByTestId("private-note-card")).toHaveCount(0);
+  } finally {
+    await recruiterContext.close();
+  }
+});
+
+test("a fresh hiring request appears for both sides and reuses its conversation", async ({ page, browser }) => {
+  await loginController(page);
+  await restoreScenario(page, "hiring-requests", "RESTORE REQUESTS");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+
+  await page.goto("/talent", { waitUntil: "domcontentloaded" });
+  const targetListing = page
+    .getByRole("link")
+    .filter({ hasText: "Retention-focused long-form editor for finance & education channels" })
+    .first();
+  await expect(targetListing).toBeVisible();
+  await targetListing.click();
+  await expect(page).toHaveURL(/\/talent\/[0-9a-f-]+$/);
+  const listingHref = new URL(page.url()).pathname;
+
+  const hireButton = page.getByTestId("talent-hire-button");
+  await expect(hireButton).toHaveText("Hire Me");
+  await hireButton.click();
+  const modal = page.getByTestId("first-message-modal-talent");
+  await expect(modal).toBeVisible();
+  await modal.locator('[data-requirement-key="project_budget"] input').fill("40000");
+  await modal
+    .locator('[data-requirement-key="project_brief"] textarea')
+    .fill("Two finance explainers with motion callouts and two Shorts cutdowns per video.");
+  await modal.locator('[data-requirement-key="turnaround"] input').fill("5");
+  await modal.locator('[data-requirement-key="working_hours"] input').fill("Evenings IST");
+  await modal
+    .locator('[data-requirement-key="channel_or_brand_link"] input')
+    .fill("https://youtube.com/@financesimplified");
+  await modal
+    .locator('[data-requirement-key="reference_links"] input')
+    .fill("https://youtube.com/watch?v=finance-reference");
+  await modal.locator('[data-requirement-key="start_availability"] input').fill("Within 2 weeks");
+  await modal
+    .locator('[data-requirement-key="fit_note"] textarea')
+    .fill("Priya's retention-focused finance edits match the channel's long-form direction.");
+  await modal.getByTestId("first-message-modal-submit").click();
+
+  const success = page.getByTestId("hire-success-modal");
+  await expect(success).toBeVisible();
+  await success.getByTestId("action-success-primary").click();
+  await expect(page).toHaveURL(/\/applications\?.*mode=recruiter.*thread=/);
+  const interestId = new URL(page.url()).searchParams.get("thread");
+  expect(interestId).toBeTruthy();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  await expect(recruiterDetail).toContainText("Priya Nair");
+  await expect(recruiterDetail).toContainText("You sent a hiring request");
+  await expect(recruiterDetail).toContainText("₹40,000");
+  await expect(recruiterDetail.getByTestId("private-note-card")).toHaveCount(0);
+
+  await page.goto(listingHref, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Hiring request sent", { exact: true })).toBeVisible();
+  const openConversation = page.getByRole("button", { name: "Open conversation", exact: true });
+  await expect(openConversation).toBeVisible();
+  await openConversation.click();
+  await expect(page).toHaveURL(new RegExp(`thread=${interestId}`));
+
+  const talentContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const talentPage = await talentContext.newPage();
+  try {
+    await loginController(talentPage);
+    await switchPersona(talentPage, "talent-complete", "Priya Nair");
+    await talentPage.goto(
+      `/applications?view=inbox&mode=talent&thread=${encodeURIComponent(interestId!)}`,
+      { waitUntil: "domcontentloaded" }
+    );
+    const talentDetail = talentPage.getByTestId("applications-detail");
+    await expect(talentDetail).toContainText("Finance Simplified");
+    await expect(talentDetail).toContainText("Two finance explainers with motion callouts");
+
+    const note = talentDetail.getByTestId("private-note-input");
+    await note.fill("Qualified finance channel; clarify revision rounds.");
+    await talentDetail.getByTestId("private-note-save").click();
+    await expect(talentDetail.getByTestId("saved-notes-card")).toContainText(
+      "clarify revision rounds"
+    );
+    await talentPage.evaluate(() => window.localStorage.removeItem("cj.applications.notes"));
+    await talentPage.reload({ waitUntil: "domcontentloaded" });
+    const reloadedTalentDetail = talentPage.getByTestId("applications-detail");
+    await expect(reloadedTalentDetail.getByTestId("saved-notes-card")).toContainText(
+      "clarify revision rounds"
+    );
+
+    const talentComposer = reloadedTalentDetail.getByRole("textbox", { name: "Reply message" });
+    await talentComposer.fill("Thanks — I can take this on from the second week of August.");
+    await reloadedTalentDetail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(talentComposer).toHaveValue("");
+
+    await expect(page.getByTestId("applications-detail")).toContainText(
+      "I can take this on from the second week of August.",
+      { timeout: 12_000 }
+    );
+    await expect(page.getByTestId("applications-detail").getByTestId("private-note-card")).toHaveCount(0);
+  } finally {
+    await talentContext.close();
+  }
+});
+
 test("a hiring request acceptance carries back to recruiter outreach", async ({ page }) => {
   await loginController(page);
   await restoreScenario(page, "hiring-requests", "RESTORE REQUESTS");
@@ -197,6 +463,9 @@ test("engagement confirmation and blind feedback complete across both participan
     .click();
   const startRow = page.getByTestId("engagement-status-row");
   await expect(startRow).toContainText("Start confirmation pending");
+  await expect(
+    page.getByTestId("applications-detail").getByRole("textbox", { name: "Reply message" })
+  ).toBeVisible();
   await startRow.getByRole("button", { name: "Confirm start" }).click();
   await expect(startRow).toContainText("Work in progress");
 

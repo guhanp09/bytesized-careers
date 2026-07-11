@@ -38,7 +38,7 @@ async function signInAsOwner(context: BrowserContext) {
 }
 
 async function openWorkspace(page: import("@playwright/test").Page) {
-  await page.goto("/applications", { waitUntil: "domcontentloaded" });
+  await page.goto("/applications?demo=1", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("main").getByTestId("applications-workspace")).toBeVisible({ timeout: 15_000 });
 }
 
@@ -515,7 +515,7 @@ test.describe("applications pipeline view", () => {
     await expect(main.getByTestId("pipeline-direction-received")).toContainText("Applicants");
 
     // A fresh visit with a bare URL: localStorage restores the last shape.
-    await page.goto("/applications");
+    await page.goto("/applications?demo=1");
     await expect(main.getByTestId("pipeline-board")).toBeVisible({ timeout: 15_000 });
     await expect(main.getByTestId("pipeline-direction-sent")).toHaveAttribute("aria-pressed", "true");
     await expect(main.getByTestId("pipeline-direction-received")).toContainText("Applicants");
@@ -532,7 +532,7 @@ test.describe("applications pipeline view", () => {
 
     // Leave the workspace entirely, then return with a bare URL.
     await page.goto("/jobs", { waitUntil: "domcontentloaded" });
-    await page.goto("/applications", { waitUntil: "domcontentloaded" });
+    await page.goto("/applications?demo=1", { waitUntil: "domcontentloaded" });
 
     // The dock is back on the same conversation, not the default list.
     const dock = page.getByTestId("chat-dock-panel");
@@ -549,7 +549,7 @@ test.describe("applications pipeline view", () => {
     await expect(main.getByTestId("applications-detail-header")).toContainText("Rhea Kapoor");
 
     await page.goto("/jobs", { waitUntil: "domcontentloaded" });
-    await page.goto("/applications", { waitUntil: "domcontentloaded" });
+    await page.goto("/applications?demo=1", { waitUntil: "domcontentloaded" });
 
     // Back on Rhea's conversation, not the first thread in the list.
     await expect(main.getByTestId("applications-detail-header")).toContainText("Rhea Kapoor", {
@@ -558,7 +558,7 @@ test.describe("applications pipeline view", () => {
   });
 
   test("deep links restore a specific pipeline state; legacy links keep working", async ({ page }) => {
-    await page.goto("/applications?view=pipeline&mode=recruiter&direction=received&stage=shortlisted");
+    await page.goto("/applications?demo=1&view=pipeline&mode=recruiter&direction=received&stage=shortlisted");
     const main = page.getByRole("main");
     const board = main.getByTestId("pipeline-board");
     await expect(board).toBeVisible({ timeout: 15_000 });
@@ -569,7 +569,7 @@ test.describe("applications pipeline view", () => {
 
     // The legacy notification contract (?view=<mode>&thread=<id>) still opens
     // that conversation in the Inbox.
-    await page.goto("/applications?view=hiring&thread=r-app-recv-2");
+    await page.goto("/applications?demo=1&view=hiring&thread=r-app-recv-2");
     await expect(main.getByTestId("applications-detail")).toContainText("Mira Shah", {
       timeout: 15_000,
     });
