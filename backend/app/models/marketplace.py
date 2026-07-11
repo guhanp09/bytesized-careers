@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -179,6 +180,44 @@ class TalentInterest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InteractionPrivateNote(Base):
+    """A manager-only note attached to one application or hiring request."""
+
+    __tablename__ = "interaction_private_notes"
+    __table_args__ = (
+        CheckConstraint(
+            "(application_id IS NOT NULL AND talent_interest_id IS NULL) OR "
+            "(application_id IS NULL AND talent_interest_id IS NOT NULL)",
+            name="ck_private_note_one_source",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    application_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("job_applications.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    talent_interest_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("talent_interests.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
 

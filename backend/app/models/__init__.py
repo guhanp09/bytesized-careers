@@ -6,6 +6,7 @@ from app.models.hiring_identity import HiringIdentity
 from app.models.job import Job
 from app.models.marketplace import (
     Entitlement,
+    InteractionPrivateNote,
     JobApplication,
     Notification,
     Report,
@@ -43,6 +44,7 @@ __all__ = [
     "EngagementReview",
     "Job",
     "JobApplication",
+    "InteractionPrivateNote",
     "Notification",
     "OAuthAccount",
     "PasswordResetToken",

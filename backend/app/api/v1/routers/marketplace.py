@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import String, func, or_, select
+from sqlalchemy import String, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT
 from app.models import (
     Entitlement,
     EngagementReview,
+    InteractionPrivateNote,
     Job,
     JobApplication,
     Message,
@@ -39,6 +40,8 @@ from app.schemas.marketplace import (
     JobApplicationCreate,
     JobApplicationRead,
     JobApplicationStatusUpdate,
+    InteractionPrivateNoteCreate,
+    InteractionPrivateNoteRead,
     LaunchCheckoutRequest,
     ManagerNoteUpdate,
     NotificationListResponse,
@@ -103,6 +106,15 @@ async def _interest_read(
     sender_view: bool,
 ) -> TalentInterestRead:
     read = _interest_read_for_sender(interest) if sender_view else TalentInterestRead.model_validate(interest)
+    recruiter = (
+        await session.execute(select(User).where(User.id == interest.recruiter_user_id))
+    ).scalar_one_or_none()
+    if recruiter is not None:
+        read.recruiter_display_name = (
+            recruiter.display_name or recruiter.username or "Recruiter"
+        )
+        read.recruiter_username = recruiter.username
+        read.recruiter_avatar_url = recruiter.avatar_url
     engagement = await review_service.engagement_for_interest(session, interest.id)
     if engagement is not None:
         read.engagement = await review_service.engagement_summary(session, engagement, viewer_id)
@@ -393,6 +405,34 @@ async def list_saved_jobs(
     return [SavedJobRead.model_validate(row) for row in rows]
 
 
+@router.get("/jobs/{job_id}/application", response_model=JobApplicationRead | None)
+async def get_my_application_for_job(
+    job_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> JobApplicationRead | None:
+    """Return the caller's one application for this immutable job listing.
+
+    The job page uses this relationship read after refresh/sign-in so it never
+    relies on transient client state to decide whether Apply is available.
+    """
+
+    await _get_job_or_404(session, job_id)
+    application = (
+        await session.execute(
+            select(JobApplication).where(
+                JobApplication.job_id == job_id,
+                JobApplication.applicant_user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if application is None:
+        return None
+    result = await _application_read(session, application, current_user.id, sender_view=True)
+    await session.commit()
+    return result
+
+
 @router.post(
     "/jobs/{job_id}/applications",
     response_model=JobApplicationRead,
@@ -406,29 +446,43 @@ async def apply_to_job(
     session: AsyncSession = Depends(get_db),
 ) -> JobApplicationRead:
     job = await _get_job_or_404(session, job_id)
-    if job.status != "published":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This job is not accepting applications",
-        )
-    if job.posted_by_user_id == current_user.id:
+    applicant_user_id = current_user.id
+    if job.posted_by_user_id == applicant_user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot apply to your own job")
     existing = (
         await session.execute(
             select(JobApplication).where(
                 JobApplication.job_id == job_id,
-                JobApplication.applicant_user_id == current_user.id,
+                JobApplication.applicant_user_id == applicant_user_id,
             )
         )
     ).scalar_one_or_none()
     if existing is not None:
         return _application_read_for_sender(existing)
+    if job.status != "published" or job.posted_by_user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This job is not accepting applications",
+        )
+    owner_is_active = (
+        await session.execute(
+            select(User.id).where(
+                User.id == job.posted_by_user_id,
+                User.suspended_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if owner_is_active is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This job is not accepting applications",
+        )
     # Enforce the owner's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     _assert_first_message_complete(job.application_requirements, payload.first_message_answers)
     application = JobApplication(
         job_id=job_id,
-        applicant_user_id=current_user.id,
+        applicant_user_id=applicant_user_id,
         job_owner_user_id=job.posted_by_user_id,
         cover_note=payload.cover_note.strip() if payload.cover_note else None,
         portfolio_item_ids=_clean_list(payload.portfolio_item_ids),
@@ -447,7 +501,22 @@ async def apply_to_job(
     # Flush so the DB-side default assigns application.id before we reference it in the
     # recruiter notification — otherwise resource_id is stamped as the string "None"
     # and the notification can't deep-link back to this application.
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # A second concurrent Apply request can pass the lookup before the first
+        # transaction commits. The database uniqueness constraint is the final
+        # arbiter; return the winning application instead of leaking a 500.
+        await session.rollback()
+        existing = (
+            await session.execute(
+                select(JobApplication).where(
+                    JobApplication.job_id == job_id,
+                    JobApplication.applicant_user_id == applicant_user_id,
+                )
+            )
+        ).scalar_one()
+        return _application_read_for_sender(existing)
     # Eagerly create the conversation thread for this application so both sides can
     # message immediately (older applications get one lazily on first open).
     if job.posted_by_user_id is not None:
@@ -462,20 +531,20 @@ async def apply_to_job(
         category="application",
         resource_type="job_application",
         resource_id=str(application.id),
-        action_url="/applications",
-        actor_user_id=current_user.id,
+        action_url=f"/applications?view=inbox&mode=recruiter&thread={application.id}",
+        actor_user_id=applicant_user_id,
         payload={"job_title": job.title, "applicant_name": applicant_name},
     )
     await _create_notification(
         session,
-        user_id=current_user.id,
+        user_id=applicant_user_id,
         type_="application_submitted",
         title="Application submitted",
         body=f"Your application for {job.title} was sent.",
         category="application",
-        resource_type="job",
-        resource_id=str(job.id),
-        action_url=f"/jobs/{job.id}",
+        resource_type="job_application",
+        resource_id=str(application.id),
+        action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
         payload={"job_title": job.title},
     )
     try:
@@ -486,7 +555,7 @@ async def apply_to_job(
             await session.execute(
                 select(JobApplication).where(
                     JobApplication.job_id == job_id,
-                    JobApplication.applicant_user_id == current_user.id,
+                    JobApplication.applicant_user_id == applicant_user_id,
                 )
             )
         ).scalar_one()
@@ -556,7 +625,7 @@ async def update_application_status(
         category="application",
         resource_type="job_application",
         resource_id=str(application.id),
-        action_url="/applications",
+        action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
         actor_user_id=current_user.id,
         payload={"status": payload.status},
     )
@@ -604,13 +673,155 @@ async def withdraw_application(
             category="application",
             resource_type="job_application",
             resource_id=str(application.id),
-            action_url="/applications",
+            action_url=f"/applications?view=inbox&mode=recruiter&thread={application.id}",
             actor_user_id=current_user.id,
             payload={"status": "withdrawn"},
         )
     await session.commit()
     await session.refresh(application)
     return _application_read_for_sender(application)
+
+
+async def _ensure_legacy_private_note(
+    session: AsyncSession,
+    *,
+    owner_user_id: UUID,
+    application: JobApplication | None = None,
+    interest: TalentInterest | None = None,
+) -> None:
+    if application is not None:
+        source_filter = InteractionPrivateNote.application_id == application.id
+    elif interest is not None:
+        source_filter = InteractionPrivateNote.talent_interest_id == interest.id
+    else:
+        return
+    existing_id = (
+        await session.execute(
+            select(InteractionPrivateNote.id)
+            .where(
+                InteractionPrivateNote.owner_user_id == owner_user_id,
+                source_filter,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    source = application or interest
+    if existing_id is not None or not source.manager_note:
+        return
+    session.add(
+        InteractionPrivateNote(
+            owner_user_id=owner_user_id,
+            application_id=application.id if application is not None else None,
+            talent_interest_id=interest.id if interest is not None else None,
+            body=source.manager_note,
+            created_at=source.updated_at or source.created_at,
+        )
+    )
+    await session.flush()
+
+
+async def _application_owned_by(
+    session: AsyncSession, application_id: UUID, owner_user_id: UUID
+) -> JobApplication:
+    application = (
+        await session.execute(select(JobApplication).where(JobApplication.id == application_id))
+    ).scalar_one_or_none()
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if application.job_owner_user_id != owner_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    return application
+
+
+@router.get(
+    "/applications/{application_id}/notes",
+    response_model=list[InteractionPrivateNoteRead],
+)
+async def list_application_private_notes(
+    application_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[InteractionPrivateNoteRead]:
+    application = await _application_owned_by(session, application_id, current_user.id)
+    await _ensure_legacy_private_note(
+        session, owner_user_id=current_user.id, application=application
+    )
+    rows = (
+        await session.execute(
+            select(InteractionPrivateNote)
+            .where(
+                InteractionPrivateNote.application_id == application_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+            .order_by(InteractionPrivateNote.created_at.desc(), InteractionPrivateNote.id.desc())
+        )
+    ).scalars().all()
+    await session.commit()
+    return [InteractionPrivateNoteRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/applications/{application_id}/notes",
+    response_model=InteractionPrivateNoteRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_application_private_note(
+    application_id: UUID,
+    payload: InteractionPrivateNoteCreate,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPrivateNoteRead:
+    application = await _application_owned_by(session, application_id, current_user.id)
+    await _ensure_legacy_private_note(
+        session, owner_user_id=current_user.id, application=application
+    )
+    note = InteractionPrivateNote(
+        owner_user_id=current_user.id,
+        application_id=application.id,
+        body=payload.body,
+    )
+    session.add(note)
+    application.manager_note = payload.body
+    await session.commit()
+    await session.refresh(note)
+    return InteractionPrivateNoteRead.model_validate(note)
+
+
+@router.delete("/applications/{application_id}/notes/{note_id}", status_code=204)
+async def delete_application_private_note(
+    application_id: UUID,
+    note_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    application = await _application_owned_by(session, application_id, current_user.id)
+    note = (
+        await session.execute(
+            select(InteractionPrivateNote).where(
+                InteractionPrivateNote.id == note_id,
+                InteractionPrivateNote.application_id == application_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Private note not found")
+    await session.delete(note)
+    await session.flush()
+    application.manager_note = (
+        await session.execute(
+            select(InteractionPrivateNote.body)
+            .where(
+                InteractionPrivateNote.application_id == application_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+            .order_by(InteractionPrivateNote.created_at.desc(), InteractionPrivateNote.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    await session.commit()
 
 
 @router.patch("/applications/{application_id}/note", response_model=JobApplicationRead)
@@ -633,6 +844,24 @@ async def update_application_manager_note(
     if application.job_owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
     note = (payload.note or "").strip()
+    if note:
+        await _ensure_legacy_private_note(
+            session, owner_user_id=application.job_owner_user_id, application=application
+        )
+        session.add(
+            InteractionPrivateNote(
+                owner_user_id=application.job_owner_user_id,
+                application_id=application.id,
+                body=note,
+            )
+        )
+    else:
+        await session.execute(
+            delete(InteractionPrivateNote).where(
+                InteractionPrivateNote.application_id == application.id,
+                InteractionPrivateNote.owner_user_id == application.job_owner_user_id,
+            )
+        )
     application.manager_note = note or None
     await session.commit()
     await session.refresh(application)
@@ -685,7 +914,7 @@ async def bulk_update_application_status(
             category="application",
             resource_type="job_application",
             resource_id=str(application.id),
-            action_url="/applications",
+            action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
             actor_user_id=current_user.id,
             payload={"status": payload.status},
         )
@@ -1016,6 +1245,32 @@ async def saved_summary(
     )
 
 
+@router.get(
+    "/talent-listings/{listing_id}/interest",
+    response_model=TalentInterestRead | None,
+)
+async def get_my_talent_interest(
+    listing_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TalentInterestRead | None:
+    """Return the caller's durable hiring request for this listing, if any."""
+
+    interest = (
+        await session.execute(
+            select(TalentInterest).where(
+                TalentInterest.talent_listing_id == listing_id,
+                TalentInterest.recruiter_user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if interest is None:
+        return None
+    result = await _interest_read(session, interest, current_user.id, sender_view=True)
+    await session.commit()
+    return result
+
+
 @router.post(
     "/talent-listings/{listing_id}/interest",
     response_model=TalentInterestRead,
@@ -1029,8 +1284,40 @@ async def send_talent_interest(
     session: AsyncSession = Depends(get_db),
 ) -> TalentInterestRead:
     listing = await _get_listing_or_404(session, listing_id)
-    if listing.owner_user_id == current_user.id:
+    recruiter_user_id = current_user.id
+    if listing.owner_user_id == recruiter_user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot send interest to yourself")
+    existing = (
+        await session.execute(
+            select(TalentInterest).where(
+                TalentInterest.talent_listing_id == listing_id,
+                TalentInterest.recruiter_user_id == recruiter_user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        # A listing/recruiter pair has one durable hiring-request history. A
+        # revisit or retry must open that record, never reset a terminal or
+        # accepted request back to "new" or overwrite its original answers.
+        return _interest_read_for_sender(existing)
+    if listing.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This talent listing is not accepting hiring requests",
+        )
+    owner_is_active = (
+        await session.execute(
+            select(User.id).where(
+                User.id == listing.owner_user_id,
+                User.suspended_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if owner_is_active is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This talent listing is not accepting hiring requests",
+        )
     invite_job: Job | None = None
     if payload.job_id is not None:
         invite_job = await _get_job_or_404(session, payload.job_id)
@@ -1038,23 +1325,6 @@ async def send_talent_interest(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Job owner required")
         if invite_job.status in {"closed", "archived"}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select an active job for this invite")
-    existing = (
-        await session.execute(
-            select(TalentInterest).where(
-                TalentInterest.talent_listing_id == listing_id,
-                TalentInterest.recruiter_user_id == current_user.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        existing.note = payload.note.strip() if payload.note else existing.note
-        existing.job_id = payload.job_id
-        if payload.first_message_answers:
-            existing.first_message_answers = payload.first_message_answers
-        existing.status = "new"
-        await session.commit()
-        await session.refresh(existing)
-        return _interest_read_for_sender(existing)
     # Enforce the talent's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     _assert_first_message_complete(
@@ -1062,7 +1332,7 @@ async def send_talent_interest(
     )
     interest = TalentInterest(
         talent_listing_id=listing_id,
-        recruiter_user_id=current_user.id,
+        recruiter_user_id=recruiter_user_id,
         job_id=payload.job_id,
         owner_user_id=listing.owner_user_id,
         note=payload.note.strip() if payload.note else None,
@@ -1071,7 +1341,22 @@ async def send_talent_interest(
     session.add(interest)
     # Flush so interest.id is populated before it is referenced as the notification's
     # resource_id (otherwise it is stamped as the string "None").
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # Concurrent clicks resolve to the one request selected by the database
+        # uniqueness constraint. The losing transaction produces no thread or
+        # notifications of its own.
+        await session.rollback()
+        existing = (
+            await session.execute(
+                select(TalentInterest).where(
+                    TalentInterest.talent_listing_id == listing_id,
+                    TalentInterest.recruiter_user_id == recruiter_user_id,
+                )
+            )
+        ).scalar_one()
+        return _interest_read_for_sender(existing)
     # Eagerly create the conversation thread for this hiring request.
     await get_or_create_conversation_for_interest(session, interest)
     title = "New job invite" if invite_job is not None else "New recruiter interest"
@@ -1089,8 +1374,8 @@ async def send_talent_interest(
         category="talent",
         resource_type="talent_interest",
         resource_id=str(interest.id),
-        action_url="/applications",
-        actor_user_id=current_user.id,
+        action_url=f"/applications?view=inbox&mode=talent&thread={interest.id}",
+        actor_user_id=recruiter_user_id,
         payload={"job_title": invite_job.title} if invite_job is not None else {},
     )
     await session.commit()
@@ -1260,7 +1545,7 @@ async def update_talent_interest_status(
         category="talent",
         resource_type="talent_interest",
         resource_id=str(interest.id),
-        action_url="/applications",
+        action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
         actor_user_id=current_user.id,
         payload={"status": payload.status},
     )
@@ -1305,13 +1590,117 @@ async def withdraw_talent_interest(
         category="talent",
         resource_type="talent_interest",
         resource_id=str(interest.id),
-        action_url="/applications",
+        action_url=f"/applications?view=inbox&mode=talent&thread={interest.id}",
         actor_user_id=current_user.id,
         payload={"status": "withdrawn"},
     )
     await session.commit()
     await session.refresh(interest)
     return _interest_read_for_sender(interest)
+
+
+async def _interest_owned_by(
+    session: AsyncSession, interest_id: UUID, owner_user_id: UUID
+) -> TalentInterest:
+    interest = (
+        await session.execute(select(TalentInterest).where(TalentInterest.id == interest_id))
+    ).scalar_one_or_none()
+    if interest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
+    if interest.owner_user_id != owner_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    return interest
+
+
+@router.get(
+    "/talent-interests/{interest_id}/notes",
+    response_model=list[InteractionPrivateNoteRead],
+)
+async def list_interest_private_notes(
+    interest_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[InteractionPrivateNoteRead]:
+    interest = await _interest_owned_by(session, interest_id, current_user.id)
+    await _ensure_legacy_private_note(
+        session, owner_user_id=current_user.id, interest=interest
+    )
+    rows = (
+        await session.execute(
+            select(InteractionPrivateNote)
+            .where(
+                InteractionPrivateNote.talent_interest_id == interest_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+            .order_by(InteractionPrivateNote.created_at.desc(), InteractionPrivateNote.id.desc())
+        )
+    ).scalars().all()
+    await session.commit()
+    return [InteractionPrivateNoteRead.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/talent-interests/{interest_id}/notes",
+    response_model=InteractionPrivateNoteRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_interest_private_note(
+    interest_id: UUID,
+    payload: InteractionPrivateNoteCreate,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPrivateNoteRead:
+    interest = await _interest_owned_by(session, interest_id, current_user.id)
+    await _ensure_legacy_private_note(
+        session, owner_user_id=current_user.id, interest=interest
+    )
+    note = InteractionPrivateNote(
+        owner_user_id=current_user.id,
+        talent_interest_id=interest.id,
+        body=payload.body,
+    )
+    session.add(note)
+    interest.manager_note = payload.body
+    await session.commit()
+    await session.refresh(note)
+    return InteractionPrivateNoteRead.model_validate(note)
+
+
+@router.delete("/talent-interests/{interest_id}/notes/{note_id}", status_code=204)
+async def delete_interest_private_note(
+    interest_id: UUID,
+    note_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    interest = await _interest_owned_by(session, interest_id, current_user.id)
+    note = (
+        await session.execute(
+            select(InteractionPrivateNote).where(
+                InteractionPrivateNote.id == note_id,
+                InteractionPrivateNote.talent_interest_id == interest_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Private note not found")
+    await session.delete(note)
+    await session.flush()
+    interest.manager_note = (
+        await session.execute(
+            select(InteractionPrivateNote.body)
+            .where(
+                InteractionPrivateNote.talent_interest_id == interest_id,
+                InteractionPrivateNote.owner_user_id == current_user.id,
+            )
+            .order_by(InteractionPrivateNote.created_at.desc(), InteractionPrivateNote.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    await session.commit()
 
 
 @router.patch("/talent-interests/{interest_id}/note", response_model=TalentInterestRead)
@@ -1333,6 +1722,24 @@ async def update_talent_interest_manager_note(
     if interest.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
     note = (payload.note or "").strip()
+    if note:
+        await _ensure_legacy_private_note(
+            session, owner_user_id=interest.owner_user_id, interest=interest
+        )
+        session.add(
+            InteractionPrivateNote(
+                owner_user_id=interest.owner_user_id,
+                talent_interest_id=interest.id,
+                body=note,
+            )
+        )
+    else:
+        await session.execute(
+            delete(InteractionPrivateNote).where(
+                InteractionPrivateNote.talent_interest_id == interest.id,
+                InteractionPrivateNote.owner_user_id == interest.owner_user_id,
+            )
+        )
     interest.manager_note = note or None
     await session.commit()
     await session.refresh(interest)
@@ -1381,7 +1788,7 @@ async def bulk_update_talent_interest_status(
             category="talent",
             resource_type="talent_interest",
             resource_id=str(interest.id),
-            action_url="/applications",
+            action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
             actor_user_id=current_user.id,
             payload={"status": payload.status},
         )

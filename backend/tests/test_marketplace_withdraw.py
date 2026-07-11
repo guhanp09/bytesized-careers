@@ -85,6 +85,14 @@ async def test_applicant_can_withdraw_application_and_owner_is_notified(client: 
     assert application.status_code == 201
     application_id = application.json()["id"]
 
+    # Withdrawal is sender-owned; the manager status endpoint cannot forge it.
+    forged_withdrawal = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"status": "withdrawn"},
+    )
+    assert forged_withdrawal.status_code == 422
+
     # The job owner (not the sender) cannot withdraw someone else's application.
     forbidden = await client.post(
         f"/api/v1/applications/{application_id}/withdraw",
@@ -170,6 +178,13 @@ async def test_recruiter_can_withdraw_talent_interest_and_talent_is_notified(cli
     )
     assert interest.status_code == 201
     interest_id = interest.json()["id"]
+
+    forged_withdrawal = await client.patch(
+        f"/api/v1/talent-interests/{interest_id}/status",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={"status": "withdrawn"},
+    )
+    assert forged_withdrawal.status_code == 422
 
     # The talent (listing owner / recipient) cannot withdraw the recruiter's request.
     forbidden = await client.post(

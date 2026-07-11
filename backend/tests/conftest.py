@@ -54,6 +54,15 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
         yield test_client
 
 
+@pytest_asyncio.fixture()
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Direct isolated-test DB access for domain-state setup assertions."""
+
+    async with TestSessionLocal() as session:
+        yield session
+        await session.rollback()
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def clear_dev_auth_email_outbox() -> AsyncGenerator[None, None]:
     clear_dev_auth_emails()

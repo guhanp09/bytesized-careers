@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from uuid import uuid4
+
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import User
 
 
 async def _register_verified_login(client: AsyncClient, *, email: str, username: str) -> str:
@@ -72,12 +79,32 @@ async def test_application_creates_conversation_and_messaging_round_trip(client:
     message_notifs = [n for n in notifs.json()["items"] if n["type"] == "message_received"]
     assert message_notifs
     assert message_notifs[0]["resource_id"] == conversation_id
-    assert f"thread={application_id}" in (message_notifs[0]["action_url"] or "")
+    assert message_notifs[0]["action_url"] == (
+        f"/applications?view=inbox&mode=recruiter&thread={application_id}"
+    )
 
     # Owner reads → unread clears.
     await client.post(f"/api/v1/me/conversations/{conversation_id}/read", headers=owner_h)
     after = await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=owner_h)
     assert after.json()["conversation"]["unread_count"] == 0
+
+    reply = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Thanks — I’ll review these today."},
+    )
+    assert reply.status_code == 201
+    applicant_notifications = (
+        await client.get("/api/v1/notifications", headers=applicant_h)
+    ).json()["items"]
+    owner_reply_notification = next(
+        item
+        for item in applicant_notifications
+        if item["type"] == "message_received" and item["resource_id"] == conversation_id
+    )
+    assert owner_reply_notification["action_url"] == (
+        f"/applications?view=inbox&mode=talent&thread={application_id}"
+    )
 
 
 async def test_talent_interest_creates_conversation(client: AsyncClient) -> None:
@@ -102,6 +129,39 @@ async def test_talent_interest_creates_conversation(client: AsyncClient) -> None
     )
     assert convo.status_code == 200
     assert convo.json()["conversation"]["context_type"] == "talent_interest"
+    conversation_id = convo.json()["conversation"]["id"]
+
+    recruiter_h = {"Authorization": f"Bearer {recruiter}"}
+    creator_h = {"Authorization": f"Bearer {creator}"}
+    recruiter_message = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=recruiter_h,
+        json={"body": "Could we discuss the brief?"},
+    )
+    assert recruiter_message.status_code == 201
+    creator_notifications = (await client.get("/api/v1/notifications", headers=creator_h)).json()["items"]
+    creator_message_notification = next(
+        item for item in creator_notifications if item["type"] == "message_received"
+    )
+    assert creator_message_notification["action_url"] == (
+        f"/applications?view=inbox&mode=talent&thread={interest_id}"
+    )
+
+    creator_reply = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=creator_h,
+        json={"body": "Yes, send the details here."},
+    )
+    assert creator_reply.status_code == 201
+    recruiter_notifications = (
+        await client.get("/api/v1/notifications", headers=recruiter_h)
+    ).json()["items"]
+    recruiter_message_notification = next(
+        item for item in recruiter_notifications if item["type"] == "message_received"
+    )
+    assert recruiter_message_notification["action_url"] == (
+        f"/applications?view=inbox&mode=recruiter&thread={interest_id}"
+    )
 
 
 async def test_unrelated_user_cannot_read_or_send(client: AsyncClient) -> None:
@@ -124,6 +184,11 @@ async def test_unrelated_user_cannot_read_or_send(client: AsyncClient) -> None:
         json={"body": "let me in"},
     )
     assert send.status_code == 403
+    assert (
+        await client.post(
+            f"/api/v1/me/conversations/{conversation_id}/read", headers=stranger_h
+        )
+    ).status_code == 403
     # Stranger also can't reach the conversation via the application route.
     assert (
         await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=stranger_h)
@@ -150,6 +215,47 @@ async def test_empty_message_is_rejected(client: AsyncClient) -> None:
     assert blank.status_code == 422
 
 
+async def test_multiline_urls_special_characters_and_length_limit_persist_safely(
+    client: AsyncClient,
+) -> None:
+    owner = await _register_verified_login(
+        client, email="content-owner@example.com", username="content_owner"
+    )
+    applicant = await _register_verified_login(
+        client, email="content-applicant@example.com", username="content_applicant"
+    )
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    conversation_id = (
+        await client.get(
+            f"/api/v1/me/applications/{application_id}/conversation",
+            headers=applicant_h,
+        )
+    ).json()["conversation"]["id"]
+    body = "Line one\nLine two: https://example.com/reel?a=1&b=2\nSymbols: ₹ & < > — done"
+
+    sent = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": body},
+    )
+    assert sent.status_code == 201
+    assert sent.json()["body"] == body
+    detail = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}", headers=owner_h
+    )
+    assert detail.json()["messages"][-1]["body"] == body
+
+    too_long = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "x" * 5001},
+    )
+    assert too_long.status_code == 422
+
+
 async def test_lazy_conversation_for_preexisting_application(client: AsyncClient) -> None:
     # Simulates an application created before conversations existed: no eager row, but
     # opening the thread lazily creates exactly one stable conversation.
@@ -164,9 +270,9 @@ async def test_lazy_conversation_for_preexisting_application(client: AsyncClient
     assert first.json()["conversation"]["id"] == second.json()["conversation"]["id"]
 
 
-async def test_status_update_kind_round_trips_and_rejects_arbitrary_kinds(client: AsyncClient) -> None:
-    # A pipeline stage notification is a normal message with kind="status_update",
-    # so both sides can render it apart from user-written text.
+async def test_status_update_is_server_generated_and_cannot_be_forged(client: AsyncClient) -> None:
+    # A trusted pipeline event can only be generated after the owner actually
+    # moves the source record into that stage.
     owner = await _register_verified_login(client, email="k_owner@example.com", username="k_owner")
     applicant = await _register_verified_login(client, email="k_applicant@example.com", username="k_applicant")
     job_id = await _published_job(client, owner)
@@ -177,19 +283,43 @@ async def test_status_update_kind_round_trips_and_rejects_arbitrary_kinds(client
     convo = await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h)
     conversation_id = convo.json()["conversation"]["id"]
 
-    sent = await client.post(
-        f"/api/v1/me/conversations/{conversation_id}/messages",
+    moved = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
         headers=owner_h,
-        json={"body": "Shortlisted for “Editor for finance channel”.", "kind": "status_update"},
+        json={"status": "shortlisted"},
+    )
+    assert moved.status_code == 200
+
+    sent = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/status-update",
+        headers=owner_h,
+        json={"stage": "shortlisted"},
     )
     assert sent.status_code == 201
     assert sent.json()["kind"] == "status_update"
+    assert sent.json()["body"] == "Shortlisted for “Editor for finance channel”."
 
     # The other participant reads the same kind back.
     view = await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h)
     assert view.json()["messages"][-1]["kind"] == "status_update"
 
-    # Plain text stays kind-less; arbitrary kinds are rejected.
+    # The applicant cannot generate a manager event, even for the real stage.
+    forbidden = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/status-update",
+        headers=applicant_h,
+        json={"stage": "shortlisted"},
+    )
+    assert forbidden.status_code == 403
+
+    # A stale or invented stage cannot be presented as a trusted event.
+    stale = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/status-update",
+        headers=owner_h,
+        json={"stage": "interviewing"},
+    )
+    assert stale.status_code == 409
+
+    # Plain text stays kind-less; the public text endpoint rejects a forged kind.
     plain = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/messages",
         headers=owner_h,
@@ -201,6 +331,304 @@ async def test_status_update_kind_round_trips_and_rejects_arbitrary_kinds(client
     invalid = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/messages",
         headers=owner_h,
-        json={"body": "hello", "kind": "system"},
+        json={"body": "hello", "kind": "status_update"},
     )
     assert invalid.status_code == 422
+
+
+async def test_two_way_ordering_sender_read_and_conversation_sorting(client: AsyncClient) -> None:
+    owner = await _register_verified_login(client, email="o_owner@example.com", username="o_owner")
+    applicant = await _register_verified_login(
+        client, email="o_applicant@example.com", username="o_applicant"
+    )
+    second_applicant = await _register_verified_login(
+        client, email="o_second@example.com", username="o_second"
+    )
+    job_id = await _published_job(client, owner)
+    first_application_id = await _apply(client, applicant, job_id)
+    second_application_id = await _apply(client, second_applicant, job_id)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+
+    first_detail = await client.get(
+        f"/api/v1/me/applications/{first_application_id}/conversation", headers=owner_h
+    )
+    first_conversation_id = first_detail.json()["conversation"]["id"]
+    second_detail = await client.get(
+        f"/api/v1/me/applications/{second_application_id}/conversation", headers=owner_h
+    )
+    second_conversation_id = second_detail.json()["conversation"]["id"]
+
+    first = await client.post(
+        f"/api/v1/me/conversations/{first_conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "First from applicant"},
+    )
+    assert first.status_code == 201
+    reply = await client.post(
+        f"/api/v1/me/conversations/{first_conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Reply from owner"},
+    )
+    assert reply.status_code == 201
+
+    applicant_view = await client.get(
+        f"/api/v1/me/conversations/{first_conversation_id}", headers=applicant_h
+    )
+    assert [message["body"] for message in applicant_view.json()["messages"]] == [
+        "First from applicant",
+        "Reply from owner",
+    ]
+    assert applicant_view.json()["conversation"]["unread_count"] == 1
+
+    owner_view = await client.get(
+        f"/api/v1/me/conversations/{first_conversation_id}", headers=owner_h
+    )
+    assert owner_view.json()["conversation"]["unread_count"] == 0
+
+    conversations = await client.get("/api/v1/me/conversations", headers=owner_h)
+    assert conversations.status_code == 200
+    assert conversations.json()[0]["id"] == first_conversation_id
+    assert {item["id"] for item in conversations.json()} >= {
+        first_conversation_id,
+        second_conversation_id,
+    }
+
+
+async def test_message_retry_is_idempotent_and_does_not_duplicate_notifications(
+    client: AsyncClient,
+) -> None:
+    owner = await _register_verified_login(client, email="i_owner@example.com", username="i_owner")
+    applicant = await _register_verified_login(
+        client, email="i_applicant@example.com", username="i_applicant"
+    )
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    conversation_id = (
+        await client.get(
+            f"/api/v1/me/applications/{application_id}/conversation",
+            headers=applicant_h,
+        )
+    ).json()["conversation"]["id"]
+    retry_key = str(uuid4())
+    payload = {"body": "One persisted message", "client_message_id": retry_key}
+
+    first = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json=payload,
+    )
+    retry = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json=payload,
+    )
+    assert first.status_code == 201
+    assert retry.status_code == 201
+    assert retry.json()["id"] == first.json()["id"]
+
+    detail = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}", headers=owner_h
+    )
+    assert [message["body"] for message in detail.json()["messages"]].count(
+        "One persisted message"
+    ) == 1
+    notifications = await client.get("/api/v1/notifications", headers=owner_h)
+    matching = [
+        item
+        for item in notifications.json()["items"]
+        if item["type"] == "message_received" and item["resource_id"] == conversation_id
+    ]
+    assert len(matching) == 1
+
+    conflict = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "Different content", "client_message_id": retry_key},
+    )
+    assert conflict.status_code == 409
+
+
+async def test_terminal_outcomes_close_chat_but_hired_work_stays_open(client: AsyncClient) -> None:
+    owner = await _register_verified_login(client, email="c_owner@example.com", username="c_owner")
+    hired_applicant = await _register_verified_login(
+        client, email="c_hired@example.com", username="c_hired"
+    )
+    rejected_applicant = await _register_verified_login(
+        client, email="c_rejected@example.com", username="c_rejected"
+    )
+    job_id = await _published_job(client, owner)
+    hired_id = await _apply(client, hired_applicant, job_id)
+    rejected_id = await _apply(client, rejected_applicant, job_id)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+
+    hired_conversation = (
+        await client.get(f"/api/v1/me/applications/{hired_id}/conversation", headers=owner_h)
+    ).json()["conversation"]["id"]
+    rejected_conversation = (
+        await client.get(f"/api/v1/me/applications/{rejected_id}/conversation", headers=owner_h)
+    ).json()["conversation"]["id"]
+
+    assert (
+        await client.patch(
+            f"/api/v1/applications/{hired_id}/status",
+            headers=owner_h,
+            json={"status": "hired"},
+        )
+    ).status_code == 200
+    still_open = await client.post(
+        f"/api/v1/me/conversations/{hired_conversation}/messages",
+        headers=owner_h,
+        json={"body": "Let’s coordinate the first delivery here."},
+    )
+    assert still_open.status_code == 201
+
+    assert (
+        await client.patch(
+            f"/api/v1/applications/{rejected_id}/status",
+            headers=owner_h,
+            json={"status": "rejected"},
+        )
+    ).status_code == 200
+    final_event = await client.post(
+        f"/api/v1/me/conversations/{rejected_conversation}/status-update",
+        headers=owner_h,
+        json={"stage": "rejected"},
+    )
+    assert final_event.status_code == 201
+    assert final_event.json()["body"] == "Not moving forward for “Editor for finance channel”."
+
+    closed = await client.post(
+        f"/api/v1/me/conversations/{rejected_conversation}/messages",
+        headers=owner_h,
+        json={"body": "This should not be accepted."},
+    )
+    assert closed.status_code == 409
+    assert "closed" in closed.json()["error"]["message"].lower()
+
+
+async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
+    client: AsyncClient,
+) -> None:
+    creator = await _register_verified_login(
+        client, email="tc_creator@example.com", username="tc_creator"
+    )
+    accepted_recruiter = await _register_verified_login(
+        client, email="tc_accepted@example.com", username="tc_accepted"
+    )
+    declined_recruiter = await _register_verified_login(
+        client, email="tc_declined@example.com", username="tc_declined"
+    )
+    creator_h = {"Authorization": f"Bearer {creator}"}
+    listing = await client.post(
+        "/api/v1/talent-listings",
+        headers=creator_h,
+        json={"title": "Editor open for creator teams", "roles": ["Video editor"], "status": "published"},
+    )
+    listing_id = listing.json()["id"]
+
+    async def create_interest(recruiter: str, note: str) -> tuple[str, str]:
+        recruiter_h = {"Authorization": f"Bearer {recruiter}"}
+        interest = await client.post(
+            f"/api/v1/talent-listings/{listing_id}/interest",
+            headers=recruiter_h,
+            json={"note": note},
+        )
+        interest_id = interest.json()["id"]
+        detail = await client.get(
+            f"/api/v1/me/talent-interests/{interest_id}/conversation",
+            headers=creator_h,
+        )
+        return interest_id, detail.json()["conversation"]["id"]
+
+    accepted_id, accepted_conversation = await create_interest(
+        accepted_recruiter, "Can we discuss a project?"
+    )
+    declined_id, declined_conversation = await create_interest(
+        declined_recruiter, "Is this still available?"
+    )
+
+    accepted = await client.patch(
+        f"/api/v1/talent-interests/{accepted_id}/status",
+        headers=creator_h,
+        json={"status": "contacted"},
+    )
+    assert accepted.status_code == 200
+    accepted_event = await client.post(
+        f"/api/v1/me/conversations/{accepted_conversation}/status-update",
+        headers=creator_h,
+        json={"stage": "contacted"},
+    )
+    assert accepted_event.status_code == 201
+    assert accepted_event.json()["body"] == "Hiring request accepted."
+    assert (
+        await client.post(
+            f"/api/v1/me/conversations/{accepted_conversation}/messages",
+            headers={"Authorization": f"Bearer {accepted_recruiter}"},
+            json={"body": "Great — I’ll share the brief here."},
+        )
+    ).status_code == 201
+
+    declined = await client.patch(
+        f"/api/v1/talent-interests/{declined_id}/status",
+        headers=creator_h,
+        json={"status": "declined"},
+    )
+    assert declined.status_code == 200
+    declined_event = await client.post(
+        f"/api/v1/me/conversations/{declined_conversation}/status-update",
+        headers=creator_h,
+        json={"stage": "declined"},
+    )
+    assert declined_event.status_code == 201
+    assert declined_event.json()["body"] == "Hiring request declined."
+    assert (
+        await client.post(
+            f"/api/v1/me/conversations/{declined_conversation}/messages",
+            headers={"Authorization": f"Bearer {declined_recruiter}"},
+            json={"body": "This should be closed."},
+        )
+    ).status_code == 409
+
+
+async def test_suspended_participant_closes_new_messages(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    owner = await _register_verified_login(
+        client, email="suspended-owner@example.com", username="suspended_owner"
+    )
+    applicant = await _register_verified_login(
+        client, email="active-applicant@example.com", username="active_applicant"
+    )
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    conversation_id = (
+        await client.get(
+            f"/api/v1/me/applications/{application_id}/conversation",
+            headers=applicant_h,
+        )
+    ).json()["conversation"]["id"]
+
+    owner_row = (
+        await db_session.execute(
+            select(User).where(User.email == "suspended-owner@example.com")
+        )
+    ).scalar_one()
+    owner_row.suspended_at = datetime.now(UTC)
+    await db_session.commit()
+
+    blocked = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "This must not be delivered to a suspended account."},
+    )
+    assert blocked.status_code == 409
+    assert "closed" in blocked.json()["error"]["message"].lower()
+    assert (
+        await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=owner_h)
+    ).status_code == 403

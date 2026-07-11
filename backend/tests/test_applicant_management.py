@@ -185,6 +185,137 @@ async def test_interest_manager_note_is_talent_only_and_never_leaks_to_recruiter
     assert received.json()[0]["manager_note"] == "Solid channel; ask for scope doc."
 
 
+async def test_application_private_note_history_persists_and_is_owner_only(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="history_owner@example.com", username="history_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="history_applicant@example.com", username="history_applicant"
+    )
+    job_id = await _published_job(client, owner_token, "Editor for a history channel")
+    application_id = await _application(client, applicant_token, job_id)
+
+    forbidden_list = await client.get(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+    )
+    assert forbidden_list.status_code == 403
+    forbidden_create = await client.post(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"body": "Applicant must not see this."},
+    )
+    assert forbidden_create.status_code == 403
+
+    first = await client.post(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"body": "Check the long-form edit before the call."},
+    )
+    second = await client.post(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"body": "Ask about availability for the paid test."},
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    persisted = await client.get(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert persisted.status_code == 200
+    assert [note["body"] for note in persisted.json()] == [
+        "Ask about availability for the paid test.",
+        "Check the long-form edit before the call.",
+    ]
+
+    deleted = await client.delete(
+        f"/api/v1/applications/{application_id}/notes/{second.json()['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert deleted.status_code == 204
+    remaining = await client.get(
+        f"/api/v1/applications/{application_id}/notes",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert [note["body"] for note in remaining.json()] == [
+        "Check the long-form edit before the call."
+    ]
+    received = await client.get(
+        "/api/v1/me/applications/received",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert received.json()[0]["manager_note"] == "Check the long-form edit before the call."
+
+
+async def test_interest_private_note_history_persists_and_is_talent_only(
+    client: AsyncClient,
+) -> None:
+    talent_token = await _register_verified_login(
+        client, email="history_talent@example.com", username="history_talent"
+    )
+    recruiter_token = await _register_verified_login(
+        client, email="history_recruiter@example.com", username="history_recruiter"
+    )
+    listing_id = await _published_talent_listing(client, talent_token)
+    interest = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+        json={"note": "Would like to discuss a six-video engagement."},
+    )
+    assert interest.status_code == 201
+    interest_id = interest.json()["id"]
+
+    forbidden = await client.get(
+        f"/api/v1/talent-interests/{interest_id}/notes",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert forbidden.status_code == 403
+
+    first = await client.post(
+        f"/api/v1/talent-interests/{interest_id}/notes",
+        headers={"Authorization": f"Bearer {talent_token}"},
+        json={"body": "Confirm whether source files are organized."},
+    )
+    second = await client.post(
+        f"/api/v1/talent-interests/{interest_id}/notes",
+        headers={"Authorization": f"Bearer {talent_token}"},
+        json={"body": "Their proposed timeline works for me."},
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    persisted = await client.get(
+        f"/api/v1/talent-interests/{interest_id}/notes",
+        headers={"Authorization": f"Bearer {talent_token}"},
+    )
+    assert [note["body"] for note in persisted.json()] == [
+        "Their proposed timeline works for me.",
+        "Confirm whether source files are organized.",
+    ]
+
+    forbidden_delete = await client.delete(
+        f"/api/v1/talent-interests/{interest_id}/notes/{first.json()['id']}",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert forbidden_delete.status_code == 403
+    deleted = await client.delete(
+        f"/api/v1/talent-interests/{interest_id}/notes/{second.json()['id']}",
+        headers={"Authorization": f"Bearer {talent_token}"},
+    )
+    assert deleted.status_code == 204
+    remaining = await client.get(
+        f"/api/v1/talent-interests/{interest_id}/notes",
+        headers={"Authorization": f"Bearer {talent_token}"},
+    )
+    assert [note["body"] for note in remaining.json()] == [
+        "Confirm whether source files are organized."
+    ]
+
+
 async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_request(
     client: AsyncClient,
 ) -> None:

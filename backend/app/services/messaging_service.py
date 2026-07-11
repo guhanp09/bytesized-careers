@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Conversation, JobApplication, Message, TalentInterest, User
@@ -30,6 +31,14 @@ class NotAParticipant(MessagingError):
 
 
 class EmptyMessageBody(MessagingError):
+    pass
+
+
+class ConversationClosed(MessagingError):
+    pass
+
+
+class IdempotencyConflict(MessagingError):
     pass
 
 
@@ -59,9 +68,23 @@ async def get_or_create_conversation_for_application(
         participant_a_user_id=application.applicant_user_id,
         participant_b_user_id=application.job_owner_user_id,
     )
-    session.add(conversation)
-    await session.flush()
-    return conversation
+    try:
+        async with session.begin_nested():
+            session.add(conversation)
+            await session.flush()
+        return conversation
+    except IntegrityError:
+        # Two participants may open a legacy application at the same moment.
+        # The unique source constraint picks one conversation; return it instead
+        # of leaking a transient 500 from the losing request.
+        existing = (
+            await session.execute(
+                select(Conversation).where(Conversation.application_id == application.id)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+        raise
 
 
 async def get_or_create_conversation_for_interest(
@@ -82,9 +105,22 @@ async def get_or_create_conversation_for_interest(
         participant_a_user_id=interest.recruiter_user_id,
         participant_b_user_id=interest.owner_user_id,
     )
-    session.add(conversation)
-    await session.flush()
-    return conversation
+    try:
+        async with session.begin_nested():
+            session.add(conversation)
+            await session.flush()
+        return conversation
+    except IntegrityError:
+        existing = (
+            await session.execute(
+                select(Conversation).where(
+                    Conversation.talent_interest_id == interest.id
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+        raise
 
 
 # --- participants / read state ---------------------------------------------
@@ -106,6 +142,60 @@ def _last_read_for(conversation: Conversation, user_id: UUID) -> datetime | None
     if user_id == conversation.participant_a_user_id:
         return conversation.participant_a_last_read_at
     return conversation.participant_b_last_read_at
+
+
+CLOSED_APPLICATION_STATUSES = frozenset({"rejected", "archived", "withdrawn"})
+CLOSED_INTEREST_STATUSES = frozenset({"declined", "archived", "withdrawn"})
+
+
+async def conversation_is_closed(session: AsyncSession, conversation: Conversation) -> bool:
+    """Return whether ordinary participant messages are closed for this thread.
+
+    Hired applications and accepted hiring requests intentionally stay open: those
+    users need the conversation while work is active. Rejected, declined, withdrawn,
+    and explicitly archived records are terminal for ordinary chat. Trusted lifecycle
+    events may still be appended by their dedicated server-side workflows.
+    """
+
+    active_participant_count = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    User.id.in_(
+                        [
+                            conversation.participant_a_user_id,
+                            conversation.participant_b_user_id,
+                        ]
+                    ),
+                    User.suspended_at.is_(None),
+                )
+            )
+        ).scalar_one()
+    )
+    if active_participant_count != 2:
+        return True
+
+    if conversation.application_id is not None:
+        application_status = (
+            await session.execute(
+                select(JobApplication.status).where(
+                    JobApplication.id == conversation.application_id
+                )
+            )
+        ).scalar_one_or_none()
+        return application_status is None or application_status in CLOSED_APPLICATION_STATUSES
+    if conversation.talent_interest_id is not None:
+        interest_status = (
+            await session.execute(
+                select(TalentInterest.status).where(
+                    TalentInterest.id == conversation.talent_interest_id
+                )
+            )
+        ).scalar_one_or_none()
+        return interest_status is None or interest_status in CLOSED_INTEREST_STATUSES
+    return True
 
 
 async def unread_count(session: AsyncSession, conversation: Conversation, user_id: UUID) -> int:
@@ -142,7 +232,7 @@ async def list_messages(session: AsyncSession, conversation: Conversation) -> li
         await session.execute(
             select(Message)
             .where(Message.conversation_id == conversation.id, Message.deleted_at.is_(None))
-            .order_by(Message.created_at)
+            .order_by(Message.created_at, Message.id)
         )
     ).scalars().all()
     return list(rows)
@@ -163,6 +253,10 @@ async def post_message(
     sender: User,
     body: str,
     kind: str | None = None,
+    *,
+    allow_closed: bool = False,
+    metadata: dict[str, object] | None = None,
+    client_message_id: UUID | None = None,
 ) -> Message:
     """Post a message. ``kind`` marks platform-generated entries (currently
     "status_update", posted when a manager chooses to inform the other side of
@@ -175,16 +269,58 @@ async def post_message(
         raise EmptyMessageBody()
     clean = clean[:MAX_MESSAGE_LENGTH]
 
+    if client_message_id is not None:
+        existing = (
+            await session.execute(
+                select(Message).where(
+                    Message.conversation_id == conversation.id,
+                    Message.client_message_id == client_message_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.sender_user_id != sender.id or existing.body != clean:
+                raise IdempotencyConflict()
+            return existing
+
+    if not allow_closed and await conversation_is_closed(session, conversation):
+        raise ConversationClosed()
+
+    message_metadata = dict(metadata or {})
+    if kind:
+        message_metadata["kind"] = kind
+
+    created_at = datetime.now(timezone.utc)
     message = Message(
         conversation_id=conversation.id,
         sender_user_id=sender.id,
+        client_message_id=client_message_id,
         body=clean,
-        metadata_json={"kind": kind} if kind else {},
+        metadata_json=message_metadata,
+        created_at=created_at,
     )
-    session.add(message)
-    await session.flush()  # populate message.id / created_at before referencing them
+    try:
+        async with session.begin_nested():
+            session.add(message)
+            await session.flush()  # populate message.id before referencing it
+    except IntegrityError:
+        if client_message_id is None:
+            raise
+        existing = (
+            await session.execute(
+                select(Message).where(
+                    Message.conversation_id == conversation.id,
+                    Message.client_message_id == client_message_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise
+        if existing.sender_user_id != sender.id or existing.body != clean:
+            raise IdempotencyConflict()
+        return existing
 
-    conversation.last_message_at = message.created_at or datetime.now(timezone.utc)
+    conversation.last_message_at = message.created_at or created_at
     # Sending implicitly reads the thread for the sender.
     if sender.id == conversation.participant_a_user_id:
         conversation.participant_a_last_read_at = conversation.last_message_at
@@ -195,7 +331,12 @@ async def post_message(
     # The inbox thread is keyed by the anchoring record id (application/interest),
     # which is also the OwnerInteraction id the frontend opens via ?thread=.
     record_id = str(conversation.application_id or conversation.talent_interest_id or conversation.id)
-    view = "hiring" if conversation.context_type == "job_application" else "talent"
+    if conversation.context_type == "job_application":
+        # participant A is the applicant; participant B is the recruiter.
+        recipient_mode = "talent" if recipient_id == conversation.participant_a_user_id else "recruiter"
+    else:
+        # participant A sent the hiring request; participant B owns the talent listing.
+        recipient_mode = "recruiter" if recipient_id == conversation.participant_a_user_id else "talent"
     sender_name = sender.display_name or sender.username or sender.email
     await dispatch_notification(
         session,
@@ -207,7 +348,7 @@ async def post_message(
         category="message",
         resource_type="conversation",
         resource_id=str(conversation.id),
-        action_url=f"/applications?view={view}&thread={record_id}",
+        action_url=f"/applications?view=inbox&mode={recipient_mode}&thread={record_id}",
         payload={"conversation_id": str(conversation.id), "thread_id": record_id},
     )
     await session.commit()

@@ -55,10 +55,6 @@ class JobApplicationCreate(BaseModel):
     first_message_answers: dict = Field(default_factory=dict)
 
 
-class JobApplicationStatusUpdate(BaseModel):
-    status: ApplicationStatus
-
-
 # Owner-side pipeline stages: statuses the manager of a received item may set.
 # "withdrawn" stays sender-only (its own endpoint), and "new" is the arrival
 # state rather than a stage a manager moves things into.
@@ -66,6 +62,10 @@ ManagedApplicationStatus = Literal[
     "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"
 ]
 ManagedInterestStatus = Literal["reviewing", "contacted", "declined", "archived"]
+
+
+class JobApplicationStatusUpdate(BaseModel):
+    status: ManagedApplicationStatus
 
 BULK_STATUS_MAX_IDS = 50
 
@@ -87,6 +87,28 @@ class TalentInterestBulkStatusUpdate(BaseModel):
 
 class ManagerNoteUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=5000)
+
+
+class InteractionPrivateNoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("body")
+    @classmethod
+    def validate_body(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("Private note cannot be empty")
+        return clean
+
+
+class InteractionPrivateNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    application_id: uuid.UUID | None = None
+    talent_interest_id: uuid.UUID | None = None
+    body: str
+    created_at: datetime
 
 
 class JobApplicationRead(BaseModel):
@@ -250,7 +272,7 @@ class TalentInterestCreate(BaseModel):
 
 
 class TalentInterestStatusUpdate(BaseModel):
-    status: TalentInterestStatus
+    status: ManagedInterestStatus
 
 
 class TalentInterestRead(BaseModel):
@@ -259,6 +281,9 @@ class TalentInterestRead(BaseModel):
     id: uuid.UUID
     talent_listing_id: uuid.UUID
     recruiter_user_id: uuid.UUID
+    recruiter_display_name: str | None = None
+    recruiter_username: str | None = None
+    recruiter_avatar_url: str | None = None
     job_id: uuid.UUID | None = None
     owner_user_id: uuid.UUID
     note: str | None = None

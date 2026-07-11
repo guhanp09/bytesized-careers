@@ -136,6 +136,7 @@ async def _timeline_event(
         sender_user_id=actor_user_id,
         body=body,
         metadata_json={"kind": "engagement_update", "engagement_id": str(engagement.id)},
+        created_at=utcnow(),
     )
     session.add(message)
     await session.flush()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from httpx import AsyncClient
 
 
@@ -368,7 +370,9 @@ async def test_talent_interest_can_be_attached_to_recruiter_job(client: AsyncCli
     )
     assert duplicate_invite.status_code == 201
     assert duplicate_invite.json()["id"] == invite_id
-    assert duplicate_invite.json()["note"] == "Updated invite context."
+    # A retry/revisit returns the durable original request without rewriting
+    # its opening message or creating a second Inbox thread.
+    assert duplicate_invite.json()["note"] == "Can you work on this?"
     assert duplicate_invite.json()["status"] == "new"
 
     sent = await client.get(
@@ -861,8 +865,178 @@ async def test_apply_to_job_twice_reuses_the_same_application(client: AsyncClien
     assert len([row for row in sent.json() if row["job_id"] == job_id]) == 1
 
 
+async def test_job_relationship_read_and_terminal_revisit_keep_one_application(
+    client: AsyncClient,
+) -> None:
+    """A job is one immutable opportunity: withdrawal keeps its history and thread."""
+
+    owner_token = await _register_verified_login(
+        client, email="relationship-owner@example.com", username="rel_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="relationship-applicant@example.com", username="rel_applicant"
+    )
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+
+    job = await client.post(
+        "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "title": "Relationship-aware editor role",
+            "category": "Editing",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    job_id = job.json()["id"]
+
+    before = await client.get(f"/api/v1/jobs/{job_id}/application", headers=applicant_headers)
+    assert before.status_code == 200
+    assert before.json() is None
+
+    first = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={"cover_note": "Original application context."},
+    )
+    assert first.status_code == 201
+    application_id = first.json()["id"]
+
+    relationship = await client.get(
+        f"/api/v1/jobs/{job_id}/application", headers=applicant_headers
+    )
+    assert relationship.status_code == 200
+    assert relationship.json()["id"] == application_id
+    assert relationship.json()["status"] == "new"
+    assert relationship.json()["manager_note"] is None
+
+    withdrawn = await client.post(
+        f"/api/v1/applications/{application_id}/withdraw", headers=applicant_headers
+    )
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["status"] == "withdrawn"
+
+    closed = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"status": "closed"},
+    )
+    assert closed.status_code == 200
+
+    revisit = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={"cover_note": "This must not replace or duplicate the original."},
+    )
+    assert revisit.status_code == 201
+    assert revisit.json()["id"] == application_id
+    assert revisit.json()["status"] == "withdrawn"
+    assert revisit.json()["cover_note"] == "Original application context."
+
+    sent = await client.get("/api/v1/me/applications/sent", headers=applicant_headers)
+    matching = [row for row in sent.json() if row["job_id"] == job_id]
+    assert len(matching) == 1
+
+
+async def test_application_notifications_deep_link_each_participant_to_the_same_thread(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="deep-owner@example.com", username="deep_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="deep-applicant@example.com", username="deep_applicant"
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+    job = await client.post(
+        "/api/v1/jobs",
+        headers=owner_headers,
+        json={
+            "title": "Notification deep-link role",
+            "category": "Editing",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    application = await client.post(
+        f"/api/v1/jobs/{job.json()['id']}/applications",
+        headers=applicant_headers,
+        json={},
+    )
+    application_id = application.json()["id"]
+
+    owner_notifications = (await client.get("/api/v1/notifications", headers=owner_headers)).json()["items"]
+    applicant_notifications = (
+        await client.get("/api/v1/notifications", headers=applicant_headers)
+    ).json()["items"]
+    owner_item = next(item for item in owner_notifications if item["type"] == "new_applicant")
+    applicant_item = next(
+        item for item in applicant_notifications if item["type"] == "application_submitted"
+    )
+    assert owner_item["action_url"] == (
+        f"/applications?view=inbox&mode=recruiter&thread={application_id}"
+    )
+    assert applicant_item["action_url"] == (
+        f"/applications?view=inbox&mode=talent&thread={application_id}"
+    )
+
+
+async def test_concurrent_application_requests_create_one_record_and_one_thread(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="race-owner@example.com", username="race_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="race-applicant@example.com", username="race_applicant"
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+    job = await client.post(
+        "/api/v1/jobs",
+        headers=owner_headers,
+        json={
+            "title": "Concurrent application role",
+            "category": "Editing",
+            "platforms": ["youtube"],
+            "status": "published",
+        },
+    )
+    job_id = job.json()["id"]
+
+    async def submit(note: str):
+        return await client.post(
+            f"/api/v1/jobs/{job_id}/applications",
+            headers=applicant_headers,
+            json={"cover_note": note},
+        )
+
+    first, second = await asyncio.gather(submit("First click"), submit("Second click"))
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+
+    sent = await client.get("/api/v1/me/applications/sent", headers=applicant_headers)
+    matching = [row for row in sent.json() if row["job_id"] == job_id]
+    assert len(matching) == 1
+    conversations = await client.get("/api/v1/me/conversations", headers=owner_headers)
+    matching_threads = [
+        row for row in conversations.json() if row["application_id"] == matching[0]["id"]
+    ]
+    assert len(matching_threads) == 1
+
+    owner_notifications = (await client.get("/api/v1/notifications", headers=owner_headers)).json()["items"]
+    matching_notifications = [
+        row
+        for row in owner_notifications
+        if row["type"] == "new_applicant" and row["resource_id"] == matching[0]["id"]
+    ]
+    assert len(matching_notifications) == 1
+
+
 async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncClient) -> None:
-    """Re-sending a hiring request reuses the existing one rather than duplicating it."""
+    """Revisiting a request preserves its original content and terminal state."""
     creator_token = await _register_verified_login(client, email="dup-creator@example.com", username="dup_creator")
     recruiter_token = await _register_verified_login(client, email="dup-recruiter@example.com", username="dup_recruiter")
 
@@ -881,6 +1055,13 @@ async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncC
     assert create_listing.status_code == 201
     listing_id = create_listing.json()["id"]
 
+    before = await client.get(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert before.status_code == 200
+    assert before.json() is None
+
     first = await client.post(
         f"/api/v1/talent-listings/{listing_id}/interest",
         headers={"Authorization": f"Bearer {recruiter_token}"},
@@ -889,6 +1070,32 @@ async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncC
     assert first.status_code == 201
     first_id = first.json()["id"]
 
+    relationship = await client.get(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {recruiter_token}"},
+    )
+    assert relationship.status_code == 200
+    assert relationship.json()["id"] == first_id
+
+    received_summary = await client.get(
+        "/api/v1/me/activity/summary",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    received_request = next(
+        row
+        for row in received_summary.json()["received_interests"]
+        if row["id"] == first_id
+    )
+    assert received_request["recruiter_display_name"] == "Dup Recruiter"
+    assert received_request["recruiter_username"] == "dup_recruiter"
+
+    declined = await client.patch(
+        f"/api/v1/talent-interests/{first_id}/status",
+        headers={"Authorization": f"Bearer {creator_token}"},
+        json={"status": "declined"},
+    )
+    assert declined.status_code == 200
+
     second = await client.post(
         f"/api/v1/talent-listings/{listing_id}/interest",
         headers={"Authorization": f"Bearer {recruiter_token}"},
@@ -896,6 +1103,8 @@ async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncC
     )
     assert second.status_code == 201
     assert second.json()["id"] == first_id
+    assert second.json()["status"] == "declined"
+    assert second.json()["note"] == "First outreach."
 
     sent = await client.get(
         "/api/v1/me/talent-interests/sent",
@@ -903,3 +1112,56 @@ async def test_send_talent_interest_twice_reuses_the_same_request(client: AsyncC
     )
     assert sent.status_code == 200
     assert len([row for row in sent.json() if row["talent_listing_id"] == listing_id]) == 1
+
+
+async def test_concurrent_hiring_requests_create_one_record_thread_and_notification(
+    client: AsyncClient,
+) -> None:
+    creator_token = await _register_verified_login(
+        client, email="race-creator@example.com", username="race_creator"
+    )
+    recruiter_token = await _register_verified_login(
+        client, email="race-recruiter@example.com", username="race_recruiter"
+    )
+    creator_headers = {"Authorization": f"Bearer {creator_token}"}
+    recruiter_headers = {"Authorization": f"Bearer {recruiter_token}"}
+    listing = await client.post(
+        "/api/v1/talent-listings",
+        headers=creator_headers,
+        json={
+            "title": "Concurrent hiring request listing",
+            "roles": ["Video editor"],
+            "status": "published",
+        },
+    )
+    listing_id = listing.json()["id"]
+
+    async def submit(note: str):
+        return await client.post(
+            f"/api/v1/talent-listings/{listing_id}/interest",
+            headers=recruiter_headers,
+            json={"note": note},
+        )
+
+    first, second = await asyncio.gather(submit("First click"), submit("Second click"))
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    interest_id = first.json()["id"]
+
+    sent = await client.get("/api/v1/me/talent-interests/sent", headers=recruiter_headers)
+    assert len([row for row in sent.json() if row["talent_listing_id"] == listing_id]) == 1
+    conversations = await client.get("/api/v1/me/conversations", headers=creator_headers)
+    assert len(
+        [row for row in conversations.json() if row["talent_interest_id"] == interest_id]
+    ) == 1
+    notifications = (await client.get("/api/v1/notifications", headers=creator_headers)).json()[
+        "items"
+    ]
+    assert len(
+        [
+            row
+            for row in notifications
+            if row["type"] == "talent_interest_received" and row["resource_id"] == interest_id
+        ]
+    ) == 1
