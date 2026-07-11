@@ -37,6 +37,7 @@ export default async function ApplicationsPage() {
             so the sample-data affordance is gated by the reliable server value. */}
         <ApplicationsPageClient
           backendAccessToken={session.backendAccessToken}
+          backendUserId={session.backendUserId}
           allowDemo={!isProductionRuntime()}
         />
       </section>

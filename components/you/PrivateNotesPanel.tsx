@@ -26,6 +26,7 @@ export default function PrivateNotesPanel({
   conversationId,
   counterpartyName,
   seedNotes = [],
+  storageOwnerId,
   onSaveLatest,
   loadPersistedNotes,
   createPersistedNote,
@@ -34,6 +35,8 @@ export default function PrivateNotesPanel({
   conversationId: string;
   counterpartyName: string;
   seedNotes?: PrivateNote[];
+  /** Backend user id owning the local note cache — isolates it per account. */
+  storageOwnerId?: string | null;
   onSaveLatest?: (body: string | null) => Promise<void> | void;
   loadPersistedNotes?: () => Promise<PrivateNote[]>;
   createPersistedNote?: (body: string) => Promise<PrivateNote>;
@@ -53,7 +56,7 @@ export default function PrivateNotesPanel({
   // (Runs client-side only, so localStorage access stays out of SSR.)
   useEffect(() => {
     let cancelled = false;
-    const stored = loadNotes(conversationId);
+    const stored = loadNotes(storageOwnerId, conversationId);
     setNotes(stored ?? seedNotes);
     setActiveIndex(0);
     setDraft("");
@@ -70,7 +73,7 @@ export default function PrivateNotesPanel({
       .then((persisted) => {
         if (cancelled) return;
         setNotes(persisted);
-        saveNotes(conversationId, persisted);
+        saveNotes(storageOwnerId, conversationId, persisted);
         setLoadState("ready");
       })
       .catch(() => {
@@ -84,7 +87,7 @@ export default function PrivateNotesPanel({
     // are keyed by the same id in the parent, so reloading on those two identities
     // is sufficient and avoids a loop from a freshly-created fallback array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, loadPersistedNotes]);
+  }, [conversationId, loadPersistedNotes, storageOwnerId]);
 
   useEffect(() => {
     if (saveState !== "saved") return;
@@ -115,7 +118,7 @@ export default function PrivateNotesPanel({
           };
       const next = [note, ...notes.filter((item) => item.id !== note.id)];
       setNotes(next);
-      saveNotes(conversationId, next);
+      saveNotes(storageOwnerId, conversationId, next);
       setDraft("");
       setFlipFrom("-10px");
       setActiveIndex(0);
@@ -135,7 +138,7 @@ export default function PrivateNotesPanel({
       await deletePersistedNote?.(id);
       const next = notes.filter((note) => note.id !== id);
       setNotes(next);
-      saveNotes(conversationId, next);
+      saveNotes(storageOwnerId, conversationId, next);
       setActiveIndex((index) => clampIndex(index, next.length));
       if (!deletePersistedNote) await onSaveLatest?.(next[0]?.body ?? null);
     } catch {

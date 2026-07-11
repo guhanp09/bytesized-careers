@@ -7,6 +7,7 @@ import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
 import PrivateNotesPanel from "./PrivateNotesPanel";
 import { formatNoteTimestamp, type PrivateNote } from "../../lib/privateNotes";
+import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
 import {
@@ -95,6 +96,8 @@ type ApplicationsWorkspaceProps = {
   onToggleDemo?: () => void;
   interactions?: OwnerInteraction[];
   backendAccessToken?: string;
+  /** Backend user id of the signed-in account; scopes persisted client state. */
+  backendUserId?: string;
   /** Force the demo dataset even when a backend token is present (preview only). */
   forceMock?: boolean;
   /** Thread to open on mount, e.g. from an "Open conversation" deep-link. */
@@ -1194,6 +1197,7 @@ export default function ApplicationsWorkspace({
   onToggleDemo,
   interactions,
   backendAccessToken,
+  backendUserId,
   forceMock = false,
   initialSelectedId = null,
   view: viewProp,
@@ -1255,15 +1259,19 @@ export default function ApplicationsWorkspace({
   const [mobileDetailOpen, setMobileDetailOpen] = useState(Boolean(initialSelectedId));
   const [selectionReady, setSelectionReady] = useState(Boolean(initialSelectedId));
   // Remember the open inbox conversation across navigation so returning lands back
-  // on it (not the first thread / the list). A ?thread deep-link always wins.
+  // on it (not the first thread / the list). A ?thread deep-link always wins. The
+  // key is scoped to the signed-in backend user so a QA persona switch (or a
+  // different account in the same browser) can never restore someone else's thread.
+  const selectedStorageKey = userStorageKey(SELECTED_STORAGE_KEY, backendUserId);
   const selectionRestored = useRef(false);
   const skipFirstSelectionPersist = useRef(!initialSelectedId);
   useEffect(() => {
     if (selectionRestored.current) return;
     selectionRestored.current = true;
+    purgeLegacyStorageKey(SELECTED_STORAGE_KEY);
     if (initialSelectedId) return;
     try {
-      const saved = window.localStorage.getItem(SELECTED_STORAGE_KEY);
+      const saved = window.localStorage.getItem(selectedStorageKey);
       if (saved) {
         setSelectedId(saved);
         setMobileDetailOpen(true);
@@ -1281,12 +1289,26 @@ export default function ApplicationsWorkspace({
       return;
     }
     try {
-      if (selectedId) window.localStorage.setItem(SELECTED_STORAGE_KEY, selectedId);
-      else window.localStorage.removeItem(SELECTED_STORAGE_KEY);
+      if (selectedId) window.localStorage.setItem(selectedStorageKey, selectedId);
+      else window.localStorage.removeItem(selectedStorageKey);
     } catch {
       // storage unavailable; selection still works in-session
     }
-  }, [selectedId]);
+  }, [selectedId, selectedStorageKey]);
+  // A deep-link arriving while the workspace is already mounted (clicking a bell
+  // notification from inside /applications does not remount the page) must still
+  // open the exact conversation the notification references.
+  const lastDeepLinkRef = useRef(initialSelectedId);
+  useEffect(() => {
+    if (!initialSelectedId || initialSelectedId === lastDeepLinkRef.current) {
+      lastDeepLinkRef.current = initialSelectedId;
+      return;
+    }
+    lastDeepLinkRef.current = initialSelectedId;
+    setSelectedId(initialSelectedId);
+    setMobileDetailOpen(true);
+    setSelectionReady(true);
+  }, [initialSelectedId]);
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
@@ -1845,6 +1867,16 @@ export default function ApplicationsWorkspace({
 
   if (modeItems.length === 0) {
     const isTalent = mode === "talent";
+    // The activity summary spans both modes, so an empty mode must never read as
+    // "you have no messages" while the other mode holds real conversations (the
+    // notification bell counts those). Surface them with a one-click switch.
+    const otherMode: WorkspaceMode = isTalent ? "hiring" : "talent";
+    const otherModeOption = modeOptions.find((option) => option.key === otherMode);
+    const otherModeItems = items.filter((item) => item.mode === otherMode);
+    const otherModeUnread =
+      otherModeItems.reduce((count, item) => count + (unreadByThread[item.id] ?? 0), 0) ||
+      otherModeItems.filter((item) => item.unread).length;
+    const showOtherModeHint = Boolean(onModeChange && otherModeOption && otherModeItems.length > 0);
     return (
       <div
         className={`flex w-full items-center justify-center px-6 py-16 ${WORKSPACE_HEIGHT_CLASSES}`}
@@ -1859,8 +1891,45 @@ export default function ApplicationsWorkspace({
               ? "When you apply to jobs or receive hiring requests, they’ll appear here."
               : "Applications to your jobs and requests you send to talent will appear here."}
           </p>
+          {showOtherModeHint ? (
+            <div
+              data-testid="inbox-other-mode-hint"
+              className="mx-auto mt-5 flex max-w-md flex-col items-center gap-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] px-4 py-3.5"
+            >
+              <p className="text-sm text-white/75">
+                {otherModeUnread > 0 ? (
+                  <>
+                    You have{" "}
+                    <span className="font-semibold text-white">
+                      {otherModeUnread} unread {otherModeUnread === 1 ? "message" : "messages"}
+                    </span>{" "}
+                    in your {otherModeOption?.label} conversations.
+                  </>
+                ) : (
+                  <>
+                    You have{" "}
+                    <span className="font-semibold text-white">
+                      {otherModeItems.length} {otherModeItems.length === 1 ? "conversation" : "conversations"}
+                    </span>{" "}
+                    on your {otherModeOption?.label} side.
+                  </>
+                )}
+              </p>
+              <button
+                type="button"
+                data-testid="inbox-other-mode-switch"
+                onClick={() => onModeChange?.(otherMode)}
+                className={PRIMARY_BUTTON_CLASSES}
+              >
+                Switch to {otherModeOption?.label}
+              </button>
+            </div>
+          ) : null}
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
-            <Link href={isTalent ? "/jobs" : "/post-job"} className={PRIMARY_BUTTON_CLASSES}>
+            <Link
+              href={isTalent ? "/jobs" : "/post-job"}
+              className={showOtherModeHint ? GHOST_BUTTON_CLASSES : PRIMARY_BUTTON_CLASSES}
+            >
               {isTalent ? "Browse jobs" : "Post a job"}
             </Link>
             <Link href={isTalent ? "/post-talent" : "/talent"} className={GHOST_BUTTON_CLASSES}>
@@ -2418,6 +2487,7 @@ export default function ApplicationsWorkspace({
                         conversationId={selected.id}
                         counterpartyName={selected.counterpartyName}
                         seedNotes={seedNotesForInteraction(selected)}
+                        storageOwnerId={backendUserId}
                         onSaveLatest={liveMode ? undefined : persistDemoLatestNote}
                         loadPersistedNotes={selectedPrivateNotePersistence?.load}
                         createPersistedNote={selectedPrivateNotePersistence?.create}
@@ -2448,6 +2518,7 @@ export default function ApplicationsWorkspace({
           mode={mode}
           liveMode={liveMode}
           backendAccessToken={backendAccessToken}
+          backendUserId={backendUserId}
           unreadByThread={unreadByThread}
           onThreadRead={handleThreadRead}
           openRequest={chatRequest}

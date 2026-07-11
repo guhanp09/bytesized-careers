@@ -10,13 +10,19 @@ export type PrivateNote = {
   conversationId?: string;
 };
 
+import { purgeLegacyStorageKey, userStorageKey } from "./userScopedStorage";
+
 const STORAGE_KEY = "cj.applications.notes";
 
 type NotesMap = Record<string, PrivateNote[]>;
 
-function readMap(): NotesMap {
+// The cache is keyed per note owner (backend user id): private notes must never
+// surface — even transiently, from a stale cache — under another signed-in user
+// or QA persona in the same browser.
+function readMap(ownerId?: string | null): NotesMap {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    purgeLegacyStorageKey(STORAGE_KEY);
+    const raw = window.localStorage.getItem(userStorageKey(STORAGE_KEY, ownerId));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     return parsed && typeof parsed === "object" ? (parsed as NotesMap) : {};
@@ -26,16 +32,20 @@ function readMap(): NotesMap {
 }
 
 /** Saved notes for a conversation, or null when none were ever stored locally. */
-export function loadNotes(conversationId: string): PrivateNote[] | null {
-  const list = readMap()[conversationId];
+export function loadNotes(ownerId: string | null | undefined, conversationId: string): PrivateNote[] | null {
+  const list = readMap(ownerId)[conversationId];
   return Array.isArray(list) ? list : null;
 }
 
-export function saveNotes(conversationId: string, notes: PrivateNote[]): void {
+export function saveNotes(
+  ownerId: string | null | undefined,
+  conversationId: string,
+  notes: PrivateNote[]
+): void {
   try {
-    const map = readMap();
+    const map = readMap(ownerId);
     map[conversationId] = notes;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    window.localStorage.setItem(userStorageKey(STORAGE_KEY, ownerId), JSON.stringify(map));
   } catch {
     // Storage can be unavailable (private mode); the stack still works in-memory.
   }

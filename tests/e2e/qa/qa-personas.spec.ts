@@ -273,7 +273,12 @@ test("a fresh job application appears in both inboxes and cannot be duplicated",
     await expect(recruiterDetail.getByTestId("saved-notes-count")).toHaveText("2");
 
     // Prove that live history comes from the backend, not the browser cache.
-    await recruiterPage.evaluate(() => window.localStorage.removeItem("cj.applications.notes"));
+    // (The note cache is per-user-scoped: cj.applications.notes::<backendUserId>.)
+    await recruiterPage.evaluate(() => {
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith("cj.applications.notes")) window.localStorage.removeItem(key);
+      }
+    });
     await recruiterPage.reload({ waitUntil: "domcontentloaded" });
     const reloadedRecruiterDetail = recruiterPage.getByTestId("applications-detail");
     await expect(reloadedRecruiterDetail.getByTestId("saved-notes-count")).toHaveText("2");
@@ -553,4 +558,83 @@ test("drawer restores focus on Escape and fails closed on a catalogue outage", a
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("qa-persona-open")).toHaveCount(0);
   await expect(page.getByRole("main")).toBeVisible();
+});
+
+test("message notifications stay reachable after a persona switch — the inbox never contradicts the bell", async ({
+  page,
+}) => {
+  await loginController(page);
+
+  // Seed a stale pre-fix global key (the exact state the regression screenshot
+  // came from): it must be purged, never steer any persona's inbox.
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      "cj.applications.workspace",
+      JSON.stringify({ view: "inbox", mode: "hiring", direction: "received" })
+    );
+  });
+
+  // The recruiter works their inbox in Recruiter mode and messages Priya.
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  const composer = recruiterDetail.getByRole("textbox", { name: "Reply message" });
+  const marker = `Persona coherence ping ${Date.now()}`;
+  await composer.fill(marker);
+  await recruiterDetail.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(composer).toHaveValue("");
+
+  // Switching to Priya lands on HER start route — not on the recruiter's URL,
+  // whose mode/thread params describe the previous persona's context.
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await expect(page).toHaveURL(/\/you/);
+
+  // Her bell shows the unread message notification.
+  await expect(page.getByRole("button", { name: "Notifications" })).toContainText(/\d/);
+
+  // The bare Inbox route (sidebar path) opens HER conversations — never the
+  // previous persona's empty Recruiter view.
+  await page.goto("/applications", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/mode=talent/);
+  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+  await expect(page.getByRole("main")).not.toContainText("No hiring activity yet.");
+
+  // No un-scoped cross-persona inbox keys survive.
+  const legacyKeys = await page.evaluate(() =>
+    [
+      "cj.applications.workspace",
+      "cj.applications.selected",
+      "cj.applications.chatdock",
+      "cj.applications.notes",
+    ].filter((key) => window.localStorage.getItem(key) !== null)
+  );
+  expect(legacyKeys).toEqual([]);
+
+  // Her genuinely-empty Recruiter side points back at the Talent conversations
+  // instead of a dead end.
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("inbox-other-mode-hint")).toBeVisible();
+  await page.getByTestId("inbox-other-mode-switch").click();
+  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+
+  // The bell notification deep-links to the exact thread with the new message,
+  // and opening it clears the unread state.
+  await page.getByRole("button", { name: "Notifications" }).click();
+  const notificationLink = page
+    .locator('a[href*="/applications?view=inbox&mode=talent"]')
+    .filter({ hasText: "New message from Finance Simplified" })
+    .first();
+  await expect(notificationLink).toBeVisible();
+  await notificationLink.click();
+  await expect(page).toHaveURL(/mode=talent.*thread=/);
+  await expect(page.getByTestId("applications-detail")).toContainText(marker);
+
+  // Switching back restores the recruiter's own saved workspace (their scoped
+  // state), proving per-persona persistence survives the round trip.
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/mode=recruiter/);
+  await expect(page.getByRole("main")).not.toContainText("No applications yet.");
 });

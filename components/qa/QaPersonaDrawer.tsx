@@ -136,7 +136,11 @@ export default function QaPersonaDrawer() {
         setBusy(null);
         return;
       }
-      window.location.reload();
+      // Land on the persona's own start route rather than reloading the current
+      // URL: query params like ?mode=recruiter&thread=… describe the PREVIOUS
+      // persona's context and must not be re-interpreted (or re-persisted) under
+      // the new identity.
+      window.location.assign(persona.startRoute || "/you");
     } catch {
       setMessage("Could not switch personas. No application data was changed.");
       setBusy(null);
@@ -155,7 +159,9 @@ export default function QaPersonaDrawer() {
     setBusy("exit");
     try {
       await update({ qaPersonaAction: "exit" });
-      window.location.reload();
+      // Same reasoning as switching: don't re-interpret the persona's current
+      // URL (mode/thread params) under the controller identity.
+      window.location.assign("/you");
     } catch {
       setMessage("Could not return to the controller session. Refresh and try again.");
       setBusy(null);

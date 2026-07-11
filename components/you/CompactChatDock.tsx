@@ -29,6 +29,7 @@ import {
   relativeTimeLabel,
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
+import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 import { directionLabelsFor, pipelineProfileHrefOf, type WorkspaceModeKey } from "../../lib/applicationPipeline";
 
 /**
@@ -43,14 +44,16 @@ type DockFilter = "all" | "sent" | "received" | "archived";
 const CONVERSATION_POLL_INTERVAL_MS = 3_000;
 
 // Remembers the dock's open state + active thread across navigation, so returning
-// to the workspace reopens the same conversation instead of the default list.
+// to the workspace reopens the same conversation instead of the default list. The
+// key is scoped per backend user so no other account's dock state can restore.
 const DOCK_STORAGE_KEY = "cj.applications.chatdock";
 
 type DockPersistedState = { open: boolean; threadId: string | null };
 
-function readDockState(): DockPersistedState | null {
+function readDockState(storageKey: string): DockPersistedState | null {
   try {
-    const raw = window.localStorage.getItem(DOCK_STORAGE_KEY);
+    purgeLegacyStorageKey(DOCK_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<DockPersistedState>;
     return {
@@ -78,6 +81,8 @@ type CompactChatDockProps = {
   mode: WorkspaceModeKey;
   liveMode: boolean;
   backendAccessToken?: string;
+  /** Backend user id of the signed-in account; scopes persisted dock state. */
+  backendUserId?: string;
   unreadByThread: Record<string, number>;
   onThreadRead: (id: string) => void;
   /** Bumped by "Message" actions elsewhere (e.g. pipeline cards) to open a thread. */
@@ -93,6 +98,7 @@ export default function CompactChatDock({
   mode,
   liveMode,
   backendAccessToken,
+  backendUserId,
   unreadByThread,
   onThreadRead,
   openRequest,
@@ -116,16 +122,20 @@ export default function CompactChatDock({
   const skipFirstPersist = useRef(true);
   const pendingSendRef = useRef<{ threadId: string; body: string; id: string } | null>(null);
 
+  const dockStorageKey = userStorageKey(DOCK_STORAGE_KEY, backendUserId);
+
   // Restore the last dock state on mount (client-only, once) so navigating away
   // and back returns to the same open conversation.
   useEffect(() => {
     if (restoredDock.current) return;
     restoredDock.current = true;
-    const saved = readDockState();
+    const saved = readDockState(dockStorageKey);
     if (saved?.open) {
       if (saved.threadId) setThreadId(saved.threadId);
       setOpen(true);
     }
+    // Restore runs once against the mount-time storage key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist open + thread on change. Skip the very first run so the initial
@@ -136,11 +146,11 @@ export default function CompactChatDock({
       return;
     }
     try {
-      window.localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify({ open, threadId }));
+      window.localStorage.setItem(dockStorageKey, JSON.stringify({ open, threadId }));
     } catch {
       // Storage can be unavailable (private mode); the dock still works in-session.
     }
-  }, [open, threadId]);
+  }, [open, threadId, dockStorageKey]);
 
   const thread = threadId ? items.find((item) => item.id === threadId) ?? null : null;
   const activeThreadId = thread?.id ?? null;

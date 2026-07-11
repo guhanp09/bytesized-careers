@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ApplicationsWorkspace from "../you/ApplicationsWorkspace";
+import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 
 type ApplicationsViewMode = "talent" | "hiring";
 type WorkspaceView = "inbox" | "pipeline";
@@ -17,6 +18,10 @@ const MODES: Array<{ key: ApplicationsViewMode; label: string }> = [
  * The user's last workspace shape, restored on return so /applications reopens
  * the way they left it (Pipeline stays Pipeline). URL params always win over
  * the saved state so deep links and notification links stay authoritative.
+ *
+ * The key is scoped per backend user: restoring another account's saved mode
+ * (e.g. after a QA persona switch) would steer this user into the wrong side of
+ * the inbox and contradict their notifications.
  */
 const STORAGE_KEY = "cj.applications.workspace";
 
@@ -26,9 +31,10 @@ type SavedWorkspaceState = {
   direction?: PipelineDirection;
 };
 
-function readSavedState(): SavedWorkspaceState {
+function readSavedState(storageKey: string): SavedWorkspaceState {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    purgeLegacyStorageKey(STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
@@ -60,9 +66,12 @@ function parseMode(value: string | null): ApplicationsViewMode | null {
  */
 export default function ApplicationsPageClient({
   backendAccessToken,
+  backendUserId,
   allowDemo = false,
 }: {
   backendAccessToken?: string;
+  /** Backend user id of the signed-in account; scopes persisted client state. */
+  backendUserId?: string;
   /** Server-computed: true outside production, where browsing mock data is allowed. */
   allowDemo?: boolean;
 }) {
@@ -97,8 +106,10 @@ export default function ApplicationsPageClient({
     direction: Boolean(directionFromUrl),
   });
 
+  const workspaceStorageKey = userStorageKey(STORAGE_KEY, backendUserId);
+
   useEffect(() => {
-    const saved = readSavedState();
+    const saved = readSavedState(workspaceStorageKey);
     if (!urlSpecified.current.view && saved.view) setView(saved.view);
     if (!urlSpecified.current.mode && saved.mode) setMode(saved.mode);
     if (!urlSpecified.current.direction && saved.direction) setDirection(saved.direction);
@@ -107,12 +118,23 @@ export default function ApplicationsPageClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Follow later in-app navigations (e.g. clicking a bell notification while
+  // already on /applications): the page does not remount, so URL params must
+  // keep steering the workspace after mount. Setting an unchanged value is a
+  // no-op, so this never fights the user's own toggles.
+  useEffect(() => {
+    if (threadParam) setView("inbox");
+    else if (viewFromUrl) setView(viewFromUrl);
+    if (modeFromUrl) setMode(modeFromUrl);
+    if (directionFromUrl) setDirection(directionFromUrl);
+  }, [threadParam, viewFromUrl, modeFromUrl, directionFromUrl]);
+
   // Persist the workspace shape and keep the URL shareable. history.replaceState
   // avoids a server roundtrip on every toggle (Next keeps useSearchParams in sync).
   useEffect(() => {
     if (!restored) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ view, mode, direction }));
+      window.localStorage.setItem(workspaceStorageKey, JSON.stringify({ view, mode, direction }));
     } catch {
       // Storage can be unavailable (private mode); the workspace still works.
     }
@@ -128,7 +150,7 @@ export default function ApplicationsPageClient({
       params.delete("stage");
     }
     window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
-  }, [restored, view, mode, direction, stage, pathname]);
+  }, [restored, view, mode, direction, stage, pathname, workspaceStorageKey]);
 
   // Opt-in demo data so the UI can be browsed without a backend. Only honoured
   // outside production, so mock data can never surface to real users.
@@ -166,6 +188,7 @@ export default function ApplicationsPageClient({
         demoMode={demoMode}
         onToggleDemo={toggleDemo}
         backendAccessToken={backendAccessToken}
+        backendUserId={backendUserId}
         forceMock={demoMode}
         initialSelectedId={threadParam}
         view={view}

@@ -632,3 +632,97 @@ async def test_suspended_participant_closes_new_messages(
     assert (
         await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=owner_h)
     ).status_code == 403
+
+
+async def test_message_notification_thread_is_locatable_in_recipient_activity_summary(
+    client: AsyncClient,
+) -> None:
+    """A "new message" notification must always point at a thread the recipient can
+    find in their own inbox data (the activity summary), on the exact side the
+    action URL's mode selects. This is the backend half of the "notifications say
+    messages exist but the inbox looks empty" regression."""
+    owner = await _register_verified_login(client, email="coh_owner@example.com", username="coh_owner")
+    applicant = await _register_verified_login(client, email="coh_applicant@example.com", username="coh_applicant")
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    conversation_id = (
+        await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_h)
+    ).json()["conversation"]["id"]
+
+    # Applicant → owner: the owner's notification must resolve inside the owner's
+    # recruiter-side inbox records.
+    await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "Checking in on my application."},
+    )
+    owner_notification = next(
+        item
+        for item in (await client.get("/api/v1/notifications", headers=owner_h)).json()["items"]
+        if item["type"] == "message_received"
+    )
+    assert "mode=recruiter" in owner_notification["action_url"]
+    thread_id = owner_notification["action_url"].rsplit("thread=", 1)[-1]
+    owner_summary = (await client.get("/api/v1/me/activity/summary", headers=owner_h)).json()
+    assert thread_id in {row["id"] for row in owner_summary["received_applications"]}, (
+        "owner notification thread missing from the recruiter-side inbox records"
+    )
+
+    # Owner → applicant: the applicant's notification must resolve inside the
+    # applicant's talent-side inbox records.
+    await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Thanks — reviewing now."},
+    )
+    applicant_notification = next(
+        item
+        for item in (await client.get("/api/v1/notifications", headers=applicant_h)).json()["items"]
+        if item["type"] == "message_received"
+    )
+    assert "mode=talent" in applicant_notification["action_url"]
+    applicant_thread = applicant_notification["action_url"].rsplit("thread=", 1)[-1]
+    applicant_summary = (await client.get("/api/v1/me/activity/summary", headers=applicant_h)).json()
+    assert applicant_thread in {row["id"] for row in applicant_summary["sent_applications"]}, (
+        "applicant notification thread missing from the talent-side inbox records"
+    )
+
+    # Hiring-request context: talent recipient finds the thread among received
+    # interests; the recruiter finds it among sent interests.
+    creator = await _register_verified_login(client, email="coh_creator@example.com", username="coh_creator")
+    recruiter = await _register_verified_login(client, email="coh_recruiter@example.com", username="coh_recruiter")
+    creator_h = {"Authorization": f"Bearer {creator}"}
+    recruiter_h = {"Authorization": f"Bearer {recruiter}"}
+    listing = await client.post(
+        "/api/v1/talent-listings",
+        headers=creator_h,
+        json={"title": "Editor open for work", "roles": ["Video editor"], "status": "published"},
+    )
+    interest = await client.post(
+        f"/api/v1/talent-listings/{listing.json()['id']}/interest",
+        headers=recruiter_h,
+        json={"note": "Interested in working together."},
+    )
+    interest_id = interest.json()["id"]
+    interest_conversation = (
+        await client.get(f"/api/v1/me/talent-interests/{interest_id}/conversation", headers=recruiter_h)
+    ).json()["conversation"]["id"]
+    await client.post(
+        f"/api/v1/me/conversations/{interest_conversation}/messages",
+        headers=recruiter_h,
+        json={"body": "Would love to discuss a retainer."},
+    )
+    creator_notification = next(
+        item
+        for item in (await client.get("/api/v1/notifications", headers=creator_h)).json()["items"]
+        if item["type"] == "message_received"
+    )
+    assert "mode=talent" in creator_notification["action_url"]
+    creator_thread = creator_notification["action_url"].rsplit("thread=", 1)[-1]
+    creator_summary = (await client.get("/api/v1/me/activity/summary", headers=creator_h)).json()
+    assert creator_thread in {row["id"] for row in creator_summary["received_interests"]}, (
+        "creator notification thread missing from the talent-side interest records"
+    )
