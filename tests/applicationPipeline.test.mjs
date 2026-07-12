@@ -17,6 +17,7 @@ import {
   pipelineSummaryOf,
   stageNotifyPolicyOf,
   stageTargetsFor,
+  validStageTargetsFor,
 } from "../lib/applicationPipeline.ts";
 
 test("received applications expose the full ATS funnel in order", () => {
@@ -54,6 +55,27 @@ test("manager stage targets exclude arrival and sender-only statuses", () => {
   assert.deepEqual(applicationTargets, ["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]);
   const interestTargets = stageTargetsFor("hiring_request").map((stage) => stage.key);
   assert.deepEqual(interestTargets, ["reviewing", "contacted", "declined", "archived"]);
+});
+
+test("manager actions expose only legal next stages and never reopen terminal records", () => {
+  assert.deepEqual(
+    validStageTargetsFor("application", "new").map((stage) => stage.key),
+    ["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]
+  );
+  assert.deepEqual(
+    validStageTargetsFor("application", "interviewing").map((stage) => stage.key),
+    ["shortlisted", "hired", "rejected", "archived"]
+  );
+  assert.deepEqual(
+    validStageTargetsFor("application", "rejected").map((stage) => stage.key),
+    ["archived"]
+  );
+  assert.deepEqual(validStageTargetsFor("application", "hired"), []);
+  assert.deepEqual(
+    validStageTargetsFor("hiring_request", "new").map((stage) => stage.key),
+    ["reviewing", "contacted", "declined", "archived"]
+  );
+  assert.deepEqual(validStageTargetsFor("hiring_request", "contacted"), []);
 });
 
 test("backendStatusOf prefers the raw backend value and reverse-maps demo statuses", () => {
@@ -228,6 +250,10 @@ test("notify taxonomy: internal-only stages have no policy; outcomes do", () => 
   assert.equal(stageNotifyPolicyOf("application", "shortlisted")?.recommended, false);
   assert.equal(stageNotifyPolicyOf("application", "interviewing")?.recommended, true);
   assert.equal(stageNotifyPolicyOf("application", "rejected")?.recommended, true);
+  assert.equal(stageNotifyPolicyOf("application", "shortlisted")?.automatic, undefined);
+  assert.equal(stageNotifyPolicyOf("application", "interviewing")?.automatic, true);
+  assert.equal(stageNotifyPolicyOf("application", "hired")?.automatic, true);
+  assert.equal(stageNotifyPolicyOf("hiring_request", "contacted")?.automatic, true);
 });
 
 test("portfolio count reads structured portfolio answers, else attachments", () => {

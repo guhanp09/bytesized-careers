@@ -395,7 +395,9 @@ export default function FirstMessageFields({
   context: RequirementContext;
   requirementKeys: string[];
   answers: FirstMessageAnswers;
-  onChange: (next: FirstMessageAnswers) => void;
+  onChange: (
+    next: FirstMessageAnswers | ((previous: FirstMessageAnswers) => FirstMessageAnswers)
+  ) => void;
   errors?: Record<string, string>;
   portfolio?: PortfolioState;
   requirementPrompts?: Record<string, string>;
@@ -404,7 +406,7 @@ export default function FirstMessageFields({
   if (!keys.length) return null;
 
   const setAnswer = (key: string, value: RequirementAnswerValue) => {
-    onChange({ ...answers, [key]: value });
+    onChange((previous) => ({ ...previous, [key]: value }));
   };
 
   return (

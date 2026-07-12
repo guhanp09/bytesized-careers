@@ -67,6 +67,39 @@ export function hasUnreadIncomingMessage(
   });
 }
 
+/**
+ * Reconcile an outgoing message with the conversation's durable counterparty
+ * read timestamp. Real-time read progress can arrive before the sender's POST
+ * response or message-created event, so receipt state must be order-independent.
+ */
+export function reconcileMessageReceipt<T extends BackendMessageLike>(
+  message: T,
+  counterpartyLastReadAt?: string | null
+): T {
+  if (!message.from_me || message.read_by_recipient || !message.created_at || !counterpartyLastReadAt) {
+    return message;
+  }
+  const createdAt = Date.parse(message.created_at);
+  const readAt = Date.parse(counterpartyLastReadAt);
+  if (!Number.isFinite(createdAt) || !Number.isFinite(readAt) || createdAt > readAt) {
+    return message;
+  }
+  return { ...message, read_by_recipient: true };
+}
+
+/** True only while the latest ordinary outgoing message awaits a receipt. */
+export function hasPendingLatestOutgoingReceipt(messages: BackendMessageLike[]): boolean {
+  const latest = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.from_me &&
+        message.kind !== "status_update" &&
+        message.kind !== "engagement_update"
+    );
+  return Boolean(latest && !latest.read_by_recipient);
+}
+
 /** Private application data stays backend-backed even if public browse uses mocks. */
 export function shouldUseLiveApplicationsData(
   backendAccessToken?: string | null,

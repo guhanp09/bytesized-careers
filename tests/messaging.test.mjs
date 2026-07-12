@@ -5,6 +5,8 @@ import {
   mapBackendMessage,
   conversationHasUnread,
   hasUnreadIncomingMessage,
+  hasPendingLatestOutgoingReceipt,
+  reconcileMessageReceipt,
   buildUnreadByThread,
   totalUnread,
   formatBadgeCount,
@@ -72,6 +74,51 @@ test("the backend read receipt maps only from authoritative recipient progress",
   );
   assert.equal(unread.readByRecipient, false);
   assert.equal(seen.readByRecipient, true);
+});
+
+test("a read timestamp reconciles when it arrives before the outgoing message", () => {
+  const message = {
+    id: "receipt-race",
+    from_me: true,
+    body: "Fast reader",
+    created_at: "2026-07-12T09:00:00Z",
+    read_by_recipient: false,
+  };
+  assert.equal(
+    reconcileMessageReceipt(message, "2026-07-12T09:00:01Z").read_by_recipient,
+    true
+  );
+  assert.equal(
+    reconcileMessageReceipt(message, "2026-07-12T08:59:59Z").read_by_recipient,
+    false
+  );
+  assert.equal(
+    reconcileMessageReceipt({ ...message, from_me: false }, "2026-07-12T09:00:01Z")
+      .read_by_recipient,
+    false
+  );
+});
+
+test("receipt recovery polling runs only while the latest ordinary outgoing message is unseen", () => {
+  assert.equal(
+    hasPendingLatestOutgoingReceipt([
+      { id: "one", from_me: true, body: "Earlier", read_by_recipient: true },
+      { id: "two", from_me: true, body: "Latest", read_by_recipient: false },
+    ]),
+    true
+  );
+  assert.equal(
+    hasPendingLatestOutgoingReceipt([
+      { id: "one", from_me: true, body: "Latest", read_by_recipient: true },
+    ]),
+    false
+  );
+  assert.equal(
+    hasPendingLatestOutgoingReceipt([
+      { id: "event", from_me: true, body: "Hired", kind: "status_update" },
+    ]),
+    false
+  );
 });
 
 test("engagement lifecycle messages render as trusted centered status events", () => {

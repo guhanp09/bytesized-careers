@@ -30,13 +30,15 @@ import type {
  * How informing the other side works for a stage the owner moved someone into.
  *
  * Statuses without a policy are internal-only: they exist for the owner's own
- * tracking and never message the counterparty. Statuses with a policy are
- * externally meaningful — after the move the workspace asks whether to post a
- * platform status update into the chat thread (never automatic).
+ * tracking and never message the counterparty. Optional policies ask before
+ * publishing; automatic policies are relationship outcomes that the backend
+ * publishes atomically with the stage move.
  */
 export type StageNotifyPolicy = {
   /** Whether the workspace should lead with "send" (true) or stay neutral. */
   recommended: boolean;
+  /** Shared outcomes are published by the backend as part of the stage move. */
+  automatic?: boolean;
   /** The platform-voice chat update, e.g. `Shortlisted for “Thumbnail Designer”.` */
   notice: (context: { contextLabel: string | null }) => string;
 };
@@ -65,8 +67,8 @@ const quoted = (label: string | null) => (label ? ` for “${label}”` : "");
  *                 (owners often shortlist quietly while comparing); reversible.
  * - interviewing— externally meaningful; notifying recommended (the applicant
  *                 has to take part); reversible.
- * - hired       — outcome; notifying recommended; reversible via the menu in
- *                 case of misclicks, but treated as an end state.
+ * - hired       — shared outcome; terminal in the pipeline because engagement
+ *                 controls own the relationship from that point onward.
  * - rejected    — outcome; notifying recommended (closure); terminal.
  * - withdrawn   — sender-only; the owner can never set it.
  * - archived    — tidy-up; internal-only; terminal.
@@ -86,6 +88,7 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
     dot: "bg-amber-300",
     notify: {
       recommended: true,
+      automatic: true,
       notice: ({ contextLabel }) => `Invited to interview${quoted(contextLabel)}.`,
     },
   },
@@ -93,7 +96,11 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
     key: "hired",
     label: "Hired",
     dot: "bg-emerald-300",
-    notify: { recommended: true, notice: ({ contextLabel }) => `Hired${quoted(contextLabel)}.` },
+    notify: {
+      recommended: true,
+      automatic: true,
+      notice: ({ contextLabel }) => `Hired${quoted(contextLabel)}.`,
+    },
   },
   {
     key: "rejected",
@@ -102,6 +109,7 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
     terminal: true,
     notify: {
       recommended: true,
+      automatic: true,
       notice: ({ contextLabel }) => `Not moving forward${quoted(contextLabel)}.`,
     },
   },
@@ -138,14 +146,14 @@ const INTEREST_RECEIVED_STAGES: PipelineStage[] = [
     key: "contacted",
     label: "Accepted",
     dot: "bg-emerald-300",
-    notify: { recommended: true, notice: () => "Hiring request accepted." },
+    notify: { recommended: true, automatic: true, notice: () => "Hiring request accepted." },
   },
   {
     key: "declined",
     label: "Declined",
     dot: "bg-rose-300/80",
     terminal: true,
-    notify: { recommended: true, notice: () => "Hiring request declined." },
+    notify: { recommended: true, automatic: true, notice: () => "Hiring request declined." },
   },
   { key: "withdrawn", label: "Withdrawn", dot: "bg-white/35", terminal: true },
   { key: "archived", label: "Archived", dot: "bg-white/35", terminal: true },
@@ -176,6 +184,34 @@ export function stageTargetsFor(kind: InteractionKind): PipelineStage[] {
     return APPLICATION_RECEIVED_STAGES.filter((stage) => stage.key !== "new" && stage.key !== "withdrawn");
   }
   return INTEREST_RECEIVED_STAGES.filter((stage) => stage.key !== "new" && stage.key !== "withdrawn");
+}
+
+const APPLICATION_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+  new: new Set(["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]),
+  reviewing: new Set(["shortlisted", "interviewing", "hired", "rejected", "archived"]),
+  shortlisted: new Set(["reviewing", "interviewing", "hired", "rejected", "archived"]),
+  interviewing: new Set(["shortlisted", "hired", "rejected", "archived"]),
+  rejected: new Set(["archived"]),
+  withdrawn: new Set(["archived"]),
+  hired: new Set(),
+  archived: new Set(),
+};
+
+const INTEREST_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+  new: new Set(["reviewing", "contacted", "declined", "archived"]),
+  reviewing: new Set(["contacted", "declined", "archived"]),
+  declined: new Set(["archived"]),
+  withdrawn: new Set(["archived"]),
+  contacted: new Set(),
+  archived: new Set(),
+};
+
+/** Manager actions valid from the record's current backend state. */
+export function validStageTargetsFor(kind: InteractionKind, currentStatus: string): PipelineStage[] {
+  const allowed = (kind === "application" ? APPLICATION_TRANSITIONS : INTEREST_TRANSITIONS)[
+    currentStatus
+  ] ?? new Set<string>();
+  return stageTargetsFor(kind).filter((stage) => allowed.has(stage.key));
 }
 
 /**

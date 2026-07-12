@@ -114,7 +114,7 @@ export default function JobActionsPanelClient({
   const [builderLaunch, setBuilderLaunch] = React.useState<WorkSampleAction | null>(null);
   const [rolesCatalog, setRolesCatalog] = React.useState<BackendRole[]>([]);
 
-  const onAnswersChange = (next: FirstMessageAnswers) => {
+  const onAnswersChange = (next: React.SetStateAction<FirstMessageAnswers>) => {
     setAnswers(next);
     if (Object.keys(answerErrors).length) setAnswerErrors({});
   };

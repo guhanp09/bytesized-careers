@@ -104,7 +104,9 @@ test.describe("/you Applications workspace", () => {
     const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
     await page.getByRole("menuitem", { name: "Accept request" }).click();
-    // Status moves to the app-bar chip; the now-archived item drops its workflow actions.
+    await expect(detail.getByText("Accept this hiring request?")).toBeVisible();
+    await detail.getByRole("button", { name: "Confirm acceptance" }).click();
+    // Status moves to the app-bar chip and terminal manager actions disappear.
     await expect(detail.getByText("Accepted", { exact: true })).toBeVisible();
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: "Accept request" })).toHaveCount(0);
@@ -265,22 +267,22 @@ test.describe("/you Applications workspace", () => {
     ).toBeVisible();
   });
 
-  test("declining a received application via the confirm panel archives it", async ({ page }) => {
+  test("marking a received application not selected uses confirmation and closes actions", async ({ page }) => {
     await openApplicationsTab(page);
     await page.getByRole("button", { name: "Recruiter", exact: true }).click();
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
 
     const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
-    await page.getByRole("menuitem", { name: "Decline", exact: true }).click();
-    await expect(detail.getByText("Decline this application?")).toBeVisible();
+    await page.getByRole("menuitem", { name: "Not selected", exact: true }).click();
+    await expect(detail.getByText("Mark this application as not selected?")).toBeVisible();
 
-    await detail.getByRole("button", { name: "Confirm decline" }).click();
+    await detail.getByRole("button", { name: "Confirm not selected" }).click();
     await expect(detail.getByText("Declined", { exact: true })).toBeVisible();
-    // Archived now → no workflow actions remain in the menu.
+    // Terminal outcome → no active workflow actions remain in the menu.
     await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Shortlist" })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "Decline", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Shortlist privately" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Not selected", exact: true })).toHaveCount(0);
   });
 
   test("shortlisting a received application updates its status", async ({ page }) => {

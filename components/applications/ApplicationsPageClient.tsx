@@ -184,6 +184,7 @@ export default function ApplicationsPageClient({
           // Each mode manages a different status vocabulary; drop the stage focus.
           setStage(null);
         }}
+        controlsReady={restored}
         allowDemo={allowDemo}
         demoMode={demoMode}
         onToggleDemo={toggleDemo}

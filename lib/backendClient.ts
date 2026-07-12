@@ -2556,6 +2556,7 @@ export type BackendConversation = {
   counterparty_last_read_at?: string | null;
   interaction_blocked?: boolean;
   blocked_by_me?: boolean;
+  is_closed?: boolean;
 };
 
 export type BackendConversationDetail = {

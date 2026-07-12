@@ -12,9 +12,11 @@ import {
 } from "./ApplicationsWorkspace";
 import {
   formatBadgeCount,
+  hasPendingLatestOutgoingReceipt,
   hasUnreadIncomingMessage,
   isMessagingClosedStatus,
   mapBackendMessage,
+  reconcileMessageReceipt,
   totalUnread,
 } from "../../lib/messaging";
 import {
@@ -160,7 +162,11 @@ export default function CompactChatDock({
         const existing = previous[event.thread_id];
         if (!existing || existing.conversationId !== event.conversation_id) return previous;
         if (existing.messages.some((message) => message.id === event.message.id)) return previous;
-        return { ...previous, [event.thread_id]: { ...existing, messages: [...existing.messages, event.message] } };
+        const message = reconcileMessageReceipt(
+          event.message,
+          existing.conversation?.counterparty_last_read_at
+        );
+        return { ...previous, [event.thread_id]: { ...existing, messages: [...existing.messages, message] } };
       });
       window.clearTimeout(typingTimersRef.current[event.conversation_id]);
       setTypingByConversation((previous) => {
@@ -376,11 +382,16 @@ export default function CompactChatDock({
     setLoadFailed(false);
 
     const refreshConversation = async () => {
+      let nextPollMs =
+        realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
       try {
         const detail = await (threadKind === "hiring_request"
           ? getInterestConversation(backendAccessToken, threadId)
           : getApplicationConversation(backendAccessToken, threadId));
         if (cancelled) return;
+        if (hasPendingLatestOutgoingReceipt(detail.messages)) {
+          nextPollMs = Math.min(nextPollMs, 2_500);
+        }
         setLiveThreads((prev) => ({
           ...prev,
           [threadId]: {
@@ -408,10 +419,7 @@ export default function CompactChatDock({
         if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) {
-          timer = setTimeout(
-            refreshConversation,
-            realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS
-          );
+          timer = setTimeout(refreshConversation, nextPollMs);
         }
       }
     };
@@ -464,7 +472,9 @@ export default function CompactChatDock({
   const threadInteractionBlocked = Boolean(threadLive?.conversation?.interaction_blocked);
   const threadBlockedByMe = Boolean(threadLive?.conversation?.blocked_by_me);
   const threadMessagingClosed = thread
-    ? isMessagingClosedStatus(thread.status) || threadInteractionBlocked
+    ? liveMode
+      ? Boolean(threadLive?.conversation?.is_closed) || threadInteractionBlocked
+      : isMessagingClosedStatus(thread.status) || threadInteractionBlocked
     : false;
   const composerReady = Boolean(thread) && !threadMessagingClosed && (!liveMode || Boolean(threadLive));
   const latestOutgoingMessageId = [...conversation]
@@ -498,7 +508,11 @@ export default function CompactChatDock({
         setLiveThreads((prev) => {
           const current = prev[thread.id];
           if (!current || current.messages.some((entry) => entry.id === message.id)) return prev;
-          return { ...prev, [thread.id]: { ...current, messages: [...current.messages, message] } };
+          const reconciled = reconcileMessageReceipt(
+            message,
+            current.conversation?.counterparty_last_read_at
+          );
+          return { ...prev, [thread.id]: { ...current, messages: [...current.messages, reconciled] } };
         });
         if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
         setDraft("");

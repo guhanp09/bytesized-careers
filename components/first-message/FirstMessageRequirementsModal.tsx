@@ -73,7 +73,9 @@ export default function FirstMessageRequirementsModal({
   context: RequirementContext;
   requirementKeys: string[];
   answers: FirstMessageAnswers;
-  onAnswersChange: (next: FirstMessageAnswers) => void;
+  onAnswersChange: (
+    next: FirstMessageAnswers | ((previous: FirstMessageAnswers) => FirstMessageAnswers)
+  ) => void;
   errors?: Record<string, string>;
   portfolio?: PortfolioState;
   requirementPrompts?: Record<string, string>;

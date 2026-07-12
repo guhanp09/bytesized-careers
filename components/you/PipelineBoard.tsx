@@ -17,6 +17,7 @@ import {
   pipelineSnippetOf,
   pipelineStagesFor,
   stageTargetsFor,
+  validStageTargetsFor,
   type PipelineFirstMessageLine,
   type PipelineStage,
 } from "../../lib/applicationPipeline";
@@ -64,7 +65,8 @@ function RowAvatar({ name, src }: { name: string; src?: string | null }) {
 }
 
 function stageMenuGroupLabel(stage: PipelineStage): string {
-  if (stage.notify) return "Can notify";
+  if (stage.notify?.automatic) return "Shared outcome";
+  if (stage.notify) return "Optional update";
   if (stage.terminal) return "Private close";
   return "Private tracking";
 }
@@ -397,8 +399,22 @@ export default function PipelineBoard({
 
   const isValidDropStage = (stageKey: string) =>
     draggedItems.length > 0 &&
-    targets.some((stage) => stage.key === stageKey) &&
-    draggedItems.some((item) => backendStatusOf(item) !== stageKey);
+    draggedItems.every((item) =>
+      validStageTargetsFor(kind, backendStatusOf(item)).some((stage) => stage.key === stageKey)
+    );
+
+  const bulkTargets = useMemo(
+    () =>
+      targets.filter((stage) =>
+        selectedItems.length > 0 &&
+        selectedItems.every((item) =>
+          validStageTargetsFor(kind, backendStatusOf(item)).some(
+            (candidate) => candidate.key === stage.key
+          )
+        )
+      ),
+    [kind, selectedItems, targets]
+  );
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
@@ -459,7 +475,7 @@ export default function PipelineBoard({
     event.preventDefault();
     const toMove = draggedItems.filter((item) => backendStatusOf(item) !== stageKey);
     endDrag();
-    if (toMove.length > 0 && targets.some((stage) => stage.key === stageKey)) {
+    if (toMove.length > 0 && isValidDropStage(stageKey)) {
       void moveStage(toMove, stageKey);
     }
   };
@@ -833,7 +849,7 @@ export default function PipelineBoard({
                                 })()}
                                 {manageable ? (
                                   <StageMenu
-                                    targets={targets}
+                                    targets={validStageTargetsFor(kind, currentKey)}
                                     currentKey={currentKey}
                                     triggerLabel={stages.find((entry) => entry.key === currentKey)?.label ?? stage.label}
                                     triggerTestId="pipeline-stage-menu"
@@ -868,7 +884,7 @@ export default function PipelineBoard({
               </p>
               <span className="h-4 w-px bg-white/12" aria-hidden />
               <StageMenu
-                targets={targets}
+                targets={bulkTargets}
                 triggerLabel={busy ? "Moving…" : "Move to"}
                 triggerTestId="bulk-move-trigger"
                 optionTestPrefix="bulk-move"

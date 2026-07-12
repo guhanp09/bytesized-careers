@@ -14,9 +14,11 @@ import { useRealtimeMessaging, type RealtimeMessagingEvent } from "../../lib/rea
 import {
   buildUnreadByThread,
   formatBadgeCount,
+  hasPendingLatestOutgoingReceipt,
   hasUnreadIncomingMessage,
   isMessagingClosedStatus,
   mapBackendMessage,
+  reconcileMessageReceipt,
   shouldUseLiveApplicationsData,
   totalUnread,
 } from "../../lib/messaging";
@@ -30,6 +32,7 @@ import {
   bulkUpdateTalentInterestStatus,
   createApplicationPrivateNote,
   createTalentInterestPrivateNote,
+  describeActionError,
   deleteApplicationPrivateNote,
   deleteTalentInterestPrivateNote,
   getActivitySummary,
@@ -72,11 +75,13 @@ import {
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
 import {
+  backendStatusOf,
   directionLabelsFor,
   pipelineContextLabelOf,
   pipelineSummaryOf,
   stageNotifyPolicyOf,
   stageTargetsFor,
+  validStageTargetsFor,
 } from "../../lib/applicationPipeline";
 import CompactChatDock from "./CompactChatDock";
 import PipelineBoard from "./PipelineBoard";
@@ -102,6 +107,8 @@ type ApplicationsWorkspaceProps = {
   mode: WorkspaceMode;
   modeOptions?: WorkspaceModeOption[];
   onModeChange?: (mode: WorkspaceMode) => void;
+  /** Prevent SSR controls from accepting clicks before saved state is restored. */
+  controlsReady?: boolean;
   allowDemo?: boolean;
   demoMode?: boolean;
   onToggleDemo?: () => void;
@@ -131,6 +138,7 @@ type HeaderAction = {
   primary?: boolean;
   destructive?: boolean;
   flow: "instant" | "confirm" | "reply";
+  backendStatus?: string;
   nextStatus?: InteractionStatus;
   eventLabel?: string;
   panelTitle?: string;
@@ -218,12 +226,14 @@ function WorkspaceControls({
   onModeChange,
   view,
   onViewChange,
+  ready,
 }: {
   mode: WorkspaceMode;
   modeOptions: WorkspaceModeOption[];
   onModeChange?: (mode: WorkspaceMode) => void;
   view: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
+  ready: boolean;
 }) {
   return (
     <div
@@ -243,9 +253,10 @@ function WorkspaceControls({
                 key={option.key}
                 type="button"
                 aria-pressed={isActive}
+                disabled={!ready}
                 onClick={() => onModeChange?.(option.key)}
                 className={[
-                  "h-8 cursor-pointer rounded-lg px-3.5 text-xs font-semibold transition-colors",
+                  "h-8 cursor-pointer rounded-lg px-3.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-55",
                   isActive ? "bg-white text-black" : "text-white/60 hover:text-white",
                 ].join(" ")}
               >
@@ -274,9 +285,10 @@ function WorkspaceControls({
                 type="button"
                 data-testid={`applications-view-${option.key}`}
                 aria-pressed={isActive}
+                disabled={!ready}
                 onClick={() => onViewChange(option.key)}
                 className={[
-                  "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors",
+                  "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-55",
                   isActive ? "bg-white text-black" : "text-white/60 hover:text-white",
                 ].join(" ")}
               >
@@ -315,6 +327,79 @@ function SampleDataChip({ demoMode, onToggleDemo }: { demoMode?: boolean; onTogg
       />
       Sample data
     </button>
+  );
+}
+
+function EmptyModeState({
+  mode,
+  otherModeLabel,
+  otherModeCount,
+  otherModeUnread,
+  onSwitchMode,
+}: {
+  mode: WorkspaceMode;
+  otherModeLabel?: string;
+  otherModeCount: number;
+  otherModeUnread: number;
+  onSwitchMode?: () => void;
+}) {
+  const isTalent = mode === "talent";
+  const showOtherModeHint = Boolean(onSwitchMode && otherModeLabel && otherModeCount > 0);
+  return (
+    <div
+      className="flex h-full min-h-[260px] items-center justify-center px-6 py-12"
+      data-testid={`applications-empty-${mode}`}
+    >
+      <div className="max-w-md text-center">
+        <p className="text-base font-semibold text-white/90">
+          {isTalent ? "No applications yet." : "No hiring activity yet."}
+        </p>
+        <p className="mx-auto mt-2 text-sm leading-6 text-white/55">
+          {isTalent
+            ? "When you apply to jobs or receive hiring requests, they’ll appear here."
+            : "Applications to your jobs and requests you send to talent will appear here."}
+        </p>
+        {showOtherModeHint ? (
+          <div
+            data-testid="inbox-other-mode-hint"
+            className="mx-auto mt-5 flex flex-col items-center gap-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] px-4 py-3.5"
+          >
+            <p className="text-sm text-white/75">
+              {otherModeUnread > 0 ? (
+                <>
+                  You have <span className="font-semibold text-white">{otherModeUnread} unread</span> in your{" "}
+                  {otherModeLabel} conversations.
+                </>
+              ) : (
+                <>
+                  You have <span className="font-semibold text-white">{otherModeCount}</span>{" "}
+                  {otherModeCount === 1 ? "conversation" : "conversations"} on your {otherModeLabel} side.
+                </>
+              )}
+            </p>
+            <button
+              type="button"
+              data-testid="inbox-other-mode-switch"
+              onClick={onSwitchMode}
+              className={PRIMARY_BUTTON_CLASSES}
+            >
+              Switch to {otherModeLabel}
+            </button>
+          </div>
+        ) : null}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+          <Link
+            href={isTalent ? "/jobs" : "/post-job"}
+            className={showOtherModeHint ? GHOST_BUTTON_CLASSES : PRIMARY_BUTTON_CLASSES}
+          >
+            {isTalent ? "Browse jobs" : "Post a job"}
+          </Link>
+          <Link href={isTalent ? "/post-talent" : "/talent"} className={GHOST_BUTTON_CLASSES}>
+            {isTalent ? "Create talent listing" : "Browse talent"}
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -415,8 +500,12 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
   if (isArchivedInteraction(item)) return [];
   const name = firstNameOf(item.counterpartyName);
   const reply: HeaderAction = { key: "reply", label: `Reply to ${name}`, icon: "send", flow: "reply" };
+  const currentStatus = backendStatusOf(item);
 
   if (item.kind === "application" && item.direction === "sent") {
+    if (!["new", "reviewing", "shortlisted", "interviewing"].includes(currentStatus)) {
+      return live ? [] : [reply];
+    }
     const withdraw: HeaderAction = {
       key: "withdraw",
       label: "Withdraw application",
@@ -428,78 +517,58 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
       panelTitle: "Withdraw this application?",
       confirmLabel: "Confirm withdraw",
     };
-    // Withdraw is backed by a real applicant-side endpoint. Reply stays demo-only
-    // in live mode (no messaging backend) — showing it would fake functionality.
+    // Live threads already expose the persistent composer, so the overflow only
+    // needs the sender-owned relationship action.
     if (live) return [withdraw];
     return [reply, withdraw];
   }
-  if (item.kind === "hiring_request" && item.direction === "received") {
-    const actions: HeaderAction[] = [
-      {
-        key: "accept",
-        label: "Accept request",
-        icon: "check",
-        primary: true,
-        flow: "instant",
-        nextStatus: "accepted",
-        eventLabel: "Accepted by you",
-      },
-      {
-        key: "decline",
-        label: "Decline",
-        icon: "x",
-        destructive: true,
-        flow: "confirm",
-        nextStatus: "declined",
-        eventLabel: "Declined by you",
-        panelTitle: "Decline this request?",
-        confirmLabel: "Confirm decline",
-        allowNote: !live,
-      },
-    ];
-    if (!live) actions.push(reply);
-    return actions;
-  }
-  if (item.kind === "application" && item.direction === "received") {
-    const actions: HeaderAction[] = [
-      {
-        key: "hire",
-        label: "Hire",
-        icon: "check",
-        primary: true,
-        flow: "confirm",
-        nextStatus: "hired",
-        eventLabel: "Hired by you",
-        panelTitle: "Hire this candidate?",
-        confirmLabel: "Confirm hire",
-        allowNote: !live,
-      },
-    ];
-    if (item.status !== "shortlisted") {
-      actions.push({
-        key: "shortlist",
-        label: "Shortlist",
-        icon: "bookmark",
-        flow: "instant",
-        nextStatus: "shortlisted",
-        eventLabel: "Shortlisted by you",
-      });
-    }
-    actions.push({
-      key: "decline",
-      label: "Decline",
-      icon: "x",
-      destructive: true,
-      flow: "confirm",
-      nextStatus: "declined",
-      eventLabel: "Declined by you",
-      panelTitle: "Decline this application?",
-      confirmLabel: "Confirm decline",
-      allowNote: !live,
+  if (item.direction === "received") {
+    const actions = validStageTargetsFor(item.kind, currentStatus).map<HeaderAction>((stage) => {
+      const labels: Record<string, string> = {
+        reviewing: "Move to Reviewing",
+        shortlisted: "Shortlist privately",
+        interviewing: "Move to Interviewing",
+        hired: "Hire",
+        rejected: "Not selected",
+        contacted: "Accept request",
+        declined: "Decline request",
+        archived: "Archive",
+      };
+      const confirm = ["hired", "rejected", "contacted", "declined", "archived"].includes(stage.key);
+      const destructive = ["rejected", "declined"].includes(stage.key);
+      const panelTitles: Record<string, string> = {
+        hired: "Hire this candidate?",
+        rejected: "Mark this application as not selected?",
+        contacted: "Accept this hiring request?",
+        declined: "Decline this hiring request?",
+        archived: "Archive this thread?",
+      };
+      const confirmLabels: Record<string, string> = {
+        hired: "Confirm hire",
+        rejected: "Confirm not selected",
+        contacted: "Confirm acceptance",
+        declined: "Confirm decline",
+        archived: "Archive",
+      };
+      return {
+        key: `stage-${stage.key}`,
+        label: labels[stage.key] ?? `Move to ${stage.label}`,
+        icon: destructive ? "x" : stage.key === "archived" ? "bookmark" : "check",
+        primary: ["hired", "contacted"].includes(stage.key),
+        destructive,
+        flow: confirm ? "confirm" : "instant",
+        backendStatus: stage.key,
+        nextStatus: interactionStatusFromBackend(item.kind, item.direction, stage.key),
+        eventLabel: `${stage.label} by you`,
+        panelTitle: panelTitles[stage.key],
+        confirmLabel: confirmLabels[stage.key],
+        allowNote: !live && destructive,
+      };
     });
     if (!live) actions.push(reply);
     return actions;
   }
+  if (!["new", "reviewing"].includes(currentStatus)) return live ? [] : [reply];
   const withdrawRequest: HeaderAction = {
     key: "withdraw",
     label: "Withdraw request",
@@ -511,7 +580,8 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
     panelTitle: "Withdraw this request?",
     confirmLabel: "Confirm withdraw",
   };
-  // Withdraw is backed by a real sender-side endpoint; reply stays demo-only in live mode.
+  // Live threads already expose the persistent composer; keep the overflow for
+  // the sender-owned withdrawal action.
   if (live) return [withdrawRequest];
   return [reply, withdrawRequest];
 }
@@ -536,13 +606,36 @@ function quickReplyTemplates(item: OwnerInteraction): Array<{ label: string; tex
 
 type OverflowMenuItem = Pick<HeaderAction, "key" | "label" | "icon" | "primary" | "destructive"> & {
   onClick: () => void;
+  disabled?: boolean;
 };
 
 function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-label="More actions"
         aria-haspopup="menu"
@@ -563,13 +656,17 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
                 key={item.key}
                 type="button"
                 role="menuitem"
+                disabled={item.disabled}
                 onClick={() => {
+                  if (item.disabled) return;
                   setOpen(false);
                   item.onClick();
                 }}
                 className={[
-                  "flex h-9 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-xs font-semibold transition-colors",
-                  item.primary
+                  "flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left text-xs font-semibold transition-colors",
+                  item.disabled
+                    ? "cursor-not-allowed text-white/30"
+                    : item.primary
                     ? "text-white hover:bg-white/[0.09]"
                     : item.destructive
                       ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
@@ -1209,6 +1306,7 @@ export default function ApplicationsWorkspace({
   mode,
   modeOptions = DEFAULT_MODE_OPTIONS,
   onModeChange,
+  controlsReady = true,
   allowDemo = false,
   demoMode = false,
   onToggleDemo,
@@ -1295,9 +1393,13 @@ export default function ApplicationsWorkspace({
         const existing = previous[event.thread_id];
         if (!existing || existing.conversationId !== event.conversation_id) return previous;
         if (existing.messages.some((message) => message.id === event.message.id)) return previous;
+        const message = reconcileMessageReceipt(
+          event.message,
+          existing.conversation?.counterparty_last_read_at
+        );
         return {
           ...previous,
-          [event.thread_id]: { ...existing, messages: [...existing.messages, event.message] },
+          [event.thread_id]: { ...existing, messages: [...existing.messages, message] },
         };
       });
       if (event.message.sender_user_id) {
@@ -1455,6 +1557,7 @@ export default function ApplicationsWorkspace({
     setSelectionReady(true);
   }, [initialSelectedId]);
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
+  const [statusMutationKey, setStatusMutationKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
@@ -1462,8 +1565,8 @@ export default function ApplicationsWorkspace({
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // Compact chat dock: bumped by card "Message" actions to open that thread.
   const [chatRequest, setChatRequest] = useState<{ id: string; nonce: number } | null>(null);
-  // After a move into an externally meaningful stage, ask whether to inform the
-  // other side with a platform status update. Nothing sends without consent.
+  // Optional shortlist sharing uses a prompt. Relationship outcomes are shared
+  // automatically by the backend and never enter this prompt state.
   const [notifyPrompt, setNotifyPrompt] = useState<{
     itemIds: string[];
     stageKey: string;
@@ -1641,11 +1744,16 @@ export default function ApplicationsWorkspace({
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const refreshConversation = async () => {
+      let nextPollMs =
+        realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS;
       try {
         const detail = await (selectedKind === "hiring_request"
           ? getInterestConversation(backendAccessToken, recordId)
           : getApplicationConversation(backendAccessToken, recordId));
         if (cancelled) return;
+        if (hasPendingLatestOutgoingReceipt(detail.messages)) {
+          nextPollMs = Math.min(nextPollMs, 2_500);
+        }
         setLiveThreads((prev) => ({
           ...prev,
           [recordId]: {
@@ -1687,10 +1795,7 @@ export default function ApplicationsWorkspace({
         }
       } finally {
         if (!cancelled) {
-          timer = setTimeout(
-            refreshConversation,
-            realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS
-          );
+          timer = setTimeout(refreshConversation, nextPollMs);
         }
       }
     };
@@ -1774,9 +1879,12 @@ export default function ApplicationsWorkspace({
         }
       } catch (error) {
         setActionError(
-          moveItems.length > 1
-            ? "Couldn't move the selection — the backend is unreachable. Try again."
-            : "Couldn't update the stage — the backend is unreachable. Try again."
+          describeActionError(
+            error,
+            moveItems.length > 1
+              ? "Couldn’t move the selection. Refresh and try again."
+              : "Couldn’t update the stage. Refresh and try again."
+          )
         );
         throw error;
       }
@@ -1804,13 +1912,42 @@ export default function ApplicationsWorkspace({
           : item
       )
     );
-    // Externally meaningful stages ask whether to inform the other side;
-    // internal-only stages (reviewing, archived) simply clear any open prompt.
+    // Optional shared stages ask first. Relationship outcomes are published by
+    // the backend atomically; demo mode mirrors that trusted event locally so
+    // the sample workspace never teaches a different workflow.
+    const notifyPolicy = stageNotifyPolicyOf(kind, stageKey);
     setNotifyPrompt(
-      stageNotifyPolicyOf(kind, stageKey)
+      notifyPolicy && !notifyPolicy.automatic
         ? { itemIds: moveItems.map((item) => item.id), stageKey, kind, phase: "ask" }
         : null
     );
+    if (notifyPolicy?.automatic) {
+      if (!liveMode) {
+        const targetIds = new Set(moveItems.map((item) => item.id));
+        setItems((prev) =>
+          prev.map((item) =>
+            targetIds.has(item.id)
+              ? {
+                  ...item,
+                  replies: [
+                    ...(item.replies || []),
+                    {
+                      from: "You",
+                      body: notifyPolicy.notice({ contextLabel: pipelineContextLabelOf(item) }),
+                      atLabel: "Just now",
+                      kind: "status" as const,
+                    },
+                  ],
+                }
+              : item
+          )
+        );
+      }
+      const single = moveItems.length === 1 ? moveItems[0] : null;
+      if (single) {
+        setChatRequest((prev) => ({ id: single.id, nonce: (prev?.nonce ?? 0) + 1 }));
+      }
+    }
   };
 
   /**
@@ -1972,7 +2109,7 @@ export default function ApplicationsWorkspace({
   };
 
   const applyStatusAction = (target: OwnerInteraction, action: HeaderAction, note?: string) => {
-    if (!action.nextStatus || !action.eventLabel) return;
+    if (!action.nextStatus || !action.eventLabel || statusMutationKey) return;
     const trimmedNote = note?.trim();
     setActionError(null);
 
@@ -1981,31 +2118,39 @@ export default function ApplicationsWorkspace({
       // locally only after the backend confirms — no fake success states.
       // Withdraw is sender-initiated and uses its own endpoint (the status PATCH
       // is owner-only and would reject the sender).
-      const applicationStatus =
-        action.key === "shortlist" ? "shortlisted" : action.key === "hire" ? "hired" : "rejected";
+      const backendStatus = action.backendStatus;
+      setStatusMutationKey(action.key);
       const request =
         action.key === "withdraw"
           ? target.kind === "application"
             ? withdrawApplication(backendAccessToken, target.id)
             : withdrawTalentInterest(backendAccessToken, target.id)
           : target.kind === "application"
-            ? updateApplicationStatus(backendAccessToken, target.id, applicationStatus)
+            ? updateApplicationStatus(
+                backendAccessToken,
+                target.id,
+                backendStatus as BackendJobApplication["status"]
+              )
             : updateTalentInterestStatus(
                 backendAccessToken,
                 target.id,
-                action.key === "accept" ? "contacted" : "declined"
+                backendStatus as BackendTalentInterest["status"]
               );
       request
         .then(() => commitStatusLocally(target, action))
-        .catch(() => {
+        .catch((error) => {
           setActionError(
-            action.key === "withdraw"
-              ? "Couldn't withdraw — the backend is unreachable. Try again."
-              : "Couldn't update the status — the backend is unreachable. Try again."
+            describeActionError(
+              error,
+              action.key === "withdraw"
+                ? "Couldn’t withdraw this request. Try again."
+                : "Couldn’t update this status. Try again."
+            )
           );
           setPendingActionKey(null);
           setPendingNote("");
-        });
+        })
+        .finally(() => setStatusMutationKey(null));
       return;
     }
 
@@ -2043,9 +2188,13 @@ export default function ApplicationsWorkspace({
         setLiveThreads((prev) => {
           const current = prev[target.id];
           if (!current || current.messages.some((entry) => entry.id === message.id)) return prev;
+          const reconciled = reconcileMessageReceipt(
+            message,
+            current.conversation?.counterparty_last_read_at
+          );
           return {
             ...prev,
-            [target.id]: { ...current, messages: [...current.messages, message] },
+            [target.id]: { ...current, messages: [...current.messages, reconciled] },
           };
         });
         if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
@@ -2131,81 +2280,15 @@ export default function ApplicationsWorkspace({
     );
   }
 
-  if (modeItems.length === 0) {
-    const isTalent = mode === "talent";
-    // The activity summary spans both modes, so an empty mode must never read as
-    // "you have no messages" while the other mode holds real conversations (the
-    // notification bell counts those). Surface them with a one-click switch.
-    const otherMode: WorkspaceMode = isTalent ? "hiring" : "talent";
-    const otherModeOption = modeOptions.find((option) => option.key === otherMode);
-    const otherModeItems = items.filter((item) => item.mode === otherMode);
-    const otherModeUnread =
-      otherModeItems.reduce((count, item) => count + (unreadByThread[item.id] ?? 0), 0) ||
-      otherModeItems.filter((item) => item.unread).length;
-    const showOtherModeHint = Boolean(onModeChange && otherModeOption && otherModeItems.length > 0);
-    return (
-      <div
-        className={`flex w-full items-center justify-center px-6 py-16 ${WORKSPACE_HEIGHT_CLASSES}`}
-        data-testid="applications-workspace"
-      >
-        <div className="text-center">
-          <p className="text-base font-semibold text-white/90">
-            {isTalent ? "No applications yet." : "No hiring activity yet."}
-          </p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-white/55">
-            {isTalent
-              ? "When you apply to jobs or receive hiring requests, they’ll appear here."
-              : "Applications to your jobs and requests you send to talent will appear here."}
-          </p>
-          {showOtherModeHint ? (
-            <div
-              data-testid="inbox-other-mode-hint"
-              className="mx-auto mt-5 flex max-w-md flex-col items-center gap-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] px-4 py-3.5"
-            >
-              <p className="text-sm text-white/75">
-                {otherModeUnread > 0 ? (
-                  <>
-                    You have{" "}
-                    <span className="font-semibold text-white">
-                      {otherModeUnread} unread {otherModeUnread === 1 ? "message" : "messages"}
-                    </span>{" "}
-                    in your {otherModeOption?.label} conversations.
-                  </>
-                ) : (
-                  <>
-                    You have{" "}
-                    <span className="font-semibold text-white">
-                      {otherModeItems.length} {otherModeItems.length === 1 ? "conversation" : "conversations"}
-                    </span>{" "}
-                    on your {otherModeOption?.label} side.
-                  </>
-                )}
-              </p>
-              <button
-                type="button"
-                data-testid="inbox-other-mode-switch"
-                onClick={() => onModeChange?.(otherMode)}
-                className={PRIMARY_BUTTON_CLASSES}
-              >
-                Switch to {otherModeOption?.label}
-              </button>
-            </div>
-          ) : null}
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
-            <Link
-              href={isTalent ? "/jobs" : "/post-job"}
-              className={showOtherModeHint ? GHOST_BUTTON_CLASSES : PRIMARY_BUTTON_CLASSES}
-            >
-              {isTalent ? "Browse jobs" : "Post a job"}
-            </Link>
-            <Link href={isTalent ? "/post-talent" : "/talent"} className={GHOST_BUTTON_CLASSES}>
-              {isTalent ? "Create talent listing" : "Browse talent"}
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Keep the complete workspace shell mounted even when one account mode has no
+  // records. Returning early here used to remove the mode/view controls and trap
+  // dual-mode users on an inert-looking empty screen.
+  const otherMode: WorkspaceMode = mode === "talent" ? "hiring" : "talent";
+  const otherModeOption = modeOptions.find((option) => option.key === otherMode);
+  const otherModeItems = items.filter((item) => item.mode === otherMode);
+  const otherModeUnread =
+    otherModeItems.reduce((count, item) => count + (unreadByThread[item.id] ?? 0), 0) ||
+    otherModeItems.filter((item) => item.unread).length;
 
   const headerActions = selected ? headerActionsFor(selected, liveMode) : [];
   const pendingAction = headerActions.find(
@@ -2220,7 +2303,9 @@ export default function ApplicationsWorkspace({
   const selectedInteractionBlocked = Boolean(liveThread?.conversation?.interaction_blocked);
   const selectedBlockedByMe = Boolean(liveThread?.conversation?.blocked_by_me);
   const selectedMessagingClosed = selected
-    ? isMessagingClosedStatus(selected.status) || selectedInteractionBlocked
+    ? liveMode
+      ? Boolean(liveThread?.conversation?.is_closed) || selectedInteractionBlocked
+      : isMessagingClosedStatus(selected.status) || selectedInteractionBlocked
     : false;
   const selectedEngagement = liveThread?.engagement || null;
   const selectedActive = selected
@@ -2265,6 +2350,7 @@ export default function ApplicationsWorkspace({
           }
           composerRef.current?.focus();
         },
+        disabled: Boolean(statusMutationKey),
         }))
     : [];
   const blockMenuItem: OverflowMenuItem[] =
@@ -2349,6 +2435,7 @@ export default function ApplicationsWorkspace({
             onModeChange={onModeChange}
             view={view}
             onViewChange={setView}
+            ready={controlsReady}
           />
           <div className="shrink-0 border-b border-white/[0.06] px-4 sm:px-6">
             <div className="flex items-end gap-5">
@@ -2448,6 +2535,7 @@ export default function ApplicationsWorkspace({
             onModeChange={onModeChange}
             view={view}
             onViewChange={setView}
+            ready={controlsReady}
           />
           <FilterBar mode={mode} filter={filter} counts={filterCounts} onSelect={selectFilter} />
           {totalUnreadCount > 0 ? (
@@ -2462,7 +2550,13 @@ export default function ApplicationsWorkspace({
 
           <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {visibleItems.length === 0 ? (
-              <div className="px-4 py-12 text-center text-xs text-white/45">Nothing here yet.</div>
+              <div className="px-4 py-12 text-center text-xs text-white/45">
+                {modeItems.length === 0
+                  ? mode === "talent"
+                    ? "No Talent-side conversations yet."
+                    : "No Recruiter-side conversations yet."
+                  : "Nothing in this section yet."}
+              </div>
             ) : (
               <div className="divide-y divide-white/[0.05]">
                 {visibleItems.map((item) => {
@@ -2663,9 +2757,10 @@ export default function ApplicationsWorkspace({
                             <button
                               type="button"
                               onClick={() => applyStatusAction(selected, pendingAction, pendingNote)}
-                              className={PRIMARY_BUTTON_CLASSES}
+                              disabled={Boolean(statusMutationKey)}
+                              className={`${PRIMARY_BUTTON_CLASSES} disabled:cursor-wait disabled:opacity-55`}
                             >
-                              {pendingAction.confirmLabel}
+                              {statusMutationKey ? "Updating…" : pendingAction.confirmLabel}
                             </button>
                             <button
                               type="button"
@@ -2867,9 +2962,17 @@ export default function ApplicationsWorkspace({
                   </div>
               </aside>
             </div>
+          ) : modeItems.length === 0 ? (
+            <EmptyModeState
+              mode={mode}
+              otherModeLabel={otherModeOption?.label}
+              otherModeCount={otherModeItems.length}
+              otherModeUnread={otherModeUnread}
+              onSwitchMode={onModeChange ? () => onModeChange(otherMode) : undefined}
+            />
           ) : (
             <div className="hidden h-full items-center justify-center px-6 py-16 text-xs text-white/40 lg:flex">
-              Nothing to review here yet.
+              Nothing to review in this section yet.
             </div>
           )}
         </section>

@@ -45,7 +45,9 @@ async function openWorkspace(page: import("@playwright/test").Page) {
 async function openRecruiterPipeline(page: import("@playwright/test").Page) {
   await openWorkspace(page);
   const main = page.getByRole("main");
-  await main.getByRole("button", { name: "Recruiter", exact: true }).click();
+  const recruiterMode = main.getByRole("button", { name: "Recruiter", exact: true });
+  await recruiterMode.click();
+  await expect(recruiterMode).toHaveAttribute("aria-pressed", "true");
   await main.getByTestId("applications-view-pipeline").click();
   await expect(main.getByTestId("pipeline-board")).toBeVisible();
 }
@@ -468,7 +470,8 @@ test.describe("applications pipeline view", () => {
     // 6 received applications: 2 new; interviewing is the furthest active stage.
     await expect(summary).toHaveText("6 applicants · 2 new · 1 interviewing");
 
-    // Hiring someone advances the furthest-stage readout immediately.
+    // Hiring someone advances the furthest-stage readout and publishes the
+    // relationship outcome immediately; it does not ask a redundant question.
     const aarav = page
       .getByTestId("pipeline-group-new")
       .getByTestId("pipeline-row")
@@ -476,9 +479,9 @@ test.describe("applications pipeline view", () => {
     await aarav.getByTestId("pipeline-stage-menu").click();
     await page.getByTestId("pipeline-stage-option-hired").click();
     await expect(summary).toHaveText("6 applicants · 1 new · 1 hired");
+    await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
 
     // Talent mode reads its own workflow.
-    await page.getByTestId("stage-notify-skip").click();
     await page.getByRole("button", { name: "Talent", exact: true }).click();
     await expect(page.getByTestId("pipeline-summary")).toHaveText("4 hiring requests · 2 new · 1 accepted");
   });
@@ -584,7 +587,8 @@ test.describe("applications pipeline view", () => {
     // Reviewing is internal tracking — no prompt, nothing sent.
     await aaravIn("new").getByTestId("pipeline-stage-menu").click();
     await expect(page.getByTestId("pipeline-stage-menu-group-private-tracking")).toBeVisible();
-    await expect(page.getByTestId("pipeline-stage-menu-group-can-notify")).toBeVisible();
+    await expect(page.getByTestId("pipeline-stage-menu-group-optional-update")).toBeVisible();
+    await expect(page.getByTestId("pipeline-stage-menu-group-shared-outcome")).toBeVisible();
     await page.getByTestId("pipeline-stage-option-reviewing").click();
     await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
@@ -610,7 +614,7 @@ test.describe("applications pipeline view", () => {
     await expect(dock.getByTestId("chat-status-update").first()).toContainText("Aarav Mehta applied for");
   });
 
-  test("confirming posts a distinct platform update and automatically opens the thread", async ({ page }) => {
+  test("a shared outcome posts a platform update and automatically opens the thread", async ({ page }) => {
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
     const aarav = board
@@ -620,19 +624,16 @@ test.describe("applications pipeline view", () => {
     await aarav.getByTestId("pipeline-stage-menu").click();
     await page.getByTestId("pipeline-stage-option-interviewing").click();
 
-    const prompt = page.getByTestId("stage-notify-prompt");
-    await prompt.getByTestId("stage-notify-send").click();
-    await expect(prompt).toContainText("Update posted to the thread.");
+    await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
 
-    // The status update opens the compact thread automatically — the pipeline stays put.
+    // Shared outcomes are automatic: the compact thread opens and the pipeline
+    // stays put, without making the recruiter confirm the same decision twice.
     const dock = page.getByTestId("chat-dock-panel");
     await expect(dock).toContainText("Aarav Mehta");
     await expect(page.getByTestId("pipeline-board")).toBeVisible();
     await expect(dock.getByTestId("chat-status-update").last()).toContainText("Invited to interview");
 
-    // The optional personal message continues in the same dock.
-    await prompt.getByTestId("stage-notify-followup").click();
-    await expect(prompt).toHaveCount(0);
+    // A personal message continues in the same dock.
     await dock.getByTestId("chat-dock-composer").fill("Would Tuesday 4pm work for a quick call?");
     await dock.getByTestId("chat-dock-send").click();
     await expect(dock.locator('[data-testid="chat-message"]').last()).toContainText(
@@ -646,19 +647,15 @@ test.describe("applications pipeline view", () => {
     ).toContainText("Invited to interview");
   });
 
-  test("a bulk outcome move asks once for the whole selection", async ({ page }) => {
+  test("a bulk shared outcome publishes without a redundant prompt", async ({ page }) => {
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
     await board.getByTestId("pipeline-group-new").getByLabel("Select all in New").check();
     await page.getByTestId("bulk-move-trigger").click();
     await page.getByTestId("bulk-move-rejected").click();
 
-    const prompt = page.getByTestId("stage-notify-prompt");
-    await expect(prompt).toContainText("2 people");
-    await expect(prompt).toContainText("moved to Rejected");
-    await prompt.getByTestId("stage-notify-send").click();
-    await expect(prompt).toContainText("Update posted to the threads.");
-    await prompt.getByTestId("stage-notify-done").click();
-    await expect(prompt).toHaveCount(0);
+    await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
+    await expect(board.getByTestId("pipeline-group-new").getByTestId("pipeline-row")).toHaveCount(0);
+    await expect(board.getByTestId("pipeline-group-rejected").getByTestId("pipeline-row")).toHaveCount(3);
   });
 });

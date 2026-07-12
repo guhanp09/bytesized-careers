@@ -81,7 +81,77 @@ test("recruiter persona sees the real pipeline and a targeted restore is confirm
   await expect(page.getByRole("status")).toContainText("Applications restored");
 });
 
-test("an application stage update and message carry across both real personas", async ({ page }) => {
+test("workspace controls switch real views, retain an empty mode, and open status actions", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const controls = page.getByTestId("applications-workspace-controls");
+  await expect(controls).toBeVisible();
+
+  await page.getByTestId("applications-view-pipeline").click();
+  await expect(page.getByTestId("pipeline-board")).toBeVisible();
+  await expect(page).toHaveURL(/view=pipeline/);
+
+  await page.getByTestId("applications-view-inbox").click();
+  await expect(page.getByTestId("applications-detail")).toBeVisible();
+  await expect(page).toHaveURL(/view=inbox/);
+
+  await controls.getByRole("button", { name: "Talent", exact: true }).click();
+  await expect(page).toHaveURL(/mode=talent/);
+  await expect(page.getByText("No applications yet.", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("applications-workspace-controls")).toBeVisible();
+
+  await page
+    .getByTestId("applications-workspace-controls")
+    .getByRole("button", { name: "Recruiter", exact: true })
+    .click();
+  await expect(page).toHaveURL(/mode=recruiter/);
+  await expect(page.getByTestId("applications-detail")).toBeVisible();
+
+  const moreActions = page.getByRole("button", { name: "More actions" });
+  await moreActions.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Hire" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(moreActions).toBeFocused();
+
+  await page.route("**/api/v1/applications/*/status", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Temporary outage"}' })
+  );
+  await moreActions.press("Enter");
+  await page.getByRole("menuitem", { name: "Move to Reviewing" }).click();
+  await expect(page.getByTestId("applications-detail")).toContainText("Temporary outage");
+  await expect(page.getByTestId("applications-detail-header")).toContainText("Shortlisted");
+  await page.unroute("**/api/v1/applications/*/status");
+});
+
+test("mobile workspace keeps view, mode, detail, and status controls reachable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByTestId("applications-workspace-controls")).toBeVisible();
+  await page.getByTestId("applications-view-pipeline").click();
+  await expect(page.getByTestId("pipeline-board")).toBeVisible();
+  await page.getByTestId("applications-view-inbox").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  const detail = page.getByTestId("applications-detail");
+  await expect(detail).toBeVisible();
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Hire" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await detail.getByRole("button", { name: "Back to applications" }).click();
+  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+});
+
+test("internal application stages stay private while shared outcomes cross personas", async ({ page }) => {
   await loginController(page);
   await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
   await switchPersona(page, "recruiter-active", "Finance Simplified");
@@ -104,19 +174,6 @@ test("an application stage update and message carry across both real personas", 
       .filter({ hasText: "Priya Nair" })
   ).toBeVisible();
 
-  await board
-    .getByTestId("pipeline-group-reviewing")
-    .getByTestId("pipeline-row")
-    .filter({ hasText: "Priya Nair" })
-    .getByTestId("pipeline-message")
-    .click();
-  const dock = page.getByTestId("chat-dock-panel");
-  await dock.getByTestId("chat-dock-composer").fill("Your application is now under review.");
-  await dock.getByTestId("chat-dock-send").click();
-  await expect(dock.getByTestId("chat-message").last()).toContainText(
-    "Your application is now under review."
-  );
-
   await returnToController(page);
   await switchPersona(page, "talent-complete", "Priya Nair");
   await page.goto("/applications?view=pipeline&mode=talent&direction=sent", {
@@ -124,7 +181,7 @@ test("an application stage update and message carry across both real personas", 
   });
   await expect(
     page
-      .getByTestId("pipeline-group-reviewing")
+      .getByTestId("pipeline-group-new")
       .getByTestId("pipeline-row")
       .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
   ).toBeVisible();
@@ -136,9 +193,37 @@ test("an application stage update and message carry across both real personas", 
     .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
     .first()
     .click();
-  await expect(page.getByTestId("applications-detail")).toContainText(
-    "Your application is now under review."
-  );
+  await expect(page.getByTestId("applications-detail")).not.toContainText("Moved to Reviewing");
+  await expect(page.getByTestId("applications-detail")).not.toContainText("Invited to interview");
+
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  const reviewingPriya = page
+    .getByTestId("pipeline-group-reviewing")
+    .getByTestId("pipeline-row")
+    .filter({ hasText: "Priya Nair" });
+  await reviewingPriya.getByTestId("pipeline-stage-menu").click();
+  await page.getByTestId("pipeline-stage-option-interviewing").click();
+  await expect(
+    page
+      .getByTestId("pipeline-group-interviewing")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Priya Nair" })
+  ).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+  await expect(page.getByTestId("applications-detail")).toContainText("Invited to interview");
 });
 
 test("two online personas receive and reply to messages without reloading", async ({ page, browser }) => {
@@ -425,7 +510,9 @@ test("a fresh hiring request appears for both sides and reuses its conversation"
     .locator('[data-requirement-key="project_brief"] textarea')
     .fill("Two finance explainers with motion callouts and two Shorts cutdowns per video.");
   await modal.locator('[data-requirement-key="turnaround"] input').fill("5");
-  await modal.locator('[data-requirement-key="working_hours"] input').fill("Evenings IST");
+  const workingHours = modal.locator('[data-requirement-key="working_hours"] input');
+  await workingHours.fill("Evenings IST");
+  await expect(workingHours).toHaveValue("Evenings IST");
   await modal
     .locator('[data-requirement-key="channel_or_brand_link"] input')
     .fill("https://youtube.com/@financesimplified");
@@ -436,6 +523,7 @@ test("a fresh hiring request appears for both sides and reuses its conversation"
   await modal
     .locator('[data-requirement-key="fit_note"] textarea')
     .fill("Priya's retention-focused finance edits match the channel's long-form direction.");
+  await expect(workingHours).toHaveValue("Evenings IST");
   await modal.getByTestId("first-message-modal-submit").click();
 
   const success = page.getByTestId("hire-success-modal");

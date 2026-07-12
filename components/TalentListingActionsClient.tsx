@@ -198,7 +198,7 @@ export default function TalentListingActionsClient({
   const [relationshipState, setRelationshipState] = React.useState<"loading" | "ready" | "error">("loading");
   const [relationshipReload, setRelationshipReload] = React.useState(0);
 
-  const onAnswersChange = (next: FirstMessageAnswers) => {
+  const onAnswersChange = (next: React.SetStateAction<FirstMessageAnswers>) => {
     setAnswers(next);
     if (Object.keys(answerErrors).length) setAnswerErrors({});
   };
