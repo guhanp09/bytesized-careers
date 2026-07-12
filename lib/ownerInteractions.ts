@@ -111,6 +111,8 @@ export type OwnerInteraction = {
   /** Short subject line for rows where the title is a person's name. */
   contextLabel?: string | null;
   counterpartyName: string;
+  /** Real backend account id for participant-only actions such as blocking. */
+  counterpartyUserId?: string | null;
   counterpartyAvatarUrl?: string | null;
   createdAtLabel: string;
   updatedAtLabel: string;
@@ -1575,6 +1577,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         backendStatus: application.status,
         title: job?.title || "Job application",
         counterpartyName: job?.channel?.name || "Recruiter",
+        counterpartyUserId: application.job_owner_user_id || null,
         counterpartyAvatarUrl: job?.channel?.logoUrl || null,
         createdAtLabel: relativeTimeLabel(application.created_at),
         updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
@@ -1611,6 +1614,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         managerNote: application.manager_note || null,
         title: applicantName,
         counterpartyName: applicantName,
+        counterpartyUserId: application.applicant_user_id,
         createdAtLabel: relativeTimeLabel(application.created_at),
         updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
         message: application.cover_note || "",
@@ -1658,6 +1662,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         title: talentName,
         contextLabel: listing?.title || null,
         counterpartyName: talentName,
+        counterpartyUserId: interest.owner_user_id,
         counterpartyAvatarUrl: listing?.owner_avatar_url || null,
         createdAtLabel: relativeTimeLabel(interest.created_at),
         updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
@@ -1690,6 +1695,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         managerNote: interest.manager_note || null,
         title: relatedJob?.title || "Hiring request",
         counterpartyName: recruiterName,
+        counterpartyUserId: interest.recruiter_user_id,
         counterpartyAvatarUrl: interest.recruiter_avatar_url || relatedJob?.channel?.logoUrl || null,
         createdAtLabel: relativeTimeLabel(interest.created_at),
         updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),

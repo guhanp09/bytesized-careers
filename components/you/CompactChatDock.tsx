@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icons";
 import {
   buildConversation,
@@ -12,6 +12,7 @@ import {
 } from "./ApplicationsWorkspace";
 import {
   formatBadgeCount,
+  hasUnreadIncomingMessage,
   isMessagingClosedStatus,
   mapBackendMessage,
   totalUnread,
@@ -21,6 +22,7 @@ import {
   getInterestConversation,
   markConversationRead,
   sendConversationMessage,
+  type BackendConversation,
   type BackendMessage,
 } from "../../lib/backendClient";
 import {
@@ -30,6 +32,7 @@ import {
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
+import { useRealtimeMessaging, type RealtimeMessagingEvent } from "../../lib/realtimeMessaging";
 import { directionLabelsFor, pipelineProfileHrefOf, type WorkspaceModeKey } from "../../lib/applicationPipeline";
 
 /**
@@ -42,6 +45,7 @@ import { directionLabelsFor, pipelineProfileHrefOf, type WorkspaceModeKey } from
 
 type DockFilter = "all" | "sent" | "received" | "archived";
 const CONVERSATION_POLL_INTERVAL_MS = 3_000;
+type DockLiveThread = { conversationId: string; messages: BackendMessage[]; conversation?: BackendConversation };
 
 // Remembers the dock's open state + active thread across navigation, so returning
 // to the workspace reopens the same conversation instead of the default list. The
@@ -113,14 +117,128 @@ export default function CompactChatDock({
   const [sendError, setSendError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [liveThreads, setLiveThreads] = useState<
-    Record<string, { conversationId: string; messages: BackendMessage[] }>
+    Record<string, DockLiveThread>
   >({});
+  const [typingByConversation, setTypingByConversation] = useState<
+    Record<string, { senderUserId: string; expiresAt: number }>
+  >({});
+  const typingTimersRef = useRef<Record<string, number>>({});
+  const readInFlightRef = useRef<Set<string>>(new Set());
+  const [realtimeRefreshNonce, setRealtimeRefreshNonce] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const handledNonce = useRef(0);
   const restoredDock = useRef(false);
   const skipFirstPersist = useRef(true);
   const pendingSendRef = useRef<{ threadId: string; body: string; id: string } | null>(null);
+
+  const handleRealtimeEvent = useCallback((event: RealtimeMessagingEvent) => {
+    if (event.type === "connected") {
+      setRealtimeRefreshNonce((value) => value + 1);
+      return;
+    }
+    if (event.type === "conversation.unread") {
+      setLiveThreads((previous) => {
+        const threadId = Object.entries(previous).find(
+          ([, thread]) => thread.conversationId === event.conversation_id
+        )?.[0];
+        if (!threadId) return previous;
+        const thread = previous[threadId];
+        if (!thread.conversation) return previous;
+        return {
+          ...previous,
+          [threadId]: {
+            ...thread,
+            conversation: { ...thread.conversation, unread_count: event.unread_count },
+          },
+        };
+      });
+      return;
+    }
+    if (event.type === "message.created") {
+      setLiveThreads((previous) => {
+        const existing = previous[event.thread_id];
+        if (!existing || existing.conversationId !== event.conversation_id) return previous;
+        if (existing.messages.some((message) => message.id === event.message.id)) return previous;
+        return { ...previous, [event.thread_id]: { ...existing, messages: [...existing.messages, event.message] } };
+      });
+      window.clearTimeout(typingTimersRef.current[event.conversation_id]);
+      setTypingByConversation((previous) => {
+        if (!previous[event.conversation_id]) return previous;
+        const next = { ...previous };
+        delete next[event.conversation_id];
+        return next;
+      });
+      return;
+    }
+    if (event.type === "conversation.read_progress") {
+      setLiveThreads((previous) => {
+        const next: Record<string, DockLiveThread> = {};
+        let changed = false;
+        for (const [id, thread] of Object.entries(previous)) {
+          if (thread.conversationId !== event.conversation_id) {
+            next[id] = thread;
+            continue;
+          }
+          changed = true;
+          const readAt = Date.parse(event.read_at);
+          next[id] = {
+            ...thread,
+            conversation: thread.conversation
+              ? { ...thread.conversation, counterparty_last_read_at: event.read_at }
+              : thread.conversation,
+            messages: thread.messages.map((message) => {
+              const createdAt = message.created_at ? Date.parse(message.created_at) : Number.NaN;
+              return message.from_me && Number.isFinite(createdAt) && createdAt <= readAt
+                ? { ...message, read_by_recipient: true }
+                : message;
+            }),
+          };
+        }
+        return changed ? next : previous;
+      });
+      return;
+    }
+    if (event.type === "conversation.typing") {
+      window.clearTimeout(typingTimersRef.current[event.conversation_id]);
+      if (!event.is_typing) {
+        setTypingByConversation((previous) => {
+          if (!previous[event.conversation_id]) return previous;
+          const next = { ...previous };
+          delete next[event.conversation_id];
+          return next;
+        });
+        return;
+      }
+      setTypingByConversation((previous) => ({
+        ...previous,
+        [event.conversation_id]: { senderUserId: event.sender_user_id, expiresAt: Date.now() + 6_500 },
+      }));
+      typingTimersRef.current[event.conversation_id] = window.setTimeout(() => {
+        setTypingByConversation((previous) => {
+          if (!previous[event.conversation_id]) return previous;
+          const next = { ...previous };
+          delete next[event.conversation_id];
+          return next;
+        });
+      }, 6_500);
+      return;
+    }
+    if (event.type === "interaction.blocked") {
+      setTypingByConversation({});
+      setRealtimeRefreshNonce((value) => value + 1);
+    }
+  }, []);
+  const {
+    state: realtimeState,
+    subscribeConversation,
+    sendTyping,
+  } = useRealtimeMessaging({
+    enabled: liveMode,
+    accessToken: backendAccessToken,
+    backendUserId,
+    onEvent: handleRealtimeEvent,
+  });
 
   const dockStorageKey = userStorageKey(DOCK_STORAGE_KEY, backendUserId);
 
@@ -154,8 +272,75 @@ export default function CompactChatDock({
 
   const thread = threadId ? items.find((item) => item.id === threadId) ?? null : null;
   const activeThreadId = thread?.id ?? null;
+  const activeConversationId = activeThreadId ? liveThreads[activeThreadId]?.conversationId ?? null : null;
+  const activeNeedsRead = activeThreadId
+    ? hasUnreadIncomingMessage(
+        liveThreads[activeThreadId]?.messages ?? [],
+        liveThreads[activeThreadId]?.conversation?.viewer_last_read_at
+      )
+    : false;
   const openRequestId = openRequest?.id ?? null;
   const openRequestNonce = openRequest?.nonce ?? 0;
+
+  useEffect(() => {
+    if (!liveMode || !activeConversationId) return;
+    return subscribeConversation(activeConversationId);
+  }, [liveMode, activeConversationId, subscribeConversation]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(typingTimersRef.current)) window.clearTimeout(timer);
+      typingTimersRef.current = {};
+    };
+  }, []);
+
+  // Socket-delivered messages in the dock's foreground thread should become
+  // receipts immediately, just like the full Inbox. The HTTP endpoint keeps
+  // progress monotonic and retry-safe if the socket or request fails.
+  useEffect(() => {
+    if (
+      !open ||
+      !liveMode ||
+      !backendAccessToken ||
+      !activeThreadId ||
+      !activeConversationId ||
+      !activeNeedsRead ||
+      document.visibilityState !== "visible" ||
+      readInFlightRef.current.has(activeConversationId)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    readInFlightRef.current.add(activeConversationId);
+    void markConversationRead(backendAccessToken, activeConversationId)
+      .then((conversation) => {
+        if (cancelled) return;
+        setLiveThreads((previous) => {
+          const thread = previous[activeThreadId];
+          return thread
+            ? { ...previous, [activeThreadId]: { ...thread, conversation } }
+            : previous;
+        });
+        onThreadRead(activeThreadId);
+      })
+      .catch(() => {
+        // The existing selected-thread loader retries through HTTP fallback.
+      })
+      .finally(() => {
+        readInFlightRef.current.delete(activeConversationId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConversationId,
+    activeNeedsRead,
+    activeThreadId,
+    backendAccessToken,
+    liveMode,
+    onThreadRead,
+    open,
+  ]);
 
   // A "Message" action anywhere in the workspace opens the dock on that thread.
   useEffect(() => {
@@ -198,18 +383,35 @@ export default function CompactChatDock({
         if (cancelled) return;
         setLiveThreads((prev) => ({
           ...prev,
-          [threadId]: { conversationId: detail.conversation.id, messages: detail.messages },
+          [threadId]: {
+            conversationId: detail.conversation.id,
+            messages: detail.messages,
+            conversation: detail.conversation,
+          },
         }));
         setLoadFailed(false);
-        if (detail.conversation.unread_count > 0) {
-          void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
+        if (detail.conversation.unread_count > 0 && document.visibilityState === "visible") {
+          void markConversationRead(backendAccessToken, detail.conversation.id)
+            .then((conversation) => {
+              if (cancelled) return;
+              setLiveThreads((previous) => {
+                const current = previous[threadId];
+                return current
+                  ? { ...previous, [threadId]: { ...current, conversation } }
+                  : previous;
+              });
+            })
+            .catch(() => {});
         }
         onThreadRead(threadId);
       } catch {
         if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) {
-          timer = setTimeout(refreshConversation, CONVERSATION_POLL_INTERVAL_MS);
+          timer = setTimeout(
+            refreshConversation,
+            realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS
+          );
         }
       }
     };
@@ -219,7 +421,17 @@ export default function CompactChatDock({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [open, liveMode, backendAccessToken, threadId, threadKind, sending, onThreadRead]);
+  }, [
+    open,
+    liveMode,
+    backendAccessToken,
+    threadId,
+    threadKind,
+    sending,
+    onThreadRead,
+    realtimeRefreshNonce,
+    realtimeState,
+  ]);
 
   const conversation: ChatMessage[] = useMemo(() => {
     if (!thread) return [];
@@ -248,9 +460,17 @@ export default function CompactChatDock({
 
   const unreadCount = liveMode ? totalUnread(unreadByThread) : items.filter((item) => item.unread).length;
 
-  const threadMessagingClosed = thread ? isMessagingClosedStatus(thread.status) : false;
   const threadLive = thread && liveMode ? liveThreads[thread.id] : undefined;
+  const threadInteractionBlocked = Boolean(threadLive?.conversation?.interaction_blocked);
+  const threadBlockedByMe = Boolean(threadLive?.conversation?.blocked_by_me);
+  const threadMessagingClosed = thread
+    ? isMessagingClosedStatus(thread.status) || threadInteractionBlocked
+    : false;
   const composerReady = Boolean(thread) && !threadMessagingClosed && (!liveMode || Boolean(threadLive));
+  const latestOutgoingMessageId = [...conversation]
+    .reverse()
+    .find((message) => message.fromMe && message.kind !== "status")?.id;
+  const typing = activeConversationId ? typingByConversation[activeConversationId] : null;
 
   const send = async () => {
     const body = draft.trim();
@@ -266,6 +486,8 @@ export default function CompactChatDock({
           ? previousAttempt.id
           : window.crypto.randomUUID();
       pendingSendRef.current = { threadId: thread.id, body, id: clientMessageId };
+      sendTyping(cache.conversationId, false);
+      window.clearTimeout(typingTimersRef.current[cache.conversationId]);
       try {
         const message = await sendConversationMessage(
           backendAccessToken,
@@ -273,10 +495,11 @@ export default function CompactChatDock({
           body,
           clientMessageId
         );
-        setLiveThreads((prev) => ({
-          ...prev,
-          [thread.id]: { ...cache, messages: [...cache.messages, message] },
-        }));
+        setLiveThreads((prev) => {
+          const current = prev[thread.id];
+          if (!current || current.messages.some((entry) => entry.id === message.id)) return prev;
+          return { ...prev, [thread.id]: { ...current, messages: [...current.messages, message] } };
+        });
         if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
         setDraft("");
       } catch {
@@ -288,6 +511,18 @@ export default function CompactChatDock({
     }
     onDemoReply(thread.id, body);
     setDraft("");
+  };
+
+  const handleDraftChange = (value: string) => {
+    setDraft(value);
+    if (!liveMode || !activeConversationId || !composerReady) return;
+    sendTyping(activeConversationId, Boolean(value.trim()));
+    window.clearTimeout(typingTimersRef.current[activeConversationId]);
+    if (value.trim()) {
+      typingTimersRef.current[activeConversationId] = window.setTimeout(() => {
+        sendTyping(activeConversationId, false);
+      }, 1_250);
+    }
   };
 
   // ---- Minimized launcher -------------------------------------------------
@@ -411,6 +646,7 @@ export default function CompactChatDock({
                       message={message}
                       counterpartyAvatarUrl={thread.counterpartyAvatarUrl}
                       counterpartyHref={pipelineProfileHrefOf(thread)}
+                      showSeen={message.id === latestOutgoingMessageId && Boolean(message.readByRecipient)}
                     />
                   )
                 )}
@@ -418,10 +654,21 @@ export default function CompactChatDock({
             ) : (
               <p className="px-2 py-8 text-center text-xs text-white/40">No messages yet.</p>
             )}
+            {typing ? (
+              <p data-testid="chat-dock-typing" className="mt-3 px-1 text-[10.5px] font-medium text-white/45">
+                {thread.counterpartyName.split(/\s+/)[0]} is typing…
+              </p>
+            ) : null}
           </div>
           {/* Composer */}
           <div className="shrink-0 border-t border-white/[0.07] px-2.5 py-2">
-            {threadMessagingClosed ? (
+            {threadInteractionBlocked ? (
+              <p className="px-1.5 py-1 text-[11px] text-white/40">
+                {threadBlockedByMe
+                  ? `You blocked ${thread.counterpartyName.split(/\s+/)[0]}. Open Inbox to unblock.`
+                  : "This conversation is unavailable for new messages."}
+              </p>
+            ) : threadMessagingClosed ? (
               <p className="px-1.5 py-1 text-[11px] text-white/40">This thread is closed to new messages.</p>
             ) : (
               <>
@@ -429,7 +676,7 @@ export default function CompactChatDock({
                   <textarea
                     ref={composerRef}
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => handleDraftChange(event.target.value)}
                     maxLength={5000}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {

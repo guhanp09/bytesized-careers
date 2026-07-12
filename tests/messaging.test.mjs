@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   mapBackendMessage,
   conversationHasUnread,
+  hasUnreadIncomingMessage,
   buildUnreadByThread,
   totalUnread,
   formatBadgeCount,
@@ -46,6 +47,33 @@ test("the other participant's message uses their name (or the counterparty fallb
   assert.equal(unnamed.senderName, "Fallback Name");
 });
 
+test("the backend read receipt maps only from authoritative recipient progress", () => {
+  const unread = mapBackendMessage(
+    {
+      id: "receipt-1",
+      from_me: true,
+      body: "Can you see this?",
+      created_at: "2026-07-12T09:00:00Z",
+      read_by_recipient: false,
+    },
+    "Finance Simplified",
+    fixedTime
+  );
+  const seen = mapBackendMessage(
+    {
+      id: "receipt-2",
+      from_me: true,
+      body: "Thanks for confirming.",
+      created_at: "2026-07-12T09:01:00Z",
+      read_by_recipient: true,
+    },
+    "Finance Simplified",
+    fixedTime
+  );
+  assert.equal(unread.readByRecipient, false);
+  assert.equal(seen.readByRecipient, true);
+});
+
 test("engagement lifecycle messages render as trusted centered status events", () => {
   const mapped = mapBackendMessage(
     { id: "event-1", from_me: false, body: "Work started.", kind: "engagement_update" },
@@ -60,6 +88,16 @@ test("unread detection reflects the backend count", () => {
   assert.equal(conversationHasUnread({ unread_count: 0 }), false);
   assert.equal(conversationHasUnread(null), false);
   assert.equal(conversationHasUnread(undefined), false);
+});
+
+test("foreground read progress recognises an incoming message before a separate unread event", () => {
+  const messages = [
+    { id: "older", from_me: false, body: "Earlier", created_at: "2026-07-12T09:00:00Z" },
+    { id: "newer", from_me: false, body: "New", created_at: "2026-07-12T09:02:00Z" },
+  ];
+  assert.equal(hasUnreadIncomingMessage(messages, "2026-07-12T09:01:00Z"), true);
+  assert.equal(hasUnreadIncomingMessage(messages, "2026-07-12T09:03:00Z"), false);
+  assert.equal(hasUnreadIncomingMessage([{ ...messages[1], from_me: true }], null), false);
 });
 
 test("buildUnreadByThread keeps only threads with unread messages", () => {

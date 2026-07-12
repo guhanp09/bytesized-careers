@@ -10,9 +10,11 @@ import { formatNoteTimestamp, type PrivateNote } from "../../lib/privateNotes";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
+import { useRealtimeMessaging, type RealtimeMessagingEvent } from "../../lib/realtimeMessaging";
 import {
   buildUnreadByThread,
   formatBadgeCount,
+  hasUnreadIncomingMessage,
   isMessagingClosedStatus,
   mapBackendMessage,
   shouldUseLiveApplicationsData,
@@ -38,13 +40,16 @@ import {
   listConversations,
   listTalentInterestPrivateNotes,
   markConversationRead,
+  blockUser,
   sendConversationMessage,
   sendConversationStatusUpdate,
+  unblockUser,
   updateApplicationStatus,
   updateTalentInterestStatus,
   withdrawApplication,
   withdrawTalentInterest,
   type BackendJobApplication,
+  type BackendConversation,
   type BackendMessage,
   type BackendEngagementSummary,
   type BackendInteractionPrivateNote,
@@ -83,6 +88,12 @@ type WorkspaceFilter = "all" | "sent" | "received" | "archived";
 type WorkspaceView = "inbox" | "pipeline";
 type PipelineDirection = "received" | "sent";
 type WorkspaceModeOption = { key: WorkspaceMode; label: string };
+type LiveThread = {
+  conversationId: string;
+  messages: BackendMessage[];
+  conversation?: BackendConversation;
+  engagement?: BackendEngagementSummary | null;
+};
 
 const UNREAD_POLL_INTERVAL_MS = 5_000;
 const CONVERSATION_POLL_INTERVAL_MS = 3_000;
@@ -785,6 +796,8 @@ export type ChatMessage = {
   senderName: string;
   body: string;
   atLabel: string;
+  createdAt?: string | null;
+  readByRecipient?: boolean;
   /** "status" renders as a centered platform update line instead of a bubble. */
   kind?: "status";
   rate?: string | null;
@@ -1099,10 +1112,13 @@ export function MessageBubble({
   message,
   counterpartyAvatarUrl,
   counterpartyHref,
+  showSeen = false,
 }: {
   message: ChatMessage;
   counterpartyAvatarUrl?: string | null;
   counterpartyHref?: string | null;
+  /** Only the latest outgoing bubble displays a restrained receipt. */
+  showSeen?: boolean;
 }) {
   const me = message.fromMe;
   const portfolioPopup = usePortfolioDetailPopup(`applications-message-portfolio-${message.id}`);
@@ -1182,6 +1198,7 @@ export function MessageBubble({
             className="w-full"
           />
         ) : null}
+        {showSeen ? <p className="px-1 text-[10.5px] font-medium text-white/38">Seen</p> : null}
         {portfolioPopup.popover}
       </div>
     </div>
@@ -1219,7 +1236,7 @@ export default function ApplicationsWorkspace({
   // Real message threads loaded per interaction in live mode (keyed by record id ==
   // OwnerInteraction id). Demo mode keeps using the in-memory `replies` on the item.
   const [liveThreads, setLiveThreads] = useState<
-    Record<string, { conversationId: string; messages: BackendMessage[]; engagement?: BackendEngagementSummary | null }>
+    Record<string, LiveThread>
   >({});
   const [threadLoadErrors, setThreadLoadErrors] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState(false);
@@ -1227,6 +1244,12 @@ export default function ApplicationsWorkspace({
   // Unread message count per inbox thread (keyed by record id == OwnerInteraction id),
   // sourced from the real GET /me/conversations endpoint in live mode.
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
+  const [typingByConversation, setTypingByConversation] = useState<
+    Record<string, { senderUserId: string; expiresAt: number }>
+  >({});
+  const typingTimersRef = useRef<Record<string, number>>({});
+  const readInFlightRef = useRef<Set<string>>(new Set());
+  const [realtimeRefreshNonce, setRealtimeRefreshNonce] = useState(0);
   const handleThreadRead = useCallback((id: string) => {
     setUnreadByThread((prev) => {
       if (!prev[id]) return prev;
@@ -1235,6 +1258,128 @@ export default function ApplicationsWorkspace({
       return next;
     });
   }, []);
+  const handleRealtimeEvent = useCallback((event: RealtimeMessagingEvent) => {
+    if (event.type === "connected") {
+      // A reconnect may have missed persisted events; the existing HTTP loaders
+      // reconcile authoritative history without dropping the low-latency path.
+      setRealtimeRefreshNonce((value) => value + 1);
+      return;
+    }
+    if (event.type === "conversation.unread") {
+      setUnreadByThread((previous) => {
+        if (event.unread_count <= 0) {
+          if (!previous[event.thread_id]) return previous;
+          const next = { ...previous };
+          delete next[event.thread_id];
+          return next;
+        }
+        return { ...previous, [event.thread_id]: event.unread_count };
+      });
+      setLiveThreads((previous) => {
+        const thread = previous[event.thread_id];
+        if (!thread || thread.conversationId !== event.conversation_id || !thread.conversation) {
+          return previous;
+        }
+        return {
+          ...previous,
+          [event.thread_id]: {
+            ...thread,
+            conversation: { ...thread.conversation, unread_count: event.unread_count },
+          },
+        };
+      });
+      return;
+    }
+    if (event.type === "message.created") {
+      setLiveThreads((previous) => {
+        const existing = previous[event.thread_id];
+        if (!existing || existing.conversationId !== event.conversation_id) return previous;
+        if (existing.messages.some((message) => message.id === event.message.id)) return previous;
+        return {
+          ...previous,
+          [event.thread_id]: { ...existing, messages: [...existing.messages, event.message] },
+        };
+      });
+      if (event.message.sender_user_id) {
+        window.clearTimeout(typingTimersRef.current[event.conversation_id]);
+        setTypingByConversation((previous) => {
+          if (!previous[event.conversation_id]) return previous;
+          const next = { ...previous };
+          delete next[event.conversation_id];
+          return next;
+        });
+      }
+      return;
+    }
+    if (event.type === "conversation.read_progress") {
+      setLiveThreads((previous) => {
+        const next: Record<string, LiveThread> = {};
+        let changed = false;
+        for (const [threadId, thread] of Object.entries(previous)) {
+          if (thread.conversationId !== event.conversation_id) {
+            next[threadId] = thread;
+            continue;
+          }
+          changed = true;
+          const readAt = Date.parse(event.read_at);
+          next[threadId] = {
+            ...thread,
+            conversation: thread.conversation
+              ? { ...thread.conversation, counterparty_last_read_at: event.read_at }
+              : thread.conversation,
+            messages: thread.messages.map((message) => {
+              const createdAt = message.created_at ? Date.parse(message.created_at) : Number.NaN;
+              return message.from_me && Number.isFinite(createdAt) && createdAt <= readAt
+                ? { ...message, read_by_recipient: true }
+                : message;
+            }),
+          };
+        }
+        return changed ? next : previous;
+      });
+      return;
+    }
+    if (event.type === "conversation.typing") {
+      window.clearTimeout(typingTimersRef.current[event.conversation_id]);
+      if (!event.is_typing) {
+        setTypingByConversation((previous) => {
+          if (!previous[event.conversation_id]) return previous;
+          const next = { ...previous };
+          delete next[event.conversation_id];
+          return next;
+        });
+        return;
+      }
+      const expiresAt = Date.now() + 6_500;
+      setTypingByConversation((previous) => ({
+        ...previous,
+        [event.conversation_id]: { senderUserId: event.sender_user_id, expiresAt },
+      }));
+      typingTimersRef.current[event.conversation_id] = window.setTimeout(() => {
+        setTypingByConversation((previous) => {
+          if (!previous[event.conversation_id]) return previous;
+          const next = { ...previous };
+          delete next[event.conversation_id];
+          return next;
+        });
+      }, 6_500);
+      return;
+    }
+    if (event.type === "interaction.blocked") {
+      setTypingByConversation({});
+      setRealtimeRefreshNonce((value) => value + 1);
+    }
+  }, []);
+  const {
+    state: realtimeState,
+    subscribeConversation,
+    sendTyping,
+  } = useRealtimeMessaging({
+    enabled: liveMode,
+    accessToken: backendAccessToken,
+    backendUserId,
+    onEvent: handleRealtimeEvent,
+  });
   const [actionError, setActionError] = useState<string | null>(null);
   const [reviewOpportunity, setReviewOpportunity] = useState<BackendReviewOpportunity | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
@@ -1311,6 +1456,7 @@ export default function ApplicationsWorkspace({
   }, [initialSelectedId]);
   const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState("");
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const pendingSendRef = useRef<{ targetId: string; body: string; id: string } | null>(null);
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1346,7 +1492,7 @@ export default function ApplicationsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [liveMode, backendAccessToken, reloadNonce]);
+  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
 
   // Keep unread badges current while another participant is messaging. This is
   // intentionally lightweight polling: it works on the current REST backend and
@@ -1363,7 +1509,12 @@ export default function ApplicationsWorkspace({
       } catch {
         // Unread badges are non-critical and recover on the next poll.
       } finally {
-        if (!cancelled) timer = setTimeout(refreshUnread, UNREAD_POLL_INTERVAL_MS);
+        if (!cancelled) {
+          timer = setTimeout(
+            refreshUnread,
+            realtimeState === "connected" ? 15_000 : UNREAD_POLL_INTERVAL_MS
+          );
+        }
       }
     };
 
@@ -1372,7 +1523,7 @@ export default function ApplicationsWorkspace({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [liveMode, backendAccessToken, reloadNonce]);
+  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce, realtimeState]);
 
   const modeItems = useMemo(() => items.filter((item) => item.mode === mode), [items, mode]);
 
@@ -1401,6 +1552,78 @@ export default function ApplicationsWorkspace({
   );
   const selectedItemId = selected?.id ?? null;
   const selectedKind = selected?.kind ?? null;
+  const selectedConversationId = selectedItemId ? liveThreads[selectedItemId]?.conversationId ?? null : null;
+  const selectedNeedsRead = selectedItemId
+    ? hasUnreadIncomingMessage(
+        liveThreads[selectedItemId]?.messages ?? [],
+        liveThreads[selectedItemId]?.conversation?.viewer_last_read_at
+      )
+    : false;
+
+  // Only the currently open thread subscribes to full message/typing/read events.
+  // Inbox-wide unread updates still arrive through the same authenticated socket.
+  useEffect(() => {
+    if (!liveMode || !selectedConversationId) return;
+    return subscribeConversation(selectedConversationId);
+  }, [liveMode, selectedConversationId, subscribeConversation]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(typingTimersRef.current)) window.clearTimeout(timer);
+      typingTimersRef.current = {};
+    };
+  }, []);
+
+  // A low-latency message delivered into the currently visible thread has been
+  // loaded by this user. Mark it read immediately rather than waiting for the
+  // slower recovery poll, while keeping the backend endpoint authoritative.
+  useEffect(() => {
+    if (
+      !liveMode ||
+      !backendAccessToken ||
+      !selectedItemId ||
+      !selectedConversationId ||
+      !selectedNeedsRead ||
+      document.visibilityState !== "visible" ||
+      readInFlightRef.current.has(selectedConversationId)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    readInFlightRef.current.add(selectedConversationId);
+    void markConversationRead(backendAccessToken, selectedConversationId)
+      .then((conversation) => {
+        if (cancelled) return;
+        setLiveThreads((previous) => {
+          const thread = previous[selectedItemId];
+          return thread
+            ? { ...previous, [selectedItemId]: { ...thread, conversation } }
+            : previous;
+        });
+        setUnreadByThread((previous) => {
+          if (!previous[selectedItemId]) return previous;
+          const next = { ...previous };
+          delete next[selectedItemId];
+          return next;
+        });
+      })
+      .catch(() => {
+        // A failed receipt update is harmless: HTTP polling retries with the
+        // next selected-thread refresh and never fabricates a seen state.
+      })
+      .finally(() => {
+        readInFlightRef.current.delete(selectedConversationId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    backendAccessToken,
+    liveMode,
+    selectedConversationId,
+    selectedNeedsRead,
+    selectedItemId,
+  ]);
 
   // Load and refresh the open thread. Polling keeps two active participants in
   // sync without a page reload; requests are sequential and pause while a send is
@@ -1428,6 +1651,7 @@ export default function ApplicationsWorkspace({
           [recordId]: {
             conversationId: detail.conversation.id,
             messages: detail.messages,
+            conversation: detail.conversation,
             engagement: detail.engagement,
           },
         }));
@@ -1437,8 +1661,18 @@ export default function ApplicationsWorkspace({
           delete next[recordId];
           return next;
         });
-        if (detail.conversation.unread_count > 0) {
-          void markConversationRead(backendAccessToken, detail.conversation.id).catch(() => {});
+        if (detail.conversation.unread_count > 0 && document.visibilityState === "visible") {
+          void markConversationRead(backendAccessToken, detail.conversation.id)
+            .then((conversation) => {
+              if (cancelled) return;
+              setLiveThreads((previous) => {
+                const thread = previous[recordId];
+                return thread
+                  ? { ...previous, [recordId]: { ...thread, conversation } }
+                  : previous;
+              });
+            })
+            .catch(() => {});
         }
         // Opening a thread clears its unread badge immediately.
         setUnreadByThread((prev) => {
@@ -1453,7 +1687,10 @@ export default function ApplicationsWorkspace({
         }
       } finally {
         if (!cancelled) {
-          timer = setTimeout(refreshConversation, CONVERSATION_POLL_INTERVAL_MS);
+          timer = setTimeout(
+            refreshConversation,
+            realtimeState === "connected" ? 15_000 : CONVERSATION_POLL_INTERVAL_MS
+          );
         }
       }
     };
@@ -1463,7 +1700,16 @@ export default function ApplicationsWorkspace({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [liveMode, backendAccessToken, selectedItemId, selectedKind, reloadNonce, sending]);
+  }, [
+    liveMode,
+    backendAccessToken,
+    selectedItemId,
+    selectedKind,
+    reloadNonce,
+    realtimeRefreshNonce,
+    realtimeState,
+    sending,
+  ]);
 
   const latestPersistedMessageId = selectedItemId
     ? liveThreads[selectedItemId]?.messages.at(-1)?.id ?? null
@@ -1485,8 +1731,10 @@ export default function ApplicationsWorkspace({
   );
 
   const resetComposition = () => {
+    if (selectedConversationId) sendTyping(selectedConversationId, false);
     setPendingActionKey(null);
     setPendingNote("");
+    setBlockConfirmOpen(false);
     setReplyDraft("");
     setActionError(null);
   };
@@ -1783,6 +2031,8 @@ export default function ApplicationsWorkspace({
           ? previousAttempt.id
           : window.crypto.randomUUID();
       pendingSendRef.current = { targetId: target.id, body, id: clientMessageId };
+      sendTyping(thread.conversationId, false);
+      window.clearTimeout(typingTimersRef.current[thread.conversationId]);
       try {
         const message = await sendConversationMessage(
           backendAccessToken,
@@ -1790,10 +2040,14 @@ export default function ApplicationsWorkspace({
           body,
           clientMessageId
         );
-        setLiveThreads((prev) => ({
-          ...prev,
-          [target.id]: { ...thread, messages: [...thread.messages, message] },
-        }));
+        setLiveThreads((prev) => {
+          const current = prev[target.id];
+          if (!current || current.messages.some((entry) => entry.id === message.id)) return prev;
+          return {
+            ...prev,
+            [target.id]: { ...current, messages: [...current.messages, message] },
+          };
+        });
         if (pendingSendRef.current?.id === clientMessageId) pendingSendRef.current = null;
         setReplyDraft("");
       } catch {
@@ -1826,6 +2080,18 @@ export default function ApplicationsWorkspace({
           : item
       )
     );
+  };
+
+  const handleReplyDraftChange = (value: string) => {
+    setReplyDraft(value);
+    if (!liveMode || !selectedConversationId || !selectedActive) return;
+    sendTyping(selectedConversationId, Boolean(value.trim()));
+    window.clearTimeout(typingTimersRef.current[selectedConversationId]);
+    if (value.trim()) {
+      typingTimersRef.current[selectedConversationId] = window.setTimeout(() => {
+        sendTyping(selectedConversationId, false);
+      }, 1_250);
+    }
   };
 
   if (liveMode && loadState === "loading") {
@@ -1948,10 +2214,14 @@ export default function ApplicationsWorkspace({
   const replyTemplates = selected ? quickReplyTemplates(selected) : [];
   // Accepted/hired interactions stay messageable while work is underway, even
   // though the pipeline groups them with completed outcomes.
-  const selectedMessagingClosed = selected ? isMessagingClosedStatus(selected.status) : false;
   // In live mode the composer becomes active after the conversation loads; in
   // demo mode it appends locally.
   const liveThread = selected && liveMode ? liveThreads[selected.id] : undefined;
+  const selectedInteractionBlocked = Boolean(liveThread?.conversation?.interaction_blocked);
+  const selectedBlockedByMe = Boolean(liveThread?.conversation?.blocked_by_me);
+  const selectedMessagingClosed = selected
+    ? isMessagingClosedStatus(selected.status) || selectedInteractionBlocked
+    : false;
   const selectedEngagement = liveThread?.engagement || null;
   const selectedActive = selected
     ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
@@ -1966,9 +2236,13 @@ export default function ApplicationsWorkspace({
         )
       : [];
   const conversation = selected ? [...buildConversation(selected), ...liveMessages] : [];
+  const latestOutgoingMessageId = [...conversation]
+    .reverse()
+    .find((message) => message.fromMe && message.kind !== "status")?.id;
+  const typing = selectedConversationId ? typingByConversation[selectedConversationId] : null;
   const subtitle = selected ? subtitleFor(selected) : null;
   const forward = selected ? forwardLinkFor(selected) : null;
-  const menuItems: OverflowMenuItem[] = selected
+  const pipelineMenuItems: OverflowMenuItem[] = selected
     ? headerActions
         // Reply is handled by the always-visible composer, so it isn't duplicated here.
         .filter((action) => action.flow !== "reply")
@@ -1991,8 +2265,35 @@ export default function ApplicationsWorkspace({
           }
           composerRef.current?.focus();
         },
-      }))
+        }))
     : [];
+  const blockMenuItem: OverflowMenuItem[] =
+    liveMode && backendAccessToken && selected?.counterpartyUserId
+      ? [
+          {
+            key: selectedBlockedByMe ? "unblock-user" : "block-user",
+            label: selectedBlockedByMe ? "Unblock user" : "Block user",
+            icon: selectedBlockedByMe ? "check" : "x",
+            destructive: !selectedBlockedByMe,
+            onClick: () => {
+              if (selectedBlockedByMe) {
+                void (async () => {
+                  try {
+                    await unblockUser(backendAccessToken, selected.counterpartyUserId as string);
+                    setBlockConfirmOpen(false);
+                    setRealtimeRefreshNonce((value) => value + 1);
+                  } catch {
+                    setActionError("Couldn’t unblock this user. Try again.");
+                  }
+                })();
+                return;
+              }
+              setBlockConfirmOpen(true);
+            },
+          },
+        ]
+      : [];
+  const menuItems: OverflowMenuItem[] = [...pipelineMenuItems, ...blockMenuItem];
   // The opening message carries the proposed rate inside its bubble; when there's
   // no opening message, surface the rate in the context card so it isn't lost.
   const hasOpeningMessage = selected
@@ -2312,6 +2613,40 @@ export default function ApplicationsWorkspace({
                           onReview={() => void openEngagementReview(selectedEngagement)}
                         />
                       ) : null}
+                      {blockConfirmOpen && selected.counterpartyUserId && backendAccessToken ? (
+                        <section className={`mb-6 rounded-xl ${SURFACE} p-4`} data-testid="block-user-confirmation">
+                          <p className="text-sm font-semibold text-white/90">Block {selected.counterpartyName}?</p>
+                          <p className="mt-1 text-xs leading-relaxed text-white/55">
+                            You will keep this history, but neither of you can send new messages or start a new marketplace interaction.
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void (async () => {
+                                  try {
+                                    await blockUser(backendAccessToken, selected.counterpartyUserId as string);
+                                    setBlockConfirmOpen(false);
+                                    setRealtimeRefreshNonce((value) => value + 1);
+                                  } catch {
+                                    setActionError("Couldn’t block this user. Try again.");
+                                  }
+                                })();
+                              }}
+                              className="inline-flex h-8 cursor-pointer items-center rounded-lg bg-rose-300/12 px-3 text-xs font-semibold text-rose-100 transition-colors hover:bg-rose-300/18"
+                            >
+                              Block user
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBlockConfirmOpen(false)}
+                              className={GHOST_BUTTON_CLASSES}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </section>
+                      ) : null}
                       {pendingAction ? (
                         <section className={`mb-6 rounded-xl ${SURFACE} p-4`}>
                           <p className="text-sm font-semibold text-white/90">{pendingAction.panelTitle}</p>
@@ -2357,6 +2692,7 @@ export default function ApplicationsWorkspace({
                                 message={message}
                                 counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
                                 counterpartyHref={subtitle?.href ?? null}
+                                showSeen={message.id === latestOutgoingMessageId && Boolean(message.readByRecipient)}
                               />
                             )
                           )}
@@ -2371,13 +2707,44 @@ export default function ApplicationsWorkspace({
                           </p>
                         </div>
                       )}
+                      {typing ? (
+                        <p data-testid="conversation-typing" className="mt-4 px-1 text-xs font-medium text-white/45">
+                          {firstNameOf(selected.counterpartyName)} is typing…
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
                   {/* Composer / resolution — pinned to the foot of the conversation */}
                   <div className="shrink-0 border-t border-white/[0.06] px-4 py-3 sm:px-6">
                     <div className="mx-auto w-full max-w-[860px]">
-                      {selectedMessagingClosed ? (
+                      {selectedInteractionBlocked ? (
+                        <div className="flex flex-col items-center gap-2 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
+                          <p className="text-xs text-white/50">
+                            {selectedBlockedByMe
+                              ? `You blocked ${firstNameOf(selected.counterpartyName)}. This history remains available.`
+                              : "This conversation is unavailable for new messages."}
+                          </p>
+                          {selectedBlockedByMe && selected.counterpartyUserId && backendAccessToken ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void (async () => {
+                                  try {
+                                    await unblockUser(backendAccessToken, selected.counterpartyUserId as string);
+                                    setRealtimeRefreshNonce((value) => value + 1);
+                                  } catch {
+                                    setActionError("Couldn’t unblock this user. Try again.");
+                                  }
+                                })();
+                              }}
+                              className="inline-flex shrink-0 items-center text-xs font-medium text-white/75 transition-colors hover:text-white"
+                            >
+                              Unblock
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : selectedMessagingClosed ? (
                         <div className="flex flex-col items-center gap-1.5 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
                           <p className="text-xs text-white/50">{resolutionLine(selected)}</p>
                           {forward ? (
@@ -2399,8 +2766,8 @@ export default function ApplicationsWorkspace({
                                   key={`${selected.id}-template-${template.label}`}
                                   type="button"
                                   onClick={() => {
-                                    setReplyDraft((prev) =>
-                                      prev.trim() ? `${prev.trimEnd()} ${template.text}` : template.text
+                                    handleReplyDraftChange(
+                                      replyDraft.trim() ? `${replyDraft.trimEnd()} ${template.text}` : template.text
                                     );
                                     composerRef.current?.focus();
                                   }}
@@ -2415,7 +2782,7 @@ export default function ApplicationsWorkspace({
                             <textarea
                               ref={composerRef}
                               value={replyDraft}
-                              onChange={(event) => setReplyDraft(event.target.value)}
+                              onChange={(event) => handleReplyDraftChange(event.target.value)}
                               maxLength={5000}
                               rows={1}
                               aria-label="Reply message"

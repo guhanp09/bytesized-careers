@@ -2541,6 +2541,7 @@ export type BackendMessage = {
   /** "status_update" for platform-generated pipeline updates; absent for user text. */
   kind?: string | null;
   created_at?: string | null;
+  read_by_recipient?: boolean;
 };
 
 export type BackendConversation = {
@@ -2551,6 +2552,10 @@ export type BackendConversation = {
   thread_id: string;
   last_message_at?: string | null;
   unread_count: number;
+  viewer_last_read_at?: string | null;
+  counterparty_last_read_at?: string | null;
+  interaction_blocked?: boolean;
+  blocked_by_me?: boolean;
 };
 
 export type BackendConversationDetail = {
@@ -2699,6 +2704,25 @@ export async function markConversationRead(
     `/me/conversations/${encodeURIComponent(conversationId)}/read`,
     { method: "POST", accessToken }
   );
+}
+
+export type BackendBlockMutation = {
+  interaction_blocked: boolean;
+  blocked_by_me: boolean;
+};
+
+export async function blockUser(accessToken: string, userId: string): Promise<BackendBlockMutation> {
+  return requestJson<BackendBlockMutation>(`/me/blocks/${encodeURIComponent(userId)}`, {
+    method: "POST",
+    accessToken,
+  });
+}
+
+export async function unblockUser(accessToken: string, userId: string): Promise<BackendBlockMutation> {
+  return requestJson<BackendBlockMutation>(`/me/blocks/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    accessToken,
+  });
 }
 
 /** User-facing report reasons, matching the backend `ReportCategory` enum. */

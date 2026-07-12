@@ -7,6 +7,8 @@ export type ChatThreadMessage = {
   senderName: string;
   body: string;
   atLabel: string;
+  createdAt?: string | null;
+  readByRecipient?: boolean;
   /** "status" for platform-generated pipeline updates rendered apart from bubbles. */
   kind?: "status";
 };
@@ -18,6 +20,7 @@ type BackendMessageLike = {
   body: string;
   kind?: string | null;
   created_at?: string | null;
+  read_by_recipient?: boolean;
 };
 
 /**
@@ -35,6 +38,8 @@ export function mapBackendMessage(
     senderName: message.from_me ? "You" : message.sender_name || counterpartyName,
     body: message.body,
     atLabel: formatTime(message.created_at),
+    createdAt: message.created_at,
+    readByRecipient: Boolean(message.read_by_recipient),
     kind: message.kind === "status_update" || message.kind === "engagement_update" ? "status" : undefined,
   };
 }
@@ -42,6 +47,24 @@ export function mapBackendMessage(
 /** Whether a conversation has messages the viewer hasn't read. */
 export function conversationHasUnread(conversation: { unread_count?: number } | null | undefined): boolean {
   return Boolean(conversation && (conversation.unread_count ?? 0) > 0);
+}
+
+/**
+ * Return whether a foreground conversation contains a newer incoming message
+ * than the viewer's durable read progress. This intentionally does not depend
+ * on an unread-count event arriving first: message and unread socket events can
+ * cross in flight, while the persisted timestamps remain authoritative.
+ */
+export function hasUnreadIncomingMessage(
+  messages: BackendMessageLike[],
+  viewerLastReadAt?: string | null
+): boolean {
+  const viewerReadAt = viewerLastReadAt ? Date.parse(viewerLastReadAt) : Number.NaN;
+  return messages.some((message) => {
+    if (message.from_me) return false;
+    const createdAt = message.created_at ? Date.parse(message.created_at) : Number.NaN;
+    return Number.isFinite(createdAt) && (!Number.isFinite(viewerReadAt) || createdAt > viewerReadAt);
+  });
 }
 
 /** Private application data stays backend-backed even if public browse uses mocks. */
