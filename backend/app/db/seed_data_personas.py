@@ -883,6 +883,11 @@ def _application(
             "timezone": applicant_user.get("timezone"),
         },
         "status": status,
+        "participant_status": (
+            status
+            if status in {"interviewing", "hired", "rejected", "withdrawn"}
+            else "new"
+        ),
         "created_at": SEED_TIME,
     }
 
@@ -1277,6 +1282,9 @@ def _interest(
         "note": note,
         "first_message_answers": answers or {},
         "status": status,
+        "participant_status": (
+            status if status in {"contacted", "declined", "withdrawn"} else "new"
+        ),
         "created_at": SEED_TIME,
     }
 

@@ -330,22 +330,22 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
         session.add(
             JobApplication(
                 id=transient_application_id,
-                job_id=personas.persona_uuid("job:recruiter-active-2"),
-                applicant_user_id=personas.persona_user_id("talent-complete"),
-                job_owner_user_id=personas.persona_user_id("recruiter-active"),
+                job_id=personas.persona_uuid("job:both-sides-1"),
+                applicant_user_id=personas.persona_user_id("new-empty"),
+                job_owner_user_id=personas.persona_user_id("both-sides"),
                 cover_note="Transient QA application to clear on restore.",
                 portfolio_item_ids=[],
                 first_message_answers={},
-                applicant_snapshot={"display_name": "Priya Nair"},
+                applicant_snapshot={"display_name": "New QA User"},
                 status="new",
             )
         )
         session.add(
             TalentInterest(
                 id=transient_interest_id,
-                talent_listing_id=personas.persona_uuid("listing:talent-complete"),
-                recruiter_user_id=personas.persona_user_id("recruiter-active"),
-                owner_user_id=personas.persona_user_id("talent-complete"),
+                talent_listing_id=personas.persona_uuid("listing:both-sides"),
+                recruiter_user_id=personas.persona_user_id("recruiter-drafts"),
+                owner_user_id=personas.persona_user_id("both-sides"),
                 note="Transient QA hiring request to clear on restore.",
                 first_message_answers={},
                 status="new",

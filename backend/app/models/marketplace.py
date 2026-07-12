@@ -64,6 +64,11 @@ class JobApplication(Base):
     )
     applicant_snapshot: Mapped[dict] = mapped_column(json_obj_type, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
+    # Status visible to the applicant. The manager's `status` may move through
+    # private pipeline stages without exposing internal recruiting decisions.
+    participant_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="new", server_default="new", index=True
+    )
     # Private annotation by the job owner managing this applicant. Never shown
     # to the applicant — sender-facing responses blank it.
     manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -174,6 +179,11 @@ class TalentInterest(Base):
         json_obj_type, nullable=False, default=dict, server_default="{}"
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="new", index=True)
+    # Status visible to the recruiter who sent the request. Talent-side pipeline
+    # organization remains private until a shared decision is made.
+    participant_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="new", server_default="new", index=True
+    )
     # Private annotation by the talent (listing owner) managing this hiring
     # request. Never shown to the recruiter — sender-facing responses blank it.
     manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)

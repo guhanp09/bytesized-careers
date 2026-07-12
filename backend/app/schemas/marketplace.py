@@ -73,9 +73,8 @@ BULK_STATUS_MAX_IDS = 50
 class JobApplicationBulkStatusUpdate(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_STATUS_MAX_IDS)
     status: ManagedApplicationStatus
-    # Stage moves are internal tracking by default; informing the other side is
-    # an explicit, user-confirmed act (a status-update chat message). The bell
-    # notification here is therefore opt-in rather than automatic.
+    # Private stages stay quiet. Shared outcomes publish automatically; notify
+    # is only needed when deliberately sharing an optional state (shortlisted).
     notify: bool = False
 
 

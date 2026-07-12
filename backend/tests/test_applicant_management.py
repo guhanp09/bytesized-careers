@@ -361,6 +361,15 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
     assert moved.status_code == 200
     assert sorted(item["status"] for item in moved.json()) == ["shortlisted", "shortlisted"]
 
+    # The applicants still see their participant-facing relationship as pending;
+    # shortlisting is private until the manager explicitly shares it.
+    for token in (first_token, second_token):
+        sent = await client.get(
+            "/api/v1/me/applications/sent",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert sent.json()[0]["status"] == "new"
+
     # Internal pipeline tracking is quiet: no bell notification unless asked for.
     for token in (first_token, second_token):
         notifications = await client.get(
@@ -370,11 +379,12 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
         types = [item["type"] for item in notifications.json()["items"]]
         assert "application_status_changed" not in types
 
-    # Opting in (notify: true) restores the bell notification per applicant.
+    # Interviewing is a shared relationship state. It publishes atomically even
+    # without a separate notify flag and becomes visible to each applicant.
     notified = await client.post(
         "/api/v1/applications/bulk-status",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"ids": [first_id, second_id], "status": "interviewing", "notify": True},
+        json={"ids": [first_id, second_id], "status": "interviewing"},
     )
     assert notified.status_code == 200
     for token in (first_token, second_token):
@@ -383,12 +393,18 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
         )
         types = [item["type"] for item in notifications.json()["items"]]
         assert "application_status_changed" in types
+        sent = await client.get(
+            "/api/v1/me/applications/sent",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert sent.json()[0]["status"] == "interviewing"
 
 
 async def test_bulk_interest_status_moves_stage_for_talent_owner(client: AsyncClient) -> None:
     talent_token = await _register_verified_login(client, email="bulk_talent@example.com", username="bulk_talent")
     first_recruiter = await _register_verified_login(client, email="bulk_r1@example.com", username="bulk_r1")
     second_recruiter = await _register_verified_login(client, email="bulk_r2@example.com", username="bulk_r2")
+    third_recruiter = await _register_verified_login(client, email="bulk_r3@example.com", username="bulk_r3")
     listing_id = await _published_talent_listing(client, talent_token)
 
     ids = []
@@ -417,20 +433,168 @@ async def test_bulk_interest_status_moves_stage_for_talent_owner(client: AsyncCl
     assert moved.status_code == 200
     assert sorted(item["status"] for item in moved.json()) == ["declined", "declined"]
 
-    accepted = await client.post(
+    terminal_reopen = await client.post(
         "/api/v1/talent-interests/bulk-status",
         headers={"Authorization": f"Bearer {talent_token}"},
         json={"ids": ids, "status": "contacted"},
     )
+    assert terminal_reopen.status_code == 409
+
+    third_interest = await client.post(
+        f"/api/v1/talent-listings/{listing_id}/interest",
+        headers={"Authorization": f"Bearer {third_recruiter}"},
+        json={"note": "Interested in a separate accepted-path fixture."},
+    )
+    accepted = await client.post(
+        "/api/v1/talent-interests/bulk-status",
+        headers={"Authorization": f"Bearer {talent_token}"},
+        json={"ids": [third_interest.json()["id"]], "status": "contacted"},
+    )
     assert accepted.status_code == 200, accepted.text
-    assert sorted(item["status"] for item in accepted.json()) == ["contacted", "contacted"]
+    assert [item["status"] for item in accepted.json()] == ["contacted"]
     assert all(item["engagement"]["status"] == "ready_to_start" for item in accepted.json())
 
-    # Quiet by default — informing the recruiter is a separate, explicit act.
+    # Decline is a shared outcome, so the recruiter receives the authoritative
+    # status notification and participant-facing state.
     notifications = await client.get(
         "/api/v1/notifications", headers={"Authorization": f"Bearer {first_recruiter}"}
     )
     assert notifications.status_code == 200
-    assert "talent_interest_status_changed" not in [
+    assert "talent_interest_status_changed" in [
         item["type"] for item in notifications.json()["items"]
     ]
+    sent = await client.get(
+        "/api/v1/me/talent-interests/sent",
+        headers={"Authorization": f"Bearer {first_recruiter}"},
+    )
+    assert sent.json()[0]["status"] == "declined"
+
+
+async def test_internal_application_stages_stay_private_until_explicitly_shared(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="privacy_owner@example.com", username="privacy_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="privacy_applicant@example.com", username="privacy_applicant"
+    )
+    outsider_token = await _register_verified_login(
+        client, email="privacy_outsider@example.com", username="privacy_outsider"
+    )
+    job_id = await _published_job(client, owner_token, "Private pipeline test role")
+    application_id = await _application(client, applicant_token, job_id)
+    owner_h = {"Authorization": f"Bearer {owner_token}"}
+    applicant_h = {"Authorization": f"Bearer {applicant_token}"}
+
+    conversation_id = (
+        await client.get(
+            f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h
+        )
+    ).json()["conversation"]["id"]
+
+    reviewing = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers=owner_h,
+        json={"status": "reviewing"},
+    )
+    assert reviewing.status_code == 200
+    assert reviewing.json()["status"] == "reviewing"
+
+    sender_view = await client.get("/api/v1/me/applications/sent", headers=applicant_h)
+    assert sender_view.json()[0]["status"] == "new"
+    sender_notifications = await client.get("/api/v1/notifications", headers=applicant_h)
+    assert not any(
+        item["type"] == "application_status_changed"
+        for item in sender_notifications.json()["items"]
+    )
+    sender_conversation = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h
+    )
+    assert not any(
+        message["kind"] == "status_update"
+        for message in sender_conversation.json()["messages"]
+    )
+
+    shortlisted = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers=owner_h,
+        json={"status": "shortlisted"},
+    )
+    assert shortlisted.status_code == 200
+    assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
+        "status"
+    ] == "new"
+
+    shared = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/status-update",
+        headers=owner_h,
+        json={"stage": "shortlisted"},
+    )
+    assert shared.status_code == 201
+    assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
+        "status"
+    ] == "shortlisted"
+
+    forbidden = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers={"Authorization": f"Bearer {outsider_token}"},
+        json={"status": "interviewing"},
+    )
+    assert forbidden.status_code == 403
+
+    rejected = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers=owner_h,
+        json={"status": "rejected"},
+    )
+    assert rejected.status_code == 200
+    assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
+        "status"
+    ] == "rejected"
+    cannot_reopen = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers=owner_h,
+        json={"status": "reviewing"},
+    )
+    assert cannot_reopen.status_code == 409
+
+
+async def test_private_archive_does_not_publish_or_close_an_active_conversation(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="archive_owner@example.com", username="archive_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="archive_applicant@example.com", username="archive_applicant"
+    )
+    job_id = await _published_job(client, owner_token, "Archive-only pipeline role")
+    application_id = await _application(client, applicant_token, job_id)
+    owner_h = {"Authorization": f"Bearer {owner_token}"}
+    applicant_h = {"Authorization": f"Bearer {applicant_token}"}
+    conversation_id = (
+        await client.get(
+            f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h
+        )
+    ).json()["conversation"]["id"]
+
+    archived = await client.patch(
+        f"/api/v1/applications/{application_id}/status",
+        headers=owner_h,
+        json={"status": "archived"},
+    )
+    assert archived.status_code == 200
+    assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
+        "status"
+    ] == "new"
+    detail = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h
+    )
+    assert detail.json()["conversation"]["is_closed"] is False
+    reply = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=applicant_h,
+        json={"body": "Following up on my application."},
+    )
+    assert reply.status_code == 201

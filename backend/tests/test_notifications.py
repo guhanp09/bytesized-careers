@@ -125,7 +125,7 @@ async def test_apply_notifies_recruiter_in_app_and_queues_mock_email(client: Asy
     assert [row for row in applicant_outbox if row["event_key"] == "application_submitted"] == []
 
 
-async def test_status_change_notifies_applicant_with_mock_email(client: AsyncClient) -> None:
+async def test_shared_status_change_notifies_applicant_with_mock_email(client: AsyncClient) -> None:
     owner_token = await _register_verified_login(client, email="s_owner@example.com", username="s_owner")
     applicant_token = await _register_verified_login(client, email="s_applicant@example.com", username="s_applicant")
     job_id = await _post_published_job(client, owner_token, "Shorts editor for daily channel")
@@ -140,7 +140,7 @@ async def test_status_change_notifies_applicant_with_mock_email(client: AsyncCli
     status_update = await client.patch(
         f"/api/v1/applications/{application_id}/status",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"status": "shortlisted"},
+        json={"status": "interviewing"},
     )
     assert status_update.status_code == 200
 

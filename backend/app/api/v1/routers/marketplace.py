@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db, get_optional_current_user
 from app.core.rate_limit import CHECKOUT_LIMIT, MARKETPLACE_ACTION_LIMIT, REPORT_LIMIT, rate_limit
 from app.models import (
+    Conversation,
     Entitlement,
     EngagementReview,
     InteractionPrivateNote,
@@ -27,11 +28,12 @@ from app.models import (
     User,
 )
 from app.notifications import dispatch_notification
+from app.realtime import events as realtime_events
 from app.services.messaging_service import (
     get_or_create_conversation_for_application,
     get_or_create_conversation_for_interest,
 )
-from app.services import blocking_service, review_service
+from app.services import blocking_service, interaction_status, messaging_service as ms, review_service
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -72,6 +74,7 @@ def _application_read_for_sender(application: JobApplication) -> JobApplicationR
     """Serialize an application for its sender (applicant): the job owner's
     private manager_note must never leak to the applicant."""
     read = JobApplicationRead.model_validate(application)
+    read.status = application.participant_status or "new"
     read.manager_note = None
     return read
 
@@ -80,6 +83,7 @@ def _interest_read_for_sender(interest: TalentInterest) -> TalentInterestRead:
     """Serialize a hiring request for its sender (recruiter): the talent's
     private manager_note must never leak to the recruiter."""
     read = TalentInterestRead.model_validate(interest)
+    read.status = interest.participant_status or "new"
     read.manager_note = None
     return read
 
@@ -125,10 +129,23 @@ async def _assert_application_transition_allowed(
     session: AsyncSession, application: JobApplication, next_status: str
 ) -> None:
     engagement = await review_service.engagement_for_application(session, application.id)
-    if engagement is None or next_status == application.status:
+    if next_status == application.status:
         return
-    if next_status == "archived" and engagement.status in review_service.TERMINAL_STATES:
+    if (
+        next_status == "archived"
+        and engagement is not None
+        and engagement.status in review_service.TERMINAL_STATES
+    ):
         return
+    if engagement is None and interaction_status.application_transition_allowed(
+        application.status, next_status
+    ):
+        return
+    if engagement is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Application cannot move from {application.status} to {next_status}",
+        )
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail="Use the engagement controls after a candidate has been hired.",
@@ -139,10 +156,23 @@ async def _assert_interest_transition_allowed(
     session: AsyncSession, interest: TalentInterest, next_status: str
 ) -> None:
     engagement = await review_service.engagement_for_interest(session, interest.id)
-    if engagement is None or next_status == interest.status:
+    if next_status == interest.status:
         return
-    if next_status == "archived" and engagement.status in review_service.TERMINAL_STATES:
+    if (
+        next_status == "archived"
+        and engagement is not None
+        and engagement.status in review_service.TERMINAL_STATES
+    ):
         return
+    if engagement is None and interaction_status.interest_transition_allowed(
+        interest.status, next_status
+    ):
+        return
+    if engagement is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Hiring request cannot move from {interest.status} to {next_status}",
+        )
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail="Use the engagement controls after a hiring request has been accepted.",
@@ -240,6 +270,117 @@ async def _create_notification(
         )
     except Exception:
         logger.exception("notification_dispatch_failed", extra={"event_key": type_})
+
+
+async def _publish_application_status(
+    session: AsyncSession,
+    *,
+    application: JobApplication,
+    actor: User,
+    stage: str,
+) -> tuple[Conversation, Message]:
+    """Publish a relationship-changing application status once.
+
+    Internal manager stages never call this helper. Shared outcomes get one
+    trusted timeline event and one status notification, both pointing at the
+    same persisted application conversation.
+    """
+
+    job_title = (
+        await session.execute(select(Job.title).where(Job.id == application.job_id))
+    ).scalar_one_or_none()
+    prefixes = {
+        "interviewing": "Invited to interview",
+        "hired": "Hired",
+        "rejected": "Not moving forward",
+    }
+    prefix = prefixes[stage]
+    body = f"{prefix} for “{job_title}”." if job_title else f"{prefix}."
+    conversation = await get_or_create_conversation_for_application(session, application)
+    message_actor = actor
+    if actor.id not in (
+        conversation.participant_a_user_id,
+        conversation.participant_b_user_id,
+    ):
+        message_actor = (
+            await session.execute(
+                select(User).where(User.id == application.job_owner_user_id)
+            )
+        ).scalar_one()
+    message = await ms.post_message(
+        session,
+        conversation,
+        message_actor,
+        body,
+        kind="status_update",
+        allow_closed=True,
+        allow_blocked=True,
+        notify_recipient=False,
+        commit=False,
+        metadata={"stage": stage},
+    )
+    await _create_notification(
+        session,
+        user_id=application.applicant_user_id,
+        type_="application_status_changed",
+        title="Application status updated",
+        body=body,
+        category="application",
+        resource_type="job_application",
+        resource_id=str(application.id),
+        action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
+        actor_user_id=actor.id,
+        payload={"status": stage},
+    )
+    return conversation, message
+
+
+async def _publish_interest_status(
+    session: AsyncSession,
+    *,
+    interest: TalentInterest,
+    actor: User,
+    stage: str,
+) -> tuple[Conversation, Message]:
+    body = {
+        "contacted": "Hiring request accepted.",
+        "declined": "Hiring request declined.",
+    }[stage]
+    conversation = await get_or_create_conversation_for_interest(session, interest)
+    message_actor = actor
+    if actor.id not in (
+        conversation.participant_a_user_id,
+        conversation.participant_b_user_id,
+    ):
+        message_actor = (
+            await session.execute(select(User).where(User.id == interest.owner_user_id))
+        ).scalar_one()
+    message = await ms.post_message(
+        session,
+        conversation,
+        message_actor,
+        body,
+        kind="status_update",
+        allow_closed=True,
+        allow_blocked=True,
+        notify_recipient=False,
+        commit=False,
+        metadata={"stage": stage},
+    )
+    await _create_notification(
+        session,
+        user_id=interest.recruiter_user_id,
+        type_="talent_interest_status_changed",
+        title="Hiring request updated",
+        body=body,
+        category="talent",
+        resource_type="talent_interest",
+        resource_id=str(interest.id),
+        action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
+        actor_user_id=actor.id,
+        payload={"status": stage},
+    )
+    return conversation, message
 
 
 def _job_snapshot(job: Job) -> dict:
@@ -616,35 +757,43 @@ async def update_application_status(
     session: AsyncSession = Depends(get_db),
 ) -> JobApplicationRead:
     application = (
-        await session.execute(select(JobApplication).where(JobApplication.id == application_id))
+        await session.execute(
+            select(JobApplication)
+            .where(JobApplication.id == application_id)
+            .with_for_update()
+        )
     ).scalar_one_or_none()
     if application is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     if application.job_owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    if application.status == payload.status:
+        return await _application_read(
+            session, application, current_user.id, sender_view=False
+        )
     await _assert_application_transition_allowed(session, application, payload.status)
     application.status = payload.status
+    shared = interaction_status.application_status_is_automatically_shared(payload.status)
+    if shared:
+        application.participant_status = payload.status
     if payload.status == "hired":
         await review_service.ensure_for_application(session, application)
-    await _create_notification(
-        session,
-        user_id=application.applicant_user_id,
-        type_="application_status_changed",
-        title="Application status updated",
-        body=f"Your application is now {payload.status.replace('_', ' ')}.",
-        category="application",
-        resource_type="job_application",
-        resource_id=str(application.id),
-        action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
-        actor_user_id=current_user.id,
-        payload={"status": payload.status},
-    )
-    # Persist every status transition before refresh. Hired transitions already
-    # flush while creating the engagement; ordinary pipeline moves do not.
-    await session.flush()
+    realtime_event: tuple[Conversation, Message] | None = None
+    if shared:
+        realtime_event = await _publish_application_status(
+            session,
+            application=application,
+            actor=current_user,
+            stage=payload.status,
+        )
+    await session.commit()
+    if realtime_event is not None:
+        conversation, message = realtime_event
+        await realtime_events.emit_message_created(
+            session, conversation=conversation, message=message
+        )
     await session.refresh(application)
     result = await _application_read(session, application, current_user.id, sender_view=False)
-    await session.commit()
     return result
 
 
@@ -667,12 +816,13 @@ async def withdraw_application(
         )
     if application.status == "withdrawn":
         return _application_read_for_sender(application)  # idempotent
-    if application.status == "hired":
+    if application.status in {"hired", "rejected", "archived"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A hired application cannot be withdrawn",
+            detail="This application can no longer be withdrawn",
         )
     application.status = "withdrawn"
+    application.participant_status = "withdrawn"
     if application.job_owner_user_id is not None:
         await _create_notification(
             session,
@@ -888,14 +1038,19 @@ async def bulk_update_application_status(
 
     Owner-only, all-or-nothing: if any id is missing or not managed by the
     caller the whole batch is rejected, so a bulk action can never silently
-    skip rows. Stage moves are quiet by default — internal pipeline tracking
-    must never surprise the applicant. Clients that want a bell notification
-    pass ``notify: true``; the richer path is a user-confirmed status-update
-    chat message posted separately.
+    skip rows. Internal stages stay private; relationship outcomes publish one
+    trusted event and notification atomically. ``notify`` is reserved for the
+    optional, explicitly shared shortlist state.
     """
     unique_ids = list(dict.fromkeys(payload.ids))
     applications = (
-        (await session.execute(select(JobApplication).where(JobApplication.id.in_(unique_ids))))
+        (
+            await session.execute(
+                select(JobApplication)
+                .where(JobApplication.id.in_(unique_ids))
+                .with_for_update()
+            )
+        )
         .scalars()
         .all()
     )
@@ -904,6 +1059,12 @@ async def bulk_update_application_status(
     is_admin = current_user.account_type == "ADMIN"
     if any(app.job_owner_user_id != current_user.id and not is_admin for app in applications):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
+    if payload.notify and not interaction_status.application_status_can_be_shared(payload.status):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This pipeline stage is private and cannot notify the applicant",
+        )
+    realtime_events_to_emit: list[tuple[Conversation, Message]] = []
     for application in applications:
         if application.status == payload.status:
             if payload.status == "hired":
@@ -911,28 +1072,34 @@ async def bulk_update_application_status(
             continue
         await _assert_application_transition_allowed(session, application, payload.status)
         application.status = payload.status
+        should_publish = (
+            interaction_status.application_status_is_automatically_shared(payload.status)
+            or payload.notify
+        )
+        if should_publish:
+            application.participant_status = payload.status
         if payload.status == "hired":
             await review_service.ensure_for_application(session, application)
-        if not payload.notify:
-            continue
-        await _create_notification(
-            session,
-            user_id=application.applicant_user_id,
-            type_="application_status_changed",
-            title="Application status updated",
-            body=f"Your application is now {payload.status.replace('_', ' ')}.",
-            category="application",
-            resource_type="job_application",
-            resource_id=str(application.id),
-            action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
-            actor_user_id=current_user.id,
-            payload={"status": payload.status},
+        if should_publish:
+            realtime_events_to_emit.append(
+                await _publish_application_status(
+                    session,
+                    application=application,
+                    actor=current_user,
+                    stage=payload.status,
+                )
+            )
+    await session.commit()
+    for conversation, message in realtime_events_to_emit:
+        await realtime_events.emit_message_created(
+            session, conversation=conversation, message=message
         )
+    for application in applications:
+        await session.refresh(application)
     result = [
         await _application_read(session, application, current_user.id, sender_view=False)
         for application in applications
     ]
-    await session.commit()
     return result
 
 
@@ -1547,33 +1714,43 @@ async def update_talent_interest_status(
     session: AsyncSession = Depends(get_db),
 ) -> TalentInterestRead:
     interest = (
-        await session.execute(select(TalentInterest).where(TalentInterest.id == interest_id))
+        await session.execute(
+            select(TalentInterest)
+            .where(TalentInterest.id == interest_id)
+            .with_for_update()
+        )
     ).scalar_one_or_none()
     if interest is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
     if interest.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    if interest.status == payload.status:
+        return await _interest_read(
+            session, interest, current_user.id, sender_view=False
+        )
     await _assert_interest_transition_allowed(session, interest, payload.status)
     interest.status = payload.status
+    shared = interaction_status.interest_status_is_automatically_shared(payload.status)
+    if shared:
+        interest.participant_status = payload.status
     if payload.status == "contacted":
         await review_service.ensure_for_interest(session, interest)
-    await _create_notification(
-        session,
-        user_id=interest.recruiter_user_id,
-        type_="talent_interest_status_changed",
-        title="Talent interest status updated",
-        body=f"Your interest is now {payload.status}.",
-        category="talent",
-        resource_type="talent_interest",
-        resource_id=str(interest.id),
-        action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
-        actor_user_id=current_user.id,
-        payload={"status": payload.status},
-    )
-    await session.flush()
+    realtime_event: tuple[Conversation, Message] | None = None
+    if shared:
+        realtime_event = await _publish_interest_status(
+            session,
+            interest=interest,
+            actor=current_user,
+            stage=payload.status,
+        )
+    await session.commit()
+    if realtime_event is not None:
+        conversation, message = realtime_event
+        await realtime_events.emit_message_created(
+            session, conversation=conversation, message=message
+        )
     await session.refresh(interest)
     result = await _interest_read(session, interest, current_user.id, sender_view=False)
-    await session.commit()
     return result
 
 
@@ -1596,12 +1773,18 @@ async def withdraw_talent_interest(
         )
     if interest.status == "withdrawn":
         return _interest_read_for_sender(interest)  # idempotent
+    if interest.status in {"contacted", "declined", "archived"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This hiring request can no longer be withdrawn",
+        )
     if await review_service.engagement_for_interest(session, interest.id) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Use the engagement controls after a hiring request has been accepted",
         )
     interest.status = "withdrawn"
+    interest.participant_status = "withdrawn"
     await _create_notification(
         session,
         user_id=interest.owner_user_id,
@@ -1775,12 +1958,18 @@ async def bulk_update_talent_interest_status(
 ) -> list[TalentInterestRead]:
     """Move several received hiring requests to one stage in a single call.
 
-    Owner-only, all-or-nothing — mirrors the application bulk endpoint,
-    including the quiet-by-default notification behavior.
+    Owner-only and all-or-nothing. Internal review/archive stages stay private;
+    accepted and declined outcomes publish atomically to the recruiter.
     """
     unique_ids = list(dict.fromkeys(payload.ids))
     interests = (
-        (await session.execute(select(TalentInterest).where(TalentInterest.id.in_(unique_ids))))
+        (
+            await session.execute(
+                select(TalentInterest)
+                .where(TalentInterest.id.in_(unique_ids))
+                .with_for_update()
+            )
+        )
         .scalars()
         .all()
     )
@@ -1789,6 +1978,12 @@ async def bulk_update_talent_interest_status(
     is_admin = current_user.account_type == "ADMIN"
     if any(interest.owner_user_id != current_user.id and not is_admin for interest in interests):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
+    if payload.notify and not interaction_status.interest_status_can_be_shared(payload.status):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This pipeline stage is private and cannot notify the recruiter",
+        )
+    realtime_events_to_emit: list[tuple[Conversation, Message]] = []
     for interest in interests:
         if interest.status == payload.status:
             if payload.status == "contacted":
@@ -1796,24 +1991,28 @@ async def bulk_update_talent_interest_status(
             continue
         await _assert_interest_transition_allowed(session, interest, payload.status)
         interest.status = payload.status
+        should_publish = (
+            interaction_status.interest_status_is_automatically_shared(payload.status)
+            or payload.notify
+        )
+        if should_publish:
+            interest.participant_status = payload.status
         if payload.status == "contacted":
             await review_service.ensure_for_interest(session, interest)
-        if not payload.notify:
-            continue
-        await _create_notification(
-            session,
-            user_id=interest.recruiter_user_id,
-            type_="talent_interest_status_changed",
-            title="Talent interest status updated",
-            body=f"Your interest is now {payload.status}.",
-            category="talent",
-            resource_type="talent_interest",
-            resource_id=str(interest.id),
-            action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
-            actor_user_id=current_user.id,
-            payload={"status": payload.status},
+        if should_publish:
+            realtime_events_to_emit.append(
+                await _publish_interest_status(
+                    session,
+                    interest=interest,
+                    actor=current_user,
+                    stage=payload.status,
+                )
+            )
+    await session.commit()
+    for conversation, message in realtime_events_to_emit:
+        await realtime_events.emit_message_created(
+            session, conversation=conversation, message=message
         )
-    await session.flush()
     for interest in interests:
         # Creating an engagement flushes the session and expires server-managed
         # timestamp attributes on SQLite/Postgres. Refresh before Pydantic reads
@@ -1824,7 +2023,6 @@ async def bulk_update_talent_interest_status(
         await _interest_read(session, interest, current_user.id, sender_view=False)
         for interest in interests
     ]
-    await session.commit()
     return result
 
 

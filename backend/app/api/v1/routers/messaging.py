@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import Conversation, Job, JobApplication, Message, TalentInterest, TalentListing, User, UserBlock
+from app.notifications import dispatch_notification
 from app.realtime import events as realtime_events
 from app.services import blocking_service
 from app.services import messaging_service as ms
@@ -48,6 +49,7 @@ class ConversationRead(BaseModel):
     counterparty_last_read_at: str | None = None
     interaction_blocked: bool = False
     blocked_by_me: bool = False
+    is_closed: bool = False
 
 
 class ConversationDetail(BaseModel):
@@ -98,6 +100,7 @@ async def _conversation_detail(
     names = await ms.participant_names(session, conversation)
     messages = await ms.list_messages(session, conversation)
     unread = await ms.unread_count(session, conversation, viewer.id)
+    is_closed = await ms.conversation_is_closed(session, conversation)
     engagement = None
     if conversation.application_id:
         engagement = await review_service.engagement_for_application(session, conversation.application_id)
@@ -111,6 +114,7 @@ async def _conversation_detail(
                 unread,
                 interaction_blocked=block_state.interaction_blocked,
                 blocked_by_me=block_state.blocked_by_me,
+                is_closed=is_closed,
             )
         ),
         messages=[
@@ -185,6 +189,7 @@ async def list_my_conversations(
         block_state = await blocking_service.get_block_state(
             session, current_user.id, ms.other_participant_id(conversation, current_user.id)
         )
+        is_closed = await ms.conversation_is_closed(session, conversation)
         result.append(
             ConversationRead(
                 **ms.serialize_conversation(
@@ -193,6 +198,7 @@ async def list_my_conversations(
                     unread,
                     interaction_blocked=block_state.interaction_blocked,
                     blocked_by_me=block_state.blocked_by_me,
+                    is_closed=is_closed,
                 )
             )
         )
@@ -344,10 +350,23 @@ async def send_status_update(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Application is no longer in that stage",
             )
+        if application.participant_status == payload.stage:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This application update has already been shared",
+            )
         job_title = (
             await session.execute(select(Job.title).where(Job.id == application.job_id))
         ).scalar_one_or_none()
         body = f"{prefix} for “{job_title}”." if job_title else f"{prefix}."
+        application.participant_status = payload.stage
+        recipient_user_id = application.applicant_user_id
+        notification_event = "application_status_changed"
+        notification_title = "Application status updated"
+        notification_category = "application"
+        notification_resource_type = "job_application"
+        notification_resource_id = str(application.id)
+        notification_url = f"/applications?view=inbox&mode=talent&thread={application.id}"
     elif conversation.talent_interest_id is not None:
         interest = await _require_interest(session, conversation.talent_interest_id)
         if interest.owner_user_id != current_user.id:
@@ -370,6 +389,11 @@ async def send_status_update(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Hiring request is no longer in that stage",
             )
+        if interest.participant_status == payload.stage:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This hiring-request update has already been shared",
+            )
         # Confirm the listing still exists. This also prevents an orphaned request
         # from producing a trusted-looking event after its context was removed.
         listing_exists = (
@@ -379,6 +403,14 @@ async def send_status_update(
         ).scalar_one_or_none()
         if listing_exists is None:
             raise HTTPException(status_code=409, detail="Talent listing is no longer available")
+        interest.participant_status = payload.stage
+        recipient_user_id = interest.recruiter_user_id
+        notification_event = "talent_interest_status_changed"
+        notification_title = "Hiring request updated"
+        notification_category = "talent"
+        notification_resource_type = "talent_interest"
+        notification_resource_id = str(interest.id)
+        notification_url = f"/applications?view=inbox&mode=recruiter&thread={interest.id}"
     else:
         raise HTTPException(status_code=409, detail="Conversation context is unavailable")
 
@@ -390,6 +422,9 @@ async def send_status_update(
             body,
             kind="status_update",
             allow_closed=True,
+            allow_blocked=True,
+            notify_recipient=False,
+            commit=False,
             metadata={"stage": payload.stage},
         )
     except ms.InteractionBlocked as exc:
@@ -397,6 +432,20 @@ async def send_status_update(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This conversation is unavailable for new messages",
         ) from exc
+    await dispatch_notification(
+        session,
+        event_key=notification_event,
+        recipient_user_id=recipient_user_id,
+        title=notification_title,
+        body=body,
+        actor_user_id=current_user.id,
+        category=notification_category,
+        resource_type=notification_resource_type,
+        resource_id=notification_resource_id,
+        action_url=notification_url,
+        payload={"status": payload.stage},
+    )
+    await session.commit()
     await realtime_events.emit_message_created(
         session, conversation=conversation, message=message
     )
@@ -424,6 +473,7 @@ async def mark_conversation_read(
             0,
             interaction_blocked=block_state.interaction_blocked,
             blocked_by_me=block_state.blocked_by_me,
+            is_closed=await ms.conversation_is_closed(session, conversation),
         )
     )
     # `read_at` is consumed by the real-time transport in a later layer. Keep it

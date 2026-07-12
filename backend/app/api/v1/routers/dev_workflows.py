@@ -33,6 +33,7 @@ from app.api.v1.routers.marketplace import (
     update_application_status,
     update_talent_interest_status,
 )
+from app.api.v1.routers.messaging import SendStatusUpdateRequest, send_status_update
 from app.core.config import settings
 from app.db import seed_data_personas as personas
 from app.models import (
@@ -51,6 +52,7 @@ from app.schemas.marketplace import (
     TalentInterestStatusUpdate,
 )
 from app.services import messaging_service as ms
+from app.services import interaction_status
 
 router = APIRouter(prefix="/dev/workflows", tags=["dev"])
 
@@ -106,7 +108,9 @@ class ReplyApplicationRequest(BaseModel):
 
 
 class ReplyInterestRequest(BaseModel):
-    actorKey: str = DEFAULT_TALENT
+    # The baseline has a fresh request received by the dual-mode persona. Priya's
+    # seeded request is already accepted so it can demonstrate that terminal UI.
+    actorKey: str = "both-sides"
     targetKey: str = DEFAULT_RECRUITER
     interestId: UUID | None = None
     status: str = "contacted"
@@ -392,10 +396,25 @@ async def workflow_reply_to_application(
 
     query = select(JobApplication).where(JobApplication.job_owner_user_id == actor.id)
     if payload.applicationId is not None:
-        query = select(JobApplication).where(JobApplication.id == payload.applicationId)
-    application = (
+        query = query.where(JobApplication.id == payload.applicationId)
+    applications = (
         await session.execute(query.order_by(JobApplication.created_at.desc()))
-    ).scalars().first()
+    ).scalars().all()
+    application = next(
+        (
+            item
+            for item in applications
+            if interaction_status.application_transition_allowed(item.status, payload.status)
+            and (
+                item.status != payload.status
+                or (
+                    payload.status == "shortlisted"
+                    and item.participant_status != payload.status
+                )
+            )
+        ),
+        None,
+    )
     if application is None:
         raise HTTPException(
             status_code=409,
@@ -409,6 +428,18 @@ async def workflow_reply_to_application(
         current_user=actor,
         session=session,
     )
+    # Shortlisting is private by default. The dev workflow is explicitly a
+    # cross-persona reply exercise, so follow the same trusted status-update
+    # path the UI uses when the recruiter chooses to inform the applicant.
+    if payload.status == "shortlisted" and application.participant_status != payload.status:
+        conversation = await ms.get_or_create_conversation_for_application(session, application)
+        await send_status_update(
+            conversation_id=conversation.id,
+            payload=SendStatusUpdateRequest(stage="shortlisted"),
+            _limit=None,
+            current_user=actor,
+            session=session,
+        )
     app_id = str(result.id)
     applicant_notified = await _recipient_notification(
         session, user_id=applicant_id, type_="application_status_changed", resource_id=app_id
@@ -442,10 +473,19 @@ async def workflow_reply_to_hiring_request(
 
     query = select(TalentInterest).where(TalentInterest.owner_user_id == actor.id)
     if payload.interestId is not None:
-        query = select(TalentInterest).where(TalentInterest.id == payload.interestId)
-    interest = (
+        query = query.where(TalentInterest.id == payload.interestId)
+    interests = (
         await session.execute(query.order_by(TalentInterest.created_at.desc()))
-    ).scalars().first()
+    ).scalars().all()
+    interest = next(
+        (
+            item
+            for item in interests
+            if item.status != payload.status
+            and interaction_status.interest_transition_allowed(item.status, payload.status)
+        ),
+        None,
+    )
     if interest is None:
         raise HTTPException(
             status_code=409,

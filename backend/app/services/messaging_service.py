@@ -172,8 +172,10 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
 
     Hired applications and accepted hiring requests intentionally stay open: those
     users need the conversation while work is active. Rejected, declined, withdrawn,
-    and explicitly archived records are terminal for ordinary chat. Trusted lifecycle
-    events may still be appended by their dedicated server-side workflows.
+    and shared terminal outcomes close ordinary chat. Archiving is an internal
+    organization action, so it only closes a thread whose participant-visible
+    relationship was already terminal. Trusted lifecycle events may still be
+    appended by their dedicated server-side workflows.
     """
 
     if await blocking_service.interaction_is_blocked(
@@ -202,23 +204,31 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
         return True
 
     if conversation.application_id is not None:
-        application_status = (
+        application_state = (
             await session.execute(
-                select(JobApplication.status).where(
+                select(JobApplication.status, JobApplication.participant_status).where(
                     JobApplication.id == conversation.application_id
                 )
             )
-        ).scalar_one_or_none()
-        return application_status is None or application_status in CLOSED_APPLICATION_STATUSES
+        ).one_or_none()
+        if application_state is None:
+            return True
+        manager_status, participant_status = application_state
+        effective_status = participant_status if manager_status == "archived" else manager_status
+        return effective_status in CLOSED_APPLICATION_STATUSES
     if conversation.talent_interest_id is not None:
-        interest_status = (
+        interest_state = (
             await session.execute(
-                select(TalentInterest.status).where(
+                select(TalentInterest.status, TalentInterest.participant_status).where(
                     TalentInterest.id == conversation.talent_interest_id
                 )
             )
-        ).scalar_one_or_none()
-        return interest_status is None or interest_status in CLOSED_INTEREST_STATUSES
+        ).one_or_none()
+        if interest_state is None:
+            return True
+        manager_status, participant_status = interest_state
+        effective_status = participant_status if manager_status == "archived" else manager_status
+        return effective_status in CLOSED_INTEREST_STATUSES
     return True
 
 
@@ -302,6 +312,9 @@ async def post_message(
     allow_closed: bool = False,
     metadata: dict[str, object] | None = None,
     client_message_id: UUID | None = None,
+    notify_recipient: bool = True,
+    allow_blocked: bool = False,
+    commit: bool = True,
 ) -> Message:
     """Post a message. ``kind`` marks platform-generated entries (currently
     "status_update", posted when a manager chooses to inform the other side of
@@ -328,12 +341,13 @@ async def post_message(
                 raise IdempotencyConflict()
             return existing
 
-    try:
-        await blocking_service.assert_can_interact(
-            session, conversation.participant_a_user_id, conversation.participant_b_user_id
-        )
-    except blocking_service.InteractionBlocked as exc:
-        raise InteractionBlocked() from exc
+    if not allow_blocked:
+        try:
+            await blocking_service.assert_can_interact(
+                session, conversation.participant_a_user_id, conversation.participant_b_user_id
+            )
+        except blocking_service.InteractionBlocked as exc:
+            raise InteractionBlocked() from exc
 
     if not allow_closed and await conversation_is_closed(session, conversation):
         raise ConversationClosed()
@@ -390,21 +404,25 @@ async def post_message(
         # participant A sent the hiring request; participant B owns the talent listing.
         recipient_mode = "recruiter" if recipient_id == conversation.participant_a_user_id else "talent"
     sender_name = sender.display_name or sender.username or sender.email
-    await dispatch_notification(
-        session,
-        event_key="message_received",
-        recipient_user_id=recipient_id,
-        title=f"New message from {sender_name}",
-        body=clean[:140],
-        actor_user_id=sender.id,
-        category="message",
-        resource_type="conversation",
-        resource_id=str(conversation.id),
-        action_url=f"/applications?view=inbox&mode={recipient_mode}&thread={record_id}",
-        payload={"conversation_id": str(conversation.id), "thread_id": record_id},
-    )
-    await session.commit()
-    await session.refresh(message)
+    if notify_recipient:
+        await dispatch_notification(
+            session,
+            event_key="message_received",
+            recipient_user_id=recipient_id,
+            title=f"New message from {sender_name}",
+            body=clean[:140],
+            actor_user_id=sender.id,
+            category="message",
+            resource_type="conversation",
+            resource_id=str(conversation.id),
+            action_url=f"/applications?view=inbox&mode={recipient_mode}&thread={record_id}",
+            payload={"conversation_id": str(conversation.id), "thread_id": record_id},
+        )
+    if commit:
+        await session.commit()
+        await session.refresh(message)
+    else:
+        await session.flush()
     return message
 
 
@@ -442,6 +460,7 @@ def serialize_conversation(
     *,
     interaction_blocked: bool = False,
     blocked_by_me: bool = False,
+    is_closed: bool = False,
 ) -> dict:
     viewer_last_read_at = _last_read_for(conversation, viewer_id)
     counterparty_last_read_at = (
@@ -463,4 +482,5 @@ def serialize_conversation(
         ),
         "interaction_blocked": interaction_blocked,
         "blocked_by_me": blocked_by_me,
+        "is_closed": is_closed,
     }

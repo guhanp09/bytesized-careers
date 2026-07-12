@@ -492,13 +492,24 @@ async def test_terminal_outcomes_close_chat_but_hired_work_stays_open(client: As
             json={"status": "rejected"},
         )
     ).status_code == 200
-    final_event = await client.post(
+    detail = await client.get(
+        f"/api/v1/me/conversations/{rejected_conversation}", headers=owner_h
+    )
+    final_events = [
+        message
+        for message in detail.json()["messages"]
+        if message["kind"] == "status_update"
+        and message["body"] == "Not moving forward for “Editor for finance channel”."
+    ]
+    assert len(final_events) == 1
+    assert final_events[0]["body"] == "Not moving forward for “Editor for finance channel”."
+
+    duplicate_event = await client.post(
         f"/api/v1/me/conversations/{rejected_conversation}/status-update",
         headers=owner_h,
         json={"stage": "rejected"},
     )
-    assert final_event.status_code == 201
-    assert final_event.json()["body"] == "Not moving forward for “Editor for finance channel”."
+    assert duplicate_event.status_code == 409
 
     closed = await client.post(
         f"/api/v1/me/conversations/{rejected_conversation}/messages",
@@ -556,13 +567,22 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
         json={"status": "contacted"},
     )
     assert accepted.status_code == 200
-    accepted_event = await client.post(
+    accepted_detail = await client.get(
+        f"/api/v1/me/conversations/{accepted_conversation}", headers=creator_h
+    )
+    accepted_events = [
+        message
+        for message in accepted_detail.json()["messages"]
+        if message["kind"] == "status_update" and message["body"] == "Hiring request accepted."
+    ]
+    assert len(accepted_events) == 1
+    assert accepted_events[0]["body"] == "Hiring request accepted."
+    accepted_duplicate = await client.post(
         f"/api/v1/me/conversations/{accepted_conversation}/status-update",
         headers=creator_h,
         json={"stage": "contacted"},
     )
-    assert accepted_event.status_code == 201
-    assert accepted_event.json()["body"] == "Hiring request accepted."
+    assert accepted_duplicate.status_code == 409
     assert (
         await client.post(
             f"/api/v1/me/conversations/{accepted_conversation}/messages",
@@ -577,13 +597,22 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
         json={"status": "declined"},
     )
     assert declined.status_code == 200
-    declined_event = await client.post(
+    declined_detail = await client.get(
+        f"/api/v1/me/conversations/{declined_conversation}", headers=creator_h
+    )
+    declined_events = [
+        message
+        for message in declined_detail.json()["messages"]
+        if message["kind"] == "status_update" and message["body"] == "Hiring request declined."
+    ]
+    assert len(declined_events) == 1
+    assert declined_events[0]["body"] == "Hiring request declined."
+    declined_duplicate = await client.post(
         f"/api/v1/me/conversations/{declined_conversation}/status-update",
         headers=creator_h,
         json={"stage": "declined"},
     )
-    assert declined_event.status_code == 201
-    assert declined_event.json()["body"] == "Hiring request declined."
+    assert declined_duplicate.status_code == 409
     assert (
         await client.post(
             f"/api/v1/me/conversations/{declined_conversation}/messages",
