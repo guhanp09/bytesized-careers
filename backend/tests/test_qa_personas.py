@@ -11,7 +11,16 @@ from app.core.security import create_access_token, decode_access_token, hash_pas
 from app.db import seed
 from app.db import seed_data_personas as personas
 from app.middleware import qa_audit
-from app.models import AdminAuditLog, EngagementReview, Job, JobApplication, TalentListing, User
+from app.models import (
+    AdminAuditLog,
+    EngagementReview,
+    Job,
+    JobApplication,
+    TalentInterest,
+    TalentListing,
+    User,
+    UserBlock,
+)
 from conftest import TestSessionLocal
 
 
@@ -288,6 +297,8 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
     token = await _prepare()
     ordinary_id = uuid.uuid4()
     ordinary_application_id = uuid.uuid4()
+    transient_application_id = uuid.uuid4()
+    transient_interest_id = uuid.uuid4()
     async with TestSessionLocal() as session:
         session.add(
             User(
@@ -310,6 +321,40 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
                 first_message_answers={},
                 applicant_snapshot={"display_name": "Ordinary staging user"},
                 status="new",
+            )
+        )
+        # These records model a real QA Apply/Hire/Block exercise. They use
+        # non-deterministic row ids but only deterministic persona actors and
+        # listings, so the restore pack must remove them without touching the
+        # ordinary application above.
+        session.add(
+            JobApplication(
+                id=transient_application_id,
+                job_id=personas.persona_uuid("job:recruiter-active-2"),
+                applicant_user_id=personas.persona_user_id("talent-complete"),
+                job_owner_user_id=personas.persona_user_id("recruiter-active"),
+                cover_note="Transient QA application to clear on restore.",
+                portfolio_item_ids=[],
+                first_message_answers={},
+                applicant_snapshot={"display_name": "Priya Nair"},
+                status="new",
+            )
+        )
+        session.add(
+            TalentInterest(
+                id=transient_interest_id,
+                talent_listing_id=personas.persona_uuid("listing:talent-complete"),
+                recruiter_user_id=personas.persona_user_id("recruiter-active"),
+                owner_user_id=personas.persona_user_id("talent-complete"),
+                note="Transient QA hiring request to clear on restore.",
+                first_message_answers={},
+                status="new",
+            )
+        )
+        session.add(
+            UserBlock(
+                blocker_user_id=personas.persona_user_id("recruiter-active"),
+                blocked_user_id=personas.persona_user_id("talent-complete"),
             )
         )
         await session.execute(
@@ -337,6 +382,16 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
     async with TestSessionLocal() as session:
         assert await session.get(User, ordinary_id) is not None
         assert await session.get(JobApplication, ordinary_application_id) is not None
+        assert await session.get(JobApplication, transient_application_id) is None
+        assert await session.get(TalentInterest, transient_interest_id) is None
+        assert (
+            await session.execute(
+                select(UserBlock).where(
+                    UserBlock.blocker_user_id == personas.persona_user_id("recruiter-active"),
+                    UserBlock.blocked_user_id == personas.persona_user_id("talent-complete"),
+                )
+            )
+        ).scalar_one_or_none() is None
         assert await session.get(TalentListing, personas.persona_uuid("listing:notifications")) is not None
         duplicate_pairs = int(
             (

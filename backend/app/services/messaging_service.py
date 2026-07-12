@@ -12,12 +12,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Conversation, JobApplication, Message, TalentInterest, User
 from app.notifications import dispatch_notification
+from app.services import blocking_service
 
 MAX_MESSAGE_LENGTH = 5000
 
@@ -40,6 +41,10 @@ class ConversationClosed(MessagingError):
 
 class IdempotencyConflict(MessagingError):
     pass
+
+
+class InteractionBlocked(MessagingError):
+    """A user-to-user block takes precedence over ordinary chat."""
 
 
 class MissingParticipants(MessagingError):
@@ -144,6 +149,20 @@ def _last_read_for(conversation: Conversation, user_id: UUID) -> datetime | None
     return conversation.participant_b_last_read_at
 
 
+def counterparty_last_read_for(conversation: Conversation, user_id: UUID) -> datetime | None:
+    return (
+        conversation.participant_b_last_read_at
+        if user_id == conversation.participant_a_user_id
+        else conversation.participant_a_last_read_at
+    )
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 CLOSED_APPLICATION_STATUSES = frozenset({"rejected", "archived", "withdrawn"})
 CLOSED_INTEREST_STATUSES = frozenset({"declined", "archived", "withdrawn"})
 
@@ -156,6 +175,11 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
     and explicitly archived records are terminal for ordinary chat. Trusted lifecycle
     events may still be appended by their dedicated server-side workflows.
     """
+
+    if await blocking_service.interaction_is_blocked(
+        session, conversation.participant_a_user_id, conversation.participant_b_user_id
+    ):
+        return True
 
     active_participant_count = int(
         (
@@ -216,15 +240,36 @@ async def unread_count(session: AsyncSession, conversation: Conversation, user_i
     return int((await session.execute(stmt)).scalar_one())
 
 
-async def mark_read(session: AsyncSession, conversation: Conversation, user_id: UUID) -> None:
+async def mark_read(session: AsyncSession, conversation: Conversation, user_id: UUID) -> datetime:
+    """Advance one participant's read state monotonically and return it.
+
+    A receipt is participant progress, not a notification read.  The SQL `CASE`
+    update means delayed requests from another tab can never move progress backward.
+    """
     if not is_participant(conversation, user_id):
         raise NotAParticipant()
     now = datetime.now(timezone.utc)
-    if user_id == conversation.participant_a_user_id:
-        conversation.participant_a_last_read_at = now
-    else:
-        conversation.participant_b_last_read_at = now
+    column = (
+        Conversation.participant_a_last_read_at
+        if user_id == conversation.participant_a_user_id
+        else Conversation.participant_b_last_read_at
+    )
+    await session.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation.id)
+        .values(
+            {
+                column.key: case(
+                    (column.is_(None), now),
+                    (column < now, now),
+                    else_=column,
+                )
+            }
+        )
+    )
     await session.commit()
+    await session.refresh(conversation)
+    return _last_read_for(conversation, user_id) or now
 
 
 async def list_messages(session: AsyncSession, conversation: Conversation) -> list[Message]:
@@ -282,6 +327,13 @@ async def post_message(
             if existing.sender_user_id != sender.id or existing.body != clean:
                 raise IdempotencyConflict()
             return existing
+
+    try:
+        await blocking_service.assert_can_interact(
+            session, conversation.participant_a_user_id, conversation.participant_b_user_id
+        )
+    except blocking_service.InteractionBlocked as exc:
+        raise InteractionBlocked() from exc
 
     if not allow_closed and await conversation_is_closed(session, conversation):
         raise ConversationClosed()
@@ -356,7 +408,15 @@ async def post_message(
     return message
 
 
-def serialize_message(message: Message, viewer_id: UUID, sender_name: str | None = None) -> dict:
+def serialize_message(
+    message: Message,
+    viewer_id: UUID,
+    sender_name: str | None = None,
+    *,
+    counterparty_last_read_at: datetime | None = None,
+) -> dict:
+    message_created_at = _as_utc(message.created_at)
+    counterparty_read_at = _as_utc(counterparty_last_read_at)
     return {
         "id": str(message.id),
         "conversation_id": str(message.conversation_id),
@@ -366,10 +426,27 @@ def serialize_message(message: Message, viewer_id: UUID, sender_name: str | None
         "body": message.body,
         "kind": (message.metadata_json or {}).get("kind"),
         "created_at": message.created_at.isoformat() if message.created_at else None,
+        "read_by_recipient": bool(
+            message.sender_user_id == viewer_id
+            and message_created_at is not None
+            and counterparty_read_at is not None
+            and message_created_at <= counterparty_read_at
+        ),
     }
 
 
-def serialize_conversation(conversation: Conversation, viewer_id: UUID, unread: int) -> dict:
+def serialize_conversation(
+    conversation: Conversation,
+    viewer_id: UUID,
+    unread: int,
+    *,
+    interaction_blocked: bool = False,
+    blocked_by_me: bool = False,
+) -> dict:
+    viewer_last_read_at = _last_read_for(conversation, viewer_id)
+    counterparty_last_read_at = (
+        None if interaction_blocked else counterparty_last_read_for(conversation, viewer_id)
+    )
     return {
         "id": str(conversation.id),
         "context_type": conversation.context_type,
@@ -380,4 +457,10 @@ def serialize_conversation(conversation: Conversation, viewer_id: UUID, unread: 
         "thread_id": str(conversation.application_id or conversation.talent_interest_id or conversation.id),
         "last_message_at": conversation.last_message_at.isoformat() if conversation.last_message_at else None,
         "unread_count": unread,
+        "viewer_last_read_at": viewer_last_read_at.isoformat() if viewer_last_read_at else None,
+        "counterparty_last_read_at": (
+            counterparty_last_read_at.isoformat() if counterparty_last_read_at else None
+        ),
+        "interaction_blocked": interaction_blocked,
+        "blocked_by_me": blocked_by_me,
     }

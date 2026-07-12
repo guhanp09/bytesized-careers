@@ -58,12 +58,12 @@ async def get_profile_service(
     return ProfileService(repository)
 
 
-async def _resolve_user_from_credentials(
+async def resolve_access_token_user(
     *,
     session: AsyncSession,
-    credentials: HTTPAuthorizationCredentials,
+    token: str,
 ) -> User | None:
-    token = credentials.credentials
+    """Resolve the same trusted backend identity used by HTTP and WebSockets."""
     try:
         payload = decode_access_token(token)
     except TokenError as exc:
@@ -129,6 +129,14 @@ async def _resolve_user_from_credentials(
         except Exception:  # pragma: no cover - activity tracking must never block auth
             await session.rollback()
     return user
+
+
+async def _resolve_user_from_credentials(
+    *,
+    session: AsyncSession,
+    credentials: HTTPAuthorizationCredentials,
+) -> User | None:
+    return await resolve_access_token_user(session=session, token=credentials.credentials)
 
 
 async def get_optional_current_user(

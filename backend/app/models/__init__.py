@@ -28,6 +28,7 @@ from app.models.role_system import (
     UserRoleAnswer,
 )
 from app.models.user import User
+from app.models.user_block import UserBlock
 from app.models.user_youtube_channel import UserYouTubeChannel
 from app.models.username_history import UsernameHistory
 from app.models.youtube_channel import YouTubeChannel
@@ -54,6 +55,7 @@ __all__ = [
     "RoleQuestion",
     "RoleQuestionOption",
     "User",
+    "UserBlock",
     "SavedJob",
     "SavedTalentListing",
     "TalentInterest",

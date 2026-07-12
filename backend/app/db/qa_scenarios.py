@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Awaitable, Callable
+from uuid import UUID
 
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.models import (
     Engagement,
     EngagementReview,
     HiringIdentity,
+    InteractionPrivateNote,
     Job,
     JobApplication,
     Message,
@@ -24,6 +26,7 @@ from app.models import (
     TalentInterest,
     TalentListing,
     User,
+    UserBlock,
 )
 
 
@@ -117,9 +120,53 @@ def _ensure_safe_environment() -> None:
         raise RuntimeError("QA scenario restore requires staging or test.")
 
 
-async def _delete_qa_lifecycle(session: AsyncSession) -> None:
-    application_ids = personas.all_persona_application_ids()
-    interest_ids = personas.all_persona_interest_ids()
+async def _qa_owned_source_ids(session: AsyncSession) -> tuple[list[UUID], list[UUID]]:
+    """Return deterministic plus transient interactions created only by QA personas.
+
+    Scenario restores must be able to undo a real Apply/Hire/Block exercise, but
+    they must not delete an ordinary staging user's activity.  A source is QA-owned
+    only when both its actor and its listing are part of the deterministic QA
+    catalogue.  This lets a future release preserve real users who happen to
+    interact with a seeded listing.
+    """
+
+    qa_user_ids = personas.all_qa_seed_user_ids()
+    application_ids = set(personas.all_persona_application_ids())
+    application_ids.update(
+        (
+            await session.execute(
+                select(JobApplication.id).where(
+                    JobApplication.applicant_user_id.in_(qa_user_ids),
+                    JobApplication.job_id.in_(personas.all_persona_job_ids()),
+                )
+            )
+        ).scalars()
+    )
+    interest_ids = set(personas.all_persona_interest_ids())
+    interest_ids.update(
+        (
+            await session.execute(
+                select(TalentInterest.id).where(
+                    TalentInterest.recruiter_user_id.in_(qa_user_ids),
+                    TalentInterest.talent_listing_id.in_(personas.all_persona_talent_listing_ids()),
+                )
+            )
+        ).scalars()
+    )
+    return list(application_ids), list(interest_ids)
+
+
+async def _delete_qa_lifecycle(session: AsyncSession) -> tuple[list[UUID], list[UUID]]:
+    application_ids, interest_ids = await _qa_owned_source_ids(session)
+    # Blocks are QA-owned only when both participants are fixture users. This
+    # clears a prior test run's restriction without touching a real user's block.
+    qa_user_ids = personas.all_qa_seed_user_ids()
+    await session.execute(
+        delete(UserBlock).where(
+            UserBlock.blocker_user_id.in_(qa_user_ids),
+            UserBlock.blocked_user_id.in_(qa_user_ids),
+        )
+    )
     engagement_ids = list(
         (
             await session.execute(
@@ -151,10 +198,29 @@ async def _delete_qa_lifecycle(session: AsyncSession) -> None:
         ).scalars()
     )
     if conversation_ids:
+        await session.execute(
+            delete(Notification).where(
+                Notification.resource_id.in_([str(item) for item in conversation_ids])
+            )
+        )
         await session.execute(delete(Message).where(Message.conversation_id.in_(conversation_ids)))
         await session.execute(delete(Conversation).where(Conversation.id.in_(conversation_ids)))
     if engagement_ids:
         await session.execute(delete(Engagement).where(Engagement.id.in_(engagement_ids)))
+    if application_ids or interest_ids:
+        source_ids = [str(item) for item in [*application_ids, *interest_ids]]
+        await session.execute(delete(Notification).where(Notification.resource_id.in_(source_ids)))
+    if application_ids:
+        await session.execute(
+            delete(InteractionPrivateNote).where(InteractionPrivateNote.application_id.in_(application_ids))
+        )
+    if interest_ids:
+        await session.execute(
+            delete(InteractionPrivateNote).where(
+                InteractionPrivateNote.talent_interest_id.in_(interest_ids)
+            )
+        )
+    return application_ids, interest_ids
 
 
 async def _restore_profiles(session: AsyncSession) -> dict[str, object]:
@@ -228,20 +294,18 @@ async def _restore_profiles(session: AsyncSession) -> dict[str, object]:
 
 
 async def _restore_applications(session: AsyncSession) -> dict[str, object]:
-    await _delete_qa_lifecycle(session)
-    await session.execute(
-        delete(JobApplication).where(JobApplication.id.in_(personas.all_persona_application_ids()))
-    )
+    application_ids, _ = await _delete_qa_lifecycle(session)
+    if application_ids:
+        await session.execute(delete(JobApplication).where(JobApplication.id.in_(application_ids)))
     await session.commit()
     result = await seed.seed_review_scenarios(session)
     return {"applications_and_lifecycle": result}
 
 
 async def _restore_interests(session: AsyncSession) -> dict[str, object]:
-    await _delete_qa_lifecycle(session)
-    await session.execute(
-        delete(TalentInterest).where(TalentInterest.id.in_(personas.all_persona_interest_ids()))
-    )
+    _, interest_ids = await _delete_qa_lifecycle(session)
+    if interest_ids:
+        await session.execute(delete(TalentInterest).where(TalentInterest.id.in_(interest_ids)))
     await session.commit()
     result = await seed.seed_applications_workspace(session)
     await seed.seed_review_scenarios(session)
@@ -335,13 +399,11 @@ async def _restore_verification_moderation(session: AsyncSession) -> dict[str, o
 
 
 async def _restore_listings(session: AsyncSession) -> dict[str, object]:
-    await _delete_qa_lifecycle(session)
-    await session.execute(
-        delete(JobApplication).where(JobApplication.id.in_(personas.all_persona_application_ids()))
-    )
-    await session.execute(
-        delete(TalentInterest).where(TalentInterest.id.in_(personas.all_persona_interest_ids()))
-    )
+    application_ids, interest_ids = await _delete_qa_lifecycle(session)
+    if application_ids:
+        await session.execute(delete(JobApplication).where(JobApplication.id.in_(application_ids)))
+    if interest_ids:
+        await session.execute(delete(TalentInterest).where(TalentInterest.id.in_(interest_ids)))
     await session.execute(
         delete(SavedJob).where(SavedJob.id.in_(personas.all_persona_saved_job_ids()))
     )

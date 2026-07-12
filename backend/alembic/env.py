@@ -18,6 +18,7 @@ from app.models import (  # noqa: F401
     RoleQuestion,
     RoleQuestionOption,
     User,
+    UserBlock,
     UserContentStyle,
     UsernameHistory,
     UserRole,

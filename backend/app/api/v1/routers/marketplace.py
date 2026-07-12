@@ -31,7 +31,7 @@ from app.services.messaging_service import (
     get_or_create_conversation_for_application,
     get_or_create_conversation_for_interest,
 )
-from app.services import review_service
+from app.services import blocking_service, review_service
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -477,6 +477,16 @@ async def apply_to_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This job is not accepting applications",
         )
+    try:
+        await blocking_service.assert_can_interact(
+            session, applicant_user_id, job.posted_by_user_id
+        )
+    except blocking_service.InteractionBlocked as exc:
+        # Do not disclose which participant owns a private block relationship.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This job is unavailable for direct interaction",
+        ) from exc
     # Enforce the owner's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     _assert_first_message_complete(job.application_requirements, payload.first_message_answers)
@@ -1318,6 +1328,17 @@ async def send_talent_interest(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This talent listing is not accepting hiring requests",
         )
+    try:
+        await blocking_service.assert_can_interact(
+            session, recruiter_user_id, listing.owner_user_id
+        )
+    except blocking_service.InteractionBlocked as exc:
+        # Public listings can remain visible; only a new direct interaction is
+        # unavailable and no private blocker identity is exposed.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This talent listing is unavailable for direct interaction",
+        ) from exc
     invite_job: Job | None = None
     if payload.job_id is not None:
         invite_job = await _get_job_or_404(session, payload.job_id)

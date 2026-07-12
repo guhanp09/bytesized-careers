@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
-from app.models import Conversation, Job, JobApplication, Message, TalentInterest, TalentListing, User
+from app.models import Conversation, Job, JobApplication, Message, TalentInterest, TalentListing, User, UserBlock
+from app.realtime import events as realtime_events
+from app.services import blocking_service
 from app.services import messaging_service as ms
 from app.services import review_service
 from app.schemas.reviews import EngagementSummary
@@ -31,6 +33,7 @@ class MessageRead(BaseModel):
     # "status_update" for platform-generated pipeline updates; None for user text.
     kind: str | None = None
     created_at: str | None = None
+    read_by_recipient: bool = False
 
 
 class ConversationRead(BaseModel):
@@ -41,6 +44,10 @@ class ConversationRead(BaseModel):
     thread_id: str
     last_message_at: str | None = None
     unread_count: int
+    viewer_last_read_at: str | None = None
+    counterparty_last_read_at: str | None = None
+    interaction_blocked: bool = False
+    blocked_by_me: bool = False
 
 
 class ConversationDetail(BaseModel):
@@ -69,12 +76,25 @@ class SendStatusUpdateRequest(BaseModel):
     ]
 
 
+class UserBlockRead(BaseModel):
+    blocked_user_id: str
+    created_at: str | None = None
+
+
+class BlockMutationRead(BaseModel):
+    interaction_blocked: bool
+    blocked_by_me: bool
+
+
 # --- helpers ---------------------------------------------------------------
 
 
 async def _conversation_detail(
     session: AsyncSession, conversation: Conversation, viewer: User
 ) -> ConversationDetail:
+    block_state = await blocking_service.get_block_state(
+        session, viewer.id, ms.other_participant_id(conversation, viewer.id)
+    )
     names = await ms.participant_names(session, conversation)
     messages = await ms.list_messages(session, conversation)
     unread = await ms.unread_count(session, conversation, viewer.id)
@@ -84,9 +104,28 @@ async def _conversation_detail(
     elif conversation.talent_interest_id:
         engagement = await review_service.engagement_for_interest(session, conversation.talent_interest_id)
     return ConversationDetail(
-        conversation=ConversationRead(**ms.serialize_conversation(conversation, viewer.id, unread)),
+        conversation=ConversationRead(
+            **ms.serialize_conversation(
+                conversation,
+                viewer.id,
+                unread,
+                interaction_blocked=block_state.interaction_blocked,
+                blocked_by_me=block_state.blocked_by_me,
+            )
+        ),
         messages=[
-            MessageRead(**ms.serialize_message(m, viewer.id, names.get(m.sender_user_id)))
+            MessageRead(
+                **ms.serialize_message(
+                    m,
+                    viewer.id,
+                    names.get(m.sender_user_id),
+                    counterparty_last_read_at=(
+                        None
+                        if block_state.interaction_blocked
+                        else ms.counterparty_last_read_for(conversation, viewer.id)
+                    ),
+                )
+            )
             for m in messages
         ],
         engagement=(
@@ -143,7 +182,20 @@ async def list_my_conversations(
     result = []
     for conversation in rows:
         unread = await ms.unread_count(session, conversation, current_user.id)
-        result.append(ConversationRead(**ms.serialize_conversation(conversation, current_user.id, unread)))
+        block_state = await blocking_service.get_block_state(
+            session, current_user.id, ms.other_participant_id(conversation, current_user.id)
+        )
+        result.append(
+            ConversationRead(
+                **ms.serialize_conversation(
+                    conversation,
+                    current_user.id,
+                    unread,
+                    interaction_blocked=block_state.interaction_blocked,
+                    blocked_by_me=block_state.blocked_by_me,
+                )
+            )
+        )
     return result
 
 
@@ -232,6 +284,14 @@ async def send_message(
         ) from exc
     except ms.NotAParticipant as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation participant") from exc
+    except ms.InteractionBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This conversation is unavailable for new messages",
+        ) from exc
+    await realtime_events.emit_message_created(
+        session, conversation=conversation, message=message
+    )
     return MessageRead(
         **ms.serialize_message(message, current_user.id, current_user.display_name or current_user.username)
     )
@@ -322,14 +382,23 @@ async def send_status_update(
     else:
         raise HTTPException(status_code=409, detail="Conversation context is unavailable")
 
-    message = await ms.post_message(
-        session,
-        conversation,
-        current_user,
-        body,
-        kind="status_update",
-        allow_closed=True,
-        metadata={"stage": payload.stage},
+    try:
+        message = await ms.post_message(
+            session,
+            conversation,
+            current_user,
+            body,
+            kind="status_update",
+            allow_closed=True,
+            metadata={"stage": payload.stage},
+        )
+    except ms.InteractionBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This conversation is unavailable for new messages",
+        ) from exc
+    await realtime_events.emit_message_created(
+        session, conversation=conversation, message=message
     )
     return MessageRead(
         **ms.serialize_message(message, current_user.id, current_user.display_name or current_user.username)
@@ -344,5 +413,95 @@ async def mark_conversation_read(
 ) -> ConversationRead:
     conversation = await _require_conversation(session, conversation_id)
     _require_participant(conversation, current_user)
-    await ms.mark_read(session, conversation, current_user.id)
-    return ConversationRead(**ms.serialize_conversation(conversation, current_user.id, 0))
+    read_at = await ms.mark_read(session, conversation, current_user.id)
+    block_state = await blocking_service.get_block_state(
+        session, current_user.id, ms.other_participant_id(conversation, current_user.id)
+    )
+    response = ConversationRead(
+        **ms.serialize_conversation(
+            conversation,
+            current_user.id,
+            0,
+            interaction_blocked=block_state.interaction_blocked,
+            blocked_by_me=block_state.blocked_by_me,
+        )
+    )
+    # `read_at` is consumed by the real-time transport in a later layer. Keep it
+    # calculated here so HTTP remains authoritative even without WebSockets.
+    await realtime_events.emit_read_progress(
+        session,
+        conversation=conversation,
+        reader_user_id=current_user.id,
+        read_at=read_at,
+    )
+    return response
+
+
+@router.get("/blocks", response_model=list[UserBlockRead])
+async def list_my_blocks(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[UserBlockRead]:
+    rows = (
+        await session.execute(
+            select(UserBlock)
+            .where(UserBlock.blocker_user_id == current_user.id)
+            .order_by(UserBlock.created_at.desc())
+        )
+    ).scalars().all()
+    return [
+        UserBlockRead(
+            blocked_user_id=str(row.blocked_user_id),
+            created_at=row.created_at.isoformat() if row.created_at else None,
+        )
+        for row in rows
+    ]
+
+
+@router.post("/blocks/{user_id}", response_model=BlockMutationRead)
+async def block_user(
+    user_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> BlockMutationRead:
+    try:
+        _, created = await blocking_service.block_user(
+            session,
+            blocker_user_id=current_user.id,
+            blocked_user_id=user_id,
+        )
+    except blocking_service.CannotBlockSelf as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except blocking_service.BlockedUserNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if created:
+        await realtime_events.emit_block_change(
+            blocker_user_id=current_user.id,
+            blocked_user_id=user_id,
+            blocked=True,
+        )
+    return BlockMutationRead(interaction_blocked=True, blocked_by_me=True)
+
+
+@router.delete("/blocks/{user_id}", response_model=BlockMutationRead)
+async def unblock_user(
+    user_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> BlockMutationRead:
+    removed = await blocking_service.unblock_user(
+        session,
+        blocker_user_id=current_user.id,
+        blocked_user_id=user_id,
+    )
+    state = await blocking_service.get_block_state(session, current_user.id, user_id)
+    if removed:
+        await realtime_events.emit_block_change(
+            blocker_user_id=current_user.id,
+            blocked_user_id=user_id,
+            blocked=False,
+        )
+    return BlockMutationRead(
+        interaction_blocked=state.interaction_blocked,
+        blocked_by_me=state.blocked_by_me,
+    )
