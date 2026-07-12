@@ -1,0 +1,5 @@
+<div class="job-post"><h1>Hiring: Video Editor</h1>
+<p>We need a <strong>video editor</strong> for our tech channel.</p>
+<ul><li>Edit weekly long-form videos</li><li>2+ years experience</li></ul>
+<p>Salary: ₹30,000 per month. Remote.</p>
+<a href="mailto:jobs@techchannel.in">Apply here</a></div>
