@@ -79,8 +79,11 @@ Notification links choose the recipient's mode, not the sender's mode.
   application status controls that historical thread.
 
 The Inbox refreshes unread counts and the selected conversation with lightweight
-polling. A failed send keeps the draft visible and retryable; it never renders a
-false successful bubble.
+polling. When an authenticated WebSocket is healthy, it also receives immediate
+message, unread, typing, and read-progress events; polling stays active at a
+slower fallback cadence. A failed send keeps the draft visible and retryable; it
+never renders a false successful bubble. See `MESSAGING_ARCHITECTURE.md` for the
+transport, typing, read-receipt, and blocking rules.
 
 ## Private Notes
 
@@ -160,6 +163,9 @@ Start the disposable backend and frontend using the exact commands in
   Inbox. Use `?demo=1` only when intentionally reviewing Sample data.
 - Leave and return: active workspace shape, dock thread, and Inbox selection
   restore without default-thread races.
+- Restore `Inbox and pipeline` after a two-person QA run: QA-owned transient
+  applications, requests, messages, notes, notifications, and blocks reset;
+  ordinary-user data is not deleted.
 
 ## Weekly Release Regression
 

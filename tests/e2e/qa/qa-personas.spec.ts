@@ -199,6 +199,93 @@ test("two online personas receive and reply to messages without reloading", asyn
   }
 });
 
+test("two active Inbox threads show real-time typing and a durable read receipt", async ({ page, browser }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  await expect(recruiterDetail.getByRole("textbox", { name: "Reply message" })).toBeVisible();
+
+  const talentContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const talentPage = await talentContext.newPage();
+  try {
+    await loginController(talentPage);
+    await switchPersona(talentPage, "talent-complete", "Priya Nair");
+    await talentPage.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+    await talentPage.getByTestId("applications-filter-sent").click();
+    await talentPage
+      .getByTestId("interaction-row")
+      .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+      .first()
+      .click();
+    const talentDetail = talentPage.getByTestId("applications-detail");
+    const talentComposer = talentDetail.getByRole("textbox", { name: "Reply message" });
+    await expect(talentComposer).toBeVisible();
+
+    // Give both authenticated browser contexts a brief chance to establish the
+    // socket before asserting the ephemeral signal (the fallback poll is not
+    // involved in this state).
+    await talentPage.waitForTimeout(450);
+    await talentComposer.fill("Typing in real time");
+    await expect(recruiterDetail.getByTestId("conversation-typing")).toContainText(
+      "Priya is typing",
+      { timeout: 3_000 }
+    );
+    await talentComposer.fill("");
+    await expect(recruiterDetail.getByTestId("conversation-typing")).toHaveCount(0);
+
+    const marker = `Real-time receipt ${Date.now()}`;
+    await talentComposer.fill(marker);
+    await talentDetail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(recruiterDetail.getByText(marker, { exact: true })).toBeVisible({ timeout: 3_000 });
+    await expect(talentDetail.getByText("Seen", { exact: true })).toBeVisible({ timeout: 5_000 });
+  } finally {
+    await talentContext.close();
+  }
+});
+
+test("blocking preserves the thread and disables direct messaging for both participants", async ({
+  page,
+  browser,
+}) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  await recruiterDetail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Block user" }).click();
+  const confirmation = page.getByTestId("block-user-confirmation");
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Block user" }).click();
+  await expect(recruiterDetail).toContainText("You blocked Priya");
+  await expect(recruiterDetail.getByRole("textbox", { name: "Reply message" })).toHaveCount(0);
+
+  const talentContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const talentPage = await talentContext.newPage();
+  try {
+    await loginController(talentPage);
+    await switchPersona(talentPage, "talent-complete", "Priya Nair");
+    await talentPage.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+    await talentPage.getByTestId("applications-filter-sent").click();
+    await talentPage
+      .getByTestId("interaction-row")
+      .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+      .first()
+      .click();
+    const talentDetail = talentPage.getByTestId("applications-detail");
+    await expect(talentDetail).toContainText("unavailable for new messages");
+    await expect(talentDetail.getByRole("textbox", { name: "Reply message" })).toHaveCount(0);
+  } finally {
+    await talentContext.close();
+  }
+});
+
 test("a fresh job application appears in both inboxes and cannot be duplicated", async ({ page, browser }) => {
   await loginController(page);
   await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");

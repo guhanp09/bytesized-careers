@@ -150,8 +150,11 @@ exact phrase, then confirm.
 | Full QA baseline | `RESTORE ALL QA DATA` | Every deterministic QA fixture |
 
 Restores use stable IDs, delete in dependency order, and recreate only QA-owned
-records. They preserve ordinary users and all QA audit records. Running a pack
-twice is safe. A partially completed earlier restore can be run again.
+records. They also clear transient Apply, Hire, message, note, notification, and
+block data when both the actor and listing are deterministic QA fixtures. An
+ordinary user's records are preserved even when they relate to a seeded listing,
+and all QA audit records remain. Running a pack twice is safe. A partially
+completed earlier restore can be run again.
 
 ## Workflow 1: Application Handoff And Messaging
 
