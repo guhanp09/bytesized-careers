@@ -57,6 +57,8 @@ class Conversation(Base):
     )
     participant_a_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     participant_b_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    participant_a_archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    participant_b_archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     metadata_json: Mapped[dict] = mapped_column(json_obj_type, nullable=False, default=dict, server_default="{}")

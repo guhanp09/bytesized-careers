@@ -17,6 +17,11 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": get_request_id(),
         }
+        # Domain services attach explicitly curated, non-sensitive structured
+        # fields under one namespace. Never serialize arbitrary LogRecord attrs.
+        transition = getattr(record, "transition", None)
+        if isinstance(transition, dict):
+            payload["transition"] = transition
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=True)

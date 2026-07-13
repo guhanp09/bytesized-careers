@@ -19,7 +19,7 @@ conversation model (the application/interest record *is* the inbox thread, and t
 
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -113,7 +113,7 @@ class ReplyInterestRequest(BaseModel):
     actorKey: str = "both-sides"
     targetKey: str = DEFAULT_RECRUITER
     interestId: UUID | None = None
-    status: str = "contacted"
+    status: str = "accepted"
 
 
 class MessageRequest(BaseModel):
@@ -435,7 +435,11 @@ async def workflow_reply_to_application(
         conversation = await ms.get_or_create_conversation_for_application(session, application)
         await send_status_update(
             conversation_id=conversation.id,
-            payload=SendStatusUpdateRequest(stage="shortlisted"),
+            payload=SendStatusUpdateRequest(
+                stage="shortlisted",
+                expected_version=result.status_version,
+                idempotency_key=uuid4(),
+            ),
             _limit=None,
             current_user=actor,
             session=session,

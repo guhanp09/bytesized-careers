@@ -114,7 +114,7 @@ async def test_apply_notifies_recruiter_in_app_and_queues_mock_email(client: Asy
     owner_outbox = await _outbox_for(client, "n_owner@example.com")
     new_applicant_rows = [row for row in owner_outbox if row["event_key"] == "new_applicant"]
     assert len(new_applicant_rows) == 1
-    assert new_applicant_rows[0]["status"] == "mocked"  # queued + mocked, NOT "sent"
+    assert new_applicant_rows[0]["status"] == "queued"
 
     # The applicant's own self-confirmation is in-app only (no email noise).
     applicant_notifs = await client.get(
@@ -152,7 +152,7 @@ async def test_shared_status_change_notifies_applicant_with_mock_email(client: A
     applicant_outbox = await _outbox_for(client, "s_applicant@example.com")
     status_rows = [row for row in applicant_outbox if row["event_key"] == "application_status_changed"]
     assert len(status_rows) == 1
-    assert status_rows[0]["status"] == "mocked"
+    assert status_rows[0]["status"] == "queued"
 
 
 async def test_job_posted_notifies_poster(client: AsyncClient) -> None:
@@ -202,11 +202,11 @@ async def test_email_delivery_disabled_never_sends_real_email(client: AsyncClien
     owner_token = await _register_verified_login(client, email="nosend_owner@example.com", username="nosend_owner")
     await _post_published_job(client, owner_token, "Editor for travel channel")
 
-    # job_posted_successfully has email enabled, but delivery is mocked, not sent.
+    # Delivery intent is durable; a post-commit worker decides whether to mock/send it.
     assert sent == []
     outbox = await _outbox_for(client, "nosend_owner@example.com")
     job_rows = [row for row in outbox if row["event_key"] == "job_posted_successfully"]
-    assert job_rows and all(row["status"] == "mocked" for row in job_rows)
+    assert job_rows and all(row["status"] == "queued" for row in job_rows)
 
     # The gate flips on only when BOTH the flag is on and EMAIL_MODE is smtp.
     monkeypatch.setattr("app.notifications.email.settings.email_delivery_enabled", True)

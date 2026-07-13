@@ -7,6 +7,8 @@ from app.models.job import Job
 from app.models.marketplace import (
     Entitlement,
     InteractionPrivateNote,
+    InteractionStatusEvent,
+    InteractionTransitionRequest,
     JobApplication,
     Notification,
     Report,
@@ -46,6 +48,8 @@ __all__ = [
     "Job",
     "JobApplication",
     "InteractionPrivateNote",
+    "InteractionStatusEvent",
+    "InteractionTransitionRequest",
     "Notification",
     "OAuthAccount",
     "PasswordResetToken",

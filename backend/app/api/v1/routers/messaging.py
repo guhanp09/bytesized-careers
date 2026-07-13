@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 from uuid import UUID
 
@@ -10,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
-from app.models import Conversation, Job, JobApplication, Message, TalentInterest, TalentListing, User, UserBlock
-from app.notifications import dispatch_notification
+from app.models import Conversation, JobApplication, Message, TalentInterest, User, UserBlock
 from app.realtime import events as realtime_events
 from app.services import blocking_service
 from app.services import messaging_service as ms
+from app.services import interaction_transition_service as transitions
 from app.services import review_service
 from app.schemas.reviews import EngagementSummary
 
@@ -68,14 +69,9 @@ class SendMessageRequest(BaseModel):
 class SendStatusUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    stage: Literal[
-        "shortlisted",
-        "interviewing",
-        "hired",
-        "rejected",
-        "contacted",
-        "declined",
-    ]
+    stage: Literal["shortlisted", "rejected"]
+    expected_version: int = Field(ge=1)
+    idempotency_key: UUID
 
 
 class UserBlockRead(BaseModel):
@@ -315,137 +311,66 @@ async def send_status_update(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MessageRead:
-    """Post a trusted pipeline event after verifying its source record.
+    """Compatibility route for deliberately sharing a private application decision.
 
-    Clients provide only the stage. The backend verifies that the caller manages
-    the application/request and that the source is currently in that stage, then
-    generates the platform copy. Ordinary message calls cannot choose a trusted
-    message kind or forge arbitrary system text.
+    Consequential outcomes are shared by their canonical transition endpoints.
+    This route is intentionally limited to optional Shortlisted/Rejected updates
+    and still requires versioning plus an idempotency key.
     """
 
     conversation = await _require_conversation(session, conversation_id)
     _require_participant(conversation, current_user)
 
-    if conversation.application_id is not None:
-        application = await _require_application(session, conversation.application_id)
-        if application.job_owner_user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Application owner required",
-            )
-        notices = {
-            "shortlisted": "Shortlisted",
-            "interviewing": "Invited to interview",
-            "hired": "Hired",
-            "rejected": "Not moving forward",
-        }
-        prefix = notices.get(payload.stage)
-        if prefix is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Stage is not valid for an application",
-            )
-        if application.status != payload.stage:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Application is no longer in that stage",
-            )
-        if application.participant_status == payload.stage:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This application update has already been shared",
-            )
-        job_title = (
-            await session.execute(select(Job.title).where(Job.id == application.job_id))
-        ).scalar_one_or_none()
-        body = f"{prefix} for “{job_title}”." if job_title else f"{prefix}."
-        application.participant_status = payload.stage
-        recipient_user_id = application.applicant_user_id
-        notification_event = "application_status_changed"
-        notification_title = "Application status updated"
-        notification_category = "application"
-        notification_resource_type = "job_application"
-        notification_resource_id = str(application.id)
-        notification_url = f"/applications?view=inbox&mode=talent&thread={application.id}"
-    elif conversation.talent_interest_id is not None:
-        interest = await _require_interest(session, conversation.talent_interest_id)
-        if interest.owner_user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Talent listing owner required",
-            )
-        notices = {
-            "contacted": "Hiring request accepted.",
-            "declined": "Hiring request declined.",
-        }
-        body = notices.get(payload.stage)
-        if body is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Stage is not valid for a hiring request",
-            )
-        if interest.status != payload.stage:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Hiring request is no longer in that stage",
-            )
-        if interest.participant_status == payload.stage:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This hiring-request update has already been shared",
-            )
-        # Confirm the listing still exists. This also prevents an orphaned request
-        # from producing a trusted-looking event after its context was removed.
-        listing_exists = (
-            await session.execute(
-                select(TalentListing.id).where(TalentListing.id == interest.talent_listing_id)
-            )
-        ).scalar_one_or_none()
-        if listing_exists is None:
-            raise HTTPException(status_code=409, detail="Talent listing is no longer available")
-        interest.participant_status = payload.stage
-        recipient_user_id = interest.recruiter_user_id
-        notification_event = "talent_interest_status_changed"
-        notification_title = "Hiring request updated"
-        notification_category = "talent"
-        notification_resource_type = "talent_interest"
-        notification_resource_id = str(interest.id)
-        notification_url = f"/applications?view=inbox&mode=recruiter&thread={interest.id}"
-    else:
-        raise HTTPException(status_code=409, detail="Conversation context is unavailable")
-
-    try:
-        message = await ms.post_message(
-            session,
-            conversation,
-            current_user,
-            body,
-            kind="status_update",
-            allow_closed=True,
-            allow_blocked=True,
-            notify_recipient=False,
-            commit=False,
-            metadata={"stage": payload.stage},
-        )
-    except ms.InteractionBlocked as exc:
+    if conversation.application_id is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This conversation is unavailable for new messages",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Hiring-request outcomes are shared by the Accepted or Declined action.",
+        )
+    try:
+        result = await transitions.share_application_status(
+            session,
+            application_id=conversation.application_id,
+            actor=current_user,
+            requested_status=payload.stage,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        await session.commit()
+    except transitions.TransitionForbidden as exc:
+        await session.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except transitions.StaleTransition as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": "Changed elsewhere — latest status loaded.",
+                "current_status": exc.current_status,
+                "current_version": exc.current_version,
+            },
         ) from exc
-    await dispatch_notification(
-        session,
-        event_key=notification_event,
-        recipient_user_id=recipient_user_id,
-        title=notification_title,
-        body=body,
-        actor_user_id=current_user.id,
-        category=notification_category,
-        resource_type=notification_resource_type,
-        resource_id=notification_resource_id,
-        action_url=notification_url,
-        payload={"status": payload.stage},
-    )
-    await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+    event = result.event
+    if event is None:
+        raise HTTPException(status_code=409, detail="This decision was already shared.")
+    client_message_id = uuid.uuid5(uuid.NAMESPACE_URL, f"creatorjobs:status:{event.id}")
+    message = (
+        await session.execute(
+            select(Message).where(
+                Message.conversation_id == conversation.id,
+                Message.client_message_id == client_message_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=409, detail="The shared decision is saved. Refresh this conversation.")
     await realtime_events.emit_message_created(
         session, conversation=conversation, message=message
     )

@@ -83,11 +83,11 @@ test.describe("applications pipeline view", () => {
     // so empty stages never render as wasted section blocks.
     await expect(board.getByTestId("pipeline-stage-chip-new")).toContainText("2");
     await expect(board.getByTestId("pipeline-stage-chip-reviewing")).toContainText("0");
-    await expect(board.getByTestId("pipeline-stage-chip-contacted")).toContainText("1");
+    await expect(board.getByTestId("pipeline-stage-chip-accepted")).toContainText("1");
     await expect(board.getByTestId("pipeline-group-reviewing")).toContainText("No one in reviewing yet.");
     // Sections stay visible even at zero, while populated stages still show their cards.
     await expect(board.getByTestId("pipeline-group-new").getByTestId("pipeline-row")).toHaveCount(2);
-    await expect(board.getByTestId("pipeline-group-contacted").getByTestId("pipeline-row")).toHaveCount(1);
+    await expect(board.getByTestId("pipeline-group-accepted").getByTestId("pipeline-row")).toHaveCount(1);
     await expect(board.getByTestId("pipeline-group-declined").getByTestId("pipeline-row")).toHaveCount(1);
   });
 
@@ -370,6 +370,9 @@ test.describe("applications pipeline view", () => {
     await aarav.dispatchEvent("dragstart", { dataTransfer });
     await hiredChip.dispatchEvent("dragover", { dataTransfer });
     await hiredChip.dispatchEvent("drop", { dataTransfer });
+    const confirmation = page.getByRole("dialog", { name: "Hire this candidate?" });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm hire" }).click();
 
     await expect(hiredChip).toContainText("1");
     await expect(board.getByTestId("pipeline-group-hired").getByTestId("pipeline-row")).toHaveCount(1);
@@ -478,6 +481,9 @@ test.describe("applications pipeline view", () => {
       .filter({ hasText: "Aarav Mehta" });
     await aarav.getByTestId("pipeline-stage-menu").click();
     await page.getByTestId("pipeline-stage-option-hired").click();
+    const confirmation = page.getByRole("dialog", { name: "Hire this candidate?" });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm hire" }).click();
     await expect(summary).toHaveText("6 applicants · 1 new · 1 hired");
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
 
@@ -586,9 +592,8 @@ test.describe("applications pipeline view", () => {
 
     // Reviewing is internal tracking — no prompt, nothing sent.
     await aaravIn("new").getByTestId("pipeline-stage-menu").click();
-    await expect(page.getByTestId("pipeline-stage-menu-group-private-tracking")).toBeVisible();
-    await expect(page.getByTestId("pipeline-stage-menu-group-optional-update")).toBeVisible();
-    await expect(page.getByTestId("pipeline-stage-menu-group-shared-outcome")).toBeVisible();
+    await expect(page.getByTestId("pipeline-stage-menu-group-manage-privately")).toBeVisible();
+    await expect(page.getByTestId("pipeline-stage-menu-group-share-a-decision")).toBeVisible();
     await page.getByTestId("pipeline-stage-option-reviewing").click();
     await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
@@ -647,7 +652,7 @@ test.describe("applications pipeline view", () => {
     ).toContainText("Invited to interview");
   });
 
-  test("a bulk shared outcome publishes without a redundant prompt", async ({ page }) => {
+  test("a bulk private outcome saves without prompting to contact everyone", async ({ page }) => {
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
     await board.getByTestId("pipeline-group-new").getByLabel("Select all in New").check();

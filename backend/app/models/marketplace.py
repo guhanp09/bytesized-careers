@@ -69,6 +69,12 @@ class JobApplication(Base):
     participant_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="new", server_default="new", index=True
     )
+    status_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    legacy_archive_resolution_required: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     # Private annotation by the job owner managing this applicant. Never shown
     # to the applicant — sender-facing responses blank it.
     manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -184,6 +190,12 @@ class TalentInterest(Base):
     participant_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="new", server_default="new", index=True
     )
+    status_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    legacy_archive_resolution_required: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     # Private annotation by the talent (listing owner) managing this hiring
     # request. Never shown to the recruiter — sender-facing responses blank it.
     manager_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -252,8 +264,96 @@ class Notification(Base):
     metadata_json: Mapped[dict] = mapped_column(
         json_obj_type, nullable=False, default=dict, server_default="{}"
     )
+    dedupe_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InteractionStatusEvent(Base):
+    """Durable private/shared workflow history and transition idempotency record."""
+
+    __tablename__ = "interaction_status_events"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_status_event_idempotency"),
+        UniqueConstraint(
+            "interaction_type",
+            "interaction_id",
+            "status_version",
+            "event_kind",
+            "audience",
+            name="uq_status_event_transition_audience",
+        ),
+        CheckConstraint(
+            "interaction_type IN ('application', 'hiring_request')",
+            name="ck_status_event_interaction_type",
+        ),
+        CheckConstraint(
+            "audience IN ('manager_only', 'participants')",
+            name="ck_status_event_audience",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    interaction_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    interaction_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    status_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    audience: Mapped[str] = mapped_column(String(20), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    outcome_json: Mapped[dict] = mapped_column(
+        json_obj_type, nullable=False, default=dict, server_default="{}"
+    )
+    metadata_json: Mapped[dict] = mapped_column(
+        json_obj_type, nullable=False, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+
+class InteractionTransitionRequest(Base):
+    """Durable binding between an idempotency key and one transition request."""
+
+    __tablename__ = "interaction_transition_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "interaction_type IN ('application', 'hiring_request')",
+            name="ck_transition_request_interaction_type",
+        ),
+        CheckConstraint(
+            "action IN ('transition', 'communicate')",
+            name="ck_transition_request_action",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    interaction_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    interaction_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    requested_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    expected_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome_json: Mapped[dict] = mapped_column(
+        json_obj_type, nullable=False, default=dict, server_default="{}"
+    )
+    status_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("interaction_status_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
 
 
 class Report(Base):

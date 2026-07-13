@@ -1,0 +1,16 @@
+services:
+  interaction-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: creatorjobs_interaction_test
+      POSTGRES_USER: creatorjobs_test
+      POSTGRES_PASSWORD: creatorjobs_test
+    ports:
+      - "127.0.0.1:55439:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creatorjobs_test -d creatorjobs_interaction_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

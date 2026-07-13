@@ -104,8 +104,9 @@ test.describe("/you Applications workspace", () => {
     const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
     await page.getByRole("menuitem", { name: "Accept request" }).click();
-    await expect(detail.getByText("Accept this hiring request?")).toBeVisible();
-    await detail.getByRole("button", { name: "Confirm acceptance" }).click();
+    const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm acceptance" }).click();
     // Status moves to the app-bar chip and terminal manager actions disappear.
     await expect(detail.getByText("Accepted", { exact: true })).toBeVisible();
     await openOverflow(page);
@@ -126,7 +127,7 @@ test.describe("/you Applications workspace", () => {
     await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(0);
 
     await page.getByTestId("applications-filter-archived").click();
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(1);
 
     await page.getByTestId("applications-filter-all").click();
     await expect(rows).toHaveCount(9);
@@ -267,7 +268,7 @@ test.describe("/you Applications workspace", () => {
     ).toBeVisible();
   });
 
-  test("marking a received application not selected uses confirmation and closes actions", async ({ page }) => {
+  test("marking an application not selected confirms and keeps the private decision revisitable", async ({ page }) => {
     await openApplicationsTab(page);
     await page.getByRole("button", { name: "Recruiter", exact: true }).click();
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
@@ -275,13 +276,17 @@ test.describe("/you Applications workspace", () => {
     const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
     await page.getByRole("menuitem", { name: "Not selected", exact: true }).click();
-    await expect(detail.getByText("Mark this application as not selected?")).toBeVisible();
+    const confirmation = page.getByRole("dialog", {
+      name: "Mark this application as not selected?",
+    });
+    await expect(confirmation).toBeVisible();
 
-    await detail.getByRole("button", { name: "Confirm not selected" }).click();
+    await confirmation.getByRole("button", { name: "Confirm not selected" }).click();
     await expect(detail.getByText("Declined", { exact: true })).toBeVisible();
-    // Terminal outcome → no active workflow actions remain in the menu.
+    // The private decision can still be revised or explicitly shared later.
     await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Shortlist privately" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Shortlist privately" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Share decision with Aarav" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Not selected", exact: true })).toHaveCount(0);
   });
 

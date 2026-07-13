@@ -5,7 +5,7 @@ import type {
   BackendTalentListing,
 } from "./backendClient";
 import type { FirstMessageAnswers } from "./firstMessageRequirements";
-import { formatTalentListingExperience, formatTalentRate } from "./talentListing";
+import { formatTalentListingExperience, formatTalentRate } from "./talentListing.ts";
 import type { Job } from "./types";
 
 export type InteractionMode = "talent" | "hiring";
@@ -98,6 +98,12 @@ export type OwnerInteraction = {
    * items derive it via applicationPipeline.backendStatusOf's reverse map.
    */
   backendStatus?: string | null;
+  /** Optimistic-concurrency version supplied by the authoritative backend. */
+  statusVersion?: number;
+  /** Status already communicated to the counterparty. */
+  participantBackendStatus?: string | null;
+  /** Per-viewer organization state; independent from lifecycle status. */
+  archivedAt?: string | null;
   /** The manager's private note on a received item. Never present on sent items. */
   managerNote?: string | null;
   /**
@@ -137,16 +143,8 @@ export type OwnerInteraction = {
   timeline: InteractionTimelineEvent[];
 };
 
-export const ARCHIVED_INTERACTION_STATUSES: InteractionStatus[] = [
-  "accepted",
-  "hired",
-  "declined",
-  "withdrawn",
-  "closed",
-];
-
 export function isArchivedInteraction(item: OwnerInteraction): boolean {
-  return ARCHIVED_INTERACTION_STATUSES.includes(item.status);
+  return Boolean(item.archivedAt) || item.backendStatus === "archived";
 }
 
 export function interactionStatusLabel(status: InteractionStatus): string {
@@ -364,6 +362,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     direction: "sent",
     kind: "application",
     status: "declined",
+    archivedAt: "2026-05-22T09:00:00.000Z",
     title: "Thumbnail designer (CTR-focused, 2–3 concepts)",
     counterpartyName: "Tech Channel",
     counterpartyAvatarUrl: "https://picsum.photos/seed/tech/96/96",
@@ -1085,6 +1084,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     direction: "received",
     kind: "application",
     status: "closed",
+    archivedAt: "2026-05-22T09:00:00.000Z",
     title: "Sana Khan",
     counterpartyName: "Sana Khan",
     createdAtLabel: "1mo ago",
@@ -1467,7 +1467,7 @@ function interestStatusToInteraction(
       return direction === "sent" ? "pending" : "new";
     case "reviewing":
       return "viewed";
-    case "contacted":
+    case "accepted":
       return "accepted";
     case "declined":
       return "declined";
@@ -1483,13 +1483,42 @@ function liveTimeline(
   createdLabel: string,
   createdAt: string,
   updatedAt: string,
-  status: InteractionStatus
+  status: InteractionStatus,
+  history: Array<{
+    id: string;
+    new_status: string;
+    event_kind: string;
+    audience: "manager_only" | "participants";
+    created_at: string;
+  }> = []
 ): InteractionTimelineEvent[] {
   const events: InteractionTimelineEvent[] = [
     { id: `${id}-created`, label: createdLabel, at: relativeTimeLabel(createdAt) },
   ];
+  const persisted = history
+    .filter((event) => event.event_kind !== "integrity_issue")
+    .map((event) => {
+      const display = ({
+        reviewing: "Reviewing",
+        shortlisted: "Shortlisted",
+        interviewing: "Interviewing",
+        hired: "Hired",
+        rejected: "Not selected",
+        accepted: "Accepted",
+        declined: "Declined",
+        withdrawn: "Withdrawn",
+        archived: "Archived",
+      } as Record<string, string>)[event.new_status] ?? event.new_status;
+      const suffix = event.event_kind === "communicated"
+        ? " shared"
+        : event.audience === "manager_only"
+          ? " saved privately"
+          : "";
+      return { id: event.id, label: `${display}${suffix}`, at: relativeTimeLabel(event.created_at) };
+    });
+  events.push(...persisted);
   const settledStatuses: InteractionStatus[] = ["new", "pending"];
-  if (!settledStatuses.includes(status) && updatedAt && updatedAt !== createdAt) {
+  if (persisted.length === 0 && !settledStatuses.includes(status) && updatedAt && updatedAt !== createdAt) {
     events.push({ id: `${id}-status`, label: interactionStatusLabel(status), at: relativeTimeLabel(updatedAt) });
   }
   return events;
@@ -1575,6 +1604,9 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         kind: "application",
         status,
         backendStatus: application.status,
+        statusVersion: application.status_version,
+        participantBackendStatus: application.participant_status,
+        archivedAt: application.archived_at,
         title: job?.title || "Job application",
         counterpartyName: job?.channel?.name || "Recruiter",
         counterpartyUserId: application.job_owner_user_id || null,
@@ -1589,7 +1621,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
           "Application sent",
           application.created_at,
           application.updated_at,
-          status
+          status,
+          application.status_history
         ),
       },
     });
@@ -1611,6 +1644,9 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         kind: "application",
         status,
         backendStatus: application.status,
+        statusVersion: application.status_version,
+        participantBackendStatus: application.participant_status,
+        archivedAt: application.archived_at,
         managerNote: application.manager_note || null,
         title: applicantName,
         counterpartyName: applicantName,
@@ -1640,7 +1676,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
           "Application received",
           application.created_at,
           application.updated_at,
-          status
+          status,
+          application.status_history
         ),
       },
     });
@@ -1659,6 +1696,9 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         kind: "hiring_request",
         status,
         backendStatus: interest.status,
+        statusVersion: interest.status_version,
+        participantBackendStatus: interest.participant_status,
+        archivedAt: interest.archived_at,
         title: talentName,
         contextLabel: listing?.title || null,
         counterpartyName: talentName,
@@ -1669,7 +1709,14 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         message: interest.note || "",
         firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         talent: listing ? talentSnapshotFromListing(listing) : null,
-        timeline: liveTimeline(interest.id, "Request sent", interest.created_at, interest.updated_at, status),
+        timeline: liveTimeline(
+          interest.id,
+          "Request sent",
+          interest.created_at,
+          interest.updated_at,
+          status,
+          interest.status_history
+        ),
       },
     });
   }
@@ -1692,6 +1739,9 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         kind: "hiring_request",
         status,
         backendStatus: interest.status,
+        statusVersion: interest.status_version,
+        participantBackendStatus: interest.participant_status,
+        archivedAt: interest.archived_at,
         managerNote: interest.manager_note || null,
         title: relatedJob?.title || "Hiring request",
         counterpartyName: recruiterName,
@@ -1715,7 +1765,14 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         // The context card is the viewer's own listing the recruiter is interested in.
         talent: listing ? { ...talentSnapshotFromListing(listing), isOwnListing: true } : null,
         sourceListingTitle: listing?.title || null,
-        timeline: liveTimeline(interest.id, "Request received", interest.created_at, interest.updated_at, status),
+        timeline: liveTimeline(
+          interest.id,
+          "Request received",
+          interest.created_at,
+          interest.updated_at,
+          status,
+          interest.status_history
+        ),
       },
     });
   }

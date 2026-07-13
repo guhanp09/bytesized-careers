@@ -120,14 +120,14 @@ test("workspace controls switch real views, retain an empty mode, and open statu
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(moreActions).toBeFocused();
 
-  await page.route("**/api/v1/applications/*/status", (route) =>
+  await page.route("**/api/v1/applications/*/transition", (route) =>
     route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Temporary outage"}' })
   );
   await moreActions.press("Enter");
   await page.getByRole("menuitem", { name: "Move to Reviewing" }).click();
   await expect(page.getByTestId("applications-detail")).toContainText("Temporary outage");
   await expect(page.getByTestId("applications-detail-header")).toContainText("Shortlisted");
-  await page.unroute("**/api/v1/applications/*/status");
+  await page.unroute("**/api/v1/applications/*/transition");
 });
 
 test("mobile workspace keeps view, mode, detail, and status controls reachable", async ({ page }) => {
@@ -149,6 +149,106 @@ test("mobile workspace keeps view, mode, detail, and status controls reachable",
   await page.keyboard.press("Escape");
   await detail.getByRole("button", { name: "Back to applications" }).click();
   await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+});
+
+test("Hired from Inbox is authoritative, persistent, shared once, and stays messageable", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  const detail = page.getByTestId("applications-detail");
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByText("Manage privately", { exact: true })).toBeVisible();
+  await expect(page.getByText("Share a decision", { exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Hire", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Hire this candidate?" });
+  await expect(confirmation).toContainText("creates the work engagement");
+  await confirmation.getByRole("button", { name: "Confirm hire" }).click();
+  await expect(detail.getByText("Hired", { exact: true })).toBeVisible();
+  await expect(detail).toContainText("Shared with Priya");
+  await expect(detail.getByLabel("Reply message")).toBeVisible();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Hired", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId("applications-detail")).toContainText("Hired for");
+  await expect(page.getByTestId("applications-detail").getByLabel("Reply message")).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+  const talentDetail = page.getByTestId("applications-detail");
+  await expect(
+    talentDetail.getByTestId("applications-detail-header").getByText("Hired", { exact: true })
+  ).toBeVisible();
+  await expect(talentDetail).toContainText("Hired for");
+  await expect(talentDetail.getByLabel("Reply message")).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByTestId("pipeline-group-hired").getByTestId("pipeline-row").filter({ hasText: "Priya Nair" })
+  ).toBeVisible();
+
+  await returnToController(page);
+  await page.getByRole("button", { name: "Profile", exact: true }).click();
+  await page.getByRole("button", { name: "Logout", exact: true }).click();
+  await expect(page).toHaveURL(`${QA_BASE_URL}/`, { timeout: 20_000 });
+  await loginController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Hired", { exact: true })
+  ).toBeVisible();
+});
+
+test("Hired from Pipeline confirms before committing and agrees with Inbox", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const priya = page
+    .getByTestId("pipeline-group-shortlisted")
+    .getByTestId("pipeline-row")
+    .filter({ hasText: "Priya Nair" });
+  await priya.getByTestId("pipeline-stage-menu").click();
+  await expect(page.getByText("Manage privately", { exact: true })).toBeVisible();
+  await expect(page.getByText("Share a decision", { exact: true })).toBeVisible();
+  await page.getByTestId("pipeline-stage-option-hired").click();
+  const confirmation = page.getByRole("dialog", { name: "Hire this candidate?" });
+  await confirmation.getByRole("button", { name: "Confirm hire" }).click();
+  await expect(page.getByText("Shared with Priya", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId("pipeline-group-hired").getByTestId("pipeline-row").filter({ hasText: "Priya Nair" })
+  ).toBeVisible();
+
+  await page.getByTestId("applications-view-inbox").click();
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Hired", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId("applications-detail")).toContainText("Hired for");
 });
 
 test("internal application stages stay private while shared outcomes cross personas", async ({ page }) => {
@@ -600,17 +700,13 @@ test("a hiring request acceptance carries back to recruiter outreach", async ({ 
     .filter({ hasText: "Finance Simplified" });
   await expect(request).toBeVisible();
   await request.getByTestId("pipeline-stage-menu").click();
-  await page.getByTestId("pipeline-stage-option-contacted").click();
-  const prompt = page.getByTestId("stage-notify-prompt");
-  if (await prompt.isVisible()) {
-    await prompt.getByTestId("stage-notify-send").click();
-    await expect(prompt).toContainText(/posted to the thread/i);
-    const done = prompt.getByTestId("stage-notify-done");
-    if (await done.isVisible()) await done.click();
-  }
+  await page.getByTestId("pipeline-stage-option-accepted").click();
+  const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Confirm acceptance" }).click();
   await expect(
     page
-      .getByTestId("pipeline-group-contacted")
+      .getByTestId("pipeline-group-accepted")
       .getByTestId("pipeline-row")
       .filter({ hasText: "Finance Simplified" })
   ).toBeVisible();
@@ -622,7 +718,65 @@ test("a hiring request acceptance carries back to recruiter outreach", async ({ 
   });
   await expect(
     page
-      .getByTestId("pipeline-group-contacted")
+      .getByTestId("pipeline-group-accepted")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Aditi Verma" })
+  ).toBeVisible();
+});
+
+test("Accepted from Inbox is authoritative, persistent, shared once, and stays messageable", async ({
+  page,
+}) => {
+  await loginController(page);
+  await restoreScenario(page, "hiring-requests", "RESTORE REQUESTS");
+  await switchPersona(page, "both-sides", "Aditi Verma");
+  await page.goto("/applications?view=inbox&mode=talent", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("applications-filter-received").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Finance Simplified" })
+    .first()
+    .click();
+
+  const detail = page.getByTestId("applications-detail");
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Accept request", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
+  await confirmation.getByRole("button", { name: "Confirm acceptance" }).click();
+  await expect(
+    detail.getByTestId("applications-detail-header").getByText("Accepted", { exact: true })
+  ).toBeVisible();
+  await expect(detail).toContainText("Hiring request accepted");
+  await expect(detail.getByLabel("Reply message")).toBeVisible();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Accepted", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId("applications-detail").getByLabel("Reply message")).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("applications-filter-sent").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Aditi Verma" }).first().click();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  await expect(
+    recruiterDetail.getByTestId("applications-detail-header").getByText("Accepted", { exact: true })
+  ).toBeVisible();
+  await expect(recruiterDetail).toContainText("Hiring request accepted");
+  await expect(recruiterDetail.getByLabel("Reply message")).toBeVisible();
+
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=sent", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page
+      .getByTestId("pipeline-group-accepted")
       .getByTestId("pipeline-row")
       .filter({ hasText: "Aditi Verma" })
   ).toBeVisible();

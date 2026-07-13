@@ -138,7 +138,7 @@ async def _accepted_talent_interest(
     accepted = await client.patch(
         f"/api/v1/talent-interests/{interest_id}/status",
         headers=_auth(talent_token),
-        json={"status": "contacted"},
+        json={"status": "accepted"},
     )
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["engagement"]["status"] == "ready_to_start"

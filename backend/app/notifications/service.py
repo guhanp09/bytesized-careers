@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Notification, User
@@ -40,6 +41,8 @@ async def dispatch_notification(
     action_url: str | None = None,
     payload: dict | None = None,
     recipient_email: str | None = None,
+    dedupe_key: str | None = None,
+    strict_outbox: bool = False,
 ) -> Notification | None:
     """Create an in-app notification (+ optional mocked email) for an event.
 
@@ -47,6 +50,15 @@ async def dispatch_notification(
     """
     if recipient_user_id is None:
         return None
+
+    if dedupe_key:
+        existing = (
+            await session.execute(
+                select(Notification).where(Notification.dedupe_key == dedupe_key)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
 
     event = get_event(event_key)
     if event is None:
@@ -66,6 +78,7 @@ async def dispatch_notification(
         resource_id=resource_id,
         action_url=action_url,
         metadata_json=payload or {},
+        dedupe_key=dedupe_key,
     )
     session.add(notification)
 
@@ -82,8 +95,11 @@ async def dispatch_notification(
                 body=body,
                 action_url=action_url,
                 payload=payload or {},
+                dedupe_key=f"{dedupe_key}:email" if dedupe_key else None,
             )
         except Exception:
+            if strict_outbox:
+                raise
             logger.exception("notification_email_queue_failed", extra={"event_key": event_key})
 
     return notification
@@ -99,6 +115,7 @@ async def _queue_email_for_event(
     body: str | None,
     action_url: str | None,
     payload: dict,
+    dedupe_key: str | None,
 ) -> None:
     missing = missing_payload_fields(event_key, payload)
     if missing:
@@ -127,5 +144,6 @@ async def _queue_email_for_event(
             cta_url=action_url,
             user_id=recipient_user_id,
             metadata=payload,
+            dedupe_key=dedupe_key,
         ),
     )

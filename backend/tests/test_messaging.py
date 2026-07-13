@@ -293,7 +293,11 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
     sent = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=owner_h,
-        json={"stage": "shortlisted"},
+        json={
+            "stage": "shortlisted",
+            "expected_version": moved.json()["status_version"],
+            "idempotency_key": str(uuid4()),
+        },
     )
     assert sent.status_code == 201
     assert sent.json()["kind"] == "status_update"
@@ -307,7 +311,11 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
     forbidden = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=applicant_h,
-        json={"stage": "shortlisted"},
+        json={
+            "stage": "shortlisted",
+            "expected_version": moved.json()["status_version"],
+            "idempotency_key": str(uuid4()),
+        },
     )
     assert forbidden.status_code == 403
 
@@ -315,7 +323,11 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
     stale = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=owner_h,
-        json={"stage": "interviewing"},
+        json={
+            "stage": "shortlisted",
+            "expected_version": moved.json()["status_version"] + 1,
+            "idempotency_key": str(uuid4()),
+        },
     )
     assert stale.status_code == 409
 
@@ -485,13 +497,23 @@ async def test_terminal_outcomes_close_chat_but_hired_work_stays_open(client: As
     )
     assert still_open.status_code == 201
 
-    assert (
-        await client.patch(
+    rejected = await client.patch(
             f"/api/v1/applications/{rejected_id}/status",
             headers=owner_h,
             json={"status": "rejected"},
         )
-    ).status_code == 200
+    assert rejected.status_code == 200
+    rejected_version = rejected.json()["status_version"]
+    shared_rejection = await client.post(
+        f"/api/v1/applications/{rejected_id}/status-communication",
+        headers=owner_h,
+        json={
+            "status": "rejected",
+            "expected_version": rejected_version,
+            "idempotency_key": str(uuid4()),
+        },
+    )
+    assert shared_rejection.status_code == 200
     detail = await client.get(
         f"/api/v1/me/conversations/{rejected_conversation}", headers=owner_h
     )
@@ -505,11 +527,16 @@ async def test_terminal_outcomes_close_chat_but_hired_work_stays_open(client: As
     assert final_events[0]["body"] == "Not moving forward for “Editor for finance channel”."
 
     duplicate_event = await client.post(
-        f"/api/v1/me/conversations/{rejected_conversation}/status-update",
+        f"/api/v1/applications/{rejected_id}/status-communication",
         headers=owner_h,
-        json={"stage": "rejected"},
+        json={
+            "status": "rejected",
+            "expected_version": rejected_version,
+            "idempotency_key": str(uuid4()),
+        },
     )
-    assert duplicate_event.status_code == 409
+    assert duplicate_event.status_code == 200
+    assert duplicate_event.json()["outcome"] == "already_in_state"
 
     closed = await client.post(
         f"/api/v1/me/conversations/{rejected_conversation}/messages",
@@ -561,10 +588,11 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
         declined_recruiter, "Is this still available?"
     )
 
-    accepted = await client.patch(
-        f"/api/v1/talent-interests/{accepted_id}/status",
+    accepted_key = str(uuid4())
+    accepted = await client.post(
+        f"/api/v1/talent-interests/{accepted_id}/transition",
         headers=creator_h,
-        json={"status": "contacted"},
+        json={"status": "accepted", "expected_version": 1, "idempotency_key": accepted_key},
     )
     assert accepted.status_code == 200
     accepted_detail = await client.get(
@@ -578,11 +606,12 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
     assert len(accepted_events) == 1
     assert accepted_events[0]["body"] == "Hiring request accepted."
     accepted_duplicate = await client.post(
-        f"/api/v1/me/conversations/{accepted_conversation}/status-update",
+        f"/api/v1/talent-interests/{accepted_id}/transition",
         headers=creator_h,
-        json={"stage": "contacted"},
+        json={"status": "accepted", "expected_version": 1, "idempotency_key": accepted_key},
     )
-    assert accepted_duplicate.status_code == 409
+    assert accepted_duplicate.status_code == 200
+    assert accepted_duplicate.json()["outcome"] == "already_in_state"
     assert (
         await client.post(
             f"/api/v1/me/conversations/{accepted_conversation}/messages",
@@ -591,10 +620,11 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
         )
     ).status_code == 201
 
-    declined = await client.patch(
-        f"/api/v1/talent-interests/{declined_id}/status",
+    declined_key = str(uuid4())
+    declined = await client.post(
+        f"/api/v1/talent-interests/{declined_id}/transition",
         headers=creator_h,
-        json={"status": "declined"},
+        json={"status": "declined", "expected_version": 1, "idempotency_key": declined_key},
     )
     assert declined.status_code == 200
     declined_detail = await client.get(
@@ -608,11 +638,12 @@ async def test_accepted_hiring_request_stays_open_and_decline_event_is_trusted(
     assert len(declined_events) == 1
     assert declined_events[0]["body"] == "Hiring request declined."
     declined_duplicate = await client.post(
-        f"/api/v1/me/conversations/{declined_conversation}/status-update",
+        f"/api/v1/talent-interests/{declined_id}/transition",
         headers=creator_h,
-        json={"stage": "declined"},
+        json={"status": "declined", "expected_version": 1, "idempotency_key": declined_key},
     )
-    assert declined_duplicate.status_code == 409
+    assert declined_duplicate.status_code == 200
+    assert declined_duplicate.json()["outcome"] == "already_in_state"
     assert (
         await client.post(
             f"/api/v1/me/conversations/{declined_conversation}/messages",

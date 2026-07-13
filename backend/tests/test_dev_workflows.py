@@ -94,7 +94,7 @@ async def test_reply_workflows_update_status_and_notify_counterparty(client: Asy
     assert reply.status_code == 200, reply.text
     assert reply.json()["ok"] is True
 
-    reply2 = await client.post(f"{WF}/reply-to-hiring-request", json={"status": "contacted"})
+    reply2 = await client.post(f"{WF}/reply-to-hiring-request", json={"status": "accepted"})
     assert reply2.status_code == 200, reply2.text
     assert reply2.json()["ok"] is True
 

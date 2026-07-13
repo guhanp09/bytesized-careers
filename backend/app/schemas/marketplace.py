@@ -14,7 +14,7 @@ ApplicationStatus = Literal[
 ]
 TalentListingStatus = Literal["draft", "published", "paused", "closed", "archived", "featured"]
 TalentInterestStatus = Literal[
-    "new", "reviewing", "contacted", "declined", "archived", "withdrawn"
+    "new", "reviewing", "accepted", "declined", "archived", "withdrawn"
 ]
 ReportTargetType = Literal["job", "talent_listing", "profile", "message", "review"]
 ReportStatus = Literal["open", "dismissed", "action_taken"]
@@ -59,9 +59,27 @@ class JobApplicationCreate(BaseModel):
 # "withdrawn" stays sender-only (its own endpoint), and "new" is the arrival
 # state rather than a stage a manager moves things into.
 ManagedApplicationStatus = Literal[
-    "reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"
+    "reviewing", "shortlisted", "interviewing", "hired", "rejected"
 ]
-ManagedInterestStatus = Literal["reviewing", "contacted", "declined", "archived"]
+ManagedInterestStatus = Literal["reviewing", "accepted", "declined"]
+BulkApplicationStatus = Literal["reviewing", "shortlisted", "rejected"]
+BulkInterestStatus = Literal["reviewing"]
+
+
+class InteractionTransitionRequest(BaseModel):
+    status: str = Field(min_length=2, max_length=32)
+    expected_version: int = Field(ge=1)
+    idempotency_key: uuid.UUID
+
+
+class InteractionArchiveUpdate(BaseModel):
+    archived: bool
+
+
+class InteractionTransitionOutcome(BaseModel):
+    outcome: Literal["transitioned", "already_in_state"]
+    current_status: str
+    status_version: int
 
 
 class JobApplicationStatusUpdate(BaseModel):
@@ -72,16 +90,12 @@ BULK_STATUS_MAX_IDS = 50
 
 class JobApplicationBulkStatusUpdate(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_STATUS_MAX_IDS)
-    status: ManagedApplicationStatus
-    # Private stages stay quiet. Shared outcomes publish automatically; notify
-    # is only needed when deliberately sharing an optional state (shortlisted).
-    notify: bool = False
+    status: BulkApplicationStatus
 
 
 class TalentInterestBulkStatusUpdate(BaseModel):
     ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_STATUS_MAX_IDS)
-    status: ManagedInterestStatus
-    notify: bool = False
+    status: BulkInterestStatus
 
 
 class ManagerNoteUpdate(BaseModel):
@@ -110,6 +124,18 @@ class InteractionPrivateNoteRead(BaseModel):
     created_at: datetime
 
 
+class InteractionStatusEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    previous_status: str | None = None
+    new_status: str
+    status_version: int
+    event_kind: str
+    audience: Literal["manager_only", "participants"]
+    created_at: datetime
+
+
 class JobApplicationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,11 +148,19 @@ class JobApplicationRead(BaseModel):
     first_message_answers: dict = Field(default_factory=dict)
     applicant_snapshot: dict = Field(default_factory=dict)
     status: ApplicationStatus
+    status_version: int = 1
+    participant_status: ApplicationStatus = "new"
+    legacy_archive_resolution_required: bool = False
+    archived_at: datetime | None = None
+    applicant_display_name: str | None = None
+    applicant_username: str | None = None
+    applicant_avatar_url: str | None = None
     # Job owner's private note. Sender-facing endpoints blank this field.
     manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
     engagement: EngagementSummary | None = None
+    status_history: list[InteractionStatusEventRead] = Field(default_factory=list)
 
 
 class TalentListingBase(BaseModel):
@@ -288,11 +322,30 @@ class TalentInterestRead(BaseModel):
     note: str | None = None
     first_message_answers: dict = Field(default_factory=dict)
     status: TalentInterestStatus
+    status_version: int = 1
+    participant_status: TalentInterestStatus = "new"
+    legacy_archive_resolution_required: bool = False
+    archived_at: datetime | None = None
     # Listing owner's (talent's) private note. Sender-facing endpoints blank this field.
     manager_note: str | None = None
     created_at: datetime
     updated_at: datetime
     engagement: EngagementSummary | None = None
+    status_history: list[InteractionStatusEventRead] = Field(default_factory=list)
+
+
+class ApplicationTransitionResponse(BaseModel):
+    outcome: Literal["transitioned", "already_in_state"]
+    current_status: str
+    status_version: int
+    application: JobApplicationRead
+
+
+class TalentInterestTransitionResponse(BaseModel):
+    outcome: Literal["transitioned", "already_in_state"]
+    current_status: str
+    status_version: int
+    interest: TalentInterestRead
 
 
 class NotificationRead(BaseModel):

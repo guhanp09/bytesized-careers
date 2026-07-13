@@ -20,7 +20,7 @@ import type {
  *
  * The pipeline speaks the *backend* status vocabulary (job applications:
  * new/reviewing/shortlisted/interviewing/hired/rejected/archived/withdrawn;
- * hiring requests: new/reviewing/contacted/declined/archived/withdrawn) so a
+ * hiring requests: new/reviewing/accepted/declined/archived/withdrawn) so a
  * stage move maps 1:1 onto the status endpoints. The inbox's display statuses
  * (`InteractionStatus`) are a lossy presentation layer on top; a reverse map
  * keeps demo/mock items usable in the pipeline too.
@@ -109,7 +109,6 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
     terminal: true,
     notify: {
       recommended: true,
-      automatic: true,
       notice: ({ contextLabel }) => `Not moving forward${quoted(contextLabel)}.`,
     },
   },
@@ -133,7 +132,7 @@ const APPLICATION_SENT_STAGES: PipelineStage[] = [
  *
  * - new       — arrival state; internal.
  * - reviewing — internal-only tracking; reversible.
- * - contacted — shown as "Accepted"; externally meaningful; notifying
+ * - accepted  — externally meaningful; notifying
  *               recommended (the recruiter is waiting on an answer); reversible.
  * - declined  — outcome; notifying recommended (closure); terminal.
  * - withdrawn — sender-only (the recruiter pulled the request).
@@ -143,7 +142,7 @@ const INTEREST_RECEIVED_STAGES: PipelineStage[] = [
   { key: "new", label: "New", dot: "bg-white" },
   { key: "reviewing", label: "Reviewing", dot: "bg-sky-300" },
   {
-    key: "contacted",
+    key: "accepted",
     label: "Accepted",
     dot: "bg-emerald-300",
     notify: { recommended: true, automatic: true, notice: () => "Hiring request accepted." },
@@ -162,7 +161,7 @@ const INTEREST_RECEIVED_STAGES: PipelineStage[] = [
 const INTEREST_SENT_STAGES: PipelineStage[] = [
   { key: "new", label: "Pending", dot: "bg-white" },
   { key: "reviewing", label: "Viewed", dot: "bg-sky-300" },
-  { key: "contacted", label: "Accepted", dot: "bg-emerald-300" },
+  { key: "accepted", label: "Accepted", dot: "bg-emerald-300" },
   { key: "declined", label: "Declined", dot: "bg-rose-300/80", terminal: true },
   { key: "withdrawn", label: "Withdrawn", dot: "bg-white/35", terminal: true },
   { key: "archived", label: "Archived", dot: "bg-white/35", terminal: true },
@@ -186,28 +185,46 @@ export function stageTargetsFor(kind: InteractionKind): PipelineStage[] {
   return INTEREST_RECEIVED_STAGES.filter((stage) => stage.key !== "new" && stage.key !== "withdrawn");
 }
 
+/** Consequential shared outcomes are always confirmed one relationship at a time. */
+export function bulkStageTargetsFor(kind: InteractionKind): PipelineStage[] {
+  const permitted = kind === "application"
+    ? new Set(["reviewing", "shortlisted", "rejected", "archived"])
+    : new Set(["reviewing", "archived"]);
+  return stageTargetsFor(kind).filter((stage) => permitted.has(stage.key));
+}
+
 const APPLICATION_TRANSITIONS: Record<string, ReadonlySet<string>> = {
-  new: new Set(["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]),
-  reviewing: new Set(["shortlisted", "interviewing", "hired", "rejected", "archived"]),
-  shortlisted: new Set(["reviewing", "interviewing", "hired", "rejected", "archived"]),
-  interviewing: new Set(["shortlisted", "hired", "rejected", "archived"]),
-  rejected: new Set(["archived"]),
-  withdrawn: new Set(["archived"]),
+  new: new Set(["reviewing", "shortlisted", "interviewing", "hired", "rejected"]),
+  reviewing: new Set(["shortlisted", "interviewing", "hired", "rejected"]),
+  shortlisted: new Set(["reviewing", "interviewing", "hired", "rejected"]),
+  interviewing: new Set(["hired", "rejected"]),
+  rejected: new Set(["reviewing", "shortlisted", "interviewing", "hired"]),
+  withdrawn: new Set(),
   hired: new Set(),
   archived: new Set(),
 };
 
 const INTEREST_TRANSITIONS: Record<string, ReadonlySet<string>> = {
-  new: new Set(["reviewing", "contacted", "declined", "archived"]),
-  reviewing: new Set(["contacted", "declined", "archived"]),
-  declined: new Set(["archived"]),
-  withdrawn: new Set(["archived"]),
-  contacted: new Set(),
+  new: new Set(["reviewing", "accepted", "declined"]),
+  reviewing: new Set(["accepted", "declined"]),
+  declined: new Set(),
+  withdrawn: new Set(),
+  accepted: new Set(),
   archived: new Set(),
 };
 
 /** Manager actions valid from the record's current backend state. */
-export function validStageTargetsFor(kind: InteractionKind, currentStatus: string): PipelineStage[] {
+export function validStageTargetsFor(
+  kind: InteractionKind,
+  currentStatus: string,
+  participantStatus?: string | null
+): PipelineStage[] {
+  if (
+    kind === "application" &&
+    ["hired", "rejected", "withdrawn"].includes(participantStatus ?? "")
+  ) {
+    return [];
+  }
   const allowed = (kind === "application" ? APPLICATION_TRANSITIONS : INTEREST_TRANSITIONS)[
     currentStatus
   ] ?? new Set<string>();
@@ -247,7 +264,7 @@ const PIPELINE_NOUNS: Record<WorkspaceModeKey, Record<InteractionDirection, [str
  * active stage that has people in it. Null when the board is empty.
  */
 export function pipelineSummaryOf(
-  items: Array<Pick<OwnerInteraction, "kind" | "status" | "backendStatus">>,
+  items: Array<Pick<OwnerInteraction, "kind" | "status" | "backendStatus" | "archivedAt">>,
   kind: InteractionKind,
   direction: InteractionDirection,
   mode: WorkspaceModeKey
@@ -290,10 +307,10 @@ const INTEREST_DISPLAY_TO_BACKEND: Record<InteractionStatus, string> = {
   new: "new",
   pending: "new",
   viewed: "reviewing",
-  responded: "contacted",
+  responded: "accepted",
   shortlisted: "reviewing",
-  accepted: "contacted",
-  hired: "contacted",
+  accepted: "accepted",
+  hired: "accepted",
   declined: "declined",
   withdrawn: "withdrawn",
   closed: "archived",
@@ -303,14 +320,19 @@ const INTEREST_DISPLAY_TO_BACKEND: Record<InteractionStatus, string> = {
  * Resolve an interaction to backend status vocabulary. Live items carry the raw
  * value; demo/mock items fall back to a reverse map of their display status.
  */
-export function backendStatusOf(item: Pick<OwnerInteraction, "kind" | "status" | "backendStatus">): string {
+export function backendStatusOf(
+  item: Pick<OwnerInteraction, "kind" | "status" | "backendStatus" | "archivedAt">
+): string {
+  if (item.archivedAt || item.backendStatus === "archived") return "archived";
   if (item.backendStatus) return item.backendStatus;
   const map = item.kind === "application" ? APPLICATION_DISPLAY_TO_BACKEND : INTEREST_DISPLAY_TO_BACKEND;
   return map[item.status] ?? "new";
 }
 
 /** Group interactions under the given stages, preserving item order. */
-export function groupByStage<T extends Pick<OwnerInteraction, "kind" | "status" | "backendStatus">>(
+export function groupByStage<
+  T extends Pick<OwnerInteraction, "kind" | "status" | "backendStatus" | "archivedAt">
+>(
   items: T[],
   stages: PipelineStage[]
 ): Map<string, T[]> {

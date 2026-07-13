@@ -30,6 +30,7 @@ from app.models import (
     EngagementReview,
     HiringIdentity,
     AdminAuditLog,
+    InteractionStatusEvent,
     Job,
     JobApplication,
     Message,
@@ -105,6 +106,41 @@ def _parse_uuid(value: str) -> uuid.UUID | None:
         return uuid.UUID(value)
     except (ValueError, TypeError):
         return None
+
+
+@router.get("/interaction-integrity")
+async def admin_interaction_integrity(
+    limit: int = Query(default=100, ge=1, le=500),
+    _admin: User = Depends(require_permission("audit.view")),
+    session: AsyncSession = Depends(get_db),
+) -> list[dict[str, object]]:
+    """Expose migration/runtime integrity findings without mutating history."""
+
+    rows = (
+        (
+            await session.execute(
+                select(InteractionStatusEvent)
+                .where(InteractionStatusEvent.event_kind == "integrity_issue")
+                .order_by(InteractionStatusEvent.created_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "interaction_type": row.interaction_type,
+            "interaction_id": str(row.interaction_id),
+            "status": row.new_status,
+            "status_version": row.status_version,
+            "integrity_codes": row.metadata_json.get("integrity_codes", []),
+            "metadata": row.metadata_json,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
 
 
 async def _count(session: AsyncSession, stmt) -> int:

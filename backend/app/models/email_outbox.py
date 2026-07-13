@@ -39,6 +39,7 @@ class EmailOutbox(Base):
     metadata_json: Mapped[dict] = mapped_column(
         json_obj_type, nullable=False, default=dict, server_default="{}"
     )
+    dedupe_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     # queued -> mocked (dev, not sent) | sent | failed | skipped
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued", server_default="queued", index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

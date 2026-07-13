@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   backendStatusOf,
+  bulkStageTargetsFor,
   directionLabelsFor,
   groupByStage,
   pipelineCardFacts,
@@ -41,41 +42,53 @@ test("sent applications relabel stages from the sender's point of view", () => {
   assert.equal(stages.find((stage) => stage.key === "rejected")?.label, "Not selected");
 });
 
-test("hiring-request stages use the interest vocabulary with Accepted for contacted", () => {
+test("hiring-request stages use canonical Accepted vocabulary", () => {
   const stages = pipelineStagesFor("hiring_request", "received");
   assert.deepEqual(
     stages.map((stage) => stage.key),
-    ["new", "reviewing", "contacted", "declined", "withdrawn", "archived"]
+    ["new", "reviewing", "accepted", "declined", "withdrawn", "archived"]
   );
-  assert.equal(stages.find((stage) => stage.key === "contacted")?.label, "Accepted");
+  assert.equal(stages.find((stage) => stage.key === "accepted")?.label, "Accepted");
 });
 
 test("manager stage targets exclude arrival and sender-only statuses", () => {
   const applicationTargets = stageTargetsFor("application").map((stage) => stage.key);
   assert.deepEqual(applicationTargets, ["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]);
   const interestTargets = stageTargetsFor("hiring_request").map((stage) => stage.key);
-  assert.deepEqual(interestTargets, ["reviewing", "contacted", "declined", "archived"]);
+  assert.deepEqual(interestTargets, ["reviewing", "accepted", "declined", "archived"]);
+  assert.deepEqual(
+    bulkStageTargetsFor("application").map((stage) => stage.key),
+    ["reviewing", "shortlisted", "rejected", "archived"]
+  );
+  assert.deepEqual(
+    bulkStageTargetsFor("hiring_request").map((stage) => stage.key),
+    ["reviewing", "archived"]
+  );
 });
 
 test("manager actions expose only legal next stages and never reopen terminal records", () => {
   assert.deepEqual(
     validStageTargetsFor("application", "new").map((stage) => stage.key),
-    ["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]
+    ["reviewing", "shortlisted", "interviewing", "hired", "rejected"]
   );
   assert.deepEqual(
     validStageTargetsFor("application", "interviewing").map((stage) => stage.key),
-    ["shortlisted", "hired", "rejected", "archived"]
+    ["hired", "rejected"]
   );
   assert.deepEqual(
     validStageTargetsFor("application", "rejected").map((stage) => stage.key),
-    ["archived"]
+    ["reviewing", "shortlisted", "interviewing", "hired"]
+  );
+  assert.deepEqual(
+    validStageTargetsFor("application", "rejected", "rejected"),
+    []
   );
   assert.deepEqual(validStageTargetsFor("application", "hired"), []);
   assert.deepEqual(
     validStageTargetsFor("hiring_request", "new").map((stage) => stage.key),
-    ["reviewing", "contacted", "declined", "archived"]
+    ["reviewing", "accepted", "declined"]
   );
-  assert.deepEqual(validStageTargetsFor("hiring_request", "contacted"), []);
+  assert.deepEqual(validStageTargetsFor("hiring_request", "accepted"), []);
 });
 
 test("backendStatusOf prefers the raw backend value and reverse-maps demo statuses", () => {
@@ -86,8 +99,8 @@ test("backendStatusOf prefers the raw backend value and reverse-maps demo status
   assert.equal(backendStatusOf({ kind: "application", status: "declined" }), "rejected");
   assert.equal(backendStatusOf({ kind: "application", status: "closed" }), "archived");
   assert.equal(backendStatusOf({ kind: "application", status: "pending" }), "new");
-  assert.equal(backendStatusOf({ kind: "hiring_request", status: "accepted" }), "contacted");
-  assert.equal(backendStatusOf({ kind: "hiring_request", status: "responded" }), "contacted");
+  assert.equal(backendStatusOf({ kind: "hiring_request", status: "accepted" }), "accepted");
+  assert.equal(backendStatusOf({ kind: "hiring_request", status: "responded" }), "accepted");
   assert.equal(backendStatusOf({ kind: "hiring_request", status: "declined" }), "declined");
 });
 
@@ -239,7 +252,7 @@ test("notify taxonomy: internal-only stages have no policy; outcomes do", () => 
     "Not moving forward for “Editor role”."
   );
   assert.equal(
-    stageNotifyPolicyOf("hiring_request", "contacted")?.notice({ contextLabel: null }),
+    stageNotifyPolicyOf("hiring_request", "accepted")?.notice({ contextLabel: null }),
     "Hiring request accepted."
   );
   assert.equal(
@@ -253,7 +266,7 @@ test("notify taxonomy: internal-only stages have no policy; outcomes do", () => 
   assert.equal(stageNotifyPolicyOf("application", "shortlisted")?.automatic, undefined);
   assert.equal(stageNotifyPolicyOf("application", "interviewing")?.automatic, true);
   assert.equal(stageNotifyPolicyOf("application", "hired")?.automatic, true);
-  assert.equal(stageNotifyPolicyOf("hiring_request", "contacted")?.automatic, true);
+  assert.equal(stageNotifyPolicyOf("hiring_request", "accepted")?.automatic, true);
 });
 
 test("portfolio count reads structured portfolio answers, else attachments", () => {

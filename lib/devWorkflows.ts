@@ -51,7 +51,7 @@ export const WORKFLOW_ACTIONS: WorkflowAction[] = [
     label: "Talent replies to hiring request",
     actorKey: "talent-complete",
     targetKey: "recruiter-active",
-    body: { status: "contacted" },
+    body: { status: "accepted" },
     supported: true,
   },
   {

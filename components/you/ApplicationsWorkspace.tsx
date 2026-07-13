@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
@@ -45,13 +45,16 @@ import {
   markConversationRead,
   blockUser,
   sendConversationMessage,
-  sendConversationStatusUpdate,
+  setApplicationArchived,
+  setTalentInterestArchived,
+  communicateApplicationStatus,
+  transitionApplicationStatus,
+  transitionTalentInterestStatus,
   unblockUser,
-  updateApplicationStatus,
-  updateTalentInterestStatus,
   withdrawApplication,
   withdrawTalentInterest,
   type BackendJobApplication,
+  BackendRequestError,
   type BackendConversation,
   type BackendMessage,
   type BackendEngagementSummary,
@@ -60,6 +63,7 @@ import {
   type BackendReviewOpportunity,
   type BackendTalentInterest,
 } from "../../lib/backendClient";
+import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   MOCK_OWNER_INTERACTIONS,
   interactionKindLabel,
@@ -137,13 +141,15 @@ type HeaderAction = {
   icon: "check" | "x" | "send" | "bookmark";
   primary?: boolean;
   destructive?: boolean;
-  flow: "instant" | "confirm" | "reply";
+  flow: "instant" | "confirm" | "reply" | "notify" | "archive";
   backendStatus?: string;
   nextStatus?: InteractionStatus;
   eventLabel?: string;
   panelTitle?: string;
   confirmLabel?: string;
   allowNote?: boolean;
+  archiveValue?: boolean;
+  menuGroup?: "Manage privately" | "Share a decision" | "Thread" | "Relationship" | "Safety";
 };
 
 /**
@@ -497,8 +503,19 @@ function rowSubtitle(item: OwnerInteraction): string {
 }
 
 function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[] {
-  if (isArchivedInteraction(item)) return [];
   const name = firstNameOf(item.counterpartyName);
+  if (isArchivedInteraction(item)) {
+    return [
+      {
+        key: "unarchive",
+        label: "Unarchive",
+        icon: "bookmark",
+        flow: "archive",
+        archiveValue: false,
+        menuGroup: "Thread",
+      },
+    ];
+  }
   const reply: HeaderAction = { key: "reply", label: `Reply to ${name}`, icon: "send", flow: "reply" };
   const currentStatus = backendStatusOf(item);
 
@@ -516,6 +533,7 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
       eventLabel: "Application withdrawn by you",
       panelTitle: "Withdraw this application?",
       confirmLabel: "Confirm withdraw",
+      menuGroup: "Relationship",
     };
     // Live threads already expose the persistent composer, so the overflow only
     // needs the sender-owned relationship action.
@@ -523,30 +541,34 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
     return [reply, withdraw];
   }
   if (item.direction === "received") {
-    const actions = validStageTargetsFor(item.kind, currentStatus).map<HeaderAction>((stage) => {
+    const actions = validStageTargetsFor(
+      item.kind,
+      currentStatus,
+      item.participantBackendStatus
+    ).map<HeaderAction>((stage) => {
       const labels: Record<string, string> = {
         reviewing: "Move to Reviewing",
         shortlisted: "Shortlist privately",
         interviewing: "Move to Interviewing",
         hired: "Hire",
         rejected: "Not selected",
-        contacted: "Accept request",
+        accepted: "Accept request",
         declined: "Decline request",
         archived: "Archive",
       };
-      const confirm = ["hired", "rejected", "contacted", "declined", "archived"].includes(stage.key);
+      const confirm = ["hired", "rejected", "accepted", "declined", "archived"].includes(stage.key);
       const destructive = ["rejected", "declined"].includes(stage.key);
       const panelTitles: Record<string, string> = {
         hired: "Hire this candidate?",
         rejected: "Mark this application as not selected?",
-        contacted: "Accept this hiring request?",
+        accepted: "Accept this hiring request?",
         declined: "Decline this hiring request?",
         archived: "Archive this thread?",
       };
       const confirmLabels: Record<string, string> = {
         hired: "Confirm hire",
         rejected: "Confirm not selected",
-        contacted: "Confirm acceptance",
+        accepted: "Confirm acceptance",
         declined: "Confirm decline",
         archived: "Archive",
       };
@@ -554,7 +576,7 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
         key: `stage-${stage.key}`,
         label: labels[stage.key] ?? `Move to ${stage.label}`,
         icon: destructive ? "x" : stage.key === "archived" ? "bookmark" : "check",
-        primary: ["hired", "contacted"].includes(stage.key),
+        primary: ["hired", "accepted"].includes(stage.key),
         destructive,
         flow: confirm ? "confirm" : "instant",
         backendStatus: stage.key,
@@ -563,7 +585,34 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
         panelTitle: panelTitles[stage.key],
         confirmLabel: confirmLabels[stage.key],
         allowNote: !live && destructive,
+        menuGroup: stage.notify?.automatic ? "Share a decision" : "Manage privately",
       };
+    });
+    actions.sort((left, right) => {
+      const rank = (action: HeaderAction) => action.menuGroup === "Manage privately" ? 0 : 1;
+      return rank(left) - rank(right);
+    });
+    if (
+      item.kind === "application" &&
+      ["shortlisted", "rejected"].includes(currentStatus) &&
+      item.participantBackendStatus !== currentStatus
+    ) {
+      actions.push({
+        key: `notify-${currentStatus}`,
+        label: `Share decision with ${name}`,
+        icon: "send",
+        flow: "notify",
+        backendStatus: currentStatus,
+        menuGroup: "Share a decision",
+      });
+    }
+    actions.push({
+      key: "archive",
+      label: "Archive",
+      icon: "bookmark",
+      flow: "archive",
+      archiveValue: true,
+      menuGroup: "Thread",
     });
     if (!live) actions.push(reply);
     return actions;
@@ -579,6 +628,7 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
     eventLabel: "Request withdrawn by you",
     panelTitle: "Withdraw this request?",
     confirmLabel: "Confirm withdraw",
+    menuGroup: "Relationship",
   };
   // Live threads already expose the persistent composer; keep the overflow for
   // the sender-owned withdrawal action.
@@ -604,7 +654,7 @@ function quickReplyTemplates(item: OwnerInteraction): Array<{ label: string; tex
   return [];
 }
 
-type OverflowMenuItem = Pick<HeaderAction, "key" | "label" | "icon" | "primary" | "destructive"> & {
+type OverflowMenuItem = Pick<HeaderAction, "key" | "label" | "icon" | "primary" | "destructive" | "menuGroup"> & {
   onClick: () => void;
   disabled?: boolean;
 };
@@ -651,32 +701,42 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
           className="absolute right-0 top-[calc(100%+8px)] z-30 min-w-48 rounded-2xl border border-white/12 bg-[#111216] p-1.5 shadow-[0_24px_70px_-34px_rgba(0,0,0,1)]"
         >
           {items.length ? (
-            items.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
+            items.map((item, index) => {
+              const showGroup = item.menuGroup && item.menuGroup !== items[index - 1]?.menuGroup;
+              return (
+                <Fragment key={item.key}>
+                  {showGroup ? (
+                    <p className="px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/35">
+                      {item.menuGroup}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={item.disabled}
                 onClick={() => {
                   if (item.disabled) return;
                   setOpen(false);
+                  triggerRef.current?.focus();
                   item.onClick();
                 }}
-                className={[
-                  "flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left text-xs font-semibold transition-colors",
-                  item.disabled
-                    ? "cursor-not-allowed text-white/30"
-                    : item.primary
-                    ? "text-white hover:bg-white/[0.09]"
-                    : item.destructive
-                      ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
-                      : "text-white/72 hover:bg-white/[0.07] hover:text-white",
-                ].join(" ")}
-              >
-                <Icon name={item.icon} className="h-3.5 w-3.5" />
-                <span>{item.label}</span>
-              </button>
-            ))
+                    className={[
+                      "flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left text-xs font-semibold transition-colors",
+                      item.disabled
+                        ? "cursor-not-allowed text-white/30"
+                        : item.primary
+                        ? "text-white hover:bg-white/[0.09]"
+                        : item.destructive
+                          ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
+                          : "text-white/72 hover:bg-white/[0.07] hover:text-white",
+                    ].join(" ")}
+                  >
+                    <Icon name={item.icon} className="h-3.5 w-3.5" />
+                    <span>{item.label}</span>
+                  </button>
+                </Fragment>
+              );
+            })
           ) : (
             <p className="px-3 py-2 text-xs text-white/40">No actions available.</p>
           )}
@@ -1483,6 +1543,20 @@ export default function ApplicationsWorkspace({
     onEvent: handleRealtimeEvent,
   });
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const actionFeedbackTimer = useRef<number | null>(null);
+  const flashActionFeedback = useCallback((message: string) => {
+    setActionFeedback(message);
+    if (actionFeedbackTimer.current) window.clearTimeout(actionFeedbackTimer.current);
+    actionFeedbackTimer.current = window.setTimeout(() => setActionFeedback(null), 3_200);
+  }, []);
+  useEffect(
+    () => () => {
+      if (actionFeedbackTimer.current) window.clearTimeout(actionFeedbackTimer.current);
+    },
+    []
+  );
   const [reviewOpportunity, setReviewOpportunity] = useState<BackendReviewOpportunity | null>(null);
   const [filter, setFilter] = useState<WorkspaceFilter>("all");
   // View + direction are controlled by the page (persistence, deep links) when
@@ -1867,17 +1941,77 @@ export default function ApplicationsWorkspace({
    */
   const handleMoveStage = async (moveItems: OwnerInteraction[], stageKey: string) => {
     if (moveItems.length === 0) return;
+    setActionPending(true);
     const kind: InteractionKind = moveItems[0].kind;
+    const archiveMove = stageKey === "archived" || stageKey === "_unarchive";
+    const nextArchived = stageKey === "archived";
     setActionError(null);
+    const authoritativeVersions = new Map<string, number>();
+    const authoritativeStatuses = new Map<string, string>();
+    let alreadyInState = false;
     if (liveMode && backendAccessToken) {
       try {
         const ids = moveItems.map((item) => item.id);
-        if (kind === "application") {
-          await bulkUpdateApplicationStatus(backendAccessToken, ids, stageKey as BackendJobApplication["status"]);
+        if (archiveMove) {
+          for (const item of moveItems) {
+            if (item.kind === "application") {
+              await setApplicationArchived(backendAccessToken, item.id, nextArchived);
+            } else {
+              await setTalentInterestArchived(backendAccessToken, item.id, nextArchived);
+            }
+          }
+        } else if (moveItems.length === 1) {
+          const item = moveItems[0];
+          const idempotencyKey = window.crypto.randomUUID();
+          if (kind === "application") {
+            const response = await transitionApplicationStatus(
+              backendAccessToken,
+              item.id,
+              stageKey as BackendJobApplication["status"],
+              item.statusVersion ?? 1,
+              idempotencyKey
+            );
+            authoritativeVersions.set(item.id, response.status_version);
+            authoritativeStatuses.set(item.id, response.current_status);
+            alreadyInState = response.outcome === "already_in_state";
+          } else {
+            const response = await transitionTalentInterestStatus(
+              backendAccessToken,
+              item.id,
+              stageKey as BackendTalentInterest["status"],
+              item.statusVersion ?? 1,
+              idempotencyKey
+            );
+            authoritativeVersions.set(item.id, response.status_version);
+            authoritativeStatuses.set(item.id, response.current_status);
+            alreadyInState = response.outcome === "already_in_state";
+          }
+        } else if (kind === "application") {
+          const updated = await bulkUpdateApplicationStatus(
+            backendAccessToken,
+            ids,
+            stageKey as BackendJobApplication["status"]
+          );
+          updated.forEach((item) => {
+            authoritativeVersions.set(item.id, item.status_version);
+            authoritativeStatuses.set(item.id, item.status);
+          });
         } else {
-          await bulkUpdateTalentInterestStatus(backendAccessToken, ids, stageKey as BackendTalentInterest["status"]);
+          const updated = await bulkUpdateTalentInterestStatus(
+            backendAccessToken,
+            ids,
+            stageKey as BackendTalentInterest["status"]
+          );
+          updated.forEach((item) => {
+            authoritativeVersions.set(item.id, item.status_version);
+            authoritativeStatuses.set(item.id, item.status);
+          });
         }
       } catch (error) {
+        setActionPending(false);
+        if (error instanceof BackendRequestError && error.status === 409) {
+          setRealtimeRefreshNonce((value) => value + 1);
+        }
         setActionError(
           describeActionError(
             error,
@@ -1896,15 +2030,30 @@ export default function ApplicationsWorkspace({
         movedIds.has(item.id)
           ? {
               ...item,
-              status: interactionStatusFromBackend(item.kind, item.direction, stageKey),
-              backendStatus: stageKey,
+              archivedAt: archiveMove
+                ? nextArchived
+                  ? new Date().toISOString()
+                  : null
+                : item.archivedAt,
+              status: interactionStatusFromBackend(
+                item.kind,
+                item.direction,
+                authoritativeStatuses.get(item.id) ?? (archiveMove ? item.backendStatus ?? "new" : stageKey)
+              ),
+              backendStatus:
+                authoritativeStatuses.get(item.id) ?? (archiveMove ? item.backendStatus : stageKey),
+              statusVersion: authoritativeVersions.get(item.id) ?? item.statusVersion,
               updatedAtLabel: "Just now",
               unread: false,
               timeline: [
                 ...item.timeline,
                 {
                   id: `${item.id}-stage-${item.timeline.length}`,
-                  label: `Moved to ${stageLabel} by you`,
+                  label: archiveMove
+                    ? nextArchived
+                      ? "Archived by you"
+                      : "Unarchived by you"
+                    : `Moved to ${stageLabel} by you`,
                   at: "Just now",
                 },
               ],
@@ -1915,9 +2064,27 @@ export default function ApplicationsWorkspace({
     // Optional shared stages ask first. Relationship outcomes are published by
     // the backend atomically; demo mode mirrors that trusted event locally so
     // the sample workspace never teaches a different workflow.
-    const notifyPolicy = stageNotifyPolicyOf(kind, stageKey);
+    const notifyPolicy = archiveMove ? null : stageNotifyPolicyOf(kind, stageKey);
+    const counterparty = firstNameOf(moveItems[0]?.counterpartyName ?? "them");
+    flashActionFeedback(
+      alreadyInState
+        ? stageKey === "hired"
+          ? "Already hired"
+          : stageKey === "accepted"
+            ? "Already accepted"
+            : "Already up to date"
+        : archiveMove
+          ? nextArchived
+            ? "Archived"
+            : "Unarchived"
+          : notifyPolicy?.automatic
+            ? `Shared with ${counterparty}`
+            : notifyPolicy
+              ? "Saved privately · Not yet shared"
+              : "Saved privately"
+    );
     setNotifyPrompt(
-      notifyPolicy && !notifyPolicy.automatic
+      moveItems.length === 1 && notifyPolicy && !notifyPolicy.automatic
         ? { itemIds: moveItems.map((item) => item.id), stageKey, kind, phase: "ask" }
         : null
     );
@@ -1948,6 +2115,7 @@ export default function ApplicationsWorkspace({
         setChatRequest((prev) => ({ id: single.id, nonce: (prev?.nonce ?? 0) + 1 }));
       }
     }
+    setActionPending(false);
   };
 
   /**
@@ -1967,30 +2135,27 @@ export default function ApplicationsWorkspace({
     try {
       if (liveMode && backendAccessToken) {
         for (const target of targets) {
-          const cached = liveThreads[target.id];
-          let conversationId = cached?.conversationId;
-          if (!conversationId) {
-            const detail =
-              target.kind === "hiring_request"
-                ? await getInterestConversation(backendAccessToken, target.id)
-                : await getApplicationConversation(backendAccessToken, target.id);
-            conversationId = detail.conversation.id;
-            setLiveThreads((prev) => ({
-              ...prev,
-              [target.id]: { conversationId: detail.conversation.id, messages: detail.messages },
-            }));
-          }
-          const message = await sendConversationStatusUpdate(
+          if (target.kind !== "application") continue;
+          const response = await communicateApplicationStatus(
             backendAccessToken,
-            conversationId,
-            stageKey as "shortlisted" | "interviewing" | "hired" | "rejected" | "contacted" | "declined"
+            target.id,
+            stageKey as BackendJobApplication["status"],
+            target.statusVersion ?? 1,
+            window.crypto.randomUUID()
           );
-          setLiveThreads((prev) => {
-            const thread = prev[target.id];
-            if (!thread) return prev;
-            return { ...prev, [target.id]: { ...thread, messages: [...thread.messages, message] } };
-          });
+          setItems((current) =>
+            current.map((item) =>
+              item.id === target.id
+                ? {
+                    ...item,
+                    participantBackendStatus: response.current_status,
+                    statusVersion: response.status_version,
+                  }
+                : item
+            )
+          );
         }
+        setRealtimeRefreshNonce((value) => value + 1);
       } else {
         const targetIds = new Set(targets.map((target) => target.id));
         setItems((prev) =>
@@ -2016,6 +2181,7 @@ export default function ApplicationsWorkspace({
         );
       }
       setNotifyPrompt((prev) => (prev ? { ...prev, phase: "sent" } : prev));
+      flashActionFeedback(`Shared with ${firstNameOf(firstTarget.counterpartyName)}`);
       if (targetToOpen) {
         setChatRequest((prev) => ({ id: targetToOpen.id, nonce: (prev?.nonce ?? 0) + 1 }));
       }
@@ -2080,13 +2246,24 @@ export default function ApplicationsWorkspace({
     );
   };
 
-  const commitStatusLocally = (target: OwnerInteraction, action: HeaderAction, trimmedNote?: string) => {
+  const commitStatusLocally = (
+    target: OwnerInteraction,
+    action: HeaderAction,
+    trimmedNote?: string,
+    authoritative?: { status: string; version: number; participantStatus?: string }
+  ) => {
     setItems((prev) =>
       prev.map((item) =>
         item.id === target.id
           ? {
               ...item,
-              status: action.nextStatus as InteractionStatus,
+              status: authoritative
+                ? interactionStatusFromBackend(item.kind, item.direction, authoritative.status)
+                : (action.nextStatus as InteractionStatus),
+              backendStatus: authoritative?.status ?? action.backendStatus ?? item.backendStatus,
+              statusVersion: authoritative?.version ?? item.statusVersion,
+              participantBackendStatus:
+                authoritative?.participantStatus ?? item.participantBackendStatus,
               updatedAtLabel: "Just now",
               unread: false,
               replies: trimmedNote
@@ -2108,7 +2285,7 @@ export default function ApplicationsWorkspace({
     setPendingNote("");
   };
 
-  const applyStatusAction = (target: OwnerInteraction, action: HeaderAction, note?: string) => {
+  const applyStatusAction = async (target: OwnerInteraction, action: HeaderAction, note?: string) => {
     if (!action.nextStatus || !action.eventLabel || statusMutationKey) return;
     const trimmedNote = note?.trim();
     setActionError(null);
@@ -2120,41 +2297,133 @@ export default function ApplicationsWorkspace({
       // is owner-only and would reject the sender).
       const backendStatus = action.backendStatus;
       setStatusMutationKey(action.key);
-      const request =
-        action.key === "withdraw"
-          ? target.kind === "application"
-            ? withdrawApplication(backendAccessToken, target.id)
-            : withdrawTalentInterest(backendAccessToken, target.id)
-          : target.kind === "application"
-            ? updateApplicationStatus(
-                backendAccessToken,
-                target.id,
-                backendStatus as BackendJobApplication["status"]
-              )
-            : updateTalentInterestStatus(
-                backendAccessToken,
-                target.id,
-                backendStatus as BackendTalentInterest["status"]
-              );
-      request
-        .then(() => commitStatusLocally(target, action))
-        .catch((error) => {
-          setActionError(
-            describeActionError(
-              error,
-              action.key === "withdraw"
-                ? "Couldn’t withdraw this request. Try again."
-                : "Couldn’t update this status. Try again."
-            )
+      setActionPending(true);
+      try {
+        let transitionOutcome: "transitioned" | "already_in_state" = "transitioned";
+        if (action.key === "withdraw") {
+          const record = target.kind === "application"
+            ? await withdrawApplication(backendAccessToken, target.id)
+            : await withdrawTalentInterest(backendAccessToken, target.id);
+          commitStatusLocally(target, action, trimmedNote, {
+            status: record.status,
+            version: record.status_version,
+            participantStatus: record.participant_status,
+          });
+        } else if (target.kind === "application") {
+          const response = await transitionApplicationStatus(
+            backendAccessToken,
+            target.id,
+            backendStatus as BackendJobApplication["status"],
+            target.statusVersion ?? 1,
+            window.crypto.randomUUID()
           );
-          setPendingActionKey(null);
-          setPendingNote("");
-        })
-        .finally(() => setStatusMutationKey(null));
+          transitionOutcome = response.outcome;
+          const record = response.application;
+          commitStatusLocally(target, action, trimmedNote, {
+            status: response.current_status,
+            version: response.status_version,
+            participantStatus: record?.participant_status,
+          });
+        } else {
+          const response = await transitionTalentInterestStatus(
+            backendAccessToken,
+            target.id,
+            backendStatus as BackendTalentInterest["status"],
+            target.statusVersion ?? 1,
+            window.crypto.randomUUID()
+          );
+          transitionOutcome = response.outcome;
+          const record = response.interest;
+          commitStatusLocally(target, action, trimmedNote, {
+            status: response.current_status,
+            version: response.status_version,
+            participantStatus: record?.participant_status,
+          });
+        }
+        const notifyPolicy = backendStatus
+          ? stageNotifyPolicyOf(target.kind, backendStatus)
+          : null;
+        if (notifyPolicy && !notifyPolicy.automatic) {
+          setNotifyPrompt({
+            itemIds: [target.id],
+            stageKey: backendStatus as string,
+            kind: target.kind,
+            phase: "ask",
+          });
+        }
+        flashActionFeedback(
+          transitionOutcome === "already_in_state"
+            ? backendStatus === "hired"
+              ? "Already hired"
+              : backendStatus === "accepted"
+                ? "Already accepted"
+                : "Already up to date"
+            : action.key === "withdraw" || notifyPolicy?.automatic
+              ? `Shared with ${firstNameOf(target.counterpartyName)}`
+              : notifyPolicy
+                ? "Saved privately · Not yet shared"
+                : "Saved privately"
+        );
+        setRealtimeRefreshNonce((value) => value + 1);
+      } catch (error) {
+        setActionError(
+          describeActionError(
+            error,
+            action.key === "withdraw"
+              ? "Couldn’t withdraw this request. Try again."
+              : "Couldn’t update this status. Try again."
+          )
+        );
+        setPendingActionKey(null);
+        setPendingNote("");
+        setReloadNonce((value) => value + 1);
+      } finally {
+        setActionPending(false);
+        setStatusMutationKey(null);
+      }
       return;
     }
 
     commitStatusLocally(target, action, trimmedNote);
+  };
+
+  const applyArchiveAction = async (target: OwnerInteraction, archived: boolean) => {
+    if (statusMutationKey) return;
+    setStatusMutationKey(archived ? "archive" : "unarchive");
+    setActionPending(true);
+    setActionError(null);
+    try {
+      if (liveMode && backendAccessToken) {
+        const record = target.kind === "application"
+          ? await setApplicationArchived(backendAccessToken, target.id, archived)
+          : await setTalentInterestArchived(backendAccessToken, target.id, archived);
+        setItems((current) =>
+          current.map((item) =>
+            item.id === target.id ? { ...item, archivedAt: record.archived_at ?? null } : item
+          )
+        );
+      } else {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === target.id
+              ? { ...item, archivedAt: archived ? new Date().toISOString() : null }
+              : item
+          )
+        );
+      }
+      flashActionFeedback(archived ? "Archived" : "Unarchived");
+      setPendingActionKey(null);
+    } catch (error) {
+      setActionError(
+        describeActionError(
+          error,
+          archived ? "Couldn’t archive this thread." : "Couldn’t unarchive this thread."
+        )
+      );
+    } finally {
+      setActionPending(false);
+      setStatusMutationKey(null);
+    }
   };
 
   const handleSendReply = async (target: OwnerInteraction) => {
@@ -2337,6 +2606,7 @@ export default function ApplicationsWorkspace({
         icon: action.icon,
         primary: action.primary,
         destructive: action.destructive,
+        menuGroup: action.menuGroup,
         onClick: () => {
           if (action.flow === "instant") {
             applyStatusAction(selected, action);
@@ -2346,6 +2616,19 @@ export default function ApplicationsWorkspace({
             setPendingActionKey(action.key);
             setPendingNote("");
             setActionError(null);
+            return;
+          }
+          if (action.flow === "notify" && action.backendStatus) {
+            setNotifyPrompt({
+              itemIds: [selected.id],
+              stageKey: action.backendStatus,
+              kind: selected.kind,
+              phase: "ask",
+            });
+            return;
+          }
+          if (action.flow === "archive") {
+            void applyArchiveAction(selected, action.archiveValue !== false);
             return;
           }
           composerRef.current?.focus();
@@ -2361,6 +2644,7 @@ export default function ApplicationsWorkspace({
             label: selectedBlockedByMe ? "Unblock user" : "Block user",
             icon: selectedBlockedByMe ? "check" : "x",
             destructive: !selectedBlockedByMe,
+            menuGroup: "Safety",
             onClick: () => {
               if (selectedBlockedByMe) {
                 void (async () => {
@@ -2487,6 +2771,16 @@ export default function ApplicationsWorkspace({
           {actionError ? (
             <p className="mx-4 mt-3 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2.5 text-xs text-amber-100 sm:mx-6">
               {actionError}
+            </p>
+          ) : null}
+          {actionPending ? (
+            <p aria-live="polite" className="mx-4 mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs text-white/65 sm:mx-6">
+              Updating…
+            </p>
+          ) : null}
+          {actionFeedback ? (
+            <p className="mx-4 mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-2.5 text-xs text-emerald-100 sm:mx-6">
+              {actionFeedback}
             </p>
           ) : null}
           <div className="min-h-0 flex-1">
@@ -2692,6 +2986,16 @@ export default function ApplicationsWorkspace({
                           {actionError}
                         </p>
                       ) : null}
+                      {actionPending ? (
+                        <p aria-live="polite" className="mb-5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs text-white/65">
+                          Updating…
+                        </p>
+                      ) : null}
+                      {actionFeedback ? (
+                        <p className="mb-5 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-3 text-xs text-emerald-100">
+                          {actionFeedback}
+                        </p>
+                      ) : null}
                       {selectedEngagement && backendAccessToken ? (
                         <EngagementStatusRow
                           engagement={selectedEngagement}
@@ -2741,41 +3045,6 @@ export default function ApplicationsWorkspace({
                           </div>
                         </section>
                       ) : null}
-                      {pendingAction ? (
-                        <section className={`mb-6 rounded-xl ${SURFACE} p-4`}>
-                          <p className="text-sm font-semibold text-white/90">{pendingAction.panelTitle}</p>
-                          {pendingAction.allowNote ? (
-                            <textarea
-                              value={pendingNote}
-                              onChange={(event) => setPendingNote(event.target.value)}
-                              rows={2}
-                              placeholder={`Optional message to ${firstNameOf(selected.counterpartyName)}…`}
-                              className="mt-3 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
-                            />
-                          ) : null}
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => applyStatusAction(selected, pendingAction, pendingNote)}
-                              disabled={Boolean(statusMutationKey)}
-                              className={`${PRIMARY_BUTTON_CLASSES} disabled:cursor-wait disabled:opacity-55`}
-                            >
-                              {statusMutationKey ? "Updating…" : pendingAction.confirmLabel}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPendingActionKey(null);
-                                setPendingNote("");
-                              }}
-                              className={GHOST_BUTTON_CLASSES}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </section>
-                      ) : null}
-
                       {conversation.length > 0 ? (
                         <div className="space-y-5">
                           {conversation.map((message) =>
@@ -3026,6 +3295,36 @@ export default function ApplicationsWorkspace({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(selected && pendingAction)}
+        title={pendingAction?.panelTitle ?? "Confirm status update"}
+        body={
+          pendingAction?.allowNote && selected ? (
+            <textarea
+              value={pendingNote}
+              onChange={(event) => setPendingNote(event.target.value)}
+              rows={3}
+              placeholder={`Optional message to ${firstNameOf(selected.counterpartyName)}…`}
+              className="mt-2 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+            />
+          ) : pendingAction?.backendStatus === "hired" ? (
+            <p>This shares the decision and creates the work engagement.</p>
+          ) : pendingAction?.backendStatus === "accepted" ? (
+            <p>This shares your acceptance and creates the work engagement.</p>
+          ) : null
+        }
+        confirmLabel={pendingAction?.confirmLabel ?? "Confirm"}
+        destructive={Boolean(pendingAction?.destructive)}
+        busy={Boolean(statusMutationKey)}
+        onConfirm={() => {
+          if (selected && pendingAction) void applyStatusAction(selected, pendingAction, pendingNote);
+        }}
+        onCancel={() => {
+          if (statusMutationKey) return;
+          setPendingActionKey(null);
+          setPendingNote("");
+        }}
+      />
     </div>
   );
 }

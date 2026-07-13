@@ -37,6 +37,7 @@ class EmailPayload:
     cta_url: str | None = None
     user_id: UUID | None = None
     metadata: dict = field(default_factory=dict)
+    dedupe_key: str | None = None
 
 
 def _now() -> datetime:
@@ -68,11 +69,10 @@ def _process_outbox_row(row: EmailOutbox) -> None:
 
 
 def queue_notification_email(session: AsyncSession, payload: EmailPayload) -> EmailOutbox:
-    """Persist an outbox row and run it through the active adapter (mock by default).
+    """Persist durable delivery intent inside the caller's transaction.
 
-    The row is added to the session but not committed here — it commits with the
-    surrounding flow's transaction so a notification email never persists without
-    its triggering action.
+    Delivery is deliberately not attempted here. A worker processes committed
+    rows later, so SMTP/push failures can never roll back the domain action.
     """
     body = (payload.body or "").strip() or None
     row = EmailOutbox(
@@ -85,8 +85,8 @@ def queue_notification_email(session: AsyncSession, payload: EmailPayload) -> Em
         body=body,
         cta_url=payload.cta_url,
         metadata_json=payload.metadata or {},
+        dedupe_key=payload.dedupe_key,
         status="queued",
     )
-    _process_outbox_row(row)
     session.add(row)
     return row

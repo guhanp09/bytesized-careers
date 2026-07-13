@@ -38,7 +38,7 @@ export function applicationRelationshipPresentation(status: JobApplicationRelati
 export type TalentInterestRelationshipStatus =
   | "new"
   | "reviewing"
-  | "contacted"
+  | "accepted"
   | "declined"
   | "archived"
   | "withdrawn";
@@ -52,7 +52,7 @@ const CLOSED_INTEREST_STATUSES = new Set<TalentInterestRelationshipStatus>([
 const INTEREST_STATUS_LABELS: Record<TalentInterestRelationshipStatus, string> = {
   new: "Hiring request sent",
   reviewing: "Hiring request under review",
-  contacted: "Hiring request accepted",
+  accepted: "Hiring request accepted",
   declined: "Hiring request declined",
   archived: "Hiring request archived",
   withdrawn: "Hiring request withdrawn",

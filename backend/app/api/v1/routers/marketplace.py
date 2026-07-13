@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import String, delete, func, or_, select
@@ -16,6 +16,7 @@ from app.models import (
     Entitlement,
     EngagementReview,
     InteractionPrivateNote,
+    InteractionStatusEvent,
     Job,
     JobApplication,
     Message,
@@ -33,10 +34,17 @@ from app.services.messaging_service import (
     get_or_create_conversation_for_application,
     get_or_create_conversation_for_interest,
 )
-from app.services import blocking_service, interaction_status, messaging_service as ms, review_service
+from app.services import (
+    blocking_service,
+    interaction_status,
+    interaction_transition_service as transitions,
+    messaging_service as ms,
+    review_service,
+)
 from app.schemas.job import JobRead
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
+    ApplicationTransitionResponse,
     EntitlementRead,
     JobApplicationBulkStatusUpdate,
     JobApplicationCreate,
@@ -44,6 +52,8 @@ from app.schemas.marketplace import (
     JobApplicationStatusUpdate,
     InteractionPrivateNoteCreate,
     InteractionPrivateNoteRead,
+    InteractionArchiveUpdate,
+    InteractionTransitionRequest,
     LaunchCheckoutRequest,
     ManagerNoteUpdate,
     NotificationListResponse,
@@ -61,6 +71,7 @@ from app.schemas.marketplace import (
     TalentInterestCreate,
     TalentInterestRead,
     TalentInterestStatusUpdate,
+    TalentInterestTransitionResponse,
     TalentListingCreate,
     TalentListingListResponse,
     TalentListingRead,
@@ -68,6 +79,75 @@ from app.schemas.marketplace import (
 )
 
 router = APIRouter(tags=["marketplace"])
+logger = logging.getLogger(__name__)
+
+
+async def _emit_transition_message_best_effort(
+    session: AsyncSession,
+    *,
+    conversation: Conversation | None,
+    message_id: UUID | None,
+    interaction_type: str,
+    interaction_id: UUID,
+) -> None:
+    """Emit realtime state only after commit and never invalidate that commit."""
+    if conversation is None or message_id is None:
+        return
+    message = await session.get(Message, message_id)
+    if message is None:
+        return
+    try:
+        await realtime_events.emit_message_created(
+            session, conversation=conversation, message=message
+        )
+    except Exception:
+        logger.exception(
+            "interaction_realtime_delivery_failed",
+            extra={"transition": {
+                "interaction_type": interaction_type,
+                "interaction_id": str(interaction_id),
+                "trusted_message_id": str(message_id),
+                "final_outcome": "committed_delivery_pending",
+                "structured_error_code": "realtime_delivery_failed",
+            }},
+        )
+
+
+def _transition_http_error(exc: transitions.TransitionError) -> HTTPException:
+    if isinstance(exc, transitions.TransitionForbidden):
+        code = status.HTTP_403_FORBIDDEN
+    elif isinstance(exc, transitions.StaleTransition):
+        code = status.HTTP_409_CONFLICT
+    elif isinstance(
+        exc,
+        (
+            transitions.InvalidTransition,
+            transitions.IdempotencyConflict,
+            transitions.IntegrityViolation,
+        ),
+    ):
+        code = status.HTTP_409_CONFLICT
+    else:
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    detail: dict[str, object] = {"code": exc.code, "message": str(exc)}
+    if isinstance(exc, transitions.StaleTransition):
+        detail.update(current_status=exc.current_status, current_version=exc.current_version)
+    return HTTPException(status_code=code, detail=detail)
+
+
+def _set_archive_state(
+    conversation: Conversation, viewer_id: UUID, *, archived: bool
+) -> None:
+    value = datetime.now(UTC) if archived else None
+    if viewer_id == conversation.participant_a_user_id:
+        conversation.participant_a_archived_at = value
+    elif viewer_id == conversation.participant_b_user_id:
+        conversation.participant_b_archived_at = value
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Conversation participant required",
+        )
 
 
 def _application_read_for_sender(application: JobApplication) -> JobApplicationRead:
@@ -82,6 +162,10 @@ def _application_read_for_sender(application: JobApplication) -> JobApplicationR
 def _interest_read_for_sender(interest: TalentInterest) -> TalentInterestRead:
     """Serialize a hiring request for its sender (recruiter): the talent's
     private manager_note must never leak to the recruiter."""
+    if interest.status == "contacted":
+        interest.status = "accepted"
+    if interest.participant_status == "contacted":
+        interest.participant_status = "accepted"
     read = TalentInterestRead.model_validate(interest)
     read.status = interest.participant_status or "new"
     read.manager_note = None
@@ -96,9 +180,37 @@ async def _application_read(
     sender_view: bool,
 ) -> JobApplicationRead:
     read = _application_read_for_sender(application) if sender_view else JobApplicationRead.model_validate(application)
+    applicant = await session.get(User, application.applicant_user_id)
+    snapshot = application.applicant_snapshot or {}
+    read.applicant_display_name = (
+        (applicant.display_name or applicant.username) if applicant is not None
+        else snapshot.get("display_name") or snapshot.get("username") or "Former collaborator"
+    )
+    read.applicant_username = applicant.username if applicant is not None else snapshot.get("username")
+    read.applicant_avatar_url = applicant.avatar_url if applicant is not None else None
+    conversation = (
+        await session.execute(
+            select(Conversation).where(Conversation.application_id == application.id)
+        )
+    ).scalar_one_or_none()
+    if conversation is not None:
+        read.archived_at = (
+            conversation.participant_a_archived_at
+            if viewer_id == conversation.participant_a_user_id
+            else conversation.participant_b_archived_at
+        )
     engagement = await review_service.engagement_for_application(session, application.id)
     if engagement is not None:
         read.engagement = await review_service.engagement_summary(session, engagement, viewer_id)
+    history_query = select(InteractionStatusEvent).where(
+        InteractionStatusEvent.interaction_type == "application",
+        InteractionStatusEvent.interaction_id == application.id,
+    )
+    if sender_view:
+        history_query = history_query.where(InteractionStatusEvent.audience == "participants")
+    read.status_history = list(
+        (await session.execute(history_query.order_by(InteractionStatusEvent.created_at))).scalars().all()
+    )
     return read
 
 
@@ -109,6 +221,10 @@ async def _interest_read(
     *,
     sender_view: bool,
 ) -> TalentInterestRead:
+    if interest.status == "contacted":
+        interest.status = "accepted"
+    if interest.participant_status == "contacted":
+        interest.participant_status = "accepted"
     read = _interest_read_for_sender(interest) if sender_view else TalentInterestRead.model_validate(interest)
     recruiter = (
         await session.execute(select(User).where(User.id == interest.recruiter_user_id))
@@ -119,9 +235,29 @@ async def _interest_read(
         )
         read.recruiter_username = recruiter.username
         read.recruiter_avatar_url = recruiter.avatar_url
+    conversation = (
+        await session.execute(
+            select(Conversation).where(Conversation.talent_interest_id == interest.id)
+        )
+    ).scalar_one_or_none()
+    if conversation is not None:
+        read.archived_at = (
+            conversation.participant_a_archived_at
+            if viewer_id == conversation.participant_a_user_id
+            else conversation.participant_b_archived_at
+        )
     engagement = await review_service.engagement_for_interest(session, interest.id)
     if engagement is not None:
         read.engagement = await review_service.engagement_summary(session, engagement, viewer_id)
+    history_query = select(InteractionStatusEvent).where(
+        InteractionStatusEvent.interaction_type == "hiring_request",
+        InteractionStatusEvent.interaction_id == interest.id,
+    )
+    if sender_view:
+        history_query = history_query.where(InteractionStatusEvent.audience == "participants")
+    read.status_history = list(
+        (await session.execute(history_query.order_by(InteractionStatusEvent.created_at))).scalars().all()
+    )
     return read
 
 
@@ -177,9 +313,6 @@ async def _assert_interest_transition_allowed(
         status_code=status.HTTP_409_CONFLICT,
         detail="Use the engagement controls after a hiring request has been accepted.",
     )
-
-logger = logging.getLogger(__name__)
-
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -270,117 +403,6 @@ async def _create_notification(
         )
     except Exception:
         logger.exception("notification_dispatch_failed", extra={"event_key": type_})
-
-
-async def _publish_application_status(
-    session: AsyncSession,
-    *,
-    application: JobApplication,
-    actor: User,
-    stage: str,
-) -> tuple[Conversation, Message]:
-    """Publish a relationship-changing application status once.
-
-    Internal manager stages never call this helper. Shared outcomes get one
-    trusted timeline event and one status notification, both pointing at the
-    same persisted application conversation.
-    """
-
-    job_title = (
-        await session.execute(select(Job.title).where(Job.id == application.job_id))
-    ).scalar_one_or_none()
-    prefixes = {
-        "interviewing": "Invited to interview",
-        "hired": "Hired",
-        "rejected": "Not moving forward",
-    }
-    prefix = prefixes[stage]
-    body = f"{prefix} for “{job_title}”." if job_title else f"{prefix}."
-    conversation = await get_or_create_conversation_for_application(session, application)
-    message_actor = actor
-    if actor.id not in (
-        conversation.participant_a_user_id,
-        conversation.participant_b_user_id,
-    ):
-        message_actor = (
-            await session.execute(
-                select(User).where(User.id == application.job_owner_user_id)
-            )
-        ).scalar_one()
-    message = await ms.post_message(
-        session,
-        conversation,
-        message_actor,
-        body,
-        kind="status_update",
-        allow_closed=True,
-        allow_blocked=True,
-        notify_recipient=False,
-        commit=False,
-        metadata={"stage": stage},
-    )
-    await _create_notification(
-        session,
-        user_id=application.applicant_user_id,
-        type_="application_status_changed",
-        title="Application status updated",
-        body=body,
-        category="application",
-        resource_type="job_application",
-        resource_id=str(application.id),
-        action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
-        actor_user_id=actor.id,
-        payload={"status": stage},
-    )
-    return conversation, message
-
-
-async def _publish_interest_status(
-    session: AsyncSession,
-    *,
-    interest: TalentInterest,
-    actor: User,
-    stage: str,
-) -> tuple[Conversation, Message]:
-    body = {
-        "contacted": "Hiring request accepted.",
-        "declined": "Hiring request declined.",
-    }[stage]
-    conversation = await get_or_create_conversation_for_interest(session, interest)
-    message_actor = actor
-    if actor.id not in (
-        conversation.participant_a_user_id,
-        conversation.participant_b_user_id,
-    ):
-        message_actor = (
-            await session.execute(select(User).where(User.id == interest.owner_user_id))
-        ).scalar_one()
-    message = await ms.post_message(
-        session,
-        conversation,
-        message_actor,
-        body,
-        kind="status_update",
-        allow_closed=True,
-        allow_blocked=True,
-        notify_recipient=False,
-        commit=False,
-        metadata={"stage": stage},
-    )
-    await _create_notification(
-        session,
-        user_id=interest.recruiter_user_id,
-        type_="talent_interest_status_changed",
-        title="Hiring request updated",
-        body=body,
-        category="talent",
-        resource_type="talent_interest",
-        resource_id=str(interest.id),
-        action_url=f"/applications?view=inbox&mode=recruiter&thread={interest.id}",
-        actor_user_id=actor.id,
-        payload={"status": stage},
-    )
-    return conversation, message
 
 
 def _job_snapshot(job: Job) -> dict:
@@ -749,6 +771,171 @@ async def list_received_applications(
     return result
 
 
+@router.post("/applications/{application_id}/transition", response_model=ApplicationTransitionResponse)
+async def transition_application_status(
+    application_id: UUID,
+    payload: InteractionTransitionRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> ApplicationTransitionResponse:
+    actor_user_id = current_user.id
+    try:
+        result = await transitions.transition_application(
+            session,
+            application_id=application_id,
+            actor=current_user,
+            requested_status=payload.status,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={
+                "transition": {
+                    "interaction_type": "application",
+                    "interaction_id": str(application_id),
+                    "actor_user_id": str(actor_user_id),
+                    "requested_status": payload.status,
+                    "expected_version": payload.expected_version,
+                    "idempotency_key": str(payload.idempotency_key),
+                    "final_outcome": "rejected",
+                    "structured_error_code": exc.code,
+                }
+            },
+        )
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_transition_failed",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": payload.expected_version,
+                "idempotency_key": str(payload.idempotency_key),
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
+        )
+        raise
+    await session.refresh(result.interaction)
+    read = await _application_read(session, result.interaction, actor_user_id, sender_view=False)
+    await _emit_transition_message_best_effort(
+        session,
+        conversation=result.conversation,
+        message_id=result.message_id,
+        interaction_type="application",
+        interaction_id=application_id,
+    )
+    return ApplicationTransitionResponse(
+        outcome=result.outcome,
+        current_status=result.interaction.status,
+        status_version=result.interaction.status_version,
+        application=read,
+    )
+
+
+@router.post("/applications/{application_id}/archive", response_model=JobApplicationRead)
+async def set_application_archive_state(
+    application_id: UUID,
+    payload: InteractionArchiveUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> JobApplicationRead:
+    application = (
+        await session.execute(
+            select(JobApplication).where(JobApplication.id == application_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if (
+        not payload.archived
+        and application.status == "archived"
+        and application.legacy_archive_resolution_required
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This legacy archive has no reliable previous stage. "
+                "Resolve its pipeline stage before unarchiving."
+            ),
+        )
+    conversation = await get_or_create_conversation_for_application(session, application)
+    _set_archive_state(conversation, current_user.id, archived=payload.archived)
+    await session.commit()
+    await session.refresh(application)
+    return await _application_read(
+        session,
+        application,
+        current_user.id,
+        sender_view=current_user.id == application.applicant_user_id,
+    )
+
+
+@router.post("/applications/{application_id}/status-communication", response_model=ApplicationTransitionResponse)
+async def communicate_application_status(
+    application_id: UUID,
+    payload: InteractionTransitionRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> ApplicationTransitionResponse:
+    actor_user_id = current_user.id
+    try:
+        result = await transitions.share_application_status(
+            session,
+            application_id=application_id,
+            actor=current_user,
+            requested_status=payload.status,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_communication_rejected",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": payload.expected_version,
+                "idempotency_key": str(payload.idempotency_key),
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
+        )
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_status_communication_failed",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": payload.expected_version,
+                "idempotency_key": str(payload.idempotency_key),
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
+        )
+        raise
+    await session.refresh(result.interaction)
+    read = await _application_read(session, result.interaction, actor_user_id, sender_view=False)
+    await _emit_transition_message_best_effort(
+        session,
+        conversation=result.conversation,
+        message_id=result.message_id,
+        interaction_type="application",
+        interaction_id=application_id,
+    )
+    return ApplicationTransitionResponse(
+        outcome=result.outcome,
+        current_status=result.interaction.status,
+        status_version=result.interaction.status_version,
+        application=read,
+    )
+
+
 @router.patch("/applications/{application_id}/status", response_model=JobApplicationRead)
 async def update_application_status(
     application_id: UUID,
@@ -756,45 +943,56 @@ async def update_application_status(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> JobApplicationRead:
-    application = (
-        await session.execute(
-            select(JobApplication)
-            .where(JobApplication.id == application_id)
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
+    application = await session.get(JobApplication, application_id)
     if application is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    if application.job_owner_user_id != current_user.id and current_user.account_type != "ADMIN":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
-    if application.status == payload.status:
-        return await _application_read(
-            session, application, current_user.id, sender_view=False
+        raise HTTPException(status_code=404, detail="Application not found")
+    actor_user_id = current_user.id
+    expected_version = application.status_version
+    logger.warning(
+        "legacy_transition_without_version",
+        extra={"transition": {
+            "interaction_type": "application",
+            "interaction_id": str(application_id),
+            "actor_user_id": str(actor_user_id),
+            "expected_version": expected_version,
+            "compatibility_route": "PATCH /applications/{id}/status",
+            "removal_target": "first-party clients migrated to versioned transitions",
+        }},
+    )
+    try:
+        result = await transitions.transition_application(
+            session, application_id=application_id, actor=current_user,
+            requested_status=payload.status, expected_version=expected_version,
+            idempotency_key=str(uuid5(NAMESPACE_URL, f"legacy:application:{application.id}:{expected_version}:{payload.status}")),
         )
-    await _assert_application_transition_allowed(session, application, payload.status)
-    application.status = payload.status
-    shared = interaction_status.application_status_is_automatically_shared(payload.status)
-    if shared:
-        application.participant_status = payload.status
-    if payload.status == "hired":
-        await review_service.ensure_for_application(session, application)
-    realtime_event: tuple[Conversation, Message] | None = None
-    if shared:
-        realtime_event = await _publish_application_status(
-            session,
-            application=application,
-            actor=current_user,
-            stage=payload.status,
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": expected_version,
+                "idempotency_key": "legacy-derived",
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
         )
-    await session.commit()
-    if realtime_event is not None:
-        conversation, message = realtime_event
-        await realtime_events.emit_message_created(
-            session, conversation=conversation, message=message
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_transition_failed",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": expected_version, "idempotency_key": "legacy-derived",
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
         )
-    await session.refresh(application)
-    result = await _application_read(session, application, current_user.id, sender_view=False)
-    return result
+        raise
+    await session.refresh(result.interaction)
+    return await _application_read(session, result.interaction, actor_user_id, sender_view=False)
 
 
 @router.post("/applications/{application_id}/withdraw", response_model=JobApplicationRead)
@@ -808,38 +1006,47 @@ async def withdraw_application(
     ).scalar_one_or_none()
     if application is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
-    # Only the applicant who sent it may withdraw — not the recruiter/job owner.
-    if application.applicant_user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the applicant can withdraw this application",
-        )
-    if application.status == "withdrawn":
-        return _application_read_for_sender(application)  # idempotent
-    if application.status in {"hired", "rejected", "archived"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This application can no longer be withdrawn",
-        )
-    application.status = "withdrawn"
-    application.participant_status = "withdrawn"
-    if application.job_owner_user_id is not None:
-        await _create_notification(
+    actor_user_id = current_user.id
+    expected_version = application.status_version
+    try:
+        result = await transitions.transition_application(
             session,
-            user_id=application.job_owner_user_id,
-            type_="application_withdrawn",
-            title="Application withdrawn",
-            body="An applicant withdrew their application.",
-            category="application",
-            resource_type="job_application",
-            resource_id=str(application.id),
-            action_url=f"/applications?view=inbox&mode=recruiter&thread={application.id}",
-            actor_user_id=current_user.id,
-            payload={"status": "withdrawn"},
+            application_id=application.id,
+            actor=current_user,
+            requested_status="withdrawn",
+            expected_version=expected_version,
+            idempotency_key=str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"withdraw:application:{application.id}:{expected_version}",
+                )
+            ),
         )
-    await session.commit()
-    await session.refresh(application)
-    return _application_read_for_sender(application)
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={"transition": {
+                "interaction_type": "application", "interaction_id": str(application_id),
+                "actor_user_id": str(actor_user_id), "requested_status": "withdrawn",
+                "expected_version": expected_version,
+                "idempotency_key": "withdraw-derived",
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
+        )
+        raise _transition_http_error(exc) from exc
+    await _emit_transition_message_best_effort(
+        session,
+        conversation=result.conversation,
+        message_id=result.message_id,
+        interaction_type="application",
+        interaction_id=application_id,
+    )
+    await session.refresh(result.interaction)
+    return await _application_read(
+        session, result.interaction, current_user.id, sender_view=True
+    )
 
 
 async def _ensure_legacy_private_note(
@@ -1038,9 +1245,8 @@ async def bulk_update_application_status(
 
     Owner-only, all-or-nothing: if any id is missing or not managed by the
     caller the whole batch is rejected, so a bulk action can never silently
-    skip rows. Internal stages stay private; relationship outcomes publish one
-    trusted event and notification atomically. ``notify`` is reserved for the
-    optional, explicitly shared shortlist state.
+    skip rows. Only lower-risk private organization stages are accepted here;
+    Hired and other shared outcomes must be confirmed one relationship at a time.
     """
     unique_ids = list(dict.fromkeys(payload.ids))
     applications = (
@@ -1059,41 +1265,25 @@ async def bulk_update_application_status(
     is_admin = current_user.account_type == "ADMIN"
     if any(app.job_owner_user_id != current_user.id and not is_admin for app in applications):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Application owner required")
-    if payload.notify and not interaction_status.application_status_can_be_shared(payload.status):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="This pipeline stage is private and cannot notify the applicant",
-        )
-    realtime_events_to_emit: list[tuple[Conversation, Message]] = []
     for application in applications:
-        if application.status == payload.status:
-            if payload.status == "hired":
-                await review_service.ensure_for_application(session, application)
-            continue
-        await _assert_application_transition_allowed(session, application, payload.status)
-        application.status = payload.status
-        should_publish = (
-            interaction_status.application_status_is_automatically_shared(payload.status)
-            or payload.notify
-        )
-        if should_publish:
-            application.participant_status = payload.status
-        if payload.status == "hired":
-            await review_service.ensure_for_application(session, application)
-        if should_publish:
-            realtime_events_to_emit.append(
-                await _publish_application_status(
-                    session,
-                    application=application,
-                    actor=current_user,
-                    stage=payload.status,
-                )
+        try:
+            await transitions.transition_application(
+                session,
+                application_id=application.id,
+                actor=current_user,
+                requested_status=payload.status,
+                expected_version=application.status_version,
+                idempotency_key=str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"bulk:application:{current_user.id}:{application.id}:"
+                        f"{application.status_version}:{payload.status}",
+                    )
+                ),
             )
+        except transitions.TransitionError as exc:
+            raise _transition_http_error(exc) from exc
     await session.commit()
-    for conversation, message in realtime_events_to_emit:
-        await realtime_events.emit_message_created(
-            session, conversation=conversation, message=message
-        )
     for application in applications:
         await session.refresh(application)
     result = [
@@ -1605,6 +1795,105 @@ async def list_sent_talent_interests(
     return result
 
 
+@router.post("/talent-interests/{interest_id}/transition", response_model=TalentInterestTransitionResponse)
+async def transition_talent_interest_status(
+    interest_id: UUID,
+    payload: InteractionTransitionRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TalentInterestTransitionResponse:
+    actor_user_id = current_user.id
+    try:
+        result = await transitions.transition_interest(
+            session,
+            interest_id=interest_id,
+            actor=current_user,
+            requested_status=payload.status,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": payload.expected_version,
+                "idempotency_key": str(payload.idempotency_key),
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
+        )
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_transition_failed",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": payload.expected_version,
+                "idempotency_key": str(payload.idempotency_key),
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
+        )
+        raise
+    await session.refresh(result.interaction)
+    read = await _interest_read(session, result.interaction, actor_user_id, sender_view=False)
+    await _emit_transition_message_best_effort(
+        session,
+        conversation=result.conversation,
+        message_id=result.message_id,
+        interaction_type="hiring_request",
+        interaction_id=interest_id,
+    )
+    return TalentInterestTransitionResponse(
+        outcome=result.outcome,
+        current_status=transitions.normalize_interest_status(result.interaction.status),
+        status_version=result.interaction.status_version,
+        interest=read,
+    )
+
+
+@router.post("/talent-interests/{interest_id}/archive", response_model=TalentInterestRead)
+async def set_interest_archive_state(
+    interest_id: UUID,
+    payload: InteractionArchiveUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TalentInterestRead:
+    interest = (
+        await session.execute(
+            select(TalentInterest).where(TalentInterest.id == interest_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if interest is None:
+        raise HTTPException(status_code=404, detail="Interest not found")
+    if (
+        not payload.archived
+        and interest.status == "archived"
+        and interest.legacy_archive_resolution_required
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This legacy archive has no reliable previous stage. "
+                "Resolve its pipeline stage before unarchiving."
+            ),
+        )
+    conversation = await get_or_create_conversation_for_interest(session, interest)
+    _set_archive_state(conversation, current_user.id, archived=payload.archived)
+    await session.commit()
+    await session.refresh(interest)
+    return await _interest_read(
+        session,
+        interest,
+        current_user.id,
+        sender_view=current_user.id == interest.recruiter_user_id,
+    )
+
+
 @router.get("/me/activity/summary", response_model=ActivitySummaryResponse)
 async def activity_summary(
     current_user: User = Depends(get_current_user),
@@ -1713,45 +2002,55 @@ async def update_talent_interest_status(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TalentInterestRead:
-    interest = (
-        await session.execute(
-            select(TalentInterest)
-            .where(TalentInterest.id == interest_id)
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
+    interest = await session.get(TalentInterest, interest_id)
     if interest is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
-    if interest.owner_user_id != current_user.id and current_user.account_type != "ADMIN":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
-    if interest.status == payload.status:
-        return await _interest_read(
-            session, interest, current_user.id, sender_view=False
+        raise HTTPException(status_code=404, detail="Interest not found")
+    actor_user_id = current_user.id
+    expected_version = interest.status_version
+    logger.warning(
+        "legacy_transition_without_version",
+        extra={"transition": {
+            "interaction_type": "hiring_request",
+            "interaction_id": str(interest_id),
+            "actor_user_id": str(actor_user_id),
+            "expected_version": expected_version,
+            "compatibility_route": "PATCH /talent-interests/{id}/status",
+            "removal_target": "first-party clients migrated to versioned transitions",
+        }},
+    )
+    try:
+        result = await transitions.transition_interest(
+            session, interest_id=interest_id, actor=current_user,
+            requested_status=payload.status, expected_version=expected_version,
+            idempotency_key=str(uuid5(NAMESPACE_URL, f"legacy:interest:{interest.id}:{expected_version}:{payload.status}")),
         )
-    await _assert_interest_transition_allowed(session, interest, payload.status)
-    interest.status = payload.status
-    shared = interaction_status.interest_status_is_automatically_shared(payload.status)
-    if shared:
-        interest.participant_status = payload.status
-    if payload.status == "contacted":
-        await review_service.ensure_for_interest(session, interest)
-    realtime_event: tuple[Conversation, Message] | None = None
-    if shared:
-        realtime_event = await _publish_interest_status(
-            session,
-            interest=interest,
-            actor=current_user,
-            stage=payload.status,
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": expected_version, "idempotency_key": "legacy-derived",
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
         )
-    await session.commit()
-    if realtime_event is not None:
-        conversation, message = realtime_event
-        await realtime_events.emit_message_created(
-            session, conversation=conversation, message=message
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_transition_failed",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": payload.status,
+                "expected_version": expected_version, "idempotency_key": "legacy-derived",
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
         )
-    await session.refresh(interest)
-    result = await _interest_read(session, interest, current_user.id, sender_view=False)
-    return result
+        raise
+    await session.refresh(result.interaction)
+    return await _interest_read(session, result.interaction, current_user.id, sender_view=False)
 
 
 @router.post("/talent-interests/{interest_id}/withdraw", response_model=TalentInterestRead)
@@ -1765,42 +2064,58 @@ async def withdraw_talent_interest(
     ).scalar_one_or_none()
     if interest is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interest not found")
-    # Only the recruiter who sent the hiring request may withdraw — not the talent.
-    if interest.recruiter_user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the sender can withdraw this hiring request",
+    actor_user_id = current_user.id
+    expected_version = interest.status_version
+    try:
+        result = await transitions.transition_interest(
+            session,
+            interest_id=interest.id,
+            actor=current_user,
+            requested_status="withdrawn",
+            expected_version=expected_version,
+            idempotency_key=str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"withdraw:hiring-request:{interest.id}:{expected_version}",
+                )
+            ),
         )
-    if interest.status == "withdrawn":
-        return _interest_read_for_sender(interest)  # idempotent
-    if interest.status in {"contacted", "declined", "archived"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This hiring request can no longer be withdrawn",
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        logger.warning(
+            "interaction_transition_rejected",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": "withdrawn",
+                "expected_version": expected_version, "idempotency_key": "withdraw-derived",
+                "final_outcome": "rejected", "structured_error_code": exc.code,
+            }},
         )
-    if await review_service.engagement_for_interest(session, interest.id) is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Use the engagement controls after a hiring request has been accepted",
+        raise _transition_http_error(exc) from exc
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "interaction_transition_failed",
+            extra={"transition": {
+                "interaction_type": "hiring_request", "interaction_id": str(interest_id),
+                "actor_user_id": str(actor_user_id), "requested_status": "withdrawn",
+                "expected_version": expected_version, "idempotency_key": "withdraw-derived",
+                "final_outcome": "failed", "structured_error_code": "transaction_failed",
+            }},
         )
-    interest.status = "withdrawn"
-    interest.participant_status = "withdrawn"
-    await _create_notification(
+        raise
+    await _emit_transition_message_best_effort(
         session,
-        user_id=interest.owner_user_id,
-        type_="talent_interest_withdrawn",
-        title="Hiring request withdrawn",
-        body="A recruiter withdrew their hiring request.",
-        category="talent",
-        resource_type="talent_interest",
-        resource_id=str(interest.id),
-        action_url=f"/applications?view=inbox&mode=talent&thread={interest.id}",
-        actor_user_id=current_user.id,
-        payload={"status": "withdrawn"},
+        conversation=result.conversation,
+        message_id=result.message_id,
+        interaction_type="hiring_request",
+        interaction_id=interest_id,
     )
-    await session.commit()
-    await session.refresh(interest)
-    return _interest_read_for_sender(interest)
+    await session.refresh(result.interaction)
+    return await _interest_read(
+        session, result.interaction, current_user.id, sender_view=True
+    )
 
 
 async def _interest_owned_by(
@@ -1958,8 +2273,8 @@ async def bulk_update_talent_interest_status(
 ) -> list[TalentInterestRead]:
     """Move several received hiring requests to one stage in a single call.
 
-    Owner-only and all-or-nothing. Internal review/archive stages stay private;
-    accepted and declined outcomes publish atomically to the recruiter.
+    Owner-only and all-or-nothing. Only private Reviewing is available in bulk;
+    Accepted and Declined are consequential shared decisions made one at a time.
     """
     unique_ids = list(dict.fromkeys(payload.ids))
     interests = (
@@ -1978,41 +2293,25 @@ async def bulk_update_talent_interest_status(
     is_admin = current_user.account_type == "ADMIN"
     if any(interest.owner_user_id != current_user.id and not is_admin for interest in interests):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Interest owner required")
-    if payload.notify and not interaction_status.interest_status_can_be_shared(payload.status):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="This pipeline stage is private and cannot notify the recruiter",
-        )
-    realtime_events_to_emit: list[tuple[Conversation, Message]] = []
     for interest in interests:
-        if interest.status == payload.status:
-            if payload.status == "contacted":
-                await review_service.ensure_for_interest(session, interest)
-            continue
-        await _assert_interest_transition_allowed(session, interest, payload.status)
-        interest.status = payload.status
-        should_publish = (
-            interaction_status.interest_status_is_automatically_shared(payload.status)
-            or payload.notify
-        )
-        if should_publish:
-            interest.participant_status = payload.status
-        if payload.status == "contacted":
-            await review_service.ensure_for_interest(session, interest)
-        if should_publish:
-            realtime_events_to_emit.append(
-                await _publish_interest_status(
-                    session,
-                    interest=interest,
-                    actor=current_user,
-                    stage=payload.status,
-                )
+        try:
+            await transitions.transition_interest(
+                session,
+                interest_id=interest.id,
+                actor=current_user,
+                requested_status=payload.status,
+                expected_version=interest.status_version,
+                idempotency_key=str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"bulk:hiring-request:{current_user.id}:{interest.id}:"
+                        f"{interest.status_version}:{payload.status}",
+                    )
+                ),
             )
+        except transitions.TransitionError as exc:
+            raise _transition_http_error(exc) from exc
     await session.commit()
-    for conversation, message in realtime_events_to_emit:
-        await realtime_events.emit_message_created(
-            session, conversation=conversation, message=message
-        )
     for interest in interests:
         # Creating an engagement flushes the session and expires server-managed
         # timestamp attributes on SQLite/Postgres. Refresh before Pydantic reads

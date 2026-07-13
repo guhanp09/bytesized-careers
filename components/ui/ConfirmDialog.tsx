@@ -30,12 +30,41 @@ export default function ConfirmDialog({
   onCancel: () => void;
 }) {
   const confirmRef = React.useRef<HTMLButtonElement | null>(null);
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
-    confirmRef.current?.focus();
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const frame = window.requestAnimationFrame(() => confirmRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(frame);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onCancel();
+      if (event.key === "Escape" && !busy) {
+        onCancel();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -59,7 +88,7 @@ export default function ConfirmDialog({
           if (!busy) onCancel();
         }}
       />
-      <div className="relative w-full max-w-sm rounded-2xl border border-white/[0.1] bg-[#15151b] p-5 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.95)]">
+      <div ref={dialogRef} className="relative w-full max-w-sm rounded-2xl border border-white/[0.1] bg-[#15151b] p-5 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.95)]">
         <h2 className="text-base font-semibold text-white">{title}</h2>
         {body ? <div className="mt-2 text-sm leading-6 text-white/60">{body}</div> : null}
         <div className="mt-5 flex justify-end gap-2">

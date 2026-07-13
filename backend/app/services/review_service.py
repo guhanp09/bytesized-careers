@@ -372,7 +372,7 @@ async def ensure_for_interest(session: AsyncSession, interest: TalentInterest) -
     existing = await engagement_for_interest(session, interest.id)
     if existing:
         return existing
-    if interest.status != "contacted":
+    if interest.status not in {"accepted", "contacted"}:
         raise InvalidEngagementTransition("The hiring request must be accepted before work can start.")
     listing = await session.get(TalentListing, interest.talent_listing_id)
     recruiter = await session.get(User, interest.recruiter_user_id)

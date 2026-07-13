@@ -11,10 +11,13 @@ from app.db import seed
 from app.db import seed_data_personas as personas
 from app.models import (
     Conversation,
+    EmailOutbox,
     Engagement,
     EngagementReview,
     HiringIdentity,
     InteractionPrivateNote,
+    InteractionStatusEvent,
+    InteractionTransitionRequest,
     Job,
     JobApplication,
     Message,
@@ -158,6 +161,45 @@ async def _qa_owned_source_ids(session: AsyncSession) -> tuple[list[UUID], list[
 
 async def _delete_qa_lifecycle(session: AsyncSession) -> tuple[list[UUID], list[UUID]]:
     application_ids, interest_ids = await _qa_owned_source_ids(session)
+    # Versioned transition rows and delivery intents are part of the same QA
+    # lifecycle. Leaving them behind makes a restored interaction look fresh
+    # while its idempotency/history records still describe a prior test run.
+    if application_ids:
+        await session.execute(
+            delete(InteractionTransitionRequest).where(
+                InteractionTransitionRequest.interaction_type == "application",
+                InteractionTransitionRequest.interaction_id.in_(application_ids),
+            )
+        )
+        await session.execute(
+            delete(InteractionStatusEvent).where(
+                InteractionStatusEvent.interaction_type == "application",
+                InteractionStatusEvent.interaction_id.in_(application_ids),
+            )
+        )
+    if interest_ids:
+        await session.execute(
+            delete(InteractionTransitionRequest).where(
+                InteractionTransitionRequest.interaction_type == "hiring_request",
+                InteractionTransitionRequest.interaction_id.in_(interest_ids),
+            )
+        )
+        await session.execute(
+            delete(InteractionStatusEvent).where(
+                InteractionStatusEvent.interaction_type == "hiring_request",
+                InteractionStatusEvent.interaction_id.in_(interest_ids),
+            )
+        )
+    delivery_prefixes = [
+        *[f"application:{item}:%" for item in application_ids],
+        *[f"hiring-request:{item}:%" for item in interest_ids],
+    ]
+    if delivery_prefixes:
+        await session.execute(
+            delete(EmailOutbox).where(
+                or_(*(EmailOutbox.dedupe_key.like(prefix) for prefix in delivery_prefixes))
+            )
+        )
     # Blocks are QA-owned only when both participants are fixture users. This
     # clears a prior test run's restriction without touching a real user's block.
     qa_user_ids = personas.all_qa_seed_user_ids()

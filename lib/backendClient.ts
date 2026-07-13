@@ -903,11 +903,26 @@ export type BackendJobApplication = {
   first_message_answers?: Record<string, unknown>;
   applicant_snapshot: Record<string, unknown>;
   status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
+  status_version: number;
+  participant_status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
+  legacy_archive_resolution_required?: boolean;
+  archived_at?: string | null;
   /** Job owner's private pipeline note. The backend blanks it on sender-facing reads. */
   manager_note?: string | null;
   created_at: string;
   updated_at: string;
   engagement?: BackendEngagementSummary | null;
+  status_history?: BackendInteractionStatusEvent[];
+};
+
+export type BackendInteractionStatusEvent = {
+  id: string;
+  previous_status?: string | null;
+  new_status: string;
+  status_version: number;
+  event_kind: string;
+  audience: "manager_only" | "participants";
+  created_at: string;
 };
 
 export type BackendTalentListing = {
@@ -1022,12 +1037,17 @@ export type BackendTalentInterest = {
   owner_user_id: string;
   note?: string | null;
   first_message_answers?: Record<string, unknown>;
-  status: "new" | "reviewing" | "contacted" | "declined" | "archived" | "withdrawn";
+  status: "new" | "reviewing" | "accepted" | "declined" | "archived" | "withdrawn";
+  status_version: number;
+  participant_status: "new" | "reviewing" | "accepted" | "declined" | "archived" | "withdrawn";
+  legacy_archive_resolution_required?: boolean;
+  archived_at?: string | null;
   /** Talent's (listing owner's) private pipeline note. Blanked on sender-facing reads. */
   manager_note?: string | null;
   created_at: string;
   updated_at: string;
   engagement?: BackendEngagementSummary | null;
+  status_history?: BackendInteractionStatusEvent[];
 };
 
 export type BackendInteractionPrivateNote = {
@@ -2207,16 +2227,69 @@ export async function listMyReceivedApplications(accessToken: string): Promise<B
   return requestJson<BackendJobApplication[]>("/me/applications/received", { accessToken });
 }
 
-export async function updateApplicationStatus(
+export type BackendInteractionTransitionResponse<T> = {
+  outcome: "transitioned" | "already_in_state";
+  current_status: string;
+  status_version: number;
+  application?: T;
+  interest?: T;
+};
+
+export async function transitionApplicationStatus(
   accessToken: string,
   applicationId: string,
-  statusValue: BackendJobApplication["status"]
+  statusValue: BackendJobApplication["status"],
+  expectedVersion: number,
+  idempotencyKey: string
+): Promise<BackendInteractionTransitionResponse<BackendJobApplication>> {
+  return requestJson<BackendInteractionTransitionResponse<BackendJobApplication>>(
+    `/applications/${encodeURIComponent(applicationId)}/transition`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        status: statusValue,
+        expected_version: expectedVersion,
+        idempotency_key: idempotencyKey,
+      }),
+      accessToken,
+    }
+  );
+}
+
+export async function setApplicationArchived(
+  accessToken: string,
+  applicationId: string,
+  archived: boolean
 ): Promise<BackendJobApplication> {
-  return requestJson<BackendJobApplication>(`/applications/${encodeURIComponent(applicationId)}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({ status: statusValue }),
-    accessToken,
-  });
+  return requestJson<BackendJobApplication>(
+    `/applications/${encodeURIComponent(applicationId)}/archive`,
+    {
+      method: "POST",
+      body: JSON.stringify({ archived }),
+      accessToken,
+    }
+  );
+}
+
+export async function communicateApplicationStatus(
+  accessToken: string,
+  applicationId: string,
+  statusValue: BackendJobApplication["status"],
+  expectedVersion: number,
+  idempotencyKey: string
+): Promise<BackendInteractionTransitionResponse<BackendJobApplication>> {
+  return requestJson<BackendInteractionTransitionResponse<BackendJobApplication>>(
+    `/applications/${encodeURIComponent(applicationId)}/status-communication`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        status: statusValue,
+        expected_version: expectedVersion,
+        idempotency_key: idempotencyKey,
+      }),
+      accessToken,
+    }
+  );
 }
 
 /** Move several received applications to one pipeline stage (job owner only). */
@@ -2426,16 +2499,40 @@ export async function getActivitySummary(accessToken: string): Promise<ActivityS
   };
 }
 
-export async function updateTalentInterestStatus(
+export async function transitionTalentInterestStatus(
   accessToken: string,
   interestId: string,
-  statusValue: BackendTalentInterest["status"]
+  statusValue: BackendTalentInterest["status"],
+  expectedVersion: number,
+  idempotencyKey: string
+): Promise<BackendInteractionTransitionResponse<BackendTalentInterest>> {
+  return requestJson<BackendInteractionTransitionResponse<BackendTalentInterest>>(
+    `/talent-interests/${encodeURIComponent(interestId)}/transition`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        status: statusValue,
+        expected_version: expectedVersion,
+        idempotency_key: idempotencyKey,
+      }),
+      accessToken,
+    }
+  );
+}
+
+export async function setTalentInterestArchived(
+  accessToken: string,
+  interestId: string,
+  archived: boolean
 ): Promise<BackendTalentInterest> {
-  return requestJson<BackendTalentInterest>(`/talent-interests/${encodeURIComponent(interestId)}/status`, {
-    method: "PATCH",
-    body: JSON.stringify({ status: statusValue }),
-    accessToken,
-  });
+  return requestJson<BackendTalentInterest>(
+    `/talent-interests/${encodeURIComponent(interestId)}/archive`,
+    {
+      method: "POST",
+      body: JSON.stringify({ archived }),
+      accessToken,
+    }
+  );
 }
 
 /** Move several received hiring requests to one stage (listing owner only). */
@@ -2689,11 +2786,21 @@ export async function sendConversationMessage(
 export async function sendConversationStatusUpdate(
   accessToken: string,
   conversationId: string,
-  stage: "shortlisted" | "interviewing" | "hired" | "rejected" | "contacted" | "declined"
+  stage: "shortlisted" | "rejected",
+  expectedVersion: number,
+  idempotencyKey: string
 ): Promise<BackendMessage> {
   return requestJson<BackendMessage>(
     `/me/conversations/${encodeURIComponent(conversationId)}/status-update`,
-    { method: "POST", body: JSON.stringify({ stage }), accessToken }
+    {
+      method: "POST",
+      body: JSON.stringify({
+        stage,
+        expected_version: expectedVersion,
+        idempotency_key: idempotencyKey,
+      }),
+      accessToken,
+    }
   );
 }
 

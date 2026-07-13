@@ -163,8 +163,8 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
-CLOSED_APPLICATION_STATUSES = frozenset({"rejected", "archived", "withdrawn"})
-CLOSED_INTEREST_STATUSES = frozenset({"declined", "archived", "withdrawn"})
+CLOSED_APPLICATION_STATUSES = frozenset({"rejected", "withdrawn"})
+CLOSED_INTEREST_STATUSES = frozenset({"declined", "withdrawn"})
 
 
 async def conversation_is_closed(session: AsyncSession, conversation: Conversation) -> bool:
@@ -213,9 +213,8 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
         ).one_or_none()
         if application_state is None:
             return True
-        manager_status, participant_status = application_state
-        effective_status = participant_status if manager_status == "archived" else manager_status
-        return effective_status in CLOSED_APPLICATION_STATUSES
+        _, participant_status = application_state
+        return participant_status in CLOSED_APPLICATION_STATUSES
     if conversation.talent_interest_id is not None:
         interest_state = (
             await session.execute(
@@ -226,9 +225,8 @@ async def conversation_is_closed(session: AsyncSession, conversation: Conversati
         ).one_or_none()
         if interest_state is None:
             return True
-        manager_status, participant_status = interest_state
-        effective_status = participant_status if manager_status == "archived" else manager_status
-        return effective_status in CLOSED_INTEREST_STATUSES
+        _, participant_status = interest_state
+        return participant_status in CLOSED_INTEREST_STATUSES
     return True
 
 

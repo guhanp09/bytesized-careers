@@ -33,7 +33,7 @@ blocks.
 | Unread state | HTTP list endpoint | Persisted participant read timestamps | Socket unread events update the relevant thread immediately; polling reconciles after reconnect. |
 | Status events | Existing trusted status endpoint | Server validates pipeline transition | Clients cannot forge status events through WebSockets. |
 | Accepted/hired work | Existing source-status checks | Engagement lifecycle remains additive | Hired applications and accepted requests remain messageable unless blocked. |
-| Terminal threads | Existing rejected/declined/withdrawn/archive rules | Server-side status updates remain allowed only through trusted workflows | Normal composer is unavailable; historical messages remain readable. |
+| Terminal threads | Participant-visible rejected/declined/withdrawn rules | Server-side status updates remain allowed only through trusted workflows | Normal composer is unavailable; historical messages remain readable. Private archive alone never closes messaging. |
 | Private notes | User-scoped browser cache | Backend-only owner authorization | Notes never cross a persona boundary and do not produce presence or typing signals. |
 | Cache invalidation | Scoped local persistence | Live HTTP responses | Socket reconnect/block events trigger an authoritative refresh instead of fabricating state. |
 

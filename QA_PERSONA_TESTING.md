@@ -150,8 +150,9 @@ exact phrase, then confirm.
 | Full QA baseline | `RESTORE ALL QA DATA` | Every deterministic QA fixture |
 
 Restores use stable IDs, delete in dependency order, and recreate only QA-owned
-records. They also clear transient Apply, Hire, message, note, notification, and
-block data when both the actor and listing are deterministic QA fixtures. An
+records. They also clear transient Apply, Hire, status history, idempotency,
+delivery intent, message, note, notification, and block data when both the actor
+and listing are deterministic QA fixtures. An
 ordinary user's records are preserved even when they relate to a seeded listing,
 and all QA audit records remain. Running a pack twice is safe. A partially
 completed earlier restore can be run again.
@@ -167,8 +168,8 @@ completed earlier restore can be run again.
 6. Click the message icon and send a short reply.
 7. Return to controller, then switch to `Priya Nair`.
 8. Open `/applications?view=pipeline&mode=talent&direction=sent`.
-9. Confirm the finance editor application is in `Viewed` (the talent-facing name
-   for the recruiter's internal reviewing state).
+9. Confirm the finance editor application remains in `Pending`/`New`; the
+   recruiter's internal Reviewing stage is private.
 10. Switch to Inbox and open the same job. Confirm the recruiter message exists.
 
 Expected result: one persisted application changes state and both participants
@@ -180,10 +181,10 @@ see the same persisted conversation. Internal labels remain role-appropriate.
 2. Switch to `Aditi Verma`.
 3. Open `/applications?view=pipeline&mode=talent&direction=received`.
 4. Find the Finance Simplified request under `New`.
-5. Move it to `Accepted` and choose whether to post the status update.
+5. Move it to `Accepted` and confirm the consequential shared action.
 6. Return to controller and switch to `Finance Simplified`.
 7. Open `/applications?view=pipeline&mode=recruiter&direction=sent`.
-8. Confirm Aditi appears in the accepted/contacted stage.
+8. Confirm Aditi appears in the Accepted stage.
 
 Expected result: acceptance creates one idempotent engagement in
 `Ready to start`; it is not only a visual stage change.

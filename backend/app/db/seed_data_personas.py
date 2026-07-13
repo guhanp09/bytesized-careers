@@ -1283,7 +1283,7 @@ def _interest(
         "first_message_answers": answers or {},
         "status": status,
         "participant_status": (
-            status if status in {"contacted", "declined", "withdrawn"} else "new"
+            status if status in {"accepted", "declined", "withdrawn"} else "new"
         ),
         "created_at": SEED_TIME,
     }
@@ -1296,7 +1296,7 @@ def build_persona_interests() -> list[dict[str, object]]:
     return [
         # both-sides (as recruiter) reaches out to talent-complete → talent-complete received.
         _interest(
-            "both-sides", "talent-complete", "talent-complete", "contacted",
+            "both-sides", "talent-complete", "talent-complete", "accepted",
             "Hi, I came across your listing and would like to discuss a small interview-editing batch.",
             answers={
                 "project_budget": {"amount": "40000", "unit": "per project"},

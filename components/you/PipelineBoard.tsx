@@ -4,8 +4,10 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../Icons";
+import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
+  bulkStageTargetsFor,
   groupByStage,
   pipelineCardFacts,
   pipelineContextLabelOf,
@@ -16,7 +18,6 @@ import {
   pipelineSearchMatch,
   pipelineSnippetOf,
   pipelineStagesFor,
-  stageTargetsFor,
   validStageTargetsFor,
   type PipelineFirstMessageLine,
   type PipelineStage,
@@ -65,10 +66,7 @@ function RowAvatar({ name, src }: { name: string; src?: string | null }) {
 }
 
 function stageMenuGroupLabel(stage: PipelineStage): string {
-  if (stage.notify?.automatic) return "Shared outcome";
-  if (stage.notify) return "Optional update";
-  if (stage.terminal) return "Private close";
-  return "Private tracking";
+  return stage.notify?.automatic ? "Share a decision" : "Manage privately";
 }
 
 /** Compact "move to stage" menu. Used per-card and in the bulk bar. */
@@ -96,6 +94,7 @@ function StageMenu({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -103,7 +102,10 @@ function StageMenu({
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -116,6 +118,7 @@ function StageMenu({
   return (
     <div ref={rootRef} className="relative" data-no-drag>
       <button
+        ref={triggerRef}
         type="button"
         data-testid={triggerTestId}
         aria-haspopup="menu"
@@ -141,10 +144,12 @@ function StageMenu({
             align === "right" ? "right-0" : "left-0",
           ].join(" ")}
         >
-          {targets.map((stage, index) => {
+          {[...targets]
+            .sort((left, right) => Number(Boolean(left.notify?.automatic)) - Number(Boolean(right.notify?.automatic)))
+            .map((stage, index, orderedTargets) => {
             const isCurrent = stage.key === currentKey;
             const groupLabel = stageMenuGroupLabel(stage);
-            const previousStage = index > 0 ? targets[index - 1] : null;
+            const previousStage = index > 0 ? orderedTargets[index - 1] : null;
             const previousGroupLabel = previousStage ? stageMenuGroupLabel(previousStage) : null;
             return (
               <Fragment key={stage.key}>
@@ -167,6 +172,7 @@ function StageMenu({
                   onClick={(event) => {
                     event.stopPropagation();
                     setOpen(false);
+                    triggerRef.current?.focus();
                     onSelect(stage.key);
                   }}
                   className={[
@@ -359,10 +365,18 @@ export default function PipelineBoard({
     setStageFilterState(next);
   };
   const [busy, setBusy] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{
+    items: OwnerInteraction[];
+    stageKey: string;
+  } | null>(null);
   // Native HTML5 drag state: the card being dragged and the hovered drop target.
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropStage, setDropStage] = useState<string | null>(null);
-  const targets = useMemo(() => stageTargetsFor(kind), [kind]);
+  const safeBulkTargets = useMemo(() => bulkStageTargetsFor(kind), [kind]);
+  const unarchiveTarget = useMemo<PipelineStage>(
+    () => ({ key: "_unarchive", label: "Unarchive", dot: "bg-white/35" }),
+    []
+  );
   const manageable = direction === "received";
 
   const contextOptions = useMemo(() => pipelineContextOptions(items), [items]);
@@ -399,21 +413,33 @@ export default function PipelineBoard({
 
   const isValidDropStage = (stageKey: string) =>
     draggedItems.length > 0 &&
-    draggedItems.every((item) =>
-      validStageTargetsFor(kind, backendStatusOf(item)).some((stage) => stage.key === stageKey)
-    );
+    (draggedItems.length === 1 || safeBulkTargets.some((stage) => stage.key === stageKey)) &&
+    draggedItems.every((item) => {
+      const current = backendStatusOf(item);
+      if (stageKey === "archived") return current !== "archived";
+      if (stageKey === "_unarchive") return current === "archived";
+      return validStageTargetsFor(kind, current, item.participantBackendStatus).some(
+        (stage) => stage.key === stageKey
+      );
+    });
 
   const bulkTargets = useMemo(
     () =>
-      targets.filter((stage) =>
+      safeBulkTargets.filter((stage) =>
         selectedItems.length > 0 &&
         selectedItems.every((item) =>
-          validStageTargetsFor(kind, backendStatusOf(item)).some(
-            (candidate) => candidate.key === stage.key
-          )
+          stage.key === "archived"
+            ? backendStatusOf(item) !== "archived"
+            : validStageTargetsFor(
+                kind,
+                backendStatusOf(item),
+                item.participantBackendStatus
+              ).some(
+                (candidate) => candidate.key === stage.key
+              )
         )
       ),
-    [kind, selectedItems, targets]
+    [kind, selectedItems, safeBulkTargets]
   );
 
   const toggleRow = (id: string) => {
@@ -438,8 +464,8 @@ export default function PipelineBoard({
     });
   };
 
-  const moveStage = async (moveItems: OwnerInteraction[], stageKey: string) => {
-    if (!moveItems.length || busy) return;
+  const moveStage = async (moveItems: OwnerInteraction[], stageKey: string): Promise<boolean> => {
+    if (!moveItems.length || busy) return false;
     setBusy(true);
     try {
       await onMoveStage(moveItems, stageKey);
@@ -447,12 +473,22 @@ export default function PipelineBoard({
         const moved = new Set(moveItems.map((item) => item.id));
         return new Set([...prev].filter((id) => !moved.has(id)));
       });
+      return true;
     } catch {
       // The parent surfaces the failure banner; keeping the selection lets the
       // user retry the same move without re-picking rows.
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const requestStageMove = (moveItems: OwnerInteraction[], stageKey: string) => {
+    if (["hired", "accepted", "declined"].includes(stageKey)) {
+      setPendingMove({ items: moveItems, stageKey });
+      return;
+    }
+    void moveStage(moveItems, stageKey);
   };
 
   const handleCardDragStart = (event: DragEvent<HTMLDivElement>, item: OwnerInteraction) => {
@@ -476,7 +512,7 @@ export default function PipelineBoard({
     const toMove = draggedItems.filter((item) => backendStatusOf(item) !== stageKey);
     endDrag();
     if (toMove.length > 0 && isValidDropStage(stageKey)) {
-      void moveStage(toMove, stageKey);
+      requestStageMove(toMove, stageKey);
     }
   };
 
@@ -849,13 +885,24 @@ export default function PipelineBoard({
                                 })()}
                                 {manageable ? (
                                   <StageMenu
-                                    targets={validStageTargetsFor(kind, currentKey)}
+                                    targets={
+                                      currentKey === "archived"
+                                        ? [unarchiveTarget]
+                                        : [
+                                            ...validStageTargetsFor(
+                                              kind,
+                                              currentKey,
+                                              item.participantBackendStatus
+                                            ),
+                                            ...(stages.filter((entry) => entry.key === "archived")),
+                                          ]
+                                    }
                                     currentKey={currentKey}
                                     triggerLabel={stages.find((entry) => entry.key === currentKey)?.label ?? stage.label}
                                     triggerTestId="pipeline-stage-menu"
                                     optionTestPrefix="pipeline-stage-option"
                                     disabled={busy}
-                                    onSelect={(stageKey) => void moveStage([item], stageKey)}
+                                    onSelect={(stageKey) => requestStageMove([item], stageKey)}
                                   />
                                 ) : null}
                               </div>
@@ -890,7 +937,7 @@ export default function PipelineBoard({
                 optionTestPrefix="bulk-move"
                 disabled={busy}
                 drop="up"
-                onSelect={(stageKey) => void moveStage(selectedItems, stageKey)}
+                onSelect={(stageKey) => requestStageMove(selectedItems, stageKey)}
               />
               <button
                 type="button"
@@ -904,6 +951,42 @@ export default function PipelineBoard({
           </div>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingMove)}
+        title={
+          pendingMove?.stageKey === "hired"
+            ? "Hire this candidate?"
+            : pendingMove?.stageKey === "accepted"
+              ? "Accept this hiring request?"
+              : "Decline this hiring request?"
+        }
+        body={
+          pendingMove?.stageKey === "hired"
+            ? "This shares the decision and creates the work engagement."
+            : pendingMove?.stageKey === "accepted"
+              ? "This shares your acceptance and creates the work engagement."
+              : "This decision is shared with the recruiter."
+        }
+        confirmLabel={
+          pendingMove?.stageKey === "hired"
+            ? "Confirm hire"
+            : pendingMove?.stageKey === "accepted"
+              ? "Confirm acceptance"
+              : "Confirm decline"
+        }
+        destructive={pendingMove?.stageKey === "declined"}
+        busy={busy}
+        onConfirm={() => {
+          if (!pendingMove) return;
+          const next = pendingMove;
+          void moveStage(next.items, next.stageKey).then((succeeded) => {
+            if (succeeded) setPendingMove(null);
+          });
+        }}
+        onCancel={() => {
+          if (!busy) setPendingMove(null);
+        }}
+      />
     </div>
   );
 }

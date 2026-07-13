@@ -155,7 +155,7 @@ Start the disposable backend and frontend using the exact commands in
 - Send multiline text, URL, emoji, and punctuation: preserved.
 - Send over 5,000 characters: rejected by the API/UI limit.
 - Open another user's conversation or private-note endpoint: `403`.
-- Withdraw as sender: succeeds unless hired/contacted; manager cannot forge it.
+- Withdraw as sender: succeeds unless hired/accepted; manager cannot forge it.
 - Reject/decline/archive as manager: thread becomes read-only.
 - Move to hired/accepted: thread remains available for ongoing work.
 - Suspend either participant: new messages are rejected.

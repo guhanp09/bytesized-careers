@@ -13,7 +13,11 @@ from app.db import seed_data_personas as personas
 from app.middleware import qa_audit
 from app.models import (
     AdminAuditLog,
+    EmailOutbox,
+    Engagement,
     EngagementReview,
+    InteractionStatusEvent,
+    InteractionTransitionRequest,
     Job,
     JobApplication,
     TalentInterest,
@@ -427,6 +431,79 @@ async def test_each_targeted_restore_pack_is_repeatable(client, scenario, confir
             json={"confirmation": confirmation},
         )
         assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_inbox_restore_clears_real_transition_side_effects_before_reuse(client):
+    controller_token = await _prepare()
+    recruiter_session = await client.post(
+        "/api/v1/qa/session/switch",
+        headers=_auth(controller_token),
+        json={"persona_key": "recruiter-active"},
+    )
+    assert recruiter_session.status_code == 200
+    recruiter_token = recruiter_session.json()["access_token"]
+    application_id = personas.persona_uuid(
+        "application:talent-complete:recruiter-active-1"
+    )
+
+    async def hire() -> None:
+        response = await client.post(
+            f"/api/v1/applications/{application_id}/transition",
+            headers=_auth(recruiter_token),
+            json={
+                "status": "hired",
+                "expected_version": 1,
+                "idempotency_key": str(uuid.uuid4()),
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["outcome"] == "transitioned"
+
+    await hire()
+    restored = await client.post(
+        "/api/v1/qa/scenarios/inbox-pipeline/restore",
+        headers=_auth(controller_token),
+        json={"confirmation": "RESTORE INBOX"},
+    )
+    assert restored.status_code == 200, restored.text
+
+    async with TestSessionLocal() as session:
+        application = await session.get(JobApplication, application_id)
+        assert application is not None
+        assert application.status == "shortlisted"
+        assert application.participant_status == "new"
+        assert application.status_version == 1
+        assert (
+            await session.execute(
+                select(InteractionStatusEvent).where(
+                    InteractionStatusEvent.interaction_type == "application",
+                    InteractionStatusEvent.interaction_id == application_id,
+                )
+            )
+        ).scalar_one_or_none() is None
+        assert (
+            await session.execute(
+                select(InteractionTransitionRequest).where(
+                    InteractionTransitionRequest.interaction_type == "application",
+                    InteractionTransitionRequest.interaction_id == application_id,
+                )
+            )
+        ).scalar_one_or_none() is None
+        assert (
+            await session.execute(
+                select(Engagement).where(Engagement.application_id == application_id)
+            )
+        ).scalar_one_or_none() is None
+        assert (
+            await session.execute(
+                select(EmailOutbox).where(
+                    EmailOutbox.dedupe_key.like(f"application:{application_id}:%")
+                )
+            )
+        ).scalar_one_or_none() is None
+
+    await hire()
 
 
 @pytest.mark.asyncio
