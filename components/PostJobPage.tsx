@@ -25,7 +25,7 @@ import {
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
-import { Job, ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
+import { Job, JobCategory, ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
 import { formatBudgetPreview, formatExperiencePreview, formatSubsInput } from "../lib/format";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
 import { INDIA_CITIES } from "../lib/indiaCities";
@@ -42,6 +42,17 @@ import {
 } from "../lib/firstMessageRequirements";
 import { normalizeCreatorContextList } from "../lib/jobCreatorContext";
 import { normalizeReferenceTimestampNote, normalizeReferenceVideo, serializeReferenceVideo } from "../lib/referenceVideos";
+import {
+  ANON_OWNER,
+  clearImportHandoff,
+  hasRecentImportConsumption,
+  markImportConsumed,
+  readImportHandoff,
+} from "../lib/importJob/handoff";
+import { IMPORT_JUMP_TARGETS } from "../lib/importJob/applyToWizard";
+import { normalizeJobCategory } from "../lib/importJob/categoryMap";
+import type { ImportFieldMeta } from "../lib/importJob/types";
+import ImportReviewBanner from "./import-job/ImportReviewBanner";
 
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type TurnaroundUnit = "hours" | "days" | "weeks";
@@ -1012,7 +1023,9 @@ export default function PostJobPage() {
   const { data: session, status: sessionStatus } = useSession();
   const connectParam = searchParams.get("yt_connect");
   const draftId = searchParams.get("draftId") || "";
+  const importFlag = !draftId && searchParams.get("import") === "1";
   const autoConnectHandledRef = useRef(false);
+  const importConsumedRef = useRef(false);
   const tokenRecoveryPromiseRef = useRef<Promise<string | null> | null>(null);
   const [step, setStep] = useState<Step>("basics");
   const [direction, setDirection] = useState<"forward" | "back">("forward");
@@ -1118,7 +1131,12 @@ export default function PostJobPage() {
   const [contentNiches, setContentNiches] = useState<string[]>([]);
   const [contentGenres, setContentGenres] = useState<string[]>([]);
   const [formatsHiredFor, setFormatsHiredFor] = useState<string[]>([]);
-  const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(!draftId);
+  // Durable job category (general state, not import-only): a fresh native job is
+  // "Editing" exactly as before; import hydration and draft resume both set it so
+  // an imported draft never silently reverts on reopen.
+  const [jobCategory, setJobCategory] = useState<JobCategory>("Editing");
+  const [importMeta, setImportMeta] = useState<ImportFieldMeta | null>(null);
+  const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(!draftId && !importFlag);
   const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
   const [previewBudgetText, setPreviewBudgetText] = useState("");
   const [previewExperienceText, setPreviewExperienceText] = useState("");
@@ -1327,6 +1345,7 @@ export default function PostJobPage() {
         const nextPlatform: JobPlatform = nextPlatforms[0] || "";
 
         setTitle(draft.title || "");
+        setJobCategory(normalizeJobCategory(draft.category));
         setBudgetMin(budgetMinValue);
         setBudgetMax(budgetMaxValue);
         setBudgetUnit(draft.budget_unit === "per month" ? "per month" : "per project");
@@ -1392,6 +1411,75 @@ export default function PostJobPage() {
       cancelled = true;
     };
   }, [draftId, sessionStatus, withFreshBackendToken]);
+
+  // Import Hiring Post arrival (/post-job?import=1): consume the owner-stamped
+  // handoff exactly once, only after the session has resolved — a loading session
+  // is never treated as "anon". No backend call is involved.
+  React.useEffect(() => {
+    if (!importFlag || importConsumedRef.current || sessionStatus === "loading") return;
+    importConsumedRef.current = true;
+    const resolvedOwner =
+      sessionStatus === "authenticated" ? session?.backendUserId ?? ANON_OWNER : ANON_OWNER;
+    const payload = readImportHandoff(resolvedOwner);
+    if (!payload) {
+      // A hard remount right after consumption behaves as a fresh wizard visit;
+      // anything else (expired/foreign/malformed) shows the expired notice and
+      // restores the normal fresh-visit modal behavior.
+      if (!hasRecentImportConsumption(resolvedOwner)) {
+        setSubmitError("Your import session expired — paste the post again.");
+        setHiringIdentityModalOpen(true);
+      }
+      return;
+    }
+    const prefill = payload.prefill;
+    setTitle(prefill.title);
+    setJobCategory(normalizeJobCategory(prefill.category));
+    setBudgetMin(prefill.budgetMin);
+    setBudgetMax(prefill.budgetMax);
+    setBudgetUnit(prefill.budgetUnit === "per month" ? "per month" : "per project");
+    setBudgetIntent(prefill.budgetIntent);
+    setWorkMode(prefill.workMode);
+    setCity(prefill.workMode === "Remote" ? "" : prefill.city);
+    setExpMin(prefill.expMin);
+    setExpMax(prefill.expMax);
+    setStartWithin(prefill.startWithin);
+    setPlatform(prefill.platform);
+    setPlatforms(prefill.platforms);
+    setTurnaround(prefill.turnaround);
+    setTools(prefill.tools.filter((tool) => typeof tool === "string" && tool.trim().length > 0));
+    setLanguages(prefill.languages.filter((lang) => typeof lang === "string" && lang.trim().length > 0));
+    setAbout(prefill.about);
+    setResponsibilities(prefill.responsibilities);
+    setRequirements(prefill.requirements);
+    setHowToApply(prefill.howToApply);
+    setApplicationRequirements(sanitizeRequirementKeys(prefill.applicationRequirements, "job"));
+    // Import restores suggestions; the explicit "none" choice is a publish-time
+    // gate the owner re-confirms intentionally (same rule as draft resume).
+    setNoFirstMessageRequirements(false);
+    setTags(prefill.tags);
+    setContentNiches(normalizeCreatorContextList(prefill.contentNiches));
+    setContentGenres(normalizeCreatorContextList(prefill.contentGenres));
+    setFormatsHiredFor(normalizeCreatorContextList(prefill.formatsHiredFor));
+    setRefVideos(
+      prefill.refVideos
+        .map((entry) => normalizeReferenceVideo(entry))
+        .filter((entry): entry is ReferenceVideo => Boolean(entry))
+    );
+    setPreviewBudgetText(prefill.previewBudgetText);
+    setPreviewExperienceText(prefill.previewExperienceText);
+    setPreviewLocationText(prefill.previewLocationText);
+    if ((STEPS as string[]).includes(payload.initialStep)) {
+      setDirection("forward");
+      setStep(payload.initialStep as Step);
+    }
+    setImportMeta(payload.meta);
+    clearImportHandoff();
+    markImportConsumed(resolvedOwner);
+    // State-preserving history.replaceState cleans the URL without any router
+    // navigation, so nothing can remount, re-run useSearchParams consumers, or
+    // reopen the hiring-identity modal.
+    window.history.replaceState(window.history.state, "", "/post-job");
+  }, [importFlag, sessionStatus, session?.backendUserId]);
 
   React.useEffect(() => {
     if (sessionStatus !== "authenticated") {
@@ -2222,7 +2310,7 @@ export default function PostJobPage() {
     const jobToCreate: Job = {
       id: "",
       title: normalizedTitle,
-      category: "Editing",
+      category: jobCategory,
       budget: normalizedBudgetText,
       experience: normalizedExperience,
       location: normalizedLocation,
@@ -2262,7 +2350,7 @@ export default function PostJobPage() {
 
     const backendPayload: BackendCreateJobPayload = {
       title: normalizedTitle,
-      category: "Editing",
+      category: jobCategory,
       location: normalizedLocation,
       budget_amount: hasPersistedBudget ? budgetAmountValue : null,
       budget_max: hasPersistedBudget ? budgetMaxValue : null,
@@ -2476,7 +2564,7 @@ export default function PostJobPage() {
 
     const backendPayload: BackendCreateJobPayload = {
       title: normalizedTitle,
-      category: "Editing",
+      category: jobCategory,
       location: normalizedLocation,
       budget_amount: hasPersistedBudget ? budgetAmountValue : null,
       budget_max: hasPersistedBudget ? budgetMaxValue : null,
@@ -2819,6 +2907,25 @@ export default function PostJobPage() {
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-start">
           <div className="min-w-0 space-y-6">
             {hiringIdentityPanel}
+
+            {importMeta ? (
+              <ImportReviewBanner
+                meta={importMeta}
+                onJumpTo={(key) => {
+                  const targetKey = IMPORT_JUMP_TARGETS[key];
+                  const dest = targetKey ? JOB_COMPLETION_TARGETS[targetKey] : undefined;
+                  if (!dest) return;
+                  setDirection(STEPS.indexOf(dest.step) < STEPS.indexOf(step) ? "back" : "forward");
+                  setStep(dest.step);
+                  focusQualityTarget(dest.target);
+                }}
+                onGoToPublish={() => {
+                  setDirection("forward");
+                  setStep("referenceVideos");
+                }}
+                onDismiss={() => setImportMeta(null)}
+              />
+            ) : null}
 
             <PostJobForm
               step={step}

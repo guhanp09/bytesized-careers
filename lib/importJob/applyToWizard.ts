@@ -84,6 +84,16 @@ const STEP_ORDER: ImportInitialStep[] = [
   "referenceVideos",
 ];
 
+/** Fields the publish gates care about (also drives the wizard banner's emphasis). */
+export const IMPORT_PUBLISH_RELEVANT_KEYS: ImportFieldKey[] = [
+  "title",
+  "platforms",
+  "workMode",
+  "city",
+  "budget",
+  "about",
+];
+
 // Publish-relevant fields, in wizard order: the first one that is missing or under
 // review decides where the wizard opens.
 const PUBLISH_RELEVANT: Array<{ key: ImportFieldKey; step: ImportInitialStep }> = [
