@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "../../components/Icons";
+import { isJobImportAllowed } from "../../lib/importJob/flag";
 
 const options = [
   {
@@ -44,6 +45,32 @@ export default function PostChooserPage() {
             </Link>
           ))}
         </div>
+
+        {isJobImportAllowed() ? (
+          <Link
+            href="/post-job/import"
+            data-testid="post-import-card"
+            className="group relative mt-5 flex cursor-pointer items-center gap-4 rounded-[30px] border border-white/[0.08] bg-white/[0.035] px-6 py-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 lg:mt-6"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.055] text-white/58 transition group-hover:bg-white/[0.075] group-hover:text-white">
+              <Icon name="file" className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-base font-semibold tracking-tight text-white">
+                Already wrote a hiring post?
+              </span>
+              <span className="mt-1 block text-sm leading-6 text-white/55">
+                Paste it from LinkedIn, WhatsApp, or anywhere else — CreatorJobs will prepare the draft.
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className="ml-auto translate-x-1 text-xl leading-none text-white/0 transition-all duration-200 group-hover:translate-x-0 group-hover:text-white/58 group-focus-visible:translate-x-0 group-focus-visible:text-white/58"
+            >
+              →
+            </span>
+          </Link>
+        ) : null}
       </section>
     </main>
   );
