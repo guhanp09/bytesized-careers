@@ -22,8 +22,8 @@ const TOKEN_RE = /[\p{L}\p{N}+#'@._/-]+/gu;
 export function tokenize(text: string, baseOffset = 0): Token[] {
   const tokens: Token[] = [];
   for (const match of text.matchAll(TOKEN_RE)) {
-    let raw = match[0];
-    let start = baseOffset + (match.index ?? 0);
+    const raw = match[0];
+    const start = baseOffset + (match.index ?? 0);
     // Trim punctuation that the broad class keeps for emails/urls but that hurts
     // word matching ("premiere," → handled by class; "premiere." → trim the dot).
     let leading = 0;
