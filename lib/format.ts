@@ -1,4 +1,4 @@
-import { StartTimeframe } from "./types";
+import type { StartTimeframe } from "./types";
 
 export function formatSubs(n: number | null) {
   if (n === null) return "Subs hidden";
