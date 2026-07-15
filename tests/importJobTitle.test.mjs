@@ -37,6 +37,19 @@ test("two roles in the title zone create a conflict with per-role alternatives",
   assert.match(t.note, /you can import again for the other/);
 });
 
+test("a colleague mention in intro prose never creates a phantom conflict", () => {
+  const post = [
+    "We are hiring a scriptwriter for our YouTube channel!",
+    "",
+    "You will write two scripts a week, shape hooks with the editor, and keep our voice sharp.",
+  ].join("\n");
+  const r = parseJobPost(post);
+  assert.equal(r.draft.title.status, "imported");
+  assert.deepEqual(r.classification.rolesDetected, ["script writer"]);
+  assert.equal(r.draft.category.value, "Writing");
+  assert.equal(r.draft.category.status, "imported");
+});
+
 test("duty bullets never create phantom title conflicts", () => {
   const post = [
     "Hiring a video editor!",

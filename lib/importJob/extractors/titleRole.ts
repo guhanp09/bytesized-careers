@@ -47,27 +47,29 @@ export function extractTitle(doc: SectionedDoc, warnings: ImportWarning[], claim
     ...nonBlank.slice(0, TITLE_ZONE_UNITS).filter((unit) => unit.label !== "role"),
   ];
 
-  // Role hits only count from title-ish units: role KV lines, headings, units
-  // containing hiring language, and the very first units of the post. Exact
-  // matching only — fuzzy role matching turns verbs ("write") into roles.
-  const roleHits: Array<{ canonical: string; start: number; end: number; unit: SectionedUnit }> = [];
+  // Role hits only count from title-ish units. Exact matching only — fuzzy role
+  // matching turns verbs ("write") into roles. Hits split into two strengths:
+  // STRONG (role KV lines, headings, sentences with hiring language) and WEAK
+  // (plain prose within the first units). When any strong hit exists, weak hits
+  // are ignored — "hiring a scriptwriter … shape hooks with the editor" is one
+  // role, while "hiring a video editor and a thumbnail designer" (both inside
+  // the hiring sentence) is still a genuine conflict.
+  const roleHits: Array<{ canonical: string; start: number; end: number; unit: SectionedUnit; strong: boolean }> = [];
   const firstUnits = nonBlank.slice(0, CONFLICT_ZONE_UNITS);
   for (const unit of zone) {
     if (unit.kind === "url" || unit.kind === "hashtagRow") continue;
-    const titleish =
-      unit.label === "role" ||
-      unit.kind === "heading" ||
-      HIRING_PATTERN_RE.test(unit.text) ||
-      firstUnits.includes(unit);
-    if (!titleish) continue;
+    const strong = unit.label === "role" || unit.kind === "heading" || HIRING_PATTERN_RE.test(unit.text);
+    if (!strong && !firstUnits.includes(unit)) continue;
     const tokens = tokenize(unit.text, unit.start);
     for (const hit of scanVocab(tokens, ROLE_VOCAB, { exact: true })) {
-      roleHits.push({ canonical: hit.canonical, start: hit.start, end: hit.end, unit });
+      roleHits.push({ canonical: hit.canonical, start: hit.start, end: hit.end, unit, strong });
     }
   }
   roleHits.sort((a, b) => a.start - b.start);
+  const hasStrong = roleHits.some((hit) => hit.strong);
   const rolesDetected: string[] = [];
   for (const hit of roleHits) {
+    if (hasStrong && !hit.strong) continue;
     if (!rolesDetected.includes(hit.canonical)) rolesDetected.push(hit.canonical);
   }
 

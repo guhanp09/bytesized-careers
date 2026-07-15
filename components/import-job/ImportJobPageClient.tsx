@@ -162,6 +162,18 @@ export default function ImportJobPageClient() {
     persistText(text);
   };
 
+  // Flush the debounced write so a paste immediately followed by PREPARE DRAFT
+  // (and a refresh) is never lost.
+  const handlePrepare = () => {
+    if (state.phase !== "paste") return;
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    if (sessionResolved && state.text.trim()) writeImportSource(state.text, resolvedOwner);
+    dispatch({ type: "ANALYZE" });
+  };
+
   const handleConfirm = () => {
     if (confirmAction === null) return;
     setConfirmAction(null);
@@ -198,7 +210,7 @@ export default function ImportJobPageClient() {
               truncatedAtLimit={state.truncatedAtLimit}
               restoredFromSession={state.restoredFromSession}
               onTextChange={handleTextChange}
-              onPrepare={() => dispatch({ type: "ANALYZE" })}
+              onPrepare={handlePrepare}
               onClearRequest={requestClear}
             />
           </div>
