@@ -188,7 +188,7 @@ export default function Header() {
       </Suspense>
 
       {/* Top header — full width; hamburger sits in the same rail column */}
-      <header className="fixed top-0 left-0 right-0 z-[60] bg-[#0b0b0f]/92 backdrop-blur">
+      <header className="fixed top-0 left-0 right-0 z-[60] bg-[var(--vt-canvas-translucent,rgba(11,11,15,0.92))] backdrop-blur">
         <div className="h-14 flex items-center">
           {/* Rail column: NO horizontal padding (so it aligns with sidebar icons) */}
           <div className="w-20 flex items-center justify-center">
@@ -216,7 +216,7 @@ export default function Header() {
             <div className="flex-1 flex items-center justify-center">
               <div className="w-full max-w-2xl flex items-center gap-2">
                 <form
-                  className="flex-1 flex items-center bg-white/6 border border-white/10 rounded-full overflow-hidden shadow-[0_10px_30px_-25px_rgba(0,0,0,0.9)]"
+                  className="flex-1 flex items-center bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] rounded-full overflow-hidden shadow-[0_10px_30px_-25px_rgba(0,0,0,0.9)] transition-colors focus-within:border-[var(--vt-search-focus,rgba(255,255,255,0.1))]"
                   onSubmit={(event) => {
                     event.preventDefault();
                     // Central search-to-filter routing (curated route → role route
@@ -247,7 +247,7 @@ export default function Header() {
                   <input
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
-                    className="w-full bg-transparent px-3 py-2.5 outline-none text-sm text-white placeholder:text-white/45"
+                    className="w-full bg-transparent px-3 py-2.5 outline-none text-sm text-[var(--vt-ink,#ffffff)] placeholder:text-[var(--vt-text-faint,rgba(255,255,255,0.45))]"
                     placeholder={
                       searchMode === "talent"
                         ? "Search talent, roles, tools, portfolios, locations..."

@@ -51,7 +51,9 @@ export default function SubfilterRow({ seoRoute }: { seoRoute?: SeoFilterRoute |
                   aria-pressed={active}
                   className={[
                     "cursor-pointer whitespace-nowrap rounded-lg px-2.5 py-1 text-[13px] transition-colors",
-                    active ? "bg-white text-black" : "bg-white/[0.07] text-white/85 hover:bg-white/[0.12]",
+                    active
+                      ? "bg-white text-black shadow-[var(--vt-chip-active-glow,none)]"
+                      : "bg-white/[0.07] text-[var(--vt-text-secondary,rgba(255,255,255,0.85))] hover:bg-white/[0.12]",
                   ].join(" ")}
                 >
                   {chip.label}

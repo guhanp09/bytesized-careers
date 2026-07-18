@@ -84,7 +84,7 @@ function IconAction({
       title={label}
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="h-9 w-9 cursor-pointer inline-flex items-center justify-center rounded-xl bg-white/6 border border-white/10 hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      className="h-9 w-9 cursor-pointer inline-flex items-center justify-center rounded-xl bg-[var(--vt-inset,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]"
     >
       {children}
     </button>
@@ -153,13 +153,14 @@ export function JobCard({ job }: { job: Job }) {
         {...sheen}
         className={[
           "group relative isolate cursor-pointer rounded-2xl p-5 min-w-0",
-          "bg-white/[0.06] border border-white/10",
-          "shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]",
+          "bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))]",
+          "[background-image:var(--vt-card-sheen,none)]",
+          "shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]",
           "transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out",
-          "hover:-translate-y-0.5 hover:bg-white/[0.075] hover:border-white/25",
+          "hover:-translate-y-0.5 hover:bg-[var(--vt-card-hover-soft,rgba(255,255,255,0.075))] hover:border-white/25",
           "hover:shadow-[0_22px_55px_-26px_rgba(0,0,0,0.95)]",
-          "hover:ring-1 hover:ring-white/10",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
+          "hover:ring-1 hover:ring-[var(--vt-accent-soft,rgba(255,255,255,0.1))]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]",
           "h-[340px] flex flex-col",
         ].join(" ")}
         title="Click to open"
@@ -189,7 +190,7 @@ export function JobCard({ job }: { job: Job }) {
                   className="max-w-[170px] text-sm font-semibold text-white underline-offset-4"
                 />
               </div>
-              <p className="text-xs text-white/55 truncate inline-flex items-center gap-1.5">
+              <p className="text-xs text-[var(--vt-text-muted,rgba(255,255,255,0.55))] truncate inline-flex items-center gap-1.5">
                 <Icon name={getPlatformIcon(job.platform)} className="w-3.5 h-3.5" />
                 <span>{formatFollowersLabel(job.channel.subscribers, job.platform)}</span>
                 {postedLabel ? <span className="text-white/40">• {postedLabel}</span> : null}
@@ -213,7 +214,7 @@ export function JobCard({ job }: { job: Job }) {
         </div>
 
         {/* Title row */}
-        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug text-white underline-offset-4 transition-colors hover:underline">
+        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug text-[var(--vt-ink,#ffffff)] underline-offset-4 transition-colors hover:underline">
           {displayTitle}
         </h3>
 

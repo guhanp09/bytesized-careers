@@ -17,10 +17,10 @@ export default function MetaRow({
 }) {
   return (
     <div className={["flex items-center gap-2 text-sm", truncate ? "min-w-0" : "", className].join(" ")}>
-      <span className="shrink-0 text-white/70">
+      <span className="shrink-0 text-[var(--vt-meta-icon,rgba(255,255,255,0.7))]">
         <Icon name={icon} className="w-4 h-4" />
       </span>
-      <span className={["text-white/90 leading-snug", truncate ? "min-w-0 truncate" : ""].join(" ")}>{text}</span>
+      <span className={["text-[var(--vt-meta-text,rgba(255,255,255,0.9))] leading-snug", truncate ? "min-w-0 truncate" : ""].join(" ")}>{text}</span>
     </div>
   );
 }

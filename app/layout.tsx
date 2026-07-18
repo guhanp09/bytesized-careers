@@ -45,6 +45,8 @@ import DevToolsPanel from "../components/dev/DevToolsPanel";
 import { isDevToolsAllowed } from "../lib/devTools";
 import QaPersonaDrawer from "../components/qa/QaPersonaDrawer";
 import { isQaPersonaUiAllowed } from "../lib/qaPersonas";
+import VisualThemeToggle from "../components/theme/VisualThemeToggle";
+import { VISUAL_THEME_BOOTSTRAP_SCRIPT } from "../lib/visualTheme";
 
 export default function RootLayout({
   children,
@@ -57,7 +59,12 @@ export default function RootLayout({
   const qaPersonaEnabled = isQaPersonaUiAllowed();
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} bg-[#0b0b0f] text-white antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} bg-[var(--vt-canvas,#0b0b0f)] text-[var(--vt-ink,#ffffff)] antialiased`}
+      >
+        {/* Apply a stored "enhanced" theme choice before first paint (no flash).
+            The visual theme is a reversible CSS-token preview; see lib/visualTheme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: VISUAL_THEME_BOOTSTRAP_SCRIPT }} />
         <AuthProvider>
           <Header />
           <SmartTypingProvider />
@@ -66,6 +73,7 @@ export default function RootLayout({
           <div className="pl-20 pt-14">{children}</div>
           {devToolsEnabled ? <DevToolsPanel /> : null}
           {qaPersonaEnabled ? <QaPersonaDrawer /> : null}
+          <VisualThemeToggle />
         </AuthProvider>
       </body>
     </html>

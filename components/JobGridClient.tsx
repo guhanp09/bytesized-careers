@@ -29,7 +29,9 @@ function Chip({
 }) {
   const className = [
     "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
-    active ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/15",
+    active
+      ? "bg-white text-black shadow-[var(--vt-chip-active-glow,none)]"
+      : "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
   ].join(" ");
 
   if (href) {
@@ -136,9 +138,9 @@ export default function JobGridClient({
   }, [filtered, sort]);
 
   return (
-    <main className="text-white bg-[#0b0b0f] min-h-[calc(100vh-56px)]">
+    <main className="text-[var(--vt-ink,#ffffff)] bg-[var(--vt-canvas,#0b0b0f)] min-h-[calc(100vh-56px)]">
       {/* FIXED filters bar: behaves like YouTube chips row (does NOT scroll) */}
-      <div className="fixed top-14 left-20 right-0 z-30 bg-[#0b0b0f]/92 backdrop-blur">
+      <div className="fixed top-14 left-20 right-0 z-30 bg-[var(--vt-canvas-translucent,rgba(11,11,15,0.92))] backdrop-blur border-b border-b-[var(--vt-bar-line,transparent)]">
         <div className="flex items-center gap-3 px-3 sm:px-4 py-2">
           <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex items-center gap-2 w-max">
@@ -167,13 +169,13 @@ export default function JobGridClient({
               onClick={() => setStartOpen((v) => !v)}
               className={[
                 "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
-                "bg-white/10 text-white hover:bg-white/15",
+                "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
                 "border border-transparent",
-                startOpen ? "bg-white/15 text-white" : "",
+                startOpen ? "bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]" : "",
               ].join(" ")}
             >
               <span className="inline-flex items-center gap-2">
-                Start within <span className="text-white/70">{startOpen ? "▾" : "▸"}</span>
+                Start within <span className="text-[var(--vt-text-soft,rgba(255,255,255,0.7))]">{startOpen ? "▾" : "▸"}</span>
               </span>
             </button>
 
@@ -192,12 +194,12 @@ export default function JobGridClient({
           </div>
           </div>
           <label className="flex shrink-0 items-center gap-2">
-            <span className="hidden text-xs text-white/45 sm:inline">Sort</span>
+            <span className="hidden text-xs text-[var(--vt-text-faint,rgba(255,255,255,0.45))] sm:inline">Sort</span>
             <select
               aria-label="Sort jobs"
               value={sort}
               onChange={(event) => setSort(event.target.value as JobSortKey)}
-              className="h-8 cursor-pointer rounded-lg border border-white/12 bg-white/[0.06] px-2.5 text-sm text-white outline-none transition-colors hover:bg-white/[0.09] focus-visible:ring-2 focus-visible:ring-white/20"
+              className="h-8 cursor-pointer rounded-lg border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-2.5 text-sm text-[var(--vt-ink,#ffffff)] outline-none transition-colors hover:bg-[var(--vt-card-hover,rgba(255,255,255,0.09))] focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]"
             >
               <option value="relevance">Relevance</option>
               <option value="newest">Newest</option>
@@ -214,14 +216,14 @@ export default function JobGridClient({
           the normal browse page (the SEO name lives only in metadata/canonical). */}
       <section className={`px-4 sm:px-6 py-8 ${hasSubfilterRow ? "pt-[8.5rem]" : "pt-24"}`}>
         {notice ? (
-          <div className="mb-6 rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3 text-sm text-white/85">
+          <div className="mb-6 rounded-2xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] [background-image:var(--vt-card-sheen,none)] px-4 py-3 text-sm text-[var(--vt-text-secondary,rgba(255,255,255,0.85))]">
             {notice}
           </div>
         ) : null}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.length === 0 ? (
-            <div className="col-span-full rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-6 text-sm text-white/70">
-              <p className="font-semibold text-white/85">
+            <div className="col-span-full rounded-2xl border border-[var(--vt-line,rgba(255,255,255,0.1))] bg-[var(--vt-card-strong,rgba(255,255,255,0.05))] [background-image:var(--vt-card-sheen,none)] px-5 py-6 text-sm text-[var(--vt-text-soft,rgba(255,255,255,0.7))]">
+              <p className="font-semibold text-[var(--vt-text-secondary,rgba(255,255,255,0.85))]">
                 {isSearchEmpty
                   ? "No matching jobs found"
                   : hasActiveFilters
@@ -230,7 +232,7 @@ export default function JobGridClient({
                     ? "No jobs found."
                     : "No open jobs right now."}
               </p>
-              <p className="mt-1 text-white/55">
+              <p className="mt-1 text-[var(--vt-text-muted,rgba(255,255,255,0.55))]">
                 {isSearchEmpty
                   ? "Try removing budget, location, or platform terms to broaden the search."
                   : hasActiveFilters
@@ -241,14 +243,14 @@ export default function JobGridClient({
                 {isSearchEmpty ? (
                   <Link
                     href="/jobs"
-                    className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Browse all jobs
                   </Link>
                 ) : activeSeoLabels.length > 0 ? (
                   <Link
                     href="/jobs"
-                    className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Browse all jobs
                   </Link>
@@ -256,7 +258,7 @@ export default function JobGridClient({
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Clear filters
                   </button>
@@ -264,13 +266,13 @@ export default function JobGridClient({
                   <>
                     <Link
                       href="/post-job"
-                      className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                     >
                       Post a job
                     </Link>
                     <Link
                       href="/talent"
-                      className="inline-flex cursor-pointer rounded-xl border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                     >
                       Browse talent
                     </Link>

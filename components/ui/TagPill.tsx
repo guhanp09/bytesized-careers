@@ -12,7 +12,7 @@ export default function TagPill({
   return (
     <span
       className={[
-        "text-[11px] px-2 py-1 rounded-lg bg-white/8 border border-white/10 text-white/70",
+        "text-[11px] px-2 py-1 rounded-lg bg-[var(--vt-tag-bg,rgba(255,255,255,0.08))] border border-[var(--vt-tag-line,rgba(255,255,255,0.1))] text-[var(--vt-tag-text,rgba(255,255,255,0.7))]",
         className,
       ].join(" ")}
     >

@@ -20,8 +20,10 @@ export default function Sidebar() {
   const navClass = (active: boolean) =>
     [
       "w-16 flex flex-col items-center gap-1 rounded-lg px-1 py-1 text-[12px] leading-tight text-center transition-colors cursor-pointer",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-      active ? "text-white" : "text-white/72 hover:text-white",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]",
+      active
+        ? "text-[var(--vt-ink,#ffffff)] bg-[var(--vt-nav-active,transparent)]"
+        : "text-white/72 hover:text-[var(--vt-ink,#ffffff)]",
     ].join(" ");
 
   const items: NavItem[] = [
@@ -39,7 +41,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-50 flex h-screen w-20 flex-col items-center gap-6 bg-[#0b0b0f] pt-16">
+    <aside className="fixed left-0 top-0 z-50 flex h-screen w-20 flex-col items-center gap-6 bg-[var(--vt-canvas,#0b0b0f)] border-r border-r-[var(--vt-bar-line,transparent)] pt-16">
       {items
         .filter((item) => !item.auth || isAuthed)
         .map((item) => {
