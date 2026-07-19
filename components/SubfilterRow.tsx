@@ -28,7 +28,7 @@ export default function SubfilterRow({ seoRoute }: { seoRoute?: SeoFilterRoute |
   return (
     <div
       data-testid="subfilter-row"
-      className="border-t border-white/[0.06] px-3 py-1.5 sm:px-4"
+      className="border-t border-t-[var(--vt-subbar-line,rgba(255,255,255,0.06))] px-3 py-1.5 sm:px-4"
     >
       <div className="min-w-0 overflow-x-auto">
         <div className="flex w-max items-center gap-1.5">
@@ -40,7 +40,7 @@ export default function SubfilterRow({ seoRoute }: { seoRoute?: SeoFilterRoute |
             return (
               <span key={`${chip.group}-${chip.value}`} className="inline-flex items-center gap-1.5">
                 {showGroupLabel ? (
-                  <span className="shrink-0 pl-1.5 pr-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/30">
+                  <span className="shrink-0 pl-1.5 pr-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--vt-text-ghost,rgba(255,255,255,0.3))]">
                     {chip.group}
                   </span>
                 ) : null}
@@ -52,8 +52,8 @@ export default function SubfilterRow({ seoRoute }: { seoRoute?: SeoFilterRoute |
                   className={[
                     "cursor-pointer whitespace-nowrap rounded-lg px-2.5 py-1 text-[13px] transition-colors",
                     active
-                      ? "bg-white text-black shadow-[var(--vt-chip-active-glow,none)]"
-                      : "bg-white/[0.07] text-[var(--vt-text-secondary,rgba(255,255,255,0.85))] hover:bg-white/[0.12]",
+                      ? "bg-[var(--vt-chip-active-bg,#ffffff)] [background-image:var(--vt-chip-active-grad,none)] text-[var(--vt-chip-active-text,#000000)] shadow-[var(--vt-chip-active-glow,none)]"
+                      : "bg-[var(--vt-chip-quiet-bg,rgba(255,255,255,0.07))] text-[var(--vt-text-secondary,rgba(255,255,255,0.85))] hover:bg-[var(--vt-chip-quiet-hover,rgba(255,255,255,0.12))]",
                   ].join(" ")}
                 >
                   {chip.label}

@@ -210,13 +210,13 @@ export default function Header() {
             >
               <BrandLogo height={32} className="hidden sm:inline-flex" />
               <BrandLogo height={32} className="sm:hidden" />
-              <span className="hidden sm:inline font-semibold tracking-tight leading-none text-white">CreatorJobs</span>
+              <span className="hidden sm:inline font-semibold tracking-tight leading-none text-[var(--vt-ink,#ffffff)]">CreatorJobs</span>
             </Link>
 
             <div className="flex-1 flex items-center justify-center">
               <div className="w-full max-w-2xl flex items-center gap-2">
                 <form
-                  className="flex-1 flex items-center bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] rounded-full overflow-hidden shadow-[0_10px_30px_-25px_rgba(0,0,0,0.9)] transition-colors focus-within:border-[var(--vt-search-focus,rgba(255,255,255,0.1))]"
+                  className="flex-1 flex items-center bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] rounded-full overflow-hidden shadow-[var(--vt-search-shadow,0_10px_30px_-25px_rgba(0,0,0,0.9))] transition-[border-color,box-shadow] focus-within:border-[var(--vt-search-focus,rgba(255,255,255,0.1))] focus-within:shadow-[var(--vt-search-shadow-focus,0_10px_30px_-25px_rgba(0,0,0,0.9))]"
                   onSubmit={(event) => {
                     event.preventDefault();
                     // Central search-to-filter routing (curated route → role route
@@ -237,7 +237,9 @@ export default function Header() {
                         aria-pressed={searchMode === modeOption}
                         className={[
                           "h-7 cursor-pointer rounded-full px-2.5 text-[11px] font-semibold capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-                          searchMode === modeOption ? "bg-white text-black" : "text-white/55 hover:text-white",
+                          searchMode === modeOption
+                            ? "bg-[var(--vt-seg-active-bg,#ffffff)] text-[var(--vt-seg-active-text,#000000)]"
+                            : "text-[var(--vt-text-muted,rgba(255,255,255,0.55))] hover:text-[var(--vt-ink,#ffffff)]",
                         ].join(" ")}
                       >
                         {modeOption}
@@ -290,7 +292,7 @@ export default function Header() {
                 >
                   <Icon name="bell-yt" className="w-[20px] h-[20px]" />
                   {unreadCount ? (
-                    <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-black">
+                    <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--vt-badge-bg,#ffffff)] px-1 text-[10px] font-bold text-[var(--vt-badge-text,#000000)]">
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   ) : null}

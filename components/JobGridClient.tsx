@@ -30,8 +30,8 @@ function Chip({
   const className = [
     "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
     active
-      ? "bg-white text-black shadow-[var(--vt-chip-active-glow,none)]"
-      : "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
+      ? "bg-[var(--vt-chip-active-bg,#ffffff)] [background-image:var(--vt-chip-active-grad,none)] text-[var(--vt-chip-active-text,#000000)] shadow-[var(--vt-chip-active-glow,none)]"
+      : "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] shadow-[var(--vt-chip-shell,none)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
   ].join(" ");
 
   if (href) {
@@ -140,7 +140,7 @@ export default function JobGridClient({
   return (
     <main className="text-[var(--vt-ink,#ffffff)] bg-[var(--vt-canvas,#0b0b0f)] min-h-[calc(100vh-56px)]">
       {/* FIXED filters bar: behaves like YouTube chips row (does NOT scroll) */}
-      <div className="fixed top-14 left-20 right-0 z-30 bg-[var(--vt-canvas-translucent,rgba(11,11,15,0.92))] backdrop-blur border-b border-b-[var(--vt-bar-line,transparent)]">
+      <div className="fixed top-14 left-20 right-0 z-30 bg-[var(--vt-canvas-translucent,rgba(11,11,15,0.92))] backdrop-blur border-b border-b-[var(--vt-bar-line,transparent)] shadow-[var(--vt-bar-shadow,none)]">
         <div className="flex items-center gap-3 px-3 sm:px-4 py-2">
           <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex items-center gap-2 w-max">
@@ -169,7 +169,7 @@ export default function JobGridClient({
               onClick={() => setStartOpen((v) => !v)}
               className={[
                 "cursor-pointer px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors",
-                "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
+                "bg-[var(--vt-chip-bg,rgba(255,255,255,0.1))] text-[var(--vt-ink,#ffffff)] shadow-[var(--vt-chip-shell,none)] hover:bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]",
                 "border border-transparent",
                 startOpen ? "bg-[var(--vt-chip-hover,rgba(255,255,255,0.15))]" : "",
               ].join(" ")}
@@ -243,14 +243,14 @@ export default function JobGridClient({
                 {isSearchEmpty ? (
                   <Link
                     href="/jobs"
-                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-[var(--vt-btn-quiet-text,rgba(255,255,255,0.75))] transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Browse all jobs
                   </Link>
                 ) : activeSeoLabels.length > 0 ? (
                   <Link
                     href="/jobs"
-                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-[var(--vt-btn-quiet-text,rgba(255,255,255,0.75))] transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Browse all jobs
                   </Link>
@@ -258,7 +258,7 @@ export default function JobGridClient({
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                    className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-[var(--vt-btn-quiet-text,rgba(255,255,255,0.75))] transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                   >
                     Clear filters
                   </button>
@@ -266,13 +266,13 @@ export default function JobGridClient({
                   <>
                     <Link
                       href="/post-job"
-                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-[var(--vt-btn-quiet-text,rgba(255,255,255,0.75))] transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                     >
                       Post a job
                     </Link>
                     <Link
                       href="/talent"
-                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                      className="inline-flex cursor-pointer rounded-xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-3 py-1.5 text-xs font-semibold text-[var(--vt-btn-quiet-text,rgba(255,255,255,0.75))] transition-colors hover:border-white/20 hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] hover:text-[var(--vt-ink,#ffffff)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                     >
                       Browse talent
                     </Link>

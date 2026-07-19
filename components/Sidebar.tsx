@@ -22,8 +22,8 @@ export default function Sidebar() {
       "w-16 flex flex-col items-center gap-1 rounded-lg px-1 py-1 text-[12px] leading-tight text-center transition-colors cursor-pointer",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]",
       active
-        ? "text-[var(--vt-ink,#ffffff)] bg-[var(--vt-nav-active,transparent)]"
-        : "text-white/72 hover:text-[var(--vt-ink,#ffffff)]",
+        ? "text-[var(--vt-nav-active-text,#ffffff)] bg-[var(--vt-nav-active,transparent)] shadow-[var(--vt-nav-active-shadow,none)]"
+        : "text-[var(--vt-nav-text,rgba(255,255,255,0.72))] hover:text-[var(--vt-ink,#ffffff)]",
     ].join(" ");
 
   const items: NavItem[] = [

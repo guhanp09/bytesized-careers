@@ -39,9 +39,9 @@ export default function StatRow({
             : undefined
         }
         className={[
-          "inline-flex items-center gap-1 rounded-md text-xs leading-4 text-white/70",
+          "inline-flex items-center gap-1 rounded-md text-xs leading-4 text-[var(--vt-stat-text,rgba(255,255,255,0.7))]",
           interactive
-            ? "cursor-pointer transition-colors hover:text-white/90 focus-visible:text-white/90 focus-visible:outline-none"
+            ? "cursor-pointer transition-colors hover:text-[var(--vt-stat-text-hover,rgba(255,255,255,0.9))] focus-visible:text-[var(--vt-stat-text-hover,rgba(255,255,255,0.9))] focus-visible:outline-none"
             : "",
         ].join(" ")}
       >

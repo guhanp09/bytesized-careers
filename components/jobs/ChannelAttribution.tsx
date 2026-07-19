@@ -39,8 +39,8 @@ export default function ChannelAttribution({
   const baseClass = [
     "truncate text-left transition-colors",
     href
-      ? "cursor-pointer underline-offset-2 hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-      : "text-white/55",
+      ? "cursor-pointer underline-offset-2 hover:text-[var(--vt-link-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]"
+      : "text-[var(--vt-text-muted,rgba(255,255,255,0.55))]",
     className,
   ].join(" ");
 

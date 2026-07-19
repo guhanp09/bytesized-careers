@@ -743,53 +743,169 @@ html {
   --vt-tag-bg: rgba(255, 255, 255, 0.08);
   --vt-tag-line: rgba(255, 255, 255, 0.1);
   --vt-tag-text: rgba(255, 255, 255, 0.7);
+  /* v2 — accent gradients & glows (no-ops by default) */
+  --vt-accent-grad: none;
+  --vt-glow-accent: none;
+  --vt-link-hover: #ffffff;
+  /* v2 — amber opportunity family (POST pill + Apply Now CTA) */
+  --vt-post-bg: #ffffff;
+  --vt-post-bg-hover: rgba(255, 255, 255, 0.9);
+  --vt-post-text: #000000;
+  --vt-post-glow: 0 10px 30px -25px rgba(0, 0, 0, 0.9);
+  --vt-post-ring: rgba(255, 255, 255, 0.3);
+  --vt-cta-text: rgba(255, 255, 255, 0.9);
+  --vt-cta-text-hover: #ffffff;
+  --vt-cta-focus-ring: rgba(255, 255, 255, 0.2);
+  /* v2 — semantic family (reserved — wire on the /you pass after the pipeline
+     workstream commits; identical in both blocks until then) */
+  --vt-success: #7bc896;
+  --vt-success-soft: rgba(123, 200, 150, 0.13);
+  --vt-warning: #ffd236;
+  --vt-warning-soft: rgba(252, 187, 0, 0.12);
+  --vt-danger: #e27d6c;
+  --vt-danger-soft: rgba(226, 125, 108, 0.13);
+  --vt-pending: #a6a8b3;
+  --vt-pending-soft: rgba(166, 168, 179, 0.12);
+  --vt-info: #8fb0ff;
+  --vt-info-soft: rgba(91, 140, 255, 0.14);
+  /* v2 — extended text hierarchy */
+  --vt-text-ghost: rgba(255, 255, 255, 0.3);
+  --vt-stat-text: rgba(255, 255, 255, 0.7);
+  --vt-stat-text-hover: rgba(255, 255, 255, 0.9);
+  --vt-nav-text: rgba(255, 255, 255, 0.72);
+  --vt-title-tracking: 0em;
+  /* v2 — borders & depth */
+  --vt-bar-shadow: none;
+  --vt-card-line: rgba(255, 255, 255, 0.1);
+  --vt-card-line-hover: rgba(255, 255, 255, 0.25);
+  --vt-avatar-line: rgba(255, 255, 255, 0.15);
+  --vt-card-shadow-hover: 0 22px 55px -26px rgba(0, 0, 0, 0.95);
+  /* v2 — control recipes */
+  --vt-chip-shell: none;
+  --vt-chip-active-bg: #ffffff;
+  --vt-chip-active-grad: none;
+  --vt-chip-active-text: #000000;
+  --vt-chip-quiet-bg: rgba(255, 255, 255, 0.07);
+  --vt-chip-quiet-hover: rgba(255, 255, 255, 0.12);
+  --vt-nav-active-shadow: none;
+  --vt-nav-active-text: #ffffff;
+  --vt-search-shadow: 0 10px 30px -25px rgba(0, 0, 0, 0.9);
+  --vt-search-shadow-focus: 0 10px 30px -25px rgba(0, 0, 0, 0.9);
+  --vt-seg-active-bg: #ffffff;
+  --vt-seg-active-text: #000000;
+  --vt-badge-bg: #ffffff;
+  --vt-badge-text: #000000;
+  --vt-subbar-line: rgba(255, 255, 255, 0.06);
+  --vt-tag-more-bg: rgba(255, 255, 255, 0.05);
+  --vt-tag-more-text: rgba(255, 255, 255, 0.55);
+  --vt-btn-quiet-text: rgba(255, 255, 255, 0.75);
 }
 
 :root[data-visual-theme="enhanced"] {
-  /* Surfaces — Bytesized's canvas/surface/elevated family. The canvas is a
-     translucent wash so the root atmosphere (below) breathes through mains,
-     the sidebar rail, and the header bars. */
-  --vt-canvas: rgba(11, 13, 18, 0.72);
-  --vt-canvas-translucent: rgba(11, 13, 18, 0.82);
-  --vt-panel: rgba(20, 22, 28, 0.92);
-  --vt-card: rgba(20, 22, 28, 0.88);
-  --vt-card-strong: rgba(20, 22, 28, 0.72);
-  --vt-card-hover: rgba(27, 30, 38, 0.92);
-  --vt-card-sheen: linear-gradient(145deg, rgba(255, 255, 255, 0.028), transparent 42%);
-  --vt-card-shadow: 0 14px 40px -26px rgba(0, 0, 0, 0.88), 0 30px 80px -48px rgba(0, 0, 0, 0.65);
+  /* ==== "The Studio at Night" v2 ====
+     Surfaces: the canvas is a 55%-alpha wash so the root atmosphere (below)
+     breathes through mains, the sidebar rail, and the header bars; cards become
+     opaque elevated slabs. Accent roles are strict: periwinkle = interactive/
+     selected/informational, amber = decisive marketplace moments only,
+     terracotta = atmosphere ember only. */
+  --vt-canvas: rgba(10, 13, 20, 0.55);
+  --vt-canvas-translucent: rgba(10, 13, 20, 0.78);
+  --vt-panel: rgba(19, 23, 32, 0.94);
+  --vt-card: rgba(21, 25, 35, 0.9);
+  --vt-card-strong: rgba(17, 20, 28, 0.85);
+  --vt-card-hover: rgba(28, 33, 46, 0.94);
+  --vt-card-sheen: linear-gradient(150deg, rgba(255, 255, 255, 0.07), transparent 40%),
+    linear-gradient(180deg, rgba(129, 161, 255, 0.05), transparent 30%);
+  --vt-card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 18px 50px -24px rgba(0, 0, 0, 0.85), 0 34px 90px -46px rgba(3, 6, 14, 0.9);
   /* Lines */
-  --vt-line: rgba(255, 255, 255, 0.08);
-  --vt-line-mid: rgba(255, 255, 255, 0.11);
-  --vt-line-strong: rgba(255, 255, 255, 0.16);
-  /* Text — warm ink instead of pure white */
-  --vt-ink: #f2f0ec;
-  --vt-text-secondary: rgba(242, 240, 236, 0.85);
-  --vt-text-soft: rgba(242, 240, 236, 0.72);
-  --vt-text-muted: #98999f;
-  --vt-text-faint: #82838b;
-  /* Accent — one periwinkle, used at low alphas */
+  --vt-line: rgba(255, 255, 255, 0.09);
+  --vt-line-mid: rgba(255, 255, 255, 0.13);
+  --vt-line-strong: rgba(255, 255, 255, 0.19);
+  /* Text — warm ink, brighter blue-greys for AA on the deeper surfaces */
+  --vt-ink: #f4f2ee;
+  --vt-text-secondary: rgba(240, 240, 244, 0.88);
+  --vt-text-soft: rgba(226, 229, 238, 0.75);
+  --vt-text-muted: #a6a8b3;
+  --vt-text-faint: #8a8c96;
+  /* Periwinkle accent family */
   --vt-accent: #5b8cff;
-  --vt-accent-soft: rgba(91, 140, 255, 0.12);
-  --vt-accent-ring: rgba(91, 140, 255, 0.38);
-  --vt-focus: rgba(111, 155, 255, 0.6);
-  /* Chips */
-  --vt-chip-bg: rgba(255, 255, 255, 0.07);
-  --vt-chip-hover: rgba(255, 255, 255, 0.12);
-  --vt-chip-active-glow: 0 0 0 1px rgba(91, 140, 255, 0.32), 0 6px 20px -8px rgba(91, 140, 255, 0.35);
+  --vt-accent-soft: rgba(91, 140, 255, 0.16);
+  --vt-accent-ring: rgba(111, 155, 255, 0.55);
+  --vt-focus: rgba(143, 176, 255, 0.7);
+  --vt-accent-grad: linear-gradient(180deg, #8fb0ff, #5b8cff);
+  --vt-glow-accent: 0 0 0 1px rgba(143, 176, 255, 0.35), 0 10px 30px -10px rgba(91, 140, 255, 0.45);
+  --vt-link-hover: #a8c2ff;
+  /* Amber opportunity family — Apply Now / POST only */
+  --vt-post-bg: #fcbb00;
+  --vt-post-bg-hover: #ffd236;
+  --vt-post-text: #241a05;
+  --vt-post-glow: 0 0 0 1px rgba(252, 187, 0, 0.3), 0 10px 30px -12px rgba(252, 187, 0, 0.45);
+  --vt-post-ring: rgba(252, 187, 0, 0.55);
+  --vt-cta-text: #241a05;
+  --vt-cta-text-hover: #241a05;
+  --vt-cta-focus-ring: rgba(252, 187, 0, 0.55);
+  /* Semantic family (reserved — wire on the /you pass after the pipeline
+     workstream commits; identical values to the defaults until then) */
+  --vt-success: #7bc896;
+  --vt-success-soft: rgba(123, 200, 150, 0.13);
+  --vt-warning: #ffd236;
+  --vt-warning-soft: rgba(252, 187, 0, 0.12);
+  --vt-danger: #e27d6c;
+  --vt-danger-soft: rgba(226, 125, 108, 0.13);
+  --vt-pending: #a6a8b3;
+  --vt-pending-soft: rgba(166, 168, 179, 0.12);
+  --vt-info: #8fb0ff;
+  --vt-info-soft: rgba(91, 140, 255, 0.14);
+  /* Extended text hierarchy */
+  --vt-text-ghost: #7b8095;
+  --vt-stat-text: rgba(196, 205, 224, 0.75);
+  --vt-stat-text-hover: #cfe0ff;
+  --vt-nav-text: #a9b0c2;
+  --vt-title-tracking: -0.01em;
+  /* Borders & depth */
+  --vt-bar-shadow: 0 14px 34px -26px rgba(0, 0, 0, 0.7);
+  --vt-bar-line: rgba(129, 161, 255, 0.14);
+  --vt-card-line: rgba(129, 161, 255, 0.16);
+  --vt-card-line-hover: rgba(143, 176, 255, 0.5);
+  --vt-avatar-line: rgba(143, 176, 255, 0.4);
+  --vt-card-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 26px 64px -26px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(143, 176, 255, 0.28), 0 20px 60px -20px rgba(91, 140, 255, 0.28);
+  /* Chips & controls */
+  --vt-chip-bg: rgba(255, 255, 255, 0.06);
+  --vt-chip-hover: rgba(129, 161, 255, 0.16);
+  --vt-chip-shell: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --vt-chip-active-bg: #6f9bff;
+  --vt-chip-active-grad: linear-gradient(180deg, #8fb0ff, #5b8cff);
+  --vt-chip-active-text: #0a1226;
+  --vt-chip-active-glow: 0 0 0 1px rgba(143, 176, 255, 0.45), 0 8px 24px -8px rgba(91, 140, 255, 0.55);
+  --vt-chip-quiet-bg: rgba(255, 255, 255, 0.05);
+  --vt-chip-quiet-hover: rgba(129, 161, 255, 0.14);
+  --vt-nav-active: rgba(91, 140, 255, 0.14);
+  --vt-nav-active-shadow: inset 2px 0 0 0 rgba(111, 155, 255, 0.9), 0 6px 18px -8px rgba(91, 140, 255, 0.35);
+  --vt-nav-active-text: #dbe6ff;
+  --vt-search-focus: rgba(143, 176, 255, 0.65);
+  --vt-search-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 30px -25px rgba(0, 0, 0, 0.9);
+  --vt-search-shadow-focus: 0 0 0 1px rgba(143, 176, 255, 0.5), 0 0 0 5px rgba(91, 140, 255, 0.16),
+    0 14px 40px -18px rgba(91, 140, 255, 0.4);
+  --vt-seg-active-bg: #6f9bff;
+  --vt-seg-active-text: #0a1226;
+  --vt-badge-bg: #6f9bff;
+  --vt-badge-text: #0a1226;
+  --vt-subbar-line: rgba(129, 161, 255, 0.12);
   /* Nested surfaces + hovers */
-  --vt-card-hover-soft: rgba(27, 30, 38, 0.94);
-  --vt-inset: rgba(255, 255, 255, 0.045);
-  --vt-inset-hover: rgba(91, 140, 255, 0.15);
-  /* Enhanced-only affordances */
-  --vt-nav-active: rgba(91, 140, 255, 0.11);
-  --vt-bar-line: rgba(255, 255, 255, 0.06);
-  --vt-search-focus: rgba(91, 140, 255, 0.4);
-  /* Card meta rows + tag pills — periwinkle-warmed icons, soft-tinted pills */
-  --vt-meta-icon: rgba(148, 176, 255, 0.78);
-  --vt-meta-text: rgba(242, 240, 236, 0.9);
-  --vt-tag-bg: rgba(91, 140, 255, 0.09);
-  --vt-tag-line: rgba(91, 140, 255, 0.16);
-  --vt-tag-text: rgba(211, 222, 252, 0.82);
+  --vt-card-hover-soft: rgba(26, 31, 43, 0.95);
+  --vt-inset: rgba(255, 255, 255, 0.05);
+  --vt-inset-hover: rgba(129, 161, 255, 0.18);
+  /* Card meta rows + tag pills — periwinkle icons, tinted glass pills */
+  --vt-meta-icon: #8fb0ff;
+  --vt-meta-text: rgba(238, 240, 246, 0.92);
+  --vt-tag-bg: rgba(91, 140, 255, 0.14);
+  --vt-tag-line: rgba(129, 161, 255, 0.28);
+  --vt-tag-text: #c6d5fa;
+  --vt-tag-more-bg: rgba(255, 255, 255, 0.04);
+  --vt-tag-more-text: #9aa6c0;
+  --vt-btn-quiet-text: #c6d0e8;
 }
 
 /* Enhanced-only atmosphere: painted on the root element itself (layering-proof —
@@ -797,13 +913,13 @@ html {
    two quiet accent glows, the faint terracotta ember, and the barely-there 1px
    grid breathe through. Fixed attachment so it never scrolls. */
 :root[data-visual-theme="enhanced"] {
-  background-color: #0b0d12;
+  background-color: #0a0d14;
   background-image:
-    radial-gradient(circle at 20% -6%, rgba(91, 140, 255, 0.11), transparent 34%),
-    radial-gradient(circle at 84% 12%, rgba(91, 140, 255, 0.055), transparent 30%),
-    radial-gradient(circle at 8% 98%, rgba(163, 74, 50, 0.07), transparent 30%),
-    linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+    radial-gradient(1100px 700px at 18% -8%, rgba(91, 140, 255, 0.2), transparent 60%),
+    radial-gradient(900px 620px at 88% 4%, rgba(111, 155, 255, 0.1), transparent 55%),
+    radial-gradient(820px 560px at 6% 104%, rgba(163, 74, 50, 0.15), transparent 55%),
+    linear-gradient(rgba(148, 170, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 170, 255, 0.028) 1px, transparent 1px);
   background-size: auto, auto, auto, 44px 44px, 44px 44px;
   background-attachment: fixed;
 }
@@ -819,4 +935,98 @@ html {
 
 :root[data-visual-theme="enhanced"] * {
   scrollbar-color: rgba(152, 153, 159, 0.35) transparent;
+}
+
+/* ---- Enhanced-only component classes ----------------------------------------
+   These classNames are appended to existing elements and have ZERO rules in the
+   default theme (fully invisible when the theme is off). Being unlayered CSS,
+   they intentionally beat Tailwind's layered utilities on the same elements. */
+
+/* Apply Now: the decisive amber opportunity pill. The margin/padding swap is
+   net-zero (current padding 2px 2px → 7px 12px with -5px/-10px margins), so the
+   button's outer footprint — and therefore the card layout — is unchanged. */
+:root[data-visual-theme="enhanced"] .vt-cta {
+  margin: -5px -10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background-image: linear-gradient(180deg, #ffd94d, #fcbb00);
+  color: #241a05;
+  text-decoration-line: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 1px rgba(252, 187, 0, 0.35),
+    0 10px 26px -12px rgba(252, 187, 0, 0.55);
+}
+:root[data-visual-theme="enhanced"] .vt-cta:hover {
+  background-image: linear-gradient(180deg, #ffe066, #ffcf24);
+  color: #241a05;
+  text-decoration-line: none;
+}
+
+/* Job card: opaque slab with a gradient border (periwinkle top-left fading to a
+   terracotta whisper bottom-right) via the padding-box/border-box double
+   background; the existing 1px border supplies the track. */
+:root[data-visual-theme="enhanced"] .vt-card {
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(22, 26, 37, 0.93), rgba(16, 19, 28, 0.95)) padding-box,
+    linear-gradient(
+        160deg,
+        rgba(143, 176, 255, 0.34),
+        rgba(255, 255, 255, 0.07) 30%,
+        rgba(255, 255, 255, 0.05) 62%,
+        rgba(163, 74, 50, 0.22)
+      )
+      border-box;
+}
+:root[data-visual-theme="enhanced"] .vt-card:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(rgba(27, 32, 45, 0.95), rgba(19, 23, 33, 0.96)) padding-box,
+    linear-gradient(
+        160deg,
+        rgba(143, 176, 255, 0.55),
+        rgba(255, 255, 255, 0.09) 32%,
+        rgba(255, 255, 255, 0.07) 60%,
+        rgba(212, 118, 86, 0.3)
+      )
+      border-box;
+}
+/* Cursor-following periwinkle glow: the sheen child paints under content
+   (z-index 0 lifts it above the card's own background only). Scoped to .vt-card
+   so the home page's white sheen stays untouched. */
+:root[data-visual-theme="enhanced"] .vt-card .home-card-sheen {
+  z-index: 0;
+  background: radial-gradient(
+    320px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(143, 176, 255, 0.1),
+    transparent 65%
+  );
+}
+
+/* Channel avatar: periwinkle double-ring with a soft glow. */
+:root[data-visual-theme="enhanced"] .vt-avatar {
+  border-color: transparent;
+  box-shadow: 0 0 0 1px rgba(143, 176, 255, 0.45), 0 0 0 3px rgba(91, 140, 255, 0.14),
+    0 6px 18px -8px rgba(91, 140, 255, 0.35);
+}
+
+/* First-run affordance for the theme toggle: a quiet expanding ring until the
+   user has toggled once (any stored value ends it). */
+@keyframes vt-toggle-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(91, 140, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+  }
+}
+.vt-toggle-pulse {
+  animation: vt-toggle-pulse 2.4s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vt-toggle-pulse {
+    animation: none;
+  }
 }

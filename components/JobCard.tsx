@@ -60,7 +60,7 @@ function TagRow({ tags }: { tags: string[] }) {
         <TagPill key={t}>{t}</TagPill>
       ))}
       {extra > 0 ? (
-        <span className="text-[11px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/55">
+        <span className="text-[11px] px-2 py-1 rounded-lg bg-[var(--vt-tag-more-bg,rgba(255,255,255,0.05))] border border-[var(--vt-tag-line,rgba(255,255,255,0.1))] text-[var(--vt-tag-more-text,rgba(255,255,255,0.55))]">
           +{extra}
         </span>
       ) : null}
@@ -103,7 +103,7 @@ function ListingCta({
       type="button"
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-white/90 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      className="vt-cta group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-[var(--vt-cta-text,rgba(255,255,255,0.9))] underline-offset-4 transition-colors hover:text-[var(--vt-cta-text-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-cta-focus-ring,rgba(255,255,255,0.2))]"
     >
       <span>{label}</span>
       <span
@@ -152,13 +152,13 @@ export function JobCard({ job }: { job: Job }) {
         }}
         {...sheen}
         className={[
-          "group relative isolate cursor-pointer rounded-2xl p-5 min-w-0",
-          "bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))]",
+          "vt-card group relative isolate cursor-pointer rounded-2xl p-5 min-w-0",
+          "bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-card-line,rgba(255,255,255,0.1))]",
           "[background-image:var(--vt-card-sheen,none)]",
           "shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]",
           "transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out",
-          "hover:-translate-y-0.5 hover:bg-[var(--vt-card-hover-soft,rgba(255,255,255,0.075))] hover:border-white/25",
-          "hover:shadow-[0_22px_55px_-26px_rgba(0,0,0,0.95)]",
+          "hover:-translate-y-0.5 hover:bg-[var(--vt-card-hover-soft,rgba(255,255,255,0.075))] hover:border-[var(--vt-card-line-hover,rgba(255,255,255,0.25))]",
+          "hover:shadow-[var(--vt-card-shadow-hover,0_22px_55px_-26px_rgba(0,0,0,0.95))]",
           "hover:ring-1 hover:ring-[var(--vt-accent-soft,rgba(255,255,255,0.1))]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]",
           "h-[340px] flex flex-col",
@@ -174,10 +174,10 @@ export function JobCard({ job }: { job: Job }) {
               <img
                 src={job.channel.logoUrl}
                 alt={job.channel.name}
-                className="h-12 w-12 rounded-full border border-white/15 bg-white/10 flex-shrink-0"
+                className="vt-avatar h-12 w-12 rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 flex-shrink-0"
               />
             ) : (
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-semibold text-white/72">
+              <div className="vt-avatar flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 text-xs font-semibold text-white/72">
                 {channelInitials(job.channel.name) || <Icon name="briefcase" className="h-4 w-4" />}
               </div>
             )}
@@ -214,7 +214,7 @@ export function JobCard({ job }: { job: Job }) {
         </div>
 
         {/* Title row */}
-        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug text-[var(--vt-ink,#ffffff)] underline-offset-4 transition-colors hover:underline">
+        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug tracking-[var(--vt-title-tracking,0em)] text-[var(--vt-ink,#ffffff)] underline-offset-4 transition-colors hover:underline">
           {displayTitle}
         </h3>
 

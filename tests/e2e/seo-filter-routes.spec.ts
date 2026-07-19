@@ -15,20 +15,20 @@ test.describe("SEO filtered browsing routes", () => {
     await page.locator('main a[href="/jobs/video-editor-jobs"]').first().click();
     await expect(page).toHaveURL(/\/jobs\/video-editor-jobs$/);
     // The selected chip conveys the filter; there is no visible SEO heading.
-    await expect(page.locator('main a[href="/jobs/video-editor-jobs"]').first()).toHaveClass(/bg-white/);
+    await expect(page.locator('main a[href="/jobs/video-editor-jobs"]').first()).toHaveClass(/vt-chip-active/);
     await expect(page.getByRole("heading", { name: "Video Editor Jobs" })).toHaveCount(0);
     await expect(page.locator('div[role="link"]').first()).toBeVisible();
 
     await page.goto("/jobs", { waitUntil: "domcontentloaded" });
     await page.locator('main a[href="/jobs/thumbnail-designer-jobs"]').first().click();
     await expect(page).toHaveURL(/\/jobs\/thumbnail-designer-jobs$/);
-    await expect(page.locator('main a[href="/jobs/thumbnail-designer-jobs"]').first()).toHaveClass(/bg-white/);
+    await expect(page.locator('main a[href="/jobs/thumbnail-designer-jobs"]').first()).toHaveClass(/vt-chip-active/);
     await expect(page.getByRole("heading", { name: "Thumbnail Designer Jobs" })).toHaveCount(0);
 
     await page.goto("/jobs", { waitUntil: "domcontentloaded" });
     await page.locator('main a[href="/jobs/shorts-editor-jobs"]').first().click();
     await expect(page).toHaveURL(/\/jobs\/shorts-editor-jobs$/);
-    await expect(page.locator('main a[href="/jobs/shorts-editor-jobs"]').first()).toHaveClass(/bg-white/);
+    await expect(page.locator('main a[href="/jobs/shorts-editor-jobs"]').first()).toHaveClass(/vt-chip-active/);
     await expect(page.getByRole("heading", { name: "Shorts Editor Jobs" })).toHaveCount(0);
   });
 
@@ -73,9 +73,10 @@ test.describe("SEO filtered browsing routes", () => {
   });
 
   test("local filters replace an SEO selection instead of silently narrowing it", async ({ page }) => {
-    // The active chip is marked by `text-black` (inactive chips are `bg-white/10
-    // text-white`, so a bare /bg-white/ would match both).
-    const active = /text-black/;
+    // The active chip is marked by `text-black` on the talent side and by the
+    // theme-token active classes (`vt-chip-active-*`) on the jobs side; inactive
+    // chips carry neither marker.
+    const active = /text-black|vt-chip-active/;
 
     // Land on a curated SEO route: its chip is active, results are the narrowed set.
     await page.goto("/talent/channel-managers", { waitUntil: "domcontentloaded" });
@@ -234,7 +235,7 @@ test.describe("SEO filtered browsing routes", () => {
       // No visible SEO title/intro — the page reads as normal /jobs with a chip selected.
       await expect(page.getByRole("heading", { name: "Video Editor Jobs" })).toHaveCount(0);
       await expect(page.getByText(/Browse video editor jobs from/i)).toHaveCount(0);
-      await expect(page.locator('main a[href="/jobs/video-editor-jobs"]').first()).toHaveClass(/bg-white/);
+      await expect(page.locator('main a[href="/jobs/video-editor-jobs"]').first()).toHaveClass(/vt-chip-active/);
       await expect(page.locator('div[role="link"]').first()).toBeVisible();
       await expectNoHorizontalOverflow(page);
 
