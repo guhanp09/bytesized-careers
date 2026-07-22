@@ -39,7 +39,7 @@ export type SeoIntentFields = {
   genre: string;
   /** Language fields. */
   language: string;
-  /** Tool fields (talent only; empty for jobs — no persisted tools column). */
+  /** Tool fields. */
   tool: string;
 };
 
@@ -93,17 +93,18 @@ export function seoRouteMatchesFields(intent: SeoRequiredIntent, fields: SeoInte
 }
 
 export function jobIntentFields(job: JobLike): SeoIntentFields {
+  const requiredLanguages = job.languageRequirements == null
+    ? job.languages
+    : job.languageRequirements.filter((item) => item.priority === "required").map((item) => item.language);
   return {
-    role: bag(job.title, job.category, job.tags, job.formatsHiredFor),
+    role: bag(job.primaryRoleName, job.roleSpecialization, job.title, job.category, job.tags, job.formatsHiredFor),
     niche: bag(job.contentNiches, job.category, job.tags),
     workMode: bag(job.workMode, job.contractType, job.location),
     platform: bag(job.platform, job.postedPlatform, job.platforms, job.title, job.tags),
     format: bag(job.formatsHiredFor, job.title, job.tags),
     genre: bag(job.contentGenres, job.title, job.tags),
-    language: bag(job.languages),
-    // Jobs have no persisted tools column; keep the bag empty so a tool
-    // refinement can never accidentally match a job (jobs never offer tool chips).
-    tool: "",
+    language: bag(requiredLanguages),
+    tool: bag(job.tools, job.requiredToolKeys, job.otherRequiredTools),
   };
 }
 

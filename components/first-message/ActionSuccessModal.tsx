@@ -5,6 +5,15 @@ import { createPortal } from "react-dom";
 
 import { Icon } from "../Icons";
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
 /**
  * Polished post-success confirmation for a sent application / hiring request. It
  * acknowledges the action and offers the two next steps the requester actually
@@ -67,6 +76,19 @@ export default function ActionSuccessModal({
         if (event.key === "Escape") {
           event.stopPropagation();
           onClose();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const focusables = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) || []);
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
         }
       }}
     >
@@ -83,7 +105,7 @@ export default function ActionSuccessModal({
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         data-testid={testid}
-        className="ui-modal-panel relative flex w-full max-w-sm flex-col items-center gap-5 rounded-t-3xl border border-white/12 bg-[#18191d] px-6 py-7 text-center shadow-[0_30px_110px_-42px_rgba(0,0,0,1)] sm:rounded-3xl"
+        className="ui-modal-panel relative flex max-h-[calc(100dvh-1rem)] w-full max-w-sm flex-col items-center gap-5 overflow-y-auto rounded-t-3xl border border-white/12 bg-[#18191d] px-6 pt-7 pb-[max(1.75rem,env(safe-area-inset-bottom))] text-center shadow-[0_30px_110px_-42px_rgba(0,0,0,1)] sm:rounded-3xl sm:pb-7"
       >
         <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
           <Icon name="check" className="h-6 w-6" />

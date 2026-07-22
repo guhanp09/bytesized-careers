@@ -12,8 +12,11 @@ export type JobLike = {
   id: string;
   title: string;
   category?: string | null;
+  primaryRoleName?: string | null;
+  roleSpecialization?: string | null;
   location?: string | null;
   budget?: string | null;
+  budgetAmount?: number | null;
   workMode?: string | null;
   contractType?: string | null;
   platform?: string | null;
@@ -23,7 +26,10 @@ export type JobLike = {
   contentGenres?: string[] | null;
   formatsHiredFor?: string[] | null;
   tools?: string[] | null;
+  requiredToolKeys?: string[] | null;
+  otherRequiredTools?: string[] | null;
   languages?: string[] | null;
+  languageRequirements?: Array<{ language: string; priority: string }> | null;
   tags?: string[] | null;
   about?: string | null;
   responsibilities?: string | null;
@@ -152,7 +158,7 @@ function recencyKey(iso: string | null | undefined): number {
 }
 
 export function scoreJob(job: JobLike, p: ParsedQuery): number {
-  const roleField = matcher(job.title, job.category, job.tags);
+  const roleField = matcher(job.primaryRoleName, job.roleSpecialization, job.title, job.category, job.tags);
   const platformField = matcher(job.platform, job.postedPlatform, job.title, job.tags);
   const formatField = matcher(job.formatsHiredFor, job.title, job.tags, job.responsibilities, job.requirements);
   const nicheField = matcher(job.contentNiches, job.category, job.tags, job.about);
@@ -161,11 +167,16 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
   const structuredNicheField = matcher(job.contentNiches);
   const structuredGenreField = matcher(job.contentGenres);
   const workModeField = matcher(job.workMode, job.contractType);
-  const toolsField = matcher(job.tools);
-  const langField = matcher(job.languages);
+  const toolsField = matcher(job.tools, job.requiredToolKeys, job.otherRequiredTools);
+  const requiredLanguages = job.languageRequirements == null
+    ? job.languages
+    : job.languageRequirements.filter((item) => item.priority === "required").map((item) => item.language);
+  const langField = matcher(requiredLanguages);
   const locationField = matcher(job.location);
   const corpus = matcher(
     job.title,
+    job.primaryRoleName,
+    job.roleSpecialization,
     job.category,
     job.about,
     job.responsibilities,
@@ -175,7 +186,7 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
     job.formatsHiredFor,
     job.tags,
     job.tools,
-    job.languages,
+    requiredLanguages,
     job.channel?.name
   );
 
@@ -200,7 +211,7 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
   // Budget refines listings that already match something — it never qualifies a
   // listing on its own (otherwise every cheap job matches "... under 5k").
   if (score > 0) {
-    if (p.budget) score += budgetScore(p.budget, firstJobAmount(job.budget));
+    if (p.budget) score += budgetScore(p.budget, job.budgetAmount ?? firstJobAmount(job.budget));
     if (job.hiringVerificationStatus === "VERIFIED") score += 0.5;
     if (job.about && job.tags && job.tags.length) score += 0.25; // completeness
   }

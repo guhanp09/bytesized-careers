@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.schema import CreateColumn
 
 from app.core.config import settings
+from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.db.base import Base
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,14 @@ async def sync_dev_sqlite_schema(engine: AsyncEngine) -> None:
                         column_sql = column_sql.replace(" NOT NULL", "")
                         added_as_nullable = True
                     sync_conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
+                    if table.name == "jobs" and column.name == "listing_schema_version":
+                        # Every row that predates this additive column is a legacy
+                        # version-1 listing. The column's server default remains the
+                        # current model version
+                        # for any later direct insert.
+                        sync_conn.execute(
+                            text("UPDATE jobs SET listing_schema_version = 1")
+                        )
                     if added_as_nullable and column.default is not None:
                         default_arg = column.default.arg
                         try:
@@ -69,6 +80,54 @@ async def sync_dev_sqlite_schema(engine: AsyncEngine) -> None:
                                 .values({column.name: default_value})
                             )
                     added.append(f"{table.name}.{column.name}")
+
+            # SQLite cannot relax nullability/defaults with ALTER COLUMN. Batch
+            # recreation is development-only and preserves every existing row
+            # while bringing old create_all-managed databases in line with 0040.
+            job_columns = {
+                column["name"]: column
+                for column in inspect(sync_conn).get_columns("jobs")
+            }
+            relaxed_columns = [
+                name
+                for name in ("category", "budget_currency", "budget_unit")
+                if name in job_columns
+                and (
+                    not job_columns[name].get("nullable", True)
+                    or job_columns[name].get("default") is not None
+                )
+            ]
+            schema_version_column = job_columns.get("listing_schema_version")
+            raw_schema_default = (
+                str(schema_version_column.get("default") or "").strip("'\"() ")
+                if schema_version_column
+                else ""
+            )
+            needs_schema_default = bool(
+                schema_version_column
+                and raw_schema_default != str(CURRENT_LISTING_SCHEMA_VERSION)
+            )
+            if relaxed_columns or needs_schema_default:
+                operations = Operations(MigrationContext.configure(sync_conn))
+                with operations.batch_alter_table("jobs") as batch:
+                    for name in relaxed_columns:
+                        model_column = Base.metadata.tables["jobs"].c[name]
+                        batch.alter_column(
+                            name,
+                            existing_type=model_column.type,
+                            nullable=True,
+                            server_default=None,
+                        )
+                    if needs_schema_default:
+                        batch.alter_column(
+                            "listing_schema_version",
+                            existing_type=Base.metadata.tables["jobs"].c.listing_schema_version.type,
+                            nullable=False,
+                            server_default=str(CURRENT_LISTING_SCHEMA_VERSION),
+                        )
+                added.extend(f"jobs.{name}.relaxed" for name in relaxed_columns)
+                if needs_schema_default:
+                    added.append("jobs.listing_schema_version.default")
 
             # Existing SQLite tables do not get new indexes from create_all(checkfirst=True).
             refreshed_inspector = inspect(sync_conn)

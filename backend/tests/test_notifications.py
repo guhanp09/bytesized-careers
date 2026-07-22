@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from app.notifications import EVENT_REGISTRY, get_event, missing_payload_fields
 from app.notifications.email import real_delivery_enabled
 from app.notifications.registry import CHANNEL_EMAIL, CHANNEL_IN_APP
+from conftest import create_valid_published_job
 
 
 async def _register_verified_login(
@@ -33,17 +34,7 @@ async def _register_verified_login(
 
 
 async def _post_published_job(client: AsyncClient, owner_token: str, title: str) -> str:
-    response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": title,
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
-    )
+    response = await create_valid_published_job(client, owner_token, title=title)
     assert response.status_code == 201
     return response.json()["id"]
 

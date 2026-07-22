@@ -19,6 +19,6 @@ test("post-job brand context field uses standardized About the brand copy", () =
   assert.doesNotMatch(completion, /Add description/);
   assert.doesNotMatch(completion, /Listing context/);
 
-  assert.match(detail, /About the brand/);
+  assert.match(detail, /About the opportunity/);
   assert.doesNotMatch(detail, /About the channel/);
 });

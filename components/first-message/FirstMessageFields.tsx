@@ -79,22 +79,29 @@ function FieldShell({
   dataKey?: string;
   children: React.ReactNode;
 }) {
+  const descriptionId = React.useId();
   return (
-    <div className="space-y-1.5" data-requirement-key={dataKey}>
+    <div
+      className="space-y-1.5"
+      data-requirement-key={dataKey}
+      role="group"
+      aria-label={label}
+      aria-describedby={error || hint ? descriptionId : undefined}
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-white/82">
           <Icon name={icon} className="h-3.5 w-3.5 text-white/45" />
           <span>{label}</span>
         </div>
         {error ? (
-          <div className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
+          <div id={descriptionId} role="alert" className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
             <Icon name="alert" className="h-3 w-3" />
             <span>{error}</span>
           </div>
         ) : null}
       </div>
       {children}
-      {!error && hint ? <div className="text-[11px] text-white/40">{hint}</div> : null}
+      {!error && hint ? <div id={descriptionId} className="text-[11px] text-white/40">{hint}</div> : null}
     </div>
   );
 }
@@ -253,6 +260,7 @@ function PortfolioPicker({
           <input
             autoFocus
             type="url"
+            aria-label="Portfolio or work sample URL"
             value={linkValue}
             onChange={(e) => setLinkValue(e.target.value)}
             onKeyDown={(e) => {
@@ -289,6 +297,8 @@ function CustomInstructionField({
   error?: string;
   onChange: (next: CustomInstructionAnswer) => void;
 }) {
+  const answerId = React.useId();
+  const errorId = React.useId();
   const answer: CustomInstructionAnswer = isCustomInstructionAnswer(value)
     ? value
     : { response: typeof value === "string" ? value : "", links: [] };
@@ -310,9 +320,9 @@ function CustomInstructionField({
           <span className="truncate">Listing prompt</span>
         </div>
         {error ? (
-          <div className="inline-flex shrink-0 items-center gap-1 text-[11px] text-amber-200/90">
+          <div id={errorId} role="alert" className="inline-flex min-w-0 shrink items-center gap-1 text-[11px] text-amber-200/90">
             <Icon name="alert" className="h-3 w-3" />
-            <span>{error}</span>
+            <span className="break-words">{error}</span>
           </div>
         ) : null}
       </div>
@@ -323,8 +333,11 @@ function CustomInstructionField({
           error ? "border-amber-200/35" : "border-white/[0.09]",
         ].join(" ")}
       >
-        <p className="text-sm font-semibold leading-relaxed text-white/88">{resolvedPrompt}</p>
+        <label htmlFor={answerId} className="block text-sm font-semibold leading-relaxed text-white/88">
+          {resolvedPrompt}
+        </label>
         <textarea
+          id={answerId}
           value={answer.response}
           onChange={(event) => update({ response: event.target.value.slice(0, CUSTOM_INSTRUCTION_MAX_LENGTH) })}
           maxLength={CUSTOM_INSTRUCTION_MAX_LENGTH}
@@ -332,6 +345,7 @@ function CustomInstructionField({
           className={[customTextareaBase, "mt-3", error ? invalidClass : ""].join(" ")}
           aria-label={resolvedPrompt}
           aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
         />
         <div className="mt-1 text-right text-[10px] tabular-nums text-white/35">
           {(answer.response || "").length}/{CUSTOM_INSTRUCTION_MAX_LENGTH}
@@ -391,6 +405,7 @@ export default function FirstMessageFields({
   errors = {},
   portfolio,
   requirementPrompts,
+  currencyCode,
 }: {
   context: RequirementContext;
   requirementKeys: string[];
@@ -401,6 +416,7 @@ export default function FirstMessageFields({
   errors?: Record<string, string>;
   portfolio?: PortfolioState;
   requirementPrompts?: Record<string, string>;
+  currencyCode?: string | null;
 }) {
   const keys = sanitizeRequirementKeys(requirementKeys, context);
   if (!keys.length) return null;
@@ -432,13 +448,19 @@ export default function FirstMessageFields({
         }
 
         if (def.answerType === "currency") {
-          const v: CurrencyAnswer = isCurrencyAnswer(value) ? value : { amount: "", unit: copy.units?.[0] ?? "" };
+          const v: CurrencyAnswer = isCurrencyAnswer(value)
+            ? { ...value, currency: value.currency || currencyCode || undefined }
+            : { amount: "", unit: copy.units?.[0] ?? "", currency: currencyCode || undefined };
+          const currency = (v.currency || "INR").toUpperCase();
+          const currencyPrefix = ({ INR: "₹", USD: "$", EUR: "€", GBP: "£" } as Record<string, string>)[currency] || currency;
           return (
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
               <div className="flex gap-2">
                 <div className={["flex flex-1 items-center rounded-xl bg-white/6 border px-3 transition-colors focus-within:border-white/25 focus-within:bg-white/7", error ? "border-amber-200/40" : "border-white/10"].join(" ")}>
-                  <span className="pointer-events-none mr-0.5 text-sm text-white/45">₹</span>
+                  <span className="pointer-events-none mr-1 text-sm text-white/45">{currencyPrefix}</span>
                   <input
+                    aria-label={`${copy.requester} amount`}
+                    aria-invalid={Boolean(error)}
                     inputMode="numeric"
                     value={v.amount}
                     onChange={(e) => setAnswer(key, { ...v, amount: e.target.value.replace(/[^\d,.]/g, "") })}
@@ -454,7 +476,7 @@ export default function FirstMessageFields({
                   />
                 </div>
                 {copy.units?.length ? (
-                  <select className={selectBase} value={v.unit} onChange={(e) => setAnswer(key, { ...v, unit: e.target.value })}>
+                  <select aria-label={`${copy.requester} unit`} aria-invalid={Boolean(error)} className={selectBase} value={v.unit} onChange={(e) => setAnswer(key, { ...v, unit: e.target.value })}>
                     {copy.units.map((u) => (
                       <option key={u} value={u} className="bg-[#0b0b0f]">
                         {u}
@@ -473,13 +495,15 @@ export default function FirstMessageFields({
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
               <div className="flex gap-2">
                 <input
+                  aria-label={`${copy.requester} value`}
+                  aria-invalid={Boolean(error)}
                   inputMode="numeric"
                   value={v.value}
                   onChange={(e) => setAnswer(key, { ...v, value: e.target.value.replace(/[^\d]/g, "") })}
                   placeholder="3"
                   className={[inputBase, "flex-1", error ? invalidClass : ""].join(" ")}
                 />
-                <select className={selectBase} value={v.unit} onChange={(e) => setAnswer(key, { ...v, unit: e.target.value as TurnaroundAnswer["unit"] })}>
+                <select aria-label={`${copy.requester} unit`} aria-invalid={Boolean(error)} className={selectBase} value={v.unit} onChange={(e) => setAnswer(key, { ...v, unit: e.target.value as TurnaroundAnswer["unit"] })}>
                   {TURN_UNITS.map((u) => (
                     <option key={u} value={u} className="bg-[#0b0b0f]">
                       {u}
@@ -521,6 +545,8 @@ export default function FirstMessageFields({
                 {rows.map((row, idx) => (
                   <div key={idx} className="flex gap-2">
                     <input
+                      aria-label={`${copy.requester} link ${idx + 1}`}
+                      aria-invalid={Boolean(error && !row.trim())}
                       type="url"
                       value={row}
                       onChange={(e) => {
@@ -560,6 +586,8 @@ export default function FirstMessageFields({
           return (
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
               <input
+                aria-label={copy.requester}
+                aria-invalid={Boolean(error)}
                 type="url"
                 value={v}
                 onChange={(e) => setAnswer(key, e.target.value)}
@@ -574,7 +602,7 @@ export default function FirstMessageFields({
           const v = typeof value === "string" ? value : "";
           return (
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
-              <select className={[selectBase, "w-full", error ? invalidClass : ""].join(" ")} value={v} onChange={(e) => setAnswer(key, e.target.value)}>
+              <select aria-label={copy.requester} aria-invalid={Boolean(error)} className={[selectBase, "w-full", error ? invalidClass : ""].join(" ")} value={v} onChange={(e) => setAnswer(key, e.target.value)}>
                 <option value="" className="bg-[#0b0b0f]">
                   Choose…
                 </option>
@@ -593,6 +621,8 @@ export default function FirstMessageFields({
           return (
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
               <input
+                aria-label={copy.requester}
+                aria-invalid={Boolean(error)}
                 value={v}
                 onChange={(e) => setAnswer(key, e.target.value)}
                 placeholder={copy.placeholder || ""}
@@ -601,7 +631,7 @@ export default function FirstMessageFields({
               {copy.suggestions?.length ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {copy.suggestions.map((s) => (
-                    <button key={s} type="button" className={`${chip(v === s)} cursor-pointer`} onClick={() => setAnswer(key, v === s ? "" : s)}>
+                    <button key={s} type="button" aria-pressed={v === s} className={`${chip(v === s)} cursor-pointer`} onClick={() => setAnswer(key, v === s ? "" : s)}>
                       {s}
                     </button>
                   ))}
@@ -625,6 +655,8 @@ export default function FirstMessageFields({
           >
             {multiline ? (
               <textarea
+                aria-label={copy.requester}
+                aria-invalid={Boolean(error)}
                 value={v}
                 onChange={(e) => setAnswer(key, e.target.value)}
                 placeholder={copy.placeholder || ""}
@@ -632,6 +664,8 @@ export default function FirstMessageFields({
               />
             ) : (
               <input
+                aria-label={copy.requester}
+                aria-invalid={Boolean(error)}
                 value={v}
                 onChange={(e) => setAnswer(key, e.target.value)}
                 placeholder={copy.placeholder || ""}

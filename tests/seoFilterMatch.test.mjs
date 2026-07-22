@@ -159,6 +159,30 @@ test("intent-field extractors read structured role/niche/workmode fields", () =>
   assert.match(jobFields.role, /writing|writer|script/);
 });
 
+test("job intent fields prefer canonical role and required structured languages without inventing role from category", () => {
+  const canonical = jobIntentFields({
+    ...job("canonical", "Design", "Creator role"),
+    primaryRoleName: "Video Editor",
+    roleSpecialization: "Documentary pacing",
+    languageRequirements: [
+      { language: "Hindi", priority: "required" },
+      { language: "English", priority: "preferred" },
+    ],
+    languages: ["English"],
+    tools: ["Adobe Premiere Pro"],
+  });
+  assert.match(canonical.role, /video editor/);
+  assert.match(canonical.role, /documentary pacing/);
+  assert.match(canonical.language, /hindi/);
+  assert.doesNotMatch(canonical.language, /english/);
+  assert.match(canonical.tool, /premiere/);
+
+  const explicitNone = jobIntentFields({ ...job("none", "Writing", "Creator role"), languageRequirements: [], languages: ["Hindi"] });
+  assert.equal(explicitNone.language, "");
+  const legacy = jobIntentFields({ ...job("legacy", "Writing", "Creator role"), languageRequirements: null, languages: ["Hindi"] });
+  assert.match(legacy.language, /hindi/);
+});
+
 // ---------------------------------------------------------------------------
 // Hierarchical subfilter system: new gate groups + refinements + registry.
 // ---------------------------------------------------------------------------

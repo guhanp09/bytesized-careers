@@ -7,6 +7,12 @@ import {
   FirstMessageAnswers,
   RequirementContext,
 } from "../../lib/firstMessageRequirements";
+import type { JobScreeningQuestion } from "../../lib/jobContract";
+import { applicationRequirementLabel } from "../../lib/jobPresentation";
+import {
+  SCREENING_RESPONSE_MAX_LENGTH,
+  type ScreeningAnswerState,
+} from "../../lib/jobApplication";
 import { Icon } from "../Icons";
 import FirstMessageFields, { PortfolioState } from "./FirstMessageFields";
 
@@ -68,6 +74,12 @@ export default function FirstMessageRequirementsModal({
   onClose,
   submitState,
   submitError = null,
+  screeningQuestions = [],
+  screeningAnswers = {},
+  onScreeningAnswersChange,
+  unknownRequirementKeys = [],
+  preflightNotice = null,
+  currencyCode = null,
 }: {
   open: boolean;
   context: RequirementContext;
@@ -83,6 +95,12 @@ export default function FirstMessageRequirementsModal({
   onClose: () => void;
   submitState: FirstMessageSubmitState;
   submitError?: string | null;
+  screeningQuestions?: JobScreeningQuestion[];
+  screeningAnswers?: ScreeningAnswerState;
+  onScreeningAnswersChange?: (next: ScreeningAnswerState) => void;
+  unknownRequirementKeys?: string[];
+  preflightNotice?: string | null;
+  currencyCode?: string | null;
 }) {
   const copy = COPY[context];
   const panelRef = React.useRef<HTMLDivElement | null>(null);
@@ -121,16 +139,18 @@ export default function FirstMessageRequirementsModal({
   // steals focus mid-typing.
   React.useEffect(() => {
     if (!open) return;
-    const firstErroredKey = requirementKeys.find((key) => errors[key]);
+    const firstErroredKey = [...requirementKeys, ...unknownRequirementKeys, ...screeningQuestions.map((_, index) => `screening-question-${index}`)]
+      .find((key) => errors[key]);
     if (!firstErroredKey) return;
     const panel = panelRef.current;
     if (!panel) return;
-    const target = panel.querySelector<HTMLElement>(
-      `[data-requirement-key="${firstErroredKey}"] input, [data-requirement-key="${firstErroredKey}"] textarea, [data-requirement-key="${firstErroredKey}"] select, [data-requirement-key="${firstErroredKey}"] button`
-    );
+    const field = Array.from(
+      panel.querySelectorAll<HTMLElement>("[data-requirement-key]"),
+    ).find((element) => element.dataset.requirementKey === firstErroredKey);
+    const target = field?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     target?.focus();
     target?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-  }, [errors, open, requirementKeys]);
+  }, [errors, open, requirementKeys, screeningQuestions, unknownRequirementKeys]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -179,7 +199,7 @@ export default function FirstMessageRequirementsModal({
         aria-describedby={subtitleId}
         data-testid={copy.testid}
         onKeyDown={handleKeyDown}
-        className="ui-modal-panel relative flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-white/12 bg-[#18191d] shadow-[0_30px_110px_-42px_rgba(0,0,0,1)] sm:max-h-[88vh] sm:rounded-3xl"
+        className="ui-modal-panel relative flex max-h-[92dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-white/12 bg-[#18191d] shadow-[0_30px_110px_-42px_rgba(0,0,0,1)] sm:max-h-[88dvh] sm:rounded-3xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
           <div className="min-w-0">
@@ -201,7 +221,21 @@ export default function FirstMessageRequirementsModal({
           </button>
         </header>
 
-        <div className="overflow-y-auto px-5 py-5" data-testid={copy.fieldsTestId}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5" data-testid={copy.fieldsTestId}>
+          {context === "job" && (preflightNotice || requirementKeys.length || unknownRequirementKeys.length || screeningQuestions.length) ? (
+            <section className="mb-5 rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5" aria-label="Application overview">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Before you apply</p>
+              {preflightNotice ? <p className="mt-2 text-sm leading-relaxed text-white/72">{preflightNotice}</p> : null}
+              <p className="mt-2 text-xs leading-relaxed text-white/48">
+                {requirementKeys.length + unknownRequirementKeys.length
+                  ? `${requirementKeys.length + unknownRequirementKeys.length} requested detail${requirementKeys.length + unknownRequirementKeys.length === 1 ? "" : "s"}`
+                  : "No additional details requested"}
+                {screeningQuestions.length
+                  ? ` · ${screeningQuestions.length} screening question${screeningQuestions.length === 1 ? "" : "s"}`
+                  : ""}
+              </p>
+            </section>
+          ) : null}
           <FirstMessageFields
             context={context}
             requirementKeys={requirementKeys}
@@ -210,15 +244,87 @@ export default function FirstMessageRequirementsModal({
             errors={errors}
             portfolio={portfolio}
             requirementPrompts={requirementPrompts}
+            currencyCode={currencyCode}
           />
+          {unknownRequirementKeys.length ? (
+            <div className={`${requirementKeys.length ? "mt-5 border-t border-white/[0.07] pt-5" : ""} space-y-4`}>
+              <h3 className="text-xs font-semibold text-white/82">Additional requested details</h3>
+              {unknownRequirementKeys.map((key) => {
+                const id = `legacy-requirement-${key.replace(/[^a-z0-9]+/gi, "-")}`;
+                const errorId = `${id}-error`;
+                const error = errors[key];
+                return (
+                  <div key={key} className="space-y-1.5" data-requirement-key={key}>
+                    <label htmlFor={id} className="block text-xs font-semibold text-white/82">
+                      {applicationRequirementLabel(key)}
+                    </label>
+                    <textarea
+                      id={id}
+                      required
+                      value={typeof answers[key] === "string" ? answers[key] : ""}
+                      onChange={(event) => onAnswersChange((previous) => ({ ...previous, [key]: event.target.value }))}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? errorId : undefined}
+                      className={[
+                        "min-h-[96px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:bg-white/7",
+                        error ? "border-amber-200/40 focus:border-amber-200/50" : "border-white/10 focus:border-white/25",
+                      ].join(" ")}
+                      placeholder="Add the requested detail"
+                    />
+                    {error ? <p id={errorId} role="alert" className="text-[11px] text-amber-200/90">{error}</p> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {screeningQuestions.length ? (
+            <fieldset className={`${requirementKeys.length || unknownRequirementKeys.length ? "mt-5 border-t border-white/[0.07] pt-5" : ""} space-y-4`}>
+              <legend className="text-xs font-semibold text-white/82">Screening questions</legend>
+              {screeningQuestions.map((question, index) => {
+                const key = `screening-question-${index}`;
+                const id = `${key}-answer`;
+                const errorId = `${key}-error`;
+                const hintId = `${key}-hint`;
+                const error = errors[key];
+                return (
+                  <div key={`${question.prompt}-${index}`} className="space-y-1.5" data-requirement-key={key}>
+                    <label htmlFor={id} className="block text-sm font-medium leading-relaxed text-white/86">
+                      {question.prompt}
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">
+                        {question.required ? "Required" : "Optional"}
+                      </span>
+                    </label>
+                    {question.response_guidance ? (
+                      <p id={hintId} className="text-xs leading-relaxed text-white/45">{question.response_guidance}</p>
+                    ) : null}
+                    <textarea
+                      id={id}
+                      required={question.required}
+                      maxLength={SCREENING_RESPONSE_MAX_LENGTH}
+                      value={screeningAnswers[index] || ""}
+                      onChange={(event) => onScreeningAnswersChange?.({ ...screeningAnswers, [index]: event.target.value })}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={[question.response_guidance ? hintId : "", error ? errorId : ""].filter(Boolean).join(" ") || undefined}
+                      className={[
+                        "min-h-[108px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:bg-white/7",
+                        error ? "border-amber-200/40 focus:border-amber-200/50" : "border-white/10 focus:border-white/25",
+                      ].join(" ")}
+                      placeholder="Write your answer"
+                    />
+                    {error ? <p id={errorId} role="alert" className="text-[11px] text-amber-200/90">{error}</p> : null}
+                  </div>
+                );
+              })}
+            </fieldset>
+          ) : null}
           {submitState === "error" ? (
-            <p className="mt-4 rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs text-amber-100">
+            <p role="alert" aria-live="assertive" className="mt-4 rounded-xl border border-amber-200/20 bg-amber-200/10 px-3 py-2 text-xs text-amber-100">
               {submitError || "Couldn’t send right now. Try again."}
             </p>
           ) : null}
         </div>
 
-        <footer className="flex items-center gap-3 border-t border-white/[0.07] px-5 py-4">
+        <footer className="flex items-center gap-3 border-t border-white/[0.07] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, valid_published_job_payload
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
@@ -618,16 +618,12 @@ async def test_youtube_job_create_requires_linked_channel(
     )
     assert refresh.status_code == 200
 
-    create_payload = {
-        "title": "YouTube Editor Needed",
-        "category": "Editing",
-        "location": "Remote",
-        "platforms": ["youtube"],
-        "posted_platform": "youtube",
-        "posted_youtube_channel_id": "UC_LINKED_1",
-        "channel_name": "Linked Posting Channel",
-        "status": "published",
-    }
+    create_payload = await valid_published_job_payload(
+        title="YouTube Editor Needed",
+        posted_platform="youtube",
+        posted_youtube_channel_id="UC_LINKED_1",
+        channel_name="Linked Posting Channel",
+    )
 
     ok_create = await client.post(
         "/api/v1/jobs",

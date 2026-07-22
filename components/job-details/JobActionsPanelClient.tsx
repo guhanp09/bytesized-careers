@@ -6,11 +6,20 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Job } from "../../lib/types";
 import {
+  SCREENING_ANSWERS_KEY,
+  applicationPreflightForJob,
+  buildScreeningQuestionAnswers,
+  validateScreeningQuestionAnswers,
+  validateUnknownRequirementAnswers,
+  type ScreeningAnswerState,
+} from "../../lib/jobApplication";
+import {
+  BackendRequestError,
   applyToJob,
   createReport,
-  describeActionError,
   getMyApplicationForJob,
   isBackendAuthError,
+  isBackendUnreachableError,
   listMyPortfolio,
   listRoles,
   previewPortfolioLink,
@@ -26,7 +35,6 @@ import {
   FirstMessageAnswers,
   isPortfolioAnswer,
   normalizeFirstMessageAnswers,
-  sanitizeRequirementKeys,
   validateAnswers,
 } from "../../lib/firstMessageRequirements";
 import { toPortfolioOption, toPortfolioOptions } from "../../lib/firstMessagePortfolio";
@@ -37,6 +45,55 @@ import FirstMessageRequirementsModal from "../first-message/FirstMessageRequirem
 import AddWorkSampleChoiceModal, { type WorkSampleAction } from "../you/AddWorkSampleChoiceModal";
 import PortfolioProjectWorkspace from "../you/PortfolioProjectWorkspace";
 import JobActionsPanel from "./JobActionsPanel";
+
+const applicationErrorMessage = (
+  error: unknown,
+  fallback = "Couldn’t send the application. Try again.",
+) => {
+  if (isBackendAuthError(error)) return "Your session has expired. Sign in again to continue.";
+  if (isBackendUnreachableError(error)) {
+    return "CreatorJobs can’t connect right now. Check your connection and try again.";
+  }
+  if (error instanceof BackendRequestError) {
+    const message = error.message.toLowerCase();
+    if (message.includes("deadline")) return "The application deadline for this job has passed.";
+    if (message.includes("external site")) {
+      return "This listing now uses an external application flow. Reload the page to continue.";
+    }
+    if (message.includes("not accepting applications") || message.includes("unavailable for direct interaction")) {
+      return "This job is no longer accepting applications.";
+    }
+    if (error.status === 403) return "This application action isn’t available.";
+    if (error.status === 404) return "This job is no longer available.";
+    if (error.status === 422) return "Review the requested application details and try again.";
+  }
+  return fallback;
+};
+
+const applicationFieldErrors = (error: unknown) => {
+  if (!(error instanceof BackendRequestError) || !error.fieldErrors) return {};
+  const errors: Record<string, string> = {};
+  for (const field of Object.keys(error.fieldErrors)) {
+    const screeningMatch = field.match(/screening_questions\.(\d+)(?:\.response)?$/);
+    if (screeningMatch) {
+      errors[`screening-question-${screeningMatch[1]}`] = "Complete this screening question.";
+      continue;
+    }
+    const requirementMatch = field.match(/^first_message_answers\.([^.]+)$/);
+    if (requirementMatch) errors[requirementMatch[1]] = "Complete this requested detail.";
+  }
+  return errors;
+};
+
+const applicationBecameUnavailable = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("not accepting applications") ||
+    message.includes("unavailable for direct interaction") ||
+    message.includes("external site")
+  );
+};
 
 export default function JobActionsPanelClient({
   job,
@@ -54,9 +111,23 @@ export default function JobActionsPanelClient({
   const [reportState, setReportState] = React.useState<"idle" | "sending" | "sent" | "error">("idle");
   const [shareState, setShareState] = React.useState<"idle" | "copied">("idle");
 
-  const requirementKeys = React.useMemo(
-    () => sanitizeRequirementKeys(job.applicationRequirements, "job"),
-    [job.applicationRequirements]
+  const preflight = React.useMemo(() => applicationPreflightForJob(job), [job]);
+  const requirementKeys = preflight.knownRequirementKeys;
+  const unknownRequirementKeys = preflight.unknownRequirementKeys;
+  const preflightNotice = React.useMemo(
+    () =>
+      [
+        preflight.deadline.valid ? preflight.deadline.label : null,
+        preflight.trial
+          ? [preflight.trial.title, ...preflight.trial.details].filter(Boolean).join(" · ")
+          : null,
+        preflight.applicationInstruction
+          ? `Application instructions: ${preflight.applicationInstruction}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(". "),
+    [preflight],
   );
   const requirementPrompts = React.useMemo(() => {
     const customInstruction = job.howToApply?.trim();
@@ -67,6 +138,7 @@ export default function JobActionsPanelClient({
   }, [job.howToApply, requirementKeys]);
   const needsPortfolio = requirementKeys.includes("relevant_portfolio");
   const [answers, setAnswers] = React.useState<FirstMessageAnswers>({});
+  const [screeningAnswers, setScreeningAnswers] = React.useState<ScreeningAnswerState>({});
   const [answerErrors, setAnswerErrors] = React.useState<Record<string, string>>({});
   const [requirementsOpen, setRequirementsOpen] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
@@ -79,6 +151,20 @@ export default function JobActionsPanelClient({
   const [portfolio, setPortfolio] = React.useState<PortfolioState | undefined>(
     needsPortfolio ? { items: [], loading: true } : undefined
   );
+  const [deadlineExpired, setDeadlineExpired] = React.useState(preflight.deadline.expired);
+  const [applicationsUnavailable, setApplicationsUnavailable] = React.useState(false);
+
+  React.useEffect(() => {
+    setApplicationsUnavailable(false);
+  }, [job.id]);
+
+  React.useEffect(() => {
+    setDeadlineExpired(preflight.deadline.expired);
+    if (!preflight.deadline.valid || preflight.deadline.expired || !job.deadlineAt) return;
+    const update = () => setDeadlineExpired(new Date(job.deadlineAt as string).getTime() <= Date.now());
+    const timer = window.setInterval(update, 30_000);
+    return () => window.clearInterval(timer);
+  }, [job.deadlineAt, preflight.deadline.expired, preflight.deadline.valid]);
 
   // Load the requester's real profile portfolio so a "relevant portfolio"
   // requirement links to actual items, not faked entries.
@@ -252,21 +338,30 @@ export default function JobActionsPanelClient({
   React.useEffect(() => {
     if (isOwner) {
       setExistingApplication(null);
+      setConversationId(null);
+      setApplyState("idle");
+      setApplyError(null);
       setRelationshipState("ready");
       return;
     }
     if (sessionStatus === "loading") {
-      setRelationshipState("loading");
+      setRelationshipState(preflight.mode === "external" ? "ready" : "loading");
       return;
     }
     const token = session?.backendAccessToken;
     if (!token) {
       setExistingApplication(null);
+      setConversationId(null);
+      setApplyState("idle");
+      setApplyError(null);
       setRelationshipState("ready");
       return;
     }
     let cancelled = false;
-    setRelationshipState("loading");
+    setExistingApplication(null);
+    setConversationId(null);
+    setRelationshipState(preflight.mode === "external" ? "ready" : "loading");
+    setApplyState("idle");
     setApplyError(null);
     void getMyApplicationForJob(token, String(job.id))
       .then((application) => {
@@ -279,14 +374,21 @@ export default function JobActionsPanelClient({
       })
       .catch((error) => {
         if (cancelled) return;
+        if (preflight.mode === "external") {
+          // Existing CreatorJobs applications remain discoverable after a listing
+          // switches to an external flow, but a failed relationship read must not
+          // block or replace the safe external link.
+          setRelationshipState("ready");
+          return;
+        }
         setRelationshipState("error");
         setApplyState("error");
-        setApplyError(describeActionError(error, "Couldn’t check your application status. Try again."));
+        setApplyError(applicationErrorMessage(error, "Couldn’t check your application status. Try again."));
       });
     return () => {
       cancelled = true;
     };
-  }, [isOwner, job.id, relationshipReload, session?.backendAccessToken, sessionStatus]);
+  }, [isOwner, job.id, preflight.mode, relationshipReload, session?.backendAccessToken, sessionStatus]);
 
   const openApplication = (applicationId: string) => {
     router.push(
@@ -326,15 +428,17 @@ export default function JobActionsPanelClient({
     } catch (err) {
       console.error("Save job failed:", err);
       setSaveState("error");
-      setSaveError(describeActionError(err, "Couldn’t save this job right now."));
+      setSaveError(applicationErrorMessage(err, "Couldn’t save this job right now."));
     }
   };
 
-  // Apply click: if the owner set first-message requirements, open the completion
-  // modal (the modal becomes the submission step). With no requirements, the apply
-  // proceeds immediately as before. Opening the modal does not require a session —
-  // the requester can see and fill what's asked; auth is enforced at submit.
+  // Apply click: require sign-in before the candidate starts composing so an auth
+  // redirect cannot discard answers. Listing requirements remain visible on the
+  // detail page before this point. The modal becomes the submission step when the
+  // listing asks for preflight details.
   const onApply = async () => {
+    if (deadlineExpired || applicationsUnavailable) return;
+    if (preflight.mode === "external") return;
     if (existingApplication) {
       openApplication(existingApplication.id);
       return;
@@ -345,7 +449,11 @@ export default function JobActionsPanelClient({
       setRelationshipReload((value) => value + 1);
       return;
     }
-    if (requirementKeys.length) {
+    if (!session?.backendAccessToken) {
+      loginRedirect();
+      return;
+    }
+    if (preflight.hasPreflightDetails) {
       setApplyState("idle");
       setApplyError(null);
       setRequirementsOpen(true);
@@ -355,20 +463,40 @@ export default function JobActionsPanelClient({
   };
 
   const submitApplication = async () => {
+    // A stale open modal must never turn an external or newly unavailable listing
+    // into an internal CreatorJobs POST.
+    if (preflight.mode === "external" || applicationsUnavailable) {
+      setRequirementsOpen(false);
+      return;
+    }
     // Hard block: never submit until every required first-message detail is complete.
     // Validate before auth so an incomplete attempt shows calm inline guidance
     // instead of bouncing a signed-out requester to the login screen.
-    if (requirementKeys.length) {
+    if (requirementKeys.length || unknownRequirementKeys.length || preflight.screeningQuestions.length) {
       const normalizedAnswers = normalizeFirstMessageAnswers(requirementKeys, "job", answers, requirementPrompts);
-      const errors = validateAnswers(requirementKeys, "job", normalizedAnswers);
+      for (const key of unknownRequirementKeys) {
+        if (typeof answers[key] === "string") normalizedAnswers[key] = answers[key];
+      }
+      const errors = {
+        ...validateAnswers(requirementKeys, "job", normalizedAnswers),
+        ...validateUnknownRequirementAnswers(unknownRequirementKeys, answers),
+        ...validateScreeningQuestionAnswers(preflight.screeningQuestions, screeningAnswers),
+      };
       if (Object.keys(errors).length) {
         setAnswerErrors(errors);
         setApplyState("idle");
         return;
       }
-      if (JSON.stringify(normalizedAnswers) !== JSON.stringify(answers)) {
+      const answersWithoutScreening = { ...answers };
+      delete answersWithoutScreening[SCREENING_ANSWERS_KEY];
+      if (JSON.stringify(normalizedAnswers) !== JSON.stringify(answersWithoutScreening)) {
         setAnswers(normalizedAnswers);
       }
+    }
+    if (deadlineExpired) {
+      setApplyState("error");
+      setApplyError("The application deadline for this job has passed.");
+      return;
     }
     const token = requireToken();
     if (!token) return;
@@ -376,9 +504,16 @@ export default function JobActionsPanelClient({
     setApplyError(null);
     try {
       // Link any selected real portfolio items so the backend records them too.
-      const normalizedAnswers = requirementKeys.length
-        ? normalizeFirstMessageAnswers(requirementKeys, "job", answers, requirementPrompts)
-        : {};
+      const normalizedAnswers = normalizeFirstMessageAnswers(requirementKeys, "job", answers, requirementPrompts);
+      for (const key of unknownRequirementKeys) {
+        if (typeof answers[key] === "string") normalizedAnswers[key] = answers[key].trim();
+      }
+      if (preflight.screeningQuestions.length) {
+        normalizedAnswers[SCREENING_ANSWERS_KEY] = buildScreeningQuestionAnswers(
+          preflight.screeningQuestions,
+          screeningAnswers,
+        );
+      }
       const portfolioAnswer = normalizedAnswers.relevant_portfolio;
       const portfolioItemIds = isPortfolioAnswer(portfolioAnswer)
         ? portfolioAnswer.map((ref) => ref.id).filter((id) => !id.startsWith("link:"))
@@ -391,7 +526,7 @@ export default function JobActionsPanelClient({
       const application = await applyToJob(token, String(job.id), {
         cover_note: null,
         ...(portfolioItemIds.length ? { portfolio_item_ids: portfolioItemIds } : {}),
-        ...(requirementKeys.length ? { first_message_answers: normalizedAnswers } : {}),
+        ...(Object.keys(normalizedAnswers).length ? { first_message_answers: normalizedAnswers } : {}),
       });
       setExistingApplication(application);
       setConversationId(application.id);
@@ -401,7 +536,16 @@ export default function JobActionsPanelClient({
     } catch (err) {
       console.error("Apply to job failed:", err);
       setApplyState("error");
-      setApplyError(describeActionError(err, "Couldn’t send the application. Try again."));
+      setApplyError(applicationErrorMessage(err));
+      const serverFieldErrors = applicationFieldErrors(err);
+      if (Object.keys(serverFieldErrors).length) setAnswerErrors(serverFieldErrors);
+      if (err instanceof Error && err.message.toLowerCase().includes("deadline")) {
+        setDeadlineExpired(true);
+        setRequirementsOpen(false);
+      } else if (applicationBecameUnavailable(err)) {
+        setApplicationsUnavailable(true);
+        setRequirementsOpen(false);
+      }
       // Expired/invalid session: send them to sign in again so a retry can work.
       if (isBackendAuthError(err)) loginRedirect();
     }
@@ -415,6 +559,14 @@ export default function JobActionsPanelClient({
         label: applicationPresentation?.actionLabel ?? "Open conversation",
         icon: "inbox" as const,
       }
+    : deadlineExpired
+      ? { label: "Applications closed", icon: "calendar-clock" as const, disabled: true }
+      : applicationsUnavailable
+        ? { label: "Applications unavailable", icon: "alert" as const, disabled: true }
+      : preflight.mode === "external" && preflight.externalUrl
+        ? { label: "Continue to application", icon: "external-link" as const, href: preflight.externalUrl, external: true }
+        : preflight.mode === "external"
+          ? { label: "Application link unavailable", icon: "alert" as const, disabled: true }
     : relationshipState === "loading"
       ? { label: "Checking application…", icon: "refresh" as const, disabled: true }
       : relationshipState === "error"
@@ -461,6 +613,20 @@ export default function JobActionsPanelClient({
         isOwner={isOwner}
         primaryAction={primaryAction}
         applicationStatusLabel={applicationPresentation?.statusLabel ?? null}
+        applicationMode={preflight.mode}
+        applicationNotice={
+          existingApplication
+            ? "Your CreatorJobs application already exists. Open its conversation to continue."
+            : deadlineExpired
+            ? "The application deadline has passed."
+            : applicationsUnavailable
+              ? "This job is no longer accepting applications."
+            : preflight.mode === "external"
+              ? "This opens another site. CreatorJobs does not receive or track the application."
+              : preflight.hasPreflightDetails
+                ? "Review the application details before sending."
+                : null
+        }
       />
       <FirstMessageRequirementsModal
         open={requirementsOpen}
@@ -475,6 +641,15 @@ export default function JobActionsPanelClient({
         onClose={() => setRequirementsOpen(false)}
         submitState={applyState}
         submitError={applyError}
+        screeningQuestions={preflight.screeningQuestions}
+        screeningAnswers={screeningAnswers}
+        onScreeningAnswersChange={(next) => {
+          setScreeningAnswers(next);
+          if (Object.keys(answerErrors).length) setAnswerErrors({});
+        }}
+        unknownRequirementKeys={unknownRequirementKeys}
+        preflightNotice={preflightNotice || null}
+        currencyCode={job.budgetCurrency}
       />
       {addProjectOpen && typeof document !== "undefined"
         ? createPortal(

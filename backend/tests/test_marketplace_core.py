@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Job
+from conftest import create_valid_published_job, valid_published_job_payload
 
 
 async def _register_verified_login(
@@ -36,16 +42,10 @@ async def test_saved_jobs_applications_notifications_reports_and_launch_entitlem
     owner_token = await _register_verified_login(client, email="owner@example.com", username="job_owner")
     applicant_token = await _register_verified_login(client, email="applicant@example.com", username="applicant")
 
-    job_response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Long-form gaming editor",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job_response = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Long-form gaming editor",
     )
     assert job_response.status_code == 201
     job_id = job_response.json()["id"]
@@ -333,16 +333,10 @@ async def test_talent_interest_can_be_attached_to_recruiter_job(client: AsyncCli
     assert listing_response.status_code == 201
     listing_id = listing_response.json()["id"]
 
-    job_response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {recruiter_token}"},
-        json={
-            "title": "YouTube thumbnail designer",
-            "category": "Thumbnails",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job_response = await create_valid_published_job(
+        client,
+        recruiter_token,
+        title="YouTube thumbnail designer",
     )
     assert job_response.status_code == 201
     job_id = job_response.json()["id"]
@@ -409,7 +403,7 @@ async def test_job_and_talent_drafts_resume_by_updating_existing_records(
     resumed_job = await client.patch(
         f"/api/v1/jobs/{job_id}",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"title": "Published editor role", "status": "published"},
+        json=await valid_published_job_payload(title="Published editor role"),
     )
     assert resumed_job.status_code == 200
     assert resumed_job.json()["id"] == job_id
@@ -540,17 +534,11 @@ async def test_application_first_message_answers_persist_and_round_trip(client: 
     owner_token = await _register_verified_login(client, email="fm-owner@example.com", username="fm_owner")
     applicant_token = await _register_verified_login(client, email="fm-applicant@example.com", username="fm_applicant")
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Finance editor with first-message requirements",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "application_requirements": ["expected_rate", "relevant_portfolio", "fit_note"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Finance editor with first-message requirements",
+        application_requirements=["expected_rate", "relevant_portfolio", "fit_note"],
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -591,16 +579,10 @@ async def test_application_without_first_message_answers_defaults_to_empty(clien
         client, email="fm-legacy-applicant@example.com", username="fm_legacy_applicant"
     )
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Legacy editor role",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Legacy editor role",
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -693,17 +675,11 @@ async def test_apply_to_job_missing_required_answers_returns_422(client: AsyncCl
         client, email="fm-block-applicant@example.com", username="fm_block_applicant"
     )
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Editor that requires opening details",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "application_requirements": ["expected_rate", "relevant_portfolio", "fit_note"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Editor that requires opening details",
+        application_requirements=["expected_rate", "relevant_portfolio", "fit_note"],
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -803,16 +779,10 @@ async def test_apply_without_requirements_ignores_first_message_enforcement(clie
         client, email="fm-compat-applicant@example.com", username="fm_compat_applicant"
     )
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "No-requirements role",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="No-requirements role",
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -825,21 +795,244 @@ async def test_apply_without_requirements_ignores_first_message_enforcement(clie
     assert application.status_code == 201
 
 
+async def test_external_job_rejects_new_internal_application(client: AsyncClient) -> None:
+    owner_token = await _register_verified_login(
+        client, email="external-owner@example.com", username="external_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="external-applicant@example.com", username="external_applicant"
+    )
+
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="External application editor role",
+        application_mode="external",
+        external_apply_url="https://careers.example.com/creator-editor",
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+
+    blocked = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={"cover_note": "This must not create an internal application."},
+    )
+    assert blocked.status_code == 422
+    error = blocked.json()["error"]
+    assert error["code"] == "EXTERNAL_APPLICATION_ONLY"
+    assert error["details"] == {
+        "code": "EXTERNAL_APPLICATION_ONLY",
+        "message": "This job accepts applications on an external site.",
+    }
+
+    relationship = await client.get(
+        f"/api/v1/jobs/{job_id}/application", headers=applicant_headers
+    )
+    assert relationship.status_code == 200
+    assert relationship.json() is None
+
+
+async def test_expired_job_rejects_new_application(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="expired-owner@example.com", username="expired_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="expired-applicant@example.com", username="expired_applicant"
+    )
+
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Expired application editor role",
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    stored_job = await db_session.get(Job, UUID(job_id))
+    assert stored_job is not None
+    stored_job.deadline_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    blocked = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={},
+    )
+    assert blocked.status_code == 422
+    error = blocked.json()["error"]
+    assert error["code"] == "APPLICATION_DEADLINE_PASSED"
+    assert error["details"] == {
+        "code": "APPLICATION_DEADLINE_PASSED",
+        "message": "The application deadline for this job has passed.",
+    }
+
+
+async def test_required_and_optional_screening_answers_are_validated_and_snapshotted(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="screening-owner@example.com", username="screening_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="screening-applicant@example.com", username="screening_applicant"
+    )
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+    required_prompt = "Which edit best demonstrates your retention judgment?"
+    optional_prompt = "Anything else you would like the hiring team to know?"
+
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Screened creator editor role",
+        application_requirements=["fit_note"],
+        screening_questions=[
+            {
+                "prompt": required_prompt,
+                "required": True,
+                "response_guidance": "Name one project and explain your contribution.",
+            },
+            {
+                "prompt": optional_prompt,
+                "required": False,
+                "response_guidance": None,
+            },
+        ],
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    missing_required = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={
+            "first_message_answers": {
+                "fit_note": "I have relevant creator-economy editing experience.",
+                "screening_questions": [
+                    {"question_index": 1, "response": ""},
+                ],
+            }
+        },
+    )
+    assert missing_required.status_code == 422
+    error = missing_required.json()["error"]
+    assert error["code"] == "APPLICATION_VALIDATION_FAILED"
+    assert error["details"]["field_errors"] == {
+        "first_message_answers.screening_questions.0.response": [
+            "Answer this required screening question."
+        ]
+    }
+
+    accepted = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={
+            "first_message_answers": {
+                "fit_note": "I have relevant creator-economy editing experience.",
+                "screening_questions": [
+                    {
+                        "question_index": 0,
+                        "response": "  A long-form finance edit with a stronger first-minute arc.  ",
+                        "prompt": "Forged prompt",
+                        "required": False,
+                    },
+                    {"question_index": 1, "response": "   "},
+                ],
+            }
+        },
+    )
+    assert accepted.status_code == 201
+    answers = accepted.json()["first_message_answers"]
+    assert answers["fit_note"] == "I have relevant creator-economy editing experience."
+    assert answers["screening_questions"] == [
+        {
+            "question_index": 0,
+            "prompt": required_prompt,
+            "required": True,
+            "response_guidance": "Name one project and explain your contribution.",
+            "response": "A long-form finance edit with a stronger first-minute arc.",
+        },
+        {
+            "question_index": 1,
+            "prompt": optional_prompt,
+            "required": False,
+            "response_guidance": None,
+            "response": "",
+        },
+    ]
+
+    received = await client.get(
+        "/api/v1/me/applications/received",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    matching = [item for item in received.json() if item["id"] == accepted.json()["id"]]
+    assert len(matching) == 1
+    assert matching[0]["first_message_answers"]["screening_questions"] == answers["screening_questions"]
+
+
+async def test_existing_application_is_returned_before_external_mode_guard(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="existing-external-owner@example.com", username="route_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client,
+        email="existing-external-applicant@example.com",
+        username="route_applicant",
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Application route changed later",
+    )
+    assert job.status_code == 201
+    job_id = job.json()["id"]
+
+    original = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={"cover_note": "Original internal application."},
+    )
+    assert original.status_code == 201
+
+    changed_route = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers=owner_headers,
+        json={
+            "application_mode": "external",
+            "external_apply_url": "https://careers.example.com/changed-route",
+        },
+    )
+    assert changed_route.status_code == 200
+    assert changed_route.json()["application_mode"] == "external"
+
+    duplicate = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers=applicant_headers,
+        json={"cover_note": "This must not replace the first application."},
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json()["id"] == original.json()["id"]
+    assert duplicate.json()["cover_note"] == "Original internal application."
+
+
 async def test_apply_to_job_twice_reuses_the_same_application(client: AsyncClient) -> None:
     """Re-applying never creates a second application: the same conversation is reused."""
     owner_token = await _register_verified_login(client, email="dup-owner@example.com", username="dup_owner")
     applicant_token = await _register_verified_login(client, email="dup-applicant@example.com", username="dup_applicant")
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Editor reused on re-apply",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Editor reused on re-apply",
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
@@ -878,15 +1071,10 @@ async def test_job_relationship_read_and_terminal_revisit_keep_one_application(
     )
     applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
 
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Relationship-aware editor role",
-            "category": "Editing",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Relationship-aware editor role",
     )
     job_id = job.json()["id"]
 
@@ -949,15 +1137,10 @@ async def test_application_notifications_deep_link_each_participant_to_the_same_
     )
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
-    job = await client.post(
-        "/api/v1/jobs",
-        headers=owner_headers,
-        json={
-            "title": "Notification deep-link role",
-            "category": "Editing",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Notification deep-link role",
     )
     application = await client.post(
         f"/api/v1/jobs/{job.json()['id']}/applications",
@@ -993,15 +1176,10 @@ async def test_concurrent_application_requests_create_one_record_and_one_thread(
     )
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
-    job = await client.post(
-        "/api/v1/jobs",
-        headers=owner_headers,
-        json={
-            "title": "Concurrent application role",
-            "category": "Editing",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Concurrent application role",
     )
     job_id = job.json()["id"]
 

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import JobGridClient from "../../components/JobGridClient";
-import { canUseLocalMockFallback, listJobsWithMeta } from "../../lib/backendClient";
+import { canUseLocalMockFallback, listJobsWithMeta, listRoles, type BackendRole } from "../../lib/backendClient";
 import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { JOBS } from "../../lib/jobs";
 import { parseQuery } from "../../lib/search/queryParser";
 import { rankJobs, relaxParsedQuery } from "../../lib/search/ranking";
 import { filterAndOrderJobsForSeoRoute, refinementCriteriaFromParams } from "../../lib/seoFilterMatch";
+import { jobMatchesDiscovery, parseJobDiscovery, roleSlugFromName } from "../../lib/jobDiscovery";
 import type { SeoFilterRoute } from "../../lib/seoFilterRoutes";
 import { Job } from "../../lib/types";
 
@@ -52,8 +53,22 @@ export async function JobsBrowse({
   const platform = seoRoute ? "" : first(params.platform);
   const location = seoRoute ? "" : first(params.location);
   const startTimeframe = seoRoute ? "" : first(params.start_timeframe);
+  const role = first(params.role);
+  const format = first(params.format);
+  const workMode = first(params.workMode);
+  const engagement = first(params.engagement);
+  const compensationUnit = first(params.compensationUnit);
+  const language = first(params.language);
+
+  const discoveryParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    const resolved = first(value);
+    if (resolved) discoveryParams.set(key, resolved);
+  });
+  const discovery = parseJobDiscovery(discoveryParams);
 
   let jobs: Job[] = [];
+  let roles: BackendRole[] = [];
   let notice: string | null = null;
   const dataSource = await getMarketplaceDataSourceState();
   const usingMock = dataSource.source === "mock";
@@ -63,7 +78,13 @@ export async function JobsBrowse({
   } else {
     try {
       const response = await listJobsWithMeta({
+        role: seoRoute ? undefined : role,
         platform,
+        format: seoRoute ? undefined : format,
+        work_mode: seoRoute ? undefined : workMode,
+        engagement_type: seoRoute ? undefined : engagement,
+        budget_unit: seoRoute ? undefined : compensationUnit,
+        language: seoRoute ? undefined : language,
         location,
         start_timeframe: startTimeframe,
         status: "published",
@@ -71,6 +92,7 @@ export async function JobsBrowse({
         offset: 0,
       });
       jobs = response.items;
+      roles = (await listRoles().catch(() => ({ items: [] }))).items;
     } catch {
       if (canUseMocks) {
         jobs = JOBS;
@@ -81,6 +103,18 @@ export async function JobsBrowse({
         notice = "Jobs could not be loaded right now. Please try again shortly.";
       }
     }
+  }
+
+  if (!roles.length) {
+    roles = jobs
+      .filter((job) => job.primaryRoleId && job.primaryRoleName)
+      .map((job) => ({
+        id: job.primaryRoleId as string,
+        name: job.primaryRoleName as string,
+        slug: roleSlugFromName(job.primaryRoleName),
+        category: job.legacyCategory || "Creator role",
+      }))
+      .filter((roleOption, index, all) => all.findIndex((candidate) => candidate.slug === roleOption.slug) === index);
   }
 
   if (seoRoute) {
@@ -97,11 +131,15 @@ export async function JobsBrowse({
     jobs = ranked.map((result) => result.item);
   }
 
+  // The backend applies these exact filters for the public feed. Reapplying the
+  // pure predicate keeps local mocks and curated SEO routes behaviorally equal.
+  jobs = jobs.filter((job) => jobMatchesDiscovery(job, discovery));
+
   if (posted === "1") {
     notice = "Job posted. It should appear at the top of the feed. Refresh to verify it persists.";
   }
 
-  return <JobGridClient jobs={jobs} notice={notice} query={query} seoRoute={seoRoute || null} />;
+  return <JobGridClient jobs={jobs} notice={notice} query={query} seoRoute={seoRoute || null} roles={roles} />;
 }
 
 export default async function JobsPage({

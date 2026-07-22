@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     Uuid,
@@ -20,6 +22,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
+from app.core.tool_catalog import tool_display_names
 
 json_list_type = JSON().with_variant(JSONB, "postgresql")
 
@@ -30,22 +34,45 @@ class Job(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    category: Mapped[str] = mapped_column(String(64), nullable=False, default="Editing")
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    listing_schema_version: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        default=CURRENT_LISTING_SCHEMA_VERSION,
+        server_default=str(CURRENT_LISTING_SCHEMA_VERSION),
+        index=True,
+    )
+    primary_role_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("roles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    primary_role_name_snapshot: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    role_specialization: Mapped[str | None] = mapped_column(String(120), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     budget_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     budget_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    budget_note: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    budget_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
-    budget_unit: Mapped[str] = mapped_column(String(32), nullable=False, default="per project")
+    compensation_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    budget_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    budget_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    budget_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    budget_unit_custom: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     experience_level: Mapped[str | None] = mapped_column(String(64), nullable=True)
     platforms: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list)
     start_timeframe: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     work_mode: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     contract_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    engagement_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     timezone_overlap: Mapped[str | None] = mapped_column(String(128), nullable=True)
     weekly_hours: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expected_weekly_hours_min: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
+    expected_weekly_hours_max: Mapped[Decimal | None] = mapped_column(Numeric(5, 1), nullable=True)
+    turnaround_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    turnaround_unit: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    turnaround_basis: Mapped[str | None] = mapped_column(String(24), nullable=True)
     application_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="internal", server_default="internal")
     external_apply_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
@@ -65,6 +92,52 @@ class Job(Base):
     content_niches: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
     content_genres: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
     formats_hired_for: Mapped[list[str]] = mapped_column(json_list_type, nullable=False, default=list, server_default="[]")
+    required_tool_keys: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+    other_required_tools: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+
+    deliverables: Mapped[list[dict[str, object]] | None] = mapped_column(json_list_type, nullable=True)
+    required_skill_keys: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+    preferred_skill_keys: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+    other_required_skills: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+    other_preferred_skills: Mapped[list[str] | None] = mapped_column(json_list_type, nullable=True)
+    required_skills_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preferred_skills_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revision_policy: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    revision_rounds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    revision_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_inputs: Mapped[list[dict[str, object]] | None] = mapped_column(json_list_type, nullable=True)
+    source_inputs_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creative_autonomy: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    creative_autonomy_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_requirements: Mapped[list[dict[str, object]] | None] = mapped_column(
+        json_list_type, nullable=True
+    )
+
+    trial_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    trial_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trial_effort_value: Mapped[Decimal | None] = mapped_column(Numeric(6, 1), nullable=True)
+    trial_effort_unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    trial_compensation_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    trial_compensation_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    trial_compensation_basis: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    trial_work_usage: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    trial_portfolio_permission: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    trial_attribution: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    unpaid_trial_confirmed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    trial_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    start_timing: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    duration_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    duration_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_unit: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    engagement_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hiring_process: Mapped[list[dict[str, object]] | None] = mapped_column(json_list_type, nullable=True)
+    hiring_process_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    screening_questions: Mapped[list[dict[str, object]] | None] = mapped_column(
+        json_list_type, nullable=True
+    )
+    employer_context_type: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
 
     youtube_channel_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -112,3 +185,10 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def tools(self) -> list[str] | None:
+        known = tool_display_names(self.required_tool_keys)
+        if known is None and self.other_required_tools is None:
+            return None
+        return [*(known or []), *(self.other_required_tools or [])]

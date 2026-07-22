@@ -10,7 +10,26 @@ from app.core.config import settings
 from app.db.dev_sqlite_schema import sync_dev_sqlite_schema
 
 
-@pytest.mark.parametrize("missing_column", ["work_mode", "application_mode", "deadline_at"])
+@pytest.mark.parametrize(
+    "missing_column",
+    [
+        "work_mode",
+        "application_mode",
+        "deadline_at",
+        "listing_schema_version",
+        "primary_role_id",
+        "required_tool_keys",
+        "engagement_type",
+        "expected_weekly_hours_min",
+        "turnaround_value",
+        "deliverables",
+        "required_skill_keys",
+        "language_requirements",
+        "trial_status",
+        "screening_questions",
+        "employer_context_type",
+    ],
+)
 async def test_dev_sqlite_schema_sync_adds_missing_job_columns(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -71,15 +90,48 @@ async def test_dev_sqlite_schema_sync_adds_missing_job_columns(
                 """
             )
         )
+        if missing_column == "listing_schema_version":
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO jobs (
+                        id, title, category, budget_currency, budget_unit,
+                        platforms, responsibilities, requirements, reference_videos,
+                        tags, is_verified, posted_by_agency, views, applicants,
+                        response_rate, status
+                    ) VALUES (
+                        '11111111111111111111111111111111', 'Legacy local job',
+                        'Writing', 'EUR', 'per legacy pack', '[]', '[]', '[]',
+                        '[]', '[]', 0, 0, 0, 0, 0, 'published'
+                    )
+                    """
+                )
+            )
 
     await sync_dev_sqlite_schema(engine)
 
     async with engine.begin() as conn:
-        columns = await conn.run_sync(
-            lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("jobs")}
+        column_info = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]: column for column in inspect(sync_conn).get_columns("jobs")
+            }
         )
+        legacy_version = (
+            await conn.execute(
+                text(
+                    "SELECT listing_schema_version FROM jobs "
+                    "WHERE id = '11111111111111111111111111111111'"
+                )
+            )
+        ).scalar_one_or_none()
 
-    assert missing_column in columns
+    assert missing_column in column_info
+    for relaxed_column in ("category", "budget_currency", "budget_unit"):
+        assert column_info[relaxed_column]["nullable"] is True
+        assert column_info[relaxed_column]["default"] is None
+    assert str(column_info["listing_schema_version"]["default"]).strip("'\"() ") == "3"
+    if missing_column == "listing_schema_version":
+        assert legacy_version == 1
     await engine.dispose()
 
 

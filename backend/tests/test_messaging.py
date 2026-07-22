@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
+from conftest import create_valid_published_job
 
 
 async def _register_verified_login(client: AsyncClient, *, email: str, username: str) -> str:
@@ -23,10 +24,10 @@ async def _register_verified_login(client: AsyncClient, *, email: str, username:
 
 
 async def _published_job(client: AsyncClient, owner_token: str) -> str:
-    resp = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={"title": "Editor for finance channel", "category": "Editing", "status": "published", "platforms": ["youtube"]},
+    resp = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Editor for finance channel",
     )
     assert resp.status_code == 201
     return resp.json()["id"]

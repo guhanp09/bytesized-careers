@@ -50,6 +50,9 @@ ROLE_CATALOG: list[dict[str, str]] = [
     # Other creator-native roles
     {"name": "UGC Creator", "category": "Production", "description": "Creates authentic user-generated content and product videos for brands."},
     {"name": "Animator", "category": "Production", "description": "Produces 2D/3D animation and explainer sequences for content."},
+    {"name": "Researcher", "category": "Strategy", "description": "Researches topics, sources, and evidence for creator-led content."},
+    {"name": "Voice Over Artist", "category": "Production", "description": "Records polished narration and character voice work for creator content."},
+    {"name": "Other Creator Role", "category": "Other", "description": "A creator-economy role not yet represented in the catalog."},
 ]
 
 

@@ -15,7 +15,7 @@ from app.api.v1.routers import realtime as realtime_router
 from app.realtime import events as realtime_events
 from app.realtime.manager import ConversationRealtimeManager
 from app.models import Conversation, User
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, create_valid_published_job
 
 
 async def _register_verified_login(client: AsyncClient, *, email: str, username: str) -> str:
@@ -40,16 +40,7 @@ async def _register_verified_login(client: AsyncClient, *, email: str, username:
 
 
 async def _published_job(client: AsyncClient, owner_token: str, *, title: str) -> str:
-    response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": title,
-            "category": "Editing",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
-    )
+    response = await create_valid_published_job(client, owner_token, title=title)
     assert response.status_code == 201, response.text
     return response.json()["id"]
 

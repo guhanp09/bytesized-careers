@@ -385,7 +385,11 @@ class AuthRepository:
     async def list_jobs_for_user_public(self, *, user_id: UUID) -> list[Job]:
         stmt: Select[tuple[Job]] = (
             select(Job)
-            .where(Job.posted_by_user_id == user_id)
+            .where(
+                Job.posted_by_user_id == user_id,
+                Job.status == "published",
+                Job.deleted_at.is_(None),
+            )
             .order_by(Job.created_at.desc())
         )
         return list((await self.session.execute(stmt)).scalars().all())
@@ -403,7 +407,15 @@ class AuthRepository:
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def count_jobs_for_user_public(self, *, user_id: UUID) -> int:
-        stmt = select(func.count()).select_from(Job).where(Job.posted_by_user_id == user_id)
+        stmt = (
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.posted_by_user_id == user_id,
+                Job.status == "published",
+                Job.deleted_at.is_(None),
+            )
+        )
         return int((await self.session.execute(stmt)).scalar_one())
 
     async def list_roles(self) -> list[Role]:

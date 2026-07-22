@@ -16,10 +16,12 @@ export default function RecommendedChecklistPopup<StepId extends string>({
   items,
   onSelect,
   ariaLabel = "Recommended listing details",
+  layout = "floating",
 }: {
   items: Array<RecommendedChecklistItem<StepId>>;
   onSelect: (item: RecommendedChecklistItem<StepId>) => void;
   ariaLabel?: string;
+  layout?: "floating" | "inline";
 }) {
   const previousStatusRef = useRef<Map<string, boolean> | null>(null);
   const [justCompleted, setJustCompleted] = useState<Set<string>>(() => new Set());
@@ -70,7 +72,12 @@ export default function RecommendedChecklistPopup<StepId extends string>({
   return (
     <>
       <section
-        className="fixed bottom-4 right-4 z-40 w-[min(292px,calc(100vw-2rem))] rounded-2xl border border-white/[0.075] bg-[#101014]/92 p-3 text-white shadow-[0_20px_60px_-42px_rgba(0,0,0,1)] backdrop-blur-md sm:bottom-5 sm:right-5"
+        className={[
+          "rounded-2xl border border-white/[0.075] bg-[#101014]/92 p-3 text-white shadow-[0_20px_60px_-42px_rgba(0,0,0,1)] backdrop-blur-md",
+          layout === "inline"
+            ? "relative w-full"
+            : "fixed bottom-4 right-4 z-40 w-[min(292px,calc(100vw-2rem))] sm:bottom-5 sm:right-5",
+        ].join(" ")}
         aria-label={ariaLabel}
       >
         <div className="flex items-center justify-between gap-3">

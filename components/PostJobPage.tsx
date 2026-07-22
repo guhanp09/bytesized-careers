@@ -5,9 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import {
   BackendCreateJobPayload,
+  BackendJob,
+  BackendRequestError,
   BackendHiringIdentity,
   BackendHiringIdentityPlatform,
   BackendHiringIdentityVerificationResponse,
+  BackendRole,
   BackendMeYouTubeChannel,
   checkMyHiringIdentityVerification,
   completeLaunchFreeCheckout,
@@ -20,17 +23,18 @@ import {
   isLocalMocksEnabled,
   listMyHiringIdentities,
   listMyYouTubeChannels,
+  listRoles,
   refreshMyYouTubeChannels,
   requestMyHiringIdentityVerification,
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
-import { Job, JobCategory, ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
-import { formatBudgetPreview, formatExperiencePreview, formatSubsInput } from "../lib/format";
+import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
+import { formatExperiencePreview } from "../lib/format";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
 import { INDIA_CITIES } from "../lib/indiaCities";
 import PostJobForm from "./post-job/PostJobForm";
-import PreviewCard from "./post-job/PreviewCard";
+import RecruiterJobPreview from "./post-job/RecruiterJobPreview";
 import PostJobSafety from "./post-job/PostJobSafety";
 import RecommendedChecklistPopup, { RecommendedChecklistItem } from "./RecommendedChecklistPopup";
 import { IdentityPlatform, VerifiedIdentity } from "../lib/identity/types";
@@ -50,13 +54,32 @@ import {
   readImportHandoff,
 } from "../lib/importJob/handoff";
 import { IMPORT_JUMP_TARGETS } from "../lib/importJob/applyToWizard";
-import { normalizeJobCategory } from "../lib/importJob/categoryMap";
 import type { ImportFieldMeta } from "../lib/importJob/types";
 import ImportReviewBanner from "./import-job/ImportReviewBanner";
+import {
+  COMPENSATION_UNITS,
+  ENGAGEMENT_TYPES,
+  CompensationMode,
+  CompensationUnit,
+  EngagementType,
+  TurnaroundBasis,
+  TurnaroundUnit,
+  splitRequiredTools,
+  compensationUnitLabel,
+} from "../lib/jobContract";
+import {
+  backendJobFieldStep,
+  emptyJobPostingDomainState,
+  hydrateJobPostingDomain,
+  RECRUITER_JOB_STEPS,
+  serializeJobPostingDomain,
+  validateJobPostingDomainForPublication,
+  validateRepeatableDomainRows,
+  type JobPostingDomainState,
+} from "../lib/jobPostingForm";
 
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
-type TurnaroundUnit = "hours" | "days" | "weeks";
-type Turnaround = { value: number; unit: TurnaroundUnit } | null;
+type Turnaround = { value: number; unit: TurnaroundUnit | ""; basis: TurnaroundBasis | "" } | null;
 type BudgetIntent = "" | "range" | "flexible" | "contact";
 type JobPlatform = IdentityPlatform | "";
 
@@ -72,15 +95,7 @@ type Step =
   | "applicationRequirements"
   | "referenceVideos";
 
-const STEPS: Step[] = [
-  "basics",
-  "details",
-  "about",
-  "creatorContext",
-  "toolsTags",
-  "applicationRequirements",
-  "referenceVideos",
-];
+const STEPS: Step[] = RECRUITER_JOB_STEPS.map((item) => item.id);
 
 const MAX_REFERENCE_VIDEOS = 3;
 
@@ -112,7 +127,11 @@ type SavedBasics = {
   title: string;
   budgetMin: string;
   budgetMax: string;
-  budgetUnit: "per project" | "per month";
+  budgetUnit: CompensationUnit | "";
+  budgetCurrency: string;
+  compensationMode: CompensationMode | "";
+  budgetNote: string;
+  budgetUnitCustom: string;
   budgetIntent: BudgetIntent;
   workMode: WorkMode;
   city: string;
@@ -127,6 +146,11 @@ type SavedBasics = {
   contentGenres: string[];
   formatsHiredFor: string[];
   turnaround: Turnaround;
+  engagementType: EngagementType | "";
+  expectedWeeklyHoursMin: string;
+  expectedWeeklyHoursMax: string;
+  primaryRoleId: string;
+  roleSpecialization: string;
   tools: string[];
   languages: string[];
 };
@@ -278,6 +302,97 @@ const parseWholeNumber = (value: string) => {
   return parsed;
 };
 
+const formatCompensationSummary = ({
+  mode,
+  minimum,
+  maximum,
+  currency,
+  unit,
+  customUnit,
+  note,
+}: {
+  mode: CompensationMode | "";
+  minimum: string;
+  maximum: string;
+  currency: string;
+  unit: CompensationUnit | "";
+  customUnit: string;
+  note: string;
+}) => {
+  const unitText = unit === "custom" ? customUnit.trim() : unit ? compensationUnitLabel(unit) : "";
+  const suffix = unitText ? ` ${unitText}` : "";
+  if (mode === "negotiable") return ["Negotiable", unitText, note.trim()].filter(Boolean).join(" · ");
+  if (!minimum.trim()) return note.trim();
+  const prefix = currency.trim() ? `${currency.trim().toUpperCase()} ` : "";
+  const amount = mode === "range" && maximum.trim()
+    ? `${prefix}${minimum.trim()}–${prefix}${maximum.trim()}`
+    : `${prefix}${minimum.trim()}`;
+  return `${amount}${suffix}${note.trim() ? ` · ${note.trim()}` : ""}`;
+};
+
+function useDialogFocusTrap(
+  open: boolean,
+  onClose: () => void,
+  initialFocusRef?: React.RefObject<HTMLElement | null>,
+  focusScopeKey?: string
+) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus();
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const focusableSelector =
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusInitial = () => {
+      const preferred = initialFocusRef?.current;
+      const first = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      (preferred || first || dialogRef.current)?.focus();
+    };
+    const frame = window.requestAnimationFrame(focusInitial);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector));
+      if (!focusable.length) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [focusScopeKey, initialFocusRef, onClose, open]);
+
+  return dialogRef;
+}
+
 function HiringIdentityModal({
   open,
   onClose,
@@ -322,6 +437,7 @@ function HiringIdentityModal({
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const hasInitializedOpenState = React.useRef(false);
+  const dialogRef = useDialogFocusTrap(open, onClose, undefined, step);
 
   React.useEffect(() => {
     if (!open) {
@@ -590,12 +706,19 @@ function HiringIdentityModal({
   const verificationSucceeded = verificationIdentity?.verification_status === "VERIFIED";
 
   return (
-    <div className="ui-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm">
+    <div
+      className="ui-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-0 pt-6 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="hiring-identity-modal-title"
-        className="ui-modal-panel w-full max-w-[620px] overflow-hidden rounded-[28px] border border-white/[0.1] bg-[#101014] shadow-[0_34px_90px_-36px_rgba(0,0,0,1)]"
+        className="ui-modal-panel max-h-[92dvh] w-full max-w-[620px] overflow-y-auto rounded-t-[28px] border border-white/[0.1] bg-[#101014] shadow-[0_34px_90px_-36px_rgba(0,0,0,1)] sm:rounded-[28px]"
       >
         <div className="p-5 sm:p-6">
           {step === "select" ? (
@@ -622,47 +745,36 @@ function HiringIdentityModal({
                 {[...savedTiles, ...connectedTiles].map((item) => {
                   const active = draftChoice?.source === item.choice.source && draftChoice.id === item.choice.id;
                   return (
-                    <div
-                      key={`${item.choice.source}-${item.choice.id}`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setDraftChoice(item.choice)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setDraftChoice(item.choice);
-                        }
-                      }}
-                      className={tileClass(active)}
-                    >
+                    <div key={`${item.choice.source}-${item.choice.id}`} className="relative">
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setDraftChoice(item.choice)}
+                        className={`${tileClass(active)} w-full`}
+                      >
+                        {active ? (
+                          <span className="absolute left-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/18 bg-white text-black">
+                            <Icon name="check" className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                        <HiringIdentityAvatar name={item.name} imageUrl={item.imageUrl} platform={item.platform} />
+                        <span className="max-w-full">
+                          <span className="line-clamp-2 text-sm font-semibold leading-snug text-white/88">{item.name}</span>
+                          {item.subline ? <span className="mt-1 block truncate text-xs text-white/48">{item.subline}</span> : null}
+                          {item.status ? <span className="mt-1 block text-[11px] text-white/42">{item.status}</span> : null}
+                        </span>
+                      </button>
                       {item.removable ? (
-                        <span className="absolute right-3 top-3 z-10">
-                          <button
-                            type="button"
-                            aria-label={`Remove ${item.name}`}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              void removeSavedIdentity(item.choice.id);
-                            }}
-                            disabled={removingIdentityId === item.choice.id}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white/44 transition-colors hover:border-white/18 hover:bg-black/45 hover:text-white/72 disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            <Icon name="x" className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${item.name}`}
+                          onClick={() => void removeSavedIdentity(item.choice.id)}
+                          disabled={removingIdentityId === item.choice.id}
+                          className="absolute right-3 top-3 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white/44 transition-colors hover:border-white/18 hover:bg-black/45 hover:text-white/72 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <Icon name="x" className="h-3.5 w-3.5" />
+                        </button>
                       ) : null}
-                      {active ? (
-                        <span className="absolute left-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/18 bg-white text-black">
-                          <Icon name="check" className="h-3.5 w-3.5" />
-                        </span>
-                      ) : null}
-                      <HiringIdentityAvatar name={item.name} imageUrl={item.imageUrl} platform={item.platform} />
-                      <span className="max-w-full">
-                        <span className="line-clamp-2 text-sm font-semibold leading-snug text-white/88">{item.name}</span>
-                        {item.subline ? <span className="mt-1 block truncate text-xs text-white/48">{item.subline}</span> : null}
-                        {item.status ? <span className="mt-1 block text-[11px] text-white/42">{item.status}</span> : null}
-                      </span>
                     </div>
                   );
                 })}
@@ -715,6 +827,9 @@ function HiringIdentityModal({
                 <span aria-hidden="true">←</span>
                 <span>Who are you hiring for?</span>
               </button>
+              <h2 id="hiring-identity-modal-title" className="text-xl font-semibold tracking-tight text-white">
+                Add channel or page
+              </h2>
               <p className="text-sm text-white/58">Enter the channel or page this job represents.</p>
               <label className="mt-6 block text-xs font-semibold text-white/72" htmlFor="represented-channel-url">
                 Channel/page URL
@@ -733,9 +848,11 @@ function HiringIdentityModal({
                   }
                 }}
                 placeholder="youtube.com/@channel, instagram.com/page..."
+                aria-invalid={Boolean(urlError)}
+                aria-describedby={urlError ? "represented-channel-url-error" : undefined}
                 className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition-colors placeholder:text-white/32 focus:border-white/28 focus:bg-black/24"
               />
-              {urlError ? <p className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
+              {urlError ? <p id="represented-channel-url-error" role="alert" className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
               <div className="mt-6 flex justify-end gap-2">
                 <button
                   type="button"
@@ -888,11 +1005,11 @@ function HiringIdentityModal({
               {verificationMessage && verificationMessage !== "Add this code to the public bio/about section, then check verification." ? (
                 <p className="mt-4 text-sm leading-6 text-white/62">{verificationMessage}</p>
               ) : null}
-              {verificationError ? <p className="mt-4 text-sm leading-6 text-amber-100/82">{verificationError}</p> : null}
+              {verificationError ? <p role="alert" className="mt-4 text-sm leading-6 text-amber-100/82">{verificationError}</p> : null}
               <p className="mt-4 text-sm leading-6 text-white/58">
                 You can proceed with the job listing. It will go live after access to this channel is confirmed.
               </p>
-              {urlError ? <p className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
+              {urlError ? <p role="alert" className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
               <div className="mt-6 flex justify-end gap-2">
                 <button
                   type="button"
@@ -962,15 +1079,23 @@ function PublishReadyDialog({
   onClose: () => void;
   publishButtonRef: React.RefObject<HTMLButtonElement | null>;
 }) {
+  const dialogRef = useDialogFocusTrap(open, onClose, publishButtonRef);
   if (!open) return null;
 
   return (
-    <div className="ui-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm">
+    <div
+      className="ui-modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/72 px-0 pt-6 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="job-publish-ready-title"
-        className="ui-modal-panel w-full max-w-[520px] rounded-[28px] border border-white/[0.1] bg-[#101014] p-6 shadow-[0_34px_90px_-36px_rgba(0,0,0,1)]"
+        className="ui-modal-panel max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] border border-white/[0.1] bg-[#101014] p-6 shadow-[0_34px_90px_-36px_rgba(0,0,0,1)] sm:rounded-[28px]"
       >
         <h2 id="job-publish-ready-title" className="text-xl font-semibold tracking-tight text-white">
           Your listing is ready to publish
@@ -1027,6 +1152,9 @@ export default function PostJobPage() {
   const autoConnectHandledRef = useRef(false);
   const importConsumedRef = useRef(false);
   const tokenRecoveryPromiseRef = useRef<Promise<string | null> | null>(null);
+  const loadedJobRef = useRef<BackendJob | null>(null);
+  const dirtyPayloadKeysRef = useRef<Set<keyof BackendCreateJobPayload>>(new Set());
+  const focusRequestRef = useRef(0);
   const [step, setStep] = useState<Step>("basics");
   const [direction, setDirection] = useState<"forward" | "back">("forward");
 
@@ -1034,7 +1162,12 @@ export default function PostJobPage() {
 
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
-  const [budgetUnit, setBudgetUnit] = useState<"per project" | "per month">("per project");
+  const [budgetUnit, setBudgetUnit] = useState<CompensationUnit | "">("");
+  const [legacyBudgetUnit, setLegacyBudgetUnit] = useState<string | null>(null);
+  const [budgetCurrency, setBudgetCurrency] = useState("");
+  const [compensationMode, setCompensationMode] = useState<CompensationMode | "">("");
+  const [budgetNote, setBudgetNote] = useState("");
+  const [budgetUnitCustom, setBudgetUnitCustom] = useState("");
   const [budgetIntent, setBudgetIntent] = useState<BudgetIntent>("");
 
   const [workMode, setWorkMode] = useState<WorkMode>("");
@@ -1054,10 +1187,17 @@ export default function PostJobPage() {
   const [, setIdentityError] = useState<string | null>(null);
   const [identityOptions, setIdentityOptions] = useState<VerifiedIdentity[]>([]);
   const [turnaround, setTurnaround] = useState<Turnaround>(null);
+  const [engagementType, setEngagementType] = useState<EngagementType | "">("");
+  const [expectedWeeklyHoursMin, setExpectedWeeklyHoursMin] = useState("");
+  const [expectedWeeklyHoursMax, setExpectedWeeklyHoursMax] = useState("");
   const [tools, setTools] = useState<string[]>([]);
+  const [toolsConfirmed, setToolsConfirmed] = useState(false);
+  const [legacyToolsNotCaptured, setLegacyToolsNotCaptured] = useState(false);
   const [languages, setLanguages] = useState<string[]>([]);
-
-  const [verified, setVerified] = useState(false);
+  const [domain, setDomain] = useState<JobPostingDomainState>(() => emptyJobPostingDomainState());
+  const [domainErrors, setDomainErrors] = useState<Record<string, string>>({});
+  const [loadedJobStatus, setLoadedJobStatus] = useState<string | null>(null);
+  const [loadedSchemaVersion, setLoadedSchemaVersion] = useState<number | null>(null);
 
   const [about, setAbout] = useState("");
   const [responsibilities, setResponsibilities] = useState("");
@@ -1081,7 +1221,11 @@ export default function PostJobPage() {
     title: "",
     budgetMin: "",
     budgetMax: "",
-    budgetUnit: "per project",
+    budgetUnit: "",
+    budgetCurrency: "",
+    compensationMode: "",
+    budgetNote: "",
+    budgetUnitCustom: "",
     budgetIntent: "",
     workMode: "",
     city: "",
@@ -1096,6 +1240,11 @@ export default function PostJobPage() {
     contentGenres: [],
     formatsHiredFor: [],
     turnaround: null,
+    engagementType: "",
+    expectedWeeklyHoursMin: "",
+    expectedWeeklyHoursMax: "",
+    primaryRoleId: "",
+    roleSpecialization: "",
     tools: [],
     languages: [],
   });
@@ -1122,7 +1271,7 @@ export default function PostJobPage() {
   const publishAnywayButtonRef = useRef<HTMLButtonElement | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [basicsErrors, setBasicsErrors] = useState<
-    Array<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode">
+    Array<"title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode">
   >([]);
   const [hiringIdentities, setHiringIdentities] = useState<BackendHiringIdentity[]>([]);
   const [selectedHiringIdentityId, setSelectedHiringIdentityId] = useState<string>("");
@@ -1131,10 +1280,11 @@ export default function PostJobPage() {
   const [contentNiches, setContentNiches] = useState<string[]>([]);
   const [contentGenres, setContentGenres] = useState<string[]>([]);
   const [formatsHiredFor, setFormatsHiredFor] = useState<string[]>([]);
-  // Durable job category (general state, not import-only): a fresh native job is
-  // "Editing" exactly as before; import hydration and draft resume both set it so
-  // an imported draft never silently reverts on reopen.
-  const [jobCategory, setJobCategory] = useState<JobCategory>("Editing");
+  const [roles, setRoles] = useState<BackendRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+  const [primaryRoleId, setPrimaryRoleId] = useState("");
+  const [roleSpecialization, setRoleSpecialization] = useState("");
   const [importMeta, setImportMeta] = useState<ImportFieldMeta | null>(null);
   const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(!draftId && !importFlag);
   const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
@@ -1142,14 +1292,85 @@ export default function PostJobPage() {
   const [previewExperienceText, setPreviewExperienceText] = useState("");
   const [previewLocationText, setPreviewLocationText] = useState("");
 
-  const subsText = useMemo(() => {
-    if (identity?.followersCount != null) return formatSubsInput(String(identity.followersCount));
-    return formatSubsInput(platformAudience);
-  }, [identity?.followersCount, platformAudience]);
+  const markPayloadDirty = useCallback((...keys: Array<keyof BackendCreateJobPayload>) => {
+    keys.forEach((key) => dirtyPayloadKeysRef.current.add(key));
+  }, []);
+
+  const updateDomain = useCallback(
+    (
+      patch: Partial<JobPostingDomainState>,
+      payloadKeys: Array<keyof BackendCreateJobPayload> = []
+    ) => {
+      setDomain((previous) => ({ ...previous, ...patch }));
+      markPayloadDirty(...payloadKeys);
+      if (Object.prototype.hasOwnProperty.call(patch, "startTiming")) {
+        markPayloadDirty("start_timeframe", "start_date");
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "revisionPolicy")) {
+        markPayloadDirty("revision_rounds");
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "durationType")) {
+        markPayloadDirty("duration_value", "duration_unit", "engagement_end_date");
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "trialStatus")) {
+        markPayloadDirty(
+          "trial_scope",
+          "trial_effort_value",
+          "trial_effort_unit",
+          "trial_compensation_amount",
+          "trial_compensation_currency",
+          "trial_compensation_basis",
+          "trial_work_usage",
+          "trial_portfolio_permission",
+          "trial_attribution",
+          "unpaid_trial_confirmed",
+          "trial_notes"
+        );
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "applicationMode")) {
+        markPayloadDirty("external_apply_url");
+      }
+      if (payloadKeys.length) {
+        setDomainErrors((previous) => {
+          const next = { ...previous };
+          payloadKeys.forEach((key) => delete next[key]);
+          return next;
+        });
+      }
+    },
+    [markPayloadDirty]
+  );
+
+  const loadCreatorRoles = useCallback(async () => {
+    setRolesLoading(true);
+    setRolesError(null);
+    try {
+      const response = await listRoles();
+      setRoles(response.items);
+      if (!response.items.length) setRolesError("No creator roles are available right now.");
+    } catch {
+      setRoles([]);
+      setRolesError("Creator roles could not be loaded.");
+    } finally {
+      setRolesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadCreatorRoles();
+  }, [loadCreatorRoles]);
 
   const budgetText = useMemo(() => {
-    return formatBudgetPreview(budgetMin, budgetMax, budgetUnit);
-  }, [budgetMin, budgetMax, budgetUnit]);
+    return formatCompensationSummary({
+      mode: compensationMode,
+      minimum: budgetMin,
+      maximum: budgetMax,
+      currency: budgetCurrency,
+      unit: budgetUnit,
+      customUnit: budgetUnitCustom,
+      note: budgetNote,
+    });
+  }, [budgetCurrency, budgetMax, budgetMin, budgetNote, budgetUnit, budgetUnitCustom, compensationMode]);
 
   const experienceText = useMemo(() => {
     const min = expMin ? Number(expMin) : NaN;
@@ -1158,13 +1379,6 @@ export default function PostJobPage() {
     if (max < min) return formatExperiencePreview(expMin, expMin);
     return formatExperiencePreview(expMin, expMax);
   }, [expMin, expMax]);
-
-  const locationText = useMemo(() => {
-    if (!workMode) return "";
-    if (workMode === "Remote") return "Remote";
-    const c = city.trim();
-    return c ? `${workMode} - ${c}` : workMode;
-  }, [workMode, city]);
 
   React.useEffect(() => {
     if (!platform) return;
@@ -1192,8 +1406,30 @@ export default function PostJobPage() {
     !Number.isNaN(budgetMaxNumber) &&
     budgetMaxNumber >= budgetMinNumber;
   const hasAnyBudgetInput = hasBudgetMin || hasBudgetMax;
-  const hasExplicitBudgetIntent = (budgetIntent === "flexible" || budgetIntent === "contact") && !hasAnyBudgetInput;
-  const hasCompensationIntent = hasValidBudgetRange || hasExplicitBudgetIntent;
+  const hasPositiveBudgetMin = hasBudgetMin && Number.isFinite(budgetMinNumber) && budgetMinNumber > 0;
+  const hasValidCompensationUnit =
+    !legacyBudgetUnit && Boolean(budgetUnit) && (budgetUnit !== "custom" || Boolean(budgetUnitCustom.trim()));
+  const hasRequiredCompensationNote =
+    !["commission", "mixed"].includes(budgetUnit) || Boolean(budgetNote.trim());
+  const negotiableCurrencyValid =
+    Boolean(budgetCurrency) ||
+    ((budgetUnit === "commission" || budgetUnit === "mixed") && Boolean(budgetNote.trim()));
+  const hasCompensationIntent =
+    (compensationMode === "fixed" && hasPositiveBudgetMin && !hasBudgetMax && Boolean(budgetCurrency) && hasValidCompensationUnit && hasRequiredCompensationNote) ||
+    (compensationMode === "range" && hasPositiveBudgetMin && hasValidBudgetRange && Boolean(budgetCurrency) && hasValidCompensationUnit && hasRequiredCompensationNote) ||
+    (compensationMode === "negotiable" &&
+      !hasAnyBudgetInput &&
+      negotiableCurrencyValid &&
+      hasValidCompensationUnit &&
+      hasRequiredCompensationNote);
+  const selectedRoleForValidation = roles.find((role) => role.id === primaryRoleId);
+  const requiresRoleSpecialization = Boolean(
+    primaryRoleId &&
+      (selectedRoleForValidation?.slug === "other-creator-role" ||
+        selectedRoleForValidation?.name === "Other Creator Role" ||
+        (!selectedRoleForValidation &&
+          loadedJobRef.current?.primary_role_name_snapshot === "Other Creator Role"))
+  );
   const backendAccessToken = session?.backendAccessToken;
   const activeBackendAccessToken = resolvedBackendAccessToken || backendAccessToken;
   const oauthProviderAccountId = session?.user?.providerAccountId;
@@ -1285,11 +1521,11 @@ export default function PostJobPage() {
   React.useEffect(() => {
     if (!draftId || sessionStatus !== "authenticated") return;
     let cancelled = false;
-    const wholeNumberString = (value: unknown) => {
-      if (typeof value === "number" && Number.isFinite(value)) return String(Math.round(value));
+    const numericString = (value: unknown) => {
+      if (typeof value === "number" && Number.isFinite(value)) return String(value);
       if (typeof value === "string" && value.trim()) {
         const parsed = Number(value);
-        return Number.isFinite(parsed) ? String(Math.round(parsed)) : "";
+        return Number.isFinite(parsed) ? value.trim() : "";
       }
       return "";
     };
@@ -1324,8 +1560,14 @@ export default function PostJobPage() {
           setSubmitError("This job draft could not be found.");
           return;
         }
-        const budgetMinValue = wholeNumberString(draft.budget_amount ?? draft.budget_min);
-        const budgetMaxValue = wholeNumberString(draft.budget_max);
+        loadedJobRef.current = draft;
+        dirtyPayloadKeysRef.current.clear();
+        setLoadedJobStatus(typeof draft.status === "string" ? draft.status : "draft");
+        setLoadedSchemaVersion(
+          typeof draft.listing_schema_version === "number" ? draft.listing_schema_version : 1
+        );
+        const budgetMinValue = numericString(draft.budget_amount ?? draft.budget_min);
+        const budgetMaxValue = numericString(draft.budget_max);
         const budgetNote = typeof draft.budget_note === "string" ? draft.budget_note.trim().toLowerCase() : "";
         const nextBudgetIntent: BudgetIntent =
           budgetMinValue && budgetMaxValue
@@ -1345,33 +1587,88 @@ export default function PostJobPage() {
         const nextPlatform: JobPlatform = nextPlatforms[0] || "";
 
         setTitle(draft.title || "");
-        setJobCategory(normalizeJobCategory(draft.category));
+        setPrimaryRoleId(typeof draft.primary_role_id === "string" ? draft.primary_role_id : "");
+        setRoleSpecialization(typeof draft.role_specialization === "string" ? draft.role_specialization : "");
         setBudgetMin(budgetMinValue);
         setBudgetMax(budgetMaxValue);
-        setBudgetUnit(draft.budget_unit === "per month" ? "per month" : "per project");
+        const hasSupportedBudgetUnit = COMPENSATION_UNITS.includes(draft.budget_unit as CompensationUnit);
+        const nextBudgetUnit: CompensationUnit | "" = hasSupportedBudgetUnit
+          ? (draft.budget_unit as CompensationUnit)
+          : "";
+        setLegacyBudgetUnit(
+          !hasSupportedBudgetUnit && typeof draft.budget_unit === "string" && draft.budget_unit.trim()
+            ? draft.budget_unit
+            : null
+        );
+        const nextBudgetCurrency = typeof draft.budget_currency === "string" ? draft.budget_currency : "";
+        const nextCompensationMode =
+          draft.compensation_mode === "fixed" || draft.compensation_mode === "range" || draft.compensation_mode === "negotiable"
+            ? draft.compensation_mode
+            : "";
+        const nextBudgetNote = typeof draft.budget_note === "string" ? draft.budget_note : "";
+        const nextBudgetUnitCustom = typeof draft.budget_unit_custom === "string" ? draft.budget_unit_custom : "";
+        setBudgetUnit(nextBudgetUnit);
+        setBudgetCurrency(nextBudgetCurrency);
+        setCompensationMode(nextCompensationMode);
+        setBudgetNote(nextBudgetNote);
+        setBudgetUnitCustom(nextBudgetUnitCustom);
         setBudgetIntent(nextBudgetIntent);
         setWorkMode(nextWorkMode);
         setCity(nextWorkMode === "Remote" ? "" : nextLocation);
         setExpMin(experience.min);
         setExpMax(experience.max);
         setStartWithin((draft.start_timeframe as StartTimeframe) || "");
+        setEngagementType(
+          ENGAGEMENT_TYPES.includes(draft.engagement_type as EngagementType)
+            ? (draft.engagement_type as EngagementType)
+            : ""
+        );
+        setExpectedWeeklyHoursMin(numericString(draft.expected_weekly_hours_min));
+        setExpectedWeeklyHoursMax(numericString(draft.expected_weekly_hours_max));
+        if (
+          typeof draft.turnaround_value === "number" &&
+          (draft.turnaround_unit === "hours" ||
+            draft.turnaround_unit === "business_days" ||
+            draft.turnaround_unit === "calendar_days" ||
+            draft.turnaround_unit === "weeks")
+        ) {
+          setTurnaround({
+            value: draft.turnaround_value,
+            unit: draft.turnaround_unit,
+            basis:
+              draft.turnaround_basis === "per_deliverable" ||
+              draft.turnaround_basis === "batch" ||
+              draft.turnaround_basis === "first_draft" ||
+              draft.turnaround_basis === "final_delivery"
+                ? draft.turnaround_basis
+                : "",
+          });
+        } else {
+          setTurnaround(null);
+        }
         setPlatform(nextPlatform);
         setPlatforms(nextPlatforms);
         setPlatformName(draft.channel_name || "");
         setPlatformAudience(draft.channel_subscribers != null ? String(draft.channel_subscribers) : "");
-        setVerified(Boolean(draft.is_verified));
         setAbout(draft.about_channel || "");
         setResponsibilities((draft.responsibilities || []).join("\n"));
         setRequirements((draft.requirements || []).join("\n"));
         const restoredHowToApply = draft.how_to_apply || "";
-        setHowToApply(restoredHowToApply);
+        const legacyCustomInstruction = (draft.application_requirements || []).includes(
+          CUSTOM_INSTRUCTION_REQUIREMENT_KEY
+        );
+        setHowToApply(legacyCustomInstruction ? restoredHowToApply : "");
         const restoredRequirements = sanitizeRequirementKeys(
-          restoredHowToApply.trim()
-            ? [...(draft.application_requirements || []), CUSTOM_INSTRUCTION_REQUIREMENT_KEY]
-            : draft.application_requirements,
+          draft.application_requirements,
           "job"
         );
         setApplicationRequirements(restoredRequirements);
+        const hydratedDomain = hydrateJobPostingDomain(draft);
+        setDomain(
+          legacyCustomInstruction
+            ? { ...hydratedDomain, howToApply: "" }
+            : hydratedDomain
+        );
         // Resuming restores the chosen requirements; the explicit "none" choice is
         // a publish-time gate, so the owner re-confirms it intentionally.
         setNoFirstMessageRequirements(false);
@@ -1384,6 +1681,10 @@ export default function PostJobPage() {
             ? draft.tools.filter((tool): tool is string => typeof tool === "string" && tool.trim().length > 0)
             : []
         );
+        setLegacyToolsNotCaptured(draft.required_tool_keys == null && draft.other_required_tools == null && draft.tools == null);
+        setToolsConfirmed(
+          draft.required_tool_keys != null || draft.other_required_tools != null || draft.tools != null
+        );
         setLanguages(
           Array.isArray(draft.languages)
             ? draft.languages.filter((lang): lang is string => typeof lang === "string" && lang.trim().length > 0)
@@ -1392,9 +1693,15 @@ export default function PostJobPage() {
         setRefVideos(refsFrom(draft.reference_videos));
         setSelectedHiringIdentityId(typeof draft.hiring_identity_id === "string" ? draft.hiring_identity_id : "");
         setPreviewBudgetText(
-          nextBudgetIntent === "range"
-            ? formatBudgetPreview(budgetMinValue, budgetMaxValue, draft.budget_unit === "per month" ? "per month" : "per project")
-            : budgetIntentLabel(nextBudgetIntent)
+          formatCompensationSummary({
+            mode: nextCompensationMode,
+            minimum: budgetMinValue,
+            maximum: budgetMaxValue,
+            currency: nextBudgetCurrency,
+            unit: nextBudgetUnit,
+            customUnit: nextBudgetUnitCustom,
+            note: nextBudgetNote,
+          }) || budgetIntentLabel(nextBudgetIntent)
         );
         setPreviewLocationText(nextWorkMode === "Remote" ? "Remote" : nextWorkMode && nextLocation ? `${nextWorkMode} - ${nextLocation}` : "");
         setPreviewExperienceText(
@@ -1433,10 +1740,9 @@ export default function PostJobPage() {
     }
     const prefill = payload.prefill;
     setTitle(prefill.title);
-    setJobCategory(normalizeJobCategory(prefill.category));
     setBudgetMin(prefill.budgetMin);
     setBudgetMax(prefill.budgetMax);
-    setBudgetUnit(prefill.budgetUnit === "per month" ? "per month" : "per project");
+    setBudgetUnit(prefill.budgetUnit);
     setBudgetIntent(prefill.budgetIntent);
     setWorkMode(prefill.workMode);
     setCity(prefill.workMode === "Remote" ? "" : prefill.city);
@@ -1445,8 +1751,18 @@ export default function PostJobPage() {
     setStartWithin(prefill.startWithin);
     setPlatform(prefill.platform);
     setPlatforms(prefill.platforms);
-    setTurnaround(prefill.turnaround);
-    setTools(prefill.tools.filter((tool) => typeof tool === "string" && tool.trim().length > 0));
+    setTurnaround(
+      prefill.turnaround
+        ? {
+            value: prefill.turnaround.value,
+            unit: prefill.turnaround.unit === "days" ? "calendar_days" : prefill.turnaround.unit,
+            basis: "",
+          }
+        : null
+    );
+    const importedTools = prefill.tools.filter((tool) => typeof tool === "string" && tool.trim().length > 0);
+    setTools(importedTools);
+    setToolsConfirmed(importedTools.length > 0);
     setLanguages(prefill.languages.filter((lang) => typeof lang === "string" && lang.trim().length > 0));
     setAbout(prefill.about);
     setResponsibilities(prefill.responsibilities);
@@ -1498,7 +1814,6 @@ export default function PostJobPage() {
           setSelectedHiringIdentityId(preferred.id);
           setPlatform(preferred.platform === "INSTAGRAM" ? "instagram" : "youtube");
           setPlatformName(preferred.display_name);
-          setVerified(preferred.verification_status === "VERIFIED");
           setIdentity({
             platform: preferred.platform === "INSTAGRAM" ? "instagram" : "youtube",
             brandId: preferred.id,
@@ -1544,7 +1859,6 @@ export default function PostJobPage() {
     setSelectedHiringIdentityId(nextIdentity.id);
     setPlatform(nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube");
     setPlatformName(nextIdentity.display_name);
-    setVerified(nextIdentity.verification_status === "VERIFIED");
     setIdentity({
       platform: nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube",
       brandId: nextIdentity.id,
@@ -1554,7 +1868,14 @@ export default function PostJobPage() {
       handle: nextIdentity.handle || null,
       verifiedAt: nextIdentity.verified_at || new Date().toISOString(),
     });
-  }, []);
+    markPayloadDirty(
+      "hiring_identity_id",
+      "platforms",
+      "posted_platform",
+      "channel_name",
+      "channel_logo_url"
+    );
+  }, [markPayloadDirty]);
 
   const confirmHiringIdentityChoice = useCallback(
     (choice: HiringIdentityChoice) => {
@@ -1569,10 +1890,16 @@ export default function PostJobPage() {
       setSelectedHiringIdentityId("");
       setPlatform(next.platform);
       setIdentity(next);
-      setVerified(true);
       setIdentityError(null);
+      markPayloadDirty(
+        "hiring_identity_id",
+        "platforms",
+        "posted_platform",
+        "channel_name",
+        "channel_logo_url"
+      );
     },
-    [connectedHiringIdentityOptions, hiringIdentities, selectHiringIdentity]
+    [connectedHiringIdentityOptions, hiringIdentities, markPayloadDirty, selectHiringIdentity]
   );
 
   const createRepresentedHiringIdentity = useCallback(
@@ -1598,7 +1925,6 @@ export default function PostJobPage() {
         setPlatform(nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube");
         setPlatformName(nextIdentity.name);
         setPlatformAudience("");
-        setVerified(false);
         setIdentity({
           platform: nextIdentity.platform === "INSTAGRAM" ? "instagram" : "youtube",
           brandId: localIdentity.id,
@@ -1608,6 +1934,13 @@ export default function PostJobPage() {
           handle: nextIdentity.handle,
           verifiedAt: "",
         });
+        markPayloadDirty(
+          "hiring_identity_id",
+          "platforms",
+          "posted_platform",
+          "channel_name",
+          "channel_logo_url"
+        );
         return localIdentity;
       };
 
@@ -1672,6 +2005,7 @@ export default function PostJobPage() {
     },
     [
       hiringIdentities,
+      markPayloadDirty,
       selectHiringIdentity,
       session?.user?.name,
       session?.user?.username,
@@ -1689,11 +2023,10 @@ export default function PostJobPage() {
       setHiringIdentities((prev) => prev.filter((item) => item.id !== identityId));
       if (selectedHiringIdentityId === identityId) {
         setSelectedHiringIdentityId("");
-        setVerified(Boolean(identity) && platform === "youtube");
         setIdentityError(null);
       }
     },
-    [identity, platform, selectedHiringIdentityId, sessionStatus, withFreshBackendToken]
+    [selectedHiringIdentityId, sessionStatus, withFreshBackendToken]
   );
 
   const checkRepresentedHiringIdentityVerification = useCallback(
@@ -1728,9 +2061,12 @@ export default function PostJobPage() {
   );
 
   const getBasicsErrors = () => {
-    const errors: Array<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode"> = [];
+    const errors: Array<"title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode"> = [];
     if (!hasHiringForIdentity) errors.push("identity");
     if (title.trim().length < 3) errors.push("title");
+    if (!primaryRoleId || (requiresRoleSpecialization && !roleSpecialization.trim())) {
+      errors.push("role");
+    }
     if (selectedJobPlatforms.length === 0) errors.push("platform");
     if (!workMode) errors.push("workMode");
     if (isCityRequired && !city.trim()) errors.push("city");
@@ -1738,26 +2074,32 @@ export default function PostJobPage() {
     if (!hasCompensationIntent && !hasAnyBudgetInput) {
       errors.push("budgetMissing");
     }
-    if (hasAnyBudgetInput && !hasValidBudgetRange) {
+    if (hasAnyBudgetInput && !hasCompensationIntent) {
       errors.push("budgetRange");
     }
     return errors;
   };
 
   const isBasicsErrorActive = useCallback(
-    (key: "title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode") => {
+    (key: "title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode") => {
       if (key === "title") return title.trim().length < 3;
+      if (key === "role") {
+        return !primaryRoleId || (requiresRoleSpecialization && !roleSpecialization.trim());
+      }
       if (key === "identity") return !hasHiringForIdentity;
       if (key === "platform") return selectedJobPlatforms.length === 0;
       if (key === "workMode") return !workMode;
       if (key === "city") return isCityRequired && !city.trim();
       if (key === "cityInvalid") return isCityRequired && city.trim() && !matchedCity;
       if (key === "budgetMissing") return !hasCompensationIntent && !hasAnyBudgetInput;
-      if (key === "budgetRange") return hasAnyBudgetInput && !hasValidBudgetRange;
+      if (key === "budgetRange") return hasAnyBudgetInput && !hasCompensationIntent;
       return false;
     },
     [
       title,
+      primaryRoleId,
+      requiresRoleSpecialization,
+      roleSpecialization,
       hasHiringForIdentity,
       selectedJobPlatforms,
       workMode,
@@ -1766,16 +2108,19 @@ export default function PostJobPage() {
       matchedCity,
       hasCompensationIntent,
       hasAnyBudgetInput,
-      hasValidBudgetRange,
     ]
   );
 
   const getBasicsErrorMessage = (
-    key: "title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode"
+    key: "title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode"
   ) => {
     switch (key) {
       case "title":
         return title.trim() ? "Job title must be at least 3 characters." : "Job title can't be empty.";
+      case "role":
+        return requiresRoleSpecialization && primaryRoleId
+          ? "Describe the creator role."
+          : "Choose a creator role.";
       case "platform":
         return "Platform is required.";
       case "workMode":
@@ -1785,9 +2130,9 @@ export default function PostJobPage() {
       case "cityInvalid":
         return "Incorrect city name.";
       case "budgetMissing":
-        return "Add a budget range, or choose Flexible/Contact for pricing.";
+        return "Choose a compensation mode, currency, and rate.";
       case "budgetRange":
-        return "Add both min and max budget, with max at least min.";
+        return "Check the amount, currency, and range for the selected compensation mode.";
       case "identity":
         return "Choose who you’re hiring for before posting.";
     }
@@ -1795,7 +2140,7 @@ export default function PostJobPage() {
 
   const basicsErrorMap = (() => {
     const next: Partial<
-      Record<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode", string>
+      Record<"title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode", string>
     > = {};
     basicsErrors.forEach((key) => {
       next[key] = getBasicsErrorMessage(key);
@@ -1838,14 +2183,11 @@ export default function PostJobPage() {
 
   React.useEffect(() => {
     if (localPendingHiringIdentity) {
-      setVerified(false);
       return;
     }
     if (selectedHiringIdentity) {
-      setVerified(selectedHiringIdentity.verification_status === "VERIFIED");
       return;
     }
-    setVerified(Boolean(identity) && platform === "youtube");
   }, [identity, localPendingHiringIdentity, platform, selectedHiringIdentity]);
 
   const loadLinkedYouTubeChannels = useCallback(async () => {
@@ -1984,17 +2326,32 @@ export default function PostJobPage() {
   const addTag = () => {
     const t = tagInput.trim();
     if (!t) return;
-    if (tags.includes(t)) {
+    const normalized = t.toLocaleLowerCase();
+    const alreadyRepresented = [
+      ...tags,
+      ...tools,
+      ...contentNiches,
+      ...contentGenres,
+      ...formatsHiredFor,
+      ...(domain.otherRequiredSkills || []),
+      ...(domain.otherPreferredSkills || []),
+    ].some((value) => value.trim().toLocaleLowerCase() === normalized);
+    if (alreadyRepresented) {
       setTagInput("");
       return;
     }
     setTags((prev) => [...prev, t]);
+    markPayloadDirty("tags");
     setTagInput("");
   };
 
-  const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
+  const removeTag = (t: string) => {
+    setTags((prev) => prev.filter((x) => x !== t));
+    markPayloadDirty("tags");
+  };
 
   const togglePlatformSelection = (next: IdentityPlatform) => {
+    markPayloadDirty("platforms", "posted_platform");
     setPlatforms((prev) => {
       const updated = prev.includes(next)
         ? prev.filter((item) => item !== next)
@@ -2070,6 +2427,7 @@ export default function PostJobPage() {
         timestampNotes,
       },
     ].slice(0, MAX_REFERENCE_VIDEOS));
+    markPayloadDirty("reference_videos");
     setRefTitle("");
     setRefUrl("");
     setRefWhatToReference("");
@@ -2078,10 +2436,12 @@ export default function PostJobPage() {
 
   const removeRefVideo = (idx: number) => {
     setRefVideos((prev) => prev.filter((_, i) => i !== idx));
+    markPayloadDirty("reference_videos");
   };
 
   const updateRefVideo = (idx: number, next: ReferenceVideo) => {
     setRefVideos((prev) => prev.map((video, i) => (i === idx ? next : video)));
+    markPayloadDirty("reference_videos");
   };
 
   const cleanReferenceVideo = (video: ReferenceVideo): ReferenceVideo => ({
@@ -2178,7 +2538,9 @@ export default function PostJobPage() {
     contentGenres,
     formatsHiredFor,
     experience: hasExperienceQuality ? previewExperienceText || experienceText : "",
-    weeklyHours: turnaround ? `${turnaround.value} ${turnaround.unit}` : "",
+    weeklyHours: expectedWeeklyHoursMin
+      ? `${expectedWeeklyHoursMin}${expectedWeeklyHoursMax ? `–${expectedWeeklyHoursMax}` : ""} hours / week`
+      : "",
     startTimeframe: startWithin || undefined,
     referenceVideos: referenceVideosForPayload,
     draftCompletion: {
@@ -2188,7 +2550,7 @@ export default function PostJobPage() {
       hasWorkMode: Boolean(workMode),
       hasChannel: hasHiringForIdentity,
       hasExperience: hasExperienceQuality,
-      hasTimeline: Boolean(turnaround || startWithin),
+      hasTimeline: Boolean(turnaround || startWithin || domain.startTiming || expectedWeeklyHoursMin),
     },
   })
     .recommendedItems.map((item) => {
@@ -2210,9 +2572,25 @@ export default function PostJobPage() {
 
   const focusQualityTarget = (targetId?: string) => {
     if (!targetId) return;
-    window.setTimeout(() => {
-      const target = document.querySelector<HTMLElement>(`[data-quality-target="${targetId}"]`);
-      if (!target) return;
+    const requestId = ++focusRequestRef.current;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delays = reducedMotion ? [0, 60, 180] : [90, 380, 700];
+    const tryFocus = (attempt: number) => {
+      if (focusRequestRef.current !== requestId) return;
+      const exactTarget =
+        document.querySelector<HTMLElement>(`[data-quality-target="${targetId}"]`) ||
+        document.getElementById(targetId);
+      const target =
+        exactTarget ||
+        (attempt === delays.length - 1
+          ? document.querySelector<HTMLElement>('form [aria-invalid="true"], form [role="alert"]')
+          : null);
+      if (!target) {
+        if (attempt < delays.length - 1) {
+          window.setTimeout(() => tryFocus(attempt + 1), delays[attempt + 1] - delays[attempt]);
+        }
+        return;
+      }
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
       const focusable = target.matches("input, textarea, select, button, [tabindex]")
@@ -2228,7 +2606,8 @@ export default function PostJobPage() {
         ],
         { duration: 1100, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" }
       );
-    }, 90);
+    };
+    window.setTimeout(() => tryFocus(0), delays[0]);
   };
 
   const goToJobQualityItem = (item: JobQualityItem) => {
@@ -2252,186 +2631,160 @@ export default function PostJobPage() {
     if (dest.target) focusQualityTarget(dest.target);
   }, [sectionParam, draftId, draftLoading]);
 
-  const createLocalJob = async (job: Job) => {
-    const res = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job }),
+  const buildCanonicalJobContractPayload = (
+    effectiveMode: CompensationMode | null,
+    { includeCompensation = true }: { includeCompensation?: boolean } = {}
+  ): Partial<BackendCreateJobPayload> => {
+    const normalizedTools = splitRequiredTools(tools);
+    const budgetAmountValue = parseWholeNumber(budgetMin);
+    const budgetMaxValue = parseWholeNumber(budgetMax);
+    return {
+      ...serializeJobPostingDomain(domain),
+      primary_role_id: primaryRoleId || null,
+      role_specialization: roleSpecialization.trim() || null,
+      ...(includeCompensation
+        ? {
+            compensation_mode: effectiveMode,
+            budget_amount:
+              effectiveMode === "fixed" || effectiveMode === "range" ? budgetAmountValue : null,
+            budget_max: effectiveMode === "range" ? budgetMaxValue : null,
+            budget_note: budgetNote.trim() || budgetIntentLabel(budgetIntent) || null,
+            budget_currency: budgetCurrency || null,
+            budget_unit: effectiveMode && budgetUnit ? budgetUnit : null,
+            budget_unit_custom: budgetUnit === "custom" ? budgetUnitCustom.trim() || null : null,
+          }
+        : {}),
+      engagement_type: engagementType || null,
+      expected_weekly_hours_min: parseWholeNumber(expectedWeeklyHoursMin),
+      expected_weekly_hours_max: parseWholeNumber(expectedWeeklyHoursMax),
+      turnaround_value: turnaround?.value || null,
+      turnaround_unit: turnaround?.unit || null,
+      turnaround_basis: turnaround?.basis || null,
+      required_tool_keys: toolsConfirmed ? normalizedTools.requiredToolKeys : null,
+      other_required_tools: toolsConfirmed ? normalizedTools.otherRequiredTools : null,
+    };
+  };
+
+  const buildCompleteJobPayload = (
+    status: NonNullable<BackendCreateJobPayload["status"]>,
+    effectiveCompensationMode: CompensationMode | null,
+    { includeCompensation = true }: { includeCompensation?: boolean } = {}
+  ): BackendCreateJobPayload => {
+    const selectedYouTubeChannelId =
+      requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity
+        ? identity?.brandId
+        : undefined;
+    const hasExplicitHiringIdentity = Boolean(
+      selectedHiringIdentityId || localPendingHiringIdentity || identity
+    );
+    const normalizedChannelName = hasExplicitHiringIdentity ? activeHiringDisplayName : null;
+    const normalizedChannelSubscribers = localPendingHiringIdentity
+      ? null
+      : identity?.followersCount ?? parseWholeNumber(platformAudience);
+    const sanitizedApplicationRequirements = normalizeJobApplicationRequirementsForPayload(
+      applicationRequirements,
+      howToApply,
+      noFirstMessageRequirements
+    );
+    const selectedPlatform = platform || selectedJobPlatforms[0] || null;
+    const payload: BackendCreateJobPayload = {
+      title: title.trim() || (status === "published" ? "" : "Untitled job draft"),
+      ...buildCanonicalJobContractPayload(effectiveCompensationMode, { includeCompensation }),
+      location:
+        workMode === "Remote" ? "Remote" : workMode && city.trim() ? city.trim() : null,
+      experience_level: experienceText || null,
+      platforms: selectedJobPlatforms,
+      start_timeframe: startWithin || null,
+      work_mode: workMode ? workMode.toLowerCase().replace("on-site", "onsite") : null,
+      about_channel: about.trim() || null,
+      responsibilities: splitLines(responsibilities),
+      requirements: splitLines(requirements),
+      application_requirements: sanitizedApplicationRequirements,
+      content_niches: normalizeCreatorContextList(contentNiches),
+      content_genres: normalizeCreatorContextList(contentGenres),
+      formats_hired_for: normalizeCreatorContextList(formatsHiredFor),
+      reference_videos: referenceVideosForPayload.map(serializeReferenceVideo),
+      tags,
+      youtube_channel_id: selectedYouTubeChannelId || null,
+      channel_name: normalizedChannelName,
+      channel_logo_url: activeHiringAvatarUrl,
+      channel_subscribers: normalizedChannelSubscribers,
+      posted_platform: selectedPlatform,
+      posted_youtube_channel_id: selectedYouTubeChannelId || null,
+      hiring_identity_id: selectedHiringIdentityId || null,
+      status,
+    };
+    if (applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)) {
+      payload.how_to_apply = howToApply.trim() || null;
+    }
+    if (languages.length) payload.languages = languages;
+    return payload;
+  };
+
+  const payloadForWrite = (complete: BackendCreateJobPayload): Partial<BackendCreateJobPayload> => {
+    if (!draftId) return complete;
+    const partial: Partial<BackendCreateJobPayload> = { status: complete.status };
+    dirtyPayloadKeysRef.current.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(complete, key)) {
+        Object.assign(partial, { [key]: complete[key] });
+      }
     });
-    if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(payload?.error || "Failed to create job.");
-    }
-    const data = (await res.json()) as { id?: string };
-    if (!data?.id) {
-      throw new Error("The local job store did not return a created id.");
-    }
-    return data.id;
+    return partial;
   };
 
   const publishJob = async () => {
     if (isSubmitting) return;
 
     setSubmitError(null);
-    const normalizedTitle = title.trim();
-    const normalizedAbout = about.trim();
-    const normalizedResponsibilities = responsibilities.trim();
-    const normalizedRequirements = requirements.trim();
-    const normalizedHowToApply = howToApply.trim();
-    const sanitizedApplicationRequirements = normalizeJobApplicationRequirementsForPayload(
-      applicationRequirements,
-      normalizedHowToApply,
-      noFirstMessageRequirements
+    const effectiveCompensationMode: CompensationMode | null = compensationMode || null;
+    const backendPayload = payloadForWrite(
+      buildCompleteJobPayload("published", effectiveCompensationMode)
     );
-    const normalizedCustomInstruction = sanitizedApplicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
-      ? normalizedHowToApply
-      : "";
-    const normalizedLocation = previewLocationText || locationText || "Remote";
-    const normalizedExperience = previewExperienceText || experienceText || "Any";
-    const normalizedBudgetText = previewBudgetText || budgetIntentLabel(budgetIntent) || budgetText;
-    const selectedYouTubeChannelId =
-      requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity ? identity?.brandId : undefined;
-    const normalizedChannelName = activeHiringDisplayName;
-    const normalizedChannelSubscribers =
-      localPendingHiringIdentity ? null : identity?.followersCount ?? parseWholeNumber(platformAudience);
-    const normalizedChannelLogoUrl = activeHiringAvatarUrl;
-    const budgetAmountValue = parseWholeNumber(budgetMin);
-    const budgetMaxValue = parseWholeNumber(budgetMax);
-    const hasPersistedBudget =
-      budgetAmountValue != null &&
-      budgetMaxValue != null &&
-      budgetMaxValue >= budgetAmountValue;
-    const selectedPlatform: IdentityPlatform = platform || selectedJobPlatforms[0] || "youtube";
-    const normalizedSelectedPlatforms = selectedJobPlatforms.length ? selectedJobPlatforms : [selectedPlatform];
-    const normalizedContentNiches = normalizeCreatorContextList(contentNiches);
-    const normalizedContentGenres = normalizeCreatorContextList(contentGenres);
-    const normalizedFormatsHiredFor = normalizeCreatorContextList(formatsHiredFor);
 
-    const jobToCreate: Job = {
-      id: "",
-      title: normalizedTitle,
-      category: jobCategory,
-      budget: normalizedBudgetText,
-      experience: normalizedExperience,
-      location: normalizedLocation,
-      postedShort: "",
-      views: 0,
-      applicants: 0,
-      responseRate: 0,
-      channel: {
-        name: normalizedChannelName,
-        subscribers: normalizedChannelSubscribers,
-        verified,
-        logoUrl: normalizedChannelLogoUrl || "https://picsum.photos/seed/new/96/96",
-      },
-      channelExternalUrl: activeHiringIdentity?.url || undefined,
-      tags,
-      tools,
-      contentNiches: normalizedContentNiches,
-      contentGenres: normalizedContentGenres,
-      formatsHiredFor: normalizedFormatsHiredFor,
-      startTimeframe: startWithin || "Flexible",
-      platform: selectedPlatform,
-      platforms: normalizedSelectedPlatforms,
-      referenceVideos: referenceVideosForPayload,
-      about: normalizedAbout,
-      responsibilities: normalizedResponsibilities,
-      requirements: normalizedRequirements,
-      applicationRequirements: sanitizedApplicationRequirements,
-      howToApply: normalizedCustomInstruction,
-      postedPlatform: selectedPlatform,
-      postedYoutubeChannelId: selectedYouTubeChannelId,
-      hiringIdentityId: selectedHiringIdentityId || undefined,
-      hiringDisplayName: activeHiringIdentity?.display_name,
-      hiringPlatform: activeHiringPlatform,
-      hiringVerificationStatus: activeHiringVerificationStatus || undefined,
-      managedByAgencyName: activeHiringIdentity?.managed_by_agency_name || undefined,
-    };
-
-    const backendPayload: BackendCreateJobPayload = {
-      title: normalizedTitle,
-      category: jobCategory,
-      location: normalizedLocation,
-      budget_amount: hasPersistedBudget ? budgetAmountValue : null,
-      budget_max: hasPersistedBudget ? budgetMaxValue : null,
-      budget_note: hasPersistedBudget ? null : budgetIntentLabel(budgetIntent) || null,
-      budget_currency: "INR",
-      budget_unit: budgetUnit,
-      experience_level: normalizedExperience,
-      platforms: normalizedSelectedPlatforms,
-      start_timeframe: startWithin || "Flexible",
-      work_mode: workMode.toLowerCase().replace("on-site", "onsite"),
-      contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
-      timezone_overlap: null,
-      weekly_hours: turnaround ? `${turnaround.value} ${turnaround.unit}` : null,
-      application_mode: "internal",
-      about_channel: normalizedAbout,
-      responsibilities: splitLines(normalizedResponsibilities),
-      requirements: splitLines(normalizedRequirements),
-      application_requirements: sanitizedApplicationRequirements,
-      how_to_apply: normalizedCustomInstruction || null,
-      tools,
-      languages,
-      content_niches: normalizedContentNiches,
-      content_genres: normalizedContentGenres,
-      formats_hired_for: normalizedFormatsHiredFor,
-      reference_videos: referenceVideosForPayload.map(serializeReferenceVideo),
-      tags,
-      youtube_channel_id: selectedYouTubeChannelId || null,
-      is_verified: verified,
-      channel_name: normalizedChannelName,
-      channel_logo_url: normalizedChannelLogoUrl,
-      channel_subscribers: normalizedChannelSubscribers,
-      posted_platform: selectedPlatform,
-      posted_youtube_channel_id: selectedYouTubeChannelId || null,
-      hiring_identity_id: selectedHiringIdentityId || null,
-      status: "published",
-    };
-
-    if (!isLocalMocksEnabled()) {
-      if (sessionStatus !== "authenticated") {
-        setSubmitError("Sign in before posting a job.");
-        return;
-      }
-
-      setIsSubmitting(true);
-      try {
-        const created = await withFreshBackendToken(async (token) => {
-          await completeLaunchFreeCheckout(token, { kind: "job_post", target_type: "job" });
-          return draftId ? updateJob(token, draftId, backendPayload) : createJob(backendPayload, { accessToken: token });
-        });
-        if (created?.id) {
-          window.location.assign("/jobs?posted=1");
-          return;
-        }
-        setSubmitError("The job was created, but the response was incomplete.");
-        return;
-      } catch (error) {
-        if (isBackendUnavailable(error)) {
-          try {
-            await createLocalJob(jobToCreate);
-            window.location.assign("/jobs?posted=1");
-            return;
-          } catch (localError) {
-            setSubmitError(localError instanceof Error ? localError.message : "Failed to create job.");
-            return;
-          }
-        }
-        setSubmitError(error instanceof Error ? error.message : "Failed to post job to backend.");
-        console.error("External backend create failed", error);
-        return;
-      } finally {
-        setIsSubmitting(false);
-      }
+    if (isLocalMocksEnabled()) {
+      setSubmitError("Publishing requires the CreatorJobs backend so the listing contract can be validated.");
+      return;
+    }
+    if (sessionStatus !== "authenticated") {
+      setSubmitError("Sign in before posting a job.");
+      return;
     }
 
     setIsSubmitting(true);
     try {
-      await createLocalJob(jobToCreate);
-      window.location.assign("/jobs?posted=1");
-      return;
+      const created = await withFreshBackendToken(async (token) => {
+        await completeLaunchFreeCheckout(token, { kind: "job_post", target_type: "job" });
+        return draftId
+          ? updateJob(token, draftId, backendPayload)
+          : createJob(backendPayload as BackendCreateJobPayload, { accessToken: token });
+      });
+      if (created?.id) {
+        window.location.assign("/jobs?posted=1");
+        return;
+      }
+      setSubmitError("The job was created, but the response was incomplete.");
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Failed to create job.");
+      if (error instanceof BackendRequestError && error.fieldErrors) {
+        const fields = Object.keys(error.fieldErrors);
+        const firstField = fields[0] || "title";
+        const targetStep = backendJobFieldStep(firstField);
+        setDomainErrors(
+          Object.fromEntries(
+            Object.entries(error.fieldErrors).map(([field, messages]) => [field, messages[0] || error.message])
+          )
+        );
+        if (fields.includes("primary_role_id") || fields.includes("role_specialization")) {
+          setBasicsErrors((previous) => Array.from(new Set([...previous, "role"])));
+        }
+        setDirection(STEPS.indexOf(targetStep) < STEPS.indexOf(step) ? "back" : "forward");
+        setStep(targetStep);
+        focusQualityTarget(`job-${firstField.replaceAll("_", "-")}`);
+        const firstMessage = Object.values(error.fieldErrors).flat()[0];
+        setSubmitError(firstMessage || error.message);
+      } else {
+        setSubmitError(error instanceof Error ? error.message : "Failed to post job to backend.");
+      }
+      console.error("External backend create failed", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -2441,12 +2794,21 @@ export default function PostJobPage() {
   // the first invalid field into view and focusing it (the step must render first).
   const focusFirstInvalidField = () => {
     if (typeof window === "undefined") return;
-    window.setTimeout(() => {
+    const requestId = ++focusRequestRef.current;
+    const delays = [60, 360, 680];
+    const tryFocus = (attempt: number) => {
+      if (focusRequestRef.current !== requestId) return;
       const el = document.querySelector<HTMLElement>('[aria-invalid="true"]');
-      if (!el) return;
+      if (!el) {
+        if (attempt < delays.length - 1) {
+          window.setTimeout(() => tryFocus(attempt + 1), delays[attempt + 1] - delays[attempt]);
+        }
+        return;
+      }
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.focus({ preventScroll: true });
-    }, 60);
+    };
+    window.setTimeout(() => tryFocus(0), delays[0]);
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -2474,12 +2836,68 @@ export default function PostJobPage() {
       return;
     }
     setBasicsErrors([]);
+    const domainIssues = validateJobPostingDomainForPublication(domain, {
+      budgetUnit,
+      engagementType,
+    }).sort((left, right) => STEPS.indexOf(left.step) - STEPS.indexOf(right.step));
+    if (domainIssues.length) {
+      const firstIssue = domainIssues[0];
+      setDomainErrors(
+        Object.fromEntries(domainIssues.map((issue) => [String(issue.field), issue.message]))
+      );
+      setDirection(STEPS.indexOf(firstIssue.step) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(firstIssue.step);
+      setSubmitError(firstIssue.message);
+      focusQualityTarget(firstIssue.target);
+      return;
+    }
+    setDomainErrors({});
+    const hasCompleteTurnaround = Boolean(
+      turnaround?.value && turnaround.unit && turnaround.basis
+    );
+    const needsWeeklyHours =
+      engagementType === "part_time" ||
+      engagementType === "full_time" ||
+      engagementType === "fixed_term" ||
+      engagementType === "internship";
+    const arrangementErrors: Record<string, string> = {};
+    if (!engagementType) {
+      arrangementErrors.engagement_type = "Choose an engagement type.";
+    }
+    if (needsWeeklyHours && !expectedWeeklyHoursMin) {
+      arrangementErrors.expected_weekly_hours_min = "Add the minimum expected weekly hours.";
+    }
+    if (engagementType === "one_time_project" && !hasCompleteTurnaround) {
+      arrangementErrors.turnaround_value = "Complete the turnaround value, unit, and basis.";
+    }
+    if (
+      (engagementType === "ongoing_freelance" || engagementType === "retainer") &&
+      !expectedWeeklyHoursMin &&
+      !hasCompleteTurnaround
+    ) {
+      arrangementErrors.expected_weekly_hours_min =
+        "Add expected weekly hours or a complete turnaround expectation.";
+    }
+    if (Object.keys(arrangementErrors).length) {
+      setDomainErrors((previous) => ({ ...previous, ...arrangementErrors }));
+      setDirection(STEPS.indexOf("details") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("details");
+      setSubmitError("Add the engagement, weekly-hours, or turnaround details required for this job.");
+      focusQualityTarget("job-engagement-type");
+      return;
+    }
     if (about.trim().length < 20) {
       setContentErrors({ about: "Add at least 20 characters about the brand." });
       setDirection(STEPS.indexOf("about") < STEPS.indexOf(step) ? "back" : "forward");
       setStep("about");
       setSubmitError("Add the missing details before publishing.");
       focusFirstInvalidField();
+      return;
+    }
+    if (!splitLines(responsibilities).length || !splitLines(requirements).length) {
+      setDirection(STEPS.indexOf("about") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("about");
+      setSubmitError("Add at least one responsibility and one requirement before publishing.");
       return;
     }
     const referenceError = getRefUrlError();
@@ -2533,81 +2951,45 @@ export default function PostJobPage() {
       return;
     }
 
-    const normalizedTitle = title.trim() || "Untitled job draft";
-    const normalizedLocation =
-      workMode === "Remote" ? "Remote" : workMode && city.trim() ? city.trim() : null;
-    const selectedYouTubeChannelId =
-      requiresYouTubeChannel && !selectedHiringIdentity && !localPendingHiringIdentity ? identity?.brandId : undefined;
-    const hasExplicitHiringIdentity = Boolean(selectedHiringIdentityId || localPendingHiringIdentity || identity);
-    const normalizedChannelName = hasExplicitHiringIdentity ? activeHiringDisplayName : null;
-    const normalizedChannelSubscribers =
-      localPendingHiringIdentity ? null : identity?.followersCount ?? parseWholeNumber(platformAudience);
-    const normalizedChannelLogoUrl = activeHiringAvatarUrl;
-    const budgetAmountValue = parseWholeNumber(budgetMin);
-    const budgetMaxValue = parseWholeNumber(budgetMax);
-    const hasPersistedBudget =
-      budgetAmountValue != null &&
-      budgetMaxValue != null &&
-      budgetMaxValue >= budgetAmountValue;
-    const normalizedContentNiches = normalizeCreatorContextList(contentNiches);
-    const normalizedContentGenres = normalizeCreatorContextList(contentGenres);
-    const normalizedFormatsHiredFor = normalizeCreatorContextList(formatsHiredFor);
-    const normalizedHowToApply = howToApply.trim();
-    const sanitizedApplicationRequirements = normalizeJobApplicationRequirementsForPayload(
-      applicationRequirements,
-      normalizedHowToApply,
-      noFirstMessageRequirements
-    );
-    const normalizedCustomInstruction = sanitizedApplicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
-      ? normalizedHowToApply
-      : "";
+    const rowIssues = validateRepeatableDomainRows(domain);
+    if (rowIssues.length) {
+      const firstIssue = rowIssues[0];
+      setDomainErrors(
+        Object.fromEntries(rowIssues.map((issue) => [String(issue.field), issue.message]))
+      );
+      setDirection(STEPS.indexOf(firstIssue.step) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(firstIssue.step);
+      setSubmitError(firstIssue.message);
+      focusQualityTarget(firstIssue.target);
+      return;
+    }
 
-    const backendPayload: BackendCreateJobPayload = {
-      title: normalizedTitle,
-      category: jobCategory,
-      location: normalizedLocation,
-      budget_amount: hasPersistedBudget ? budgetAmountValue : null,
-      budget_max: hasPersistedBudget ? budgetMaxValue : null,
-      budget_note: hasPersistedBudget ? null : budgetIntentLabel(budgetIntent) || null,
-      budget_currency: "INR",
-      budget_unit: budgetUnit,
-      experience_level: experienceText || null,
-      platforms: selectedJobPlatforms,
-      start_timeframe: startWithin || null,
-      work_mode: workMode ? workMode.toLowerCase().replace("on-site", "onsite") : null,
-      contract_type: budgetUnit === "per month" ? "Monthly" : "Project-based",
-      weekly_hours: turnaround ? `${turnaround.value} ${turnaround.unit}` : null,
-      application_mode: "internal",
-      about_channel: about.trim() || null,
-      responsibilities: splitLines(responsibilities),
-      requirements: splitLines(requirements),
-      application_requirements: sanitizedApplicationRequirements,
-      how_to_apply: normalizedCustomInstruction || null,
-      tools,
-      languages,
-      content_niches: normalizedContentNiches,
-      content_genres: normalizedContentGenres,
-      formats_hired_for: normalizedFormatsHiredFor,
-      reference_videos: referenceVideosForPayload.map(serializeReferenceVideo),
-      tags,
-      youtube_channel_id: selectedYouTubeChannelId || null,
-      is_verified: verified,
-      channel_name: normalizedChannelName,
-      channel_logo_url: normalizedChannelLogoUrl,
-      channel_subscribers: normalizedChannelSubscribers,
-      posted_platform: platform || selectedJobPlatforms[0] || null,
-      posted_youtube_channel_id: selectedYouTubeChannelId || null,
-      hiring_identity_id: selectedHiringIdentityId || null,
-      status: "draft",
-    };
+    const existingStatus = loadedJobStatus;
+    const saveStatus: NonNullable<BackendCreateJobPayload["status"]> =
+      draftId &&
+      (existingStatus === "published" ||
+        existingStatus === "paused" ||
+        existingStatus === "closed" ||
+        existingStatus === "archived")
+        ? existingStatus
+        : "draft";
+    const backendPayload = payloadForWrite(
+      buildCompleteJobPayload(saveStatus, compensationMode || null)
+    );
 
     setIsSubmitting(true);
     setSubmitError(null);
     try {
       const saved = await withFreshBackendToken((token) =>
-        draftId ? updateJob(token, draftId, backendPayload) : createJob(backendPayload, { accessToken: token })
+        draftId
+          ? updateJob(token, draftId, backendPayload)
+          : createJob(backendPayload as BackendCreateJobPayload, { accessToken: token })
       );
       const savedId = saved?.id || draftId;
+      if (saveStatus === "published") {
+        window.location.assign(`/jobs?updated=1${savedId ? `&jobId=${encodeURIComponent(String(savedId))}` : ""}`);
+        return;
+      }
       window.location.assign(
         `/drafts?saved=1&type=job${savedId ? `&draftId=${encodeURIComponent(String(savedId))}` : ""}`
       );
@@ -2619,19 +3001,16 @@ export default function PostJobPage() {
   };
 
   const updateBasicsPreview = () => {
-    let nextBudget = previewBudgetText;
-    const hasBudgetMin = budgetMin.trim().length > 0;
-    const hasBudgetMax = budgetMax.trim().length > 0;
-    const minNum = Number(budgetMin);
-    const maxNum = Number(budgetMax);
-    const budgetValid =
-      hasBudgetMin && hasBudgetMax && !Number.isNaN(minNum) && !Number.isNaN(maxNum) && maxNum >= minNum;
-
-    if (!hasBudgetMin && !hasBudgetMax) {
-      nextBudget = budgetIntentLabel(budgetIntent);
-    } else if (budgetValid) {
-      nextBudget = formatBudgetPreview(budgetMin, budgetMax, budgetUnit);
-    }
+    const nextBudget =
+      formatCompensationSummary({
+        mode: compensationMode,
+        minimum: budgetMin,
+        maximum: budgetMax,
+        currency: budgetCurrency,
+        unit: budgetUnit,
+        customUnit: budgetUnitCustom,
+        note: budgetNote,
+      }) || budgetIntentLabel(budgetIntent);
 
     let nextExperience = previewExperienceText;
     const hasExpMin = expMin.trim().length > 0;
@@ -2672,6 +3051,10 @@ export default function PostJobPage() {
       budgetMax,
       budgetIntent,
       budgetUnit,
+      budgetCurrency,
+      compensationMode,
+      budgetNote,
+      budgetUnitCustom,
       workMode,
       city,
       expMin,
@@ -2685,6 +3068,11 @@ export default function PostJobPage() {
       contentGenres,
       formatsHiredFor,
       turnaround,
+      engagementType,
+      expectedWeeklyHoursMin,
+      expectedWeeklyHoursMax,
+      primaryRoleId,
+      roleSpecialization,
       tools,
       languages,
     });
@@ -2749,6 +3137,12 @@ export default function PostJobPage() {
     budgetMax !== savedBasics.budgetMax ||
     budgetIntent !== savedBasics.budgetIntent ||
     budgetUnit !== savedBasics.budgetUnit ||
+    budgetCurrency !== savedBasics.budgetCurrency ||
+    compensationMode !== savedBasics.compensationMode ||
+    budgetNote !== savedBasics.budgetNote ||
+    budgetUnitCustom !== savedBasics.budgetUnitCustom ||
+    primaryRoleId !== savedBasics.primaryRoleId ||
+    roleSpecialization !== savedBasics.roleSpecialization ||
     workMode !== savedBasics.workMode ||
     city !== savedBasics.city ||
     expMin !== savedBasics.expMin ||
@@ -2762,6 +3156,10 @@ export default function PostJobPage() {
     startWithin !== savedBasics.startWithin ||
     turnaround?.value !== savedBasics.turnaround?.value ||
     turnaround?.unit !== savedBasics.turnaround?.unit ||
+    turnaround?.basis !== savedBasics.turnaround?.basis ||
+    engagementType !== savedBasics.engagementType ||
+    expectedWeeklyHoursMin !== savedBasics.expectedWeeklyHoursMin ||
+    expectedWeeklyHoursMax !== savedBasics.expectedWeeklyHoursMax ||
     JSON.stringify(languages) !== JSON.stringify(savedBasics.languages);
 
   const canSaveCreatorContext =
@@ -2889,6 +3287,48 @@ export default function PostJobPage() {
     return <PageLoading blocks={4} />;
   }
 
+  const selectedRoleName =
+    roles.find((role) => role.id === primaryRoleId)?.name ||
+    loadedJobRef.current?.primary_role_name_snapshot ||
+    null;
+  const previewProps = {
+    title,
+    employerName: activeHiringDisplayName,
+    employerAvatarUrl: activeHiringAvatarUrl,
+    employerVerificationStatus: activeHiringVerificationStatus || null,
+    roleName: selectedRoleName,
+    roleSpecialization,
+    employerContext: domain.employerContextType,
+    platform: platform || selectedJobPlatforms[0] || null,
+    compensationMode,
+    budgetMin,
+    budgetMax,
+    budgetCurrency,
+    budgetUnit: legacyBudgetUnit ? undefined : budgetUnit || undefined,
+    legacyBudgetUnit,
+    budgetUnitCustom,
+    budgetNote,
+    engagementType,
+    workMode,
+    location: workMode === "Remote" ? "Remote" : city,
+    expectedWeeklyHoursMin,
+    expectedWeeklyHoursMax,
+    turnaround,
+    about,
+    responsibilities,
+    legacyRequirements: requirements,
+    tools,
+    languages,
+    applicationRequirements,
+    howToApply: domain.howToApply,
+    tags,
+    contentNiches,
+    contentGenres,
+    formatsHiredFor,
+    referenceVideos: referenceVideosForPayload,
+    domain,
+  } as const;
+
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
       <HiringIdentityModal
@@ -2907,6 +3347,15 @@ export default function PostJobPage() {
         <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-start">
           <div className="min-w-0 space-y-6">
             {hiringIdentityPanel}
+
+            <details className="rounded-2xl border border-white/10 bg-white/[0.04] lg:hidden">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-white/86 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30">
+                Preview candidate view
+              </summary>
+              <div className="max-h-[70dvh] overflow-y-auto overscroll-contain border-t border-white/10 p-3">
+                <RecruiterJobPreview {...previewProps} previewMode="full" />
+              </div>
+            </details>
 
             {importMeta ? (
               <ImportReviewBanner
@@ -2938,57 +3387,204 @@ export default function PostJobPage() {
               onBack={goBack}
               basicsErrors={basicsErrorMap}
               title={title}
-              onTitleChange={setTitle}
+              onTitleChange={(next) => {
+                setTitle(next);
+                markPayloadDirty("title");
+              }}
+              roles={roles}
+              rolesLoading={rolesLoading}
+              rolesError={rolesError}
+              onRetryRoles={() => void loadCreatorRoles()}
+              primaryRoleId={primaryRoleId}
+              roleSpecialization={roleSpecialization}
+              onPrimaryRoleIdChange={(next) => {
+                setPrimaryRoleId(next);
+                const role = roles.find((item) => item.id === next);
+                if (role?.slug !== "other-creator-role" && role?.name !== "Other Creator Role") {
+                  setRoleSpecialization("");
+                }
+                markPayloadDirty("primary_role_id", "role_specialization");
+              }}
+              onRoleSpecializationChange={(next) => {
+                setRoleSpecialization(next);
+                markPayloadDirty("role_specialization");
+              }}
               workMode={workMode}
-              onWorkModeChange={setWorkMode}
+              onWorkModeChange={(next) => {
+                setWorkMode(next);
+                markPayloadDirty("work_mode", "location");
+              }}
               city={city}
-              onCityChange={setCity}
+              onCityChange={(next) => {
+                setCity(next);
+                markPayloadDirty("location");
+              }}
               budgetMin={budgetMin}
               budgetMax={budgetMax}
               budgetIntent={budgetIntent}
               budgetUnit={budgetUnit}
+              budgetCurrency={budgetCurrency}
+              compensationMode={compensationMode}
+              budgetNote={budgetNote}
+              budgetUnitCustom={budgetUnitCustom}
               onBudgetMinChange={(next) => {
                 setBudgetMin(next);
+                markPayloadDirty("budget_amount", "budget_max", "compensation_mode");
                 if (!next && !budgetMax) setBudgetIntent("");
+                if (next && !compensationMode) setCompensationMode("fixed");
               }}
               onBudgetMaxChange={(next) => {
                 setBudgetMax(next);
+                markPayloadDirty("budget_max", "compensation_mode");
                 if (!budgetMin && !next) setBudgetIntent("");
+                if (next) setCompensationMode("range");
               }}
-              onBudgetIntentChange={setBudgetIntent}
-              onBudgetUnitChange={setBudgetUnit}
+              onBudgetIntentChange={(next) => {
+                setBudgetIntent(next);
+                markPayloadDirty("compensation_mode", "budget_note");
+              }}
+              onBudgetUnitChange={(next) => {
+                setBudgetUnit(next);
+                setLegacyBudgetUnit(null);
+                markPayloadDirty("budget_unit", "budget_unit_custom");
+              }}
+              onBudgetCurrencyChange={(next) => {
+                setBudgetCurrency(next);
+                markPayloadDirty("budget_currency");
+              }}
+              onCompensationModeChange={(next) => {
+                setCompensationMode(next);
+                markPayloadDirty("compensation_mode", "budget_amount", "budget_max");
+                if (next === "fixed") setBudgetMax("");
+                if (next === "negotiable") {
+                  setBudgetMin("");
+                  setBudgetMax("");
+                }
+              }}
+              onBudgetNoteChange={(next) => {
+                setBudgetNote(next);
+                markPayloadDirty("budget_note");
+              }}
+              onBudgetUnitCustomChange={(next) => {
+                setBudgetUnitCustom(next);
+                markPayloadDirty("budget_unit_custom");
+              }}
               expMin={expMin}
               expMax={expMax}
-              onExpMinChange={setExpMin}
-              onExpMaxChange={setExpMax}
+              onExpMinChange={(next) => {
+                setExpMin(next);
+                markPayloadDirty("experience_level");
+              }}
+              onExpMaxChange={(next) => {
+                setExpMax(next);
+                markPayloadDirty("experience_level");
+              }}
               startWithin={startWithin}
-              onStartWithinChange={setStartWithin}
+              onStartWithinChange={(next) => {
+                setStartWithin(next);
+                markPayloadDirty("start_timeframe");
+              }}
               platforms={selectedJobPlatforms}
               onPlatformToggle={togglePlatformSelection}
               contentNiches={contentNiches}
-              onContentNichesChange={(next) => setContentNiches(normalizeCreatorContextList(next))}
+              onContentNichesChange={(next) => {
+                setContentNiches(normalizeCreatorContextList(next));
+                markPayloadDirty("content_niches");
+              }}
               contentGenres={contentGenres}
-              onContentGenresChange={(next) => setContentGenres(normalizeCreatorContextList(next))}
+              onContentGenresChange={(next) => {
+                setContentGenres(normalizeCreatorContextList(next));
+                markPayloadDirty("content_genres");
+              }}
               formatsHiredFor={formatsHiredFor}
-              onFormatsHiredForChange={(next) => setFormatsHiredFor(normalizeCreatorContextList(next))}
+              onFormatsHiredForChange={(next) => {
+                setFormatsHiredFor(normalizeCreatorContextList(next));
+                markPayloadDirty("formats_hired_for");
+              }}
               turnaround={turnaround}
-              onTurnaroundChange={setTurnaround}
+              onTurnaroundChange={(next) => {
+                setTurnaround(next);
+                markPayloadDirty("turnaround_value", "turnaround_unit", "turnaround_basis");
+                setDomainErrors((previous) => {
+                  const updated = { ...previous };
+                  delete updated.turnaround_value;
+                  delete updated.turnaround_unit;
+                  delete updated.turnaround_basis;
+                  return updated;
+                });
+              }}
+              engagementType={engagementType}
+              onEngagementTypeChange={(next) => {
+                setEngagementType(next);
+                markPayloadDirty("engagement_type");
+                setDomainErrors((previous) => {
+                  const updated = { ...previous };
+                  delete updated.engagement_type;
+                  return updated;
+                });
+              }}
+              expectedWeeklyHoursMin={expectedWeeklyHoursMin}
+              expectedWeeklyHoursMax={expectedWeeklyHoursMax}
+              onExpectedWeeklyHoursMinChange={(next) => {
+                setExpectedWeeklyHoursMin(next);
+                markPayloadDirty("expected_weekly_hours_min");
+                setDomainErrors((previous) => {
+                  const updated = { ...previous };
+                  delete updated.expected_weekly_hours_min;
+                  return updated;
+                });
+              }}
+              onExpectedWeeklyHoursMaxChange={(next) => {
+                setExpectedWeeklyHoursMax(next);
+                markPayloadDirty("expected_weekly_hours_max");
+                setDomainErrors((previous) => {
+                  const updated = { ...previous };
+                  delete updated.expected_weekly_hours_max;
+                  return updated;
+                });
+              }}
               tools={tools}
-              onToolsChange={setTools}
+              onToolsChange={(next) => {
+                setTools(next);
+                setToolsConfirmed(true);
+                setLegacyToolsNotCaptured(false);
+                markPayloadDirty("required_tool_keys", "other_required_tools");
+              }}
               languages={languages}
-              onLanguagesChange={setLanguages}
+              onLanguagesChange={(next) => {
+                setLanguages(next);
+                markPayloadDirty("languages");
+              }}
               about={about}
               responsibilities={responsibilities}
               requirements={requirements}
               howToApply={howToApply}
-              onAboutChange={setAbout}
-              onResponsibilitiesChange={setResponsibilities}
-              onRequirementsChange={setRequirements}
-              onHowToApplyChange={setHowToApply}
+              onAboutChange={(next) => {
+                setAbout(next);
+                markPayloadDirty("about_channel");
+              }}
+              onResponsibilitiesChange={(next) => {
+                setResponsibilities(next);
+                markPayloadDirty("responsibilities");
+              }}
+              onRequirementsChange={(next) => {
+                setRequirements(next);
+                markPayloadDirty("requirements");
+              }}
+              onHowToApplyChange={(next) => {
+                setHowToApply(next);
+                markPayloadDirty("how_to_apply", "application_requirements");
+              }}
               applicationRequirements={applicationRequirements}
-              onApplicationRequirementsChange={setApplicationRequirements}
+              onApplicationRequirementsChange={(next) => {
+                setApplicationRequirements(next);
+                markPayloadDirty("application_requirements");
+              }}
               noFirstMessageRequirements={noFirstMessageRequirements}
-              onNoFirstMessageRequirementsChange={setNoFirstMessageRequirements}
+              onNoFirstMessageRequirementsChange={(next) => {
+                setNoFirstMessageRequirements(next);
+                markPayloadDirty("application_requirements");
+              }}
               firstMessageError={firstMessageError || undefined}
               tagInput={tagInput}
               tags={tags}
@@ -3001,10 +3597,22 @@ export default function PostJobPage() {
               refTimestampNotes={refTimestampNotes || []}
               refUrlError={refUrlError || undefined}
               refVideos={refVideos}
-              onRefTitleChange={setRefTitle}
-              onRefUrlChange={setRefUrl}
-              onRefWhatToReferenceChange={setRefWhatToReference}
-              onRefTimestampNotesChange={setRefTimestampNotes}
+              onRefTitleChange={(next) => {
+                setRefTitle(next);
+                markPayloadDirty("reference_videos");
+              }}
+              onRefUrlChange={(next) => {
+                setRefUrl(next);
+                markPayloadDirty("reference_videos");
+              }}
+              onRefWhatToReferenceChange={(next) => {
+                setRefWhatToReference(next);
+                markPayloadDirty("reference_videos");
+              }}
+              onRefTimestampNotesChange={(next) => {
+                setRefTimestampNotes(next);
+                markPayloadDirty("reference_videos");
+              }}
               onAddRefVideo={addRefVideo}
               onRemoveRefVideo={removeRefVideo}
               onUpdateRefVideo={updateRefVideo}
@@ -3029,34 +3637,31 @@ export default function PostJobPage() {
               isSubmitting={isSubmitting}
               isRepresentedHiringIdentity={activeHiringIsRepresented}
               publishDisabled={false}
+              saveDraftLabel={loadedJobStatus === "published" ? "Save changes" : "Save draft"}
+              publishLabel={loadedJobStatus === "published" ? "Update listing" : "Publish job"}
+              domain={domain}
+              onDomainChange={updateDomain}
+              domainErrors={domainErrors}
+              listingSchemaVersion={loadedSchemaVersion}
+              selectedRoleName={selectedRoleName}
+              legacyToolsNotCaptured={legacyToolsNotCaptured}
+              legacyBudgetUnit={legacyBudgetUnit}
+              reviewPreview={<RecruiterJobPreview {...previewProps} previewMode="full" />}
             />
           </div>
 
-          <div className="space-y-6">
-            <PreviewCard
-              title={title}
-              channelName={activeHiringDisplayName}
-              subsText={subsText}
-              budgetText={previewBudgetText}
-              experienceText={previewExperienceText}
-              locationText={previewLocationText}
-              tags={tags}
-              contentNiches={contentNiches}
-              contentGenres={contentGenres}
-              formatsHiredFor={formatsHiredFor}
-              platform={platform}
-              profileImageUrl={activeHiringAvatarUrl}
-            />
-
+          <div className="sticky top-6 hidden space-y-6 lg:block">
+            <RecruiterJobPreview {...previewProps} previewMode="rail" />
             <PostJobSafety />
+            <RecommendedChecklistPopup
+              items={jobQualityItems}
+              onSelect={goToJobQualityItem}
+              ariaLabel="Recommended job listing details"
+              layout="inline"
+            />
           </div>
         </div>
       </div>
-      <RecommendedChecklistPopup
-        items={jobQualityItems}
-        onSelect={goToJobQualityItem}
-        ariaLabel="Recommended job listing details"
-      />
       <PublishReadyDialog
         open={publishReadyOpen}
         missing={missingJobQualityItems}

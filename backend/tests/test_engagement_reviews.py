@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 
 from app.models import Engagement, EngagementReview
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, create_valid_published_job
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -41,15 +41,10 @@ async def _hired_application(
 ) -> tuple[str, str, str, str, str]:
     recruiter_token, recruiter_name = await _register(client, f"{prefix}_recruiter")
     talent_token, talent_name = await _register(client, f"{prefix}_talent")
-    job = await client.post(
-        "/api/v1/jobs",
-        headers=_auth(recruiter_token),
-        json={
-            "title": f"{prefix} creator editor",
-            "category": "Editing",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        recruiter_token,
+        title=f"{prefix} creator editor",
     )
     assert job.status_code == 201, job.text
     application = await client.post(

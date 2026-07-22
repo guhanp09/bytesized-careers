@@ -10,6 +10,8 @@ import {
   summarizeAnswers,
 } from "../../lib/firstMessageRequirements";
 import type { BackendPortfolioItem } from "../../lib/backendClient";
+import { SCREENING_ANSWERS_KEY } from "../../lib/jobApplication";
+import { applicationRequirementLabel } from "../../lib/jobPresentation";
 import { Icon } from "../Icons";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 
@@ -60,8 +62,10 @@ function portfolioItemFromSummaryLink(link: SummaryLink): BackendPortfolioItem {
     timestamp_notes: link.timestampNotes ?? [],
     status: "past",
     is_public: true,
-    created_at: "2026-01-01T00:00:00.000Z",
-    updated_at: "2026-01-01T00:00:00.000Z",
+    // Opening-message references do not carry portfolio timestamps. Empty values
+    // keep the shared popover from presenting a fabricated publication date.
+    created_at: "",
+    updated_at: "",
   };
 }
 
@@ -195,7 +199,21 @@ export default function FirstMessageSummary({
   if (!answers || typeof answers !== "object" || Array.isArray(answers)) return null;
   const keys = requirementKeys?.length ? requirementKeys : Object.keys(answers);
   const items = summarizeAnswers(keys, context, answers);
-  if (!items.length) return null;
+  const rawScreening = answers[SCREENING_ANSWERS_KEY];
+  const screeningAnswers = Array.isArray(rawScreening)
+    ? rawScreening.filter(
+        (value): value is { question_index: number; prompt: string; required: boolean; response: string; response_guidance?: string | null } =>
+          Boolean(value) &&
+          typeof value === "object" &&
+          typeof (value as { prompt?: unknown }).prompt === "string" &&
+          typeof (value as { response?: unknown }).response === "string",
+      )
+    : [];
+  const knownKeys = new Set(items.map((item) => item.key));
+  const additionalAnswers = Object.entries(answers)
+    .filter(([key, value]) => key !== SCREENING_ANSWERS_KEY && !knownKeys.has(key) && typeof value === "string" && value.trim())
+    .map(([key, value]) => ({ key, label: applicationRequirementLabel(key), response: String(value).trim() }));
+  if (!items.length && !screeningAnswers.length && !additionalAnswers.length) return null;
 
   // Both link-card sections open the one shared detail popover on click.
   const openLinkPopup = (link: SummaryLink, target: HTMLElement, point: { x: number; y: number }) => {
@@ -379,6 +397,51 @@ export default function FirstMessageSummary({
               </span>
             ) : null}
           </div>
+        </div>
+      ),
+    });
+  }
+
+  if (screeningAnswers.length) {
+    sections.push({
+      key: "screening-questions",
+      node: (
+        <div className="px-4 py-3">
+          <span className={`mb-3 block ${SECTION_LABEL}`}>Screening questions</span>
+          <ol className="space-y-3">
+            {screeningAnswers.map((answer, index) => (
+              <li key={`${answer.question_index}-${answer.prompt}-${index}`} className="min-w-0">
+                <p className="break-words text-[12px] leading-relaxed text-white/48">
+                  {answer.prompt}
+                  <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-white/30">
+                    {answer.required ? "Required" : "Optional"}
+                  </span>
+                </p>
+                <p className={answer.response.trim() ? "mt-1.5 border-l-2 border-blue-400/40 pl-3 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/85" : "mt-1.5 border-l-2 border-white/10 pl-3 text-[12px] italic text-white/38"}>
+                  {answer.response.trim() || "No optional answer provided"}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ),
+    });
+  }
+
+  if (additionalAnswers.length) {
+    sections.push({
+      key: "additional-details",
+      node: (
+        <div className="px-4 py-3">
+          <span className={`mb-3 block ${SECTION_LABEL}`}>Additional details</span>
+          <dl className="space-y-3">
+            {additionalAnswers.map((answer) => (
+              <div key={answer.key}>
+                <dt className="text-[12px] text-white/45">{answer.label}</dt>
+                <dd className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/85">{answer.response}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       ),
     });

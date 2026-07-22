@@ -7,7 +7,7 @@ from conftest import TestSessionLocal
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models import EmailVerificationToken, HiringIdentity, User
+from app.models import EmailVerificationToken, HiringIdentity, Job, User
 from app.services.profile_service import (
     HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR,
     ProfileService,
@@ -187,31 +187,29 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
     )
     assert update_privacy.status_code == 200
 
-    active_job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {bearer}"},
-        json={
-            "title": "Active profile job",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["instagram"],
-            "status": "published",
-        },
-    )
-    assert active_job.status_code == 201
-
-    past_job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {bearer}"},
-        json={
-            "title": "Past profile job",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["instagram"],
-            "status": "archived",
-        },
-    )
-    assert past_job.status_code == 201
+    async with TestSessionLocal() as session:
+        owner = (await session.execute(select(User).where(User.username == "public_owner"))).scalar_one()
+        session.add_all(
+            [
+                Job(
+                    title="Active profile job",
+                    category="Editing",
+                    listing_schema_version=1,
+                    platforms=["instagram"],
+                    posted_by_user_id=owner.id,
+                    status="published",
+                ),
+                Job(
+                    title="Past profile job",
+                    category="Editing",
+                    listing_schema_version=1,
+                    platforms=["instagram"],
+                    posted_by_user_id=owner.id,
+                    status="archived",
+                ),
+            ]
+        )
+        await session.commit()
 
     pending_identity = await client.post(
         "/api/v1/me/hiring-identities",
@@ -294,7 +292,7 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
     assert data["experience"][0]["role"] == "Video Editor"
     assert data["experience"][0]["organization_name"] == "Finance Creator"
     assert len(data["jobs_active"]) >= 1
-    assert len(data["jobs_past"]) >= 1
+    assert len(data["jobs_past"]) == 0
     assert any(item["title"] == "Current brand reel" for item in data["portfolio_now"])
     assert len(data["portfolio_past"]) == 0
     assert any(
@@ -303,7 +301,7 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
         for item in data["represented_channels"]
     )
     assert all(item["name"] != "Pending Creator Page" for item in data["represented_channels"])
-    assert data["stats"]["jobs_posted_count"] >= 2
+    assert data["stats"]["jobs_posted_count"] >= 1
     assert data["stats"]["projects_count"] >= 1
     assert data["reviews"]["review_count"] == 0
 
@@ -315,7 +313,7 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
     public_jobs_past = await client.get("/api/v1/users/public_owner/jobs?tab=past")
     assert public_jobs_past.status_code == 200
     assert public_jobs_past.json()["tab"] == "past"
-    assert len(public_jobs_past.json()["items"]) >= 1
+    assert len(public_jobs_past.json()["items"]) == 0
 
     public_portfolio_now = await client.get("/api/v1/users/public_owner/portfolio?tab=now")
     assert public_portfolio_now.status_code == 200

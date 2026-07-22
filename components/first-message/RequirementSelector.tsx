@@ -26,6 +26,7 @@ export default function RequirementSelector({
   customInstructionValue = "",
   onCustomInstructionChange,
   customInstructionError,
+  hideCustomInstruction = false,
 }: {
   context: RequirementContext;
   selectedKeys: string[];
@@ -35,8 +36,11 @@ export default function RequirementSelector({
   customInstructionValue?: string;
   onCustomInstructionChange?: (next: string) => void;
   customInstructionError?: string;
+  hideCustomInstruction?: boolean;
 }) {
-  const defs = requirementsForContext(context);
+  const defs = requirementsForContext(context).filter(
+    (definition) => !hideCustomInstruction || definition.key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY
+  );
   const selected = new Set(selectedKeys);
   const customInstructionSelected = selected.has(CUSTOM_INSTRUCTION_REQUIREMENT_KEY);
 

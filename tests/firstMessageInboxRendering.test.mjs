@@ -311,7 +311,7 @@ test("FirstMessageSummary carries no wrapper or explanatory labels", () => {
 
 test("FirstMessageSummary renders nothing without structured answers", () => {
   const source = read("components/first-message/FirstMessageSummary.tsx");
-  assert.match(source, /if \(!items\.length\) return null;/);
+  assert.match(source, /if \(!items\.length && !screeningAnswers\.length && !additionalAnswers\.length\) return null;/);
   assert.match(source, /Array\.isArray\(answers\)\) return null;/);
 });
 

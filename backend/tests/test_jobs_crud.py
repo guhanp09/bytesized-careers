@@ -8,7 +8,7 @@ from conftest import TestSessionLocal
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models import HiringIdentity
+from app.models import HiringIdentity, Role
 
 
 async def _create_oauth_user(client: AsyncClient, *, email: str, provider_id: str) -> tuple[str, str]:
@@ -28,8 +28,46 @@ async def _create_oauth_user(client: AsyncClient, *, email: str, provider_id: st
     return data["access_token"], data["user"]["id"]
 
 
+async def _video_editor_role_id() -> str:
+    async with TestSessionLocal() as session:
+        role = (await session.execute(select(Role).where(Role.name == "Video Editor"))).scalar_one_or_none()
+        if role is None:
+            role = Role(name="Video Editor", category="Production", is_active=True)
+            session.add(role)
+            await session.commit()
+            await session.refresh(role)
+        return str(role.id)
+
+
+async def _valid_publish_fields() -> dict[str, object]:
+    return {
+        "primary_role_id": await _video_editor_role_id(),
+        "engagement_type": "one_time_project",
+        "work_mode": "remote",
+        "start_timeframe": "ASAP",
+        "compensation_mode": "range",
+        "budget_amount": 1000,
+        "budget_max": 1500,
+        "budget_currency": "USD",
+        "budget_unit": "per video",
+        "deliverables": [
+            {"type": "long_form_video", "quantity": 1, "frequency": "per_week"}
+        ],
+        "turnaround_value": 5,
+        "turnaround_unit": "business_days",
+        "turnaround_basis": "first_draft",
+        "about_channel": "A creator-led channel publishing thoughtful weekly videos.",
+        "responsibilities": ["Edit polished creator videos"],
+        "requirements": ["Strong pacing and storytelling judgment"],
+    }
+
+
 async def test_create_and_fetch_job(client: AsyncClient) -> None:
+    bearer, _ = await _create_oauth_user(
+        client, email="jobs-create-fetch@example.com", provider_id="google-jobs-create-fetch"
+    )
     payload = {
+        **(await _valid_publish_fields()),
         "title": "Senior Video Editor",
         "category": "Editing",
         "location": "Remote",
@@ -61,7 +99,9 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
         "status": "published",
     }
 
-    create_response = await client.post("/api/v1/jobs", json=payload)
+    create_response = await client.post(
+        "/api/v1/jobs", headers={"Authorization": f"Bearer {bearer}"}, json=payload
+    )
     assert create_response.status_code == 201
     created = create_response.json()
     assert created["title"] == payload["title"]
@@ -95,6 +135,9 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
 
 
 async def test_job_budget_note_persists_for_contact_pricing(client: AsyncClient) -> None:
+    bearer, _ = await _create_oauth_user(
+        client, email="jobs-contact-draft@example.com", provider_id="google-jobs-contact-draft"
+    )
     payload = {
         "title": "Creator partnerships lead",
         "category": "Strategy",
@@ -109,16 +152,17 @@ async def test_job_budget_note_persists_for_contact_pricing(client: AsyncClient)
         "status": "draft",
     }
 
-    create_response = await client.post("/api/v1/jobs", json=payload)
+    headers = {"Authorization": f"Bearer {bearer}"}
+    create_response = await client.post("/api/v1/jobs", headers=headers, json=payload)
     assert create_response.status_code == 201
     created = create_response.json()
     assert created["budget_amount"] is None
     assert created["budget_max"] is None
     assert created["budget_note"] == "Contact for pricing"
 
-    get_response = await client.get(f"/api/v1/jobs/{created['id']}")
-    assert get_response.status_code == 200
-    fetched = get_response.json()
+    assert (await client.get(f"/api/v1/jobs/{created['id']}")).status_code == 404
+    owner_response = await client.get("/api/v1/me/jobs", headers=headers)
+    fetched = next(item for item in owner_response.json() if item["id"] == created["id"])
     assert fetched["budget_note"] == "Contact for pricing"
 
 async def test_authenticated_create_sets_posted_by_user_id(client: AsyncClient) -> None:
@@ -132,6 +176,7 @@ async def test_authenticated_create_sets_posted_by_user_id(client: AsyncClient) 
         "/api/v1/jobs",
         headers={"Authorization": f"Bearer {bearer}"},
         json={
+            **(await _valid_publish_fields()),
             "title": "Authenticated Instagram Editor",
             "category": "Editing",
             "location": "Remote",
@@ -160,6 +205,7 @@ async def test_job_update_and_delete_require_owner(client: AsyncClient) -> None:
         "/api/v1/jobs",
         headers={"Authorization": f"Bearer {owner_bearer}"},
         json={
+            **(await _valid_publish_fields()),
             "title": "Owned Instagram Editor",
             "category": "Editing",
             "location": "Remote",
@@ -301,6 +347,7 @@ async def test_job_create_with_hiring_identity_requires_owner_and_snapshots(clie
         "/api/v1/jobs",
         headers={"Authorization": f"Bearer {owner_bearer}"},
         json={
+            **(await _valid_publish_fields()),
             "title": "Represented channel editor",
             "category": "Editing",
             "location": "Remote",
@@ -330,15 +377,17 @@ async def test_job_application_requirements_persist_and_round_trip(client: Async
         "turnaround",
         "fit_note",
     ]
+    bearer, _ = await _create_oauth_user(
+        client, email="job-requirements@example.com", provider_id="google-job-requirements"
+    )
+    headers = {"Authorization": f"Bearer {bearer}"}
     create_response = await client.post(
         "/api/v1/jobs",
+        headers=headers,
         json={
-            "title": "Finance channel editor",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
+            "title": "Finance channel editor draft",
             "application_requirements": requirements,
-            "status": "published",
+            "status": "draft",
         },
     )
     assert create_response.status_code == 201
@@ -346,20 +395,23 @@ async def test_job_application_requirements_persist_and_round_trip(client: Async
     assert created["application_requirements"] == requirements
 
     job_id = created["id"]
-    fetched = (await client.get(f"/api/v1/jobs/{job_id}")).json()
+    fetched = next(
+        item for item in (await client.get("/api/v1/me/jobs", headers=headers)).json() if item["id"] == job_id
+    )
     assert fetched["application_requirements"] == requirements
 
 
 async def test_job_without_application_requirements_defaults_to_empty(client: AsyncClient) -> None:
     """Backward compatibility: jobs created without optional list fields report empty lists."""
+    bearer, _ = await _create_oauth_user(
+        client, email="job-empty-requirements@example.com", provider_id="google-job-empty-requirements"
+    )
     create_response = await client.post(
         "/api/v1/jobs",
+        headers={"Authorization": f"Bearer {bearer}"},
         json={
             "title": "Legacy job without requirements",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
+            "status": "draft",
         },
     )
     assert create_response.status_code == 201

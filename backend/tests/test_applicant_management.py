@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from httpx import AsyncClient
 
+from conftest import create_valid_published_job
+
 
 async def _register_verified_login(
     client: AsyncClient,
@@ -33,17 +35,7 @@ async def _register_verified_login(
 
 
 async def _published_job(client: AsyncClient, owner_token: str, title: str = "Long-form gaming editor") -> str:
-    job_response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": title,
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
-    )
+    job_response = await create_valid_published_job(client, owner_token, title=title)
     assert job_response.status_code == 201
     return job_response.json()["id"]
 

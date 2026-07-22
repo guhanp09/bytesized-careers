@@ -22,6 +22,7 @@ export type ToolIconName =
   | "image";
 
 export type ToolCatalogEntry = {
+  key: string;
   name: string;
   aliases: string[];
   logoKey: string;
@@ -38,6 +39,7 @@ const entry = (
   aliases: string[] = [],
   iconName?: ToolIconName
 ): ToolCatalogEntry => ({
+  key: logoKey,
   name,
   aliases,
   logoKey,

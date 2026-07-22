@@ -28,10 +28,10 @@ test.describe("phase 3b detail and post surface polish", () => {
     await page.goto("/jobs/1");
 
     await expect(page.getByRole("heading", { name: /Video editor for YouTube/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "About the brand" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "About the opportunity" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Creator context" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Reference videos" })).toBeVisible();
-    const referenceRail = page.getByLabel("Reference videos");
+    const referenceRail = page.getByRole("region", { name: "Reference videos" });
     await expect(referenceRail).toBeVisible();
     await expect(referenceRail).toContainText("Pacing + retention reference");
     await expect(referenceRail).toContainText("Clean captions + sound style");
@@ -124,10 +124,10 @@ test.describe("phase 3b detail and post surface polish", () => {
       safetyBounds?.y ?? Number.NEGATIVE_INFINITY
     );
     await expect(postedByCard.getByRole("heading", { name: "Posted by" })).toHaveClass(/sr-only/);
-    await expect(postedByCard.getByText("Example Creator Agency")).toBeVisible();
-    await expect(postedByCard.getByText(/Agency · Hiring for Finance/)).toBeVisible();
-    await expect(postedByCard.getByText("No reviews yet")).toBeVisible();
-    await expect(postedByCard.getByRole("link", { name: "Example Creator Agency" })).toHaveAttribute(
+    await expect(postedByCard.getByText(/Hiring on behalf of Finance Channel/)).toBeVisible();
+    await expect(postedByCard.getByText("Managed by Example Creator Agency")).toBeVisible();
+    await expect(postedByCard.getByText("No reviews yet")).toHaveCount(0);
+    await expect(postedByCard.getByRole("link", { name: /Open Example Creator Agency CreatorJobs profile/ })).toHaveAttribute(
       "href",
       "/u/example-agency?view=hiring"
     );
@@ -138,13 +138,15 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(channelRating).toContainText("(5)");
     await expect(channelRating).toHaveAttribute("href", "/u/finance-creator?view=hiring&tab=reviews");
     await expect(page.locator("body")).toContainText("Safety & expectations");
-    await expect(page.locator("body")).toContainText("82%");
+    const transparencyCard = page.getByTestId("job-transparency-card");
+    await expect(transparencyCard).toContainText("not a safety or quality score");
+    await expect(transparencyCard).not.toContainText(/trust score|safety score:\s*\d/i);
     await expect(page.locator("body")).toContainText(/Report this listing|Report listing/);
     const reportBounds = await page.getByRole("button", { name: /Report this listing|Report listing/ }).boundingBox();
     expect(reportBounds?.y ?? Number.POSITIVE_INFINITY).toBeGreaterThan(
       safetyBounds?.y ?? Number.NEGATIVE_INFINITY
     );
-    await expect(page.locator("body")).not.toContainText(/Start:|USD|\$[0-9]|Proof/i);
+    await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
     await expect(postedByCard).not.toContainText(/★★★★★|[1-9][0-9]* reviews as recruiter/);
   });
 
@@ -153,19 +155,19 @@ test.describe("phase 3b detail and post surface polish", () => {
 
     const postedByCard = page.getByTestId("posted-by-card");
     await expect(postedByCard.getByRole("heading", { name: "Posted by" })).toHaveClass(/sr-only/);
-    await expect(postedByCard.getByRole("link", { name: "Edu Hindi" })).toHaveAttribute(
+    await expect(postedByCard.getByRole("link", { name: /Open Edu Hindi CreatorJobs profile/ })).toHaveAttribute(
       "href",
       "/u/edu-hindi?view=hiring"
     );
-    await expect(postedByCard.getByText("Creator", { exact: true })).toBeVisible();
-    await expect(postedByCard.getByText("No reviews yet")).toBeVisible();
+    await expect(postedByCard.getByText("Hiring directly · Creator", { exact: true })).toBeVisible();
+    await expect(postedByCard.getByText("No reviews yet")).toHaveCount(0);
     await expect(postedByCard).not.toContainText("Posted by agency");
     await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
     const channelRating = page.getByTestId("job-channel-rating");
     await expect(channelRating).toBeVisible();
     await expect(channelRating).toHaveAttribute("href", "/u/edu-hindi?view=hiring&tab=reviews");
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await postedByCard.getByRole("link", { name: "Edu Hindi" }).click();
+    await postedByCard.getByRole("link", { name: /Open Edu Hindi CreatorJobs profile/ }).click();
     await expect(page).toHaveURL(/\/u\/edu-hindi\?view=hiring$/);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
@@ -187,12 +189,12 @@ test.describe("phase 3b detail and post surface polish", () => {
 
     const zeroJobCard = page.getByRole("link").filter({ hasText: "Designer for explainer diagrams + simple motion overlays" }).first();
     await expect(zeroJobCard).toBeVisible();
-    await expect(zeroJobCard).toContainText("Currently viewing");
+    await expect(zeroJobCard).toContainText("Views");
     await expect(zeroJobCard).toContainText("0%");
 
     await page.goto("/jobs/15");
     await expect(page.getByRole("heading", { name: /Designer for explainer diagrams/i })).toBeVisible();
-    await expect(page.locator("body")).toContainText("Currently viewing");
+    await expect(page.locator("body")).toContainText("Views");
     await expect(page.locator("body")).toContainText("0");
     await expect(page.locator("body")).toContainText("Response rate");
     await expect(page.locator("body")).toContainText("0%");
@@ -272,7 +274,7 @@ test.describe("phase 3b detail and post surface polish", () => {
     await expect(page.getByRole("heading", { name: "Who are you hiring for?" })).toBeVisible();
     await expect(page.locator("body")).toContainText("Hiring for");
     await expect(page.locator("body")).toContainText(/Save draft|Safety & expectations/);
-    await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Coming soon/);
+    await expect(page.locator("body")).not.toContainText(/\$[0-9]|Coming soon/);
     await expect(page.locator("body")).not.toContainText(/Creator-led media|Monthly/);
     await expect(page.locator("body")).not.toContainText(/^Editing$/);
 

@@ -231,7 +231,7 @@ async def require_job_owner(
     service: JobService = Depends(get_job_service),
 ) -> Job:
     try:
-        job = await service.get_job(job_id)
+        job = await service.get_job_internal(job_id)
     except JobNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

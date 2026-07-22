@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useIsPresent } from "framer-motion";
+import { motion, useIsPresent, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
 
 /**
@@ -41,21 +41,33 @@ export function AnimatedStep({
   direction,
   className,
   children,
+  flowLayout = false,
 }: {
   direction: StepDirection;
   className?: string;
   children: ReactNode;
+  flowLayout?: boolean;
 }) {
   const isPresent = useIsPresent();
+  const prefersReducedMotion = useReducedMotion();
+  const variants = prefersReducedMotion
+    ? {
+        enter: { opacity: 1 },
+        center: { opacity: 1, transition: { duration: 0 } },
+        exit: { opacity: 0, transition: { duration: 0 } },
+      }
+    : stepTransitionVariants;
   return (
     <motion.div
-      className={["absolute inset-0", isPresent ? "" : "pointer-events-none", className || ""].join(" ")}
+      className={[flowLayout ? "relative" : "absolute inset-0", isPresent ? "" : "pointer-events-none", className || ""].join(" ")}
       style={{ zIndex: isPresent ? 1 : 2 }}
+      aria-hidden={!isPresent}
+      inert={!isPresent}
       custom={direction}
       initial="enter"
       animate="center"
       exit="exit"
-      variants={stepTransitionVariants}
+      variants={variants}
     >
       {children}
     </motion.div>

@@ -369,6 +369,127 @@ def _assert_first_message_complete(
         )
 
 
+SCREENING_QUESTIONS_ANSWER_KEY = "screening_questions"
+SCREENING_RESPONSE_MAX_LENGTH = 5000
+
+
+def _application_validation_error(
+    *,
+    code: str,
+    message: str,
+    field_errors: dict[str, list[str]] | None = None,
+) -> HTTPException:
+    detail: dict[str, object] = {"code": code, "message": message}
+    if field_errors:
+        detail["field_errors"] = field_errors
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=detail,
+    )
+
+
+def _normalize_screening_question_answers(
+    questions: list[dict[str, object]] | None,
+    answers: dict,
+) -> None:
+    """Validate candidate screening responses and replace client metadata.
+
+    Screening responses share the existing first-message JSON envelope so the
+    application remains migration-free. Clients submit entries shaped as
+    ``{"question_index": 0, "response": "..."}``. Prompt text, required state,
+    and response guidance are always rebuilt from the job: a caller cannot forge
+    the question that recruiters later see in the application summary.
+    """
+
+    canonical_questions = [question for question in questions or [] if isinstance(question, dict)]
+    if not canonical_questions:
+        answers.pop(SCREENING_QUESTIONS_ANSWER_KEY, None)
+        return
+
+    raw_entries = answers.get(SCREENING_QUESTIONS_ANSWER_KEY, [])
+    field_errors: dict[str, list[str]] = {}
+    responses_by_index: dict[int, str] = {}
+
+    if not isinstance(raw_entries, list):
+        field_errors[f"first_message_answers.{SCREENING_QUESTIONS_ANSWER_KEY}"] = [
+            "Screening question answers must be a list."
+        ]
+        raw_entries = []
+
+    for position, entry in enumerate(raw_entries):
+        entry_field = (
+            f"first_message_answers.{SCREENING_QUESTIONS_ANSWER_KEY}.{position}"
+        )
+        if not isinstance(entry, dict):
+            field_errors[entry_field] = ["Use a structured screening question answer."]
+            continue
+
+        question_index = entry.get("question_index")
+        if (
+            isinstance(question_index, bool)
+            or not isinstance(question_index, int)
+            or question_index < 0
+            or question_index >= len(canonical_questions)
+        ):
+            field_errors[f"{entry_field}.question_index"] = [
+                "Select a valid screening question."
+            ]
+            continue
+        if question_index in responses_by_index:
+            field_errors[f"{entry_field}.question_index"] = [
+                "Answer each screening question only once."
+            ]
+            continue
+
+        response = entry.get("response", "")
+        if not isinstance(response, str):
+            field_errors[f"{entry_field}.response"] = ["Enter a text response."]
+            continue
+        normalized_response = response.strip()
+        if len(normalized_response) > SCREENING_RESPONSE_MAX_LENGTH:
+            field_errors[f"{entry_field}.response"] = [
+                f"Keep the response under {SCREENING_RESPONSE_MAX_LENGTH} characters."
+            ]
+            continue
+        responses_by_index[question_index] = normalized_response
+
+    snapshots: list[dict[str, object]] = []
+    for question_index, question in enumerate(canonical_questions):
+        prompt = str(question.get("prompt") or "").strip()
+        required = bool(question.get("required", True))
+        response_guidance = str(question.get("response_guidance") or "").strip() or None
+        response = responses_by_index.get(question_index, "")
+        if required and not response:
+            field_errors[
+                f"first_message_answers.{SCREENING_QUESTIONS_ANSWER_KEY}.{question_index}.response"
+            ] = ["Answer this required screening question."]
+        snapshots.append(
+            {
+                "question_index": question_index,
+                "prompt": prompt,
+                "required": required,
+                "response_guidance": response_guidance,
+                "response": response,
+            }
+        )
+
+    if field_errors:
+        raise _application_validation_error(
+            code="APPLICATION_VALIDATION_FAILED",
+            message="Complete the requested application details.",
+            field_errors=field_errors,
+        )
+
+    answers[SCREENING_QUESTIONS_ANSWER_KEY] = snapshots
+
+
+def _application_deadline_passed(deadline: datetime | None) -> bool:
+    if deadline is None:
+        return False
+    normalized = deadline if deadline.tzinfo is not None else deadline.replace(tzinfo=UTC)
+    return normalized <= _now()
+
+
 async def _create_notification(
     session: AsyncSession,
     *,
@@ -640,6 +761,16 @@ async def apply_to_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This job is not accepting applications",
         )
+    if job.application_mode == "external":
+        raise _application_validation_error(
+            code="EXTERNAL_APPLICATION_ONLY",
+            message="This job accepts applications on an external site.",
+        )
+    if _application_deadline_passed(job.deadline_at):
+        raise _application_validation_error(
+            code="APPLICATION_DEADLINE_PASSED",
+            message="The application deadline for this job has passed.",
+        )
     try:
         await blocking_service.assert_can_interact(
             session, applicant_user_id, job.posted_by_user_id
@@ -652,14 +783,16 @@ async def apply_to_job(
         ) from exc
     # Enforce the owner's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
-    _assert_first_message_complete(job.application_requirements, payload.first_message_answers)
+    first_message_answers = dict(payload.first_message_answers or {})
+    _normalize_screening_question_answers(job.screening_questions, first_message_answers)
+    _assert_first_message_complete(job.application_requirements, first_message_answers)
     application = JobApplication(
         job_id=job_id,
         applicant_user_id=applicant_user_id,
         job_owner_user_id=job.posted_by_user_id,
         cover_note=payload.cover_note.strip() if payload.cover_note else None,
         portfolio_item_ids=_clean_list(payload.portfolio_item_ids),
-        first_message_answers=payload.first_message_answers or {},
+        first_message_answers=first_message_answers,
         applicant_snapshot={
             "display_name": current_user.display_name,
             "username": current_user.username,

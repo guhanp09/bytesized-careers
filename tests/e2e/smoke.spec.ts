@@ -1,4 +1,53 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { encode } from "next-auth/jwt";
+
+const SESSION_SECRET = "e2e-secret";
+
+async function signInAsCandidate(context: BrowserContext) {
+  const sessionToken = await encode({
+    token: {
+      name: "Candidate E2E",
+      email: "candidate-e2e@example.com",
+      sub: "e2e-candidate",
+      username: "candidate-e2e",
+      displayName: "Candidate E2E",
+      backendAccessToken: "e2e-offline-token",
+      backendTokenType: "bearer",
+      backendUserId: "e2e-candidate",
+      accountType: "TALENT",
+      provider: "google",
+      providerAccountId: "google-candidate-e2e",
+    },
+    secret: SESSION_SECRET,
+  });
+  await context.addCookies([
+    {
+      name: "next-auth.session-token",
+      value: sessionToken,
+      domain: "127.0.0.1",
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+}
+
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,OPTIONS",
+  "access-control-allow-headers": "authorization,content-type",
+  "content-type": "application/json",
+};
+
+async function stubNoExistingApplication(page: Page, jobId: string) {
+  await page.route(`**/api/v1/jobs/${jobId}/application`, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+      return;
+    }
+    await route.fulfill({ status: 200, headers: corsHeaders, body: "null" });
+  });
+}
 
 const routeChecks = [
   { path: "/", text: "Recent Job Listings" },
@@ -351,14 +400,20 @@ test("/faq page renders FAQ content", async ({ page }) => {
   await expect(page.getByText("Who can post a job?")).toBeVisible();
 });
 
-test("job apply opens the first-message requirements modal with structured fields", async ({ page }) => {
+test("job apply exposes requirements on the listing and opens the structured preflight modal", async ({ context, page }) => {
+  await signInAsCandidate(context);
+  await stubNoExistingApplication(page, "1");
   // Mock job "1" declares every job-context first-message requirement.
   await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
 
-  // Requirements live in a completion modal that opens only after clicking Apply —
-  // they are not shown inline on the page.
+  // Candidates can inspect the requested materials and questions before they
+  // commit to opening the application modal.
+  await expect(page.getByRole("heading", { name: "Required application materials" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Screening questions" })).toBeVisible();
   await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
-  await page.getByTestId("job-apply-button").first().click();
+  const applyButton = page.getByTestId("job-apply-button").first();
+  await expect(applyButton).toHaveText("Apply");
+  await applyButton.click();
 
   const modal = page.getByTestId("first-message-modal-job");
   await expect(modal).toBeVisible();
@@ -372,9 +427,13 @@ test("job apply opens the first-message requirements modal with structured field
   await expect(requirements.getByText("Fit note", { exact: false })).toBeVisible();
 });
 
-test("job apply modal blocks an empty submit with calm inline validation", async ({ page }) => {
+test("job apply modal blocks an empty submit with calm inline validation", async ({ context, page }) => {
+  await signInAsCandidate(context);
+  await stubNoExistingApplication(page, "1");
   await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("job-apply-button").first().click();
+  const applyButton = page.getByTestId("job-apply-button").first();
+  await expect(applyButton).toHaveText("Apply");
+  await applyButton.click();
 
   const modal = page.getByTestId("first-message-modal-job");
   await expect(modal).toBeVisible();
@@ -391,16 +450,21 @@ test("job apply modal blocks an empty submit with calm inline validation", async
   await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
 });
 
-test("job detail without requirements applies without opening the modal", async ({ page }) => {
-  // Mock job "15" declares no first-message requirements (most demo jobs carry
-  // requirement sets so the modal can be exercised on the listing pages).
+test("legacy job instructions receive a preflight instead of an immediate blind submit", async ({ context, page }) => {
+  await signInAsCandidate(context);
+  await stubNoExistingApplication(page, "15");
+  // Mock job "15" has no structured first-message requirements, but its legacy
+  // application instructions are visible before Apply and still trigger a calm
+  // preflight before any authenticated submission.
   await page.goto("/jobs/15", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("job-apply-panel").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "How to apply" })).toBeVisible();
   await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
-  // No requirements → clicking Apply submits directly (no modal is shown).
-  await page.getByTestId("job-apply-button").first().click();
-  await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
+  const applyButton = page.getByTestId("job-apply-button").first();
+  await expect(applyButton).toHaveText("Apply");
+  await applyButton.click();
+  await expect(page.getByTestId("first-message-modal-job")).toBeVisible();
 });
 
 test("talent hire opens the first-message requirements modal for recruiters", async ({ page }) => {

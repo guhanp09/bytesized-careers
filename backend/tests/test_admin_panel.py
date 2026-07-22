@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from conftest import create_valid_published_job, valid_published_job_payload
+
 PERSONAS_URL = "/api/v1/dev/personas"
 SEED_URL = "/api/v1/dev/seed"
 
@@ -41,11 +43,7 @@ def _auth(token: str) -> dict[str, str]:
 
 
 async def _published_job(client: AsyncClient, token: str, title: str = "Long-form editor for a finance channel") -> str:
-    response = await client.post(
-        "/api/v1/jobs",
-        headers=_auth(token),
-        json={"title": title, "category": "Editing", "status": "published", "platforms": ["youtube"]},
-    )
+    response = await create_valid_published_job(client, token, title=title)
     assert response.status_code == 201, response.text
     return response.json()["id"]
 
@@ -447,27 +445,34 @@ async def test_identity_review_approve_revoke_and_job_badge_derivation(client: A
 
 async def test_job_is_verified_is_never_client_writable(client: AsyncClient) -> None:
     token = await _register_verified_login(client, email="adm_badge@example.com", username="adm_badge")
-    created = await client.post(
+    rejected_create = await client.post(
         "/api/v1/jobs",
         headers=_auth(token),
-        json={
-            "title": "Badge spoof attempt",
-            "category": "Editing",
-            "status": "published",
-            "platforms": ["youtube"],
-            "is_verified": True,
-        },
+        json=await valid_published_job_payload(
+            title="Badge spoof attempt",
+            is_verified=True,
+        ),
     )
-    assert created.status_code == 201
+    assert rejected_create.status_code == 422
+    assert any(
+        error["loc"][-1] == "is_verified"
+        for error in rejected_create.json()["error"]["details"]
+    )
+
+    created = await create_valid_published_job(client, token, title="Legitimate badge job")
+    assert created.status_code == 201, created.text
     assert created.json()["is_verified"] is False
 
-    updated = await client.patch(
+    rejected_update = await client.patch(
         f"/api/v1/jobs/{created.json()['id']}",
         headers=_auth(token),
         json={"is_verified": True},
     )
-    assert updated.status_code == 200
-    assert updated.json()["is_verified"] is False
+    assert rejected_update.status_code == 422
+    assert any(
+        error["loc"][-1] == "is_verified"
+        for error in rejected_update.json()["error"]["details"]
+    )
 
 
 # ---------------------------------------------------------------------------

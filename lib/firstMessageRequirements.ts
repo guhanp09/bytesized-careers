@@ -86,7 +86,7 @@ export type RequirementDef = {
 export const CUSTOM_INSTRUCTION_REQUIREMENT_KEY = "custom_instruction";
 
 // ── Structured answer value shapes ─────────────────────────────────────────────
-export type CurrencyAnswer = { amount: string; unit: string };
+export type CurrencyAnswer = { amount: string; unit: string; currency?: string };
 export type TurnaroundAnswer = { value: string; unit: "hours" | "days" | "weeks" };
 /**
  * A portfolio item attached to an application. The real picker fills id/title/url;
@@ -137,6 +137,13 @@ export type CustomInstructionAnswer = {
   links?: string[];
 };
 
+export type ScreeningQuestionAnswer = {
+  question_index: number;
+  prompt: string;
+  required: boolean;
+  response: string;
+};
+
 export type RequirementAnswerValue =
   | string
   | string[]
@@ -144,7 +151,8 @@ export type RequirementAnswerValue =
   | TurnaroundAnswer
   | PortfolioRef[]
   | ReferenceLink[]
-  | CustomInstructionAnswer;
+  | CustomInstructionAnswer
+  | ScreeningQuestionAnswer[];
 
 export type FirstMessageAnswers = Record<string, RequirementAnswerValue>;
 
@@ -596,7 +604,8 @@ export type RequirementSummaryItem = {
 function formatCurrency(value: CurrencyAnswer): string {
   const amount = value.amount.trim();
   if (!amount) return "";
-  const symbol = amount.match(/^[₹$€£]/)?.[0] ?? "₹";
+  const currency = value.currency?.trim().toUpperCase();
+  const symbol = amount.match(/^[₹$€£]/)?.[0] ?? ({ INR: "₹", USD: "$", EUR: "€", GBP: "£" }[currency || "INR"] || `${currency} `);
   const numeric = amount.replace(/^[₹$€£]/, "").replace(/,/g, "").trim();
   const parsed = Number(numeric);
   const displayAmount =

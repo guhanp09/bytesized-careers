@@ -4,9 +4,8 @@ import { AnimatePresence } from "framer-motion";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatedStep } from "../ui/StepTransition";
 import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../../lib/types";
-import { formatStartLabel, onlyDigits } from "../../lib/format";
+import { onlyDigits } from "../../lib/format";
 import { INDIA_CITIES } from "../../lib/indiaCities";
-import { START_TIME_VALUES } from "../../lib/jobs";
 import {
   CONTENT_GENRE_SUGGESTIONS,
   CONTENT_NICHE_SUGGESTIONS,
@@ -17,39 +16,45 @@ import {
 import { normalizeReferenceTimestampInput } from "../../lib/referenceVideos";
 import { Icon } from "../Icons";
 import ToolPicker from "../you/ToolPicker";
-import LanguagePicker from "../post-flow/LanguagePicker";
 import RequirementSelector from "../first-message/RequirementSelector";
 import { CUSTOM_INSTRUCTION_REQUIREMENT_KEY } from "../../lib/firstMessageRequirements";
+import type { BackendCreateJobPayload, BackendRole } from "../../lib/backendClient";
+import {
+  COMPENSATION_UNITS,
+  ENGAGEMENT_TYPES,
+  TURNAROUND_BASES,
+  TURNAROUND_UNITS,
+  CompensationMode,
+  CompensationUnit,
+  EngagementType,
+  TurnaroundBasis,
+  TurnaroundUnit,
+  compensationUnitLabel,
+  engagementLabel,
+} from "../../lib/jobContract";
+import {
+  RECRUITER_JOB_STEPS,
+  type JobPostingDomainState,
+  type RecruiterJobStep,
+} from "../../lib/jobPostingForm";
+import {
+  ArrangementDomainFields,
+  EmployerContextFields,
+  SkillsQualificationsFields,
+  TrialApplicationFields,
+  WorkDeliverablesFields,
+} from "./JobDomainFields";
 
 const JOB_TITLE_MAX_LENGTH = 94;
 const MAX_REFERENCE_TIMESTAMP_ROWS = 8;
 const MAX_REFERENCE_VIDEOS = 3;
 
-type Step =
-  | "basics"
-  | "details"
-  | "creatorContext"
-  | "toolsTags"
-  | "about"
-  | "applicationRequirements"
-  | "referenceVideos";
+type Step = RecruiterJobStep;
 
-type TurnaroundUnit = "hours" | "days" | "weeks";
-type Turnaround = { value: number; unit: TurnaroundUnit } | null;
+type Turnaround = { value: number; unit: TurnaroundUnit | ""; basis: TurnaroundBasis | "" } | null;
 type BudgetIntent = "" | "range" | "flexible" | "contact";
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type JobPlatform = "youtube" | "instagram";
-
-const pill = (active: boolean) =>
-  [
-    "h-10 cursor-pointer px-3 rounded-xl text-sm font-semibold",
-    "border border-white/12 ring-1 ring-white/5",
-    "shadow-[0_12px_28px_-20px_rgba(0,0,0,0.95)]",
-    "transition-all duration-150",
-    active
-      ? "bg-white text-black"
-      : "bg-white/7 text-white/80 hover:bg-white/10 hover:text-white",
-  ].join(" ");
 
 const inputBase =
   "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
@@ -66,6 +71,12 @@ const basicsInputBase =
 const basicsSelectBase =
   "h-11 cursor-pointer rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
 
+const decimalText = (value: string) => {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole, ...fraction] = cleaned.split(".");
+  return fraction.length ? `${whole}.${fraction.join("")}` : whole;
+};
+
 const normalizeBulletLines = (value: string) => {
   const lines = value
     .split("\n")
@@ -80,11 +91,13 @@ function BulletListEditor({
   onChange,
   placeholder,
   ghostLines,
+  ariaLabel = "List item",
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder?: string;
   ghostLines?: string[];
+  ariaLabel?: string;
 }) {
   const [lines, setLines] = useState<string[]>(() => normalizeBulletLines(value));
   const refs = useRef<Array<HTMLTextAreaElement | null>>([]);
@@ -152,6 +165,7 @@ function BulletListEditor({
             }}
           />
           <textarea
+            aria-label={`${ariaLabel} ${idx + 1}`}
             rows={idx === 0 && lines.length === 1 && line === "" ? 4 : 1}
             ref={(el) => {
               refs.current[idx] = el;
@@ -216,13 +230,13 @@ function BulletListEditor({
 const PLATFORM_SUGGESTIONS = ["YouTube", "Instagram"];
 
 const STEP_SUBTITLES: Record<Step, string> = {
-  basics: "",
-  details: "Practical expectations.",
-  creatorContext: "Matching details.",
-  toolsTags: "Tools and discovery tags.",
-  about: "You've got this.",
-  applicationRequirements: "Applicant response details.",
-  referenceVideos: "Final touches.",
+  basics: "Set the role, public hiring context, and compensation basis.",
+  about: "Make the workload clear before candidates apply.",
+  creatorContext: "Help the right creator recognize the opportunity.",
+  toolsTags: "Separate what is essential from what is helpful.",
+  details: "Clarify the working rhythm, timing, and collaboration window.",
+  applicationRequirements: "Set fair trial terms and a transparent process.",
+  referenceVideos: "Review the candidate-facing story before publishing.",
 };
 
 type IconName = React.ComponentProps<typeof Icon>["name"];
@@ -262,11 +276,14 @@ function PlatformMark({ platform }: { platform: "youtube" | "instagram" }) {
 
 
 function Field({
+  id,
   label,
   children,
   helper,
   error,
+  optional = false,
 }: {
+  id?: string;
   label: React.ReactNode;
   children: React.ReactNode;
   optional?: boolean;
@@ -276,12 +293,18 @@ function Field({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold text-white/80">{label}</div>
+        {id ? (
+          <label htmlFor={id} className="text-xs font-semibold text-white/80">{label}</label>
+        ) : (
+          <div className="text-xs font-semibold text-white/80">{label}</div>
+        )}
         {error ? (
-          <div className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
+          <div id={id ? `${id}-error` : undefined} role="alert" className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
             <Icon name="alert" className="w-3 h-3" />
             <span>{error}</span>
           </div>
+        ) : optional ? (
+          <span className="text-[10px] uppercase tracking-[0.14em] text-white/32">Optional</span>
         ) : null}
       </div>
       {children}
@@ -546,8 +569,7 @@ function StepCard({
   bodyClassName?: string;
   size?: "tall" | "compact";
 }) {
-  const sizeClass =
-    size === "tall" ? "h-full max-h-full" : "h-auto max-h-[75vh]";
+  const sizeClass = size === "tall" ? "min-h-[420px]" : "h-auto";
 
   return (
     <section
@@ -580,13 +602,7 @@ function StepCard({
       <div
         className={[
           bodyClassName,
-          "flex-1 overflow-y-auto pr-2 -mr-2",
-          "pb-6",
-          "[scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.25)_transparent]",
-          "[&::-webkit-scrollbar]:w-2",
-          "[&::-webkit-scrollbar-thumb]:rounded-full",
-          "[&::-webkit-scrollbar-thumb]:bg-white/15",
-          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "flex-1 pb-6",
         ].join(" ")}
       >
         {children}
@@ -598,9 +614,11 @@ function StepCard({
 
 
 function TinyChip({
+  label,
   children,
   onRemove,
 }: {
+  label: string;
   children: React.ReactNode;
   onRemove: () => void;
 }) {
@@ -611,8 +629,8 @@ function TinyChip({
         type="button"
         onClick={onRemove}
         className="h-5 w-5 rounded-md hover:bg-white/10 inline-flex items-center justify-center text-white/70"
-        aria-label="Remove"
-        title="Remove"
+        aria-label={`Remove ${label}`}
+        title={`Remove ${label}`}
       >
         ×
       </button>
@@ -676,7 +694,7 @@ function CreatorContextChipField({
       {value.length ? (
         <div className="flex flex-wrap gap-1.5">
           {value.map((item) => (
-            <TinyChip key={item} onRemove={() => removeValue(item)}>
+            <TinyChip key={item} label={item} onRemove={() => removeValue(item)}>
               {item}
             </TinyChip>
           ))}
@@ -684,6 +702,7 @@ function CreatorContextChipField({
       ) : null}
 
       <input
+        aria-label={`Add ${label.toLowerCase()}`}
         className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25 focus:bg-white/[0.065]"
         value={query}
         placeholder={`Add ${label.toLowerCase()}`}
@@ -737,19 +756,18 @@ type StepActionsProps = {
   nextDisabled?: boolean;
   isBusy?: boolean;
   onSaveDraft?: () => void;
+  saveDraftLabel?: string;
   saveDraftIcon?: React.ReactNode;
   savedSection: null | "basics" | "content" | "tags" | "refs";
   onSaveClick: (
     section: "basics" | "content" | "tags" | "refs",
     handler?: () => boolean | void
   ) => void;
+  variant?: "embedded" | "mobile-fixed";
 };
 
 function StepActions({
   id,
-  saveKey,
-  canSave,
-  onSave,
   canGoBack,
   canGoNext,
   onBack,
@@ -761,19 +779,10 @@ function StepActions({
   nextDisabled = false,
   isBusy = false,
   onSaveDraft,
+  saveDraftLabel = "Save draft",
   saveDraftIcon,
-  savedSection,
-  onSaveClick,
+  variant = "embedded",
 }: StepActionsProps) {
-  const toastKey =
-    saveKey ||
-    (id === "basics" || id === "details"
-      ? "basics"
-      : id === "creatorContext" || id === "toolsTags"
-        ? "tags"
-        : id === "referenceVideos"
-          ? "refs"
-          : "content");
   const nextAccessibleLabel = nextAriaLabel || nextLabel || "Continue";
   const nextContent = nextLabel ? (
     <>
@@ -786,24 +795,30 @@ function StepActions({
     <span className="text-sm leading-none">→</span>
   );
   return (
-    <div className="mt-4 flex items-center justify-between">
-      <div className="flex items-center gap-2">
+    <div
+      className={
+        variant === "mobile-fixed"
+          ? "fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-white/10 bg-[#121216]/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_45px_-30px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:hidden"
+          : "mt-4 hidden items-center justify-between gap-2 sm:flex sm:flex-nowrap"
+      }
+    >
+      <div className="flex min-w-0 flex-1 flex-row-reverse items-center justify-end gap-2 sm:flex-row">
         {onSaveDraft ? (
           <button
             type="button"
             onClick={onSaveDraft}
             disabled={isBusy}
-            className="inline-flex h-10 min-w-[116px] cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/[0.16] bg-white/[0.065] px-4 text-sm font-semibold text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[background-color,border-color,color,transform] hover:border-white/25 hover:bg-white/[0.095] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/[0.16] bg-white/[0.065] px-2.5 text-xs font-semibold text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[background-color,border-color,color,transform] hover:border-white/25 hover:bg-white/[0.095] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[116px] sm:flex-none sm:px-4 sm:text-sm"
           >
             {saveDraftIcon}
-            SAVE DRAFT
+            {saveDraftLabel}
           </button>
         ) : null}
         {canGoBack ? (
           <button
             type="button"
             onClick={() => onBack(id)}
-            className="h-9 w-9 inline-flex cursor-pointer items-center justify-center rounded-xl bg-white text-black border border-white hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+            className="h-11 w-11 inline-flex cursor-pointer items-center justify-center rounded-xl bg-white text-black border border-white hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:opacity-55"
             aria-label="Back"
             title="Back"
             disabled={isBusy}
@@ -812,27 +827,7 @@ function StepActions({
           </button>
         ) : null}
       </div>
-      <div className="flex items-center gap-2">
-        {savedSection === toastKey ? (
-          <div className="rounded-lg bg-white/10 border border-white/15 px-3 py-1 text-xs text-white/90 shadow-[0_12px_30px_-22px_rgba(0,0,0,0.9)] backdrop-blur">
-            Saved
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => onSaveClick(toastKey, onSave)}
-          className={[
-            "h-9 w-9 inline-flex items-center justify-center rounded-xl border transition-colors",
-            canSave && !isBusy
-              ? "cursor-pointer bg-white text-black border-white hover:bg-white/90"
-              : "cursor-not-allowed bg-white/6 text-white/40 border-white/10",
-          ].join(" ")}
-          aria-label="Save"
-          title={canSave ? "Save" : undefined}
-          disabled={!canSave || isBusy}
-        >
-          <Icon name="check" className="w-4 h-4" />
-        </button>
+      <div className="ml-auto flex items-center gap-2">
         {canGoNext ? (
           <button
             type={nextType}
@@ -842,7 +837,7 @@ function StepActions({
               nextDisabled || isBusy
                 ? "cursor-not-allowed border-white/10 bg-white/15 text-white/36"
                 : "cursor-pointer bg-white text-black border-white hover:bg-white/90",
-              nextLabel ? "h-9 px-3 gap-2" : "h-9 w-9",
+              nextLabel ? "min-h-11 px-4 gap-2" : "h-11 w-11",
             ].join(" ")}
             aria-label={nextAccessibleLabel}
             title={nextAccessibleLabel}
@@ -869,6 +864,14 @@ export default function PostJobForm({
   contentErrors,
   title,
   onTitleChange,
+  roles,
+  rolesLoading = false,
+  rolesError,
+  onRetryRoles,
+  primaryRoleId,
+  roleSpecialization,
+  onPrimaryRoleIdChange,
+  onRoleSpecializationChange,
   workMode,
   onWorkModeChange,
   city,
@@ -876,17 +879,23 @@ export default function PostJobForm({
   budgetMin,
   budgetMax,
   budgetUnit,
-  budgetIntent,
+  budgetCurrency,
+  compensationMode,
+  budgetNote,
+  budgetUnitCustom,
   onBudgetMinChange,
   onBudgetMaxChange,
   onBudgetUnitChange,
+  onBudgetCurrencyChange,
+  onCompensationModeChange,
+  onBudgetNoteChange,
+  onBudgetUnitCustomChange,
   onBudgetIntentChange,
   expMin,
   expMax,
   onExpMinChange,
   onExpMaxChange,
   startWithin,
-  onStartWithinChange,
   platforms,
   onPlatformToggle,
   contentNiches,
@@ -897,10 +906,15 @@ export default function PostJobForm({
   onFormatsHiredForChange,
   turnaround,
   onTurnaroundChange,
+  engagementType,
+  onEngagementTypeChange,
+  expectedWeeklyHoursMin,
+  expectedWeeklyHoursMax,
+  onExpectedWeeklyHoursMinChange,
+  onExpectedWeeklyHoursMaxChange,
   tools,
   onToolsChange,
   languages,
-  onLanguagesChange,
   about,
   responsibilities,
   requirements,
@@ -941,6 +955,8 @@ export default function PostJobForm({
   onSaveApplicationRequirements,
   onSaveReferenceVideos,
   onSaveDraft,
+  saveDraftLabel = "Save draft",
+  publishLabel = "Publish job",
   canSaveBasics,
   canSaveContent,
   canSaveDetails,
@@ -952,6 +968,14 @@ export default function PostJobForm({
   isSubmitting,
   publishDisabled = false,
   isRepresentedHiringIdentity = false,
+  domain,
+  onDomainChange,
+  domainErrors,
+  listingSchemaVersion,
+  selectedRoleName,
+  legacyToolsNotCaptured = false,
+  legacyBudgetUnit,
+  reviewPreview,
 }: {
   step: Step;
   direction: "forward" | "back";
@@ -962,22 +986,38 @@ export default function PostJobForm({
   onNext: (step: Step) => void;
   onBack: (step: Step) => void;
   basicsErrors?: Partial<
-    Record<"title" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode", string>
+    Record<"title" | "role" | "city" | "cityInvalid" | "budgetMissing" | "budgetRange" | "identity" | "platform" | "workMode", string>
   >;
   contentErrors?: Partial<Record<"about", string>>;
   title: string;
   onTitleChange: (next: string) => void;
+  roles: BackendRole[];
+  rolesLoading?: boolean;
+  rolesError?: string | null;
+  onRetryRoles?: () => void;
+  primaryRoleId: string;
+  roleSpecialization: string;
+  onPrimaryRoleIdChange: (next: string) => void;
+  onRoleSpecializationChange: (next: string) => void;
   workMode: WorkMode;
   onWorkModeChange: (next: WorkMode) => void;
   city: string;
   onCityChange: (next: string) => void;
   budgetMin: string;
   budgetMax: string;
-  budgetUnit: "per project" | "per month";
+  budgetUnit: CompensationUnit | "";
+  budgetCurrency: string;
+  compensationMode: CompensationMode | "";
+  budgetNote: string;
+  budgetUnitCustom: string;
   budgetIntent: BudgetIntent;
   onBudgetMinChange: (next: string) => void;
   onBudgetMaxChange: (next: string) => void;
-  onBudgetUnitChange: (next: "per project" | "per month") => void;
+  onBudgetUnitChange: (next: CompensationUnit | "") => void;
+  onBudgetCurrencyChange: (next: string) => void;
+  onCompensationModeChange: (next: CompensationMode | "") => void;
+  onBudgetNoteChange: (next: string) => void;
+  onBudgetUnitCustomChange: (next: string) => void;
   onBudgetIntentChange: (next: BudgetIntent) => void;
   expMin: string;
   expMax: string;
@@ -995,6 +1035,12 @@ export default function PostJobForm({
   onFormatsHiredForChange: (next: string[]) => void;
   turnaround: Turnaround;
   onTurnaroundChange: (next: Turnaround) => void;
+  engagementType: EngagementType | "";
+  onEngagementTypeChange: (next: EngagementType | "") => void;
+  expectedWeeklyHoursMin: string;
+  expectedWeeklyHoursMax: string;
+  onExpectedWeeklyHoursMinChange: (next: string) => void;
+  onExpectedWeeklyHoursMaxChange: (next: string) => void;
   tools: string[];
   onToolsChange: (next: string[]) => void;
   languages: string[];
@@ -1039,6 +1085,8 @@ export default function PostJobForm({
   onSaveApplicationRequirements?: () => boolean | void;
   onSaveReferenceVideos?: () => boolean | void;
   onSaveDraft?: () => void;
+  saveDraftLabel?: string;
+  publishLabel?: string;
   canSaveBasics: boolean;
   canSaveContent: boolean;
   canSaveDetails?: boolean;
@@ -1050,14 +1098,24 @@ export default function PostJobForm({
   isSubmitting?: boolean;
   publishDisabled?: boolean;
   isRepresentedHiringIdentity?: boolean;
+  domain: JobPostingDomainState;
+  onDomainChange: (
+    patch: Partial<JobPostingDomainState>,
+    payloadKeys?: Array<keyof BackendCreateJobPayload>
+  ) => void;
+  domainErrors?: Record<string, string>;
+  listingSchemaVersion?: number | null;
+  selectedRoleName?: string | null;
+  legacyToolsNotCaptured?: boolean;
+  legacyBudgetUnit?: string | null;
+  reviewPreview?: React.ReactNode;
 }) {
   const [savedSection, setSavedSection] = useState<null | "basics" | "content" | "tags" | "refs">(null);
   const toastTimerRef = useRef<number | null>(null);
   const referenceVideoTitleRef = useRef<HTMLInputElement | null>(null);
   const previousReferenceVideoCountRef = useRef(refVideos.length);
-  const stepIndex = Math.max(currentStepNumber - 1, 0);
-  const displayedProgressStep = stepIndex === 0 ? 0 : stepIndex + 1;
-  const progress = totalSteps ? Math.min(displayedProgressStep / totalSteps, 1) : 0;
+  const progress = totalSteps ? Math.min(currentStepNumber / totalSteps, 1) : 0;
+  const currentStepMeta = RECRUITER_JOB_STEPS.find((item) => item.id === step);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityHighlight, setCityHighlight] = useState(0);
 
@@ -1109,12 +1167,30 @@ export default function PostJobForm({
 
   const renderStep = (id: Step) => {
     const titleError = basicsErrors?.title;
+    const roleError = basicsErrors?.role;
     const cityError = basicsErrors?.city || basicsErrors?.cityInvalid;
     const budgetError = basicsErrors?.budgetMissing || basicsErrors?.budgetRange;
     const platformError = basicsErrors?.platform;
     const workModeError = basicsErrors?.workMode;
     const invalidClass =
       "border-amber-200/40 ring-1 ring-amber-200/25 focus:border-amber-200/50";
+    const selectedRole = roles.find((role) => role.id === primaryRoleId);
+    const requiresRoleSpecialization = Boolean(
+      primaryRoleId &&
+        (selectedRole?.slug === "other-creator-role" ||
+          selectedRole?.name === "Other Creator Role" ||
+          (!selectedRole && selectedRoleName === "Other Creator Role"))
+    );
+    const showTurnaround =
+      Boolean(turnaround) ||
+      engagementType === "one_time_project" ||
+      engagementType === "ongoing_freelance" ||
+      engagementType === "retainer";
+    const engagementError = domainErrors?.engagement_type;
+    const weeklyHoursError =
+      domainErrors?.expected_weekly_hours_min || domainErrors?.expected_weekly_hours_max;
+    const turnaroundError =
+      domainErrors?.turnaround_value || domainErrors?.turnaround_unit || domainErrors?.turnaround_basis;
 
     const basicsMessages = Object.entries(basicsErrors || {}).filter(([key, message]) => key !== "identity" && message);
 
@@ -1125,6 +1201,7 @@ export default function PostJobForm({
         </div>
         <div className="flex gap-2">
           <input
+            aria-label="Add a job tag"
             className={inputBase}
             placeholder="Type a tag and press Enter (e.g. Premiere, After Effects)"
             value={tagInput}
@@ -1153,7 +1230,7 @@ export default function PostJobForm({
         <div className="flex flex-wrap gap-2">
           {tags.length ? (
             tags.map((t) => (
-              <TinyChip key={t} onRemove={() => onRemoveTag(t)}>
+              <TinyChip key={t} label={t} onRemove={() => onRemoveTag(t)}>
                 {t}
               </TinyChip>
             ))
@@ -1250,6 +1327,7 @@ export default function PostJobForm({
                 <Field label={<LabelWithIcon icon="external-link">YouTube video URL</LabelWithIcon>} error={refUrlError}>
                   <input
                     className={inputBase}
+                    aria-label="YouTube video URL"
                     type="url"
                     placeholder="https://www.youtube.com/watch?v=..."
                     value={refUrl}
@@ -1312,12 +1390,14 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
               saveDraftIcon={<Icon name="file" className="h-4 w-4" />}
             />
           }
         >
           <div className="flex flex-col gap-6">
             <Field
+              id="job-title"
               label={
                 <LabelWithIcon icon="briefcase">
                   Job title <span className="text-white/50">*</span>
@@ -1327,8 +1407,11 @@ export default function PostJobForm({
             >
               <div className="relative">
                 <input
+                  id="job-title"
+                  aria-label="Job title"
                   aria-required="true"
                   aria-invalid={Boolean(titleError)}
+                  aria-describedby={titleError ? "job-title-error" : undefined}
                   className={[basicsInputBase, "pr-16", titleError ? invalidClass : ""].join(" ")}
                   placeholder="e.g. Video editor for YouTube (retention-focused)"
                   value={title}
@@ -1345,6 +1428,76 @@ export default function PostJobForm({
             </Field>
 
             <Field
+              id="job-primary-role"
+              label={
+                <LabelWithIcon icon="users">
+                  Creator role <span className="text-white/50">*</span>
+                </LabelWithIcon>
+              }
+              helper="Choose the closest creator-economy role. Legacy categories are kept only for compatibility."
+              error={requiresRoleSpecialization ? undefined : roleError}
+            >
+              <select
+                id="job-primary-role"
+                aria-label="Creator role"
+                className={[basicsSelectBase, "w-full"].join(" ")}
+                aria-invalid={Boolean(roleError && !requiresRoleSpecialization)}
+                aria-describedby={roleError && !requiresRoleSpecialization ? "job-primary-role-error" : undefined}
+                value={primaryRoleId}
+                disabled={rolesLoading}
+                onChange={(event) => onPrimaryRoleIdChange(event.target.value)}
+                data-quality-target="job-primary-role"
+              >
+                <option value="" className="bg-[#0b0b0f]">{rolesLoading ? "Loading creator roles…" : "Select a creator role"}</option>
+                {primaryRoleId && selectedRoleName && !roles.some((role) => role.id === primaryRoleId) ? (
+                  <option value={primaryRoleId} className="bg-[#0b0b0f]">
+                    {selectedRoleName} (previous role)
+                  </option>
+                ) : null}
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id} className="bg-[#0b0b0f]">
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {requiresRoleSpecialization ? (
+              <Field id="job-role-specialization" label="Role specialization" helper="Describe the role in a short, candidate-facing phrase." error={roleError}>
+                <input
+                  id="job-role-specialization"
+                  aria-label="Role specialization"
+                  aria-required="true"
+                  aria-invalid={Boolean(roleError)}
+                  aria-describedby={roleError ? "job-role-specialization-error" : undefined}
+                  className={basicsInputBase}
+                  value={roleSpecialization}
+                  maxLength={120}
+                  placeholder="e.g. Creator partnerships coordinator"
+                  onChange={(event) => onRoleSpecializationChange(event.target.value)}
+                />
+              </Field>
+            ) : null}
+
+            {rolesError ? (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2.5 text-xs text-amber-100/85">
+                <span>{rolesError} You can keep this draft, then retry before publishing.</span>
+                {onRetryRoles ? (
+                  <button type="button" onClick={onRetryRoles} className="min-h-9 rounded-lg border border-amber-100/25 px-3 font-semibold text-amber-50 hover:bg-amber-100/10">
+                    Retry
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <EmployerContextFields
+              state={domain}
+              onChange={onDomainChange}
+              errors={domainErrors}
+              recruiterIdentityKind={isRepresentedHiringIdentity ? "Represented creator" : "Direct hiring"}
+            />
+
+            <Field
               label={
                 <LabelWithIcon icon="screen">
                   Platform <span className="text-white/50">*</span>
@@ -1352,7 +1505,7 @@ export default function PostJobForm({
               }
               error={platformError}
             >
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Platforms">
                 {PLATFORM_SUGGESTIONS.map((p) => {
                   const key = p.toLowerCase() as "youtube" | "instagram";
                   const active = platforms.includes(key);
@@ -1379,6 +1532,7 @@ export default function PostJobForm({
 
             <div className={workMode === "Hybrid" || workMode === "On-site" ? "grid gap-4 sm:grid-cols-2" : "max-w-full sm:max-w-[520px]"}>
               <Field
+                id="job-work-mode"
                 label={
                   <LabelWithIcon icon="laptop">
                     Work mode <span className="text-white/50">*</span>
@@ -1389,8 +1543,11 @@ export default function PostJobForm({
                 <div className="relative">
                   <Icon name="globe" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70" />
                   <select
+                    id="job-work-mode"
+                    aria-label="Work mode"
                     aria-required="true"
                     aria-invalid={Boolean(workModeError)}
+                    aria-describedby={workModeError ? "job-work-mode-error" : undefined}
                     className={[basicsSelectBase, "w-full appearance-none pl-9 pr-9", workModeError ? invalidClass : ""].join(" ")}
                     value={workMode}
                     onChange={(e) => {
@@ -1416,6 +1573,7 @@ export default function PostJobForm({
 
               {workMode === "Hybrid" || workMode === "On-site" ? (
                 <Field
+                  id="job-city"
                   label={
                     <span className="inline-flex items-center gap-1">
                       City <span className="text-white/50">*</span>
@@ -1425,8 +1583,20 @@ export default function PostJobForm({
                 >
                   <div className="relative">
                     <input
+                      id="job-city"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={cityOpen}
+                      aria-controls="job-city-options"
+                      aria-label="City"
                       aria-required="true"
                       aria-invalid={Boolean(cityError)}
+                      aria-activedescendant={
+                        cityOpen && citySuggestions[cityHighlight]
+                          ? `job-city-option-${cityHighlight}`
+                          : undefined
+                      }
+                      aria-describedby={cityError ? "job-city-error" : undefined}
                       className={[basicsInputBase, cityError ? invalidClass : ""].join(" ")}
                       placeholder="e.g. Chennai"
                       value={city}
@@ -1471,11 +1641,15 @@ export default function PostJobForm({
                       }}
                     />
                     {cityOpen && citySuggestions.length ? (
-                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/10 bg-[#0b0b0f] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] overflow-hidden">
+                      <div id="job-city-options" role="listbox" className="absolute z-20 mt-2 w-full rounded-xl border border-white/10 bg-[#0b0b0f] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] overflow-hidden">
                         {citySuggestions.map((c, idx) => (
                           <button
                             key={c}
+                            id={`job-city-option-${idx}`}
                             type="button"
+                            tabIndex={-1}
+                            role="option"
+                            aria-selected={idx === cityHighlight}
                             className={[
                               "w-full text-left px-3 py-2 text-sm text-white/85",
                               idx === cityHighlight ? "bg-white/10" : "bg-transparent hover:bg-white/5",
@@ -1497,61 +1671,110 @@ export default function PostJobForm({
             </div>
 
             <Field
+              id="job-compensation-mode"
               label={
                 <LabelWithIcon icon="wallet">
-                  Budget <span className="text-white/50">*</span>
+                  Compensation <span className="text-white/50">*</span>
                 </LabelWithIcon>
               }
               error={budgetError}
             >
+              {legacyBudgetUnit ? (
+                <div className="mb-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2.5 text-xs leading-5 text-amber-100/82">
+                  Legacy compensation unit: <span className="font-semibold">{legacyBudgetUnit}</span>. It remains unchanged until you choose a supported unit below.
+                </div>
+              ) : null}
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <select
+                  id="job-compensation-mode"
+                  aria-label="Compensation mode"
+                  aria-invalid={Boolean(budgetError)}
+                  aria-describedby={budgetError ? "job-compensation-mode-error" : undefined}
+                  className={basicsSelectBase}
+                  value={compensationMode}
+                  onChange={(event) => onCompensationModeChange(event.target.value as CompensationMode | "")}
+                >
+                  <option value="" className="bg-[#0b0b0f]">Choose compensation mode</option>
+                  <option value="fixed" className="bg-[#0b0b0f]">Fixed amount</option>
+                  <option value="range" className="bg-[#0b0b0f]">Range</option>
+                  <option value="negotiable" className="bg-[#0b0b0f]">Negotiable</option>
+                </select>
+                <select
+                  aria-label="Compensation currency"
+                  className={basicsSelectBase}
+                  value={budgetCurrency}
+                  onChange={(event) => onBudgetCurrencyChange(event.target.value)}
+                >
+                  <option value="" className="bg-[#0b0b0f]">Choose currency</option>
+                  {(["INR", "USD", "EUR", "GBP", "CAD", "AUD"] as const).map((currency) => (
+                    <option key={currency} value={currency} className="bg-[#0b0b0f]">{currency}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex flex-wrap items-center gap-2.5 lg:flex-nowrap">
+                {compensationMode !== "negotiable" ? (
                 <div className="relative min-w-[132px] flex-[1_1_160px]">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-white/72">
-                    ₹
+                    {budgetCurrency || "¤"}
                   </span>
                   <input
                     aria-required="true"
                     aria-invalid={Boolean(budgetError)}
+                    aria-describedby={budgetError ? "job-compensation-mode-error" : undefined}
                     className={[basicsInputBase, "pl-9", budgetError ? invalidClass : ""].join(" ")}
                     placeholder="Min"
+                    aria-label={compensationMode === "range" ? "Minimum compensation" : "Compensation amount"}
                     inputMode="numeric"
                     value={budgetMin}
                     onChange={(e) => {
                       onBudgetIntentChange("range");
-                      onBudgetMinChange(onlyDigits(e.target.value));
+                      if (!compensationMode) onCompensationModeChange("fixed");
+                      onBudgetMinChange(decimalText(e.target.value));
                     }}
                   />
                 </div>
+                ) : null}
 
-                <span className="hidden text-base text-white/50 select-none sm:inline-flex">–</span>
+                {compensationMode === "range" ? (
+                  <span className="hidden text-base text-white/50 select-none sm:inline-flex">–</span>
+                ) : null}
 
+                {compensationMode === "range" ? (
                 <div className="relative min-w-[132px] flex-[1_1_160px]">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-white/72">
-                    ₹
+                    {budgetCurrency || "¤"}
                   </span>
                   <input
                     aria-required="true"
                     aria-invalid={Boolean(budgetError)}
+                    aria-describedby={budgetError ? "job-compensation-mode-error" : undefined}
                     className={[basicsInputBase, "pl-9", budgetError ? invalidClass : ""].join(" ")}
                     placeholder="Max"
+                    aria-label="Maximum compensation"
                     inputMode="numeric"
                     value={budgetMax}
                     onChange={(e) => {
                       onBudgetIntentChange("range");
-                      onBudgetMaxChange(onlyDigits(e.target.value));
+                      onCompensationModeChange("range");
+                      onBudgetMaxChange(decimalText(e.target.value));
                     }}
                   />
                 </div>
+                ) : null}
 
                 <div className="relative min-w-[132px] flex-[0_1_150px]">
                   <select
                     className={[basicsSelectBase, "w-full appearance-none pr-10"].join(" ")}
-                    value={budgetUnit}
-                    onChange={(e) => onBudgetUnitChange(e.target.value as "per project" | "per month")}
+                    value={legacyBudgetUnit ? "" : budgetUnit}
+                    aria-label="Compensation unit"
+                    onChange={(e) => onBudgetUnitChange(e.target.value as CompensationUnit | "")}
                   >
-                    {(["per project", "per month"] as const).map((u) => (
+                    <option value="" className="bg-[#0b0b0f]">
+                      {legacyBudgetUnit ? "Choose a supported unit" : "Choose unit"}
+                    </option>
+                    {COMPENSATION_UNITS.map((u) => (
                       <option key={u} value={u} className="bg-[#0b0b0f]">
-                        {u}
+                        {compensationUnitLabel(u)}
                       </option>
                     ))}
                   </select>
@@ -1559,41 +1782,26 @@ export default function PostJobForm({
                     ⌄
                   </span>
                 </div>
-
-                <button
-                  type="button"
-                  className={[
-                    "inline-flex h-11 flex-[0_0_auto] cursor-pointer items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold shadow-[0_12px_28px_-22px_rgba(0,0,0,0.95)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014]",
-                    budgetIntent === "flexible" && !budgetMin && !budgetMax
-                      ? "border-white bg-white text-black hover:bg-white/92"
-                      : "border-white/12 bg-white/[0.055] text-white/82 hover:border-white/22 hover:bg-white/[0.085] hover:text-white",
-                  ].join(" ")}
-                  onClick={() => {
-                    onBudgetMinChange("");
-                    onBudgetMaxChange("");
-                    onBudgetIntentChange("flexible");
-                  }}
-                >
-                  <Icon name="refresh" className="h-[18px] w-[18px]" />
-                  Flexible
-                </button>
-                <button
-                  type="button"
-                  className={[
-                    "inline-flex h-11 flex-[0_0_auto] cursor-pointer items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold shadow-[0_12px_28px_-22px_rgba(0,0,0,0.95)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014]",
-                    budgetIntent === "contact" && !budgetMin && !budgetMax
-                      ? "border-white bg-white text-black hover:bg-white/92"
-                      : "border-white/12 bg-white/[0.055] text-white/82 hover:border-white/22 hover:bg-white/[0.085] hover:text-white",
-                  ].join(" ")}
-                  onClick={() => {
-                    onBudgetMinChange("");
-                    onBudgetMaxChange("");
-                    onBudgetIntentChange("contact");
-                  }}
-                >
-                  Contact for pricing
-                </button>
               </div>
+              {budgetUnit === "custom" ? (
+                <input
+                  className={[basicsInputBase, "mt-3"].join(" ")}
+                  value={budgetUnitCustom}
+                  maxLength={64}
+                  placeholder="Describe the custom unit"
+                  onChange={(event) => onBudgetUnitCustomChange(event.target.value)}
+                />
+              ) : null}
+              {compensationMode || budgetUnit === "commission" || budgetUnit === "mixed" || budgetUnit === "custom" ? (
+                <textarea
+                  className={[textareaBase, "mt-3 min-h-[76px]"].join(" ")}
+                  value={budgetNote}
+                  maxLength={255}
+                  aria-label="Compensation note"
+                  placeholder={budgetUnit === "commission" || budgetUnit === "mixed" ? "Explain the base, incentive, or commission terms" : "Optional context candidates should know about the rate"}
+                  onChange={(event) => onBudgetNoteChange(event.target.value)}
+                />
+              ) : null}
             </Field>
 
             <Field label={<LabelWithIcon icon="cap">Experience</LabelWithIcon>} optional>
@@ -1686,14 +1894,67 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
             />
           }
         >
           <div className="flex flex-col gap-4">
-            <Field label={<LabelWithIcon icon="clock">Turnaround</LabelWithIcon>} optional>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Field id="job-engagement-type" label={<LabelWithIcon icon="briefcase">Engagement type</LabelWithIcon>} error={engagementError}>
+              <select
+                id="job-engagement-type"
+                aria-label="Engagement type"
+                aria-invalid={Boolean(engagementError)}
+                aria-describedby={engagementError ? "job-engagement-type-error" : undefined}
+                className={selectBase}
+                value={engagementType}
+                onChange={(event) => onEngagementTypeChange(event.target.value as EngagementType | "")}
+              >
+                <option value="" className="bg-[#0b0b0f]">Choose engagement type</option>
+                {ENGAGEMENT_TYPES.map((value) => (
+                  <option key={value} value={value} className="bg-[#0b0b0f]">
+                    {engagementLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {engagementType && engagementType !== "one_time_project" ? (
+              <Field id="job-weekly-hours-min" label={<LabelWithIcon icon="clock">Expected weekly hours</LabelWithIcon>} optional error={weeklyHoursError}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    id="job-weekly-hours-min"
+                    className={inputBase}
+                    aria-label="Minimum expected weekly hours"
+                    aria-invalid={Boolean(weeklyHoursError)}
+                    aria-describedby={weeklyHoursError ? "job-weekly-hours-min-error" : undefined}
+                    placeholder="Minimum hours"
+                    inputMode="decimal"
+                    value={expectedWeeklyHoursMin}
+                    onChange={(event) => onExpectedWeeklyHoursMinChange(decimalText(event.target.value))}
+                  />
+                  <input
+                    className={inputBase}
+                    aria-label="Maximum expected weekly hours"
+                    aria-invalid={Boolean(weeklyHoursError)}
+                    aria-describedby={weeklyHoursError ? "job-weekly-hours-min-error" : undefined}
+                    placeholder="Maximum hours"
+                    inputMode="decimal"
+                    value={expectedWeeklyHoursMax}
+                    onChange={(event) => onExpectedWeeklyHoursMaxChange(decimalText(event.target.value))}
+                  />
+                </div>
+              </Field>
+            ) : null}
+
+            {showTurnaround ? (
+            <Field id="job-turnaround-value" label={<LabelWithIcon icon="clock">Turnaround</LabelWithIcon>} optional error={turnaroundError}>
+              <div className="grid gap-3 sm:grid-cols-3">
                 <input
+                  id="job-turnaround-value"
                   className={inputBase}
+                  aria-label="Turnaround value"
+                  aria-invalid={Boolean(turnaroundError)}
+                  aria-describedby={turnaroundError ? "job-turnaround-value-error" : undefined}
                   placeholder="5"
                   inputMode="numeric"
                   value={turnaround?.value ? String(turnaround.value) : ""}
@@ -1704,55 +1965,73 @@ export default function PostJobForm({
                       onTurnaroundChange(null);
                       return;
                     }
-                    onTurnaroundChange({ value: nextVal, unit: turnaround?.unit || "days" });
+                    onTurnaroundChange({
+                      value: nextVal,
+                      unit: turnaround?.unit || "",
+                      basis: turnaround?.basis || "",
+                    });
                   }}
                 />
 
                 <select
                   className={selectBase}
-                  value={turnaround?.unit ?? "days"}
+                  aria-label="Turnaround unit"
+                  aria-invalid={Boolean(turnaroundError)}
+                  aria-describedby={turnaroundError ? "job-turnaround-value-error" : undefined}
+                  value={turnaround?.unit ?? ""}
                   onChange={(e) => {
                     const unit = e.target.value as TurnaroundUnit;
                     if (!unit) {
                       onTurnaroundChange(null);
                       return;
                     }
-                    const value = turnaround?.value || 5;
-                    onTurnaroundChange({ value, unit });
+                    const value = turnaround?.value || 0;
+                    onTurnaroundChange({ value, unit, basis: turnaround?.basis || "" });
                   }}
                 >
-                  {(["hours", "days", "weeks"] as const).map((u) => (
+                  <option value="" className="bg-[#0b0b0f]">Choose unit</option>
+                  {TURNAROUND_UNITS.map((u) => (
                     <option key={u} value={u} className="bg-[#0b0b0f]">
-                      {u}
+                      {u.replaceAll("_", " ")}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className={selectBase}
+                  aria-label="Turnaround basis"
+                  aria-invalid={Boolean(turnaroundError)}
+                  aria-describedby={turnaroundError ? "job-turnaround-value-error" : undefined}
+                  value={turnaround?.basis || ""}
+                  onChange={(event) => {
+                    if (!turnaround) return;
+                    onTurnaroundChange({ ...turnaround, basis: event.target.value as TurnaroundBasis | "" });
+                  }}
+                >
+                  <option value="" className="bg-[#0b0b0f]">Choose basis</option>
+                  {TURNAROUND_BASES.map((value) => (
+                    <option key={value} value={value} className="bg-[#0b0b0f]">
+                      {value.replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
               </div>
             </Field>
+            ) : null}
 
-            <Field label={<LabelWithIcon icon="calendar">Start</LabelWithIcon>} optional>
-              <div className="flex flex-wrap gap-2">
-                {START_TIME_VALUES.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={pill(startWithin === value)}
-                    onClick={() => onStartWithinChange(startWithin === value ? "" : value)}
-                  >
-                    {formatStartLabel(value)}
-                  </button>
-                ))}
+            <ArrangementDomainFields
+              state={domain}
+              onChange={onDomainChange}
+              errors={domainErrors}
+              engagementType={engagementType}
+              workMode={workMode}
+              compensationUnit={budgetUnit}
+            />
+            {listingSchemaVersion != null && listingSchemaVersion < 3 && startWithin && !domain.startTiming ? (
+              <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-white/52">
+                Legacy start window: <span className="font-semibold text-white/78">{startWithin}</span>. It is preserved until you choose the clearer start timing above.
               </div>
-            </Field>
-
-            <div data-quality-target="job-languages">
-              <LanguagePicker
-                value={languages}
-                onChange={onLanguagesChange}
-                idPrefix="post-job"
-                enableGlobalPicker
-              />
-            </div>
+            ) : null}
           </div>
         </StepCard>
       );
@@ -1779,6 +2058,7 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
             />
           }
         >
@@ -1836,11 +2116,25 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
             />
           }
         >
           <div className="flex flex-col gap-5">
+            <SkillsQualificationsFields
+              state={domain}
+              onChange={onDomainChange}
+              errors={domainErrors}
+              roleName={selectedRoleName}
+              legacyLanguages={languages}
+            />
+
             <div data-quality-target="job-tools">
+              {legacyToolsNotCaptured ? (
+                <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-white/52">
+                  Required tools were not captured on this older listing. Leaving this untouched preserves that unknown state.
+                </div>
+              ) : null}
               <ToolPicker
                 value={tools}
                 onChange={onToolsChange}
@@ -1882,11 +2176,13 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
             />
           }
         >
           <div className="flex flex-col gap-4">
             <Field
+              id="job-about-brand"
               label={
                 <span className="inline-flex items-center gap-1.5">
                   <LabelWithIcon icon="file">{aboutTitle}</LabelWithIcon>
@@ -1897,8 +2193,11 @@ export default function PostJobForm({
             >
               <div className="flex flex-col gap-3" data-quality-target="job-description">
                 <textarea
+                  id="job-about-brand"
+                  aria-label="About the hiring brand or creator"
                   aria-required="true"
                   aria-invalid={Boolean(aboutError)}
+                  aria-describedby={aboutError ? "job-about-brand-error" : undefined}
                   className={textareaBase}
                   placeholder={aboutPlaceholder}
                   value={about}
@@ -1906,12 +2205,6 @@ export default function PostJobForm({
                     onAboutChange(e.target.value);
                   }}
                 />
-                {aboutError ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-amber-200/90">
-                    <Icon name="alert" className="w-3.5 h-3.5" />
-                    <span>{aboutError}</span>
-                  </div>
-                ) : null}
               </div>
             </Field>
 
@@ -1921,6 +2214,7 @@ export default function PostJobForm({
               </div>
               <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-responsibilities">
                 <BulletListEditor
+                  ariaLabel="Responsibility"
                   value={responsibilities}
                   onChange={onResponsibilitiesChange}
                   ghostLines={[
@@ -1932,18 +2226,27 @@ export default function PostJobForm({
               </div>
             </div>
 
+            <WorkDeliverablesFields
+              state={domain}
+              onChange={onDomainChange}
+              errors={domainErrors}
+              roleName={selectedRoleName}
+              engagementType={engagementType}
+            />
+
             <div className="space-y-1.5">
               <div className="text-xs font-semibold text-white/80">
-                <LabelWithIcon icon="clipboard-check">Requirements</LabelWithIcon>
+                <LabelWithIcon icon="clipboard-check">Experience or portfolio expectations</LabelWithIcon>
               </div>
               <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-requirements">
                 <BulletListEditor
+                  ariaLabel="Experience or portfolio expectation"
                   value={requirements}
                   onChange={onRequirementsChange}
                   ghostLines={[
-                    "Experience with education content for 25k+ subscriber channels",
-                    "Strong context-aware meme humour with proven examples",
-                    "Track record of creating viral Instagram Reels",
+                    "Show two examples with a similar audience or format",
+                    "Experience taking feedback through a revision cycle",
+                    "A portfolio that makes your contribution clear",
                   ]}
                 />
               </div>
@@ -1978,10 +2281,26 @@ export default function PostJobForm({
               savedSection={savedSection}
               onSaveClick={handleSave}
               onSaveDraft={onSaveDraft}
+              saveDraftLabel={saveDraftLabel}
             />
           }
         >
           <div className="flex flex-col gap-4">
+            <TrialApplicationFields
+              state={domain}
+              onChange={onDomainChange}
+              errors={domainErrors}
+              engagementType={engagementType}
+              compensationCurrency={budgetCurrency}
+              compensationUnit={budgetUnit}
+              legacyApplicationRequirements={applicationRequirements}
+              publicInstructionsLockedReason={
+                applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+                  ? "Remove the preserved legacy prompt below before adding separate public instructions."
+                  : null
+              }
+            />
+
             <div className="flex flex-col gap-3" data-quality-target="job-first-message">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-[0.04em] text-white/80">
@@ -1997,7 +2316,36 @@ export default function PostJobForm({
                 customInstructionValue={howToApply}
                 onCustomInstructionChange={onHowToApplyChange}
                 customInstructionError={customInstructionError}
+                hideCustomInstruction
               />
+              {applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) ? (
+                <div className="rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] p-3.5">
+                  <label htmlFor="legacy-job-screening-prompt" className="text-xs font-semibold text-amber-50/90">
+                    Legacy first-message prompt
+                  </label>
+                  <p className="mt-1 text-[11px] leading-4 text-amber-100/65">
+                    This older prompt is preserved separately. New screening questions are managed above.
+                  </p>
+                  <textarea
+                    id="legacy-job-screening-prompt"
+                    className={`${textareaBase} mt-2 min-h-[84px]`}
+                    value={howToApply}
+                    onChange={(event) => onHowToApplyChange(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="mt-2 min-h-9 rounded-lg border border-amber-100/25 px-3 text-xs font-semibold text-amber-50 transition-colors hover:bg-amber-100/10"
+                    onClick={() => {
+                      onApplicationRequirementsChange(
+                        applicationRequirements.filter((key) => key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+                      );
+                      onHowToApplyChange("");
+                    }}
+                  >
+                    Remove legacy prompt
+                  </button>
+                </div>
+              ) : null}
               {firstMessageError && !customInstructionError ? (
                 <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-amber-200/90">
                   <Icon name="alert" className="h-3.5 w-3.5" />
@@ -2026,17 +2374,34 @@ export default function PostJobForm({
             onNext={onNext}
             nextType="submit"
             nextIcon={<Icon name="globe" className="w-4 h-4" />}
-            nextLabel={isSubmitting ? "Posting..." : "Post"}
-            nextAriaLabel={isSubmitting ? "Posting job" : "Post job"}
+            nextLabel={isSubmitting ? "Saving…" : publishLabel}
+            nextAriaLabel={isSubmitting ? "Saving listing" : publishLabel}
             nextDisabled={publishDisabled}
             isBusy={isSubmitting}
             savedSection={savedSection}
             onSaveClick={handleSave}
             onSaveDraft={onSaveDraft}
+            saveDraftLabel={saveDraftLabel}
           />
         }
       >
-        {referenceVideoFields}
+        <div className="space-y-6">
+          {reviewPreview ? (
+            <section aria-labelledby="job-review-preview-title" className="space-y-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Candidate view</p>
+                <h2 id="job-review-preview-title" className="mt-1 text-xl font-extrabold tracking-tight text-white">
+                  Review before publishing
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-white/48">
+                  This preview uses the same information candidates need to judge the opportunity.
+                </p>
+              </div>
+              {reviewPreview}
+            </section>
+          ) : null}
+          <div className="border-t border-white/[0.08] pt-6">{referenceVideoFields}</div>
+        </div>
       </StepCard>
     );
   };
@@ -2045,13 +2410,29 @@ export default function PostJobForm({
     <div className="space-y-6">
       <section className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
         <div className="grid items-start">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
+              Step {currentStepNumber} of {totalSteps}
+            </p>
+          </div>
           <div>
+            <p className="mt-4 text-sm font-semibold text-white/88" aria-current="step">
+              {currentStepMeta?.label}
+            </p>
             {STEP_SUBTITLES[step] ? (
-              <p className="mt-4 text-sm text-white/55">{STEP_SUBTITLES[step]}</p>
+              <p className="mt-1 text-sm text-white/55">{STEP_SUBTITLES[step]}</p>
             ) : null}
-            <div className={STEP_SUBTITLES[step] ? "mt-2" : "mt-4"}>
-              <div className="h-[3px] rounded-full bg-white/10 overflow-hidden">
+            <div className="mt-3">
+              <div
+                className="h-[3px] overflow-hidden rounded-full bg-white/10"
+                role="progressbar"
+                aria-label="Job post progress"
+                aria-valuemin={1}
+                aria-valuemax={totalSteps}
+                aria-valuenow={currentStepNumber}
+                aria-valuetext={`${currentStepMeta?.label || "Step"}, step ${currentStepNumber} of ${totalSteps}`}
+              >
                 <div
                   className="h-full rounded-full bg-white/45 transition-[width] duration-300 ease-out"
                   style={{ width: `${progress * 100}%` }}
@@ -2063,19 +2444,46 @@ export default function PostJobForm({
       </section>
 
       {submitError ? (
-        <section className="rounded-2xl border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-sm text-amber-50">
+        <section role="alert" className="rounded-2xl border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-sm text-amber-50">
           {submitError}
         </section>
       ) : null}
 
-      <form onSubmit={onSubmit} className="space-y-6">
-        <div className="relative h-[calc(100vh-260px)] overflow-hidden">
-          <AnimatePresence mode="sync" initial={false} custom={direction}>
-            <AnimatedStep key={step} direction={direction}>
+      <form onSubmit={onSubmit} className="space-y-6 pb-28 sm:pb-0">
+        <div className="relative min-h-[420px]">
+          <AnimatePresence mode="wait" initial={false} custom={direction}>
+            <AnimatedStep key={step} direction={direction} flowLayout>
               {renderStep(step)}
             </AnimatedStep>
           </AnimatePresence>
         </div>
+
+        <StepActions
+          id={step}
+          variant="mobile-fixed"
+          canSave={false}
+          canGoBack={hasBack}
+          canGoNext
+          onBack={onBack}
+          onNext={onNext}
+          nextType={hasNext ? "button" : "submit"}
+          nextLabel={hasNext ? "Continue" : isSubmitting ? "Saving…" : publishLabel}
+          nextIcon={hasNext ? undefined : <Icon name="globe" className="h-4 w-4" />}
+          nextAriaLabel={
+            hasNext
+              ? `Continue to step ${currentStepNumber + 1}`
+              : isSubmitting
+                ? "Saving listing"
+                : publishLabel
+          }
+          nextDisabled={!hasNext && publishDisabled}
+          isBusy={isSubmitting}
+          savedSection={savedSection}
+          onSaveClick={handleSave}
+          onSaveDraft={onSaveDraft}
+          saveDraftLabel={saveDraftLabel}
+          saveDraftIcon={<Icon name="file" className="h-4 w-4" />}
+        />
 
       </form>
     </div>

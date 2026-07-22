@@ -1,19 +1,6 @@
 import { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
 import { normalizeReferenceVideo } from "./referenceVideos";
 
-const CATEGORY_VALUES: JobCategory[] = [
-  "Editing",
-  "Design",
-  "Writing",
-  "Thumbnails",
-  "Shorts",
-  "Motion Graphics",
-  "Channel Manager",
-  "Research",
-  "Voice Over",
-  "Marketing",
-];
-
 const START_VALUES: StartTimeframe[] = ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"];
 
 const parseBool = (value?: string) => {
@@ -55,14 +42,20 @@ export type BackendJob = {
   id?: string | number;
   title?: string;
   category?: string | null;
+  listing_schema_version?: number | null;
+  primary_role_id?: string | null;
+  primary_role_name_snapshot?: string | null;
+  role_specialization?: string | null;
   location?: string | null;
   budget_amount?: string | number | null;
   budget_min?: string | number | null;
   budget_max?: string | number | null;
   budget_note?: string | null;
   budgetNote?: string | null;
+  compensation_mode?: string | null;
   budget_currency?: string | null;
   budget_unit?: string | null;
+  budget_unit_custom?: string | null;
   experience_level?: string | null;
   experienceLevel?: string | null;
   platforms?: string[] | null;
@@ -71,8 +64,14 @@ export type BackendJob = {
   startTimeframe?: string | null;
   work_mode?: string | null;
   contract_type?: string | null;
+  engagement_type?: string | null;
   timezone_overlap?: string | null;
   weekly_hours?: string | null;
+  expected_weekly_hours_min?: string | number | null;
+  expected_weekly_hours_max?: string | number | null;
+  turnaround_value?: number | null;
+  turnaround_unit?: string | null;
+  turnaround_basis?: string | null;
   application_mode?: "internal" | "external" | string | null;
   external_apply_url?: string | null;
   deadline_at?: string | null;
@@ -84,6 +83,45 @@ export type BackendJob = {
   how_to_apply?: string | null;
   howToApply?: string | null;
   tools?: string[] | null;
+  required_tool_keys?: string[] | null;
+  other_required_tools?: string[] | null;
+  deliverables?: import("./jobContract").JobDeliverable[] | null;
+  required_skill_keys?: string[] | null;
+  preferred_skill_keys?: string[] | null;
+  other_required_skills?: string[] | null;
+  other_preferred_skills?: string[] | null;
+  required_skills_note?: string | null;
+  preferred_skills_note?: string | null;
+  revision_policy?: import("./jobContract").RevisionPolicy | null;
+  revision_rounds?: number | null;
+  revision_notes?: string | null;
+  source_inputs?: import("./jobContract").JobSourceInput[] | null;
+  source_inputs_notes?: string | null;
+  creative_autonomy?: import("./jobContract").CreativeAutonomy | null;
+  creative_autonomy_notes?: string | null;
+  language_requirements?: import("./jobContract").JobLanguageRequirement[] | null;
+  trial_status?: import("./jobContract").TrialStatus | null;
+  trial_scope?: string | null;
+  trial_effort_value?: number | null;
+  trial_effort_unit?: import("./jobContract").TrialEffortUnit | null;
+  trial_compensation_amount?: string | number | null;
+  trial_compensation_currency?: string | null;
+  trial_compensation_basis?: import("./jobContract").TrialCompensationBasis | null;
+  trial_work_usage?: import("./jobContract").TrialWorkUsage | null;
+  trial_portfolio_permission?: import("./jobContract").TrialPortfolioPermission | null;
+  trial_attribution?: import("./jobContract").TrialAttribution | null;
+  unpaid_trial_confirmed?: boolean | null;
+  trial_notes?: string | null;
+  start_timing?: import("./jobContract").StartTiming | null;
+  start_date?: string | null;
+  duration_type?: import("./jobContract").EngagementDurationType | null;
+  duration_value?: number | null;
+  duration_unit?: import("./jobContract").EngagementDurationUnit | null;
+  engagement_end_date?: string | null;
+  hiring_process?: import("./jobContract").JobHiringProcessStage[] | null;
+  hiring_process_notes?: string | null;
+  screening_questions?: import("./jobContract").JobScreeningQuestion[] | null;
+  employer_context_type?: import("./jobContract").EmployerContextType | null;
   reference_videos?: unknown;
   referenceVideos?: unknown;
   tags?: string[] | null;
@@ -142,28 +180,61 @@ type BackendListResponse = {
 };
 
 type BackendErrorShape = {
-  detail?: string | { message?: string; code?: string };
+  detail?: string | { message?: string; code?: string; field_errors?: Record<string, string[]> };
   error?: {
     message?: string;
+    details?:
+      | { field_errors?: Record<string, string[]> }
+      | Array<{ loc?: Array<string | number>; msg?: string; message?: string }>;
   };
 };
 
+export function normalizeBackendFieldErrors(payload: BackendErrorShape): Record<string, string[]> | undefined {
+  const mapped =
+    (typeof payload.detail === "object" && payload.detail !== null
+      ? payload.detail.field_errors
+      : undefined) ||
+    (!Array.isArray(payload.error?.details) ? payload.error?.details?.field_errors : undefined);
+  if (mapped) return mapped;
+  if (!Array.isArray(payload.error?.details)) return undefined;
+
+  const normalized: Record<string, string[]> = {};
+  for (const detail of payload.error.details) {
+    const path = Array.isArray(detail.loc) ? detail.loc : [];
+    const field = path.find((part) => typeof part === "string" && !["body", "query", "path"].includes(part));
+    const message = detail.msg || detail.message;
+    if (typeof field !== "string" || !message) continue;
+    normalized[field] = [...(normalized[field] || []), message];
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
 export type BackendCreateJobPayload = {
   title: string;
-  category: string;
+  category?: string | null;
+  primary_role_id?: string | null;
+  role_specialization?: string | null;
   location?: string | null;
   budget_amount?: number | null;
   budget_max?: number | null;
   budget_note?: string | null;
+  compensation_mode?: import("./jobContract").CompensationMode | null;
   budget_currency?: string | null;
-  budget_unit?: "per project" | "per month";
+  budget_unit?: import("./jobContract").CompensationUnit | null;
+  budget_unit_custom?: string | null;
   experience_level?: string | null;
   platforms?: string[];
   start_timeframe?: string | null;
   work_mode?: string | null;
   contract_type?: string | null;
+  engagement_type?: import("./jobContract").EngagementType | null;
   timezone_overlap?: string | null;
   weekly_hours?: string | null;
+  expected_weekly_hours_min?: number | null;
+  expected_weekly_hours_max?: number | null;
+  turnaround_value?: number | null;
+  turnaround_unit?: import("./jobContract").TurnaroundUnit | null;
+  turnaround_basis?: import("./jobContract").TurnaroundBasis | null;
   application_mode?: "internal" | "external";
   external_apply_url?: string | null;
   deadline_at?: string | null;
@@ -173,6 +244,45 @@ export type BackendCreateJobPayload = {
   application_requirements?: string[];
   how_to_apply?: string | null;
   tools?: string[];
+  required_tool_keys?: string[] | null;
+  other_required_tools?: string[] | null;
+  deliverables?: import("./jobContract").JobDeliverable[] | null;
+  required_skill_keys?: import("./jobContract").CreatorSkillKey[] | null;
+  preferred_skill_keys?: import("./jobContract").CreatorSkillKey[] | null;
+  other_required_skills?: string[] | null;
+  other_preferred_skills?: string[] | null;
+  required_skills_note?: string | null;
+  preferred_skills_note?: string | null;
+  revision_policy?: import("./jobContract").RevisionPolicy | null;
+  revision_rounds?: number | null;
+  revision_notes?: string | null;
+  source_inputs?: import("./jobContract").JobSourceInput[] | null;
+  source_inputs_notes?: string | null;
+  creative_autonomy?: import("./jobContract").CreativeAutonomy | null;
+  creative_autonomy_notes?: string | null;
+  language_requirements?: import("./jobContract").JobLanguageRequirement[] | null;
+  trial_status?: import("./jobContract").TrialStatus | null;
+  trial_scope?: string | null;
+  trial_effort_value?: number | null;
+  trial_effort_unit?: import("./jobContract").TrialEffortUnit | null;
+  trial_compensation_amount?: number | null;
+  trial_compensation_currency?: string | null;
+  trial_compensation_basis?: import("./jobContract").TrialCompensationBasis | null;
+  trial_work_usage?: import("./jobContract").TrialWorkUsage | null;
+  trial_portfolio_permission?: import("./jobContract").TrialPortfolioPermission | null;
+  trial_attribution?: import("./jobContract").TrialAttribution | null;
+  unpaid_trial_confirmed?: boolean | null;
+  trial_notes?: string | null;
+  start_timing?: import("./jobContract").StartTiming | null;
+  start_date?: string | null;
+  duration_type?: import("./jobContract").EngagementDurationType | null;
+  duration_value?: number | null;
+  duration_unit?: import("./jobContract").EngagementDurationUnit | null;
+  engagement_end_date?: string | null;
+  hiring_process?: import("./jobContract").JobHiringProcessStage[] | null;
+  hiring_process_notes?: string | null;
+  screening_questions?: import("./jobContract").JobScreeningQuestion[] | null;
+  employer_context_type?: import("./jobContract").EmployerContextType | null;
   reference_videos?: Array<string | Record<string, unknown>>;
   tags?: string[];
   languages?: string[];
@@ -180,7 +290,6 @@ export type BackendCreateJobPayload = {
   content_genres?: string[];
   formats_hired_for?: string[];
   youtube_channel_id?: string | null;
-  is_verified?: boolean;
   channel_name?: string | null;
   channel_logo_url?: string | null;
   channel_subscribers?: number | null;
@@ -191,13 +300,7 @@ export type BackendCreateJobPayload = {
   posted_platform?: string | null;
   posted_youtube_channel_id?: string | null;
   hiring_identity_id?: string | null;
-  views?: number;
-  applicants?: number;
-  response_rate?: number;
   status?: "draft" | "published" | "paused" | "closed" | "archived";
-  featured_until?: string | null;
-  paused_at?: string | null;
-  closed_at?: string | null;
 };
 
 export type BackendAuthStatusResponse = {
@@ -489,6 +592,7 @@ export type BackendHiringIdentityVerificationResponse = {
 export type BackendRole = {
   id: string;
   name: string;
+  slug?: string;
   category: string;
   description?: string | null;
 };
@@ -1216,7 +1320,13 @@ export type BackendYouTubeRefreshResponse = {
 
 export type ListJobsParams = {
   q?: string;
-  platform?: string;
+  role?: string | string[];
+  platform?: string | string[];
+  format?: string | string[];
+  work_mode?: string | string[];
+  engagement_type?: string | string[];
+  budget_unit?: string | string[];
+  language?: string | string[];
   location?: string;
   start_timeframe?: string;
   status?: string;
@@ -1232,26 +1342,22 @@ export type ListJobsResult = {
   backendUrl: string;
 };
 
-const ensureCategory = (value?: string | null): JobCategory => {
-  if (!value) return "Editing";
-  if (CATEGORY_VALUES.includes(value as JobCategory)) {
-    return value as JobCategory;
-  }
-  return "Editing";
-};
+const normalizeLegacyCategory = (value?: string | null): string | null => value?.trim() || null;
 
 const ensureStartTimeframe = (value?: string | null): StartTimeframe => {
-  if (!value) return "Flexible";
+  // The legacy frontend type predates nullable start timing. Keep its wire shape
+  // without presenting an uncaptured value as an explicit "Flexible" choice.
+  if (!value) return "" as StartTimeframe;
   if (START_VALUES.includes(value as StartTimeframe)) {
     return value as StartTimeframe;
   }
-  return "Flexible";
+  return "" as StartTimeframe;
 };
 
 const formatPostedShort = (createdAt?: string) => {
-  if (!createdAt) return "now";
+  if (!createdAt) return "";
   const timestamp = Date.parse(createdAt);
-  if (Number.isNaN(timestamp)) return "now";
+  if (Number.isNaN(timestamp)) return "";
   const diffMs = Math.max(0, Date.now() - timestamp);
   const mins = Math.max(1, Math.round(diffMs / 60000));
   if (mins < 60) return `${mins}m`;
@@ -1295,6 +1401,16 @@ const asStringArray = (value: unknown): string[] => {
   return value.map((entry) => asString(entry)).filter((entry): entry is string => Boolean(entry));
 };
 
+const asNullableStringArray = (value: unknown): string[] | null =>
+  value == null ? null : asStringArray(value);
+
+const asNullableObjectArray = <T>(value: unknown): T[] | null =>
+  value == null
+    ? null
+    : Array.isArray(value)
+      ? (value.filter((entry) => entry !== null && typeof entry === "object") as T[])
+      : [];
+
 const asReferenceVideos = (value: unknown): ReferenceVideo[] => {
   if (!Array.isArray(value)) return [];
 
@@ -1318,16 +1434,16 @@ const formatBudget = ({
 }) => {
   const normalizedNote = note?.trim();
   if (normalizedNote) return normalizedNote;
-  if (amount === undefined) return "Flexible";
-  const normalizedCurrency = (currency || "INR").toUpperCase();
-  const normalizedUnit = unit === "per month" ? "per month" : "per project";
-  const symbol = normalizedCurrency === "INR" ? "₹" : normalizedCurrency;
+  if (amount === undefined) return "Compensation not specified";
+  const normalizedCurrency = currency?.toUpperCase() || "";
+  const normalizedUnit = unit?.trim() || "";
+  const symbol = normalizedCurrency === "INR" ? "₹" : normalizedCurrency ? `${normalizedCurrency} ` : "";
   if (maxAmount !== undefined && maxAmount >= amount && maxAmount !== amount) {
     return `${symbol}${amount.toLocaleString("en-US")} - ${symbol}${maxAmount.toLocaleString(
       "en-US"
-    )} ${normalizedUnit}`;
+    )}${normalizedUnit ? ` ${normalizedUnit}` : ""}`;
   }
-  return `${symbol}${amount.toLocaleString("en-US")} ${normalizedUnit}`;
+  return `${symbol}${amount.toLocaleString("en-US")}${normalizedUnit ? ` ${normalizedUnit}` : ""}`;
 };
 
 const toFrontendJob = (job: BackendJob): Job => {
@@ -1341,7 +1457,7 @@ const toFrontendJob = (job: BackendJob): Job => {
   const experience =
     asString(job.experience_level) ??
     asString(job.experienceLevel) ??
-    "Any";
+    "";
   const startTimeframe =
     asString(job.start_timeframe) ??
     asString(job.startTimeframe);
@@ -1349,12 +1465,12 @@ const toFrontendJob = (job: BackendJob): Job => {
   const updatedAt = asString(job.updated_at) ?? asString(job.updatedAt);
   const platforms = asStringArray(job.platforms);
   const rawPlatform = platforms[0] || asString(job.platform);
-  const channelName = asString(job.channel_name) ?? asString(job.channelName) ?? "Content creator";
+  const channelName = asString(job.channel_name) ?? asString(job.channelName) ?? "";
   const channelLogo =
     asString(job.channel_logo_url) ??
     asString(job.channel_avatar_url) ??
     asString(job.channelAvatarUrl) ??
-    "https://picsum.photos/seed/new/96/96";
+    "";
   const channelSubscribers =
     asNumber(job.channel_subscribers) ??
     asNumber(job.subscriber_count) ??
@@ -1365,11 +1481,18 @@ const toFrontendJob = (job: BackendJob): Job => {
     asNumber(job.match_percentage) ??
     asNumber(job.matchPercentage) ??
     0;
+  const legacyCategory = normalizeLegacyCategory(asString(job.category));
+  const primaryRoleName = asString(job.primary_role_name_snapshot);
 
   return {
     id: asString(job.id) || "",
     title: asString(job.title) || "Untitled job",
-    category: ensureCategory(job.category),
+    category: (legacyCategory || "Uncategorized") as JobCategory,
+    legacyCategory,
+    listingSchemaVersion: asNumber(job.listing_schema_version),
+    primaryRoleId: asString(job.primary_role_id),
+    primaryRoleName,
+    roleSpecialization: asString(job.role_specialization),
     budget: formatBudget({
       amount: budgetAmount,
       maxAmount: budgetMax,
@@ -1378,7 +1501,7 @@ const toFrontendJob = (job: BackendJob): Job => {
       unit: budgetUnit,
     }),
     experience,
-    location: asString(job.location) || "Remote",
+    location: asString(job.location) || "",
     postedShort: formatPostedShort(createdAt),
     views: asNumber(job.views) ?? 0,
     applicants: asNumber(job.applicants) ?? 0,
@@ -1391,19 +1514,72 @@ const toFrontendJob = (job: BackendJob): Job => {
     },
     tags: asStringArray(job.tags),
     tools: asStringArray(job.tools),
+    requiredToolKeys: asNullableStringArray(job.required_tool_keys),
+    otherRequiredTools: asNullableStringArray(job.other_required_tools),
+    deliverables: asNullableObjectArray(job.deliverables),
+    requiredSkillKeys: asNullableStringArray(job.required_skill_keys),
+    preferredSkillKeys: asNullableStringArray(job.preferred_skill_keys),
+    otherRequiredSkills: asNullableStringArray(job.other_required_skills),
+    otherPreferredSkills: asNullableStringArray(job.other_preferred_skills),
+    requiredSkillsNote: asString(job.required_skills_note),
+    preferredSkillsNote: asString(job.preferred_skills_note),
+    revisionPolicy: asString(job.revision_policy) as Job["revisionPolicy"],
+    revisionRounds: asNumber(job.revision_rounds),
+    revisionNotes: asString(job.revision_notes),
+    sourceInputs: asNullableObjectArray(job.source_inputs),
+    sourceInputsNotes: asString(job.source_inputs_notes),
+    creativeAutonomy: asString(job.creative_autonomy) as Job["creativeAutonomy"],
+    creativeAutonomyNotes: asString(job.creative_autonomy_notes),
+    languageRequirements: asNullableObjectArray(job.language_requirements),
+    trialStatus: asString(job.trial_status) as Job["trialStatus"],
+    trialScope: asString(job.trial_scope),
+    trialEffortValue: asNumber(job.trial_effort_value),
+    trialEffortUnit: asString(job.trial_effort_unit) as Job["trialEffortUnit"],
+    trialCompensationAmount: asNumber(job.trial_compensation_amount),
+    trialCompensationCurrency: asString(job.trial_compensation_currency),
+    trialCompensationBasis: asString(job.trial_compensation_basis) as Job["trialCompensationBasis"],
+    trialWorkUsage: asString(job.trial_work_usage) as Job["trialWorkUsage"],
+    trialPortfolioPermission: asString(job.trial_portfolio_permission) as Job["trialPortfolioPermission"],
+    trialAttribution: asString(job.trial_attribution) as Job["trialAttribution"],
+    unpaidTrialConfirmed: asBoolean(job.unpaid_trial_confirmed),
+    trialNotes: asString(job.trial_notes),
+    startTiming: asString(job.start_timing) as Job["startTiming"],
+    startDate: asString(job.start_date),
+    durationType: asString(job.duration_type) as Job["durationType"],
+    durationValue: asNumber(job.duration_value),
+    durationUnit: asString(job.duration_unit) as Job["durationUnit"],
+    engagementEndDate: asString(job.engagement_end_date),
+    hiringProcess: asNullableObjectArray(job.hiring_process),
+    hiringProcessNotes: asString(job.hiring_process_notes),
+    screeningQuestions: asNullableObjectArray(job.screening_questions),
+    employerContextType: asString(job.employer_context_type) as Job["employerContextType"],
     languages: asStringArray(job.languages),
     contentNiches: asStringArray(job.content_niches ?? job.contentNiches),
     contentGenres: asStringArray(job.content_genres ?? job.contentGenres),
     formatsHiredFor: asStringArray(job.formats_hired_for ?? job.formatsHiredFor),
     startTimeframe: ensureStartTimeframe(startTimeframe),
     workMode: asString(job.work_mode),
+    engagementType: asString(job.engagement_type),
+    compensationMode: asString(job.compensation_mode),
+    budgetAmount,
+    budgetMax,
+    budgetCurrency,
+    budgetUnit,
+    budgetUnitCustom: asString(job.budget_unit_custom),
+    budgetNote,
     contractType: asString(job.contract_type),
     timezoneOverlap: asString(job.timezone_overlap),
     weeklyHours: asString(job.weekly_hours),
+    expectedWeeklyHoursMin: asNumber(job.expected_weekly_hours_min),
+    expectedWeeklyHoursMax: asNumber(job.expected_weekly_hours_max),
+    turnaroundValue: asNumber(job.turnaround_value),
+    turnaroundUnit: asString(job.turnaround_unit),
+    turnaroundBasis: asString(job.turnaround_basis),
     applicationMode: asString(job.application_mode),
     externalApplyUrl: asString(job.external_apply_url),
     deadlineAt: asString(job.deadline_at),
-    platform: rawPlatform || "youtube",
+    platform: rawPlatform || "",
+    platforms,
     referenceVideos: asReferenceVideos(job.reference_videos ?? job.referenceVideos),
     about: asString(job.about_channel) ?? asString(job.aboutChannel) ?? "",
     responsibilities: asStringArray(job.responsibilities).join("\n"),
@@ -1441,6 +1617,8 @@ const toFrontendJob = (job: BackendJob): Job => {
       hasExperience: Boolean(experience && experience.trim() && experience.trim().toLowerCase() !== "any"),
       hasTimeline: Boolean(
         asString(job.weekly_hours)?.trim() ||
+          asNumber(job.expected_weekly_hours_min) !== undefined ||
+          asNumber(job.turnaround_value) !== undefined ||
           (startTimeframe && startTimeframe.trim().toLowerCase() !== "flexible")
       ),
     },
@@ -1547,11 +1725,13 @@ const getRequestTimeoutMs = (init?: RequestJsonOptions) => {
 
 export class BackendRequestError extends Error {
   status: number;
+  fieldErrors?: Record<string, string[]>;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, fieldErrors?: Record<string, string[]>) {
     super(message);
     this.name = "BackendRequestError";
     this.status = status;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -1648,7 +1828,18 @@ async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<
 
   if (!response.ok) {
     const text = await response.text();
-    throw new BackendRequestError(response.status, getBackendErrorMessage(response.status, text));
+    let fieldErrors: Record<string, string[]> | undefined;
+    try {
+      const parsed = JSON.parse(text) as BackendErrorShape;
+      fieldErrors = normalizeBackendFieldErrors(parsed);
+    } catch {
+      // The message parser below handles non-JSON responses.
+    }
+    throw new BackendRequestError(
+      response.status,
+      getBackendErrorMessage(response.status, text),
+      fieldErrors
+    );
   }
 
   if (response.status === 204) {
@@ -1662,7 +1853,7 @@ export async function listJobsWithMeta(params: ListJobsParams = {}): Promise<Lis
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === "") return;
-    query.set(key, String(value));
+    query.set(key, Array.isArray(value) ? value.join(",") : String(value));
   });
   if (!query.has("limit")) query.set("limit", "100");
   if (!query.has("offset")) query.set("offset", "0");
@@ -1697,9 +1888,13 @@ export async function createJobInBackend(
   payload: BackendCreateJobPayload,
   options: { accessToken?: string } = {}
 ): Promise<Job> {
+  const writablePayload = { ...payload };
+  delete writablePayload.hiring_external_url_snapshot;
+  delete writablePayload.posted_by_agency;
+  delete writablePayload.agency_profile_slug;
   const response = await requestJson<BackendJob>("/jobs", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(writablePayload),
     accessToken: options.accessToken,
   });
   return toFrontendJob(response);
@@ -1726,9 +1921,13 @@ export async function updateJob(
   jobId: string,
   payload: Partial<BackendCreateJobPayload>
 ): Promise<Job> {
+  const writablePayload = { ...payload };
+  delete writablePayload.hiring_external_url_snapshot;
+  delete writablePayload.posted_by_agency;
+  delete writablePayload.agency_profile_slug;
   const response = await requestJson<BackendJob>(`/jobs/${encodeURIComponent(jobId)}`, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(writablePayload),
     accessToken,
   });
   return toFrontendJob(response);
@@ -2271,12 +2470,19 @@ export async function setApplicationArchived(
   );
 }
 
+/**
+ * Share a previously-private application decision with the applicant. The
+ * optional `note` travels inside this request so the explanation is persisted
+ * in the same transaction as the decision it explains — never as a separate
+ * message that could land without it.
+ */
 export async function communicateApplicationStatus(
   accessToken: string,
   applicationId: string,
   statusValue: BackendJobApplication["status"],
   expectedVersion: number,
-  idempotencyKey: string
+  idempotencyKey: string,
+  note?: string
 ): Promise<BackendInteractionTransitionResponse<BackendJobApplication>> {
   return requestJson<BackendInteractionTransitionResponse<BackendJobApplication>>(
     `/applications/${encodeURIComponent(applicationId)}/status-communication`,
@@ -2286,6 +2492,7 @@ export async function communicateApplicationStatus(
         status: statusValue,
         expected_version: expectedVersion,
         idempotency_key: idempotencyKey,
+        ...(note ? { note } : {}),
       }),
       accessToken,
     }
@@ -2301,19 +2508,6 @@ export async function bulkUpdateApplicationStatus(
   return requestJson<BackendJobApplication[]>("/applications/bulk-status", {
     method: "POST",
     body: JSON.stringify({ ids: applicationIds, status: statusValue }),
-    accessToken,
-  });
-}
-
-/** Set/clear the job owner's private note on a received application. */
-export async function updateApplicationManagerNote(
-  accessToken: string,
-  applicationId: string,
-  note: string | null
-): Promise<BackendJobApplication> {
-  return requestJson<BackendJobApplication>(`/applications/${encodeURIComponent(applicationId)}/note`, {
-    method: "PATCH",
-    body: JSON.stringify({ note }),
     accessToken,
   });
 }
@@ -2499,12 +2693,18 @@ export async function getActivitySummary(accessToken: string): Promise<ActivityS
   };
 }
 
+/**
+ * Move a hiring request to a new status. Accepted and declined are shared with
+ * the recruiter the moment they are recorded, so this is the only opportunity
+ * to attach the optional `note` — it commits with the decision or not at all.
+ */
 export async function transitionTalentInterestStatus(
   accessToken: string,
   interestId: string,
   statusValue: BackendTalentInterest["status"],
   expectedVersion: number,
-  idempotencyKey: string
+  idempotencyKey: string,
+  note?: string
 ): Promise<BackendInteractionTransitionResponse<BackendTalentInterest>> {
   return requestJson<BackendInteractionTransitionResponse<BackendTalentInterest>>(
     `/talent-interests/${encodeURIComponent(interestId)}/transition`,
@@ -2514,6 +2714,7 @@ export async function transitionTalentInterestStatus(
         status: statusValue,
         expected_version: expectedVersion,
         idempotency_key: idempotencyKey,
+        ...(note ? { note } : {}),
       }),
       accessToken,
     }
@@ -2544,19 +2745,6 @@ export async function bulkUpdateTalentInterestStatus(
   return requestJson<BackendTalentInterest[]>("/talent-interests/bulk-status", {
     method: "POST",
     body: JSON.stringify({ ids: interestIds, status: statusValue }),
-    accessToken,
-  });
-}
-
-/** Set/clear the talent's private note on a received hiring request. */
-export async function updateTalentInterestManagerNote(
-  accessToken: string,
-  interestId: string,
-  note: string | null
-): Promise<BackendTalentInterest> {
-  return requestJson<BackendTalentInterest>(`/talent-interests/${encodeURIComponent(interestId)}/note`, {
-    method: "PATCH",
-    body: JSON.stringify({ note }),
     accessToken,
   });
 }
@@ -2778,27 +2966,6 @@ export async function sendConversationMessage(
       body: JSON.stringify(
         clientMessageId ? { body, client_message_id: clientMessageId } : { body }
       ),
-      accessToken,
-    }
-  );
-}
-
-export async function sendConversationStatusUpdate(
-  accessToken: string,
-  conversationId: string,
-  stage: "shortlisted" | "rejected",
-  expectedVersion: number,
-  idempotencyKey: string
-): Promise<BackendMessage> {
-  return requestJson<BackendMessage>(
-    `/me/conversations/${encodeURIComponent(conversationId)}/status-update`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        stage,
-        expected_version: expectedVersion,
-        idempotency_key: idempotencyKey,
-      }),
       accessToken,
     }
   );

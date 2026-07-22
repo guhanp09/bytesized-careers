@@ -10,6 +10,12 @@ import { authOptions } from "../../../lib/auth";
 import { getJobById as getJobByIdFromBackend, getPublicProfile } from "../../../lib/backendClient";
 import { getMarketplaceDataSource } from "../../../lib/devDataSource.server";
 import { formatPostedLabel } from "../../../lib/format";
+import {
+  cleanJobText,
+  compensationForJob,
+  roleForJob,
+  workSetupForJob,
+} from "../../../lib/jobPresentation";
 import { JOBS } from "../../../lib/jobs";
 import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfiles";
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
@@ -33,6 +39,23 @@ const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL ||
   /\/+$/,
   ""
 );
+
+const SCHEMA_EMPLOYMENT_TYPES: Record<string, string> = {
+  one_time_project: "CONTRACTOR",
+  ongoing_freelance: "CONTRACTOR",
+  retainer: "CONTRACTOR",
+  part_time: "PART_TIME",
+  full_time: "FULL_TIME",
+  fixed_term: "TEMPORARY",
+  internship: "INTERN",
+};
+
+function schemaDate(value?: string | null) {
+  const raw = cleanJobText(value);
+  if (!raw) return undefined;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
 
 async function getJobChannelRating(job: Job, dataSource: "backend" | "mock") {
   const channelSlug = job.channelProfileSlug?.trim();
@@ -88,7 +111,14 @@ export async function generateMetadata({
   if (!job) {
     return { title: "Job not found", robots: { index: false, follow: false } };
   }
-  const description = [job.channel.name, job.location, job.budget].filter(Boolean).join(" · ");
+  const compensation = compensationForJob(job);
+  const role = roleForJob(job);
+  const description = [
+    cleanJobText(job.hiringDisplayName) || cleanJobText(job.channel.name),
+    role.name !== "Role not specified" ? role.name : "",
+    compensation.disclosed ? compensation.headline : "",
+    workSetupForJob(job) !== "Work setup not specified" ? workSetupForJob(job) : "",
+  ].filter(Boolean).join(" · ");
   const image = job.channel.logoUrl || undefined;
   return {
     title: `${job.title} | CreatorJobs`,
@@ -150,23 +180,39 @@ export default async function JobDetailsPage({
   }
 
   const postedLabel = formatPostedLabel(job.postedShort);
-  const postedText = postedLabel ? `Posted ${postedLabel}` : "Posted just now";
+  const postedText = postedLabel ? `Posted ${postedLabel}` : "";
+  const description = [job.about, job.responsibilities, job.requirements]
+    .map((value) => cleanJobText(value))
+    .filter(Boolean)
+    .join("\n\n");
+  const engagementType = cleanJobText(job.engagementType).toLowerCase();
+  const hiringOrganizationName =
+    cleanJobText(job.hiringDisplayName) || cleanJobText(job.channel.name);
+  const location = cleanJobText(job.location);
+  const workMode = cleanJobText(job.workMode).toLowerCase();
+  const isRemote = workMode === "remote" || (!workMode && location.toLowerCase() === "remote");
   const jobPostingJsonLd = {
     "@context": "https://schema.org",
     "@type": "JobPosting",
     title: job.title,
-    description: [job.about, job.responsibilities, job.requirements].filter(Boolean).join("\n\n"),
-    datePosted: new Date().toISOString(),
-    employmentType: "CONTRACTOR",
-    hiringOrganization: {
-      "@type": "Organization",
-      name: job.channel.name,
-    },
-    jobLocationType: job.location?.toLowerCase().includes("remote") ? "TELECOMMUTE" : undefined,
-    applicantLocationRequirements: job.location
+    description: description || undefined,
+    datePosted: schemaDate(job.createdAt),
+    validThrough: schemaDate(job.deadlineAt),
+    employmentType: engagementType ? SCHEMA_EMPLOYMENT_TYPES[engagementType] : undefined,
+    hiringOrganization: hiringOrganizationName
       ? {
-          "@type": "Country",
-          name: job.location,
+          "@type": "Organization",
+          name: hiringOrganizationName,
+        }
+      : undefined,
+    jobLocationType: isRemote ? "TELECOMMUTE" : undefined,
+    jobLocation: location && !isRemote
+      ? {
+          "@type": "Place",
+          address: {
+            "@type": "PostalAddress",
+            addressLocality: location,
+          },
         }
       : undefined,
     url: `${siteUrl}/jobs/${encodeURIComponent(String(job.id))}`,
@@ -180,7 +226,7 @@ export default async function JobDetailsPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingJsonLd) }}
       />
-      <div className="px-4 sm:px-6 py-8">
+      <div className="px-4 pb-28 pt-8 sm:px-6 lg:pb-8">
         <div className="mx-auto grid max-w-6xl min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
           <div className="min-w-0 space-y-6">
             <JobHero

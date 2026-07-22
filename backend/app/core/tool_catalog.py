@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, asdict
 
 
 @dataclass(frozen=True)
 class ToolCatalogEntry:
+    key: str
     name: str
     aliases: tuple[str, ...]
     logo_key: str
@@ -23,6 +25,7 @@ def tool(
     *aliases: str,
 ) -> ToolCatalogEntry:
     return ToolCatalogEntry(
+        key=logo_key,
         name=name,
         aliases=tuple(aliases),
         logo_key=logo_key,
@@ -93,6 +96,35 @@ TOOL_CATALOG: tuple[ToolCatalogEntry, ...] = (
     tool("ChatGPT", "AI / automation", "chatgpt", "GPT", "OpenAI"),
     tool("Claude", "AI / automation", "claude"),
 )
+
+_TOOLS_BY_KEY = {entry.key: entry for entry in TOOL_CATALOG}
+if len(_TOOLS_BY_KEY) != len(TOOL_CATALOG):
+    raise RuntimeError("Tool catalog keys must be unique")
+
+
+def _normalize_lookup(value: str) -> str:
+    normalized = value.strip().lower().replace("&", "and").replace("+", " plus ")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+
+_TOOLS_BY_LOOKUP: dict[str, ToolCatalogEntry] = {}
+for _entry in TOOL_CATALOG:
+    for _value in (_entry.key, _entry.name, *_entry.aliases):
+        _TOOLS_BY_LOOKUP[_normalize_lookup(_value)] = _entry
+
+
+def find_tool(value: str) -> ToolCatalogEntry | None:
+    return _TOOLS_BY_LOOKUP.get(_normalize_lookup(value))
+
+
+def find_tool_by_key(key: str) -> ToolCatalogEntry | None:
+    return _TOOLS_BY_KEY.get(key.strip().lower())
+
+
+def tool_display_names(keys: list[str] | None) -> list[str] | None:
+    if keys is None:
+        return None
+    return [(entry.name if (entry := find_tool_by_key(key)) else key) for key in keys]
 
 
 def list_tool_catalog() -> list[dict]:

@@ -3,44 +3,49 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Job } from "../lib/types";
-import { formatCompactNumber, formatPostedLabel } from "../lib/format";
-import { formatListingTitle } from "../lib/displayText";
-import { jobDisplayChips } from "../lib/jobCreatorContext";
-import { normalizeCount, normalizePercent } from "../lib/listingStats";
+
 import { saveJob } from "../lib/backendClient";
+import { formatListingTitle } from "../lib/displayText";
+import { formatCompactNumber, formatPostedLabel } from "../lib/format";
+import {
+  compensationForJob,
+  deadlineForJob,
+  engagementForJob,
+  hiringVerificationForJob,
+  roleForJob,
+  trialForJob,
+  uniqueJobText,
+  workSetupForJob,
+} from "../lib/jobPresentation";
+import { normalizeCount, normalizePercent } from "../lib/listingStats";
+import type { Job } from "../lib/types";
 import { useCardSheen } from "../lib/useCardSheen";
-import { CardActionFeedback, copyTextToClipboard, MetaRow, StatRow, TagPill, useTransientCardFeedback } from "./ui";
 import { Icon } from "./Icons";
 import ChannelAttribution from "./jobs/ChannelAttribution";
+import {
+  CardActionFeedback,
+  copyTextToClipboard,
+  StatRow,
+  TagPill,
+  useTransientCardFeedback,
+} from "./ui";
 
-const platformIconMap: Record<string, "youtube" | "instagram" | "tiktok" | "facebook" | "linkedin" | "x" | "podcast"> =
-  {
-    youtube: "youtube",
-    instagram: "instagram",
-    tiktok: "tiktok",
-    facebook: "facebook",
-    linkedin: "linkedin",
-    "x/twitter": "x",
-    x: "x",
-    podcast: "podcast",
-  };
-
-const getPlatform = (platform?: string) => (platform || "YouTube").toLowerCase();
-
-const getPlatformIcon = (platform?: string) => {
-  const key = getPlatform(platform);
-  return platformIconMap[key] || "youtube";
+const platformIconMap: Record<
+  string,
+  "youtube" | "instagram" | "tiktok" | "facebook" | "linkedin" | "x" | "podcast" | "globe"
+> = {
+  youtube: "youtube",
+  instagram: "instagram",
+  tiktok: "tiktok",
+  facebook: "facebook",
+  linkedin: "linkedin",
+  "x/twitter": "x",
+  x: "x",
+  podcast: "podcast",
 };
 
-const formatFollowersLabel = (count: number | null, platform?: string) => {
-  if (count === null) {
-    return getPlatform(platform) === "youtube" ? "Subscribers hidden" : "Followers hidden";
-  }
-  const base = formatCompactNumber(count);
-  const isYoutube = getPlatform(platform) === "youtube";
-  return `${base} ${isYoutube ? "subscribers" : "followers"}`;
-};
+const getPlatformIcon = (platform?: string) =>
+  platformIconMap[(platform || "").toLowerCase()] || "globe";
 
 const channelInitials = (value?: string | null) =>
   (value || "")
@@ -50,31 +55,13 @@ const channelInitials = (value?: string | null) =>
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
-function TagRow({ tags }: { tags: string[] }) {
-  const top = tags.slice(0, 3);
-  const extra = tags.length - top.length;
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {top.map((t) => (
-        <TagPill key={t}>{t}</TagPill>
-      ))}
-      {extra > 0 ? (
-        <span className="text-[11px] px-2 py-1 rounded-lg bg-[var(--vt-tag-more-bg,rgba(255,255,255,0.05))] border border-[var(--vt-tag-line,rgba(255,255,255,0.1))] text-[var(--vt-tag-more-text,rgba(255,255,255,0.55))]">
-          +{extra}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
 function IconAction({
   label,
   onClick,
   children,
 }: {
   label: string;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: (event: React.MouseEvent) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -84,32 +71,24 @@ function IconAction({
       title={label}
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="h-9 w-9 cursor-pointer inline-flex items-center justify-center rounded-xl bg-[var(--vt-inset,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]"
+      className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[var(--vt-line,rgba(255,255,255,0.1))] bg-[var(--vt-inset,rgba(255,255,255,0.06))] transition-colors hover:bg-[var(--vt-inset-hover,rgba(255,255,255,0.1))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]"
     >
       {children}
     </button>
   );
 }
 
-function ListingCta({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-}) {
+function ListingCta({ onClick }: { onClick: (event: React.MouseEvent<HTMLButtonElement>) => void }) {
   return (
     <button
       type="button"
+      aria-label="Apply Now"
       onClick={onClick}
       onKeyDown={(event) => event.stopPropagation()}
-      className="vt-cta group/cta inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-[var(--vt-cta-text,rgba(255,255,255,0.9))] underline-offset-4 transition-colors hover:text-[var(--vt-cta-text-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-cta-focus-ring,rgba(255,255,255,0.2))]"
+      className="vt-cta group/cta hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-sm px-0.5 py-0.5 text-[12px] font-extrabold tracking-[0.04em] text-[var(--vt-cta-text,rgba(255,255,255,0.9))] underline-offset-4 transition-colors hover:text-[var(--vt-cta-text-hover,#ffffff)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-cta-focus-ring,rgba(255,255,255,0.2))] sm:inline-flex"
     >
-      <span>{label}</span>
-      <span
-        aria-hidden="true"
-        className="inline-block transition-transform group-hover/cta:translate-x-0.5 motion-reduce:transition-none"
-      >
+      <span>Apply Now</span>
+      <span aria-hidden="true" className="transition-transform group-hover/cta:translate-x-0.5 motion-reduce:transition-none">
         →
       </span>
     </button>
@@ -125,17 +104,25 @@ export function JobCard({ job }: { job: Job }) {
   const { feedback, showFeedback } = useTransientCardFeedback();
   const sheen = useCardSheen();
   const cardHref = `/jobs/${encodeURIComponent(String(job.id))}`;
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
   const postedLabel = formatPostedLabel(job.postedShort);
-  const currentlyViewing = normalizeCount(job.views);
+  const viewCount = normalizeCount(job.views);
   const applicantCount = normalizeCount(job.applicants);
   const responseRate = normalizePercent(job.responseRate);
-  const displayTitle = formatListingTitle(job.title);
-  const displayChips = jobDisplayChips(job);
+  const role = roleForJob(job);
+  const compensation = compensationForJob(job);
+  const deadline = deadlineForJob(job.deadlineAt);
+  const trial = job.trialStatus ? trialForJob(job) : null;
+  const employerName = job.hiringDisplayName || job.channel.name || "Employer not specified";
+  const representedBy = job.postedByAgency ? job.managedByAgencyName : "";
+  const verified = hiringVerificationForJob(job).verified;
+  const contextChips = uniqueJobText([
+    job.platform,
+    job.formatsHiredFor?.[0],
+    trial && trial.status !== "none" ? trial.title : "",
+  ]).slice(0, 3);
 
-  const onCardClick = () => {
-    if (!job.id) return;
-    router.push(cardHref);
+  const openCard = () => {
+    if (job.id) router.push(cardHref);
   };
 
   return (
@@ -143,123 +130,133 @@ export function JobCard({ job }: { job: Job }) {
       <div
         role="link"
         tabIndex={0}
-        onClick={onCardClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onCardClick();
+        onClick={openCard}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openCard();
           }
         }}
         {...sheen}
         className={[
-          "vt-card group relative isolate cursor-pointer rounded-2xl p-5 min-w-0",
-          "bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-card-line,rgba(255,255,255,0.1))]",
-          "[background-image:var(--vt-card-sheen,none)]",
-          "shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]",
+          "vt-card group relative isolate flex min-h-[350px] min-w-0 cursor-pointer flex-col rounded-2xl p-4 sm:p-5",
+          "border border-[var(--vt-card-line,rgba(255,255,255,0.1))] bg-[var(--vt-card,rgba(255,255,255,0.06))]",
+          "[background-image:var(--vt-card-sheen,none)] shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]",
           "transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out",
-          "hover:-translate-y-0.5 hover:bg-[var(--vt-card-hover-soft,rgba(255,255,255,0.075))] hover:border-[var(--vt-card-line-hover,rgba(255,255,255,0.25))]",
-          "hover:shadow-[var(--vt-card-shadow-hover,0_22px_55px_-26px_rgba(0,0,0,0.95))]",
-          "hover:ring-1 hover:ring-[var(--vt-accent-soft,rgba(255,255,255,0.1))]",
+          "hover:-translate-y-0.5 hover:border-[var(--vt-card-line-hover,rgba(255,255,255,0.25))] hover:bg-[var(--vt-card-hover-soft,rgba(255,255,255,0.075))]",
+          "hover:shadow-[var(--vt-card-shadow-hover,0_22px_55px_-26px_rgba(0,0,0,0.95))] hover:ring-1 hover:ring-[var(--vt-accent-soft,rgba(255,255,255,0.1))]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vt-accent-ring,rgba(255,255,255,0.2))]",
-          "h-[340px] flex flex-col",
         ].join(" ")}
-        title="Click to open"
+        title="Open job"
       >
         <div aria-hidden="true" className="home-card-sheen -z-10" />
         <CardActionFeedback feedback={feedback} />
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+
+        <header className="flex min-w-0 items-start justify-between gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             {job.channel.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={job.channel.logoUrl}
-                alt={job.channel.name}
-                className="vt-avatar h-12 w-12 rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 flex-shrink-0"
+                alt=""
+                className="vt-avatar h-11 w-11 shrink-0 rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 object-cover"
               />
             ) : (
-              <div className="vt-avatar flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 text-xs font-semibold text-white/72">
-                {channelInitials(job.channel.name) || <Icon name="briefcase" className="h-4 w-4" />}
+              <div className="vt-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--vt-avatar-line,rgba(255,255,255,0.15))] bg-white/10 text-xs font-semibold text-white/72">
+                {channelInitials(employerName) || <Icon name="briefcase" className="h-4 w-4" />}
               </div>
             )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <ChannelAttribution
-                  channelName={job.channel.name}
+                  channelName={employerName}
                   channelProfileSlug={job.channelProfileSlug}
                   channelExternalUrl={job.channelExternalUrl}
-                  className="max-w-[170px] text-sm font-semibold text-white underline-offset-4"
+                  className="min-w-0 max-w-full truncate text-sm font-semibold text-white underline-offset-4"
                 />
+                {verified ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-emerald-100/78" aria-label="Verified hiring identity">
+                    <Icon name="badge-check" className="h-3.5 w-3.5" />
+                    <span className="hidden xl:inline">Verified</span>
+                  </span>
+                ) : null}
               </div>
-              <p className="text-xs text-[var(--vt-text-muted,rgba(255,255,255,0.55))] truncate inline-flex items-center gap-1.5">
-                <Icon name={getPlatformIcon(job.platform)} className="w-3.5 h-3.5" />
-                <span>{formatFollowersLabel(job.channel.subscribers, job.platform)}</span>
-                {postedLabel ? <span className="text-white/40">• {postedLabel}</span> : null}
+              <p className="mt-0.5 block min-w-0 truncate text-[11px] text-[var(--vt-text-muted,rgba(255,255,255,0.55))]">
+                {representedBy ? `Managed by ${representedBy}` : postedLabel || "Open listing"}
               </p>
-              {job.hiringDisplayName ? (
-                <p className="mt-1 truncate text-[11px] text-white/50">
-                  Hiring for {job.hiringDisplayName}
-                  {job.managedByAgencyName ? ` · Managed by ${job.managedByAgencyName}` : ""}
-                </p>
-              ) : null}
             </div>
           </div>
-
           <ListingCta
-            label="Apply Now"
             onClick={(event) => {
               event.stopPropagation();
-              onCardClick();
+              openCard();
             }}
           />
+        </header>
+
+        <div className="mt-4 min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-white/42">
+            {role.name}
+          </p>
+          {role.specialization ? <p className="mt-1 break-words text-xs text-white/58">{role.specialization}</p> : null}
+          <h3 className="mt-2 line-clamp-2 min-h-[42px] break-words text-[15px] font-extrabold leading-snug text-[var(--vt-ink,#ffffff)] underline-offset-4 transition-colors group-hover:underline">
+            {formatListingTitle(job.title)}
+          </h3>
         </div>
 
-        {/* Title row */}
-        <h3 className="mt-4 h-[52px] cursor-pointer line-clamp-2 text-[15px] font-extrabold leading-snug tracking-[var(--vt-title-tracking,0em)] text-[var(--vt-ink,#ffffff)] underline-offset-4 transition-colors hover:underline">
-          {displayTitle}
-        </h3>
+        <div className="mt-4 min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
+          <p className="break-words text-[15px] font-semibold leading-snug text-white/90">{compensation.headline}</p>
+          {compensation.note ? <p className="mt-1 line-clamp-1 break-words text-[11px] text-white/48">{compensation.note}</p> : null}
+        </div>
 
-        {/* Details rows */}
-        {(job.budget || job.experience || job.location) ? (
-          <div className="mt-4 space-y-2">
-            {job.budget ? (
-              <MetaRow icon={job.budget.includes("per month") ? "briefcase" : "cash-stack"} text={job.budget} />
-            ) : null}
-            {job.experience ? <MetaRow icon="cap" text={`Experience: ${job.experience}`} /> : null}
-            {job.location ? <MetaRow icon="pin" text={job.location} /> : null}
+        <div className="mt-3 min-w-0 space-y-1.5 text-xs leading-relaxed text-white/62">
+          <p className="flex min-w-0 items-start gap-2">
+            <Icon name="briefcase" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+            <span className="min-w-0 break-words">{engagementForJob(job)}</span>
+          </p>
+          <p className="flex min-w-0 items-start gap-2">
+            <Icon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+            <span className="min-w-0 break-words">{workSetupForJob(job)}</span>
+          </p>
+          {deadline.valid ? (
+            <p className={`flex min-w-0 items-start gap-2 ${deadline.expired ? "font-medium text-amber-100/80" : ""}`}>
+              <Icon name="calendar-clock" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+              <span className="min-w-0 break-words">{deadline.label}</span>
+            </p>
+          ) : null}
+        </div>
+
+        {contextChips.length ? (
+          <div className="mt-3 flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
+            {contextChips.map((chip) => (
+              <TagPill key={chip}>
+                <span className="inline-flex max-w-full items-center gap-1.5">
+                  {chip === job.platform ? <Icon name={getPlatformIcon(job.platform)} className="h-3 w-3 shrink-0" /> : null}
+                  <span className="max-w-[150px] truncate">{chip}</span>
+                </span>
+              </TagPill>
+            ))}
           </div>
         ) : null}
 
-        {/* Tags row */}
-        {displayChips.length ? (
-          <div className="mt-4 overflow-hidden">
-            <TagRow tags={displayChips} />
-          </div>
-        ) : null}
-
-        {/* Bottom row */}
-        <div className="mt-auto flex h-10 items-center justify-between gap-3">
-          <div className="flex items-center gap-4">
-            <StatRow
-              icon="eye"
-              value={formatCompactNumber(currentlyViewing)}
-              label="Currently viewing"
-              interactive
-            />
+        <footer className="mt-auto flex min-w-0 items-center justify-between gap-2 pt-4">
+          <div className="hidden min-w-0 items-center gap-3 xl:flex">
+            <StatRow icon="eye" value={formatCompactNumber(viewCount)} label="Views" interactive />
             <StatRow icon="users" value={formatCompactNumber(applicantCount)} label="Applicants" interactive />
             <StatRow icon="bolt" value={`${responseRate}%`} label="Response rate" interactive />
           </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <p className="min-w-0 truncate text-[11px] text-white/42 xl:hidden">
+            {applicantCount} applicant{applicantCount === 1 ? "" : "s"}{postedLabel ? ` · ${postedLabel}` : ""}
+          </p>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <IconAction
               label={saved ? "Saved" : "Save"}
-              onClick={async (e) => {
-                stop(e);
+              onClick={async (event) => {
+                event.stopPropagation();
                 if (!job.id) return;
                 if (!session?.backendAccessToken) {
                   showFeedback("Sign in to save this job.", "info", "bookmark");
-                  window.setTimeout(() => {
-                    router.push(`/auth?mode=login&next=${encodeURIComponent(cardHref)}`);
-                  }, 900);
+                  window.setTimeout(() => router.push(`/auth?mode=login&next=${encodeURIComponent(cardHref)}`), 900);
                   return;
                 }
                 if (saved) {
@@ -284,13 +281,12 @@ export function JobCard({ job }: { job: Job }) {
                 }
               }}
             >
-              <Icon name="bookmark" className={["w-4 h-4", saving ? "opacity-45" : ""].join(" ")} />
+              <Icon name="bookmark" className={`h-4 w-4 ${saving ? "opacity-45" : ""}`} />
             </IconAction>
-
             <IconAction
               label={copied ? "Copied" : "Share"}
-              onClick={async (e) => {
-                stop(e);
+              onClick={async (event) => {
+                event.stopPropagation();
                 const url = `${window.location.origin}${cardHref}`;
                 try {
                   await copyTextToClipboard(url);
@@ -303,10 +299,10 @@ export function JobCard({ job }: { job: Job }) {
                 }
               }}
             >
-              <Icon name="share" className="w-4 h-4" />
+              <Icon name="share" className="h-4 w-4" />
             </IconAction>
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );

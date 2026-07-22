@@ -4,13 +4,15 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("job card stats use normalized live fields and show action feedback", () => {
+test("job card stats use normalized persisted fields and show action feedback", () => {
   const source = read("components/JobCard.tsx");
 
   assert.match(source, /normalizeCount\(job\.views\)/);
   assert.match(source, /normalizeCount\(job\.applicants\)/);
   assert.match(source, /normalizePercent\(job\.responseRate\)/);
   assert.match(source, /formatCompactNumber\(applicantCount\)/);
+  assert.match(source, /label="Views"/);
+  assert.doesNotMatch(source, /label="Currently viewing"/);
   assert.match(source, /CardActionFeedback feedback=\{feedback\}/);
   assert.match(source, /showFeedback\("Job saved\.", "success", "check"/);
   assert.match(source, /actionHref: "\/you\?tab=saved"/);

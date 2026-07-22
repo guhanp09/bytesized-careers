@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from conftest import create_valid_published_job
+
 
 async def _register_verified_login(
     client: AsyncClient,
@@ -31,16 +33,10 @@ async def _register_verified_login(
 
 
 async def _published_job(client: AsyncClient, owner_token: str) -> str:
-    job_response = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner_token}"},
-        json={
-            "title": "Long-form gaming editor",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job_response = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Long-form gaming editor",
     )
     assert job_response.status_code == 201
     return job_response.json()["id"]
