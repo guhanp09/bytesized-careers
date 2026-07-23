@@ -30,6 +30,10 @@ app = FastAPI(
     openapi_tags=[
         {"name": "health", "description": "Service and dependency health checks"},
         {"name": "jobs", "description": "Jobs management endpoints"},
+        {
+            "name": "job-imports",
+            "description": "Private recruiter-owned job-import readiness records",
+        },
         {"name": "auth", "description": "Email/password and OAuth authentication endpoints"},
         {"name": "me", "description": "Authenticated user profile and YouTube channel endpoints"},
         {"name": "roles", "description": "Backend-driven role catalog and clarification questions"},

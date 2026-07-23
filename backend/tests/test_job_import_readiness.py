@@ -1,0 +1,1162 @@
+from __future__ import annotations
+
+import importlib.util
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID, uuid4
+
+import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from httpx import AsyncClient
+from pydantic import ValidationError
+from sqlalchemy import select
+
+from app.models import Job, JobImportDraft, JobImportField, JobImportSource, Role
+from app.repositories.job_import_repository import JobImportRepository
+from app.repositories.job_repository import JobRepository
+from app.schemas.job_import import (
+    MAX_EVIDENCE_SNIPPET_LENGTH,
+    MAX_IMPORT_SOURCE_TEXT_LENGTH,
+    JobImportExtractionResponse,
+    JobImportProviderMetadata,
+    JobImportSourceCreate,
+)
+from app.services.job_import_service import JobImportError, JobImportService
+from app.services.job_service import JobService
+from conftest import TestSessionLocal
+from job_import_response_fixtures import SCENARIOS, scenario
+
+
+async def _auth(client: AsyncClient, label: str) -> tuple[dict[str, str], UUID]:
+    response = await client.post(
+        "/api/v1/auth/oauth/google",
+        json={
+            "email": f"{label}@example.com",
+            "provider_account_id": f"google-{label}",
+            "access_token": f"token-{label}",
+            "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
+            "scope": "openid email profile",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    return (
+        {"Authorization": f"Bearer {body['access_token']}"},
+        UUID(body["user"]["id"]),
+    )
+
+
+async def _ensure_role() -> Role:
+    async with TestSessionLocal() as session:
+        role = (
+            await session.execute(select(Role).where(Role.slug == "video-editor"))
+        ).scalar_one_or_none()
+        if role is None:
+            role = Role(
+                name="Video Editor",
+                slug="video-editor",
+                category="Production",
+                is_active=True,
+            )
+            session.add(role)
+            await session.commit()
+            await session.refresh(role)
+        elif not role.is_active:
+            role.is_active = True
+            await session.commit()
+        return role
+
+
+def _service(session) -> JobImportService:
+    return JobImportService(
+        JobImportRepository(session),
+        JobService(JobRepository(session)),
+    )
+
+
+async def _source_and_draft(
+    client: AsyncClient,
+    headers: dict[str, str],
+    label: str,
+    *,
+    source_payload: dict[str, object] | None = None,
+    supersedes_draft_id: str | None = None,
+) -> tuple[dict[str, object], dict[str, object]]:
+    source_response = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json=source_payload
+        or {
+            "source_type": "pasted_text",
+            "source_title": label,
+            "original_text": f"Private source content for {label}.",
+            "idempotency_key": f"source-{label}",
+        },
+    )
+    assert source_response.status_code == 201, source_response.text
+    source = source_response.json()
+    draft_response = await client.post(
+        f"/api/v1/job-imports/sources/{source['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "supersedes_draft_id": supersedes_draft_id,
+            "idempotency_key": f"draft-{label}",
+        },
+    )
+    assert draft_response.status_code == 201, draft_response.text
+    return source, draft_response.json()
+
+
+async def _record(
+    draft_id: str,
+    owner_user_id: UUID,
+    response_payload: dict[str, object],
+    *,
+    metadata: JobImportProviderMetadata | None = None,
+) -> None:
+    parsed = JobImportExtractionResponse.model_validate(response_payload)
+    async with TestSessionLocal() as session:
+        await _service(session).record_extraction_result(
+            UUID(draft_id),
+            parsed,
+            owner_user_id=owner_user_id,
+            provider_metadata=metadata,
+        )
+
+
+async def _accept_all_proposed(
+    client: AsyncClient,
+    headers: dict[str, str],
+    draft_id: str,
+) -> dict[str, object]:
+    current = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    for field in current["fields"]:
+        if field["provenance_state"] in {"missing", "conflicting_source_values"}:
+            continue
+        response = await client.patch(
+            f"/api/v1/job-imports/drafts/{draft_id}/fields/{field['field_path']}",
+            headers=headers,
+            json={"action": "accept"},
+        )
+        assert response.status_code == 200, response.text
+        current = response.json()
+    return current
+
+
+@pytest.mark.parametrize(
+    ("source_type", "payload"),
+    [
+        ("pasted_text", {"original_text": "Pasted listing"}),
+        ("rough_description", {"original_text": "Need an editor"}),
+        ("external_listing_text", {"original_text": "Imported listing"}),
+        ("public_url", {"source_url": "https://example.com/jobs/editor"}),
+        (
+            "screenshot",
+            {
+                "storage_references": ["private/imports/one.png"],
+                "original_filename": "one.png",
+                "content_type": "image/png",
+            },
+        ),
+        (
+            "screenshots",
+            {
+                "storage_references": [
+                    "private/imports/one.png",
+                    "private/imports/two.png",
+                ],
+                "original_filename": "screenshots.zip",
+                "content_type": "application/zip",
+            },
+        ),
+        (
+            "document",
+            {
+                "storage_references": ["private/imports/job.docx"],
+                "original_filename": "job.docx",
+                "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+        ),
+        (
+            "pdf",
+            {
+                "storage_references": ["private/imports/job.pdf"],
+                "original_filename": "job.pdf",
+                "content_type": "application/pdf",
+            },
+        ),
+        ("other", {"original_text": "Other normalized source"}),
+    ],
+)
+def test_source_schema_supports_bounded_private_source_types(
+    source_type: str,
+    payload: dict[str, object],
+) -> None:
+    model = JobImportSourceCreate.model_validate(
+        {"source_type": source_type, **payload}
+    )
+    assert model.source_type == source_type
+
+
+def test_source_and_provider_schemas_reject_unsafe_or_oversized_input() -> None:
+    with pytest.raises(ValidationError):
+        JobImportSourceCreate.model_validate(
+            {
+                "source_type": "pasted_text",
+                "original_text": "x" * (MAX_IMPORT_SOURCE_TEXT_LENGTH + 1),
+            }
+        )
+    for unsafe_reference in (
+        "../secret.pdf",
+        "/absolute/secret.pdf",
+        "https://public.example/secret.pdf",
+        "private\\windows\\secret.pdf",
+    ):
+        with pytest.raises(ValidationError):
+            JobImportSourceCreate.model_validate(
+                {
+                    "source_type": "pdf",
+                    "storage_references": [unsafe_reference],
+                    "original_filename": "secret.pdf",
+                    "content_type": "application/pdf",
+                }
+            )
+    with pytest.raises(ValidationError):
+        JobImportSourceCreate.model_validate(
+            {
+                "source_type": "public_url",
+                "source_url": "javascript:alert(1)",
+            }
+        )
+    with pytest.raises(ValidationError):
+        JobImportExtractionResponse.model_validate(
+            scenario("malformed_provider_output")
+        )
+    too_large = scenario("complete_creator_job")
+    too_large["fields"][0]["evidence"][0]["snippet"] = (
+        "x" * (MAX_EVIDENCE_SNIPPET_LENGTH + 1)
+    )
+    with pytest.raises(ValidationError):
+        JobImportExtractionResponse.model_validate(too_large)
+
+
+def test_provider_contract_sanitizes_evidence_and_rejects_invalid_nested_json() -> None:
+    payload = scenario("screenshot_derived")
+    payload["fields"][0]["evidence"][0]["snippet"] = (
+        "<script>alert('private')</script> Video editor"
+    )
+    parsed = JobImportExtractionResponse.model_validate(payload)
+    snippet = parsed.fields[0].evidence[0].snippet
+    assert "<script>" not in snippet
+    assert "&lt;script&gt;" in snippet
+    assert parsed.fields[0].evidence[0].location.screenshot_index == 0
+
+    invalid = scenario("complete_creator_job")
+    invalid["fields"][0]["provenance"] = "provider_is_certain"
+    with pytest.raises(ValidationError):
+        JobImportExtractionResponse.model_validate(invalid)
+
+
+def test_null_and_empty_field_semantics_remain_distinct() -> None:
+    explicit_empty = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "required_tool_keys",
+                    "value": [],
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "No tools are required."}],
+                }
+            ],
+        }
+    )
+    assert explicit_empty.fields[0].value == []
+    with pytest.raises(ValidationError):
+        JobImportExtractionResponse.model_validate(
+            {
+                "extraction_schema_version": 1,
+                "target_listing_schema_version": 3,
+                "fields": [
+                    {
+                        "field_path": "required_tool_keys",
+                        "value": None,
+                        "provenance": "directly_supplied",
+                        "evidence": [{"snippet": "Tools were not found."}],
+                    }
+                ],
+            }
+        )
+
+
+def test_all_provider_neutral_simulation_fixtures_have_expected_schema_behavior() -> None:
+    assert set(SCENARIOS) == {
+        "complete_creator_job",
+        "vague_one_line",
+        "screenshot_derived",
+        "conflicting_compensation",
+        "missing_workload",
+        "multiple_roles",
+        "paid_trial",
+        "unpaid_trial",
+        "sensitive_account_access",
+        "external_application_url",
+        "invalid_controlled_taxonomy",
+        "malformed_provider_output",
+        "unsupported_fields",
+        "historical_language_field",
+        "reprocessed_source",
+    }
+    for name in SCENARIOS:
+        if name == "malformed_provider_output":
+            with pytest.raises(ValidationError):
+                JobImportExtractionResponse.model_validate(scenario(name))
+        else:
+            parsed = JobImportExtractionResponse.model_validate(scenario(name))
+            assert parsed.extraction_schema_version == 1
+            assert parsed.target_listing_schema_version == 3
+
+
+async def test_private_api_ownership_allowlists_idempotency_and_status_tampering(
+    client: AsyncClient,
+) -> None:
+    owner_headers, _owner_id = await _auth(client, "import-private-owner")
+    other_headers, _other_id = await _auth(client, "import-private-other")
+    source, draft = await _source_and_draft(
+        client,
+        owner_headers,
+        "private-ownership",
+    )
+
+    duplicate_source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=owner_headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": "private-ownership",
+            "original_text": "Private source content for private-ownership.",
+            "idempotency_key": "source-private-ownership",
+        },
+    )
+    assert duplicate_source.status_code == 201
+    assert duplicate_source.json()["id"] == source["id"]
+    conflict = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=owner_headers,
+        json={
+            "source_type": "pasted_text",
+            "original_text": "Different content",
+            "idempotency_key": "source-private-ownership",
+        },
+    )
+    assert conflict.status_code == 409
+
+    for path in (
+        f"/api/v1/job-imports/sources/{source['id']}",
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+    ):
+        assert (await client.get(path)).status_code == 401
+        assert (await client.get(path, headers=other_headers)).status_code == 404
+
+    spoof_source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=owner_headers,
+        json={
+            "source_type": "pasted_text",
+            "original_text": "Spoof",
+            "provider_name": "untrusted-client",
+        },
+    )
+    assert spoof_source.status_code == 422
+    spoof_draft = await client.post(
+        f"/api/v1/job-imports/sources/{source['id']}/drafts",
+        headers=owner_headers,
+        json={"processing_status": "ready_to_apply"},
+    )
+    assert spoof_draft.status_code == 422
+    spoof_apply = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=owner_headers,
+        json={"mode": "create_new", "target_job_id": str(uuid4())},
+    )
+    assert spoof_apply.status_code == 422
+    other_delete = await client.delete(
+        f"/api/v1/job-imports/sources/{source['id']}",
+        headers=other_headers,
+    )
+    assert other_delete.status_code == 404
+
+
+async def test_internal_processing_contract_and_failure_transition_are_provider_neutral(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-internal-processing")
+    source, draft = await _source_and_draft(
+        client,
+        headers,
+        "internal-processing",
+    )
+    async with TestSessionLocal() as session:
+        service = _service(session)
+        request = await service.build_extraction_request(
+            UUID(draft["id"]),
+            owner_user_id=owner_id,
+        )
+        assert request.source.original_text == source["original_text"]
+        assert "video-editor" in request.allowed_taxonomies["roles"]
+        assert "per video" in request.allowed_taxonomies["compensation_units"]
+        assert "primary_role_key" in {
+            definition.field_path for definition in request.field_definitions
+        }
+        restrictions = " ".join(request.inference_restrictions).lower()
+        assert "openai" not in restrictions
+        assert "anthropic" not in restrictions
+
+        processing = await service.begin_processing(
+            UUID(draft["id"]),
+            owner_user_id=owner_id,
+        )
+        assert processing.processing_status == "processing"
+        failed = await service.mark_processing_failed(
+            UUID(draft["id"]),
+            owner_user_id=owner_id,
+            error_code="adapter_unavailable",
+            message="Future adapter unavailable " + ("x" * 1_000),
+        )
+        assert failed.processing_status == "processing_failed"
+        assert len(failed.validation_errors["processing"]["message"]) == 500
+
+    await _record(draft["id"], owner_id, scenario("screenshot_derived"))
+    async with TestSessionLocal() as session:
+        with pytest.raises(JobImportError) as caught:
+            await _service(session).begin_processing(
+                UUID(draft["id"]),
+                owner_user_id=owner_id,
+            )
+        assert caught.value.code == "JOB_IMPORT_INVALID_TRANSITION"
+
+    openapi = (await client.get("/api/v1/openapi.json")).json()
+    import_paths = {
+        path: methods
+        for path, methods in openapi["paths"].items()
+        if "/job-imports/" in path
+    }
+    assert import_paths
+    assert all("process" not in path for path in import_paths)
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "vague_one_line",
+        "screenshot_derived",
+        "conflicting_compensation",
+        "missing_workload",
+        "multiple_roles",
+        "paid_trial",
+        "unpaid_trial",
+        "sensitive_account_access",
+        "external_application_url",
+        "invalid_controlled_taxonomy",
+    ],
+)
+async def test_valid_simulation_outputs_are_stored_with_provenance(
+    client: AsyncClient,
+    fixture_name: str,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, f"import-fixture-{fixture_name}")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        f"fixture-{fixture_name}",
+    )
+    await _record(draft["id"], owner_id, scenario(fixture_name))
+    response = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    stored = response.json()
+    assert stored["processing_status"] == "awaiting_recruiter_review"
+    assert stored["fields"]
+    paths = {field["field_path"] for field in stored["fields"]}
+    assert "title" in paths
+    assert all(field["authority_state"] == "unconfirmed" for field in stored["fields"])
+    if fixture_name == "screenshot_derived":
+        title = next(field for field in stored["fields"] if field["field_path"] == "title")
+        assert title["evidence"][0]["location"]["screenshot_index"] == 0
+    if fixture_name == "invalid_controlled_taxonomy":
+        budget_unit = next(
+            field for field in stored["fields"] if field["field_path"] == "budget_unit"
+        )
+        assert budget_unit["validation_errors"]
+
+
+async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-review-transitions")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "review-transitions",
+    )
+    await _record(draft["id"], owner_id, scenario("conflicting_compensation"))
+
+    bypass = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert bypass.status_code == 409
+    direct_authority = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "accept", "confirmed_value": "spoofed"},
+    )
+    assert direct_authority.status_code == 422
+
+    accepted = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert accepted.status_code == 200
+    title = next(
+        field for field in accepted.json()["fields"] if field["field_path"] == "title"
+    )
+    assert title["authority_state"] == "confirmed_by_recruiter"
+    assert title["confirmed_value"] == "Creator video editor"
+
+    reset = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "reset"},
+    )
+    assert reset.status_code == 200
+    title = next(
+        field for field in reset.json()["fields"] if field["field_path"] == "title"
+    )
+    assert title["review_status"] == "pending"
+    assert title["confirmed_value"] is None
+
+    edited = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "edit", "edited_value": "Recruiter-edited creator role"},
+    )
+    assert edited.status_code == 200
+    title = next(
+        field for field in edited.json()["fields"] if field["field_path"] == "title"
+    )
+    assert title["authority_state"] == "edited_by_recruiter"
+    assert title["effective_value"] == "Recruiter-edited creator role"
+
+    cannot_accept_conflict = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/budget_amount",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert cannot_accept_conflict.status_code == 409
+    resolved = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/budget_amount/resolve",
+        headers=headers,
+        json={"selected_value_index": 1},
+    )
+    assert resolved.status_code == 200
+    compensation = next(
+        field
+        for field in resolved.json()["fields"]
+        if field["field_path"] == "budget_amount"
+    )
+    assert compensation["confirmed_value"] == "40000"
+    assert compensation["selected_conflict_index"] == 1
+    assert len(compensation["conflicting_values"]) == 2
+
+    rejected = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "reject"},
+    )
+    assert rejected.status_code == 200
+    title = next(
+        field for field in rejected.json()["fields"] if field["field_path"] == "title"
+    )
+    assert title["authority_state"] == "rejected_by_recruiter"
+
+
+async def test_direct_extracted_and_suggested_provenance_never_grant_authority(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-provenance-states")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "provenance-states",
+    )
+    await _record(draft["id"], owner_id, scenario("complete_creator_job"))
+    stored = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            headers=headers,
+        )
+    ).json()
+    fields = {field["field_path"]: field for field in stored["fields"]}
+    assert fields["title"]["provenance_state"] == "extracted_from_source"
+    assert fields["title"]["provider_confidence"]["score"] == 1.0
+    assert fields["title"]["authority_state"] == "unconfirmed"
+    assert fields["primary_role_key"]["provenance_state"] == "suggested_inference"
+    assert fields["primary_role_key"]["authority_state"] == "unconfirmed"
+
+    vague_source, vague = await _source_and_draft(
+        client,
+        headers,
+        "provenance-directly-supplied",
+    )
+    del vague_source
+    await _record(vague["id"], owner_id, scenario("vague_one_line"))
+    vague_read = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{vague['id']}",
+            headers=headers,
+        )
+    ).json()
+    title = next(
+        field for field in vague_read["fields"] if field["field_path"] == "title"
+    )
+    assert title["provenance_state"] == "directly_supplied"
+    assert title["authority_state"] == "unconfirmed"
+
+    inferred_title = scenario("vague_one_line")
+    inferred_title["fields"][0] = {
+        "field_path": "title",
+        "value": "Inferred title",
+        "provenance": "suggested_inference",
+        "explanation": "Generated from context rather than explicit wording.",
+    }
+    _source, invalid_draft = await _source_and_draft(
+        client,
+        headers,
+        "provenance-invalid-inference",
+    )
+    await _record(invalid_draft["id"], owner_id, inferred_title)
+    invalid_read = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{invalid_draft['id']}",
+            headers=headers,
+        )
+    ).json()
+    invalid_title = next(
+        field for field in invalid_read["fields"] if field["field_path"] == "title"
+    )
+    assert invalid_title["validation_errors"] == [
+        "This field may only be extracted from explicit source wording."
+    ]
+
+
+async def test_invalid_taxonomy_must_be_edited_and_consequential_fields_are_gated(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-taxonomy-gating")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "taxonomy-gating",
+    )
+    await _record(draft["id"], owner_id, scenario("invalid_controlled_taxonomy"))
+
+    invalid_accept = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/budget_unit",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert invalid_accept.status_code == 409
+    corrected = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/budget_unit",
+        headers=headers,
+        json={"action": "edit", "edited_value": "per video"},
+    )
+    assert corrected.status_code == 200
+    field = next(
+        item
+        for item in corrected.json()["fields"]
+        if item["field_path"] == "budget_unit"
+    )
+    assert field["authority_state"] == "edited_by_recruiter"
+    assert field["validation_errors"] == []
+
+    sensitive_paths = {
+        "budget_unit",
+        "expected_weekly_hours_min",
+        "deadline_at",
+        "trial_status",
+        "trial_work_usage",
+        "trial_portfolio_permission",
+        "unpaid_trial_confirmed",
+    }
+    request = None
+    async with TestSessionLocal() as session:
+        request = await _service(session).build_extraction_request(
+            UUID(draft["id"]),
+            owner_user_id=owner_id,
+        )
+    policies = {
+        item.field_path: item.confirmation_policy for item in request.field_definitions
+    }
+    assert all(
+        policies[path] == "explicit_recruiter_confirmation_required"
+        for path in sensitive_paths
+    )
+    assert "status" not in policies
+    assert "hiring_verification_status_snapshot" not in policies
+    assert "languages" not in policies
+    assert "language_requirements" not in policies
+    assert all(
+        not key.startswith("language_")
+        for key in request.allowed_taxonomies
+    )
+
+
+async def test_complete_reviewed_import_creates_one_private_native_draft(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-complete-conversion")
+    source, draft = await _source_and_draft(
+        client,
+        headers,
+        "complete-conversion",
+    )
+    await _record(
+        draft["id"],
+        owner_id,
+        scenario("complete_creator_job"),
+        metadata=JobImportProviderMetadata(
+            provider_name="future-adapter",
+            model_name="future-model",
+            model_version="test-version",
+            instruction_version="job-import-v1",
+            metadata={"request_id": "provider-audit-only"},
+        ),
+    )
+    reviewed = await _accept_all_proposed(client, headers, draft["id"])
+    assert reviewed["processing_status"] == "ready_to_apply"
+    assert reviewed["confirmation_state"] == "confirmed"
+    assert reviewed["can_apply_to_native_draft"] is True
+    assert reviewed["can_publish_directly"] is True
+
+    converted = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert converted.status_code == 200, converted.text
+    result = converted.json()
+    assert result["created"] is True
+    job = result["job"]
+    assert job["status"] == "draft"
+    assert job["posted_by_user_id"] == str(owner_id)
+    assert job["listing_schema_version"] == 3
+    assert job["required_tool_keys"] == ["premiere-pro"]
+    assert job["other_required_tools"] == ["Creator Review Rig"]
+    assert job["required_skill_keys"] == ["video_editing", "storytelling"]
+    assert job["other_required_skills"] == ["YouTube retention sense"]
+    assert job["content_niches"] == ["Personal finance"]
+    assert job["deliverables"][0]["type"] == "long_form_video"
+    assert job["deliverables"][1]["custom_type"] == "Sponsor integration cut"
+    assert result["draft"]["source_id"] == source["id"]
+    assert result["draft"]["target_job_id"] == job["id"]
+    assert result["draft"]["provider_name"] == "future-adapter"
+
+    repeated = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["created"] is False
+    assert repeated.json()["job"]["id"] == job["id"]
+
+    assert (await client.get(f"/api/v1/jobs/{job['id']}")).status_code == 404
+    public_list = await client.get("/api/v1/jobs?q=Retention-focused")
+    assert public_list.status_code == 200
+    assert job["id"] not in {item["id"] for item in public_list.json()["items"]}
+    assert "Private source content" not in public_list.text
+    owner_jobs = await client.get("/api/v1/me/jobs", headers=headers)
+    assert owner_jobs.status_code == 200
+    native = next(item for item in owner_jobs.json() if item["id"] == job["id"])
+    assert "source_id" not in native
+    assert "provider_name" not in native
+    assert "original_text" not in native
+
+    async with TestSessionLocal() as session:
+        stored_draft = await session.get(JobImportDraft, UUID(draft["id"]))
+        stored_job = await session.get(Job, UUID(job["id"]))
+        assert stored_draft is not None
+        assert stored_job is not None
+        assert stored_draft.target_job_id == stored_job.id
+        assert stored_draft.machine_output is not None
+
+
+async def test_incomplete_reviewed_import_creates_incomplete_native_draft_only(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-incomplete-conversion")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "incomplete-conversion",
+    )
+    await _record(draft["id"], owner_id, scenario("vague_one_line"))
+    title_review = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert title_review.status_code == 200, title_review.text
+    reviewed = title_review.json()
+    assert reviewed["can_apply_to_native_draft"] is True
+    assert reviewed["can_publish_directly"] is False
+    missing = {item["field_path"] for item in reviewed["missing_fields"]}
+    assert {"primary_role_key", "compensation_mode"} <= missing
+
+    converted = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert converted.status_code == 200, converted.text
+    job = converted.json()["job"]
+    assert job["status"] == "draft"
+    assert job["primary_role_id"] is None
+    assert job["compensation_mode"] is None
+    publish_attempt = await client.patch(
+        f"/api/v1/jobs/{job['id']}",
+        headers=headers,
+        json={"status": "published"},
+    )
+    assert publish_attempt.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "detail_key", "expected_field"),
+    [
+        ("unsupported_fields", "server_owned_fields", "status"),
+        (
+            "historical_language_field",
+            "legacy_compatibility_fields",
+            "language_requirements",
+        ),
+    ],
+)
+async def test_unsupported_output_is_rejected_without_partial_storage(
+    client: AsyncClient,
+    fixture_name: str,
+    detail_key: str,
+    expected_field: str,
+) -> None:
+    headers, owner_id = await _auth(client, f"import-unsupported-{fixture_name}")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        f"unsupported-{fixture_name}",
+    )
+    with pytest.raises(JobImportError) as caught:
+        await _record(draft["id"], owner_id, scenario(fixture_name))
+    assert caught.value.code == "JOB_IMPORT_UNSUPPORTED_FIELD"
+    assert caught.value.details[detail_key] == [expected_field]
+    async with TestSessionLocal() as session:
+        fields = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft["id"])
+                )
+            )
+        ).scalars().all()
+        assert fields == []
+
+
+async def test_superseding_preserves_old_machine_output_and_old_draft_is_immutable(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-superseding")
+    source, first = await _source_and_draft(
+        client,
+        headers,
+        "superseding-first",
+    )
+    await _record(first["id"], owner_id, scenario("screenshot_derived"))
+    second_response = await client.post(
+        f"/api/v1/job-imports/sources/{source['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "supersedes_draft_id": first["id"],
+            "idempotency_key": "draft-superseding-second",
+        },
+    )
+    assert second_response.status_code == 201
+    second = second_response.json()
+    assert (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{first['id']}",
+            headers=headers,
+        )
+    ).json()["processing_status"] == "superseded"
+    await _record(second["id"], owner_id, scenario("reprocessed_source"))
+    with pytest.raises(JobImportError) as caught:
+        await _record(first["id"], owner_id, scenario("reprocessed_source"))
+    assert caught.value.code == "JOB_IMPORT_MACHINE_OUTPUT_IMMUTABLE"
+
+    async with TestSessionLocal() as session:
+        first_row = await session.get(JobImportDraft, UUID(first["id"]))
+        second_row = await session.get(JobImportDraft, UUID(second["id"]))
+        assert first_row is not None and first_row.machine_output is not None
+        assert second_row is not None and second_row.machine_output is not None
+        assert second_row.supersedes_draft_id == first_row.id
+        assert first_row.machine_output != second_row.machine_output
+
+
+async def test_source_redaction_removes_content_references_and_evidence_but_keeps_audit(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-redaction")
+    source, draft = await _source_and_draft(
+        client,
+        headers,
+        "redaction",
+        source_payload={
+            "source_type": "pdf",
+            "source_title": "Private imported PDF",
+            "original_filename": "private-job.pdf",
+            "content_type": "application/pdf",
+            "storage_references": ["private/imports/private-job.pdf"],
+            "idempotency_key": "source-redaction",
+        },
+    )
+    redaction_payload = scenario("screenshot_derived")
+    redaction_payload["warnings"] = [
+        {
+            "code": "private.source.note",
+            "message": "Private processing context.",
+        }
+    ]
+    await _record(
+        draft["id"],
+        owner_id,
+        redaction_payload,
+        metadata=JobImportProviderMetadata(
+            provider_name="future-adapter",
+            metadata={"private_trace": "redact-me"},
+        ),
+    )
+    deleted = await client.delete(
+        f"/api/v1/job-imports/sources/{source['id']}",
+        headers=headers,
+    )
+    assert deleted.status_code == 204
+    assert (
+        await client.get(
+            f"/api/v1/job-imports/sources/{source['id']}",
+            headers=headers,
+        )
+    ).status_code == 404
+    retained_draft = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=headers,
+    )
+    assert retained_draft.status_code == 200
+    assert all(field["evidence"] == [] for field in retained_draft.json()["fields"])
+
+    async with TestSessionLocal() as session:
+        stored_source = await session.get(JobImportSource, UUID(source["id"]))
+        stored_draft = await session.get(JobImportDraft, UUID(draft["id"]))
+        assert stored_source is not None
+        assert stored_source.original_text is None
+        assert stored_source.source_title is None
+        assert stored_source.source_url is None
+        assert stored_source.original_filename is None
+        assert stored_source.storage_references == []
+        assert stored_source.processing_state == "deleted"
+        assert stored_source.deleted_at is not None
+        assert stored_draft is not None
+        assert stored_draft.machine_output is None
+        assert stored_draft.provider_metadata is None
+        assert stored_draft.processing_warnings == []
+
+
+async def test_cross_account_cannot_review_apply_discard_or_delete_draft(
+    client: AsyncClient,
+) -> None:
+    owner_headers, owner_id = await _auth(client, "import-action-owner")
+    other_headers, _other_id = await _auth(client, "import-action-other")
+    _source, draft = await _source_and_draft(
+        client,
+        owner_headers,
+        "cross-account-actions",
+    )
+    await _record(draft["id"], owner_id, scenario("vague_one_line"))
+    attempts = [
+        (
+            "PATCH",
+            f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+            {"action": "accept"},
+        ),
+        (
+            "POST",
+            f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+            {"mode": "create_new"},
+        ),
+        (
+            "POST",
+            f"/api/v1/job-imports/drafts/{draft['id']}/discard",
+            None,
+        ),
+        (
+            "DELETE",
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            None,
+        ),
+    ]
+    for method, path, payload in attempts:
+        response = await client.request(
+            method,
+            path,
+            headers=other_headers,
+            json=payload,
+        )
+        assert response.status_code == 404, (method, path, response.text)
+
+
+async def test_owned_draft_deletion_redacts_machine_history_and_hides_record(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-draft-deletion")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "draft-deletion",
+    )
+    await _record(draft["id"], owner_id, scenario("screenshot_derived"))
+    deleted = await client.delete(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=headers,
+    )
+    assert deleted.status_code == 204
+    assert (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            headers=headers,
+        )
+    ).status_code == 404
+    async with TestSessionLocal() as session:
+        stored = await session.get(JobImportDraft, UUID(draft["id"]))
+        assert stored is not None
+        assert stored.deleted_at is not None
+        assert stored.machine_output is None
+        assert stored.provider_metadata is None
+        fields = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft["id"])
+                )
+            )
+        ).scalars().all()
+        assert fields == []
+
+
+def _load_migration(filename: str):
+    path = Path(__file__).parents[1] / "alembic" / "versions" / filename
+    spec = importlib.util.spec_from_file_location(filename.removesuffix(".py"), path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_job_import_migration_is_additive_reversible_and_preserves_rows(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "job-import-readiness.db"
+    engine = sa.create_engine(f"sqlite:///{database_path}")
+    metadata = sa.MetaData()
+    users = sa.Table(
+        "users",
+        metadata,
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("email", sa.String(320), nullable=False),
+    )
+    jobs = sa.Table(
+        "jobs",
+        metadata,
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("title", sa.String(255), nullable=False),
+        sa.Column("listing_schema_version", sa.SmallInteger(), nullable=False),
+    )
+    metadata.create_all(engine)
+    user_id, job_id = uuid4(), uuid4()
+    with engine.begin() as connection:
+        connection.execute(users.insert().values(id=user_id, email="preserved@example.com"))
+        connection.execute(
+            jobs.insert().values(
+                id=job_id,
+                title="Preserved existing listing",
+                listing_schema_version=3,
+            )
+        )
+
+    migration = _load_migration("0043_job_import_readiness.py")
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        migration.op = operations
+        migration.upgrade()
+    inspector = sa.inspect(engine)
+    assert {
+        "job_import_sources",
+        "job_import_drafts",
+        "job_import_fields",
+    } <= set(inspector.get_table_names())
+    assert {
+        "ck_job_import_source_processing_state",
+        "ck_job_import_source_type",
+        "ck_job_import_source_retention_policy",
+    } <= {
+        constraint["name"]
+        for constraint in inspector.get_check_constraints("job_import_sources")
+    }
+    assert migration.down_revision == "0042_creator_job_domain_contract"
+    with engine.connect() as connection:
+        assert connection.execute(sa.select(sa.func.count()).select_from(users)).scalar_one() == 1
+        assert connection.execute(sa.select(sa.func.count()).select_from(jobs)).scalar_one() == 1
+        assert (
+            connection.execute(
+                sa.text("SELECT COUNT(*) FROM job_import_sources")
+            ).scalar_one()
+            == 0
+        )
+
+    with engine.begin() as connection:
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        migration.op = operations
+        migration.downgrade()
+    inspector = sa.inspect(engine)
+    assert "job_import_sources" not in inspector.get_table_names()
+    with engine.connect() as connection:
+        preserved = connection.execute(
+            sa.select(jobs.c.title, jobs.c.listing_schema_version)
+        ).one()
+    assert preserved == ("Preserved existing listing", 3)

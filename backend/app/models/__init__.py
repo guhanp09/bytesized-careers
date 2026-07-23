@@ -4,6 +4,7 @@ from app.models.email_outbox import EmailOutbox
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.hiring_identity import HiringIdentity
 from app.models.job import Job
+from app.models.job_import import JobImportDraft, JobImportField, JobImportSource
 from app.models.marketplace import (
     Entitlement,
     InteractionPrivateNote,
@@ -46,6 +47,9 @@ __all__ = [
     "Engagement",
     "EngagementReview",
     "Job",
+    "JobImportDraft",
+    "JobImportField",
+    "JobImportSource",
     "JobApplication",
     "InteractionPrivateNote",
     "InteractionStatusEvent",

@@ -9,6 +9,7 @@ from app.api.v1.routers.dev_seed import router as dev_seed_router
 from app.api.v1.routers.dev_workflows import router as dev_workflows_router
 from app.api.v1.routers.health import router as health_router
 from app.api.v1.routers.jobs import router as jobs_router
+from app.api.v1.routers.job_imports import router as job_imports_router
 from app.api.v1.routers.marketplace import router as marketplace_router
 from app.api.v1.routers.me import router as me_router
 from app.api.v1.routers.messaging import router as messaging_router
@@ -28,6 +29,7 @@ api_router.include_router(auth_router)
 api_router.include_router(content_style_router)
 api_router.include_router(health_router)
 api_router.include_router(jobs_router)
+api_router.include_router(job_imports_router)
 api_router.include_router(marketplace_router)
 api_router.include_router(me_router)
 api_router.include_router(messaging_router)

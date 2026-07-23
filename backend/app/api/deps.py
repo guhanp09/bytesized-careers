@@ -21,10 +21,12 @@ from app.db.session import get_db_session
 from app.db import seed_data_personas as qa_personas
 from app.models import Job, User
 from app.repositories.auth_repository import AuthRepository
+from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
 from app.services.job_service import JobNotFoundError, JobService
+from app.services.job_import_service import JobImportService
 from app.services.me_service import MeService
 from app.services.profile_service import ProfileService
 
@@ -38,6 +40,15 @@ async def get_db(session: AsyncSession = Depends(get_db_session)) -> AsyncSessio
 async def get_job_service(session: AsyncSession = Depends(get_db)) -> JobService:
     repository = JobRepository(session)
     return JobService(repository)
+
+
+async def get_job_import_service(
+    session: AsyncSession = Depends(get_db),
+) -> JobImportService:
+    return JobImportService(
+        JobImportRepository(session),
+        JobService(JobRepository(session)),
+    )
 
 
 async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRepository:

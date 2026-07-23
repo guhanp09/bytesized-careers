@@ -723,6 +723,7 @@ class JobService:
         payload: JobCreate,
         *,
         actor_user_id: UUID | None = None,
+        commit_transaction: bool = True,
     ) -> Job:
         data = await self.prepare_job_create(payload, actor_user_id=actor_user_id)
         job = await self.repository.create(data)
@@ -745,7 +746,8 @@ class JobService:
                 logger.exception(
                     "job_posted_notification_failed", extra={"job_id": str(job.id)}
                 )
-        await self.repository.session.commit()
+        if commit_transaction:
+            await self.repository.session.commit()
         return job
 
     async def update_job(self, job_id: UUID, payload: JobUpdate) -> Job:

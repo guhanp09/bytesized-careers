@@ -209,3 +209,27 @@ async def test_dev_sqlite_schema_sync_adds_profile_experience_to_populated_users
     assert "profile_experience" in columns
     assert value == "[]"
     await engine.dispose()
+
+
+async def test_dev_sqlite_schema_sync_creates_private_job_import_tables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "job-import-readiness.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "database_url", f"sqlite+aiosqlite:///{db_path}")
+
+    await sync_dev_sqlite_schema(engine)
+
+    async with engine.begin() as conn:
+        table_names = await conn.run_sync(
+            lambda sync_conn: set(inspect(sync_conn).get_table_names())
+        )
+
+    assert {
+        "job_import_sources",
+        "job_import_drafts",
+        "job_import_fields",
+    } <= table_names
+    await engine.dispose()

@@ -1777,7 +1777,8 @@ export const describeActionError = (error: unknown, fallback = "Something went w
   return fallback;
 };
 
-async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<T> {
+/** Shared authenticated JSON transport for typed, non-UI API contract modules. */
+export async function requestJson<T>(path: string, init?: RequestJsonOptions): Promise<T> {
   const headers = new Headers(init?.headers);
   const hasBody = typeof init?.body !== "undefined";
   if (hasBody && !headers.has("Content-Type")) {

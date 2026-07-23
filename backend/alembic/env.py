@@ -12,6 +12,9 @@ from app.db.base import Base
 from app.models import (  # noqa: F401
     EmailVerificationToken,
     Job,
+    JobImportDraft,
+    JobImportField,
+    JobImportSource,
     OAuthAccount,
     PortfolioItem,
     Role,

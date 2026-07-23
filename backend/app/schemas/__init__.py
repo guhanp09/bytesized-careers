@@ -47,6 +47,18 @@ from app.schemas.hiring_identity import (
     HiringIdentityVerificationStatus,
 )
 from app.schemas.job import JobCreate, JobListResponse, JobRead, JobStatus, JobUpdate
+from app.schemas.job_import import (
+    JobImportApplyRequest,
+    JobImportApplyResponse,
+    JobImportConflictResolutionRequest,
+    JobImportDraftInitialize,
+    JobImportDraftRead,
+    JobImportExtractionRequest,
+    JobImportExtractionResponse,
+    JobImportFieldReviewRequest,
+    JobImportSourceCreate,
+    JobImportSourceRead,
+)
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
     EntitlementRead,
@@ -159,6 +171,16 @@ __all__ = [
     "JobRead",
     "JobStatus",
     "JobUpdate",
+    "JobImportApplyRequest",
+    "JobImportApplyResponse",
+    "JobImportConflictResolutionRequest",
+    "JobImportDraftInitialize",
+    "JobImportDraftRead",
+    "JobImportExtractionRequest",
+    "JobImportExtractionResponse",
+    "JobImportFieldReviewRequest",
+    "JobImportSourceCreate",
+    "JobImportSourceRead",
     "LaunchCheckoutRequest",
     "LoginRequest",
     "LoginResponse",
