@@ -58,7 +58,6 @@ export async function JobsBrowse({
   const workMode = first(params.workMode);
   const engagement = first(params.engagement);
   const compensationUnit = first(params.compensationUnit);
-  const language = first(params.language);
 
   const discoveryParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -84,7 +83,6 @@ export async function JobsBrowse({
         work_mode: seoRoute ? undefined : workMode,
         engagement_type: seoRoute ? undefined : engagement,
         budget_unit: seoRoute ? undefined : compensationUnit,
-        language: seoRoute ? undefined : language,
         location,
         start_timeframe: startTimeframe,
         status: "published",

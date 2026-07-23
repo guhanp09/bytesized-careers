@@ -28,21 +28,21 @@ const extractKeyArrays = (source, field) =>
 const hasAll = (keys, required) => required.every((key) => keys.includes(key));
 
 test("mock job listings declare first-message requirement metadata", () => {
-  const source = read("lib/jobs.ts");
-  const arrays = extractKeyArrays(source, "applicationRequirements");
+  const fixture = JSON.parse(read("fixtures/demo_job_marketplace.json"));
+  const arrays = fixture.jobs.map((job) => job.application?.requirements || []);
   assert.ok(arrays.length >= 4, "expected several mock jobs to declare requirements");
 });
 
 test("at least one mock job exercises every job-context requirement", () => {
-  const source = read("lib/jobs.ts");
-  const arrays = extractKeyArrays(source, "applicationRequirements");
+  const fixture = JSON.parse(read("fixtures/demo_job_marketplace.json"));
+  const arrays = fixture.jobs.map((job) => job.application?.requirements || []);
   const full = arrays.find((keys) => hasAll(keys, JOB_KEYS));
   assert.ok(full, `expected one mock job listing requiring all of: ${JOB_KEYS.join(", ")}`);
 });
 
 test("mock job requirements only use real job-context registry keys", () => {
-  const source = read("lib/jobs.ts");
-  for (const keys of extractKeyArrays(source, "applicationRequirements")) {
+  const fixture = JSON.parse(read("fixtures/demo_job_marketplace.json"));
+  for (const keys of fixture.jobs.map((job) => job.application?.requirements || [])) {
     for (const key of keys) {
       assert.ok(JOB_KEYS.includes(key), `unknown job requirement key: ${key}`);
     }

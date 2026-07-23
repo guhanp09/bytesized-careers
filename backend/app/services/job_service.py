@@ -616,7 +616,10 @@ class JobService:
             work_modes=self._public_filter_values(work_mode),
             engagement_types=self._public_filter_values(engagement_type),
             budget_units=self._public_filter_values(budget_unit),
-            required_languages=self._public_filter_values(language),
+            # Language is no longer a public job-discovery dimension. The ``language``
+            # query parameter is still accepted so old shared URLs do not error, but it
+            # no longer filters results.
+            required_languages=[],
             location=location,
             start_timeframe=start_timeframe,
         )
@@ -633,7 +636,14 @@ class JobService:
             raise JobNotFoundError("Job not found")
         return job
 
-    async def create_job(self, payload: JobCreate, *, actor_user_id: UUID | None = None) -> Job:
+    async def prepare_job_create(
+        self, payload: JobCreate, *, actor_user_id: UUID | None = None
+    ) -> dict[str, Any]:
+        """Resolve server-owned create fields and run the real publication contract.
+
+        The development fixture uses this same preparation path before an idempotent
+        upsert. Ordinary API callers continue through ``create_job`` below.
+        """
         if actor_user_id is None:
             raise JobAuthRequiredError("Authentication required to create a job")
         data = self._to_payload(payload.model_dump())
@@ -706,6 +716,15 @@ class JobService:
                 target_schema_version=CURRENT_LISTING_SCHEMA_VERSION,
             )
 
+        return data
+
+    async def create_job(
+        self,
+        payload: JobCreate,
+        *,
+        actor_user_id: UUID | None = None,
+    ) -> Job:
+        data = await self.prepare_job_create(payload, actor_user_id=actor_user_id)
         job = await self.repository.create(data)
         if self._published_status(job.status) and job.posted_by_user_id is not None:
             # Best-effort: a notification failure must never block job creation.

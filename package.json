@@ -7,6 +7,7 @@
     "dev:backend": "cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:all": "trap 'kill 0' EXIT; npm run dev:backend & npm run dev & wait",
     "seed": "curl -fsS -X POST http://127.0.0.1:8000/api/v1/dev/seed/marketplace && echo",
+    "seed:demo-jobs": "curl -fsS -X POST http://127.0.0.1:8000/api/v1/dev/seed/jobs && echo",
     "build": "next build",
     "start": "next start",
     "test:e2e": "playwright test",

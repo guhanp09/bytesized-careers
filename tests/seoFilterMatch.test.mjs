@@ -159,7 +159,7 @@ test("intent-field extractors read structured role/niche/workmode fields", () =>
   assert.match(jobFields.role, /writing|writer|script/);
 });
 
-test("job intent fields prefer canonical role and required structured languages without inventing role from category", () => {
+test("job intent fields prefer canonical role and never expose language as a job SEO dimension", () => {
   const canonical = jobIntentFields({
     ...job("canonical", "Design", "Creator role"),
     primaryRoleName: "Video Editor",
@@ -173,14 +173,13 @@ test("job intent fields prefer canonical role and required structured languages 
   });
   assert.match(canonical.role, /video editor/);
   assert.match(canonical.role, /documentary pacing/);
-  assert.match(canonical.language, /hindi/);
-  assert.doesNotMatch(canonical.language, /english/);
+  // Language is no longer a public job-discovery dimension, so jobs never expose it.
+  assert.equal(canonical.language, "");
   assert.match(canonical.tool, /premiere/);
 
-  const explicitNone = jobIntentFields({ ...job("none", "Writing", "Creator role"), languageRequirements: [], languages: ["Hindi"] });
-  assert.equal(explicitNone.language, "");
-  const legacy = jobIntentFields({ ...job("legacy", "Writing", "Creator role"), languageRequirements: null, languages: ["Hindi"] });
-  assert.match(legacy.language, /hindi/);
+  // Talent-profile language matching is unaffected.
+  const talentFields = talentIntentFields(talent("t", "Scriptwriter", { languages: ["Hindi"] }));
+  assert.match(talentFields.language, /hindi/);
 });
 
 // ---------------------------------------------------------------------------

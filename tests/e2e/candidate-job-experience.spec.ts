@@ -90,8 +90,8 @@ test.describe("candidate V3 job experience", () => {
         legacyCategory: null,
       });
 
-    await expect(page.getByText("Thumbnail designer (CTR-focused, 2–3 concepts)", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("Video editor for YouTube", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("Thumbnail designer for technology reviews and comparisons", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Long-form YouTube editor", { exact: false })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Filters\s*4/ })).toBeVisible();
 
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -125,11 +125,13 @@ test.describe("candidate V3 job experience", () => {
     await expect(page.getByRole("heading", { name: "Required application materials" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Screening questions" })).toBeVisible();
     await expect(
-      page.getByText(/Which edit in your portfolio best demonstrates retention-focused storytelling\?/),
+      page.getByRole("main").getByText(
+        /Which portfolio edit best shows your approach to retention without over-editing\?/,
+      ).first(),
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Trial terms" })).toBeVisible();
     await expect(page.getByText("Paid trial", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Trial pay:.*1,500/)).toBeVisible();
+    await expect(page.getByText(/Trial pay:.*90/)).toBeVisible();
 
     const applyButton = page.locator('[data-testid="job-apply-button"]:visible');
     await expect(applyButton).toHaveText("Apply");
@@ -144,12 +146,12 @@ test.describe("candidate V3 job experience", () => {
     );
     await expect(
       modal.getByRole("textbox", {
-        name: /Which edit in your portfolio best demonstrates retention-focused storytelling\?\s*Required/,
+        name: /Which portfolio edit best shows your approach to retention without over-editing\?\s*Required/,
       }),
     ).toBeVisible();
     await expect(
       modal.getByRole("textbox", {
-        name: /Is there anything about the proposed turnaround you would adjust\?\s*Optional/,
+        name: /How do you use viewer-retention data after a video ships\?\s*Optional/,
       }),
     ).toBeVisible();
 
@@ -170,13 +172,13 @@ test.describe("candidate V3 job experience", () => {
     const internalApplicationPosts: string[] = [];
     page.on("request", (request) => {
       const url = new URL(request.url());
-      if (request.method() === "POST" && url.pathname === "/api/v1/jobs/2/applications") {
+      if (request.method() === "POST" && url.pathname === "/api/v1/jobs/4/applications") {
         internalApplicationPosts.push(url.pathname);
       }
     });
 
-    await page.goto("/jobs/2", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/jobs\/2$/);
+    await page.goto("/jobs/4", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/jobs\/4$/);
     await expect(page.getByText("Apply on an external site", { exact: true })).toBeVisible();
     await expect(page.getByText("This opens another site. CreatorJobs does not receive or track the application.")).toBeVisible();
 
@@ -184,44 +186,33 @@ test.describe("candidate V3 job experience", () => {
     await expect(externalAction).toHaveText("Continue to application");
     await expect(externalAction).toHaveAttribute(
       "href",
-      "https://example.com/creatorjobs-thumbnail-application",
+      "https://example.com/creatorjobs-demo/thumbnail-application",
     );
     await expect(externalAction).toHaveAttribute("target", "_blank");
 
     const popupPromise = page.waitForEvent("popup");
     await externalAction.click();
     const externalPage = await popupPromise;
-    await expect(externalPage).toHaveURL("https://example.com/creatorjobs-thumbnail-application");
+    await expect(externalPage).toHaveURL("https://example.com/creatorjobs-demo/thumbnail-application");
     await externalPage.close();
-    await expect(page).toHaveURL(/\/jobs\/2$/);
+    await expect(page).toHaveURL(/\/jobs\/4$/);
 
     await page.waitForTimeout(100);
     expect(internalApplicationPosts).toEqual([]);
   });
 
-  test("expired jobs disable application without opening or submitting", async ({ page }) => {
-    const applicationPosts: string[] = [];
-    page.on("request", (request) => {
-      const url = new URL(request.url());
-      if (request.method() === "POST" && url.pathname === "/api/v1/jobs/3/applications") {
-        applicationPosts.push(url.pathname);
-      }
-    });
-
+  test("published demo jobs keep a future deadline and an available application path", async ({ page }) => {
     await page.goto("/jobs/3", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/^Closed /).first()).toBeVisible();
-    const closedAction = page.locator('button[data-testid="job-apply-button"]:visible');
-    await expect(closedAction).toHaveText("Applications closed");
-    await expect(closedAction).toBeDisabled();
-    await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
-    expect(applicationPosts).toEqual([]);
+    await expect(page.getByText(/^Apply by /).first()).toBeVisible();
+    await expect(page.locator('[data-testid="job-apply-button"]:visible')).toHaveText("Apply");
+    await expect(page.locator('[data-testid="job-apply-button"]:visible')).toBeEnabled();
   });
 
   test("candidate trust surfaces stay factual and do not fabricate review or safety scores", async ({ page }) => {
     await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
 
     const postedBy = page.getByTestId("posted-by-card");
-    await expect(postedBy).toContainText("Hiring on behalf of Finance Channel");
+    await expect(postedBy).toContainText("Money & Mindset");
     await expect(postedBy).toContainText("Verified hiring identity");
     await expect(postedBy).not.toContainText("No reviews yet");
 
@@ -254,7 +245,9 @@ test.describe("candidate V3 job experience", () => {
     await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(150);
     await expectNoHorizontalPageOverflow(page, "/jobs/1 at 320px");
-    const mobileApply = page.locator('[data-testid="job-mobile-apply-bar"] [data-testid="job-apply-button"]');
+    const mobileApply = page.locator(
+      '[data-testid="job-mobile-apply-bar"] [data-testid="job-apply-button"]:visible:not(:disabled)',
+    );
     await expect(mobileApply).toBeVisible();
     await mobileApply.click();
 
@@ -281,7 +274,7 @@ test.describe("candidate V3 job experience", () => {
         await expectNoHorizontalPageOverflow(page, `/jobs at ${viewport.label}`);
       }
       await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
-      await expect(page.getByRole("heading", { name: /Video editor for YouTube/i })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /Long-form YouTube editor/i })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Deliverables and volume" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Trial terms" })).toBeVisible();
       await expectNoHorizontalPageOverflow(page, `/jobs/1 at ${viewport.label}`);

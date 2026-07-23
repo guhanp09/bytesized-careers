@@ -85,13 +85,6 @@ export default function JobGridClient({
     () => uniqueJobText(jobs.flatMap((job) => job.formatsHiredFor || [])),
     [jobs],
   );
-  const availableLanguages = useMemo(
-    () => uniqueJobText(jobs.flatMap((job) => {
-      if (job.languageRequirements === null || job.languageRequirements === undefined) return job.languages || [];
-      return job.languageRequirements.filter((item) => item.priority === "required").map((item) => item.language);
-    })),
-    [jobs],
-  );
 
   const filtered = useMemo(() => jobs.filter((job) => jobMatchesDiscovery(job, discovery)), [discovery, jobs]);
   const sorted = useMemo(() => {
@@ -208,7 +201,6 @@ export default function JobGridClient({
         roles={roles}
         platforms={availablePlatforms}
         formats={availableFormats}
-        languages={availableLanguages}
         onApply={applyDiscovery}
         onClose={() => setFiltersOpen(false)}
       />

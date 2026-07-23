@@ -1,804 +1,294 @@
 from __future__ import annotations
 
+import json
 import uuid
-from typing import NotRequired, TypedDict
+from copy import deepcopy
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 SEED_NAMESPACE = uuid.UUID("9f5068b6-3a5f-4d6a-b2da-7f0e6db31f16")
+DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "demo_job_marketplace.json"
 
 
 def _stable_uuid(seed_key: str) -> uuid.UUID:
     return uuid.uuid5(SEED_NAMESPACE, seed_key)
 
 
-def _slugify(value: str) -> str:
-    return (
-        value.strip()
-        .lower()
-        .replace("&", " and ")
-        .replace("/", " ")
-        .replace("->", " ")
-        .replace("-", " ")
-        .replace(",", " ")
-        .replace("(", " ")
-        .replace(")", " ")
-        .replace(":", " ")
-        .replace(".", " ")
-        .replace("'", "")
-    ).strip().replace("  ", " ").replace(" ", "-")
+def _fixture() -> dict[str, Any]:
+    with DEMO_FIXTURE_PATH.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if payload.get("version") != 1:
+        raise RuntimeError("Unsupported demo job marketplace fixture version")
+    return payload
 
 
-class RawSeedJob(TypedDict):
-    seed_key: str
-    title: str
-    category: str
-    location: str
-    budget_amount: int
-    budget_currency: str
-    experience_level: str
-    platforms: list[str]
-    start_timeframe: str
-    about_channel: str
-    responsibilities: list[str]
-    requirements: list[str]
-    how_to_apply: str
-    reference_videos: list[str | dict[str, object]]
-    tags: list[str]
-    channel_name: str
-    channel_logo_url: str
-    channel_subscribers: int
-    is_verified: bool
-    channel_profile_slug: str | None
-    posted_by_agency: bool
-    agency_profile_slug: str | None
-    status: str
-    languages: NotRequired[list[str]]
-    content_niches: NotRequired[list[str]]
-    content_genres: NotRequired[list[str]]
-    formats_hired_for: NotRequired[list[str]]
+DEMO_MARKETPLACE = _fixture()
+DEMO_JOB_SPECS: tuple[dict[str, Any], ...] = tuple(DEMO_MARKETPLACE["jobs"])
+DEMO_IDENTITY_SPECS: tuple[dict[str, Any], ...] = tuple(DEMO_MARKETPLACE["identities"])
+DEMO_JOB_IDS: tuple[uuid.UUID, ...] = tuple(_stable_uuid(item["key"]) for item in DEMO_JOB_SPECS)
+
+# Older versions of the repository shipped job_25 and job_26. Existing development
+# databases may still contain those deterministic fixture rows. The ordinary seed
+# command retires them to ``closed`` instead of deleting them, while fresh databases
+# receive only the 24 records in the shared fixture.
+RETIRED_DEMO_JOB_IDS: tuple[uuid.UUID, ...] = (_stable_uuid("job_25"), _stable_uuid("job_26"))
 
 
-RAW_SEED_JOBS: list[RawSeedJob] = [
-    {
-        "seed_key": "job_1",
-        "title": "Video editor for YouTube (long-form, retention-focused)",
-        "category": "Editing",
-        "location": "Remote",
-        "budget_amount": 3500,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<1mo",
-        "about_channel": "Finance Creator publishes educational finance content with a retention-first editing style.",
-        "responsibilities": [
-            "Edit long-form YouTube videos",
-            "Maintain strong hooks and pacing",
-            "Implement feedback quickly",
-        ],
-        "requirements": ["Premiere Pro", "Story pacing", "Sound cleanup"],
-        "how_to_apply": "Share 2-3 relevant edits and your weekly availability.",
-        "reference_videos": [
+def demo_user_id(owner_key: str) -> uuid.UUID:
+    return _stable_uuid(f"demo-owner:{owner_key}")
+
+
+def demo_identity_id(identity_key: str) -> uuid.UUID:
+    return _stable_uuid(f"demo-identity:{identity_key}")
+
+
+def demo_users() -> list[dict[str, Any]]:
+    by_owner: dict[str, dict[str, Any]] = {}
+    for spec in DEMO_IDENTITY_SPECS:
+        owner_key = spec["owner_key"]
+        by_owner.setdefault(
+            owner_key,
             {
-                "title": "Pacing + retention reference",
-                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                "platform": "YouTube Reference",
-                "what_to_reference": "Study how the intro hooks quickly, energy lifts drive momentum, and the loop keeps viewers watching.",
-                "timestamp_notes": [
-                    {
-                        "time": "0:00",
-                        "seconds": 0,
-                        "title": "Hook pacing",
-                        "description": "Cold open hits immediately. Strong visual and curiosity within the first second.",
-                    },
-                    {
-                        "time": "0:12",
-                        "seconds": 12,
-                        "title": "Energy lift",
-                        "description": "Beat drop aligns with the subject entry. Notice the momentum shift.",
-                    },
-                    {
-                        "time": "0:34",
-                        "seconds": 34,
-                        "title": "Retention cut",
-                        "description": "Quick angle change keeps attention.",
-                    },
-                    {
-                        "time": "1:08",
-                        "seconds": 68,
-                        "title": "B-roll rhythm",
-                        "description": "Performance and B-roll alternate on beat.",
-                    },
-                    {
-                        "time": "1:42",
-                        "seconds": 102,
-                        "title": "Pre-chorus build",
-                        "description": "Slight pause creates anticipation before the hook returns.",
-                    },
-                ],
+                "id": demo_user_id(owner_key),
+                "email": spec["email"],
+                "username": spec["username"],
+                "display_name": spec["owner_name"],
+                "account_type": "EMPLOYER",
+                "onboarding_intent": "HIRING_CREATOR_TALENT",
+                "avatar_mode": "generic",
+                "skills": [],
+                "public_links": [],
+                "profile_experience": [],
+                "collaboration_styles": [],
+                "hiring_platforms": [],
+                "hiring_niches": [],
+                "hiring_genres": [],
+                "hiring_formats": [],
+                "creator_platforms": [],
+                "privacy_settings": {
+                    "show_bio": True,
+                    "show_links": True,
+                    "show_skills": True,
+                    "show_location": False,
+                    "show_availability": False,
+                    "show_youtube_badge": True,
+                },
             },
-            "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
-            "https://www.youtube.com/watch?v=9bZkp7q19f0",
-        ],
-        "tags": ["Premiere", "Story pace", "SFX", "Captions", "Sound cleanup"],
-        "languages": ["Hindi", "English"],
-        "channel_name": "Finance Creator",
-        "channel_logo_url": "https://picsum.photos/seed/finance/96/96",
-        "channel_subscribers": 128000,
-        "is_verified": True,
-        "channel_profile_slug": "finance-creator",
-        "posted_by_agency": True,
-        "agency_profile_slug": "example-agency",
-        "status": "published",
-    },
-    {
-        "seed_key": "job_2",
-        "title": "Thumbnail designer (CTR-focused, 2-3 concepts)",
-        "category": "Thumbnails",
-        "location": "Remote",
-        "budget_amount": 1200,
-        "budget_currency": "INR",
-        "experience_level": "0-2 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "ASAP",
-        "about_channel": "Tech Channel needs high-CTR thumbnail experiments for frequent uploads.",
-        "responsibilities": [
-            "Design 2-3 thumbnail concepts per video",
-            "Run quick iteration cycles",
-            "Package title/thumbnail combinations",
-        ],
-        "requirements": ["Photoshop", "CTR intuition", "Fast iterations"],
-        "how_to_apply": "Send before/after samples and your turnaround time.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
-            "https://www.youtube.com/watch?v=uelHwf8o7_U",
-        ],
-        "tags": ["Photoshop", "Bold type", "A/B ideas", "Fast iterations"],
-        "channel_name": "Tech Channel",
-        "channel_logo_url": "https://picsum.photos/seed/tech/96/96",
-        "channel_subscribers": 54000,
-        "is_verified": False,
-        "channel_profile_slug": "tech-channel",
-        "posted_by_agency": True,
-        "agency_profile_slug": "northstar-creator-agency",
-        "status": "published",
-    },
-    {
-        "seed_key": "job_3",
-        "title": "Script writer for Hindi explainers (8-10 mins)",
-        "category": "Writing",
-        "location": "Remote",
-        "budget_amount": 400,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "Flexible",
-        "about_channel": "Edu Hindi is looking for clear Hindi explainers with strong narrative structure.",
-        "responsibilities": [
-            "Draft 8-10 min scripts in Hindi",
-            "Build clear hooks and transitions",
-            "Revise scripts from creator feedback",
-        ],
-        "requirements": ["Hindi writing", "Research", "Narrative structure"],
-        "how_to_apply": "Share 2 writing samples and your process.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=fLexgOxsZu0",
-            "https://www.youtube.com/watch?v=RgKAFK5djSk",
-        ],
-        "tags": ["Hooks", "Research", "Hindi", "Tone match", "Fast delivery"],
-        "languages": ["Hindi"],
-        "channel_name": "Edu Hindi",
-        "channel_logo_url": "https://picsum.photos/seed/edu/96/96",
-        "channel_subscribers": 312000,
-        "is_verified": True,
-        "channel_profile_slug": "edu-hindi",
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_4",
-        "title": "Shorts editor for daily YouTube Shorts (fast paced, captions)",
-        "category": "Shorts",
-        "location": "Remote",
-        "budget_amount": 1600,
-        "budget_currency": "INR",
-        "experience_level": "0-1 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "Motivation Shorts publishes daily short-form edits with captions and beat cuts.",
-        "responsibilities": ["Edit daily shorts", "Add dynamic captions", "Maintain publishing consistency"],
-        "requirements": ["CapCut or Premiere", "Caption timing", "Quick delivery"],
-        "how_to_apply": "Submit short-form samples and expected turnaround.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=OPf0YbXqDm0",
-            "https://www.youtube.com/watch?v=2Vv-BfVoq4g",
-            "https://www.youtube.com/watch?v=JGwWNGJdvx8",
-        ],
-        "tags": ["CapCut", "Subtitles", "Beat sync", "Fast turnaround"],
-        "channel_name": "Motivation Shorts",
-        "channel_logo_url": "https://picsum.photos/seed/motivation/96/96",
-        "channel_subscribers": 980000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_5",
-        "title": "Motion graphics: animated callouts + kinetic text for videos",
-        "category": "Motion Graphics",
-        "location": "Remote",
-        "budget_amount": 800,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<3mo",
-        "about_channel": "Science Visuals needs reusable motion graphics packages for educational videos.",
-        "responsibilities": ["Create callout systems", "Build kinetic text templates", "Deliver reusable assets"],
-        "requirements": ["After Effects", "Template systems", "Clean design sense"],
-        "how_to_apply": "Share motion design reels and template examples.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=oRdxUFDoQe0",
-            "https://www.youtube.com/watch?v=YQHsXMglC9A",
-        ],
-        "tags": ["After Effects", "Kinetic type", "Templates", "Callouts"],
-        "channel_name": "Science Visuals",
-        "channel_logo_url": "https://picsum.photos/seed/science/96/96",
-        "channel_subscribers": 210000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_6",
-        "title": "Channel manager to run uploads, analytics, and team coordination",
-        "category": "Channel Manager",
-        "location": "Remote",
-        "budget_amount": 2800,
-        "budget_currency": "INR",
-        "experience_level": "3-5 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<1mo",
-        "about_channel": "Startup Stories needs someone to run upload operations and team workflows.",
-        "responsibilities": ["Coordinate upload calendar", "Track analytics", "Manage creator operations"],
-        "requirements": ["YouTube Studio", "Ops mindset", "Strong communication"],
-        "how_to_apply": "Share ops examples and previous channel management work.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=Zi_XLOBDo_Y",
-            "https://www.youtube.com/watch?v=60ItHLz5WEA",
-        ],
-        "tags": ["Notion", "Content calendar", "YouTube Studio", "Ops"],
-        "channel_name": "Startup Stories",
-        "channel_logo_url": "https://picsum.photos/seed/startup/96/96",
-        "channel_subscribers": 76000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_7",
-        "title": "Research assistant for documentary-style videos (sources + outline)",
-        "category": "Research",
-        "location": "Remote",
-        "budget_amount": 250,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "ASAP",
-        "about_channel": "History Deep Dives needs source-backed outlines for documentary-style videos.",
-        "responsibilities": ["Collect reliable sources", "Build structured outlines", "Document citations"],
-        "requirements": ["Primary-source research", "Fact-checking", "Clear documentation"],
-        "how_to_apply": "Share research samples with citation style.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
-        ],
-        "tags": ["Primary sources", "Fact check", "Outline", "Citations"],
-        "channel_name": "History Deep Dives",
-        "channel_logo_url": "https://picsum.photos/seed/history/96/96",
-        "channel_subscribers": 430000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_8",
-        "title": "Graphic designer for channel branding (banner, icons, templates)",
-        "category": "Design",
-        "location": "Remote",
-        "budget_amount": 900,
-        "budget_currency": "INR",
-        "experience_level": "0-2 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "Flexible",
-        "about_channel": "Indie Gamer wants a cohesive channel brand system and reusable assets.",
-        "responsibilities": ["Design channel banner", "Create icon variants", "Build template kit"],
-        "requirements": ["Figma", "Brand systems", "Layout consistency"],
-        "how_to_apply": "Send portfolio links for branding/design work.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=ktvTqknDobU",
-            "https://www.youtube.com/watch?v=450p7goxZqg",
-        ],
-        "tags": ["Figma", "Brand kit", "YouTube banner", "Templates"],
-        "channel_name": "Indie Gamer",
-        "channel_logo_url": "https://picsum.photos/seed/gaming/96/96",
-        "channel_subscribers": 22000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_9",
-        "title": "Voice-over artist (English, warm tone) for finance videos",
-        "category": "Voice Over",
-        "location": "Remote",
-        "budget_amount": 200,
-        "budget_currency": "INR",
-        "experience_level": "Any",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "Money and Mindset needs warm, clear narration for finance explainers.",
-        "responsibilities": ["Record clean VO takes", "Maintain consistent tone", "Meet delivery timelines"],
-        "requirements": ["Clean recording setup", "English voice-over experience", "Reliable revisions"],
-        "how_to_apply": "Share voice samples and turnaround windows.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=UceaB4D0jpo",
-            "https://www.youtube.com/watch?v=F57P9C4SAW4",
-        ],
-        "tags": ["Neutral accent", "Clean audio", "Fast delivery", "Consistency"],
-        "channel_name": "Money & Mindset",
-        "channel_logo_url": "https://picsum.photos/seed/money/96/96",
-        "channel_subscribers": 64000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_10",
-        "title": "Marketing specialist to grow newsletter + YouTube",
-        "category": "Marketing",
-        "location": "Remote",
-        "budget_amount": 2000,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<1mo",
-        "about_channel": "Creator Business needs integrated growth across newsletter and YouTube.",
-        "responsibilities": ["Design growth loops", "Track distribution channels", "Improve conversion funnels"],
-        "requirements": ["Content marketing", "Basic SEO", "Analytics fluency"],
-        "how_to_apply": "Share growth case studies and campaign outcomes.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=SlPhMPnQ58k",
-            "https://www.youtube.com/watch?v=J---aiyznGQ",
-        ],
-        "tags": ["Distribution", "Hooks", "SEO basics", "Email marketing"],
-        "channel_name": "Creator Business",
-        "channel_logo_url": "https://picsum.photos/seed/business/96/96",
-        "channel_subscribers": 118000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_11",
-        "title": "Editing: podcast -> YouTube multi-cam cut (1 episode/week)",
-        "category": "Editing",
-        "location": "Remote",
-        "budget_amount": 600,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<3mo",
-        "about_channel": "The Long Talk needs polished podcast-to-video edits with chapters.",
-        "responsibilities": ["Edit multi-cam episodes", "Clean audio", "Create chapters and pacing"],
-        "requirements": ["Multi-cam editing", "Audio cleanup", "Narrative pacing"],
-        "how_to_apply": "Send podcast/video edit examples.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=hT_nvWreIhg",
-            "https://www.youtube.com/watch?v=YykjpeuMNEk",
-        ],
-        "tags": ["Multicam", "Audio cleanup", "Chapters", "Snappy pacing"],
-        "channel_name": "The Long Talk",
-        "channel_logo_url": "https://picsum.photos/seed/podcast/96/96",
-        "channel_subscribers": 92000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_12",
-        "title": "Thumbnail designer for gaming channel (high-contrast, bold)",
-        "category": "Thumbnails",
-        "location": "Remote",
-        "budget_amount": 1000,
-        "budget_currency": "INR",
-        "experience_level": "0-2 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "ASAP",
-        "about_channel": "Console Chaos needs high-impact gaming thumbnails for recurring uploads.",
-        "responsibilities": ["Design bold gaming thumbnails", "Prepare fast variants", "Improve click-through packaging"],
-        "requirements": ["Photoshop", "Gaming visual style", "Quick turnarounds"],
-        "how_to_apply": "Share thumbnail portfolio and testing approach.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=YQHsXMglC9A",
-            "https://www.youtube.com/watch?v=OPf0YbXqDm0",
-        ],
-        "tags": ["Photoshop", "High contrast", "Fast variants", "Packaging"],
-        "channel_name": "Console Chaos",
-        "channel_logo_url": "https://picsum.photos/seed/console/96/96",
-        "channel_subscribers": 410000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_13",
-        "title": "Shorts editor (3/day) for fitness creator (trend-aware)",
-        "category": "Shorts",
-        "location": "Remote",
-        "budget_amount": 2000,
-        "budget_currency": "INR",
-        "experience_level": "0-1 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "Fit in 60 needs trend-aware short-form edits at daily cadence.",
-        "responsibilities": ["Edit 3 shorts/day", "Keep trend pacing", "Maintain consistent style"],
-        "requirements": ["Short-form editing", "Trend awareness", "Caption rhythm"],
-        "how_to_apply": "Share fitness short examples and production capacity.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=2Vv-BfVoq4g",
-            "https://www.youtube.com/watch?v=JGwWNGJdvx8",
-        ],
-        "tags": ["Captions", "Beat cuts", "Trend pacing", "CapCut/PR"],
-        "channel_name": "Fit in 60",
-        "channel_logo_url": "https://picsum.photos/seed/fitness/96/96",
-        "channel_subscribers": 250000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_14",
-        "title": "Script writer for tech reviews (structured, clear, punchy)",
-        "category": "Writing",
-        "location": "Remote",
-        "budget_amount": 300,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "Flexible",
-        "about_channel": "Gadget Minute needs concise, structured scripts for review content.",
-        "responsibilities": ["Write structured scripts", "Balance clarity and punch", "Incorporate rapid revisions"],
-        "requirements": ["Tech writing", "Research", "Story structure"],
-        "how_to_apply": "Share review scripts and editing collaboration examples.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
-            "https://www.youtube.com/watch?v=uelHwf8o7_U",
-        ],
-        "tags": ["Clarity", "Outline", "Hooks", "Fast revisions"],
-        "channel_name": "Gadget Minute",
-        "channel_logo_url": "https://picsum.photos/seed/gadgets/96/96",
-        "channel_subscribers": 88000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_15",
-        "title": "Designer for explainer diagrams + simple motion overlays",
-        "category": "Design",
-        "location": "Remote",
-        "budget_amount": 700,
-        "budget_currency": "INR",
-        "experience_level": "0-2 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<1mo",
-        "about_channel": "Learn Visually needs clean explainer graphics and lightweight motion overlays.",
-        "responsibilities": ["Design explainer diagrams", "Prepare reusable visual assets", "Support simple motion overlays"],
-        "requirements": ["Figma", "Visual clarity", "Consistency"],
-        "how_to_apply": "Send design samples and explainer visuals.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=fLexgOxsZu0",
-            "https://www.youtube.com/watch?v=RgKAFK5djSk",
-        ],
-        "tags": ["Figma", "Clean layout", "Minimal style", "Consistency"],
-        "channel_name": "Learn Visually",
-        "channel_logo_url": "https://picsum.photos/seed/visual/96/96",
-        "channel_subscribers": 56000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_16",
-        "title": "Motion graphics pack: lower thirds + subscribe + transitions",
-        "category": "Motion Graphics",
-        "location": "Remote",
-        "budget_amount": 1500,
-        "budget_currency": "INR",
-        "experience_level": "3-5 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "ASAP",
-        "about_channel": "Cinematic Cuts needs a branded motion graphics package.",
-        "responsibilities": ["Build lower thirds", "Create transition packs", "Deliver reusable templates"],
-        "requirements": ["After Effects", "Brand alignment", "Template handoff"],
-        "how_to_apply": "Share motion package case studies.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=oRdxUFDoQe0",
-            "https://www.youtube.com/watch?v=SlPhMPnQ58k",
-        ],
-        "tags": ["After Effects", "Templates", "Reusable", "Brand match"],
-        "channel_name": "Cinematic Cuts",
-        "channel_logo_url": "https://picsum.photos/seed/cinema/96/96",
-        "channel_subscribers": 140000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_17",
-        "title": "Researcher for finance stories (sources, claims, counterpoints)",
-        "category": "Research",
-        "location": "Remote",
-        "budget_amount": 350,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<3mo",
-        "about_channel": "Finance Explained needs source-backed story research with balanced arguments.",
-        "responsibilities": ["Research claims and counterpoints", "Structure source packets", "Support script prep"],
-        "requirements": ["Finance research", "Fact-checking", "Structured notes"],
-        "how_to_apply": "Share source-based research examples.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=UceaB4D0jpo",
-            "https://www.youtube.com/watch?v=F57P9C4SAW4",
-        ],
-        "tags": ["Sources", "Fact check", "Structured notes", "Neutral"],
-        "channel_name": "Finance Explained",
-        "channel_logo_url": "https://picsum.photos/seed/finexp/96/96",
-        "channel_subscribers": 205000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_18",
-        "title": "Channel manager for consistent uploads + sponsor coordination",
-        "category": "Channel Manager",
-        "location": "Remote",
-        "budget_amount": 3500,
-        "budget_currency": "INR",
-        "experience_level": "5+ years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "Big Creator Ops needs management for publishing and sponsor workflows.",
-        "responsibilities": ["Coordinate publishing ops", "Manage sponsor handoffs", "Track performance metrics"],
-        "requirements": ["Channel ops", "Sponsor coordination", "Process ownership"],
-        "how_to_apply": "Share channel management and sponsor workflow experience.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=Zi_XLOBDo_Y",
-            "https://www.youtube.com/watch?v=60ItHLz5WEA",
-        ],
-        "tags": ["Ops", "Sponsors", "Publishing", "Analytics"],
-        "channel_name": "Big Creator Ops",
-        "channel_logo_url": "https://picsum.photos/seed/ops/96/96",
-        "channel_subscribers": 620000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_19",
-        "title": "Faceless channel editor — stock + VO assembly (3 videos/week)",
-        "category": "Editing",
-        "location": "Remote",
-        "budget_amount": 2500,
-        "budget_currency": "INR",
-        "experience_level": "1-3 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<1mo",
-        "about_channel": "Calm Mind Media runs faceless meditation and motivation channels with a steady upload cadence.",
-        "responsibilities": [
-            "Assemble videos from script, stock footage, and voice-over",
-            "Add subtitles, B-roll, and light motion",
-            "Keep a consistent 3-videos-per-week pace",
-        ],
-        "requirements": ["Premiere Pro or DaVinci", "Stock sourcing", "Subtitle workflow"],
-        "how_to_apply": "Share a faceless edit sample and your weekly capacity.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        ],
-        "tags": ["Faceless", "Stock", "Subtitles", "Voice-over", "Cadence"],
-        "channel_name": "Calm Mind Media",
-        "channel_logo_url": "https://picsum.photos/seed/calmmind/96/96",
-        "channel_subscribers": 240000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_20",
-        "title": "Course video editor — screencasts + lessons for a creator academy",
-        "category": "Editing",
-        "location": "Remote",
-        "budget_amount": 4000,
-        "budget_currency": "INR",
-        "experience_level": "2-4 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "Build With Us teaches no-code and design through structured online courses and YouTube lessons.",
-        "responsibilities": [
-            "Edit screen-recorded lessons into clean, chaptered videos",
-            "Add zooms, callouts, and lower thirds for clarity",
-            "Keep terminology and chapters consistent across a course",
-        ],
-        "requirements": ["Screencast editing", "Chapter markers", "Callouts and zoom"],
-        "how_to_apply": "Share an edited lesson or tutorial and your turnaround time.",
-        "reference_videos": [
-            "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
-        ],
-        "tags": ["Course", "Screencast", "Education", "Callouts", "Chapters"],
-        "channel_name": "Build With Us",
-        "channel_logo_url": "https://picsum.photos/seed/buildwithus/96/96",
-        "channel_subscribers": 96000,
-        "is_verified": True,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-    {
-        "seed_key": "job_21",
-        "title": "Newsletter growth specialist — referrals + cross-promo for a creator newsletter",
-        "category": "Marketing",
-        "location": "Remote",
-        "budget_amount": 5000,
-        "budget_currency": "INR",
-        "experience_level": "3-5 years",
-        "platforms": ["youtube"],
-        "start_timeframe": "<2mo",
-        "about_channel": "The Weekly Cut is a creator-economy newsletter paired with a YouTube channel and a 40k subscriber list.",
-        "responsibilities": [
-            "Run referral and cross-promotion campaigns",
-            "Coordinate newsletter and YouTube growth loops",
-            "Report on subscriber and open-rate trends",
-        ],
-        "requirements": ["Newsletter growth", "Cross-promotion", "Basic analytics"],
-        "how_to_apply": "Share a growth campaign you ran and the result.",
-        "reference_videos": [],
-        "tags": ["Newsletter", "Growth", "Referrals", "Cross-promo", "Analytics"],
-        "channel_name": "The Weekly Cut",
-        "channel_logo_url": "https://picsum.photos/seed/weeklycut/96/96",
-        "channel_subscribers": 40000,
-        "is_verified": False,
-        "channel_profile_slug": None,
-        "posted_by_agency": False,
-        "agency_profile_slug": None,
-        "status": "published",
-    },
-]
+        )
+    return list(by_owner.values())
 
 
-# First-message requirements per seeded job (what an applicant must include when
-# applying). job_1 showcases every job-context requirement so the apply flow can be
-# exercised end-to-end; the rest stay open (no specific requirements).
-_JOB_FIRST_MESSAGE_REQUIREMENTS: dict[str, list[str]] = {
-    # job_1 showcases every job-context requirement so the apply flow can be
-    # exercised end-to-end; job_2–job_4 use smaller combinations for variety.
-    "job_1": [
-        "expected_rate",
-        "relevant_portfolio",
-        "turnaround",
-        "working_hours",
-        "relevant_experience",
-        "tools_workflow",
-        "start_availability",
-        "fit_note",
-    ],
-    "job_2": ["expected_rate", "relevant_portfolio", "turnaround"],
-    "job_3": ["working_hours", "relevant_experience", "tools_workflow"],
-    "job_4": ["start_availability", "fit_note"],
-}
-
-_JOB_CREATOR_CONTEXT: dict[str, dict[str, list[str]]] = {
-    "job_1": {
-        "content_niches": ["Finance", "Education"],
-        "content_genres": ["Explainers"],
-        "formats_hired_for": ["Long-form video", "Captions"],
-    },
-    "job_2": {
-        "content_niches": ["Tech"],
-        "content_genres": ["Reviews"],
-        "formats_hired_for": ["Thumbnails", "YouTube packaging"],
-    },
-    "job_3": {
-        "content_niches": ["Education"],
-        "content_genres": ["Explainers"],
-        "formats_hired_for": ["Scripts", "Hooks"],
-    },
-    "job_4": {
-        "content_niches": ["Entertainment"],
-        "content_genres": ["Shorts/Reels"],
-        "formats_hired_for": ["Shorts/Reels", "Captions"],
-    },
-    "job_7": {
-        "content_niches": ["News", "Business"],
-        "content_genres": ["Documentaries"],
-        "formats_hired_for": ["Channel research", "Scripts"],
-    },
-    "job_19": {
-        "content_niches": ["Gaming"],
-        "content_genres": ["Shorts/Reels"],
-        "formats_hired_for": ["Repurposed clips", "Captions"],
-    },
-}
+def demo_hiring_identities() -> list[dict[str, Any]]:
+    now = datetime.now(UTC)
+    payloads: list[dict[str, Any]] = []
+    for spec in DEMO_IDENTITY_SPECS:
+        key = spec["key"]
+        verified = spec["verification_status"] == "VERIFIED"
+        payloads.append(
+            {
+                "id": demo_identity_id(key),
+                "owner_user_id": demo_user_id(spec["owner_key"]),
+                "type": spec["type"],
+                "platform": spec["platform"],
+                "display_name": spec["display_name"],
+                "handle": spec.get("handle"),
+                "url": f"https://example.com/creatorjobs-demo/{key}",
+                "avatar_url": f"https://picsum.photos/seed/creatorjobs-{key}/96/96",
+                "description": spec["description"],
+                "managed_by_agency_name": spec.get("managed_by_agency_name"),
+                "is_agency_represented": spec["type"] == "AGENCY_REPRESENTED_CHANNEL",
+                "verification_status": spec["verification_status"],
+                "verification_method": "MANUAL_ADMIN_REVIEW" if verified else "NONE",
+                "verified_at": now if verified else None,
+            }
+        )
+    return payloads
 
 
-SEEDED_JOBS = [
-    {
-        "id": _stable_uuid(seed_job["seed_key"]),
-        "title": seed_job["title"],
-        "category": seed_job["category"],
-        "location": seed_job["location"],
-        "budget_amount": seed_job["budget_amount"],
-        "budget_currency": seed_job["budget_currency"],
-        "experience_level": seed_job["experience_level"],
-        "platforms": seed_job["platforms"],
-        "start_timeframe": seed_job["start_timeframe"],
-        "about_channel": seed_job["about_channel"],
-        "responsibilities": seed_job["responsibilities"],
-        "requirements": seed_job["requirements"],
-        "how_to_apply": seed_job["how_to_apply"],
-        "reference_videos": seed_job["reference_videos"],
-        "tags": seed_job["tags"],
-        "languages": seed_job.get("languages", []),
-        "content_niches": seed_job.get("content_niches", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("content_niches", [])),
-        "content_genres": seed_job.get("content_genres", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("content_genres", [])),
-        "formats_hired_for": seed_job.get("formats_hired_for", _JOB_CREATOR_CONTEXT.get(seed_job["seed_key"], {}).get("formats_hired_for", [])),
-        "youtube_channel_id": None,
-        "is_verified": seed_job["is_verified"],
-        "channel_name": seed_job["channel_name"],
-        "channel_logo_url": seed_job["channel_logo_url"],
-        "channel_subscribers": seed_job["channel_subscribers"],
-        "channel_profile_slug": seed_job["channel_profile_slug"]
-        or _slugify(seed_job["channel_name"]),
-        "posted_by_agency": seed_job["posted_by_agency"],
-        "agency_profile_slug": seed_job["agency_profile_slug"],
-        "application_requirements": _JOB_FIRST_MESSAGE_REQUIREMENTS.get(seed_job["seed_key"], []),
-        "views": 0,
-        "applicants": 0,
-        "response_rate": 0,
-        "status": seed_job["status"],
+def _source_inputs(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": item["type"],
+            "custom_label": item.get("custom_label"),
+            "sensitive_access_confirmed": bool(item.get("sensitive_access_confirmed")),
+        }
+        for item in items or []
+    ]
+
+
+def _reference(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    if not spec.get("reference"):
+        return []
+    key = spec["key"]
+    return [
+        {
+            "id": f"{key}-reference",
+            "title": "Fictional style and workflow reference",
+            "url": f"https://example.com/creatorjobs-demo/references/{key}",
+            "platform": "Demo reference",
+            "description": "A stable non-playable fixture link used only in local development.",
+            "what_to_reference": "Use the pacing, hierarchy, or workflow notes in the supplied fictional brief; do not copy creative assets.",
+            "timestamp_notes": [
+                {
+                    "id": f"{key}-reference-opening",
+                    "time": "0:00",
+                    "seconds": 0,
+                    "title": "Opening expectation",
+                    "description": "The first beat states the audience promise clearly.",
+                },
+                {
+                    "id": f"{key}-reference-handoff",
+                    "time": "0:35",
+                    "seconds": 35,
+                    "title": "Execution detail",
+                    "description": "Use this note to calibrate the requested polish and handoff quality.",
+                },
+                {
+                    "id": f"{key}-reference-finish",
+                    "time": "1:10",
+                    "seconds": 70,
+                    "title": "Finish standard",
+                    "description": "This checkpoint documents the expected final delivery quality.",
+                },
+            ],
+        }
+    ]
+
+
+def materialize_job_payload(
+    spec: dict[str, Any],
+    *,
+    identity_spec: dict[str, Any],
+    role_id: uuid.UUID,
+    now: datetime,
+    existing_deadline: datetime | None = None,
+    existing_start_date: date | None = None,
+) -> dict[str, Any]:
+    """Turn a shared semantic fixture row into the ordinary JobCreate contract."""
+
+    compensation = spec["compensation"]
+    engagement = spec["engagement"]
+    revision = spec["revision"]
+    autonomy = spec["autonomy"]
+    trial = spec["trial"]
+    start = spec["start"]
+    application = spec["application"]
+
+    deadline = existing_deadline
+    comparable_deadline = (
+        deadline.replace(tzinfo=UTC) if deadline is not None and deadline.tzinfo is None else deadline
+    )
+    if comparable_deadline is None or comparable_deadline <= now + timedelta(days=1):
+        deadline = now + timedelta(days=int(spec["deadline_days"]))
+
+    start_date = existing_start_date
+    if start.get("timing") == "specific_date" and (start_date is None or start_date < now.date()):
+        start_date = (now + timedelta(days=int(start["start_days"]))).date()
+
+    hiring_process = [{"stage": stage} for stage in application.get("process", [])]
+    payload: dict[str, Any] = {
+        "title": spec["title"],
+        "primary_role_id": role_id,
+        "role_specialization": spec.get("specialization"),
+        "location": (
+            None
+            if engagement.get("work_mode") == "remote"
+            and engagement.get("location") == "Remote"
+            else engagement.get("location")
+        ),
+        "compensation_mode": compensation["mode"],
+        "budget_amount": compensation.get("amount"),
+        "budget_max": compensation.get("max"),
+        "budget_note": compensation.get("note"),
+        "budget_currency": compensation.get("currency"),
+        "budget_unit": compensation["unit"],
+        "budget_unit_custom": compensation.get("custom_unit"),
+        "experience_level": spec["experience"],
+        "platforms": spec["platforms"],
+        "start_timeframe": {
+            "immediate": "ASAP",
+            "within_two_weeks": "<1mo",
+            "specific_date": "<2mo",
+            "flexible": "Flexible",
+        }[start["timing"]],
+        "work_mode": engagement["work_mode"],
+        "engagement_type": engagement["type"],
+        "timezone_overlap": engagement.get("timezone_overlap"),
+        "expected_weekly_hours_min": engagement.get("weekly_min"),
+        "expected_weekly_hours_max": engagement.get("weekly_max"),
+        "turnaround_value": engagement.get("turnaround_value"),
+        "turnaround_unit": engagement.get("turnaround_unit"),
+        "turnaround_basis": engagement.get("turnaround_basis"),
+        "application_mode": application["mode"],
+        "external_apply_url": application.get("external_url"),
+        "deadline_at": deadline,
+        "start_timing": start["timing"],
+        "start_date": start_date,
+        "duration_type": start["duration_type"],
+        "duration_value": start.get("duration_value"),
+        "duration_unit": start.get("duration_unit"),
+        "about_channel": spec["about"],
+        "responsibilities": spec["responsibilities"],
+        "requirements": spec["requirements"],
+        "application_requirements": application.get("requirements", []),
+        "how_to_apply": application["how_to_apply"],
+        "reference_videos": _reference(spec),
+        "tags": spec["tags"],
+        "languages": [item["language"] for item in spec.get("languages", [])],
+        "content_niches": spec["niches"],
+        "content_genres": spec["genres"],
+        "formats_hired_for": spec["formats"],
+        "required_tool_keys": spec.get("required_tools", []),
+        "other_required_tools": spec.get("other_required_tools", []),
+        "deliverables": deepcopy(spec["deliverables"]),
+        "required_skill_keys": spec.get("required_skills", []),
+        "preferred_skill_keys": spec.get("preferred_skills", []),
+        "other_required_skills": spec.get("required_custom_skills", []),
+        "other_preferred_skills": spec.get("preferred_custom_skills", []),
+        "required_skills_note": spec.get("required_skills_note"),
+        "preferred_skills_note": spec.get("preferred_skills_note"),
+        "revision_policy": revision["policy"],
+        "revision_rounds": revision.get("rounds"),
+        "revision_notes": revision.get("notes"),
+        "source_inputs": _source_inputs(spec.get("source_inputs")),
+        "source_inputs_notes": spec.get("source_inputs_notes"),
+        "creative_autonomy": autonomy["level"],
+        "creative_autonomy_notes": autonomy.get("notes"),
+        "language_requirements": deepcopy(spec.get("languages", [])),
+        "trial_status": trial["status"],
+        "trial_scope": trial.get("scope"),
+        "trial_effort_value": trial.get("effort_value"),
+        "trial_effort_unit": trial.get("effort_unit"),
+        "trial_compensation_amount": trial.get("amount"),
+        "trial_compensation_currency": trial.get("currency"),
+        "trial_compensation_basis": trial.get("basis"),
+        "trial_work_usage": trial.get("work_usage"),
+        "trial_portfolio_permission": trial.get("portfolio_permission"),
+        "trial_attribution": trial.get("attribution"),
+        "unpaid_trial_confirmed": trial.get("unpaid_confirmed"),
+        "trial_notes": trial.get("notes"),
+        "hiring_process": hiring_process,
+        "screening_questions": deepcopy(application.get("screening", [])),
+        "employer_context_type": identity_spec["employer_context_type"],
+        "channel_subscribers": identity_spec["subscribers"],
+        "channel_profile_slug": identity_spec["username"],
+        "hiring_identity_id": demo_identity_id(identity_spec["key"]),
+        "status": spec["status"],
     }
-    for seed_job in RAW_SEED_JOBS
-]
+    return payload
+
+
+def identity_specs_by_key() -> dict[str, dict[str, Any]]:
+    return {spec["key"]: spec for spec in DEMO_IDENTITY_SPECS}
+
+
+def job_specs() -> list[dict[str, Any]]:
+    return [deepcopy(spec) for spec in DEMO_JOB_SPECS]
+
+
+# Compatibility exports used by older focused tests and reset helpers.
+_JOB_FIRST_MESSAGE_REQUIREMENTS = {
+    spec["key"]: list(spec["application"].get("requirements", [])) for spec in DEMO_JOB_SPECS
+}
+SEEDED_JOBS = [{"id": _stable_uuid(spec["key"]), "application_requirements": list(spec["application"].get("requirements", []))} for spec in DEMO_JOB_SPECS]

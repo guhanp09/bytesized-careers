@@ -99,18 +99,20 @@ test.describe("SEO filtered browsing routes", () => {
     await page.locator('main a[href="/jobs?filter=Design"]').first().click();
     await expect(page).toHaveURL(/\/jobs\?filter=Design$/);
     await expect(page.locator('main a[href="/jobs/video-editor-jobs"]').first()).not.toHaveClass(active);
-    await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveClass(active);
+    await expect(page.locator('main a[href="/jobs?filter=Design"]').first()).toHaveClass(active);
+    await expect(page.locator('main div[role="link"]')).toHaveCount(1);
+    await expect(page.locator('main div[role="link"]').first()).toContainText(/Graphic designer/i);
   });
 
   test("existing detail routes still render detail pages, while unknown slugs are safe not-found pages", async ({ page }) => {
     await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/jobs\/1$/);
-    await expect(page.getByRole("heading", { name: /Video editor for YouTube/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Long-form YouTube editor/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Video Editor Jobs" })).toHaveCount(0);
 
     await page.goto("/jobs/15", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/jobs\/15$/);
-    await expect(page.getByRole("heading", { name: /Designer for explainer diagrams/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Creator partnerships manager/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Jobs$/ })).toHaveCount(0);
 
     await page.goto("/talent/mock-talent-retention-editor", { waitUntil: "domcontentloaded" });
@@ -125,7 +127,7 @@ test.describe("SEO filtered browsing routes", () => {
 
     await page.goto("/jobs/unknown-random-slug", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).not.toBeEmpty();
-    await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Job no longer available" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Jobs$/ })).toHaveCount(0);
 
     await page.goto("/talent/unknown-random-slug", { waitUntil: "domcontentloaded" });

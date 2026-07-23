@@ -100,12 +100,14 @@ export function applicationPreflightForJob(job: Job) {
       ...requirements.known.map(applicationRequirementLabel),
       ...requirements.unknown.map(applicationRequirementLabel),
     ],
-    screeningQuestions: job.screeningQuestions || [],
+    // Screening questions are no longer public listing content nor collected before
+    // applying — CreatorJobs sends them into the Inbox conversation after a successful
+    // application instead. Kept as an always-empty list so downstream code stays inert.
+    screeningQuestions: [] as NonNullable<Job["screeningQuestions"]>,
     applicationInstruction,
     hasPreflightDetails: Boolean(
       requirements.known.length ||
         requirements.unknown.length ||
-        job.screeningQuestions?.length ||
         trial ||
         applicationInstruction ||
         job.applicationMode === "external" ||

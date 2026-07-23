@@ -115,7 +115,8 @@ test("recruiter V3 uses structured language requirements while preserving honest
   assert.doesNotMatch(page, /languageRequirements:\s*languages/);
   assert.doesNotMatch(page, /setDomain\([^)]*languages/);
 
-  assert.match(preview, /const structuredLanguages = domain\.languageRequirements \|\| \[\]/);
-  assert.match(preview, /const legacyLanguages = unique\(props\.languages \|\| \[\]\)/);
-  assert.match(preview, /structuredLanguages\.length[\s\S]*legacyLanguages\.length/);
+  // The structured-language component and serialization remain for backward
+  // compatibility, but languages are no longer rendered in the candidate-facing preview.
+  assert.doesNotMatch(preview, /title="Language requirements"/);
+  assert.doesNotMatch(preview, /const structuredLanguages = domain\.languageRequirements/);
 });

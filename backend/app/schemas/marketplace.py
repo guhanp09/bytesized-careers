@@ -70,6 +70,12 @@ class InteractionTransitionRequest(BaseModel):
     status: str = Field(min_length=2, max_length=32)
     expected_version: int = Field(ge=1)
     idempotency_key: uuid.UUID
+    #: Optional free-text explanation delivered to the other participant in the
+    #: same transaction as the decision. Only meaningful where the request
+    #: actually shares something: an auto-shared hiring-request outcome, or an
+    #: application's explicit status-communication step. Private stage changes
+    #: ignore it, because nothing is being told to anyone yet.
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class InteractionArchiveUpdate(BaseModel):

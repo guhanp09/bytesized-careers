@@ -58,7 +58,9 @@ test("preflight makes external routing, tracking limits, deadline, materials, an
   assert.equal(preflight.mode, "external");
   assert.equal(preflight.externalUrl, "https://jobs.example.test/apply");
   assert.deepEqual(preflight.materialLabels, ["Relevant portfolio"]);
-  assert.equal(preflight.screeningQuestions.length, 1);
+  // Screening questions are never collected before applying, so preflight never carries
+  // them regardless of what the job configures.
+  assert.equal(preflight.screeningQuestions.length, 0);
   assert.equal(preflight.trial.title, "Unpaid trial");
   assert.equal(preflight.hasPreflightDetails, true);
 

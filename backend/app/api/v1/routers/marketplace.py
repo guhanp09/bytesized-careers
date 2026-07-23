@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -89,28 +91,38 @@ async def _emit_transition_message_best_effort(
     message_id: UUID | None,
     interaction_type: str,
     interaction_id: UUID,
+    note_message_id: UUID | None = None,
 ) -> None:
-    """Emit realtime state only after commit and never invalidate that commit."""
-    if conversation is None or message_id is None:
+    """Emit realtime state only after commit and never invalidate that commit.
+
+    The manager's optional note is a second committed message, so it has to be
+    fanned out alongside the trusted status message; otherwise the decision
+    arrives live and the explanation for it only turns up on the next poll.
+    Emitted in write order so the recipient reads the outcome before the note.
+    """
+    if conversation is None:
         return
-    message = await session.get(Message, message_id)
-    if message is None:
-        return
-    try:
-        await realtime_events.emit_message_created(
-            session, conversation=conversation, message=message
-        )
-    except Exception:
-        logger.exception(
-            "interaction_realtime_delivery_failed",
-            extra={"transition": {
-                "interaction_type": interaction_type,
-                "interaction_id": str(interaction_id),
-                "trusted_message_id": str(message_id),
-                "final_outcome": "committed_delivery_pending",
-                "structured_error_code": "realtime_delivery_failed",
-            }},
-        )
+    for emitted_id in (message_id, note_message_id):
+        if emitted_id is None:
+            continue
+        message = await session.get(Message, emitted_id)
+        if message is None:
+            continue
+        try:
+            await realtime_events.emit_message_created(
+                session, conversation=conversation, message=message
+            )
+        except Exception:
+            logger.exception(
+                "interaction_realtime_delivery_failed",
+                extra={"transition": {
+                    "interaction_type": interaction_type,
+                    "interaction_id": str(interaction_id),
+                    "trusted_message_id": str(emitted_id),
+                    "final_outcome": "committed_delivery_pending",
+                    "structured_error_code": "realtime_delivery_failed",
+                }},
+            )
 
 
 def _transition_http_error(exc: transitions.TransitionError) -> HTTPException:
@@ -156,6 +168,7 @@ def _application_read_for_sender(application: JobApplication) -> JobApplicationR
     read = JobApplicationRead.model_validate(application)
     read.status = application.participant_status or "new"
     read.manager_note = None
+    read.legacy_archive_resolution_required = False
     return read
 
 
@@ -169,6 +182,7 @@ def _interest_read_for_sender(interest: TalentInterest) -> TalentInterestRead:
     read = TalentInterestRead.model_validate(interest)
     read.status = interest.participant_status or "new"
     read.manager_note = None
+    read.legacy_archive_resolution_required = False
     return read
 
 
@@ -261,59 +275,6 @@ async def _interest_read(
     return read
 
 
-async def _assert_application_transition_allowed(
-    session: AsyncSession, application: JobApplication, next_status: str
-) -> None:
-    engagement = await review_service.engagement_for_application(session, application.id)
-    if next_status == application.status:
-        return
-    if (
-        next_status == "archived"
-        and engagement is not None
-        and engagement.status in review_service.TERMINAL_STATES
-    ):
-        return
-    if engagement is None and interaction_status.application_transition_allowed(
-        application.status, next_status
-    ):
-        return
-    if engagement is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Application cannot move from {application.status} to {next_status}",
-        )
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="Use the engagement controls after a candidate has been hired.",
-    )
-
-
-async def _assert_interest_transition_allowed(
-    session: AsyncSession, interest: TalentInterest, next_status: str
-) -> None:
-    engagement = await review_service.engagement_for_interest(session, interest.id)
-    if next_status == interest.status:
-        return
-    if (
-        next_status == "archived"
-        and engagement is not None
-        and engagement.status in review_service.TERMINAL_STATES
-    ):
-        return
-    if engagement is None and interaction_status.interest_transition_allowed(
-        interest.status, next_status
-    ):
-        return
-    if engagement is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Hiring request cannot move from {interest.status} to {next_status}",
-        )
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="Use the engagement controls after a hiring request has been accepted.",
-    )
-
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -371,6 +332,120 @@ def _assert_first_message_complete(
 
 SCREENING_QUESTIONS_ANSWER_KEY = "screening_questions"
 SCREENING_RESPONSE_MAX_LENGTH = 5000
+
+# Deterministic namespace for the automated screening-question Inbox message. The
+# message's client_message_id = uuid5(namespace, f"{application_id}:{snapshot_version}")
+# so the (conversation_id, client_message_id) uniqueness constraint makes delivery
+# idempotent across retries, refreshes, and concurrent duplicate application requests.
+SCREENING_MESSAGE_NAMESPACE = uuid5(NAMESPACE_URL, "creatorjobs:screening-questions-message")
+
+
+def _snapshot_screening_questions(raw: object) -> list[dict[str, object]]:
+    """Build an ordered, sanitized snapshot of a job's screening questions.
+
+    Read directly from the authoritative job record (never from candidate input) so a
+    candidate cannot modify, omit, inject, or replay questions.
+    """
+    if not isinstance(raw, list):
+        return []
+    snapshot: list[dict[str, object]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        prompt = str(item.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        guidance_raw = item.get("response_guidance")
+        guidance = str(guidance_raw).strip() if guidance_raw else ""
+        snapshot.append(
+            {
+                "id": str(item.get("id")) if item.get("id") else str(index),
+                "position": index,
+                "prompt": prompt,
+                "required": bool(item.get("required")),
+                "response_guidance": guidance or None,
+            }
+        )
+    return snapshot
+
+
+def _screening_snapshot_version(snapshot: list[dict[str, object]]) -> str:
+    """Stable version derived from the ordered question content (idempotency key part)."""
+    payload = json.dumps(
+        [(q["position"], q["prompt"], q["required"]) for q in snapshot],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _screening_message_body(snapshot: list[dict[str, object]]) -> str:
+    """Human-readable fallback body for notifications and unsupported clients."""
+    lines = ["A few questions from the hiring team:", ""]
+    for number, question in enumerate(snapshot, start=1):
+        suffix = " (Required)" if question["required"] else ""
+        lines.append(f"{number}. {question['prompt']}{suffix}")
+    lines.append("")
+    lines.append("Reply in this conversation with your answers.")
+    return "\n".join(lines)
+
+
+async def _send_screening_questions_message(
+    session: AsyncSession,
+    *,
+    job: Job,
+    application: JobApplication,
+    conversation: Conversation | None,
+) -> None:
+    """After a successful application, deliver the job's screening questions as one
+    automated hiring-side Inbox message in the application conversation.
+
+    Runs inside the application transaction (``commit=False``) so the message is atomic
+    with the application. Idempotent via the deterministic client_message_id.
+    """
+    if conversation is None or job.posted_by_user_id is None:
+        return
+    snapshot = _snapshot_screening_questions(job.screening_questions)
+    if not snapshot:
+        return
+    owner = await session.get(User, job.posted_by_user_id)
+    if owner is None:
+        return
+    snapshot_version = _screening_snapshot_version(snapshot)
+    metadata: dict[str, object] = {
+        "message_kind": "screening_questions",
+        "automated": True,
+        "application_id": str(application.id),
+        "job_id": str(job.id),
+        "snapshot_version": snapshot_version,
+        "snapshot_at": _now().isoformat(),
+        "source": "job_screening_snapshot",
+        "questions": snapshot,
+    }
+    client_message_id = uuid5(
+        SCREENING_MESSAGE_NAMESPACE, f"{application.id}:{snapshot_version}"
+    )
+    try:
+        await ms.post_message(
+            session,
+            conversation,
+            owner,
+            _screening_message_body(snapshot),
+            kind="screening_questions",
+            metadata=metadata,
+            client_message_id=client_message_id,
+            notify_recipient=True,
+            allow_closed=True,
+            allow_blocked=True,
+            commit=False,
+        )
+    except ms.NotAParticipant:
+        # Should not happen (the owner is always participant B), but never fail the
+        # application over the automated message.
+        logger.warning(
+            "Skipped screening message: owner is not a conversation participant",
+            extra={"application_id": str(application.id)},
+        )
 
 
 def _application_validation_error(
@@ -784,7 +859,11 @@ async def apply_to_job(
     # Enforce the owner's first-message requirements server-side so a direct API
     # call cannot bypass the completion modal the frontend presents.
     first_message_answers = dict(payload.first_message_answers or {})
-    _normalize_screening_question_answers(job.screening_questions, first_message_answers)
+    # Screening questions are no longer collected before applying — CreatorJobs sends
+    # them into the Inbox conversation afterwards (see _send_screening_questions_message).
+    # Drop any client-supplied screening answers so a direct API call cannot inject or
+    # replay them onto the application; historical applications keep their stored answers.
+    first_message_answers.pop(SCREENING_QUESTIONS_ANSWER_KEY, None)
     _assert_first_message_complete(job.application_requirements, first_message_answers)
     application = JobApplication(
         job_id=job_id,
@@ -825,8 +904,16 @@ async def apply_to_job(
         return _application_read_for_sender(existing)
     # Eagerly create the conversation thread for this application so both sides can
     # message immediately (older applications get one lazily on first open).
+    conversation: Conversation | None = None
     if job.posted_by_user_id is not None:
-        await get_or_create_conversation_for_application(session, application)
+        conversation = await get_or_create_conversation_for_application(session, application)
+    # After the application + conversation exist, deliver the job's screening questions
+    # as one automated hiring-side message in the same conversation (ordering: the
+    # candidate's synthesized first message, then this snapshot message). Atomic with the
+    # application (commit=False) and idempotent, so retries never duplicate it.
+    await _send_screening_questions_message(
+        session, job=job, application=application, conversation=conversation
+    )
     applicant_name = current_user.display_name or current_user.username or current_user.email
     await _create_notification(
         session,
@@ -959,6 +1046,7 @@ async def transition_application_status(
         session,
         conversation=result.conversation,
         message_id=result.message_id,
+        note_message_id=result.note_message_id,
         interaction_type="application",
         interaction_id=application_id,
     )
@@ -986,15 +1074,19 @@ async def set_application_archive_state(
         raise HTTPException(status_code=404, detail="Application not found")
     if (
         not payload.archived
+        and current_user.id == application.job_owner_user_id
         and application.status == "archived"
         and application.legacy_archive_resolution_required
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "This legacy archive has no reliable previous stage. "
-                "Resolve its pipeline stage before unarchiving."
-            ),
+            detail={
+                "code": "legacy_archive_resolution_required",
+                "message": "Choose the current pipeline stage to restore this record.",
+                "allowed_statuses": sorted(
+                    interaction_status.LEGACY_APPLICATION_RESOLUTION_TARGETS
+                ),
+            },
         )
     conversation = await get_or_create_conversation_for_application(session, application)
     _set_archive_state(conversation, current_user.id, archived=payload.archived)
@@ -1024,6 +1116,7 @@ async def communicate_application_status(
             requested_status=payload.status,
             expected_version=payload.expected_version,
             idempotency_key=str(payload.idempotency_key),
+            note=payload.note,
         )
         await session.commit()
     except transitions.TransitionError as exc:
@@ -1058,6 +1151,7 @@ async def communicate_application_status(
         session,
         conversation=result.conversation,
         message_id=result.message_id,
+        note_message_id=result.note_message_id,
         interaction_type="application",
         interaction_id=application_id,
     )
@@ -1173,6 +1267,7 @@ async def withdraw_application(
         session,
         conversation=result.conversation,
         message_id=result.message_id,
+        note_message_id=result.note_message_id,
         interaction_type="application",
         interaction_id=application_id,
     )
@@ -1944,6 +2039,7 @@ async def transition_talent_interest_status(
             requested_status=payload.status,
             expected_version=payload.expected_version,
             idempotency_key=str(payload.idempotency_key),
+            note=payload.note,
         )
         await session.commit()
     except transitions.TransitionError as exc:
@@ -1978,6 +2074,7 @@ async def transition_talent_interest_status(
         session,
         conversation=result.conversation,
         message_id=result.message_id,
+        note_message_id=result.note_message_id,
         interaction_type="hiring_request",
         interaction_id=interest_id,
     )
@@ -2005,15 +2102,19 @@ async def set_interest_archive_state(
         raise HTTPException(status_code=404, detail="Interest not found")
     if (
         not payload.archived
+        and current_user.id == interest.owner_user_id
         and interest.status == "archived"
         and interest.legacy_archive_resolution_required
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "This legacy archive has no reliable previous stage. "
-                "Resolve its pipeline stage before unarchiving."
-            ),
+            detail={
+                "code": "legacy_archive_resolution_required",
+                "message": "Choose the current pipeline stage to restore this record.",
+                "allowed_statuses": sorted(
+                    interaction_status.LEGACY_INTEREST_RESOLUTION_TARGETS
+                ),
+            },
         )
     conversation = await get_or_create_conversation_for_interest(session, interest)
     _set_archive_state(conversation, current_user.id, archived=payload.archived)
@@ -2242,6 +2343,7 @@ async def withdraw_talent_interest(
         session,
         conversation=result.conversation,
         message_id=result.message_id,
+        note_message_id=result.note_message_id,
         interaction_type="hiring_request",
         interaction_id=interest_id,
     )

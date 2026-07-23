@@ -74,7 +74,6 @@ export default function JobFiltersDrawer({
   roles,
   platforms,
   formats,
-  languages,
   onApply,
   onClose,
 }: {
@@ -83,7 +82,6 @@ export default function JobFiltersDrawer({
   roles: BackendRole[];
   platforms: string[];
   formats: string[];
-  languages: string[];
   onApply: (state: JobDiscoveryState) => void;
   onClose: () => void;
 }) {
@@ -124,7 +122,6 @@ export default function JobFiltersDrawer({
   );
   const platformOptions = uniqueJobText([...platforms, ...draft.platform]);
   const formatOptions = uniqueJobText([...formats, ...draft.format]);
-  const languageOptions = uniqueJobText([...languages, ...draft.language]);
 
   if (!mounted || !open) return null;
 
@@ -205,10 +202,6 @@ export default function JobFiltersDrawer({
             labelFor={(value) => compensationUnitLabel(value as CompensationUnit)}
             onChange={(next) => set("compensationUnit", next)}
           />
-          {languageOptions.length ? (
-            <ChoiceGroup label="Required language" values={languageOptions} selected={draft.language} onChange={(next) => set("language", next)} />
-          ) : null}
-
           <label className="block min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Location</span>
             <input

@@ -56,7 +56,7 @@ async def test_list_filters_and_pagination(client: AsyncClient) -> None:
     filtered_data = filtered.json()
     assert filtered_data["total"] >= 1
     for item in filtered_data["items"]:
-        assert "instagram" in item["platforms"]
+        assert "instagram" in {platform.casefold() for platform in item["platforms"]}
         assert item["status"] == "published"
 
     paged = await client.get("/api/v1/jobs", params={"limit": 1, "offset": 0})
@@ -393,15 +393,14 @@ async def test_required_language_filter_preserves_null_versus_empty_legacy_seman
         assert response.status_code == 200, response.text
         return {item["id"] for item in response.json()["items"]}
 
-    assert await language_ids("ENGLISH") == {
-        expected["required"],
-        expected["legacy_english"],
-    }
-    assert await language_ids("hindi") == {expected["preferred"]}
-    assert await language_ids("tamil") == {expected["legacy_tamil"]}
-    assert await language_ids("english,hindi") == {
-        expected["required"],
-        expected["preferred"],
-        expected["legacy_english"],
-    }
-    assert expected["empty"] not in await language_ids("english")
+    # Language is no longer a public discovery dimension: the obsolete ?language=
+    # parameter is accepted (no error) but never filters, so every job is returned
+    # regardless of its stored language configuration.
+    all_ids = set(expected.values())
+    assert await language_ids("ENGLISH") == all_ids
+    assert await language_ids("hindi") == all_ids
+    assert await language_ids("english,hindi") == all_ids
+    # The stored language data is preserved on the records themselves.
+    detail = await client.get(f"/api/v1/jobs/{expected['required']}")
+    assert detail.status_code == 200
+    assert detail.json()["language_requirements"][0]["priority"] == "required"

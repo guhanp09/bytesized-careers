@@ -861,6 +861,7 @@ def _application(
     status: str,
     cover_note: str,
     answers: dict[str, object] | None = None,
+    legacy_archive_resolution_required: bool = False,
 ) -> dict[str, object]:
     applicant_user = next(
         user for user in build_persona_users()
@@ -888,6 +889,7 @@ def _application(
             if status in {"interviewing", "hired", "rejected", "withdrawn"}
             else "new"
         ),
+        "legacy_archive_resolution_required": legacy_archive_resolution_required,
         "created_at": SEED_TIME,
     }
 
@@ -992,6 +994,12 @@ def build_persona_applications() -> list[dict[str, object]]:
                 "turnaround": {"value": "4", "unit": "days"},
                 "tools_workflow": ["Google Docs", "Notion"],
             },
+        ),
+        _application(
+            "new-empty", "both-sides-1", "both-sides", "archived",
+            "Legacy archived application with an unknown prior stage.",
+            answers={"fit_note": "Choose a current stage to restore this QA record."},
+            legacy_archive_resolution_required=True,
         ),
         _application(
             "new-empty", "recruiter-active-2", "recruiter-active", "withdrawn",
@@ -1272,6 +1280,7 @@ def _interest(
     note: str,
     answers: dict[str, object] | None = None,
     job_key: str | None = None,
+    legacy_archive_resolution_required: bool = False,
 ) -> dict[str, object]:
     return {
         "id": persona_uuid(f"interest:{recruiter}:{listing_key}"),
@@ -1285,6 +1294,7 @@ def _interest(
         "participant_status": (
             status if status in {"accepted", "declined", "withdrawn"} else "new"
         ),
+        "legacy_archive_resolution_required": legacy_archive_resolution_required,
         "created_at": SEED_TIME,
     }
 
@@ -1353,6 +1363,12 @@ def build_persona_interests() -> list[dict[str, object]]:
                 "custom_instruction": "Name one interview you would use as a structural reference.",
             },
             job_key="both-sides-1",
+        ),
+        _interest(
+            "recruiter-drafts", "both-sides", "both-sides", "archived",
+            "Legacy archived hiring request with an unknown prior stage.",
+            answers={"custom_instruction": "Choose a current stage to restore this QA record."},
+            legacy_archive_resolution_required=True,
         ),
         _interest(
             "new-empty", "notifications", "notifications", "withdrawn",

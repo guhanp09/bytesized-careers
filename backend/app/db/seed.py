@@ -2,16 +2,29 @@ from __future__ import annotations
 
 import logging
 import secrets
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TypedDict
 from uuid import UUID
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db import seed_data_personas as personas
-from app.db.seed_data_jobs import SEEDED_JOBS
+from app.db.seed_data_jobs import (
+    DEMO_JOB_IDS,
+    RETIRED_DEMO_JOB_IDS,
+    SEEDED_JOBS,
+    _stable_uuid as stable_demo_job_id,
+    demo_hiring_identities,
+    demo_user_id,
+    demo_users,
+    identity_specs_by_key,
+    job_specs,
+    materialize_job_payload,
+)
 from app.db.seed_data_roles import seeded_roles
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
@@ -32,6 +45,9 @@ from app.models import (
     TalentListing,
     User,
 )
+from app.repositories.job_repository import JobRepository
+from app.schemas import JobCreate
+from app.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 
@@ -42,36 +58,139 @@ class SeedResult(TypedDict):
     updated: int
 
 
+class JobSeedResult(SeedResult):
+    created: int
+    unchanged: int
+
+
 def _norm_keys(value: object) -> list[str]:
     return list(value) if isinstance(value, list) else []
 
 
-async def seed_jobs_from_seed_data_if_missing(session: AsyncSession) -> SeedResult:
-    inserted = 0
-    skipped = 0
-    updated = 0
+def _seed_values_equal(current: object, desired: object) -> bool:
+    if isinstance(current, Decimal) or isinstance(desired, Decimal):
+        if current is None or desired is None:
+            return current is desired
+        return Decimal(current) == Decimal(desired)
+    return current == desired
 
-    seed_ids = [UUID(str(item["id"])) for item in SEEDED_JOBS]
-    existing_rows = await session.execute(select(Job).where(Job.id.in_(seed_ids)))
+
+async def _ensure_demo_job_principals(session: AsyncSession) -> None:
+    user_payloads = demo_users()
+    existing_user_rows = await session.execute(
+        select(User.id).where(User.id.in_([item["id"] for item in user_payloads]))
+    )
+    existing_user_ids = set(existing_user_rows.scalars().all())
+    for payload in user_payloads:
+        if payload["id"] not in existing_user_ids:
+            session.add(User(**payload))
+    await session.flush()
+
+    identity_payloads = demo_hiring_identities()
+    existing_identity_rows = await session.execute(
+        select(HiringIdentity.id).where(
+            HiringIdentity.id.in_([item["id"] for item in identity_payloads])
+        )
+    )
+    existing_identity_ids = set(existing_identity_rows.scalars().all())
+    for payload in identity_payloads:
+        if payload["id"] not in existing_identity_ids:
+            session.add(HiringIdentity(**payload))
+    await session.flush()
+
+
+async def seed_jobs_from_seed_data_if_missing(session: AsyncSession) -> JobSeedResult:
+    """Validate and idempotently upsert the development-only demo job portfolio."""
+
+    if settings.app_env not in {"development", "test"}:
+        raise RuntimeError("Demo job seeding is allowed only in development or test.")
+
+    await seed_roles_if_missing(session)
+    await _ensure_demo_job_principals(session)
+
+    existing_rows = await session.execute(select(Job).where(Job.id.in_(DEMO_JOB_IDS)))
     existing_by_id = {row.id: row for row in existing_rows.scalars().all()}
+    retired_rows = await session.execute(select(Job).where(Job.id.in_(RETIRED_DEMO_JOB_IDS)))
+    retired_jobs = list(retired_rows.scalars().all())
 
-    for payload in SEEDED_JOBS:
-        job_id = UUID(str(payload["id"]))
-        existing = existing_by_id.get(job_id)
-        if existing is not None:
-            # Reconcile the demo first-message requirements onto already-seeded rows.
-            # Seeding is otherwise insert-only, so without this an older DB would keep
-            # empty requirements and the apply gate would never trigger. We touch only
-            # this one presentational column on deterministic seed ids — no user data.
-            desired = _norm_keys(payload.get("application_requirements"))
-            if _norm_keys(existing.application_requirements) != desired:
-                existing.application_requirements = desired
-                updated += 1
-            else:
-                skipped += 1
+    service = JobService(JobRepository(session))
+    identities = identity_specs_by_key()
+    role_names = {spec["role"].casefold() for spec in job_specs()}
+    role_rows = await session.execute(select(Role).where(func.lower(Role.name).in_(role_names)))
+    roles_by_name = {role.name.casefold(): role for role in role_rows.scalars().all()}
+    now = datetime.now(UTC)
+    inserted = 0
+    updated = 0
+    unchanged = 0
+    skipped = 0
+
+    # Old deterministic fixtures must not remain accidentally visible after the
+    # portfolio refresh. Retire only those known seed IDs; never delete them or
+    # alter an arbitrary user-created job.
+    for retired_job in retired_jobs:
+        if retired_job.status == "closed":
+            skipped += 1
             continue
-        session.add(Job(**payload))
-        inserted += 1
+        await service.repository.update(
+            retired_job,
+            {"status": "closed", "closed_at": retired_job.closed_at or now},
+        )
+        updated += 1
+
+    for spec in job_specs():
+        job_id = stable_demo_job_id(spec["key"])
+        existing = existing_by_id.get(job_id)
+        identity = identities.get(spec["identity_key"])
+        if identity is None:
+            raise RuntimeError(f"Unknown demo hiring identity: {spec['identity_key']}")
+        role = roles_by_name.get(spec["role"].casefold())
+        if role is None:
+            raise RuntimeError(f"Unknown demo role dependency: {spec['role']}")
+
+        raw_payload = materialize_job_payload(
+            spec,
+            identity_spec=identity,
+            role_id=role.id,
+            now=now,
+            existing_deadline=existing.deadline_at if existing is not None else None,
+            existing_start_date=existing.start_date if existing is not None else None,
+        )
+        payload = JobCreate.model_validate(raw_payload)
+        desired = await service.prepare_job_create(
+            payload,
+            actor_user_id=demo_user_id(identity["owner_key"]),
+        )
+        desired.update(
+            {
+                "views": spec["views"],
+                "applicants": spec["applicants"],
+                "response_rate": spec["response_rate"],
+            }
+        )
+
+        if spec["status"] == "paused":
+            desired["paused_at"] = existing.paused_at if existing is not None else now
+        elif spec["status"] == "closed":
+            desired["closed_at"] = existing.closed_at if existing is not None else now
+
+        if existing is None:
+            desired["id"] = job_id
+            desired["created_at"] = now - timedelta(hours=int(spec["posted_hours_ago"]))
+            desired["updated_at"] = desired["created_at"]
+            await service.repository.create(desired)
+            inserted += 1
+            continue
+
+        changes = {
+            field: value
+            for field, value in desired.items()
+            if not _seed_values_equal(getattr(existing, field, None), value)
+        }
+        if changes:
+            await service.repository.update(existing, changes)
+            updated += 1
+        else:
+            unchanged += 1
 
     await session.commit()
     logger.info(
@@ -80,10 +199,17 @@ async def seed_jobs_from_seed_data_if_missing(session: AsyncSession) -> SeedResu
             "inserted": inserted,
             "skipped": skipped,
             "updated": updated,
-            "total_seed_records": len(SEEDED_JOBS),
+            "unchanged": unchanged,
+            "total_seed_records": len(DEMO_JOB_IDS),
         },
     )
-    return {"inserted": inserted, "skipped": skipped, "updated": updated}
+    return {
+        "inserted": inserted,
+        "created": inserted,
+        "updated": updated,
+        "unchanged": unchanged,
+        "skipped": skipped,
+    }
 
 
 async def seed_talent_from_seed_data_if_missing(session: AsyncSession) -> SeedResult:
@@ -408,8 +534,9 @@ async def reset_dev_seed_data(session: AsyncSession) -> dict[str, object]:
 
     persona_user_ids = personas.all_qa_seed_user_ids()
     seed_talent_user_ids = [UUID(str(item["id"])) for item in SEEDED_TALENT_USERS]
-    target_user_ids = persona_user_ids + seed_talent_user_ids
-    seed_job_ids = [UUID(str(item["id"])) for item in SEEDED_JOBS]
+    seed_job_user_ids = [UUID(str(item["id"])) for item in demo_users()]
+    target_user_ids = persona_user_ids + seed_talent_user_ids + seed_job_user_ids
+    seed_job_ids = [UUID(str(item["id"])) for item in SEEDED_JOBS] + list(RETIRED_DEMO_JOB_IDS)
     seed_listing_ids = [UUID(str(item["id"])) for item in SEEDED_TALENT_LISTINGS]
 
     # Children first; jobs/listings reference users via SET NULL so they need an

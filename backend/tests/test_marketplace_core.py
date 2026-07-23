@@ -872,7 +872,7 @@ async def test_expired_job_rejects_new_application(
     }
 
 
-async def test_required_and_optional_screening_answers_are_validated_and_snapshotted(
+async def test_application_succeeds_without_screening_and_delivers_questions_to_inbox(
     client: AsyncClient,
 ) -> None:
     owner_token = await _register_verified_login(
@@ -882,6 +882,7 @@ async def test_required_and_optional_screening_answers_are_validated_and_snapsho
         client, email="screening-applicant@example.com", username="screening_applicant"
     )
     applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
     required_prompt = "Which edit best demonstrates your retention judgment?"
     optional_prompt = "Anything else you would like the hiring team to know?"
 
@@ -896,82 +897,142 @@ async def test_required_and_optional_screening_answers_are_validated_and_snapsho
                 "required": True,
                 "response_guidance": "Name one project and explain your contribution.",
             },
-            {
-                "prompt": optional_prompt,
-                "required": False,
-                "response_guidance": None,
-            },
+            {"prompt": optional_prompt, "required": False, "response_guidance": None},
         ],
     )
     assert job.status_code == 201
     job_id = job.json()["id"]
 
-    missing_required = await client.post(
-        f"/api/v1/jobs/{job_id}/applications",
-        headers=applicant_headers,
-        json={
-            "first_message_answers": {
-                "fit_note": "I have relevant creator-economy editing experience.",
-                "screening_questions": [
-                    {"question_index": 1, "response": ""},
-                ],
-            }
-        },
-    )
-    assert missing_required.status_code == 422
-    error = missing_required.json()["error"]
-    assert error["code"] == "APPLICATION_VALIDATION_FAILED"
-    assert error["details"]["field_errors"] == {
-        "first_message_answers.screening_questions.0.response": [
-            "Answer this required screening question."
-        ]
-    }
+    # Public job serialization no longer exposes the screening questions...
+    public = await client.get(f"/api/v1/jobs/{job_id}")
+    assert public.status_code == 200
+    assert public.json()["screening_questions"] is None
+    # ...but the owner's own job list still returns them for editing.
+    mine = await client.get("/api/v1/me/jobs", headers=owner_headers)
+    my_job = [j for j in mine.json() if j["id"] == job_id][0]
+    assert [q["prompt"] for q in my_job["screening_questions"]] == [required_prompt, optional_prompt]
 
+    # The application succeeds without any screening answers, and a client-supplied
+    # screening payload is dropped rather than stored.
     accepted = await client.post(
         f"/api/v1/jobs/{job_id}/applications",
         headers=applicant_headers,
         json={
             "first_message_answers": {
                 "fit_note": "I have relevant creator-economy editing experience.",
-                "screening_questions": [
-                    {
-                        "question_index": 0,
-                        "response": "  A long-form finance edit with a stronger first-minute arc.  ",
-                        "prompt": "Forged prompt",
-                        "required": False,
-                    },
-                    {"question_index": 1, "response": "   "},
-                ],
+                "screening_questions": [{"question_index": 0, "response": "forged"}],
             }
         },
     )
     assert accepted.status_code == 201
-    answers = accepted.json()["first_message_answers"]
-    assert answers["fit_note"] == "I have relevant creator-economy editing experience."
-    assert answers["screening_questions"] == [
-        {
-            "question_index": 0,
-            "prompt": required_prompt,
-            "required": True,
-            "response_guidance": "Name one project and explain your contribution.",
-            "response": "A long-form finance edit with a stronger first-minute arc.",
-        },
-        {
-            "question_index": 1,
-            "prompt": optional_prompt,
-            "required": False,
-            "response_guidance": None,
-            "response": "",
-        },
-    ]
+    application_id = accepted.json()["id"]
+    assert "screening_questions" not in accepted.json()["first_message_answers"]
+    assert accepted.json()["first_message_answers"]["fit_note"].startswith("I have relevant")
 
-    received = await client.get(
-        "/api/v1/me/applications/received",
-        headers={"Authorization": f"Bearer {owner_token}"},
+    # The applicant sees an automated hiring-side screening message, unread, structured.
+    convo = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_headers
     )
-    matching = [item for item in received.json() if item["id"] == accepted.json()["id"]]
-    assert len(matching) == 1
-    assert matching[0]["first_message_answers"]["screening_questions"] == answers["screening_questions"]
+    assert convo.status_code == 200
+    messages = convo.json()["messages"]
+    assert len(messages) == 1
+    screening = messages[0]
+    assert screening["message_kind"] == "screening_questions"
+    assert screening["automated"] is True
+    assert screening["from_me"] is False  # sent by the hiring side, not the applicant
+    assert screening["read_by_recipient"] is False
+    assert [q["prompt"] for q in screening["screening"]["questions"]] == [required_prompt, optional_prompt]
+    assert [q["required"] for q in screening["screening"]["questions"]] == [True, False]
+    assert convo.json()["conversation"]["unread_count"] == 1
+
+    # The recruiter sees the same message as their own (from_me), not counted unread.
+    owner_convo = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=owner_headers
+    )
+    owner_messages = owner_convo.json()["messages"]
+    assert len(owner_messages) == 1
+    assert owner_messages[0]["from_me"] is True
+    assert owner_convo.json()["conversation"]["unread_count"] == 0
+
+    # Idempotent: a duplicate application returns the existing one and never resends.
+    duplicate = await client.post(
+        f"/api/v1/jobs/{job_id}/applications", headers=applicant_headers, json={}
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json()["id"] == application_id
+    convo_again = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_headers
+    )
+    assert len(convo_again.json()["messages"]) == 1
+
+
+async def test_screening_message_keeps_its_original_snapshot_after_the_job_is_edited(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="snap-owner@example.com", username="snap_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="snap-applicant@example.com", username="snap_applicant"
+    )
+    original_prompt = "What is your reliable weekly batch capacity?"
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Snapshot editor role",
+        application_requirements=["fit_note"],
+        screening_questions=[{"prompt": original_prompt, "required": True, "response_guidance": None}],
+    )
+    job_id = job.json()["id"]
+    applied = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"first_message_answers": {"fit_note": "Available for weekly batches."}},
+    )
+    assert applied.status_code == 201
+    application_id = applied.json()["id"]
+
+    # The recruiter later changes the job's screening questions entirely.
+    edited = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"screening_questions": [{"prompt": "A completely different question?", "required": False}]},
+    )
+    assert edited.status_code == 200, edited.text
+
+    # The existing conversation still shows the ORIGINAL snapshot, not the edited job.
+    convo = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+    )
+    questions = convo.json()["messages"][0]["screening"]["questions"]
+    assert [q["prompt"] for q in questions] == [original_prompt]
+
+
+async def test_no_screening_questions_creates_no_automated_message(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="noscreen-owner@example.com", username="noscreen_owner"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="noscreen-applicant@example.com", username="noscreen_applicant"
+    )
+    job = await create_valid_published_job(
+        client, owner_token, title="No-screening editor role", application_requirements=["fit_note"]
+    )
+    job_id = job.json()["id"]
+    applied = await client.post(
+        f"/api/v1/jobs/{job_id}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"first_message_answers": {"fit_note": "Ready to help with your edits."}},
+    )
+    assert applied.status_code == 201
+    convo = await client.get(
+        f"/api/v1/me/applications/{applied.json()['id']}/conversation",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+    )
+    assert convo.json()["messages"] == []
 
 
 async def test_existing_application_is_returned_before_external_mode_guard(

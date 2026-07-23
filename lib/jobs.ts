@@ -1,5 +1,25 @@
-// lib/jobs.ts
+import demoMarketplaceJson from "../fixtures/demo_job_marketplace.json" with { type: "json" };
 
+import type {
+  CreativeAutonomy,
+  EmployerContextType,
+  EngagementDurationType,
+  EngagementDurationUnit,
+  JobDeliverable,
+  JobHiringProcessStage,
+  JobLanguageRequirement,
+  JobScreeningQuestion,
+  JobSourceInput,
+  RevisionPolicy,
+  StartTiming,
+  TrialAttribution,
+  TrialCompensationBasis,
+  TrialEffortUnit,
+  TrialPortfolioPermission,
+  TrialStatus,
+  TrialWorkUsage,
+} from "./jobContract";
+import { resolveToolDisplay } from "./toolCatalog.ts";
 import type { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
 
 export const CATEGORIES = [
@@ -18,855 +38,351 @@ export const CATEGORIES = [
 
 export const START_TIME_VALUES: StartTimeframe[] = ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"];
 
-const toSlug = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-const referenceFocusByCategory: Record<JobCategory, string[]> = {
-  Editing: ["hook pacing", "scene rhythm", "retention cuts"],
-  Design: ["visual hierarchy", "brand consistency", "clean composition"],
-  Writing: ["opening hook", "structure", "clarity"],
-  Thumbnails: ["subject contrast", "readable type", "click-worthy framing"],
-  Shorts: ["caption timing", "beat cuts", "mobile-first pacing"],
-  "Motion Graphics": ["callout timing", "lower-third polish", "motion restraint"],
-  "Channel Manager": ["operating cadence", "upload QA", "handoff clarity"],
-  Research: ["source framing", "story order", "fact-checking tone"],
-  "Voice Over": ["warm delivery", "sentence rhythm", "clean narration"],
-  Marketing: ["positioning", "distribution angle", "audience promise"],
-  Uncategorized: ["creator workflow"],
+type DemoIdentity = {
+  key: string;
+  username: string;
+  display_name: string;
+  platform: string;
+  managed_by_agency_name?: string;
+  employer_context_type: EmployerContextType;
+  verification_status: string;
+  subscribers: number;
 };
 
-const timestampSets = [
-  [
-    { seconds: 0, title: "Opening cue", description: "Notice how the first beat sets expectations quickly." },
-    { seconds: 18, title: "Main pattern", description: "Use this moment to calibrate the core style and pacing." },
-    { seconds: 46, title: "Execution detail", description: "Reference the polish level without copying the creative directly." },
-  ],
-  [
-    { seconds: 7, title: "Hook setup", description: "The viewer promise is clear before the first major transition." },
-    { seconds: 31, title: "Rhythm shift", description: "The edit resets attention while keeping the idea easy to follow." },
-    { seconds: 74, title: "Finish quality", description: "Match the delivery standard and export polish here." },
-  ],
-  [
-    { seconds: 12, title: "Style signal", description: "This shows the tone, density, and visual restraint to aim for." },
-    { seconds: 39, title: "Handoff detail", description: "Useful reference for how assets, captions, or notes should land." },
-    { seconds: 96, title: "Retention moment", description: "The change in pace keeps the segment from feeling flat." },
-  ],
-];
+type DemoCompensation = {
+  mode: string;
+  amount?: number;
+  max?: number;
+  currency?: string | null;
+  unit: string;
+  custom_unit?: string;
+  note?: string;
+};
 
-const enrichMockReferenceVideo = (job: Job, video: ReferenceVideo, index: number): ReferenceVideo => {
-  const title = video.title?.trim() || `${job.category} reference ${index + 1}`;
-  const focusItems = referenceFocusByCategory[job.category] || ["creator workflow"];
-  const focus = focusItems[index % focusItems.length];
-  const format = job.formatsHiredFor?.[index % Math.max(job.formatsHiredFor.length, 1)] || job.category;
-  const genre = job.contentGenres?.[0] || "creator-led content";
-  const timestampTemplates = timestampSets[index % timestampSets.length];
+type DemoEngagement = {
+  type: string;
+  work_mode: string;
+  location: string;
+  weekly_min?: number;
+  weekly_max?: number;
+  turnaround_value?: number;
+  turnaround_unit?: string;
+  turnaround_basis?: string;
+  timezone_overlap?: string;
+};
+
+type DemoTrial = {
+  status: TrialStatus;
+  scope?: string;
+  effort_value?: number;
+  effort_unit?: TrialEffortUnit;
+  amount?: number;
+  currency?: string;
+  basis?: TrialCompensationBasis;
+  work_usage?: TrialWorkUsage;
+  portfolio_permission?: TrialPortfolioPermission;
+  attribution?: TrialAttribution;
+  unpaid_confirmed?: boolean;
+  notes?: string;
+};
+
+type DemoJobSpec = {
+  key: string;
+  status: string;
+  identity_key: string;
+  role: string;
+  specialization?: string;
+  title: string;
+  about: string;
+  responsibilities: string[];
+  requirements: string[];
+  platforms: string[];
+  niches: string[];
+  genres: string[];
+  formats: string[];
+  experience: string;
+  tags: string[];
+  compensation: DemoCompensation;
+  engagement: DemoEngagement;
+  deliverables: JobDeliverable[];
+  required_skills?: string[];
+  preferred_skills?: string[];
+  required_custom_skills?: string[];
+  preferred_custom_skills?: string[];
+  required_tools?: string[];
+  other_required_tools?: string[];
+  required_skills_note?: string;
+  preferred_skills_note?: string;
+  languages?: JobLanguageRequirement[];
+  revision: { policy: RevisionPolicy; rounds?: number; notes?: string };
+  source_inputs?: JobSourceInput[];
+  source_inputs_notes?: string;
+  autonomy: { level: CreativeAutonomy; notes?: string };
+  trial: DemoTrial;
+  start: {
+    timing: StartTiming;
+    start_days?: number;
+    duration_type: EngagementDurationType;
+    duration_value?: number;
+    duration_unit?: EngagementDurationUnit;
+  };
+  application: {
+    mode: string;
+    external_url?: string;
+    requirements?: string[];
+    how_to_apply: string;
+    screening?: JobScreeningQuestion[];
+    process?: JobHiringProcessStage["stage"][];
+  };
+  reference?: boolean;
+  posted_hours_ago: number;
+  deadline_days: number;
+  views: number;
+  applicants: number;
+  response_rate: number;
+};
+
+type DemoMarketplace = {
+  version: number;
+  identities: DemoIdentity[];
+  jobs: DemoJobSpec[];
+};
+
+const marketplace = demoMarketplaceJson as unknown as DemoMarketplace;
+const identities = new Map(marketplace.identities.map((identity) => [identity.key, identity]));
+
+const roleCategory: Record<string, JobCategory> = {
+  "Long-form Editor": "Editing",
+  "Shorts Editor": "Shorts",
+  "Podcast Producer": "Editing",
+  "Thumbnail Designer": "Thumbnails",
+  "Motion Designer": "Motion Graphics",
+  Scriptwriter: "Writing",
+  Researcher: "Research",
+  "Voice Over Artist": "Voice Over",
+  "Content Strategist": "Marketing",
+  "Channel Manager": "Channel Manager",
+  "Social Media Manager": "Marketing",
+  "Community Manager": "Channel Manager",
+  "Other Creator Role": "Uncategorized",
+  "Project Manager": "Channel Manager",
+  "UGC Creator": "Marketing",
+  "Graphic Designer": "Design",
+  Videographer: "Editing",
+  "Newsletter Writer": "Writing",
+  "Audio Engineer": "Editing",
+  Copywriter: "Writing",
+  Animator: "Motion Graphics",
+  "Paid Ads Specialist": "Marketing",
+};
+
+const roleSlug = (value: string) =>
+  value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+const addDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+const subtractHours = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+const formatMoney = (value: number, currency?: string | null) => {
+  if (!currency) return value.toLocaleString("en-IN");
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toLocaleString("en-IN")}`;
+  }
+};
+
+const compensationDisplay = (value: DemoCompensation) => {
+  if (value.unit === "commission") return "Commission-based · terms disclosed";
+  if (value.unit === "mixed") return `Mixed compensation · ${value.note || "see details"}`;
+  if (value.mode === "negotiable") return `Negotiable ${value.unit}`;
+  const minimum = value.amount === undefined ? "" : formatMoney(value.amount, value.currency);
+  const maximum = value.max === undefined ? "" : formatMoney(value.max, value.currency);
+  const range = maximum ? `${minimum}–${maximum}` : minimum;
+  const unit = value.unit === "custom" ? value.custom_unit : value.unit;
+  return `${range}${unit ? ` ${unit}` : ""}`.trim();
+};
+
+const postedLabel = (hours: number) => (hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`);
+
+const jobType = (engagement: string): Job["type"] => {
+  if (engagement === "one_time_project") return "One-time";
+  if (engagement === "full_time") return "Full-time";
+  if (["part_time", "internship", "fixed_term"].includes(engagement)) return "Part-time";
+  return "Monthly";
+};
+
+const startTimeframe = (timing: StartTiming): StartTimeframe => {
+  if (timing === "immediate") return "ASAP";
+  if (timing === "within_two_weeks") return "<1mo";
+  if (timing === "specific_date") return "<2mo";
+  return "Flexible";
+};
+
+const referenceVideos = (spec: DemoJobSpec): ReferenceVideo[] =>
+  spec.reference
+    ? [
+        {
+          id: `${spec.key}-reference`,
+          title: "Fictional style and workflow reference",
+          url: `https://example.com/creatorjobs-demo/references/${spec.key}`,
+          platform: "Demo reference",
+          description: "A stable non-playable fixture link used only in local development.",
+          whatToReference:
+            "Use the pacing, hierarchy, or workflow notes in the supplied fictional brief; do not copy creative assets.",
+          timestampNotes: [
+            {
+              id: `${spec.key}-reference-opening`,
+              time: "0:00",
+              seconds: 0,
+              title: "Opening expectation",
+              description: "The first beat states the audience promise clearly.",
+            },
+            {
+              id: `${spec.key}-reference-handoff`,
+              time: "0:35",
+              seconds: 35,
+              title: "Execution detail",
+              description: "Use this note to calibrate the requested polish and handoff quality.",
+            },
+            {
+              id: `${spec.key}-reference-finish`,
+              time: "1:10",
+              seconds: 70,
+              title: "Finish standard",
+              description: "This checkpoint documents the expected final delivery quality.",
+            },
+          ],
+        },
+      ]
+    : [];
+
+const toJob = (spec: DemoJobSpec): Job => {
+  const identity = identities.get(spec.identity_key);
+  if (!identity) throw new Error(`Unknown demo identity: ${spec.identity_key}`);
+  const category = roleCategory[spec.role] || "Uncategorized";
+  const requiredTools = spec.required_tools || [];
+  const otherTools = spec.other_required_tools || [];
+  const startDate = spec.start.start_days === undefined ? undefined : addDays(spec.start.start_days).slice(0, 10);
 
   return {
-    ...video,
-    title,
-    platform: video.platform || "YouTube Reference",
-    whatToReference:
-      video.whatToReference ||
-      `Use this to calibrate ${focus} for ${job.channel.name}'s ${genre.toLowerCase()} work, especially the ${format.toLowerCase()} deliverable.`,
-    timestampNotes: video.timestampNotes?.length
-      ? video.timestampNotes
-      : timestampTemplates.map((note, noteIndex) => ({
-          id: `${toSlug(job.id)}-${toSlug(title)}-${noteIndex + 1}`,
-          time: `${Math.floor(note.seconds / 60)}:${String(note.seconds % 60).padStart(2, "0")}`,
-          ...note,
-        })),
+    id: spec.key.replace(/^job_/, ""),
+    listingSchemaVersion: 3,
+    title: spec.title,
+    category,
+    legacyCategory: category === "Uncategorized" ? null : category,
+    primaryRoleId: `demo-role-${roleSlug(spec.role)}`,
+    primaryRoleName: spec.role,
+    roleSpecialization: spec.specialization,
+    budget: compensationDisplay(spec.compensation),
+    budgetAmount: spec.compensation.amount,
+    budgetMax: spec.compensation.max,
+    budgetCurrency: spec.compensation.currency || undefined,
+    budgetUnit: spec.compensation.unit,
+    budgetUnitCustom: spec.compensation.custom_unit,
+    compensationMode: spec.compensation.mode,
+    budgetNote: spec.compensation.note,
+    experience: spec.experience,
+    location:
+      spec.engagement.work_mode === "remote" && spec.engagement.location === "Remote"
+        ? ""
+        : spec.engagement.location,
+    postedShort: postedLabel(spec.posted_hours_ago),
+    createdAt: subtractHours(spec.posted_hours_ago),
+    updatedAt: subtractHours(spec.posted_hours_ago),
+    views: spec.views,
+    applicants: spec.applicants,
+    responseRate: spec.response_rate,
+    channel: {
+      name: identity.display_name,
+      logoUrl: `https://picsum.photos/seed/creatorjobs-${identity.key}/96/96`,
+      subscribers: identity.subscribers,
+      verified: identity.verification_status === "VERIFIED",
+    },
+    tags: spec.tags,
+    tools: [...requiredTools.map((key) => resolveToolDisplay(key).displayName), ...otherTools],
+    requiredToolKeys: requiredTools,
+    otherRequiredTools: otherTools,
+    deliverables: spec.deliverables,
+    requiredSkillKeys: spec.required_skills || [],
+    preferredSkillKeys: spec.preferred_skills || [],
+    otherRequiredSkills: spec.required_custom_skills || [],
+    otherPreferredSkills: spec.preferred_custom_skills || [],
+    requiredSkillsNote: spec.required_skills_note,
+    preferredSkillsNote: spec.preferred_skills_note,
+    revisionPolicy: spec.revision.policy,
+    revisionRounds: spec.revision.rounds,
+    revisionNotes: spec.revision.notes,
+    sourceInputs: spec.source_inputs || [],
+    sourceInputsNotes: spec.source_inputs_notes,
+    creativeAutonomy: spec.autonomy.level,
+    creativeAutonomyNotes: spec.autonomy.notes,
+    languageRequirements: spec.languages || [],
+    languages: (spec.languages || []).map((language) => language.language),
+    trialStatus: spec.trial.status,
+    trialScope: spec.trial.scope,
+    trialEffortValue: spec.trial.effort_value,
+    trialEffortUnit: spec.trial.effort_unit,
+    trialCompensationAmount: spec.trial.amount,
+    trialCompensationCurrency: spec.trial.currency,
+    trialCompensationBasis: spec.trial.basis,
+    trialWorkUsage: spec.trial.work_usage,
+    trialPortfolioPermission: spec.trial.portfolio_permission,
+    trialAttribution: spec.trial.attribution,
+    unpaidTrialConfirmed: spec.trial.unpaid_confirmed,
+    trialNotes: spec.trial.notes,
+    startTiming: spec.start.timing,
+    startDate,
+    durationType: spec.start.duration_type,
+    durationValue: spec.start.duration_value,
+    durationUnit: spec.start.duration_unit,
+    hiringProcess: (spec.application.process || []).map((stage) => ({ stage })),
+    screeningQuestions: spec.application.screening || [],
+    employerContextType: identity.employer_context_type,
+    contentNiches: spec.niches,
+    contentGenres: spec.genres,
+    formatsHiredFor: spec.formats,
+    startTimeframe: startTimeframe(spec.start.timing),
+    workMode: spec.engagement.work_mode,
+    engagementType: spec.engagement.type,
+    timezoneOverlap: spec.engagement.timezone_overlap,
+    expectedWeeklyHoursMin: spec.engagement.weekly_min,
+    expectedWeeklyHoursMax: spec.engagement.weekly_max,
+    turnaroundValue: spec.engagement.turnaround_value,
+    turnaroundUnit: spec.engagement.turnaround_unit,
+    turnaroundBasis: spec.engagement.turnaround_basis,
+    applicationMode: spec.application.mode,
+    externalApplyUrl: spec.application.external_url,
+    deadlineAt: addDays(spec.deadline_days),
+    type: jobType(spec.engagement.type),
+    referenceVideos: referenceVideos(spec),
+    platform: spec.platforms[0],
+    platforms: spec.platforms,
+    about: spec.about,
+    responsibilities: spec.responsibilities.join("\n"),
+    requirements: spec.requirements.join("\n"),
+    applicationRequirements: spec.application.requirements || [],
+    howToApply: spec.application.how_to_apply,
+    channelProfileSlug: identity.username,
+    channelExternalUrl: `https://example.com/creatorjobs-demo/${identity.key}`,
+    postedByAgency: Boolean(identity.managed_by_agency_name),
+    agencyProfileSlug: identity.managed_by_agency_name ? identity.username : undefined,
+    managedByAgencyName: identity.managed_by_agency_name,
+    hiringDisplayName: identity.display_name,
+    hiringVerificationStatus: identity.verification_status,
+    hiringPlatform: identity.platform,
+    hiringIdentityId: `demo-identity-${identity.key}`,
+    status: spec.status,
   };
 };
 
-const RAW_JOBS: Job[] = [
-  {
-    id: "1",
-    listingSchemaVersion: 3,
-    title: "Video editor for YouTube (long-form, retention-focused)",
-    category: "Editing",
-    legacyCategory: "Editing",
-    primaryRoleId: "mock-role-video-editor",
-    primaryRoleName: "Video Editor",
-    roleSpecialization: "Retention-focused long-form explainers",
-    budget: "₹350–₹3,500 per project",
-    budgetAmount: 350,
-    budgetMax: 3500,
-    budgetCurrency: "INR",
-    budgetUnit: "per project",
-    compensationMode: "range",
-    budgetNote: "Final rate depends on edit complexity and source-footage length.",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "5h",
-    views: 355,
-    applicants: 12,
-    responseRate: 82,
-    channel: {
-      name: "Finance Channel",
-      logoUrl: "https://picsum.photos/seed/finance/96/96",
-      subscribers: 128000,
-      verified: true,
-    },
-    tags: ["Premiere", "Story pace", "SFX", "Captions", "Sound cleanup"],
-    platform: "YouTube",
-    platforms: ["YouTube"],
-    engagementType: "one_time_project",
-    workMode: "remote",
-    deliverables: [
-      { type: "long_form_video", quantity: 2, frequency: "per_month", notes: "8–15 minute finance explainers." },
-      { type: "short", quantity: 3, frequency: "per_video", notes: "Cut from each approved long-form edit." },
-    ],
-    requiredSkillKeys: ["video_editing", "storytelling", "audio_editing"],
-    preferredSkillKeys: ["motion_graphics", "color_grading"],
-    requiredToolKeys: ["premiere-pro", "after-effects"],
-    otherRequiredTools: [],
-    requiredSkillsNote: "You should be comfortable making editorial decisions from a structured script.",
-    revisionPolicy: "fixed",
-    revisionRounds: 2,
-    revisionNotes: "Two consolidated feedback rounds are included for each long-form edit.",
-    sourceInputs: [
-      { type: "raw_footage", sensitive_access_confirmed: false },
-      { type: "script", sensitive_access_confirmed: false },
-      { type: "brand_guidelines", sensitive_access_confirmed: false },
-      { type: "analytics_access", sensitive_access_confirmed: true },
-    ],
-    sourceInputsNotes: "Analytics access is read-only and granted after onboarding so editors can understand retention drops.",
-    creativeAutonomy: "guided_by_references",
-    creativeAutonomyNotes: "Pitch pacing and visual ideas while keeping the established channel voice.",
-    languageRequirements: [
-      { language: "English", priority: "required", proficiency: "professional", purposes: ["content_understanding", "reading"] },
-      { language: "Hindi", priority: "preferred", proficiency: "conversational", purposes: ["content_understanding"] },
-    ],
-    turnaroundValue: 5,
-    turnaroundUnit: "business_days",
-    turnaroundBasis: "first_draft",
-    trialStatus: "paid",
-    trialScope: "Edit a 60–90 second segment from provided footage.",
-    trialEffortValue: 3,
-    trialEffortUnit: "hours",
-    trialCompensationAmount: 1500,
-    trialCompensationCurrency: "INR",
-    trialCompensationBasis: "flat",
-    trialWorkUsage: "evaluation_only",
-    trialPortfolioPermission: "allowed",
-    trialAttribution: "not_applicable",
-    startTiming: "within_two_weeks",
-    durationType: "project_based",
-    hiringProcess: [
-      { stage: "application_review" },
-      { stage: "portfolio_review" },
-      { stage: "screening_call" },
-      { stage: "paid_trial" },
-      { stage: "final_discussion" },
-    ],
-    screeningQuestions: [
-      { prompt: "Which edit in your portfolio best demonstrates retention-focused storytelling?", required: true, response_guidance: "Share the project and briefly explain your decisions." },
-      { prompt: "Is there anything about the proposed turnaround you would adjust?", required: false, response_guidance: "Optional — mention scheduling constraints if relevant." },
-    ],
-    applicationMode: "internal",
-    deadlineAt: "2027-02-28T18:30:00Z",
-    employerContextType: "creator",
-    about: "Finance Channel makes accessible, evidence-led explainers for people learning how money and markets work. We are looking for an editor who can turn structured scripts and presenter footage into clear, energetic stories.",
-    responsibilities: "Build a strong opening hook and retention-focused story flow\nEdit presenter footage, B-roll, captions, music, and sound design\nCollaborate on one consolidated feedback pass per review round",
-    contentNiches: ["Finance", "Education"],
-    contentGenres: ["Explainers"],
-    formatsHiredFor: ["Long-form video", "Captions"],
-    startTimeframe: "<1mo",
-    type: "One-time",
-    referenceVideos: [
-      {
-        title: "Pacing + retention reference",
-        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        platform: "YouTube Reference",
-        whatToReference:
-          "Study how the intro hooks quickly, energy lifts drive momentum, and the loop keeps viewers watching.",
-        timestampNotes: [
-          {
-            time: "0:00",
-            seconds: 0,
-            title: "Hook pacing",
-            description: "Cold open hits immediately. Strong visual + curiosity within the first second.",
-          },
-          {
-            time: "0:12",
-            seconds: 12,
-            title: "Energy lift",
-            description: "Beat drop aligns with the subject entry. Notice the momentum shift.",
-          },
-          {
-            time: "0:34",
-            seconds: 34,
-            title: "Retention cut",
-            description: "Quick angle change keeps attention. No shot lingers more than about two seconds.",
-          },
-          {
-            time: "1:08",
-            seconds: 68,
-            title: "B-roll rhythm",
-            description: "Performance and B-roll alternate on beat. Edits support the music, not fight it.",
-          },
-          {
-            time: "1:42",
-            seconds: 102,
-            title: "Pre-chorus build",
-            description: "Slight pause creates anticipation before the hook returns.",
-          },
-          {
-            time: "2:03",
-            seconds: 123,
-            title: "Loop point",
-            description: "Energy resets here. Notice the natural loop for repeat views.",
-          },
-        ],
-      },
-      { title: "Clean captions + sound style", url: "https://www.youtube.com/watch?v=3JZ_D3ELwOQ" },
-      { title: "Structure + story flow reference", url: "https://www.youtube.com/watch?v=9bZkp7q19f0" },
-    ],
-    channelProfileSlug: "finance-creator",
-    channelExternalUrl: "https://www.youtube.com/@financecreator",
-    postedByAgency: true,
-    agencyProfileSlug: "example-agency",
-    managedByAgencyName: "Example Creator Agency",
-    hiringDisplayName: "Finance Channel",
-    hiringVerificationStatus: "VERIFIED",
-    hiringPlatform: "YouTube",
-    // Sample listing that exercises every job-context first-message requirement.
-    applicationRequirements: [
-      "expected_rate",
-      "relevant_portfolio",
-      "turnaround",
-      "working_hours",
-      "relevant_experience",
-      "tools_workflow",
-      "start_availability",
-      "fit_note",
-      "custom_instruction",
-    ],
-    howToApply: "Share one similar explainer you worked on and what you personally handled.",
-  },
-  {
-    id: "2",
-    listingSchemaVersion: 3,
-    title: "Thumbnail designer (CTR-focused, 2–3 concepts)",
-    category: "Thumbnails",
-    legacyCategory: "Thumbnails",
-    primaryRoleId: "mock-role-thumbnail-designer",
-    primaryRoleName: "Thumbnail Designer",
-    roleSpecialization: "YouTube packaging and concept exploration",
-    budget: "₹600–₹1,200 per thumbnail",
-    budgetAmount: 600,
-    budgetMax: 1200,
-    budgetCurrency: "INR",
-    budgetUnit: "per thumbnail",
-    compensationMode: "range",
-    experience: "0–2 years",
-    location: "Remote",
-    postedShort: "1d",
-    views: 92,
-    applicants: 4,
-    responseRate: 60,
-    channel: {
-      name: "Tech Channel",
-      logoUrl: "https://picsum.photos/seed/tech/96/96",
-      subscribers: 54000,
-      verified: false,
-    },
-    tags: ["Photoshop", "Bold type", "A/B ideas", "Fast iterations"],
-    platform: "YouTube",
-    platforms: ["YouTube"],
-    engagementType: "ongoing_freelance",
-    workMode: "remote",
-    expectedWeeklyHoursMin: 8,
-    expectedWeeklyHoursMax: 12,
-    deliverables: [{ type: "thumbnail", quantity: 8, frequency: "per_month", notes: "Two or three concepts may be requested for priority uploads." }],
-    requiredSkillKeys: ["thumbnail_design", "graphic_design"],
-    preferredSkillKeys: ["storytelling"],
-    requiredToolKeys: ["photoshop"],
-    otherRequiredTools: [],
-    revisionPolicy: "fixed",
-    revisionRounds: 2,
-    sourceInputs: [
-      { type: "creative_brief", sensitive_access_confirmed: false },
-      { type: "thumbnail_assets", sensitive_access_confirmed: false },
-      { type: "brand_guidelines", sensitive_access_confirmed: false },
-    ],
-    creativeAutonomy: "collaborative_direction",
-    languageRequirements: [{ language: "English", priority: "required", proficiency: "professional", purposes: ["reading", "content_understanding"] }],
-    trialStatus: "unpaid",
-    trialScope: "Create one rough thumbnail concept from a supplied brief. The concept is for evaluation only.",
-    trialEffortValue: 1,
-    trialEffortUnit: "hours",
-    trialWorkUsage: "evaluation_only",
-    trialPortfolioPermission: "allowed",
-    trialAttribution: "not_applicable",
-    unpaidTrialConfirmed: true,
-    startTiming: "immediate",
-    durationType: "ongoing",
-    hiringProcess: [{ stage: "application_review" }, { stage: "portfolio_review" }, { stage: "unpaid_trial" }, { stage: "offer" }],
-    screeningQuestions: [{ prompt: "How do you turn a video idea into two meaningfully different thumbnail concepts?", required: true }],
-    applicationMode: "external",
-    externalApplyUrl: "https://example.com/creatorjobs-thumbnail-application",
-    deadlineAt: "2027-03-15T18:30:00Z",
-    employerContextType: "agency",
-    about: "Northstar supports creator-led technology channels with packaging, publishing, and production. This role focuses on fast, clear thumbnail concepts that remain consistent with each channel's visual identity.",
-    responsibilities: "Translate briefs into distinct thumbnail concepts\nPrepare production-ready Photoshop files\nRespond to consolidated feedback within the agreed turnaround",
-    contentNiches: ["Tech"],
-    contentGenres: ["Reviews"],
-    formatsHiredFor: ["Thumbnails", "YouTube packaging"],
-    startTimeframe: "ASAP",
-    type: "Part-time",
-    referenceVideos: [
-      { title: "High CTR packaging reference", url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk" },
-      { title: "Bold type + contrast reference", url: "https://www.youtube.com/watch?v=uelHwf8o7_U" },
-    ],
-    channelProfileSlug: "tech-channel",
-    channelExternalUrl: "https://www.youtube.com/@techchannel",
-    postedByAgency: true,
-    agencyProfileSlug: "northstar-creator-agency",
-    managedByAgencyName: "Northstar Creator Agency",
-    hiringDisplayName: "Tech Channel",
-    hiringVerificationStatus: "VERIFIED",
-    hiringPlatform: "YouTube",
-    // Smaller combination: rate + portfolio + turnaround.
-    applicationRequirements: ["expected_rate", "relevant_portfolio", "turnaround"],
-  },
-  {
-    id: "3",
-    listingSchemaVersion: 3,
-    title: "Script writer for Hindi explainers (8–10 mins)",
-    category: "Writing",
-    legacyCategory: "Writing",
-    primaryRoleId: "mock-role-scriptwriter",
-    primaryRoleName: "Scriptwriter",
-    roleSpecialization: "Hindi educational explainers",
-    budget: "₹150–₹400 per project",
-    budgetAmount: 150,
-    budgetMax: 400,
-    budgetCurrency: "INR",
-    budgetUnit: "per script",
-    compensationMode: "range",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "8h",
-    views: 210,
-    applicants: 18,
-    responseRate: 74,
-    channel: {
-      name: "Edu Hindi",
-      logoUrl: "https://picsum.photos/seed/edu/96/96",
-      subscribers: 312000,
-      verified: true,
-    },
-    tags: ["Hooks", "Research", "Hindi", "Tone match", "Fast delivery"],
-    platform: "YouTube",
-    platforms: ["YouTube"],
-    engagementType: "one_time_project",
-    workMode: "remote",
-    deliverables: [{ type: "script", quantity: 2, frequency: "per_week", notes: "Each script should support an 8–10 minute final video." }],
-    requiredSkillKeys: ["scriptwriting", "research", "storytelling"],
-    preferredSkillKeys: ["seo"],
-    requiredToolKeys: ["google-docs"],
-    otherRequiredTools: [],
-    languageRequirements: [
-      { language: "Hindi", priority: "required", proficiency: "native_or_fluent", purposes: ["writing", "audience_fluency"] },
-      { language: "English", priority: "required", proficiency: "professional", purposes: ["reading", "content_understanding"] },
-    ],
-    revisionPolicy: "negotiable",
-    creativeAutonomy: "guided_by_references",
-    trialStatus: "undecided",
-    startTiming: "flexible",
-    durationType: "project_based",
-    hiringProcess: [{ stage: "application_review" }, { stage: "portfolio_review" }, { stage: "final_discussion" }],
-    applicationMode: "internal",
-    deadlineAt: "2025-12-31T18:30:00Z",
-    employerContextType: "creator",
-    about: "Edu Hindi publishes research-backed explainers for a Hindi-speaking audience. Scripts should feel conversational without losing factual rigor or clear sourcing.",
-    responsibilities: "Research and source each topic\nWrite clear hooks, story beats, and transitions\nRevise for clarity after one consolidated editorial review",
-    hiringDisplayName: "Edu Hindi",
-    hiringVerificationStatus: "VERIFIED",
-    hiringPlatform: "YouTube",
-    contentNiches: ["Education"],
-    contentGenres: ["Explainers"],
-    formatsHiredFor: ["Scripts", "Hooks"],
-    startTimeframe: "Flexible",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Explainer structure reference", url: "https://www.youtube.com/watch?v=fLexgOxsZu0" },
-      { title: "Hook + pacing reference", url: "https://www.youtube.com/watch?v=RgKAFK5djSk" },
-    ],
-    channelProfileSlug: "edu-hindi",
-    channelExternalUrl: "https://www.youtube.com/@eduhindi",
-    // Smaller combination: working hours + experience + tools/workflow.
-    applicationRequirements: ["working_hours", "relevant_experience", "tools_workflow"],
-  },
-  {
-    id: "4",
-    title: "Shorts editor for daily YouTube Shorts (fast paced, captions)",
-    category: "Shorts",
-    budget: "₹800–₹1,600 per month",
-    experience: "0–1 years",
-    location: "Remote",
-    postedShort: "2h",
-    views: 680,
-    applicants: 22,
-    responseRate: 71,
-    channel: {
-      name: "Motivation Shorts",
-      logoUrl: "https://picsum.photos/seed/motivation/96/96",
-      subscribers: 980000,
-      verified: true,
-    },
-    tags: ["CapCut", "Subtitles", "Beat sync", "Fast turnaround"],
-    contentNiches: ["Entertainment"],
-    contentGenres: ["Shorts/Reels"],
-    formatsHiredFor: ["Shorts/Reels", "Captions"],
-    startTimeframe: "<2mo",
-    type: "Monthly",
-    referenceVideos: [
-      { title: "Fast captions + rhythm reference", url: "https://www.youtube.com/watch?v=OPf0YbXqDm0" },
-      { title: "Shorts pacing reference", url: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
-      { title: "Beat sync reference", url: "https://www.youtube.com/watch?v=JGwWNGJdvx8" },
-    ],
-    // Smaller combination: start availability + fit note.
-    applicationRequirements: ["start_availability", "fit_note"],
-  },
-  {
-    id: "5",
-    title: "Motion graphics: animated callouts + kinetic text for videos",
-    category: "Motion Graphics",
-    budget: "₹250–₹800 per project",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "12h",
-    views: 140,
-    applicants: 7,
-    responseRate: 64,
-    channel: {
-      name: "Science Visuals",
-      logoUrl: "https://picsum.photos/seed/science/96/96",
-      subscribers: 210000,
-      verified: true,
-    },
-    tags: ["After Effects", "Kinetic type", "Templates", "Callouts"],
-    contentNiches: ["Education", "Science"],
-    contentGenres: ["Explainers"],
-    formatsHiredFor: ["Motion graphics", "Long-form video"],
-    startTimeframe: "<3mo",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Callouts + lower thirds reference", url: "https://www.youtube.com/watch?v=oRdxUFDoQe0" },
-      { title: "Kinetic text reference", url: "https://www.youtube.com/watch?v=YQHsXMglC9A" },
-    ],
-    applicationRequirements: ["relevant_portfolio", "tools_workflow", "custom_instruction"],
-    howToApply: "Share how you would turn the references into a reusable callout template system.",
-  },
-  {
-    id: "6",
-    title: "Channel manager to run uploads, analytics, and team coordination",
-    category: "Channel Manager",
-    budget: "₹1,200–₹2,800 per month",
-    experience: "3–5 years",
-    location: "Remote",
-    postedShort: "2d",
-    views: 310,
-    applicants: 15,
-    responseRate: 55,
-    channel: {
-      name: "Startup Stories",
-      logoUrl: "https://picsum.photos/seed/startup/96/96",
-      subscribers: 76000,
-      verified: false,
-    },
-    tags: ["Notion", "Content calendar", "YouTube Studio", "Ops"],
-    contentNiches: ["Business"],
-    contentGenres: ["Interviews", "Case studies"],
-    formatsHiredFor: ["Content strategy", "Channel research"],
-    startTimeframe: "<1mo",
-    type: "Part-time",
-    referenceVideos: [
-      { title: "Ops workflow reference", url: "https://www.youtube.com/watch?v=Zi_XLOBDo_Y" },
-      { title: "Upload cadence reference", url: "https://www.youtube.com/watch?v=60ItHLz5WEA" },
-    ],
-    applicationRequirements: ["expected_rate", "working_hours", "start_availability"],
-  },
-  {
-    id: "7",
-    title: "Research assistant for documentary-style videos (sources + outline)",
-    category: "Research",
-    budget: "₹100–₹250 per project",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "1d",
-    views: 520,
-    applicants: 31,
-    responseRate: 78,
-    channel: {
-      name: "History Deep Dives",
-      logoUrl: "https://picsum.photos/seed/history/96/96",
-      subscribers: 430000,
-      verified: true,
-    },
-    tags: ["Primary sources", "Fact check", "Outline", "Citations"],
-    contentNiches: ["News", "Business"],
-    contentGenres: ["Documentaries"],
-    formatsHiredFor: ["Channel research", "Scripts"],
-    startTimeframe: "ASAP",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Doc-style structure reference", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
-      { title: "Narrative pacing reference", url: "https://www.youtube.com/watch?v=3JZ_D3ELwOQ" },
-      { title: "Visual + research tone reference", url: "https://www.youtube.com/watch?v=9bZkp7q19f0" },
-    ],
-    applicationRequirements: ["relevant_experience", "tools_workflow", "custom_instruction"],
-    howToApply: "Share how you evaluate sources and keep a documentary outline fact-safe.",
-  },
-  {
-    id: "8",
-    title: "Graphic designer for channel branding (banner, icons, templates)",
-    category: "Design",
-    budget: "₹300–₹900 per project",
-    experience: "0–2 years",
-    location: "Remote",
-    postedShort: "6h",
-    views: 175,
-    applicants: 9,
-    responseRate: 69,
-    channel: {
-      name: "Indie Gamer",
-      logoUrl: "https://picsum.photos/seed/gaming/96/96",
-      subscribers: 22000,
-      verified: false,
-    },
-    tags: ["Figma", "Brand kit", "YouTube banner", "Templates"],
-    contentNiches: ["Gaming"],
-    contentGenres: ["Vlogs"],
-    formatsHiredFor: ["YouTube packaging", "Social posts"],
-    startTimeframe: "Flexible",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Brand kit reference", url: "https://www.youtube.com/watch?v=ktvTqknDobU" },
-      { title: "Channel banner style reference", url: "https://www.youtube.com/watch?v=450p7goxZqg" },
-    ],
-    applicationRequirements: ["relevant_portfolio", "fit_note"],
-  },
-  {
-    id: "9",
-    title: "Voice-over artist (English, warm tone) for finance videos",
-    category: "Voice Over",
-    budget: "₹80–₹200 per project",
-    experience: "Any",
-    location: "Remote",
-    postedShort: "9h",
-    views: 205,
-    applicants: 14,
-    responseRate: 62,
-    channel: {
-      name: "Money & Mindset",
-      logoUrl: "https://picsum.photos/seed/money/96/96",
-      subscribers: 64000,
-      verified: false,
-    },
-    tags: ["Neutral accent", "Clean audio", "Fast delivery", "Consistency"],
-    contentNiches: ["Finance", "Business"],
-    contentGenres: ["Explainers"],
-    formatsHiredFor: ["Voice-over", "Long-form video"],
-    startTimeframe: "<2mo",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Warm VO tone reference", url: "https://www.youtube.com/watch?v=UceaB4D0jpo" },
-      { title: "Clean narration reference", url: "https://www.youtube.com/watch?v=F57P9C4SAW4" },
-    ],
-    applicationRequirements: ["expected_rate", "turnaround", "working_hours"],
-  },
-  {
-    id: "10",
-    title: "Marketing specialist to grow newsletter + YouTube",
-    category: "Marketing",
-    budget: "₹800–₹2,000 per month",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "3d",
-    views: 260,
-    applicants: 11,
-    responseRate: 73,
-    channel: {
-      name: "Content Business",
-      logoUrl: "https://picsum.photos/seed/business/96/96",
-      subscribers: 118000,
-      verified: true,
-    },
-    tags: ["Distribution", "Hooks", "SEO basics", "Email marketing"],
-    contentNiches: ["Business"],
-    contentGenres: ["Case studies", "Product demos"],
-    formatsHiredFor: ["Content strategy", "Social posts"],
-    startTimeframe: "<1mo",
-    type: "Part-time",
-    referenceVideos: [
-      { title: "Growth strategy reference", url: "https://www.youtube.com/watch?v=SlPhMPnQ58k" },
-      { title: "Newsletter + video growth reference", url: "https://www.youtube.com/watch?v=J---aiyznGQ" },
-    ],
-    applicationRequirements: ["relevant_experience", "start_availability", "custom_instruction"],
-    howToApply: "Share one channel or newsletter growth loop you would test first.",
-  },
-  {
-    id: "11",
-    title: "Editing: podcast → YouTube multi-cam cut (1 episode/week)",
-    category: "Editing",
-    budget: "₹200–₹600 per project",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "1d",
-    views: 410,
-    applicants: 19,
-    responseRate: 66,
-    channel: {
-      name: "The Long Talk",
-      logoUrl: "https://picsum.photos/seed/podcast/96/96",
-      subscribers: 92000,
-      verified: false,
-    },
-    tags: ["Multicam", "Audio cleanup", "Chapters", "Snappy pacing"],
-    contentNiches: ["Business"],
-    contentGenres: ["Podcasts", "Interviews"],
-    formatsHiredFor: ["Podcast editing", "Long-form video"],
-    startTimeframe: "<3mo",
-    type: "Monthly",
-    referenceVideos: [
-      { title: "Multicam pacing reference", url: "https://www.youtube.com/watch?v=hT_nvWreIhg" },
-      { title: "Podcast-to-YouTube style reference", url: "https://www.youtube.com/watch?v=YykjpeuMNEk" },
-    ],
-    applicationRequirements: ["expected_rate", "relevant_portfolio", "turnaround", "tools_workflow"],
-  },
-  {
-    id: "12",
-    title: "Thumbnail designer for gaming channel (high-contrast, bold)",
-    category: "Thumbnails",
-    budget: "₹400–₹1,000 per month",
-    experience: "0–2 years",
-    location: "Remote",
-    postedShort: "4h",
-    views: 330,
-    applicants: 8,
-    responseRate: 70,
-    channel: {
-      name: "Console Chaos",
-      logoUrl: "https://picsum.photos/seed/console/96/96",
-      subscribers: 410000,
-      verified: true,
-    },
-    tags: ["Photoshop", "High contrast", "Fast variants", "Packaging"],
-    contentNiches: ["Gaming"],
-    contentGenres: ["Reviews"],
-    formatsHiredFor: ["Thumbnails", "YouTube packaging"],
-    startTimeframe: "ASAP",
-    type: "Monthly",
-    referenceVideos: [
-      { title: "Gaming packaging reference", url: "https://www.youtube.com/watch?v=YQHsXMglC9A" },
-      { title: "High contrast thumb reference", url: "https://www.youtube.com/watch?v=OPf0YbXqDm0" },
-    ],
-    applicationRequirements: ["expected_rate", "relevant_portfolio", "fit_note"],
-  },
-  {
-    id: "13",
-    title: "Shorts editor (3/day) for fitness content creator (trend-aware)",
-    category: "Shorts",
-    budget: "₹900–₹2,000 per month",
-    experience: "0–1 years",
-    location: "Remote",
-    postedShort: "7h",
-    views: 760,
-    applicants: 27,
-    responseRate: 68,
-    channel: {
-      name: "Fit in 60",
-      logoUrl: "https://picsum.photos/seed/fitness/96/96",
-      subscribers: 250000,
-      verified: true,
-    },
-    tags: ["Captions", "Beat cuts", "Trend pacing", "CapCut/PR"],
-    contentNiches: ["Fitness"],
-    contentGenres: ["Shorts/Reels"],
-    formatsHiredFor: ["Shorts/Reels", "Captions"],
-    startTimeframe: "<2mo",
-    type: "Monthly",
-    referenceVideos: [
-      { title: "Fitness shorts pacing reference", url: "https://www.youtube.com/watch?v=2Vv-BfVoq4g" },
-      { title: "Trend pacing reference", url: "https://www.youtube.com/watch?v=JGwWNGJdvx8" },
-    ],
-    applicationRequirements: ["turnaround", "working_hours", "start_availability"],
-  },
-  {
-    id: "14",
-    title: "Script writer for tech reviews (structured, clear, punchy)",
-    category: "Writing",
-    budget: "₹120–₹300 per project",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "2d",
-    views: 190,
-    applicants: 16,
-    responseRate: 59,
-    channel: {
-      name: "Gadget Minute",
-      logoUrl: "https://picsum.photos/seed/gadgets/96/96",
-      subscribers: 88000,
-      verified: false,
-    },
-    tags: ["Clarity", "Outline", "Hooks", "Fast revisions"],
-    contentNiches: ["Tech"],
-    contentGenres: ["Reviews", "Product demos"],
-    formatsHiredFor: ["Scripts", "Hooks"],
-    startTimeframe: "Flexible",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Tech review structure reference", url: "https://www.youtube.com/watch?v=kJQP7kiw5Fk" },
-      { title: "Punchy writing reference", url: "https://www.youtube.com/watch?v=uelHwf8o7_U" },
-    ],
-    applicationRequirements: ["relevant_experience", "custom_instruction"],
-    howToApply: "Share a tight opening hook for a phone review video.",
-  },
-  {
-    id: "15",
-    title: "Designer for explainer diagrams + simple motion overlays",
-    category: "Design",
-    budget: "₹250–₹700 per project",
-    experience: "0–2 years",
-    location: "Remote",
-    postedShort: "10h",
-    views: 0,
-    applicants: 6,
-    responseRate: 0,
-    channel: {
-      name: "Learn Visually",
-      logoUrl: "https://picsum.photos/seed/visual/96/96",
-      subscribers: 56000,
-      verified: false,
-    },
-    tags: ["Figma", "Clean layout", "Minimal style", "Consistency"],
-    contentNiches: ["Education"],
-    contentGenres: ["Explainers"],
-    formatsHiredFor: ["Motion graphics", "Social posts"],
-    startTimeframe: "<1mo",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Diagram clarity reference", url: "https://www.youtube.com/watch?v=fLexgOxsZu0" },
-      { title: "Minimal motion reference", url: "https://www.youtube.com/watch?v=RgKAFK5djSk" },
-    ],
-  },
-  {
-    id: "16",
-    title: "Motion graphics pack: lower thirds + subscribe + transitions",
-    category: "Motion Graphics",
-    budget: "₹500–₹1,500 per project",
-    experience: "3–5 years",
-    location: "Remote",
-    postedShort: "3d",
-    views: 220,
-    applicants: 10,
-    responseRate: 58,
-    channel: {
-      name: "Cinematic Cuts",
-      logoUrl: "https://picsum.photos/seed/cinema/96/96",
-      subscribers: 140000,
-      verified: true,
-    },
-    tags: ["After Effects", "Templates", "Reusable", "Brand match"],
-    contentNiches: ["Entertainment"],
-    contentGenres: ["Behind-the-scenes"],
-    formatsHiredFor: ["Motion graphics", "YouTube packaging"],
-    startTimeframe: "ASAP",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Lower thirds reference", url: "https://www.youtube.com/watch?v=oRdxUFDoQe0" },
-      { title: "Transition pack reference", url: "https://www.youtube.com/watch?v=SlPhMPnQ58k" },
-    ],
-    applicationRequirements: ["expected_rate", "relevant_portfolio", "tools_workflow", "turnaround"],
-  },
-  {
-    id: "17",
-    title: "Researcher for finance stories (sources, claims, counterpoints)",
-    category: "Research",
-    budget: "₹150–₹350 per project",
-    experience: "1–3 years",
-    location: "Remote",
-    postedShort: "1d",
-    views: 410,
-    applicants: 13,
-    responseRate: 77,
-    channel: {
-      name: "Finance Explained",
-      logoUrl: "https://picsum.photos/seed/finexp/96/96",
-      subscribers: 205000,
-      verified: true,
-    },
-    tags: ["Sources", "Fact check", "Structured notes", "Neutral"],
-    contentNiches: ["Finance", "Business"],
-    contentGenres: ["Documentaries", "Explainers"],
-    formatsHiredFor: ["Channel research", "Scripts"],
-    startTimeframe: "<3mo",
-    type: "One-time",
-    referenceVideos: [
-      { title: "Finance storytelling reference", url: "https://www.youtube.com/watch?v=UceaB4D0jpo" },
-      { title: "Claims + counterpoints reference", url: "https://www.youtube.com/watch?v=F57P9C4SAW4" },
-    ],
-    applicationRequirements: ["relevant_experience", "turnaround", "fit_note"],
-  },
-  {
-    id: "18",
-    title: "Channel manager for consistent uploads + sponsor coordination",
-    category: "Channel Manager",
-    budget: "₹1,500–₹3,500 per month",
-    experience: "5+ years",
-    location: "Remote",
-    postedShort: "5d",
-    views: 280,
-    applicants: 9,
-    responseRate: 61,
-    channel: {
-      name: "Big Content Ops",
-      logoUrl: "https://picsum.photos/seed/ops/96/96",
-      subscribers: 620000,
-      verified: true,
-    },
-    tags: ["Ops", "Sponsors", "Publishing", "Analytics"],
-    contentNiches: ["Business", "Entertainment"],
-    contentGenres: ["Interviews", "Podcasts"],
-    formatsHiredFor: ["Content strategy", "Channel research"],
-    startTimeframe: "<2mo",
-    type: "Part-time",
-    referenceVideos: [
-      { title: "Sponsor ops reference", url: "https://www.youtube.com/watch?v=Zi_XLOBDo_Y" },
-      { title: "Publishing system reference", url: "https://www.youtube.com/watch?v=60ItHLz5WEA" },
-    ],
-  },
-];
+/** Public-only fixture consumed by the isolated frontend mock data source. */
+export const JOBS: Job[] = marketplace.jobs.filter((spec) => spec.status === "published").map(toJob);
 
-const defaultAbout = (job: Job) =>
-  `${job.channel.name} is looking for help on ${job.category.toLowerCase()} work. ` +
-  `We care about clarity, pacing, and a consistent voice across every upload.`;
-
-const defaultResponsibilities =
-  "Define deliverables for week 1\nShare progress updates\nIterate fast on feedback";
-
-const defaultRequirements =
-  "Relevant experience in the role\nStrong communication\nReliable turnaround";
-
-const defaultHowToApply =
-  "Share a short intro, 2–3 relevant examples, your tools, and availability.";
-
-export const JOBS: Job[] = RAW_JOBS.map((job) => ({
-  ...job,
-  about: job.about?.trim() ? job.about : defaultAbout(job),
-  responsibilities: job.responsibilities?.trim() ? job.responsibilities : defaultResponsibilities,
-  requirements: job.requirements?.trim() ? job.requirements : defaultRequirements,
-  howToApply: job.howToApply?.trim() ? job.howToApply : defaultHowToApply,
-  referenceVideos: (job.referenceVideos || []).map((video, index) => enrichMockReferenceVideo(job, video, index)),
-  channelProfileSlug: job.channelProfileSlug || toSlug(job.channel.name) || undefined,
-  channelExternalUrl: job.channelExternalUrl || undefined,
-  postedByAgency: Boolean(job.postedByAgency),
-  agencyProfileSlug: job.agencyProfileSlug || undefined,
-}));
+/** Owner-only status fixtures are exported for focused development/tests, not discovery. */
+export const OWNER_JOB_FIXTURES: Job[] = marketplace.jobs
+  .filter((spec) => spec.status !== "published")
+  .map(toJob);

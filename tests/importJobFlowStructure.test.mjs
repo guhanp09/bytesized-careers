@@ -84,6 +84,7 @@ test("the /post chooser links the import flow only when the flag allows it", () 
 
 test("the importer and native wizard share the V3 step source without coupling the form to import code", () => {
   const page = read("components/PostJobPage.tsx");
+  // RECRUITER_JOB_STEPS is the domain/routing group set (7 field-ownership buckets).
   assert.equal(RECRUITER_JOB_STEPS.length, 7);
   assert.deepEqual(RECRUITER_JOB_STEPS.map(({ id }) => id), [
     "basics",
@@ -94,7 +95,8 @@ test("the importer and native wizard share the V3 step source without coupling t
     "applicationRequirements",
     "referenceVideos",
   ]);
-  assert.match(page, /const STEPS: Step\[\] = RECRUITER_JOB_STEPS\.map\(\(item\) => item\.id\)/);
+  // Navigation is driven by the finer screen sequence, derived from the same module.
+  assert.match(page, /const STEPS: Step\[\] = RECRUITER_JOB_SCREENS\.map\(\(item\) => item\.id\)/);
 
   const form = read("components/post-job/PostJobForm.tsx");
   assert.doesNotMatch(form, /importJob|ImportReviewBanner|importPrimitives/);

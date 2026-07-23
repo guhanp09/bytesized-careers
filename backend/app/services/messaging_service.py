@@ -433,14 +433,15 @@ def serialize_message(
 ) -> dict:
     message_created_at = _as_utc(message.created_at)
     counterparty_read_at = _as_utc(counterparty_last_read_at)
-    return {
+    metadata = message.metadata_json or {}
+    serialized = {
         "id": str(message.id),
         "conversation_id": str(message.conversation_id),
         "sender_user_id": str(message.sender_user_id),
         "from_me": message.sender_user_id == viewer_id,
         "sender_name": sender_name,
         "body": message.body,
-        "kind": (message.metadata_json or {}).get("kind"),
+        "kind": metadata.get("kind"),
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "read_by_recipient": bool(
             message.sender_user_id == viewer_id
@@ -449,6 +450,20 @@ def serialize_message(
             and message_created_at <= counterparty_read_at
         ),
     }
+    # Expose a curated structured payload for the automated screening-question message so
+    # the Inbox can render it natively instead of reparsing the text body. No other
+    # message metadata is leaked.
+    if metadata.get("message_kind") == "screening_questions":
+        questions = metadata.get("questions")
+        serialized["message_kind"] = "screening_questions"
+        serialized["automated"] = bool(metadata.get("automated"))
+        serialized["screening"] = {
+            "questions": questions if isinstance(questions, list) else [],
+            "application_id": metadata.get("application_id"),
+            "job_id": metadata.get("job_id"),
+            "snapshot_version": metadata.get("snapshot_version"),
+        }
+    return serialized
 
 
 def serialize_conversation(

@@ -174,6 +174,11 @@ latest status loaded.` and trigger a refresh. Hired and Accepted remain messagea
 The release audit treats an unexplained no-op as a defect. Each control has one
 authoritative outcome and focused coverage:
 
+> The table below states the *required* outcome per control. For the full
+> per-control audit — observed behaviour, backend request, persistence,
+> counterparty effect and the test that pins each one down — see
+> [INTERACTION_INVENTORY.md](INTERACTION_INVENTORY.md).
+
 | Control | Required observable result |
 | --- | --- |
 | Inbox/Pipeline tabs | Selected view and URL update; content remains available. |

@@ -25,6 +25,19 @@ from app.services.job_service import (
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
+def _public_job_read(job: Job) -> JobRead:
+    """Serialize a job for unauthenticated/public consumers.
+
+    Screening questions are private hiring configuration — they are no longer public
+    listing content, and CreatorJobs delivers them into the Inbox conversation after a
+    successful application. Owners still receive them via the authorized ``/me/jobs``
+    and edit responses.
+    """
+    read = JobRead.model_validate(job)
+    read.screening_questions = None
+    return read
+
+
 @router.get(
     "",
     response_model=JobListResponse,
@@ -77,7 +90,7 @@ async def list_jobs(
         start_timeframe=start_timeframe,
     )
     return JobListResponse(
-        items=[JobRead.model_validate(item) for item in items],
+        items=[_public_job_read(item) for item in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -94,7 +107,7 @@ async def get_job(job_id: UUID, service: JobService = Depends(get_job_service)) 
         job = await service.get_public_job(job_id)
     except JobNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return JobRead.model_validate(job)
+    return _public_job_read(job)
 
 
 @router.post(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+import QuestionTooltip from "../ui/QuestionTooltip";
 import type { BackendCreateJobPayload } from "../../lib/backendClient";
 import {
   JOB_DELIVERABLE_FREQUENCIES,
@@ -70,9 +71,9 @@ const textareaClass =
   "min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-sm leading-6 text-white outline-none transition placeholder:text-white/35 focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
 const selectClass = `${inputClass} cursor-pointer appearance-none pr-9`;
 const secondaryButtonClass =
-  "inline-flex min-h-10 items-center justify-center rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.09] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.09] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-40";
 const iconButtonClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-base font-semibold text-white/55 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-30";
+  "inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-base font-semibold text-white/55 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-30";
 
 const EMPLOYER_CONTEXT_LABELS: Record<EmployerContextType, string> = {
   creator: "Creator / channel",
@@ -185,15 +186,18 @@ const getError = (errors: JobDomainFieldErrors | undefined, ...keys: string[]) =
 const describedBy = (id: string, hasHint: boolean, error?: string) =>
   [hasHint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined;
 
+// Functional minimalism: a flat titled section — no nested card border/background,
+// no eyebrow. The optional `description` becomes an on-demand question-mark tooltip
+// so it no longer occupies permanent vertical space.
 function DomainCard({
   id,
-  eyebrow,
   title,
   description,
   action,
   children,
 }: {
   id: string;
+  /** Retained for call-site compatibility; no longer rendered. */
   eyebrow?: string;
   title: string;
   description?: string;
@@ -201,52 +205,46 @@ function DomainCard({
   children: ReactNode;
 }) {
   return (
-    <section
-      aria-labelledby={`${id}-title`}
-      className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_16px_40px_-30px_rgba(0,0,0,0.95)] sm:p-5"
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          {eyebrow ? (
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">{eyebrow}</p>
-          ) : null}
-          <h3 id={`${id}-title`} className="mt-1 text-sm font-semibold tracking-tight text-white/92">
-            {title}
-          </h3>
-          {description ? <p className="mt-1.5 max-w-2xl text-xs leading-5 text-white/48">{description}</p> : null}
-        </div>
+    <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <h3
+          id={`${id}-title`}
+          className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold tracking-tight text-white/92"
+        >
+          <span className="min-w-0">{title}</span>
+          {description ? <QuestionTooltip label={description} /> : null}
+        </h3>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className="mt-4">{children}</div>
+      {children}
     </section>
   );
 }
 
+// A single labelled control. Required state is conveyed by the asterisk in `label`;
+// there is no "Optional" badge. Non-critical `hint` copy moves into a tooltip.
 function Field({
   id,
   label,
   hint,
   error,
-  optional,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
   error?: string;
+  /** Retained for call-site compatibility; optional state is shown by the absent asterisk. */
   optional?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="text-xs font-semibold text-white/80">
-          {label}
-        </label>
-        {optional ? <span className="text-[10px] uppercase tracking-[0.16em] text-white/32">Optional</span> : null}
-      </div>
+      <label htmlFor={id} className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
+        <span>{label}</span>
+        {hint ? <QuestionTooltip label={hint} /> : null}
+      </label>
       {children}
-      {hint ? <p id={`${id}-hint`} className="text-[11px] leading-4 text-white/42">{hint}</p> : null}
       {error ? (
         <p id={`${id}-error`} role="alert" className="text-[11px] leading-4 text-amber-200/90">
           {error}
@@ -270,9 +268,11 @@ function Group({
   children: ReactNode;
 }) {
   return (
-    <fieldset aria-describedby={describedBy(id, Boolean(hint), error)} className="min-w-0 space-y-2">
-      <legend className="text-xs font-semibold text-white/80">{legend}</legend>
-      {hint ? <p id={`${id}-hint`} className="text-[11px] leading-4 text-white/42">{hint}</p> : null}
+    <fieldset aria-describedby={describedBy(id, false, error)} className="min-w-0 space-y-2">
+      <legend className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
+        <span>{legend}</span>
+        {hint ? <QuestionTooltip label={hint} /> : null}
+      </legend>
       {children}
       {error ? (
         <p id={`${id}-error`} role="alert" className="text-[11px] leading-4 text-amber-200/90">
@@ -306,7 +306,7 @@ function ChoiceButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        "min-h-10 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
+        "min-h-10 cursor-pointer rounded-xl border px-3 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
         active && tone === "white"
           ? "border-white bg-white text-black focus-visible:ring-white/35"
           : active
@@ -412,50 +412,52 @@ export function EmployerContextFields({
 
   return (
     <div className={className}>
-      <DomainCard
-        id={`${prefix}-context`}
-        eyebrow="Role context"
-        title="Who is this work for?"
-        description="Choose the employer behind the brief. Your verified posting identity remains separate and is inherited from your recruiter profile."
+      {recruiterIdentityLabel ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 text-xs text-white/55">
+          <span className="text-white/38">Posting as</span>
+          <span className="font-semibold text-white/85">{recruiterIdentityLabel}</span>
+          {recruiterIdentityKind ? (
+            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white/48">
+              {recruiterIdentityKind}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <Group
+        id={`${prefix}-type`}
+        legend="Who is this work for?"
+        hint="Choose the employer behind the brief so candidates know whether they'll work directly with a creator or through a team. Your verified posting identity stays separate."
+        error={contextError}
       >
-        {recruiterIdentityLabel ? (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 text-xs text-white/55">
-            <span className="text-white/38">Posting as</span>
-            <span className="font-semibold text-white/85">{recruiterIdentityLabel}</span>
-            {recruiterIdentityKind ? (
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white/48">
-                {recruiterIdentityKind}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-        <Group
-          id={`${prefix}-type`}
-          legend="Employer type"
-          hint="This helps candidates understand whether they will work directly with a creator or through a team."
-          error={contextError}
-        >
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {(Object.keys(EMPLOYER_CONTEXT_LABELS) as EmployerContextType[]).map((value) => (
-              <ChoiceButton
-                key={value}
-                active={state.employerContextType === value}
-                disabled={disabled}
-                onClick={() => onChange({ employerContextType: value }, ["employer_context_type"])}
-              >
-                {EMPLOYER_CONTEXT_LABELS[value]}
-              </ChoiceButton>
-            ))}
-          </div>
-        </Group>
-      </DomainCard>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(Object.keys(EMPLOYER_CONTEXT_LABELS) as EmployerContextType[]).map((value) => (
+            <ChoiceButton
+              key={value}
+              active={state.employerContextType === value}
+              disabled={disabled}
+              onClick={() =>
+                onChange(
+                  { employerContextType: state.employerContextType === value ? "" : value },
+                  ["employer_context_type"],
+                )
+              }
+            >
+              {EMPLOYER_CONTEXT_LABELS[value]}
+            </ChoiceButton>
+          ))}
+        </div>
+      </Group>
     </div>
   );
 }
 
+export type WorkDeliverablesSection = "deliverables" | "workflow";
+
 export type WorkDeliverablesFieldsProps = JobDomainBaseProps & {
   roleName?: string | null;
   engagementType?: EngagementType | "" | null;
+  /** Which cards to render. Omit to render all (backward compatible). */
+  sections?: WorkDeliverablesSection[];
 };
 
 export function WorkDeliverablesFields({
@@ -466,8 +468,10 @@ export function WorkDeliverablesFields({
   className = "",
   roleName,
   engagementType,
+  sections,
 }: WorkDeliverablesFieldsProps) {
   const prefix = `job-work-${cleanId(useId())}`;
+  const show = (section: WorkDeliverablesSection) => !sections || sections.includes(section);
   const rules = getJobRoleRules(roleName);
   const deliverables = state.deliverables ?? [];
   const sourceInputs = state.sourceInputs ?? [];
@@ -524,10 +528,10 @@ export function WorkDeliverablesFields({
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {show("deliverables") ? (
       <DomainCard
         id={`${prefix}-deliverables`}
-        eyebrow="Scope"
-        title="What will the creator deliver?"
+        title="What will this person be expected to deliver?"
         description={`${rules.deliverableExample}. Use separate rows when outputs have different rhythms.`}
         action={
           <button type="button" className={secondaryButtonClass} disabled={disabled} onClick={addDeliverable}>
@@ -720,7 +724,9 @@ export function WorkDeliverablesFields({
           </p>
         ) : null}
       </DomainCard>
+      ) : null}
 
+      {show("workflow") ? (
       <DomainCard
         id={`${prefix}-workflow`}
         eyebrow="Workflow"
@@ -740,7 +746,9 @@ export function WorkDeliverablesFields({
                   key={value}
                   active={state.revisionPolicy === value}
                   disabled={disabled}
-                  onClick={() => onChange({ revisionPolicy: value }, ["revision_policy"])}
+                  onClick={() =>
+                    onChange({ revisionPolicy: state.revisionPolicy === value ? "" : value }, ["revision_policy"])
+                  }
                 >
                   {REVISION_LABELS[value]}
                 </ChoiceButton>
@@ -895,7 +903,9 @@ export function WorkDeliverablesFields({
                     key={value}
                     active={state.creativeAutonomy === value}
                     disabled={disabled}
-                    onClick={() => onChange({ creativeAutonomy: value }, ["creative_autonomy"])}
+                    onClick={() =>
+                      onChange({ creativeAutonomy: state.creativeAutonomy === value ? "" : value }, ["creative_autonomy"])
+                    }
                   >
                     {CREATIVE_AUTONOMY_LABELS[value]}
                   </ChoiceButton>
@@ -920,6 +930,7 @@ export function WorkDeliverablesFields({
           </div>
         </div>
       </DomainCard>
+      ) : null}
     </div>
   );
 }
@@ -977,7 +988,9 @@ export function ArrangementDomainFields({
                   key={value}
                   active={state.startTiming === value}
                   disabled={disabled}
-                  onClick={() => onChange({ startTiming: value }, ["start_timing"])}
+                  onClick={() =>
+                    onChange({ startTiming: state.startTiming === value ? "" : value }, ["start_timing"])
+                  }
                 >
                   {START_TIMING_LABELS[value]}
                 </ChoiceButton>
@@ -1021,7 +1034,9 @@ export function ArrangementDomainFields({
                     key={value}
                     active={state.durationType === value}
                     disabled={disabled}
-                    onClick={() => onChange({ durationType: value }, ["duration_type"])}
+                    onClick={() =>
+                      onChange({ durationType: state.durationType === value ? "" : value }, ["duration_type"])
+                    }
                   >
                     {DURATION_LABELS[value]}
                   </ChoiceButton>
@@ -1160,7 +1175,7 @@ export function ArrangementDomainFields({
                     disabled={disabled}
                     maxLength={160}
                     aria-invalid={Boolean(timezoneError)}
-                    aria-describedby={describedBy(`${prefix}-timezone`, true, timezoneError)}
+                    aria-describedby={describedBy(`${prefix}-timezone`, false, timezoneError)}
                     placeholder="e.g. 2 hours between 10:00–18:00 IST on weekdays"
                     onChange={(event) => onChange({ timezoneOverlap: event.target.value }, ["timezone_overlap"])}
                   />
@@ -1275,7 +1290,11 @@ function CustomSkillEditor({
   );
 }
 
+export type SkillsQualificationsSection = "skills" | "languages";
+
 export type SkillsQualificationsFieldsProps = JobDomainBaseProps & {
+  /** Which cards to render. Omit to render all (backward compatible). */
+  sections?: SkillsQualificationsSection[];
   roleName?: string | null;
   /** Existing broad `languages` tags. They are shown honestly and never auto-converted. */
   legacyLanguages?: readonly string[] | null;
@@ -1289,8 +1308,10 @@ export function SkillsQualificationsFields({
   className = "",
   roleName,
   legacyLanguages,
+  sections,
 }: SkillsQualificationsFieldsProps) {
   const prefix = `job-qualifications-${cleanId(useId())}`;
+  const show = (section: SkillsQualificationsSection) => !sections || sections.includes(section);
   const rules = getJobRoleRules(roleName);
   const requiredSkills = state.requiredSkillKeys ?? [];
   const preferredSkills = state.preferredSkillKeys ?? [];
@@ -1344,6 +1365,7 @@ export function SkillsQualificationsFields({
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {show("skills") ? (
       <DomainCard
         id={`${prefix}-skills`}
         eyebrow="Qualifications"
@@ -1484,7 +1506,9 @@ export function SkillsQualificationsFields({
           </div>
         </div>
       </DomainCard>
+      ) : null}
 
+      {show("languages") ? (
       <DomainCard
         id={`${prefix}-languages`}
         eyebrow="Communication"
@@ -1651,11 +1675,16 @@ export function SkillsQualificationsFields({
         )}
         {languageError ? <p role="alert" className="mt-2 text-[11px] text-amber-200/90">{languageError}</p> : null}
       </DomainCard>
+      ) : null}
     </div>
   );
 }
 
+export type TrialApplicationSection = "trial" | "process" | "apply";
+
 export type TrialApplicationFieldsProps = JobDomainBaseProps & {
+  /** Which cards to render. Omit to render all (backward compatible). */
+  sections?: TrialApplicationSection[];
   engagementType?: EngagementType | "" | null;
   compensationCurrency?: string | null;
   compensationUnit?: CompensationUnit | "" | null;
@@ -1675,8 +1704,10 @@ export function TrialApplicationFields({
   compensationUnit,
   legacyApplicationRequirements,
   publicInstructionsLockedReason,
+  sections,
 }: TrialApplicationFieldsProps) {
   const prefix = `job-application-${cleanId(useId())}`;
+  const show = (section: TrialApplicationSection) => !sections || sections.includes(section);
   const stages = state.hiringProcess ?? [];
   const questions = state.screeningQuestions ?? [];
   const hasTrialTerms = state.trialStatus === "paid" || state.trialStatus === "unpaid";
@@ -1757,6 +1788,7 @@ export function TrialApplicationFields({
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {show("trial") ? (
       <DomainCard
         id={`${prefix}-trial`}
         eyebrow="Fair trials"
@@ -1778,7 +1810,9 @@ export function TrialApplicationFields({
                     active={state.trialStatus === value}
                     disabled={disabled}
                     tone={value === "unpaid" ? "amber" : "white"}
-                    onClick={() => onChange({ trialStatus: value }, ["trial_status"])}
+                    onClick={() =>
+                      onChange({ trialStatus: state.trialStatus === value ? "" : value }, ["trial_status"])
+                    }
                   >
                     <span className="block">{option.label}</span>
                     <span className="mt-1 block text-[11px] font-normal leading-4 opacity-65">
@@ -2141,7 +2175,9 @@ export function TrialApplicationFields({
           {trialError ? <p role="alert" className="text-[11px] text-amber-200/90">{trialError}</p> : null}
         </div>
       </DomainCard>
+      ) : null}
 
+      {show("process") ? (
       <DomainCard
         id={`${prefix}-process`}
         eyebrow="Hiring process"
@@ -2390,7 +2426,9 @@ export function TrialApplicationFields({
           {questionsError ? <p role="alert" className="mt-2 text-[11px] text-amber-200/90">{questionsError}</p> : null}
         </div>
       </DomainCard>
+      ) : null}
 
+      {show("apply") ? (
       <DomainCard
         id={`${prefix}-apply`}
         eyebrow="Applications"
@@ -2526,6 +2564,7 @@ export function TrialApplicationFields({
           {applicationError ? <p role="alert" className="text-[11px] text-amber-200/90">{applicationError}</p> : null}
         </div>
       </DomainCard>
+      ) : null}
     </div>
   );
 }

@@ -70,13 +70,17 @@ import {
 import {
   backendJobFieldStep,
   emptyJobPostingDomainState,
+  firstScreenForGroup,
   hydrateJobPostingDomain,
-  RECRUITER_JOB_STEPS,
+  RECRUITER_JOB_SCREENS,
   serializeJobPostingDomain,
   validateJobPostingDomainForPublication,
   validateRepeatableDomainRows,
   type JobPostingDomainState,
+  type RecruiterJobScreen,
+  type RecruiterJobStep,
 } from "../lib/jobPostingForm";
+import { screenForField, type JobFieldName } from "../lib/jobFieldRegistry";
 
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type Turnaround = { value: number; unit: TurnaroundUnit | ""; basis: TurnaroundBasis | "" } | null;
@@ -86,16 +90,34 @@ type JobPlatform = IdentityPlatform | "";
 const budgetIntentLabel = (intent: BudgetIntent) =>
   intent === "contact" ? "Contact for pricing" : intent === "flexible" ? "Flexible" : "";
 
-type Step =
-  | "basics"
-  | "details"
-  | "creatorContext"
-  | "toolsTags"
-  | "about"
-  | "applicationRequirements"
-  | "referenceVideos";
+type Step = RecruiterJobScreen;
 
-const STEPS: Step[] = RECRUITER_JOB_STEPS.map((item) => item.id);
+const STEPS: Step[] = RECRUITER_JOB_SCREENS.map((item) => item.id);
+
+/** Route a backend/publication field error to the exact screen that owns it. */
+const screenForFieldError = (field: string): Step =>
+  screenForField(field as JobFieldName) ?? firstScreenForGroup(backendJobFieldStep(field));
+
+/** Route a basics-level validation key (from getBasicsErrors) to its owning screen. */
+const BASICS_ERROR_SCREEN: Record<string, Step> = {
+  title: "role",
+  role: "role",
+  platform: "role",
+  identity: "role",
+  workMode: "arrangement",
+  city: "arrangement",
+  cityInvalid: "arrangement",
+  budgetMissing: "pay",
+  budgetRange: "pay",
+};
+const screenForBasicsError = (key: string): Step => BASICS_ERROR_SCREEN[key] ?? "role";
+
+/** Which basics-level validation keys gate leaving each basics-derived screen. */
+const SCREEN_BASICS_GATE: Partial<Record<Step, string[]>> = {
+  role: ["identity", "title", "role", "platform"],
+  arrangement: ["workMode", "city", "cityInvalid"],
+  pay: ["budgetMissing", "budgetRange"],
+};
 
 const MAX_REFERENCE_VIDEOS = 3;
 
@@ -1041,27 +1063,36 @@ function HiringIdentityModal({
 type JobQualityItem = RecommendedChecklistItem<Step>;
 
 const JOB_COMPLETION_TARGETS: Record<string, { step: Step; target?: string }> = {
-  basics: { step: "basics" },
-  budget: { step: "basics" },
-  identity: { step: "basics" },
-  tools: { step: "toolsTags", target: "job-tools" },
+  basics: { step: "role" },
+  budget: { step: "pay", target: "job-budget" },
+  identity: { step: "role" },
+  tools: { step: "toolsLanguages", target: "job-tools" },
   creatorContext: { step: "creatorContext", target: "job-content-niches" },
   contentNiches: { step: "creatorContext", target: "job-content-niches" },
   contentGenres: { step: "creatorContext", target: "job-content-genres" },
   formatsHiredFor: { step: "creatorContext", target: "job-formats-hired-for" },
-  experience: { step: "basics", target: "job-experience" },
-  timeline: { step: "details" },
-  start: { step: "details" },
-  turnaround: { step: "details" },
+  experience: { step: "pay", target: "job-experience" },
+  timeline: { step: "arrangement" },
+  start: { step: "arrangement" },
+  turnaround: { step: "arrangement" },
   responsibilities: { step: "about", target: "job-responsibilities" },
   requirements: { step: "about", target: "job-requirements" },
   about: { step: "about", target: "job-description" },
-  tags: { step: "toolsTags", target: "job-tags" },
-  media: { step: "referenceVideos", target: "job-reference-video" },
-  referenceVideos: { step: "referenceVideos", target: "job-reference-video" },
-  howToApply: { step: "applicationRequirements", target: "job-first-message" },
-  "job-first-message": { step: "applicationRequirements", target: "job-first-message" },
-  applyReferences: { step: "applicationRequirements", target: "job-first-message" },
+  tags: { step: "toolsLanguages", target: "job-tags" },
+  media: { step: "references", target: "job-reference-video" },
+  referenceVideos: { step: "references", target: "job-reference-video" },
+  howToApply: { step: "apply", target: "job-first-message" },
+  "job-first-message": { step: "apply", target: "job-first-message" },
+  applyReferences: { step: "apply", target: "job-first-message" },
+  trial: { step: "trial" },
+  evaluation: { step: "process" },
+  screening: { step: "process" },
+  hiringProcess: { step: "process" },
+  skills: { step: "skills" },
+  workflow: { step: "workflow" },
+  deliverables: { step: "deliverables", target: "job-deliverables" },
+  pay: { step: "pay", target: "job-budget" },
+  arrangement: { step: "arrangement" },
 };
 
 function PublishReadyDialog({
@@ -1155,7 +1186,7 @@ export default function PostJobPage() {
   const loadedJobRef = useRef<BackendJob | null>(null);
   const dirtyPayloadKeysRef = useRef<Set<keyof BackendCreateJobPayload>>(new Set());
   const focusRequestRef = useRef(0);
-  const [step, setStep] = useState<Step>("basics");
+  const [step, setStep] = useState<Step>("role");
   const [direction, setDirection] = useState<"forward" | "back">("forward");
 
   const [title, setTitle] = useState("");
@@ -1787,6 +1818,10 @@ export default function PostJobPage() {
     if ((STEPS as string[]).includes(payload.initialStep)) {
       setDirection("forward");
       setStep(payload.initialStep as Step);
+    } else {
+      // Import handoff still uses the coarse domain-group ids; map to the first screen.
+      setDirection("forward");
+      setStep(firstScreenForGroup(payload.initialStep as RecruiterJobStep));
     }
     setImportMeta(payload.meta);
     clearImportHandoff();
@@ -2570,6 +2605,41 @@ export default function PostJobPage() {
     window.setTimeout(() => publishAnywayButtonRef.current?.focus(), 0);
   }, [publishReadyOpen]);
 
+  // Coordinated attention for a missing/invalid field: scroll it into a comfortable
+  // focal position, move focus to its primary control, apply a brief amber highlight,
+  // and (unless the user prefers reduced motion) a single restrained horizontal shake.
+  const emphasizeField = (target: HTMLElement) => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    const focusable = target.matches("input, textarea, select, button, [tabindex]")
+      ? target
+      : target.querySelector<HTMLElement>(
+          "input, textarea, select, button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        );
+    window.setTimeout(() => focusable?.focus({ preventScroll: true }), reducedMotion ? 0 : 180);
+    // Temporary highlight in the error/amber token — runs in both motion modes.
+    target.animate(
+      [
+        { boxShadow: "0 0 0 0 rgba(251,191,36,0)", backgroundColor: "rgba(251,191,36,0)" },
+        { boxShadow: "0 0 0 2px rgba(251,191,36,0.5)", backgroundColor: "rgba(251,191,36,0.08)" },
+        { boxShadow: "0 0 0 0 rgba(251,191,36,0)", backgroundColor: "rgba(251,191,36,0)" },
+      ],
+      { duration: reducedMotion ? 900 : 1100, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" }
+    );
+    if (reducedMotion) return;
+    // A single, subtle shake — three small horizontal movements, no loop, no layout shift.
+    target.animate(
+      [
+        { transform: "translateX(0)" },
+        { transform: "translateX(-5px)" },
+        { transform: "translateX(4px)" },
+        { transform: "translateX(-2px)" },
+        { transform: "translateX(0)" },
+      ],
+      { duration: 320, easing: "ease-in-out" }
+    );
+  };
+
   const focusQualityTarget = (targetId?: string) => {
     if (!targetId) return;
     const requestId = ++focusRequestRef.current;
@@ -2591,21 +2661,7 @@ export default function PostJobPage() {
         }
         return;
       }
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
-      const focusable = target.matches("input, textarea, select, button, [tabindex]")
-        ? target
-        : target.querySelector<HTMLElement>("input, textarea, select, button:not([disabled]), [tabindex]:not([tabindex='-1'])");
-      window.setTimeout(() => focusable?.focus({ preventScroll: true }), reducedMotion ? 0 : 180);
-      if (reducedMotion) return;
-      target.animate(
-        [
-          { boxShadow: "0 0 0 0 rgba(255,255,255,0)", backgroundColor: "rgba(255,255,255,0)" },
-          { boxShadow: "0 0 0 1px rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.045)" },
-          { boxShadow: "0 0 0 0 rgba(255,255,255,0)", backgroundColor: "rgba(255,255,255,0)" },
-        ],
-        { duration: 1100, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" }
-      );
+      emphasizeField(target);
     };
     window.setTimeout(() => tryFocus(0), delays[0]);
   };
@@ -2767,7 +2823,7 @@ export default function PostJobPage() {
       if (error instanceof BackendRequestError && error.fieldErrors) {
         const fields = Object.keys(error.fieldErrors);
         const firstField = fields[0] || "title";
-        const targetStep = backendJobFieldStep(firstField);
+        const targetStep = screenForFieldError(firstField);
         setDomainErrors(
           Object.fromEntries(
             Object.entries(error.fieldErrors).map(([field, messages]) => [field, messages[0] || error.message])
@@ -2798,15 +2854,15 @@ export default function PostJobPage() {
     const delays = [60, 360, 680];
     const tryFocus = (attempt: number) => {
       if (focusRequestRef.current !== requestId) return;
-      const el = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      // Highest invalid field in document order.
+      const el = document.querySelector<HTMLElement>('form [aria-invalid="true"], [aria-invalid="true"]');
       if (!el) {
         if (attempt < delays.length - 1) {
           window.setTimeout(() => tryFocus(attempt + 1), delays[attempt + 1] - delays[attempt]);
         }
         return;
       }
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.focus({ preventScroll: true });
+      emphasizeField(el);
     };
     window.setTimeout(() => tryFocus(0), delays[0]);
   };
@@ -2819,8 +2875,8 @@ export default function PostJobPage() {
     const basicsErrs = getBasicsErrors();
     if (basicsErrs.includes("identity")) {
       setBasicsErrors(basicsErrs);
-      setDirection(STEPS.indexOf("basics") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("basics");
+      setDirection(STEPS.indexOf("role") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("role");
       setHiringIdentityModalOpen(true);
       setSubmitError("Fix the highlighted fields before publishing.");
       focusFirstInvalidField();
@@ -2829,8 +2885,9 @@ export default function PostJobPage() {
     const basicsFieldErrs = basicsErrs.filter((key) => key !== "identity");
     if (basicsFieldErrs.length) {
       setBasicsErrors(basicsFieldErrs);
-      setDirection(STEPS.indexOf("basics") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("basics");
+      const targetScreen = screenForBasicsError(basicsFieldErrs[0]);
+      setDirection(STEPS.indexOf(targetScreen) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(targetScreen);
       setSubmitError("Fix the highlighted fields before publishing.");
       focusFirstInvalidField();
       return;
@@ -2839,14 +2896,19 @@ export default function PostJobPage() {
     const domainIssues = validateJobPostingDomainForPublication(domain, {
       budgetUnit,
       engagementType,
-    }).sort((left, right) => STEPS.indexOf(left.step) - STEPS.indexOf(right.step));
+    }).sort(
+      (left, right) =>
+        STEPS.indexOf(screenForFieldError(String(left.field))) -
+        STEPS.indexOf(screenForFieldError(String(right.field)))
+    );
     if (domainIssues.length) {
       const firstIssue = domainIssues[0];
+      const targetScreen = screenForFieldError(String(firstIssue.field));
       setDomainErrors(
         Object.fromEntries(domainIssues.map((issue) => [String(issue.field), issue.message]))
       );
-      setDirection(STEPS.indexOf(firstIssue.step) < STEPS.indexOf(step) ? "back" : "forward");
-      setStep(firstIssue.step);
+      setDirection(STEPS.indexOf(targetScreen) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(targetScreen);
       setSubmitError(firstIssue.message);
       focusQualityTarget(firstIssue.target);
       return;
@@ -2880,8 +2942,8 @@ export default function PostJobPage() {
     }
     if (Object.keys(arrangementErrors).length) {
       setDomainErrors((previous) => ({ ...previous, ...arrangementErrors }));
-      setDirection(STEPS.indexOf("details") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("details");
+      setDirection(STEPS.indexOf("arrangement") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("arrangement");
       setSubmitError("Add the engagement, weekly-hours, or turnaround details required for this job.");
       focusQualityTarget("job-engagement-type");
       return;
@@ -2903,8 +2965,8 @@ export default function PostJobPage() {
     const referenceError = getRefUrlError();
     if (referenceError) {
       setRefUrlError(referenceError);
-      setDirection(STEPS.indexOf("referenceVideos") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("referenceVideos");
+      setDirection(STEPS.indexOf("references") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("references");
       setSubmitError("Fix the highlighted fields before publishing.");
       focusFirstInvalidField();
       return;
@@ -2914,8 +2976,8 @@ export default function PostJobPage() {
       setFirstMessageError(
         "Choose what applicants must include with their first message, or select “No specific first-message requirements.”"
       );
-      setDirection(STEPS.indexOf("applicationRequirements") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("applicationRequirements");
+      setDirection(STEPS.indexOf("apply") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("apply");
       return;
     }
     if (
@@ -2924,8 +2986,8 @@ export default function PostJobPage() {
       !howToApply.trim()
     ) {
       setFirstMessageError("Add the screening question or remove it.");
-      setDirection(STEPS.indexOf("applicationRequirements") < STEPS.indexOf(step) ? "back" : "forward");
-      setStep("applicationRequirements");
+      setDirection(STEPS.indexOf("apply") < STEPS.indexOf(step) ? "back" : "forward");
+      setStep("apply");
       return;
     }
     if (isHiringAuthorizationBlockingPublish) {
@@ -2954,11 +3016,12 @@ export default function PostJobPage() {
     const rowIssues = validateRepeatableDomainRows(domain);
     if (rowIssues.length) {
       const firstIssue = rowIssues[0];
+      const targetScreen = screenForFieldError(String(firstIssue.field));
       setDomainErrors(
         Object.fromEntries(rowIssues.map((issue) => [String(issue.field), issue.message]))
       );
-      setDirection(STEPS.indexOf(firstIssue.step) < STEPS.indexOf(step) ? "back" : "forward");
-      setStep(firstIssue.step);
+      setDirection(STEPS.indexOf(targetScreen) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(targetScreen);
       setSubmitError(firstIssue.message);
       focusQualityTarget(firstIssue.target);
       return;
@@ -3197,17 +3260,19 @@ export default function PostJobPage() {
   const goNext = (current: Step) => {
     const idx = STEPS.indexOf(current);
     if (idx >= STEPS.length - 1) return;
-    if (current === "basics") {
-      const errs = getBasicsErrors();
+    const basicsGateKeys = SCREEN_BASICS_GATE[current];
+    if (basicsGateKeys) {
+      const allErrs = getBasicsErrors();
+      const errs = allErrs.filter((key) => basicsGateKeys.includes(key));
       if (errs.length) {
-        setBasicsErrors(errs);
+        setBasicsErrors(allErrs);
         if (errs.includes("identity")) {
           setHiringIdentityModalOpen(true);
         }
         updateBasicsPreview();
         return;
       }
-      setBasicsErrors([]);
+      setBasicsErrors((previous) => previous.filter((key) => !basicsGateKeys.includes(key)));
       updateBasicsPreview();
     }
     if (current === "about") {
@@ -3218,7 +3283,7 @@ export default function PostJobPage() {
       setContentErrors({});
     }
     if (
-      current === "applicationRequirements" &&
+      current === "apply" &&
       applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) &&
       !howToApply.trim()
     ) {
@@ -3370,7 +3435,7 @@ export default function PostJobPage() {
                 }}
                 onGoToPublish={() => {
                   setDirection("forward");
-                  setStep("referenceVideos");
+                  setStep("review");
                 }}
                 onDismiss={() => setImportMeta(null)}
               />

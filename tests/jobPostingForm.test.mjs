@@ -312,12 +312,13 @@ test("repeatable validation targets incomplete rows and requires sensitive-acces
   };
 
   const issues = validateRepeatableDomainRows(state);
-  assert.equal(issues.length, 6);
+  // Language requirements are no longer a recruiter-facing Post Job control, so an
+  // incomplete stored language row is preserved rather than validated as editable.
+  assert.equal(issues.length, 5);
   assert.deepEqual(
     issues.map(({ field, step, target }) => ({ field, step, target })),
     [
       { field: "deliverables", step: "about", target: "job-deliverable-d1" },
-      { field: "language_requirements", step: "toolsTags", target: "job-language-l1" },
       { field: "source_inputs", step: "about", target: "job-source-inputs" },
       { field: "source_inputs", step: "about", target: "job-source-inputs" },
       { field: "hiring_process", step: "applicationRequirements", target: "job-stage-s1" },
@@ -460,7 +461,6 @@ test("backend validation fields route to the step that owns the candidate-facing
     tags: "toolsTags",
     required_skill_keys: "toolsTags",
     required_tool_keys: "toolsTags",
-    language_requirements: "toolsTags",
     compensation_mode: "basics",
     engagement_type: "details",
     timezone_overlap: "details",

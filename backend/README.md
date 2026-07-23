@@ -77,6 +77,10 @@ curl -X POST http://localhost:8000/api/v1/dev/seed/jobs
 ```
 
 The seed endpoint is idempotent and only works when `APP_ENV=development`.
+With the backend running, `npm run seed:demo-jobs` validates and upserts the
+shared 24-job CreatorJobs demo portfolio. The JSON response reports created,
+updated, unchanged, and safely skipped seed-owned records; user-created jobs are
+never deleted or rewritten.
 
 ## Tests
 Tests use SQLite (`aiosqlite`) for fast isolated execution.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -21,6 +22,7 @@ from app.models import (
 )
 from app.notifications import email as notification_email
 from app.services.email_service import EmailDeliveryError
+from conftest import create_valid_published_job
 
 
 async def _login(client: AsyncClient, stem: str) -> str:
@@ -47,17 +49,12 @@ async def _login(client: AsyncClient, stem: str) -> str:
 async def _application(client: AsyncClient) -> tuple[str, str, str]:
     owner = await _login(client, f"transition_owner_{uuid.uuid4().hex[:6]}")
     talent = await _login(client, f"transition_talent_{uuid.uuid4().hex[:6]}")
-    job = await client.post(
-        "/api/v1/jobs",
-        headers={"Authorization": f"Bearer {owner}"},
-        json={
-            "title": "Finance editor transition fixture",
-            "category": "Editing",
-            "location": "Remote",
-            "platforms": ["youtube"],
-            "status": "published",
-        },
+    job = await create_valid_published_job(
+        client,
+        owner,
+        title="Finance editor transition fixture",
     )
+    assert job.status_code == 201, job.text
     application = await client.post(
         f"/api/v1/jobs/{job.json()['id']}/applications",
         headers={"Authorization": f"Bearer {talent}"},
@@ -344,7 +341,7 @@ async def test_consequential_outcomes_are_rejected_from_bulk(client: AsyncClient
 async def test_shared_side_effect_failure_rolls_back_everything(
     client: AsyncClient, db_session: AsyncSession, monkeypatch
 ) -> None:
-    owner, _, application_id = await _application(client)
+    owner, talent, application_id = await _application(client)
 
     async def _fail_notification(*args, **kwargs):
         raise RuntimeError("synthetic outbox failure")
@@ -659,11 +656,17 @@ async def test_archive_is_per_viewer_and_does_not_change_lifecycle(
 async def test_unknown_legacy_archive_requires_deliberate_resolution(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    owner, _, application_id = await _application(client)
+    owner, talent, application_id = await _application(client)
     application = await db_session.get(JobApplication, uuid.UUID(application_id))
     assert application is not None
     application.status = "archived"
     application.legacy_archive_resolution_required = True
+    conversation = (
+        await db_session.execute(
+            select(Conversation).where(Conversation.application_id == application.id)
+        )
+    ).scalar_one()
+    conversation.participant_b_archived_at = datetime.now(UTC)
     await db_session.commit()
 
     response = await client.post(
@@ -672,4 +675,376 @@ async def test_unknown_legacy_archive_requires_deliberate_resolution(
         json={"archived": False},
     )
     assert response.status_code == 409
-    assert "no reliable previous stage" in response.json()["error"]["message"]
+    error = response.json()["error"]
+    assert error["code"] == "legacy_archive_resolution_required"
+    assert error["message"] == "Choose the current pipeline stage to restore this record."
+    assert set(error["details"]["allowed_statuses"]) == {
+        "new", "reviewing", "shortlisted", "interviewing", "hired", "rejected"
+    }
+
+    sender = await client.get(
+        "/api/v1/me/applications/sent",
+        headers={"Authorization": f"Bearer {talent}"},
+    )
+    assert sender.status_code == 200
+    assert sender.json()[0]["legacy_archive_resolution_required"] is False
+    assert (
+        await client.post(
+            f"/api/v1/applications/{application_id}/archive",
+            headers={"Authorization": f"Bearer {talent}"},
+            json={"archived": True},
+        )
+    ).status_code == 200
+    sender_unarchive = await client.post(
+        f"/api/v1/applications/{application_id}/archive",
+        headers={"Authorization": f"Bearer {talent}"},
+        json={"archived": False},
+    )
+    assert sender_unarchive.status_code == 200
+
+    resolved = await client.post(
+        f"/api/v1/applications/{application_id}/transition",
+        headers={"Authorization": f"Bearer {owner}"},
+        json={
+            "status": "reviewing",
+            "expected_version": 1,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    body = resolved.json()
+    assert body["outcome"] == "transitioned"
+    assert body["current_status"] == "reviewing"
+    assert body["status_version"] == 2
+    assert body["application"]["legacy_archive_resolution_required"] is False
+    assert body["application"]["archived_at"] is None
+    assert body["application"]["participant_status"] == "new"
+
+    await db_session.refresh(application)
+    await db_session.refresh(conversation)
+    assert application.legacy_archive_resolution_required is False
+    assert conversation.participant_b_archived_at is None
+    event = (
+        await db_session.execute(
+            select(InteractionStatusEvent).where(
+                InteractionStatusEvent.interaction_id == application.id,
+                InteractionStatusEvent.event_kind == "legacy_archive_resolved",
+            )
+        )
+    ).scalar_one()
+    assert event.previous_status == "archived"
+    assert event.new_status == "reviewing"
+    assert event.metadata_json["legacy_previous_stage_unknown"] is True
+
+
+async def test_stale_legacy_flag_can_be_cleared_by_same_status_selection(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    owner, _, application_id = await _application(client)
+    application = await db_session.get(JobApplication, uuid.UUID(application_id))
+    assert application is not None
+    application.status = "reviewing"
+    application.status_version = 4
+    application.legacy_archive_resolution_required = True
+    await db_session.commit()
+
+    resolved = await client.post(
+        f"/api/v1/applications/{application_id}/transition",
+        headers={"Authorization": f"Bearer {owner}"},
+        json={
+            "status": "reviewing",
+            "expected_version": 4,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["outcome"] == "transitioned"
+    assert resolved.json()["status_version"] == 5
+    assert resolved.json()["application"]["legacy_archive_resolution_required"] is False
+    assert await _count(
+        db_session,
+        InteractionStatusEvent,
+        InteractionStatusEvent.interaction_id == application.id,
+        InteractionStatusEvent.event_kind == "legacy_archive_resolved",
+    ) == 1
+
+
+async def test_legacy_hiring_request_can_resolve_to_accepted_atomically(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    talent, recruiter, interest_id = await _interest(client)
+    interest = await db_session.get(TalentInterest, uuid.UUID(interest_id))
+    assert interest is not None
+    interest.status = "archived"
+    interest.legacy_archive_resolution_required = True
+    conversation = (
+        await db_session.execute(
+            select(Conversation).where(Conversation.talent_interest_id == interest.id)
+        )
+    ).scalar_one()
+    conversation.participant_b_archived_at = datetime.now(UTC)
+    await db_session.commit()
+
+    resolved = await client.post(
+        f"/api/v1/talent-interests/{interest_id}/transition",
+        headers={"Authorization": f"Bearer {talent}"},
+        json={
+            "status": "accepted",
+            "expected_version": 1,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    body = resolved.json()
+    assert body["current_status"] == "accepted"
+    assert body["interest"]["participant_status"] == "accepted"
+    assert body["interest"]["legacy_archive_resolution_required"] is False
+    assert body["interest"]["archived_at"] is None
+    assert body["interest"]["engagement"] is not None
+
+    sender = await client.get(
+        "/api/v1/me/talent-interests/sent",
+        headers={"Authorization": f"Bearer {recruiter}"},
+    )
+    assert sender.status_code == 200
+    assert sender.json()[0]["legacy_archive_resolution_required"] is False
+    assert sender.json()[0]["status"] == "accepted"
+
+    assert await _count(
+        db_session, Engagement, Engagement.talent_interest_id == interest.id
+    ) == 1
+    assert await _count(
+        db_session,
+        InteractionStatusEvent,
+        InteractionStatusEvent.interaction_id == interest.id,
+        InteractionStatusEvent.event_kind == "legacy_archive_resolved",
+    ) == 1
+    assert await _count(
+        db_session,
+        Notification,
+        Notification.resource_id == interest_id,
+        Notification.type == "talent_interest_status_changed",
+    ) == 1
+    assert await _count(
+        db_session,
+        Message,
+        Message.conversation_id == conversation.id,
+        Message.metadata_json["stage"].as_string() == "accepted",
+    ) == 1
+
+
+async def _interest_conversation_id(db_session: AsyncSession, interest_id: str) -> uuid.UUID:
+    return (
+        await db_session.execute(
+            select(Conversation.id).where(
+                Conversation.talent_interest_id == uuid.UUID(interest_id)
+            )
+        )
+    ).scalar_one()
+
+
+async def _application_conversation_id(db_session: AsyncSession, application_id: str) -> uuid.UUID:
+    return (
+        await db_session.execute(
+            select(Conversation.id).where(
+                Conversation.application_id == uuid.UUID(application_id)
+            )
+        )
+    ).scalar_one()
+
+
+async def _note_bodies(db_session: AsyncSession, conversation_id: uuid.UUID) -> list[str]:
+    return list(
+        (
+            await db_session.execute(
+                select(Message.body).where(
+                    Message.conversation_id == conversation_id,
+                    Message.metadata_json["status_note"].as_boolean().is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def test_declining_a_hiring_request_delivers_the_note_atomically(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A decline shares immediately, so the explanation must land with it."""
+    talent, recruiter, interest_id = await _interest(client)
+    key = str(uuid.uuid4())
+    payload = {
+        "status": "declined",
+        "expected_version": 1,
+        "idempotency_key": key,
+        "note": "Booked through November — happy to revisit in Q1.",
+    }
+    declined = await client.post(
+        f"/api/v1/talent-interests/{interest_id}/transition",
+        headers={"Authorization": f"Bearer {talent}"},
+        json=payload,
+    )
+    assert declined.status_code == 200, declined.text
+    assert declined.json()["current_status"] == "declined"
+    assert declined.json()["interest"]["participant_status"] == "declined"
+
+    conversation_id = await _interest_conversation_id(db_session, interest_id)
+    # The decision and the explanation are two distinct messages: the platform's
+    # trusted wording stays canonical, the note stays the sender's own words.
+    assert await _count(
+        db_session,
+        Message,
+        Message.conversation_id == conversation_id,
+        Message.metadata_json["stage"].as_string() == "declined",
+    ) == 2
+    assert await _note_bodies(db_session, conversation_id) == [
+        "Booked through November — happy to revisit in Q1."
+    ]
+    assert await _count(
+        db_session,
+        Notification,
+        Notification.resource_id == interest_id,
+        Notification.type == "talent_interest_status_changed",
+    ) == 1
+
+    # The recruiter is the counterparty here and must actually receive it.
+    recruiter_view = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}",
+        headers={"Authorization": f"Bearer {recruiter}"},
+    )
+    assert recruiter_view.status_code == 200, recruiter_view.text
+    bodies = [item["body"] for item in recruiter_view.json()["messages"]]
+    assert "Booked through November — happy to revisit in Q1." in bodies
+
+    # Replaying the identical request must not duplicate the note.
+    repeated = await client.post(
+        f"/api/v1/talent-interests/{interest_id}/transition",
+        headers={"Authorization": f"Bearer {talent}"},
+        json=payload,
+    )
+    assert repeated.status_code == 200
+    assert await _note_bodies(db_session, conversation_id) == [
+        "Booked through November — happy to revisit in Q1."
+    ]
+    assert await _count(
+        db_session,
+        Notification,
+        Notification.resource_id == interest_id,
+        Notification.type == "talent_interest_status_changed",
+    ) == 1
+
+
+async def test_private_rejection_stores_no_note_and_shares_it_only_when_told(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A private stage tells nobody, so it must carry no note to anyone."""
+    owner, talent, application_id = await _application(client)
+    rejected = await client.post(
+        f"/api/v1/applications/{application_id}/transition",
+        headers={"Authorization": f"Bearer {owner}"},
+        json={
+            "status": "rejected",
+            "expected_version": 1,
+            "idempotency_key": str(uuid.uuid4()),
+            "note": "This note must never be delivered by a private stage.",
+        },
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    conversation_id = await _application_conversation_id(db_session, application_id)
+    assert await _note_bodies(db_session, conversation_id) == []
+    # Private "not proceeding" is not shared, so the applicant still sees the
+    # earlier state and messaging stays open.
+    applicant_view = await client.get(
+        "/api/v1/me/applications/sent",
+        headers={"Authorization": f"Bearer {talent}"},
+    )
+    assert applicant_view.json()[0]["status"] != "rejected"
+    still_open = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers={"Authorization": f"Bearer {talent}"},
+        json={"body": "Any update?", "client_message_id": str(uuid.uuid4())},
+    )
+    assert still_open.status_code == 201, still_open.text
+
+    # Now the recruiter chooses to tell them, and attaches the explanation.
+    share_key = str(uuid.uuid4())
+    share_payload = {
+        "status": "rejected",
+        "expected_version": 2,
+        "idempotency_key": share_key,
+        "note": "We went with someone stronger on motion graphics.",
+    }
+    shared = await client.post(
+        f"/api/v1/applications/{application_id}/status-communication",
+        headers={"Authorization": f"Bearer {owner}"},
+        json=share_payload,
+    )
+    assert shared.status_code == 200, shared.text
+
+    assert await _note_bodies(db_session, conversation_id) == [
+        "We went with someone stronger on motion graphics."
+    ]
+    applicant_after = await client.get(
+        "/api/v1/me/applications/sent",
+        headers={"Authorization": f"Bearer {talent}"},
+    )
+    assert applicant_after.json()[0]["status"] == "rejected"
+
+    # Repeating the share must not produce a second note, event or notification.
+    repeated = await client.post(
+        f"/api/v1/applications/{application_id}/status-communication",
+        headers={"Authorization": f"Bearer {owner}"},
+        json=share_payload,
+    )
+    assert repeated.status_code == 200
+    assert await _note_bodies(db_session, conversation_id) == [
+        "We went with someone stronger on motion graphics."
+    ]
+    assert await _count(
+        db_session,
+        Notification,
+        Notification.resource_id == application_id,
+        Notification.type == "application_status_changed",
+    ) == 1
+
+
+async def test_note_is_rolled_back_when_a_required_side_effect_fails(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch
+) -> None:
+    """Nothing may be partially sent: no note without the decision, or vice versa."""
+    talent, _, interest_id = await _interest(client)
+    conversation_id = await _interest_conversation_id(db_session, interest_id)
+
+    async def _fail_notification(*args, **kwargs):
+        raise RuntimeError("synthetic outbox failure")
+
+    monkeypatch.setattr(
+        "app.services.interaction_transition_service.dispatch_notification",
+        _fail_notification,
+    )
+    with pytest.raises(RuntimeError, match="synthetic outbox failure"):
+        await client.post(
+            f"/api/v1/talent-interests/{interest_id}/transition",
+            headers={"Authorization": f"Bearer {talent}"},
+            json={
+                "status": "declined",
+                "expected_version": 1,
+                "idempotency_key": str(uuid.uuid4()),
+                "note": "This must not survive the rollback.",
+            },
+        )
+
+    db_session.expire_all()
+    interest = await db_session.get(TalentInterest, uuid.UUID(interest_id))
+    assert interest is not None
+    assert interest.status != "declined"
+    assert interest.participant_status != "declined"
+    # The decision rolled back, so the explanation for it must be gone too.
+    assert await _note_bodies(db_session, conversation_id) == []
+    assert await _count(
+        db_session,
+        InteractionStatusEvent,
+        InteractionStatusEvent.interaction_id == uuid.UUID(interest_id),
+    ) == 0

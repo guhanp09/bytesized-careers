@@ -27,7 +27,6 @@ import {
   hiringStageLabel,
   jobDeliverableFrequencyLabel,
   jobDeliverableTypeLabel,
-  jobLanguagePurposeLabel,
   jobSkillLabel,
   revisionForJob,
   sentenceCaseJobValue,
@@ -189,13 +188,6 @@ const ATTRIBUTION_LABELS: Record<Exclude<JobPostingDomainState["trialAttribution
   not_credited: "No public credit",
   not_applicable: "Attribution does not apply",
   to_be_agreed: "Attribution will be agreed",
-};
-
-const PROFICIENCY_LABELS: Record<string, string> = {
-  basic: "Basic",
-  conversational: "Conversational",
-  professional: "Professional",
-  native_or_fluent: "Native or fluent",
 };
 
 const TRIAL_BASIS_LABELS: Record<string, string> = {
@@ -404,7 +396,6 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
     ...(domain.otherPreferredSkills || []),
   ]);
   const tools = unique(props.tools || []);
-  const languageCount = (domain.languageRequirements || []).length || unique(props.languages || []).length;
   const trial = domain.trialStatus ? TRIAL_STATUS_LABELS[domain.trialStatus] : "Trial terms not added";
   const processCount = domain.hiringProcess?.length || 0;
   const applicationCount = (props.applicationRequirements || []).length;
@@ -478,10 +469,6 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
             value={preferredSkills.slice(0, 4).join(", ") || "Not added"}
           />
           <CompactLine label="Tools" value={tools.slice(0, 4).join(", ") || "Not added"} />
-          <CompactLine
-            label="Languages"
-            value={languageCount ? `${languageCount} requirement${languageCount === 1 ? "" : "s"}` : "Not added"}
-          />
         </CompactGroup>
 
         <CompactGroup title="Application">
@@ -520,11 +507,8 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
     ...(domain.otherPreferredSkills || []),
   ]);
   const tools = unique(props.tools || []);
-  const structuredLanguages = domain.languageRequirements || [];
-  const legacyLanguages = unique(props.languages || []);
   const sourceInputs = domain.sourceInputs || [];
   const applicationRequirements = unique(props.applicationRequirements || []).map(applicationRequirementLabel);
-  const screeningQuestions = domain.screeningQuestions || [];
   const hiringProcess = domain.hiringProcess || [];
   const howToApply = text(domain.howToApply) || text(props.howToApply);
   const referenceVideos = props.referenceVideos || [];
@@ -676,37 +660,6 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
               <EmptyReview>No required tools have been added.</EmptyReview>
             )}
           </BodySection>
-
-          <BodySection title="Language requirements" icon="languages">
-            {structuredLanguages.length ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {structuredLanguages.map((item, index) => (
-                  <div
-                    key={item.id || `${item.language}-${index}`}
-                    className="rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-white/86">{text(item.language) || "Language not added"}</p>
-                      <TagPill>{item.priority === "required" ? "Required" : "Preferred"}</TagPill>
-                    </div>
-                    <p className="mt-2 text-xs text-white/48">
-                      {item.proficiency ? PROFICIENCY_LABELS[item.proficiency] : "Proficiency not specified"}
-                    </p>
-                    {item.purposes.length ? (
-                      <p className="mt-1.5 text-xs leading-relaxed text-white/60">
-                        For {item.purposes.map(jobLanguagePurposeLabel).join(", ").toLowerCase()}
-                      </p>
-                    ) : null}
-                    {text(item.notes) ? <p className="mt-2 text-sm text-white/62">{text(item.notes)}</p> : null}
-                  </div>
-                ))}
-              </div>
-            ) : legacyLanguages.length ? (
-              <Pills items={legacyLanguages} />
-            ) : (
-              <EmptyReview>No language requirements have been added.</EmptyReview>
-            )}
-          </BodySection>
         </div>
       </section>
 
@@ -835,26 +788,6 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
             {text(domain.hiringProcessNotes) ? (
               <p className="mt-4 whitespace-pre-line text-sm text-white/62">{text(domain.hiringProcessNotes)}</p>
             ) : null}
-          </BodySection>
-
-          <BodySection title="Screening questions" icon="message-square-text">
-            {screeningQuestions.length ? (
-              <ol className="space-y-3">
-                {screeningQuestions.map((item, index) => (
-                  <li key={item.id || index} className="rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium text-white/82">{index + 1}. {text(item.prompt) || "Question not added"}</p>
-                      <TagPill>{item.required ? "Required" : "Optional"}</TagPill>
-                    </div>
-                    {text(item.responseGuidance) ? (
-                      <p className="mt-2 text-sm text-white/52">{text(item.responseGuidance)}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyReview>No screening questions have been added.</EmptyReview>
-            )}
           </BodySection>
         </div>
       </section>

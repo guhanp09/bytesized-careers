@@ -3,7 +3,7 @@ import { encode } from "next-auth/jwt";
 
 const SESSION_SECRET = "e2e-secret";
 
-async function signInAsOwner(context: BrowserContext) {
+async function signInAsOwner(context: BrowserContext, overrides: Record<string, unknown> = {}) {
   const sessionToken = await encode({
     token: {
       name: "Demo Owner",
@@ -18,6 +18,7 @@ async function signInAsOwner(context: BrowserContext) {
       onboardingIntent: "BOTH",
       provider: "google",
       providerAccountId: "google-demo-owner",
+      ...overrides,
     },
     secret: SESSION_SECRET,
   });
@@ -230,7 +231,7 @@ test.describe("Settings page", () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   });
 
-  test("renders the full inline settings surface with future rows disabled", async ({ page, context }) => {
+  test("renders the redesigned settings surface with only functional rows", async ({ page, context }) => {
     await signInAsOwner(context);
 
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
@@ -238,21 +239,32 @@ test.describe("Settings page", () => {
     for (const id of [
       "account",
       "profile-visibility",
-      "marketplace",
+      "work-preferences",
       "connected-accounts",
       "notifications",
-      "payments",
-      "privacy-data",
       "security",
-      "preferences",
-      "support-legal",
+      "data-support",
     ]) {
       await expect(page.getByTestId(`settings-section-${id}`)).toBeVisible();
     }
 
-    await expect(page.getByText("CreatorJobs beta does not require a payment method")).toBeVisible();
-    await expect(page.getByTestId("settings-row-privacy-delete")).toContainText("Requires backend");
-    await expect(page.getByTestId("settings-row-privacy-delete").getByRole("button", { name: "Disabled" })).toBeDisabled();
+    // The plan row states the honest beta pricing position.
+    await expect(page.getByTestId("settings-row-account-plan")).toContainText("no payment method");
+
+    // Account deletion is truthful: routed through support, not a fake control.
+    const deleteRow = page.getByTestId("settings-row-support-delete-account");
+    await expect(deleteRow).toContainText("support team");
+    await expect(deleteRow.getByRole("link", { name: "Contact support" })).toHaveAttribute("href", "/support");
+
+    // Security reflects the real session: Google sign-in, no password reset row.
+    await expect(page.getByTestId("settings-row-security-signin-method")).toContainText("Google");
+    await expect(page.getByTestId("settings-row-security-password-reset")).toHaveCount(0);
+
+    // No dead placeholder rows anywhere on the page.
+    await expect(page.getByRole("button", { name: "Disabled" })).toHaveCount(0);
+    await expect(page.getByText("Coming soon")).toHaveCount(0);
+    await expect(page.getByText("Requires backend")).toHaveCount(0);
+    await expect(page.getByText("Not wired yet")).toHaveCount(0);
   });
 
   test("edits supported account and privacy settings inline without leaving settings", async ({ page, context }) => {
@@ -286,6 +298,49 @@ test.describe("Settings page", () => {
     await page.getByTestId("settings-row-privacy-show_bio").getByRole("switch", { name: "Toggle Bio" }).click();
     await expect(page.getByTestId("settings-row-privacy-show_bio")).toContainText("Hidden");
     await expect(page).toHaveURL(/\/settings$/);
+
+    // Copying the public profile link confirms inline without navigation.
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const publicProfileRow = page.getByTestId("settings-row-account-public-profile");
+    await publicProfileRow.getByRole("button", { name: "Copy link" }).click();
+    await expect(publicProfileRow).toContainText("Link copied");
+    await expect(page).toHaveURL(/\/settings$/);
+  });
+
+  test("signs out from the security section", async ({ page, context }) => {
+    // Sign-out + auth-redirect roundtrips are slow while the whole suite loads
+    // the shared server; give this flow the extended budget.
+    test.slow();
+    await signInAsOwner(context);
+
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    await page.getByTestId("settings-row-security-sign-out").getByRole("button", { name: "Sign out" }).click();
+
+    await page.waitForURL("**/");
+    // The session is gone: revisiting settings now redirects to login.
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/auth\?mode=login&next=%2Fsettings$/);
+  });
+
+  test("credentials users can send a password reset email", async ({ page, context }) => {
+    await signInAsOwner(context, { provider: "credentials", providerAccountId: undefined });
+
+    await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+      await fulfillJson(route, {
+        ok: true,
+        message: "If an account exists for this email, we sent a password reset link.",
+      });
+    });
+
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+
+    const resetRow = page.getByTestId("settings-row-security-password-reset");
+    await expect(resetRow).toContainText("owner-e2e@example.com");
+    await expect(page.getByTestId("settings-row-security-signin-method")).toContainText("Email & password");
+
+    await resetRow.getByRole("button", { name: "Send reset email" }).click();
+    await expect(resetRow).toContainText("Reset link sent");
+    await expect(resetRow.getByRole("button", { name: "Sent" })).toBeDisabled();
   });
 
   test("refreshes connected YouTube channels inline", async ({ page, context }) => {

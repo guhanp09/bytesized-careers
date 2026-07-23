@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.core.security import verify_password
 from app.db.seed import disable_staging_persona_passwords, seed_full_demo
 from app.db.seed_data_jobs import SEEDED_JOBS
+from app.db.seed_data_jobs import demo_users as demo_job_users
 from app.db.seed_data_talent import SEEDED_TALENT_LISTINGS, SEEDED_TALENT_USERS
 from app.models import (
     Conversation,
@@ -134,7 +135,9 @@ async def test_full_staging_seed_is_fk_safe_on_a_fresh_database(tmp_path: Path) 
             await _assert_foreign_keys_resolve(session)
 
             assert await _count_rows(session, User) == (
-                len(SEEDED_TALENT_USERS) + len(personas.build_persona_users())
+                len(SEEDED_TALENT_USERS)
+                + len(personas.build_persona_users())
+                + len(demo_job_users())
             )
             assert await _count_rows(session, TalentListing) == (
                 len(SEEDED_TALENT_LISTINGS) + len(personas.build_persona_talent_listings())

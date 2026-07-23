@@ -66,3 +66,36 @@ test("persisted interaction history survives mapping into the Inbox timeline", (
     ["Application received", "Not selected saved privately", "Not selected shared"]
   );
 });
+
+test("manager-side legacy archive state survives activity mapping for resolution UI", () => {
+  const [item] = mapActivityToOwnerInteractions({
+    myJobs: [{ id: "job-legacy", title: "Legacy role", budget: "Flexible", type: "Remote", workMode: "Remote", tags: [] }],
+    myTalentListings: [],
+    relatedJobs: [],
+    relatedTalentListings: [],
+    sentApplications: [],
+    receivedApplications: [
+      {
+        id: "application-legacy",
+        job_id: "job-legacy",
+        applicant_user_id: "talent-legacy",
+        job_owner_user_id: "owner-legacy",
+        portfolio_item_ids: [],
+        applicant_snapshot: { display_name: "Legacy applicant" },
+        status: "archived",
+        participant_status: "new",
+        status_version: 2,
+        legacy_archive_resolution_required: true,
+        created_at: "2026-07-10T00:00:00Z",
+        updated_at: now,
+        status_history: [],
+      },
+    ],
+    receivedInterests: [],
+    sentInterests: [],
+  });
+
+  assert.equal(item.direction, "received");
+  assert.equal(item.legacyArchiveResolutionRequired, true);
+  assert.equal(item.backendStatus, "archived");
+});

@@ -659,6 +659,15 @@ test.describe("applications pipeline view", () => {
     await page.getByTestId("bulk-move-trigger").click();
     await page.getByTestId("bulk-move-rejected").click();
 
+    // Rejecting several people at once is consequential, so the board asks
+    // first — the same deliberation the Inbox requires for a single rejection.
+    const confirmation = page.getByRole("dialog", {
+      name: /Mark \d+ applications as not selected\?/,
+    });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm not selected" }).click();
+
+    // Saving privately must still never offer to contact everyone.
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
     await expect(board.getByTestId("pipeline-group-new").getByTestId("pipeline-row")).toHaveCount(0);
     await expect(board.getByTestId("pipeline-group-rejected").getByTestId("pipeline-row")).toHaveCount(3);

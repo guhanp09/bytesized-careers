@@ -34,6 +34,11 @@ class MessageRead(BaseModel):
     body: str
     # "status_update" for platform-generated pipeline updates; None for user text.
     kind: str | None = None
+    # Structured payload for the automated screening-question message (rendered natively
+    # in the Inbox); absent for all other messages.
+    message_kind: str | None = None
+    automated: bool = False
+    screening: dict | None = None
     created_at: str | None = None
     read_by_recipient: bool = False
 

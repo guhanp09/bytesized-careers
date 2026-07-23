@@ -33,6 +33,61 @@ import type { InteractionDirection, InteractionKind, OwnerInteraction } from "..
  * moves (backend in live mode, local state in demo mode).
  */
 
+/**
+ * Stage moves that must never commit straight from a drag or a menu click.
+ * This list is kept in step with the inbox's own confirm set in
+ * `headerActionsFor` so the same decision costs the same deliberation on both
+ * surfaces — a board drag is easier to trigger by accident than a menu item,
+ * not harder.
+ *
+ * "archived" is deliberately absent: it is reversible, private, and carries no
+ * participant-visible consequence, so the board treats it as an ordinary move.
+ */
+const CONFIRMED_STAGE_MOVES = ["hired", "accepted", "declined", "rejected"];
+
+/**
+ * Confirm copy per consequential stage, told honestly for one record or many —
+ * a board selection can carry several people into the same outcome, and the
+ * dialog has to say so before it commits.
+ *
+ * "rejected" is the one optional-shared outcome here: the move itself only
+ * records a private stage, and the workspace asks separately whether to tell
+ * the applicant, so the body must not imply the decision has already been sent.
+ */
+const STAGE_CONFIRM_COPY: Record<
+  string,
+  { title: (count: number) => string; body: (count: number) => string; confirmLabel: string }
+> = {
+  hired: {
+    title: (count) => (count > 1 ? `Hire ${count} candidates?` : "Hire this candidate?"),
+    body: () => "This shares the decision and creates the work engagement.",
+    confirmLabel: "Confirm hire",
+  },
+  accepted: {
+    title: (count) =>
+      count > 1 ? `Accept ${count} hiring requests?` : "Accept this hiring request?",
+    body: () => "This shares your acceptance and creates the work engagement.",
+    confirmLabel: "Confirm acceptance",
+  },
+  declined: {
+    title: (count) =>
+      count > 1 ? `Decline ${count} hiring requests?` : "Decline this hiring request?",
+    body: () => "This decision is shared with the recruiter.",
+    confirmLabel: "Confirm decline",
+  },
+  rejected: {
+    title: (count) =>
+      count > 1
+        ? `Mark ${count} applications as not selected?`
+        : "Mark this application as not selected?",
+    body: (count) =>
+      count > 1
+        ? "This is saved privately. Nobody is told unless you choose to share it."
+        : "This is saved privately. You choose separately whether to tell the applicant.",
+    confirmLabel: "Confirm not selected",
+  },
+};
+
 type PipelineBoardProps = {
   items: OwnerInteraction[];
   kind: InteractionKind;
@@ -413,12 +468,20 @@ export default function PipelineBoard({
 
   const isValidDropStage = (stageKey: string) =>
     draggedItems.length > 0 &&
+    !(draggedItems.length > 1 && draggedItems.some((item) => item.legacyArchiveResolutionRequired)) &&
     (draggedItems.length === 1 || safeBulkTargets.some((stage) => stage.key === stageKey)) &&
     draggedItems.every((item) => {
       const current = backendStatusOf(item);
       if (stageKey === "archived") return current !== "archived";
-      if (stageKey === "_unarchive") return current === "archived";
-      return validStageTargetsFor(kind, current, item.participantBackendStatus).some(
+      if (stageKey === "_unarchive") {
+        return current === "archived" && !item.legacyArchiveResolutionRequired;
+      }
+      return validStageTargetsFor(
+        kind,
+        current,
+        item.participantBackendStatus,
+        item.legacyArchiveResolutionRequired
+      ).some(
         (stage) => stage.key === stageKey
       );
     });
@@ -427,6 +490,7 @@ export default function PipelineBoard({
     () =>
       safeBulkTargets.filter((stage) =>
         selectedItems.length > 0 &&
+        selectedItems.every((item) => !item.legacyArchiveResolutionRequired) &&
         selectedItems.every((item) =>
           stage.key === "archived"
             ? backendStatusOf(item) !== "archived"
@@ -484,7 +548,7 @@ export default function PipelineBoard({
   };
 
   const requestStageMove = (moveItems: OwnerInteraction[], stageKey: string) => {
-    if (["hired", "accepted", "declined"].includes(stageKey)) {
+    if (CONFIRMED_STAGE_MOVES.includes(stageKey)) {
       setPendingMove({ items: moveItems, stageKey });
       return;
     }
@@ -887,18 +951,34 @@ export default function PipelineBoard({
                                   <StageMenu
                                     targets={
                                       currentKey === "archived"
-                                        ? [unarchiveTarget]
+                                        ? item.legacyArchiveResolutionRequired
+                                          ? validStageTargetsFor(
+                                              kind,
+                                              currentKey,
+                                              item.participantBackendStatus,
+                                              true
+                                            )
+                                          : [unarchiveTarget]
                                         : [
                                             ...validStageTargetsFor(
                                               kind,
                                               currentKey,
-                                              item.participantBackendStatus
+                                              item.participantBackendStatus,
+                                              item.legacyArchiveResolutionRequired
                                             ),
-                                            ...(stages.filter((entry) => entry.key === "archived")),
+                                            ...(
+                                              item.legacyArchiveResolutionRequired
+                                                ? []
+                                                : stages.filter((entry) => entry.key === "archived")
+                                            ),
                                           ]
                                     }
-                                    currentKey={currentKey}
-                                    triggerLabel={stages.find((entry) => entry.key === currentKey)?.label ?? stage.label}
+                                    currentKey={item.legacyArchiveResolutionRequired ? null : currentKey}
+                                    triggerLabel={
+                                      item.legacyArchiveResolutionRequired
+                                        ? "Choose current stage"
+                                        : stages.find((entry) => entry.key === currentKey)?.label ?? stage.label
+                                    }
                                     triggerTestId="pipeline-stage-menu"
                                     optionTestPrefix="pipeline-stage-option"
                                     disabled={busy}
@@ -954,27 +1034,12 @@ export default function PipelineBoard({
       <ConfirmDialog
         open={Boolean(pendingMove)}
         title={
-          pendingMove?.stageKey === "hired"
-            ? "Hire this candidate?"
-            : pendingMove?.stageKey === "accepted"
-              ? "Accept this hiring request?"
-              : "Decline this hiring request?"
+          STAGE_CONFIRM_COPY[pendingMove?.stageKey ?? ""]?.title(pendingMove?.items.length ?? 1) ??
+          "Confirm this change?"
         }
-        body={
-          pendingMove?.stageKey === "hired"
-            ? "This shares the decision and creates the work engagement."
-            : pendingMove?.stageKey === "accepted"
-              ? "This shares your acceptance and creates the work engagement."
-              : "This decision is shared with the recruiter."
-        }
-        confirmLabel={
-          pendingMove?.stageKey === "hired"
-            ? "Confirm hire"
-            : pendingMove?.stageKey === "accepted"
-              ? "Confirm acceptance"
-              : "Confirm decline"
-        }
-        destructive={pendingMove?.stageKey === "declined"}
+        body={STAGE_CONFIRM_COPY[pendingMove?.stageKey ?? ""]?.body(pendingMove?.items.length ?? 1) ?? ""}
+        confirmLabel={STAGE_CONFIRM_COPY[pendingMove?.stageKey ?? ""]?.confirmLabel ?? "Confirm"}
+        destructive={["declined", "rejected"].includes(pendingMove?.stageKey ?? "")}
         busy={busy}
         onConfirm={() => {
           if (!pendingMove) return;

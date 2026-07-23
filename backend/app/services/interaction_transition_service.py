@@ -71,6 +71,11 @@ class TransitionResult:
     conversation: Conversation | None
     message_id: uuid.UUID | None
     notification_created: bool
+    #: The manager's optional free-text note, written in the same transaction as
+    #: the trusted status message. Distinct from ``message_id`` so callers can
+    #: deliver both over realtime without conflating the platform's wording with
+    #: the manager's own.
+    note_message_id: uuid.UUID | None = None
 
 
 def normalize_interest_status(value: str) -> str:
@@ -195,6 +200,62 @@ async def _interest_context(session: AsyncSession, interest: TalentInterest) -> 
     return title or "this talent listing", conversation
 
 
+def _clear_conversation_archive(conversation: Conversation, actor_id: uuid.UUID) -> None:
+    """Return a deliberately resolved legacy interaction to the actor's workspace."""
+    if conversation.participant_a_user_id == actor_id:
+        conversation.participant_a_archived_at = None
+    elif conversation.participant_b_user_id == actor_id:
+        conversation.participant_b_archived_at = None
+
+
+#: Upper bound on the manager's optional note. Long enough for a real
+#: explanation, short enough that it stays a message rather than an essay.
+STATUS_NOTE_MAX_LENGTH = 2000
+
+
+async def _post_status_note(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    actor: User,
+    note: str | None,
+    event: InteractionStatusEvent,
+    target: str,
+) -> uuid.UUID | None:
+    """Persist the manager's optional note beside the trusted status message.
+
+    Written inside the caller's transaction (``commit=False``) so the note, the
+    status change, the trusted event, the notification and the outbox intent
+    either all land or none do — a decision must never reach the other side
+    without the explanation that was promised alongside it.
+
+    ``allow_closed`` is what makes ordering a non-issue: outcomes that close the
+    thread (a shared rejection, a decline) flip ``participant_status`` in this
+    same transaction, so by the time the note is written the conversation may
+    already read as closed. Posting it as an ordinary message (``kind=None``)
+    keeps it attributable to the manager rather than to the platform.
+
+    The client id is derived from the status event, so replaying the same
+    idempotent request resolves to the same row instead of a second note.
+    """
+    clean = (note or "").strip()
+    if not clean:
+        return None
+    message = await messaging_service.post_message(
+        session,
+        conversation,
+        actor,
+        clean[:STATUS_NOTE_MAX_LENGTH],
+        allow_closed=True,
+        allow_blocked=True,
+        notify_recipient=False,
+        commit=False,
+        client_message_id=uuid.uuid5(uuid.NAMESPACE_URL, f"creatorjobs:status-note:{event.id}"),
+        metadata={"stage": target, "transition_id": str(event.id), "status_note": True},
+    )
+    return message.id
+
+
 async def transition_application(
     session: AsyncSession,
     *,
@@ -248,7 +309,8 @@ async def transition_application(
             final_outcome="already_in_state",
         )
         return TransitionResult("already_in_state", "application", application, engagement, prior_event, None, None, False)
-    if application.status == target:
+    legacy_resolution = application.legacy_archive_resolution_required
+    if application.status == target and not legacy_resolution:
         engagement = await _assert_application_invariants(session, application)
         _record_request(
             session,
@@ -280,16 +342,33 @@ async def transition_application(
         return TransitionResult("already_in_state", "application", application, engagement, None, None, None, False)
     if application.status_version != expected_version:
         raise StaleTransition(application.status, application.status_version)
-    if application.legacy_archive_resolution_required:
-        raise InvalidTransition("Resolve the legacy archived stage before changing status.")
-    if application.participant_status in {"hired", "rejected", "withdrawn"}:
+    if (
+        legacy_resolution
+        and not sender_withdrawal
+        and target not in interaction_status.LEGACY_APPLICATION_RESOLUTION_TARGETS
+    ):
+        raise InvalidTransition("Choose a valid current pipeline stage to restore this application.")
+    if (
+        application.participant_status in {"hired", "rejected", "withdrawn"}
+        and target != application.participant_status
+    ):
         raise InvalidTransition(
             "This shared lifecycle outcome cannot be replaced by a private pipeline stage."
         )
     withdrawal_allowed = sender_withdrawal and application.status in {
         "new", "reviewing", "shortlisted", "interviewing"
     }
-    if not withdrawal_allowed and not interaction_status.application_transition_allowed(application.status, target):
+    withdrawal_allowed = withdrawal_allowed or (sender_withdrawal and legacy_resolution)
+    resolution_allowed = (
+        legacy_resolution
+        and not sender_withdrawal
+        and target in interaction_status.LEGACY_APPLICATION_RESOLUTION_TARGETS
+    )
+    if (
+        not withdrawal_allowed
+        and not resolution_allowed
+        and not interaction_status.application_transition_allowed(application.status, target)
+    ):
         raise InvalidTransition(f"Application cannot move from {application.status} to {target}.")
 
     previous = application.status
@@ -297,6 +376,8 @@ async def transition_application(
     shared = sender_withdrawal or interaction_status.application_status_is_automatically_shared(target)
     application.status = target
     application.status_version = next_version
+    if legacy_resolution:
+        application.legacy_archive_resolution_required = False
     if shared:
         application.participant_status = target
     prior_engagement = await review_service.engagement_for_application(session, application.id)
@@ -304,9 +385,19 @@ async def transition_application(
     event = InteractionStatusEvent(
         interaction_type="application", interaction_id=application.id, actor_user_id=actor.id,
         previous_status=previous, new_status=target, status_version=next_version,
-        event_kind="transition", audience="participants" if shared else "manager_only",
+        event_kind="legacy_archive_resolved" if legacy_resolution else "transition",
+        audience="participants" if shared else "manager_only",
         idempotency_key=idempotency_key, request_fingerprint=fingerprint,
         outcome_json={"outcome": "transitioned", "current_status": target, "status_version": next_version},
+        metadata_json=(
+            {
+                "legacy_previous_stage_unknown": True,
+                "resolution_target": target,
+                "resolution_reason": "sender_withdrawal" if sender_withdrawal else "manager_selection",
+            }
+            if legacy_resolution
+            else {}
+        ),
     )
     session.add(event)
     await session.flush()
@@ -328,6 +419,8 @@ async def transition_application(
     notification_created = False
     if shared:
         title, conversation = await _application_context(session, application)
+        if legacy_resolution:
+            _clear_conversation_archive(conversation, actor.id)
         label = {
             "interviewing": "Invited to interview",
             "hired": "Hired",
@@ -357,6 +450,11 @@ async def transition_application(
             strict_outbox=True,
         )
         notification_created = notification is not None
+    elif legacy_resolution:
+        conversation = await messaging_service.get_or_create_conversation_for_application(
+            session, application
+        )
+        _clear_conversation_archive(conversation, actor.id)
     await session.flush()
     engagement = await _assert_application_invariants(session, application)
     _log(
@@ -386,6 +484,7 @@ async def transition_interest(
     requested_status: str,
     expected_version: int,
     idempotency_key: str,
+    note: str | None = None,
 ) -> TransitionResult:
     target = normalize_interest_status(requested_status)
     fingerprint = _fingerprint(
@@ -431,7 +530,8 @@ async def transition_interest(
             final_outcome="already_in_state",
         )
         return TransitionResult("already_in_state", "hiring_request", interest, engagement, prior_event, None, None, False)
-    if interest.status == target:
+    legacy_resolution = interest.legacy_archive_resolution_required
+    if interest.status == target and not legacy_resolution:
         engagement = await _assert_interest_invariants(session, interest)
         _record_request(
             session,
@@ -463,10 +563,31 @@ async def transition_interest(
         return TransitionResult("already_in_state", "hiring_request", interest, engagement, None, None, None, False)
     if interest.status_version != expected_version:
         raise StaleTransition(interest.status, interest.status_version)
-    if interest.legacy_archive_resolution_required:
-        raise InvalidTransition("Resolve the legacy archived stage before changing status.")
+    if (
+        legacy_resolution
+        and not sender_withdrawal
+        and target not in interaction_status.LEGACY_INTEREST_RESOLUTION_TARGETS
+    ):
+        raise InvalidTransition("Choose a valid current pipeline stage to restore this hiring request.")
+    if (
+        interest.participant_status in {"accepted", "declined", "withdrawn"}
+        and target != interest.participant_status
+    ):
+        raise InvalidTransition(
+            "This shared lifecycle outcome cannot be replaced by a private pipeline stage."
+        )
     withdrawal_allowed = sender_withdrawal and interest.status in {"new", "reviewing"}
-    if not withdrawal_allowed and not interaction_status.interest_transition_allowed(interest.status, target):
+    withdrawal_allowed = withdrawal_allowed or (sender_withdrawal and legacy_resolution)
+    resolution_allowed = (
+        legacy_resolution
+        and not sender_withdrawal
+        and target in interaction_status.LEGACY_INTEREST_RESOLUTION_TARGETS
+    )
+    if (
+        not withdrawal_allowed
+        and not resolution_allowed
+        and not interaction_status.interest_transition_allowed(interest.status, target)
+    ):
         raise InvalidTransition(f"Hiring request cannot move from {interest.status} to {target}.")
 
     previous = interest.status
@@ -474,6 +595,8 @@ async def transition_interest(
     shared = sender_withdrawal or interaction_status.interest_status_is_automatically_shared(target)
     interest.status = target
     interest.status_version = next_version
+    if legacy_resolution:
+        interest.legacy_archive_resolution_required = False
     if shared:
         interest.participant_status = target
     prior_engagement = await review_service.engagement_for_interest(session, interest.id)
@@ -481,9 +604,19 @@ async def transition_interest(
     event = InteractionStatusEvent(
         interaction_type="hiring_request", interaction_id=interest.id, actor_user_id=actor.id,
         previous_status=previous, new_status=target, status_version=next_version,
-        event_kind="transition", audience="participants" if shared else "manager_only",
+        event_kind="legacy_archive_resolved" if legacy_resolution else "transition",
+        audience="participants" if shared else "manager_only",
         idempotency_key=idempotency_key, request_fingerprint=fingerprint,
         outcome_json={"outcome": "transitioned", "current_status": target, "status_version": next_version},
+        metadata_json=(
+            {
+                "legacy_previous_stage_unknown": True,
+                "resolution_target": target,
+                "resolution_reason": "sender_withdrawal" if sender_withdrawal else "manager_selection",
+            }
+            if legacy_resolution
+            else {}
+        ),
     )
     session.add(event)
     await session.flush()
@@ -502,9 +635,12 @@ async def transition_interest(
     )
     conversation: Conversation | None = None
     message_id: uuid.UUID | None = None
+    note_message_id: uuid.UUID | None = None
     notification_created = False
     if shared:
         _, conversation = await _interest_context(session, interest)
+        if legacy_resolution:
+            _clear_conversation_archive(conversation, actor.id)
         body = {
             "accepted": "Hiring request accepted.",
             "declined": "Hiring request declined.",
@@ -517,6 +653,11 @@ async def transition_interest(
             client_message_id=message_key, metadata={"stage": target, "transition_id": str(event.id)},
         )
         message_id = message.id
+        # Hiring-request outcomes share at the moment of transition, so this is
+        # the only chance to attach the sender's explanation atomically.
+        note_message_id = await _post_status_note(
+            session, conversation=conversation, actor=actor, note=note, event=event, target=target,
+        )
         recipient_id = interest.owner_user_id if sender_withdrawal else interest.recruiter_user_id
         notification = await dispatch_notification(
             session,
@@ -535,6 +676,11 @@ async def transition_interest(
             strict_outbox=True,
         )
         notification_created = notification is not None
+    elif legacy_resolution:
+        conversation = await messaging_service.get_or_create_conversation_for_interest(
+            session, interest
+        )
+        _clear_conversation_archive(conversation, actor.id)
     await session.flush()
     engagement = await _assert_interest_invariants(session, interest)
     _log(
@@ -551,7 +697,7 @@ async def transition_interest(
         idempotency_key=idempotency_key,
         final_outcome="transitioned",
     )
-    return TransitionResult("transitioned", "hiring_request", interest, engagement, event, conversation, message_id, notification_created)
+    return TransitionResult("transitioned", "hiring_request", interest, engagement, event, conversation, message_id, notification_created, note_message_id)
 
 
 async def share_application_status(
@@ -562,6 +708,7 @@ async def share_application_status(
     requested_status: str,
     expected_version: int,
     idempotency_key: str,
+    note: str | None = None,
 ) -> TransitionResult:
     application = (
         await session.execute(
@@ -666,6 +813,12 @@ async def share_application_status(
         client_message_id=uuid.uuid5(uuid.NAMESPACE_URL, f"creatorjobs:status:{event.id}"),
         metadata={"stage": target, "transition_id": str(event.id)},
     )
+    # An application's decision is saved privately first and only reaches the
+    # applicant here, so the explanation belongs to this step rather than to the
+    # earlier private transition.
+    note_message_id = await _post_status_note(
+        session, conversation=conversation, actor=actor, note=note, event=event, target=target,
+    )
     await dispatch_notification(
         session, event_key="application_status_changed", recipient_user_id=application.applicant_user_id,
         actor_user_id=actor.id, title="Application status updated", body=body,
@@ -692,4 +845,4 @@ async def share_application_status(
         external_delivery_intent="created",
         final_outcome="transitioned",
     )
-    return TransitionResult("transitioned", "application", application, None, event, conversation, message.id, True)
+    return TransitionResult("transitioned", "application", application, None, event, conversation, message.id, True, note_message_id)

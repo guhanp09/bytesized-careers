@@ -21,13 +21,16 @@ test("candidate detail exposes decision, qualification, workflow, trial, process
     "Creative workflow",
     "Trial terms",
     "Hiring process",
-    "Screening questions",
     "How to apply",
   ]) {
     assert.match(body, new RegExp(section));
   }
   assert.match(body, /Sensitive access required/);
-  assert.match(body, /legacyScreeningPrompt/);
+  // Screening questions are no longer public listing content — they are sent into the
+  // Inbox conversation after a successful application.
+  assert.doesNotMatch(body, /Screening questions/);
+  assert.doesNotMatch(body, /Required languages/);
+  assert.doesNotMatch(body, /Preferred languages/);
   assert.match(body, /CreatorJobs does not receive or track that submission/);
 });
 

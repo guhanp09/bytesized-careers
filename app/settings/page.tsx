@@ -35,7 +35,7 @@ export default async function SettingsPage() {
         <section className="mx-auto max-w-6xl space-y-6">
           <PageHeader
             title="Settings"
-            description="Manage account, privacy, marketplace, and future billing preferences."
+            description="Manage your account, profile visibility, work preferences, connected accounts, notifications, and security."
           />
           <StateCard
             icon="user"
@@ -67,7 +67,7 @@ export default async function SettingsPage() {
         <PageHeader
           eyebrow="Account"
           title="Settings"
-          description="Manage account access, profile visibility, marketplace defaults, notifications, payments, privacy, and support from one place."
+          description="Manage your account, profile visibility, work preferences, connected accounts, notifications, and security."
         />
 
         <SettingsClient

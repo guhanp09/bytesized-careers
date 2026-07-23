@@ -20,7 +20,13 @@ async def seed_jobs(session: AsyncSession = Depends(get_db)) -> dict[str, int | 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     result = await seed_jobs_from_seed_data_if_missing(session)
-    return {"status": "ok", "inserted": result["inserted"], "skipped": result["skipped"]}
+    return {
+        "status": "ok",
+        "created": result["created"],
+        "updated": result["updated"],
+        "unchanged": result["unchanged"],
+        "skipped": result["skipped"],
+    }
 
 
 @router.post(

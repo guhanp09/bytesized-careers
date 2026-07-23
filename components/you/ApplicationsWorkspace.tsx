@@ -21,6 +21,7 @@ import {
   reconcileMessageReceipt,
   shouldUseLiveApplicationsData,
   totalUnread,
+  type ChatThreadMessage,
 } from "../../lib/messaging";
 import {
   filterStructuredPortfolioDuplicateAttachments,
@@ -39,6 +40,7 @@ import {
   getApplicationConversation,
   getInterestConversation,
   getMyReviewWorkspace,
+  isBackendAuthError,
   listApplicationPrivateNotes,
   listConversations,
   listTalentInterestPrivateNotes,
@@ -149,7 +151,13 @@ type HeaderAction = {
   confirmLabel?: string;
   allowNote?: boolean;
   archiveValue?: boolean;
-  menuGroup?: "Manage privately" | "Share a decision" | "Thread" | "Relationship" | "Safety";
+  menuGroup?:
+    | "Choose current stage"
+    | "Manage privately"
+    | "Share a decision"
+    | "Thread"
+    | "Relationship"
+    | "Safety";
 };
 
 /**
@@ -504,7 +512,7 @@ function rowSubtitle(item: OwnerInteraction): string {
 
 function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[] {
   const name = firstNameOf(item.counterpartyName);
-  if (isArchivedInteraction(item)) {
+  if (isArchivedInteraction(item) && !item.legacyArchiveResolutionRequired) {
     return [
       {
         key: "unarchive",
@@ -544,9 +552,11 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
     const actions = validStageTargetsFor(
       item.kind,
       currentStatus,
-      item.participantBackendStatus
+      item.participantBackendStatus,
+      item.legacyArchiveResolutionRequired
     ).map<HeaderAction>((stage) => {
       const labels: Record<string, string> = {
+        new: "Move to New",
         reviewing: "Move to Reviewing",
         shortlisted: "Shortlist privately",
         interviewing: "Move to Interviewing",
@@ -584,8 +594,20 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
         eventLabel: `${stage.label} by you`,
         panelTitle: panelTitles[stage.key],
         confirmLabel: confirmLabels[stage.key],
-        allowNote: !live && destructive,
-        menuGroup: stage.notify?.automatic ? "Share a decision" : "Manage privately",
+        // A note is only offered where this action actually tells the other
+        // side something. Hiring-request outcomes share the moment they are
+        // recorded, so the confirmation is the only chance to explain them.
+        // An application's "not selected" is private at this point — its note
+        // belongs to the separate "share a decision" step, not here, or it
+        // would be collected and then never sent.
+        allowNote: live
+          ? item.kind === "hiring_request" && destructive
+          : destructive,
+        menuGroup: item.legacyArchiveResolutionRequired
+          ? "Choose current stage"
+          : stage.notify?.automatic
+            ? "Share a decision"
+            : "Manage privately",
       };
     });
     actions.sort((left, right) => {
@@ -593,6 +615,7 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
       return rank(left) - rank(right);
     });
     if (
+      !item.legacyArchiveResolutionRequired &&
       item.kind === "application" &&
       ["shortlisted", "rejected"].includes(currentStatus) &&
       item.participantBackendStatus !== currentStatus
@@ -606,14 +629,16 @@ function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[]
         menuGroup: "Share a decision",
       });
     }
-    actions.push({
-      key: "archive",
-      label: "Archive",
-      icon: "bookmark",
-      flow: "archive",
-      archiveValue: true,
-      menuGroup: "Thread",
-    });
+    if (!item.legacyArchiveResolutionRequired) {
+      actions.push({
+        key: "archive",
+        label: "Archive",
+        icon: "bookmark",
+        flow: "archive",
+        archiveValue: true,
+        menuGroup: "Thread",
+      });
+    }
     if (!live) actions.push(reply);
     return actions;
   }
@@ -955,8 +980,13 @@ export type ChatMessage = {
   atLabel: string;
   createdAt?: string | null;
   readByRecipient?: boolean;
-  /** "status" renders as a centered platform update line instead of a bubble. */
-  kind?: "status";
+  /**
+   * "status" renders as a centered platform update line; "screening" renders the
+   * automated screening-question message natively from its structured snapshot.
+   */
+  kind?: "status" | "screening";
+  /** Structured snapshot for the automated screening-question message. */
+  screening?: ChatThreadMessage["screening"];
   rate?: string | null;
   attachments?: OwnerInteraction["attachments"];
   firstMessageAnswers?: FirstMessageAnswers | null;
@@ -1084,6 +1114,9 @@ function StageNotifyPrompt({
   stageKey,
   phase,
   liveMode,
+  errorMessage,
+  note,
+  onNoteChange,
   onSend,
   onDismiss,
   onFollowUp,
@@ -1092,6 +1125,9 @@ function StageNotifyPrompt({
   stageKey: string;
   phase: "ask" | "sending" | "sent" | "error";
   liveMode: boolean;
+  errorMessage?: string;
+  note?: string;
+  onNoteChange?: (next: string) => void;
   onSend: () => void;
   onDismiss: () => void;
   onFollowUp: (item: OwnerInteraction) => void;
@@ -1171,8 +1207,27 @@ function StageNotifyPrompt({
             <Icon name="sparkles" className="h-3 w-3 shrink-0 text-white/40" />
             <span className="min-w-0">{preview}</span>
           </p>
+          {/*
+            Live mode only: the note is persisted by the same request that
+            shares the decision. In demo mode there is no such request, so
+            offering the field would promise a delivery that cannot happen.
+          */}
+          {liveMode && onNoteChange ? (
+            <textarea
+              data-testid="stage-notify-note"
+              value={note ?? ""}
+              onChange={(event) => onNoteChange(event.target.value)}
+              disabled={phase === "sending"}
+              rows={2}
+              maxLength={2000}
+              placeholder={`Add a note for ${single ? firstNameOf(single.counterpartyName) : "them"} (optional)`}
+              className="mt-2.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.06] disabled:opacity-50"
+            />
+          ) : null}
           {phase === "error" ? (
-            <p className="mt-2 text-[11px] text-rose-300/80">Couldn’t post the update — try again.</p>
+            <p className="mt-2 text-[11px] text-rose-300/80" data-testid="stage-notify-error">
+              {errorMessage ?? "Couldn’t post the update — try again."}
+            </p>
           ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -1265,6 +1320,47 @@ function AttachmentChip({
   );
 }
 
+function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
+  const questions = message.screening?.questions ?? [];
+  return (
+    <div
+      className={[
+        "min-w-0 rounded-2xl rounded-bl-md border border-white/[0.09] bg-white/[0.04] px-3.5 py-3",
+        "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+        <Icon name="message-square-text" className="h-3.5 w-3.5 opacity-70" />
+        <span>Screening questions</span>
+      </div>
+      <p className="mt-0.5 text-[11px] text-white/40">Sent automatically after the application</p>
+      {questions.length ? (
+        <ol className="mt-2.5 space-y-2">
+          {questions.map((question, index) => (
+            <li key={question.id || index} className="flex min-w-0 gap-2 text-[13px] leading-relaxed text-white/85">
+              <span className="shrink-0 tabular-nums text-white/45">{index + 1}.</span>
+              <span className="min-w-0">
+                <span className="whitespace-pre-line break-words">{question.prompt}</span>
+                {question.required ? (
+                  <span className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-100/70">
+                    Required
+                  </span>
+                ) : null}
+                {question.response_guidance ? (
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-white/48">{question.response_guidance}</span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-2 whitespace-pre-line break-words text-[13px] leading-relaxed text-white/82">{message.body}</p>
+      )}
+      <p className="mt-2.5 text-[11px] text-white/42">Reply in this conversation with your answers.</p>
+    </div>
+  );
+}
+
 export function MessageBubble({
   message,
   counterpartyAvatarUrl,
@@ -1311,7 +1407,9 @@ export function MessageBubble({
         <p className="px-1 text-[11px] font-medium text-white/40">
           {message.senderName} · {message.atLabel}
         </p>
-        {message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
+        {message.kind === "screening" ? (
+          <ScreeningQuestionsCard message={message} />
+        ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
           <div
             className={[
               "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
@@ -1389,7 +1487,7 @@ export default function ApplicationsWorkspace({
   const [items, setItems] = useState<OwnerInteraction[]>(() =>
     liveMode ? [] : interactions ?? MOCK_OWNER_INTERACTIONS
   );
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(liveMode ? "loading" : "ready");
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "auth">(liveMode ? "loading" : "ready");
   const [reloadNonce, setReloadNonce] = useState(0);
   // Real message threads loaded per interaction in live mode (keyed by record id ==
   // OwnerInteraction id). Demo mode keeps using the in-memory `replies` on the item.
@@ -1646,7 +1744,14 @@ export default function ApplicationsWorkspace({
     stageKey: string;
     kind: InteractionKind;
     phase: "ask" | "sending" | "sent" | "error";
+    /**
+     * Replaces the generic retry copy when the failure has a specific,
+     * non-transient cause the user needs stated plainly.
+     */
+    errorMessage?: string;
   } | null>(null);
+  /** Optional explanation sent with an application decision when it is shared. */
+  const [notifyNote, setNotifyNote] = useState("");
   // Private manager note editor state for the selected received item.
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -1659,12 +1764,12 @@ export default function ApplicationsWorkspace({
         setItems(mapActivityToOwnerInteractions(summary));
         setLoadState("ready");
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return;
         // Private application data must never silently turn into sample rows.
         // Sample data is an explicit mode (`?demo=1`) so actions cannot appear
         // live while writes are actually failing against the backend.
-        setLoadState("error");
+        setLoadState(isBackendAuthError(error) ? "auth" : "error");
       });
     return () => {
       cancelled = true;
@@ -1948,6 +2053,9 @@ export default function ApplicationsWorkspace({
     setActionError(null);
     const authoritativeVersions = new Map<string, number>();
     const authoritativeStatuses = new Map<string, string>();
+    const authoritativeParticipantStatuses = new Map<string, string>();
+    const authoritativeArchivedAt = new Map<string, string | null>();
+    const authoritativeLegacyResolution = new Map<string, boolean>();
     let alreadyInState = false;
     if (liveMode && backendAccessToken) {
       try {
@@ -1973,6 +2081,14 @@ export default function ApplicationsWorkspace({
             );
             authoritativeVersions.set(item.id, response.status_version);
             authoritativeStatuses.set(item.id, response.current_status);
+            if (response.application) {
+              authoritativeParticipantStatuses.set(item.id, response.application.participant_status);
+              authoritativeArchivedAt.set(item.id, response.application.archived_at ?? null);
+              authoritativeLegacyResolution.set(
+                item.id,
+                response.application.legacy_archive_resolution_required === true
+              );
+            }
             alreadyInState = response.outcome === "already_in_state";
           } else {
             const response = await transitionTalentInterestStatus(
@@ -1984,6 +2100,14 @@ export default function ApplicationsWorkspace({
             );
             authoritativeVersions.set(item.id, response.status_version);
             authoritativeStatuses.set(item.id, response.current_status);
+            if (response.interest) {
+              authoritativeParticipantStatuses.set(item.id, response.interest.participant_status);
+              authoritativeArchivedAt.set(item.id, response.interest.archived_at ?? null);
+              authoritativeLegacyResolution.set(
+                item.id,
+                response.interest.legacy_archive_resolution_required === true
+              );
+            }
             alreadyInState = response.outcome === "already_in_state";
           }
         } else if (kind === "application") {
@@ -2034,7 +2158,11 @@ export default function ApplicationsWorkspace({
                 ? nextArchived
                   ? new Date().toISOString()
                   : null
-                : item.archivedAt,
+                : authoritativeArchivedAt.has(item.id)
+                  ? authoritativeArchivedAt.get(item.id) ?? null
+                  : item.legacyArchiveResolutionRequired
+                    ? null
+                    : item.archivedAt,
               status: interactionStatusFromBackend(
                 item.kind,
                 item.direction,
@@ -2043,6 +2171,13 @@ export default function ApplicationsWorkspace({
               backendStatus:
                 authoritativeStatuses.get(item.id) ?? (archiveMove ? item.backendStatus : stageKey),
               statusVersion: authoritativeVersions.get(item.id) ?? item.statusVersion,
+              participantBackendStatus:
+                authoritativeParticipantStatuses.get(item.id) ?? item.participantBackendStatus,
+              legacyArchiveResolutionRequired:
+                authoritativeLegacyResolution.get(item.id) ??
+                (item.legacyArchiveResolutionRequired && !archiveMove
+                  ? false
+                  : item.legacyArchiveResolutionRequired),
               updatedAtLabel: "Just now",
               unread: false,
               timeline: [
@@ -2083,6 +2218,7 @@ export default function ApplicationsWorkspace({
               ? "Saved privately · Not yet shared"
               : "Saved privately"
     );
+    setNotifyNote("");
     setNotifyPrompt(
       moveItems.length === 1 && notifyPolicy && !notifyPolicy.automatic
         ? { itemIds: moveItems.map((item) => item.id), stageKey, kind, phase: "ask" }
@@ -2123,7 +2259,11 @@ export default function ApplicationsWorkspace({
    * ever called from the prompt's explicit "Send update" action. Live mode
    * asks the backend to generate a trusted status event; demo mode appends locally.
    */
-  const sendStatusUpdates = async (targets: OwnerInteraction[], stageKey: string) => {
+  const sendStatusUpdates = async (
+    targets: OwnerInteraction[],
+    stageKey: string,
+    note?: string
+  ) => {
     if (targets.length === 0) return;
     const firstTarget = targets[0];
     if (!firstTarget) return;
@@ -2131,17 +2271,39 @@ export default function ApplicationsWorkspace({
     const policy = stageNotifyPolicyOf(kind, stageKey);
     if (!policy) return;
     const targetToOpen = targets.length === 1 ? firstTarget : null;
-    setNotifyPrompt((prev) => (prev ? { ...prev, phase: "sending" } : prev));
+    setNotifyPrompt((prev) => (prev ? { ...prev, phase: "sending", errorMessage: undefined } : prev));
     try {
       if (liveMode && backendAccessToken) {
+        // Only applications have a separate "share this decision later" step.
+        // Hiring-request outcomes are shared by the backend at the moment of
+        // transition, so there is no communication operation to replay here.
+        // Anything else must be reported as unsent rather than counted as
+        // shared — claiming success for a request we never made is worse than
+        // refusing the action.
+        const unsupported = targets.filter((target) => target.kind !== "application");
+        if (unsupported.length > 0) {
+          setNotifyPrompt((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  phase: "error",
+                  errorMessage:
+                    "Hiring-request decisions are shared automatically when you make them, so there is nothing to send separately.",
+                }
+              : prev
+          );
+          return;
+        }
         for (const target of targets) {
-          if (target.kind !== "application") continue;
           const response = await communicateApplicationStatus(
             backendAccessToken,
             target.id,
             stageKey as BackendJobApplication["status"],
             target.statusVersion ?? 1,
-            window.crypto.randomUUID()
+            window.crypto.randomUUID(),
+            // Persisted with the decision itself, so the applicant cannot be
+            // told the outcome without the explanation that came with it.
+            note?.trim() || undefined
           );
           setItems((current) =>
             current.map((item) =>
@@ -2250,7 +2412,13 @@ export default function ApplicationsWorkspace({
     target: OwnerInteraction,
     action: HeaderAction,
     trimmedNote?: string,
-    authoritative?: { status: string; version: number; participantStatus?: string }
+    authoritative?: {
+      status: string;
+      version: number;
+      participantStatus?: string;
+      archivedAt?: string | null;
+      legacyArchiveResolutionRequired?: boolean;
+    }
   ) => {
     setItems((prev) =>
       prev.map((item) =>
@@ -2264,6 +2432,15 @@ export default function ApplicationsWorkspace({
               statusVersion: authoritative?.version ?? item.statusVersion,
               participantBackendStatus:
                 authoritative?.participantStatus ?? item.participantBackendStatus,
+              archivedAt:
+                authoritative && "archivedAt" in authoritative
+                  ? authoritative.archivedAt
+                  : target.legacyArchiveResolutionRequired
+                    ? null
+                    : item.archivedAt,
+              legacyArchiveResolutionRequired:
+                authoritative?.legacyArchiveResolutionRequired ??
+                (target.legacyArchiveResolutionRequired ? false : item.legacyArchiveResolutionRequired),
               updatedAtLabel: "Just now",
               unread: false,
               replies: trimmedNote
@@ -2304,10 +2481,15 @@ export default function ApplicationsWorkspace({
           const record = target.kind === "application"
             ? await withdrawApplication(backendAccessToken, target.id)
             : await withdrawTalentInterest(backendAccessToken, target.id);
-          commitStatusLocally(target, action, trimmedNote, {
+          // No note is collected for withdrawal, and appending one locally
+          // would show the sender a message the backend never stored.
+          commitStatusLocally(target, action, undefined, {
             status: record.status,
             version: record.status_version,
             participantStatus: record.participant_status,
+            archivedAt: record.archived_at ?? null,
+            legacyArchiveResolutionRequired:
+              record.legacy_archive_resolution_required === true,
           });
         } else if (target.kind === "application") {
           const response = await transitionApplicationStatus(
@@ -2319,10 +2501,15 @@ export default function ApplicationsWorkspace({
           );
           transitionOutcome = response.outcome;
           const record = response.application;
-          commitStatusLocally(target, action, trimmedNote, {
+          // An application stage change is private, so it carries no note. Any
+          // explanation is collected later, at the point it is actually shared.
+          commitStatusLocally(target, action, undefined, {
             status: response.current_status,
             version: response.status_version,
             participantStatus: record?.participant_status,
+            archivedAt: record?.archived_at ?? null,
+            legacyArchiveResolutionRequired:
+              record?.legacy_archive_resolution_required === true,
           });
         } else {
           const response = await transitionTalentInterestStatus(
@@ -2330,20 +2517,27 @@ export default function ApplicationsWorkspace({
             target.id,
             backendStatus as BackendTalentInterest["status"],
             target.statusVersion ?? 1,
-            window.crypto.randomUUID()
+            window.crypto.randomUUID(),
+            // Committed by the backend in the same transaction as the decision,
+            // so the recruiter can never receive one without the other.
+            trimmedNote || undefined
           );
           transitionOutcome = response.outcome;
           const record = response.interest;
-          commitStatusLocally(target, action, trimmedNote, {
+          commitStatusLocally(target, action, undefined, {
             status: response.current_status,
             version: response.status_version,
             participantStatus: record?.participant_status,
+            archivedAt: record?.archived_at ?? null,
+            legacyArchiveResolutionRequired:
+              record?.legacy_archive_resolution_required === true,
           });
         }
         const notifyPolicy = backendStatus
           ? stageNotifyPolicyOf(target.kind, backendStatus)
           : null;
         if (notifyPolicy && !notifyPolicy.automatic) {
+          setNotifyNote("");
           setNotifyPrompt({
             itemIds: [target.id],
             stageKey: backendStatus as string,
@@ -2523,27 +2717,41 @@ export default function ApplicationsWorkspace({
     );
   }
 
-  if (liveMode && loadState === "error") {
+  if (liveMode && (loadState === "error" || loadState === "auth")) {
     return (
       <div
         className={`flex w-full items-center justify-center px-6 py-16 ${WORKSPACE_HEIGHT_CLASSES}`}
         data-testid="applications-workspace"
       >
         <div className="text-center">
-          <p className="text-base font-semibold text-white/90">Couldn’t load applications.</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-white/55">
-            The backend is unreachable right now. Your applications and requests are safe — try again in a moment.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setLoadState("loading");
-              setReloadNonce((nonce) => nonce + 1);
-            }}
-            className={`mt-5 ${GHOST_BUTTON_CLASSES}`}
-          >
-            Retry
-          </button>
+          {loadState === "auth" ? (
+            <>
+              <p className="text-base font-semibold text-white/90">Your session has expired.</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-white/55">
+                Sign in again to load your applications and requests. Your saved data is safe.
+              </p>
+              <Link href="/auth?mode=login&next=/applications" className={`mt-5 inline-flex ${GHOST_BUTTON_CLASSES}`}>
+                Sign in again
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-white/90">Couldn’t load applications.</p>
+              <p className="mx-auto mt-2 max-w-md text-sm text-white/55">
+                The backend is unreachable right now. Your applications and requests are safe — try again in a moment.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadState("loading");
+                  setReloadNonce((nonce) => nonce + 1);
+                }}
+                className={`mt-5 ${GHOST_BUTTON_CLASSES}`}
+              >
+                Retry
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -2619,6 +2827,7 @@ export default function ApplicationsWorkspace({
             return;
           }
           if (action.flow === "notify" && action.backendStatus) {
+            setNotifyNote("");
             setNotifyPrompt({
               itemIds: [selected.id],
               stageKey: action.backendStatus,
@@ -2798,22 +3007,6 @@ export default function ApplicationsWorkspace({
               onMoveStage={handleMoveStage}
             />
           </div>
-          {notifyPrompt && notifyPromptItems.length > 0 ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 z-50 flex justify-center px-4">
-              <StageNotifyPrompt
-                items={notifyPromptItems}
-                stageKey={notifyPrompt.stageKey}
-                phase={notifyPrompt.phase}
-                liveMode={liveMode}
-                onSend={() => void sendStatusUpdates(notifyPromptItems, notifyPrompt.stageKey)}
-                onDismiss={() => setNotifyPrompt(null)}
-                onFollowUp={(item) => {
-                  setNotifyPrompt(null);
-                  setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }));
-                }}
-              />
-            </div>
-          ) : null}
         </div>
       ) : (
       <div className="min-h-0 flex-1 lg:grid lg:grid-cols-[390px_minmax(0,1fr)]">
@@ -3248,6 +3441,38 @@ export default function ApplicationsWorkspace({
       </div>
       )}
 
+      {/*
+        Rendered outside the view switch on purpose. The prompt is the only way
+        to complete an optional "share this decision" step, and both the Inbox
+        and the Pipeline can start one — keeping it inside the Pipeline branch
+        left the Inbox's own "Share decision with…" action inert.
+      */}
+      {notifyPrompt && notifyPromptItems.length > 0 ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <StageNotifyPrompt
+            items={notifyPromptItems}
+            stageKey={notifyPrompt.stageKey}
+            phase={notifyPrompt.phase}
+            liveMode={liveMode}
+            errorMessage={notifyPrompt.errorMessage}
+            note={notifyNote}
+            onNoteChange={setNotifyNote}
+            onSend={() =>
+              void sendStatusUpdates(notifyPromptItems, notifyPrompt.stageKey, notifyNote)
+            }
+            onDismiss={() => {
+              setNotifyPrompt(null);
+              setNotifyNote("");
+            }}
+            onFollowUp={(item) => {
+              setNotifyPrompt(null);
+              setNotifyNote("");
+              setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }));
+            }}
+          />
+        </div>
+      ) : null}
+
       {/* Bottom-right floating utilities: dev sample-data chip beside the chat
           dock so the two never overlap (the dock stays right-anchored). */}
       <div className="absolute bottom-4 right-4 z-40 flex items-end gap-2">
@@ -3304,6 +3529,10 @@ export default function ApplicationsWorkspace({
               value={pendingNote}
               onChange={(event) => setPendingNote(event.target.value)}
               rows={3}
+              // Matches the backend's own cap so the field can never submit
+              // more than the server will store.
+              maxLength={2000}
+              data-testid="stage-confirm-note"
               placeholder={`Optional message to ${firstNameOf(selected.counterpartyName)}…`}
               className="mt-2 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
             />

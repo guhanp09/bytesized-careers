@@ -91,6 +91,27 @@ test("manager actions expose only legal next stages and never reopen terminal re
   assert.deepEqual(validStageTargetsFor("hiring_request", "accepted"), []);
 });
 
+test("legacy archives expose deliberate one-time resolution targets", () => {
+  assert.deepEqual(
+    validStageTargetsFor("application", "archived", "new", true).map((stage) => stage.key),
+    ["new", "reviewing", "shortlisted", "interviewing", "hired", "rejected"]
+  );
+  assert.deepEqual(
+    validStageTargetsFor("hiring_request", "archived", "new", true).map((stage) => stage.key),
+    ["new", "reviewing", "accepted", "declined"]
+  );
+  // A stale compatibility flag can be cleared by explicitly selecting the
+  // current non-archived stage.
+  assert.ok(
+    validStageTargetsFor("application", "reviewing", "new", true).some(
+      (stage) => stage.key === "reviewing"
+    )
+  );
+  // A private compatibility flag never permits overwriting a shared outcome.
+  assert.deepEqual(validStageTargetsFor("application", "archived", "hired", true), []);
+  assert.deepEqual(validStageTargetsFor("hiring_request", "archived", "accepted", true), []);
+});
+
 test("backendStatusOf prefers the raw backend value and reverse-maps demo statuses", () => {
   // Live item: raw status wins.
   assert.equal(backendStatusOf({ kind: "application", status: "viewed", backendStatus: "reviewing" }), "reviewing");

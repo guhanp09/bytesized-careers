@@ -6,12 +6,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Job } from "../../lib/types";
 import {
-  SCREENING_ANSWERS_KEY,
   applicationPreflightForJob,
-  buildScreeningQuestionAnswers,
-  validateScreeningQuestionAnswers,
   validateUnknownRequirementAnswers,
-  type ScreeningAnswerState,
 } from "../../lib/jobApplication";
 import {
   BackendRequestError,
@@ -74,11 +70,6 @@ const applicationFieldErrors = (error: unknown) => {
   if (!(error instanceof BackendRequestError) || !error.fieldErrors) return {};
   const errors: Record<string, string> = {};
   for (const field of Object.keys(error.fieldErrors)) {
-    const screeningMatch = field.match(/screening_questions\.(\d+)(?:\.response)?$/);
-    if (screeningMatch) {
-      errors[`screening-question-${screeningMatch[1]}`] = "Complete this screening question.";
-      continue;
-    }
     const requirementMatch = field.match(/^first_message_answers\.([^.]+)$/);
     if (requirementMatch) errors[requirementMatch[1]] = "Complete this requested detail.";
   }
@@ -138,7 +129,6 @@ export default function JobActionsPanelClient({
   }, [job.howToApply, requirementKeys]);
   const needsPortfolio = requirementKeys.includes("relevant_portfolio");
   const [answers, setAnswers] = React.useState<FirstMessageAnswers>({});
-  const [screeningAnswers, setScreeningAnswers] = React.useState<ScreeningAnswerState>({});
   const [answerErrors, setAnswerErrors] = React.useState<Record<string, string>>({});
   const [requirementsOpen, setRequirementsOpen] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
@@ -472,7 +462,7 @@ export default function JobActionsPanelClient({
     // Hard block: never submit until every required first-message detail is complete.
     // Validate before auth so an incomplete attempt shows calm inline guidance
     // instead of bouncing a signed-out requester to the login screen.
-    if (requirementKeys.length || unknownRequirementKeys.length || preflight.screeningQuestions.length) {
+    if (requirementKeys.length || unknownRequirementKeys.length) {
       const normalizedAnswers = normalizeFirstMessageAnswers(requirementKeys, "job", answers, requirementPrompts);
       for (const key of unknownRequirementKeys) {
         if (typeof answers[key] === "string") normalizedAnswers[key] = answers[key];
@@ -480,16 +470,13 @@ export default function JobActionsPanelClient({
       const errors = {
         ...validateAnswers(requirementKeys, "job", normalizedAnswers),
         ...validateUnknownRequirementAnswers(unknownRequirementKeys, answers),
-        ...validateScreeningQuestionAnswers(preflight.screeningQuestions, screeningAnswers),
       };
       if (Object.keys(errors).length) {
         setAnswerErrors(errors);
         setApplyState("idle");
         return;
       }
-      const answersWithoutScreening = { ...answers };
-      delete answersWithoutScreening[SCREENING_ANSWERS_KEY];
-      if (JSON.stringify(normalizedAnswers) !== JSON.stringify(answersWithoutScreening)) {
+      if (JSON.stringify(normalizedAnswers) !== JSON.stringify(answers)) {
         setAnswers(normalizedAnswers);
       }
     }
@@ -507,12 +494,6 @@ export default function JobActionsPanelClient({
       const normalizedAnswers = normalizeFirstMessageAnswers(requirementKeys, "job", answers, requirementPrompts);
       for (const key of unknownRequirementKeys) {
         if (typeof answers[key] === "string") normalizedAnswers[key] = answers[key].trim();
-      }
-      if (preflight.screeningQuestions.length) {
-        normalizedAnswers[SCREENING_ANSWERS_KEY] = buildScreeningQuestionAnswers(
-          preflight.screeningQuestions,
-          screeningAnswers,
-        );
       }
       const portfolioAnswer = normalizedAnswers.relevant_portfolio;
       const portfolioItemIds = isPortfolioAnswer(portfolioAnswer)
@@ -623,9 +604,7 @@ export default function JobActionsPanelClient({
               ? "This job is no longer accepting applications."
             : preflight.mode === "external"
               ? "This opens another site. CreatorJobs does not receive or track the application."
-              : preflight.hasPreflightDetails
-                ? "Review the application details before sending."
-                : null
+              : null
         }
       />
       <FirstMessageRequirementsModal
@@ -641,12 +620,6 @@ export default function JobActionsPanelClient({
         onClose={() => setRequirementsOpen(false)}
         submitState={applyState}
         submitError={applyError}
-        screeningQuestions={preflight.screeningQuestions}
-        screeningAnswers={screeningAnswers}
-        onScreeningAnswersChange={(next) => {
-          setScreeningAnswers(next);
-          if (Object.keys(answerErrors).length) setAnswerErrors({});
-        }}
         unknownRequirementKeys={unknownRequirementKeys}
         preflightNotice={preflightNotice || null}
         currencyCode={job.budgetCurrency}

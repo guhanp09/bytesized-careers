@@ -3,6 +3,7 @@
 import { AnimatePresence } from "framer-motion";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatedStep } from "../ui/StepTransition";
+import QuestionTooltip from "../ui/QuestionTooltip";
 import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../../lib/types";
 import { onlyDigits } from "../../lib/format";
 import { INDIA_CITIES } from "../../lib/indiaCities";
@@ -33,9 +34,9 @@ import {
   engagementLabel,
 } from "../../lib/jobContract";
 import {
-  RECRUITER_JOB_STEPS,
+  weightedJobProgress,
   type JobPostingDomainState,
-  type RecruiterJobStep,
+  type RecruiterJobScreen,
 } from "../../lib/jobPostingForm";
 import {
   ArrangementDomainFields,
@@ -49,7 +50,7 @@ const JOB_TITLE_MAX_LENGTH = 94;
 const MAX_REFERENCE_TIMESTAMP_ROWS = 8;
 const MAX_REFERENCE_VIDEOS = 3;
 
-type Step = RecruiterJobStep;
+type Step = RecruiterJobScreen;
 
 type Turnaround = { value: number; unit: TurnaroundUnit | ""; basis: TurnaroundBasis | "" } | null;
 type BudgetIntent = "" | "range" | "flexible" | "contact";
@@ -229,15 +230,6 @@ function BulletListEditor({
 
 const PLATFORM_SUGGESTIONS = ["YouTube", "Instagram"];
 
-const STEP_SUBTITLES: Record<Step, string> = {
-  basics: "Set the role, public hiring context, and compensation basis.",
-  about: "Make the workload clear before candidates apply.",
-  creatorContext: "Help the right creator recognize the opportunity.",
-  toolsTags: "Separate what is essential from what is helpful.",
-  details: "Clarify the working rhythm, timing, and collaboration window.",
-  applicationRequirements: "Set fair trial terms and a transparent process.",
-  referenceVideos: "Review the candidate-facing story before publishing.",
-};
 
 type IconName = React.ComponentProps<typeof Icon>["name"];
 
@@ -250,7 +242,9 @@ function LabelWithIcon({
 }) {
   return (
     <span className="inline-flex items-center gap-2 text-xs font-semibold text-white/80">
-      <Icon name={icon} className="h-4 w-4 text-white/72" />
+      <span aria-hidden="true" className="inline-flex text-white/72">
+        <Icon name={icon} className="h-4 w-4" />
+      </span>
       <span>{children}</span>
     </span>
   );
@@ -281,34 +275,39 @@ function Field({
   children,
   helper,
   error,
-  optional = false,
 }: {
   id?: string;
   label: React.ReactNode;
   children: React.ReactNode;
+  /** Retained for call-site compatibility; optional state is shown by the absent asterisk. */
   optional?: boolean;
   helper?: string;
   error?: string;
 }) {
+  const labelInner = (
+    <>
+      {label}
+      {helper ? <QuestionTooltip label={helper} /> : null}
+    </>
+  );
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         {id ? (
-          <label htmlFor={id} className="text-xs font-semibold text-white/80">{label}</label>
+          <label htmlFor={id} className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
+            {labelInner}
+          </label>
         ) : (
-          <div className="text-xs font-semibold text-white/80">{label}</div>
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">{labelInner}</div>
         )}
         {error ? (
           <div id={id ? `${id}-error` : undefined} role="alert" className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
             <Icon name="alert" className="w-3 h-3" />
             <span>{error}</span>
           </div>
-        ) : optional ? (
-          <span className="text-[10px] uppercase tracking-[0.14em] text-white/32">Optional</span>
         ) : null}
       </div>
       {children}
-      {helper ? <div className="text-[11px] text-white/45">{helper}</div> : null}
     </div>
   );
 }
@@ -854,8 +853,6 @@ function StepActions({
 export default function PostJobForm({
   step,
   direction,
-  currentStepNumber,
-  totalSteps,
   hasNext,
   hasBack,
   onNext,
@@ -1114,8 +1111,9 @@ export default function PostJobForm({
   const toastTimerRef = useRef<number | null>(null);
   const referenceVideoTitleRef = useRef<HTMLInputElement | null>(null);
   const previousReferenceVideoCountRef = useRef(refVideos.length);
-  const progress = totalSteps ? Math.min(currentStepNumber / totalSteps, 1) : 0;
-  const currentStepMeta = RECRUITER_JOB_STEPS.find((item) => item.id === step);
+  // Continuous, weighted progress — front-loaded so early steps feel brisk. The
+  // raw step count is never exposed (see weightedJobProgress for the model).
+  const progressPercent = Math.round(weightedJobProgress(step) * 100);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityHighlight, setCityHighlight] = useState(0);
 
@@ -1165,7 +1163,7 @@ export default function PostJobForm({
     triggerSavedToast(section);
   };
 
-  const renderStep = (id: Step) => {
+  const renderScreen = (id: Step) => {
     const titleError = basicsErrors?.title;
     const roleError = basicsErrors?.role;
     const cityError = basicsErrors?.city || basicsErrors?.cityInvalid;
@@ -1193,6 +1191,66 @@ export default function PostJobForm({
       domainErrors?.turnaround_value || domainErrors?.turnaround_unit || domainErrors?.turnaround_basis;
 
     const basicsMessages = Object.entries(basicsErrors || {}).filter(([key, message]) => key !== "identity" && message);
+    const basicsMessageBlock = (keys: string[]) => {
+      const items = basicsMessages.filter(([key]) => keys.includes(key));
+      if (!items.length) return null;
+      return (
+        <div className="mt-3 space-y-2">
+          {items.map(([, message]) => (
+            <div
+              key={message}
+              className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-amber-200/90"
+            >
+              <Icon name="alert" className="w-3.5 h-3.5" />
+              <span>{message}</span>
+            </div>
+          ))}
+        </div>
+      );
+    };
+    const actionsFor = (
+      screenId: Step,
+      saveKey: "basics" | "content" | "tags" | "refs",
+      canSave: boolean,
+      onSave?: () => boolean | void
+    ) => (
+      <StepActions
+        id={screenId}
+        saveKey={saveKey}
+        canSave={Boolean(canSave)}
+        onSave={onSave}
+        canGoBack={hasBack}
+        canGoNext={hasNext}
+        onBack={onBack}
+        onNext={onNext}
+        isBusy={isSubmitting}
+        savedSection={savedSection}
+        onSaveClick={handleSave}
+        onSaveDraft={onSaveDraft}
+        saveDraftLabel={saveDraftLabel}
+        saveDraftIcon={<Icon name="file" className="h-4 w-4" />}
+      />
+    );
+    const aboutError = contentErrors?.about;
+    const aboutPlaceholder = isRepresentedHiringIdentity
+      ? "Share the content creator’s vision, audience, and why this role matters."
+      : "Share your brand’s voice, audience, and why this role matters.";
+    const customInstructionError =
+      applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) && !howToApply.trim()
+        ? firstMessageError
+        : undefined;
+    const trialApplicationProps = {
+      state: domain,
+      onChange: onDomainChange,
+      errors: domainErrors,
+      engagementType,
+      compensationCurrency: budgetCurrency,
+      compensationUnit: budgetUnit,
+      legacyApplicationRequirements: applicationRequirements,
+      publicInstructionsLockedReason: applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+        ? "Remove the preserved legacy prompt below before adding separate public instructions."
+        : null,
+    } as const;
 
     const tagsFields = (
       <div className="flex flex-col gap-3 rounded-2xl" data-quality-target="job-tags">
@@ -1370,30 +1428,14 @@ export default function PostJobForm({
       </div>
     );
 
-    if (id === "basics") {
+    if (id === "role") {
       return (
         <StepCard
-          title="BASICS"
+          title="THE ROLE"
           icon="briefcase"
           bodyClassName="mt-8"
           size="compact"
-          actions={
-            <StepActions
-              id="basics"
-              canSave={canSaveBasics}
-              onSave={onSaveBasics}
-              canGoBack={hasBack}
-              canGoNext={hasNext}
-              onBack={onBack}
-              onNext={onNext}
-              isBusy={isSubmitting}
-              savedSection={savedSection}
-              onSaveClick={handleSave}
-              onSaveDraft={onSaveDraft}
-              saveDraftLabel={saveDraftLabel}
-              saveDraftIcon={<Icon name="file" className="h-4 w-4" />}
-            />
-          }
+          actions={actionsFor("role", "basics", Boolean(canSaveBasics), onSaveBasics)}
         >
           <div className="flex flex-col gap-6">
             <Field
@@ -1530,146 +1572,22 @@ export default function PostJobForm({
               </div>
             </Field>
 
-            <div className={workMode === "Hybrid" || workMode === "On-site" ? "grid gap-4 sm:grid-cols-2" : "max-w-full sm:max-w-[520px]"}>
-              <Field
-                id="job-work-mode"
-                label={
-                  <LabelWithIcon icon="laptop">
-                    Work mode <span className="text-white/50">*</span>
-                  </LabelWithIcon>
-                }
-                error={workModeError}
-              >
-                <div className="relative">
-                  <Icon name="globe" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70" />
-                  <select
-                    id="job-work-mode"
-                    aria-label="Work mode"
-                    aria-required="true"
-                    aria-invalid={Boolean(workModeError)}
-                    aria-describedby={workModeError ? "job-work-mode-error" : undefined}
-                    className={[basicsSelectBase, "w-full appearance-none pl-9 pr-9", workModeError ? invalidClass : ""].join(" ")}
-                    value={workMode}
-                    onChange={(e) => {
-                      const next = e.target.value as WorkMode;
-                      onWorkModeChange(next);
-                      if (next === "Remote") onCityChange("");
-                    }}
-                  >
-                    <option value="" className="bg-[#0b0b0f]">
-                      Choose work mode
-                    </option>
-                    {(["Remote", "Hybrid", "On-site"] as const).map((m) => (
-                      <option key={m} value={m} className="bg-[#0b0b0f]">
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none text-white/70">
-                    ⌄
-                  </span>
-                </div>
-              </Field>
+            {basicsMessageBlock(["title", "role", "platform"])}
+          </div>
+        </StepCard>
+      );
+    }
 
-              {workMode === "Hybrid" || workMode === "On-site" ? (
-                <Field
-                  id="job-city"
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      City <span className="text-white/50">*</span>
-                    </span>
-                  }
-                  error={cityError}
-                >
-                  <div className="relative">
-                    <input
-                      id="job-city"
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-expanded={cityOpen}
-                      aria-controls="job-city-options"
-                      aria-label="City"
-                      aria-required="true"
-                      aria-invalid={Boolean(cityError)}
-                      aria-activedescendant={
-                        cityOpen && citySuggestions[cityHighlight]
-                          ? `job-city-option-${cityHighlight}`
-                          : undefined
-                      }
-                      aria-describedby={cityError ? "job-city-error" : undefined}
-                      className={[basicsInputBase, cityError ? invalidClass : ""].join(" ")}
-                      placeholder="e.g. Chennai"
-                      value={city}
-                      onChange={(e) => {
-                        onCityChange(e.target.value);
-                        if (!cityOpen) setCityOpen(true);
-                        setCityHighlight(0);
-                      }}
-                      onFocus={() => {
-                        setCityOpen(true);
-                        setCityHighlight(0);
-                      }}
-                      onBlur={() => {
-                        window.setTimeout(() => setCityOpen(false), 120);
-                        if (cityMatch && city !== cityMatch) onCityChange(cityMatch);
-                      }}
-                      onKeyDown={(e) => {
-                        if (!cityOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                          setCityOpen(true);
-                          return;
-                        }
-                        if (!citySuggestions.length) return;
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setCityHighlight((prev) => Math.min(prev + 1, citySuggestions.length - 1));
-                        }
-                        if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          setCityHighlight((prev) => Math.max(prev - 1, 0));
-                        }
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const nextCity = citySuggestions[cityHighlight];
-                          if (nextCity) {
-                            onCityChange(nextCity);
-                            setCityOpen(false);
-                          }
-                        }
-                        if (e.key === "Escape") {
-                          setCityOpen(false);
-                        }
-                      }}
-                    />
-                    {cityOpen && citySuggestions.length ? (
-                      <div id="job-city-options" role="listbox" className="absolute z-20 mt-2 w-full rounded-xl border border-white/10 bg-[#0b0b0f] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] overflow-hidden">
-                        {citySuggestions.map((c, idx) => (
-                          <button
-                            key={c}
-                            id={`job-city-option-${idx}`}
-                            type="button"
-                            tabIndex={-1}
-                            role="option"
-                            aria-selected={idx === cityHighlight}
-                            className={[
-                              "w-full text-left px-3 py-2 text-sm text-white/85",
-                              idx === cityHighlight ? "bg-white/10" : "bg-transparent hover:bg-white/5",
-                            ].join(" ")}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              onCityChange(c);
-                              setCityOpen(false);
-                            }}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </Field>
-              ) : null}
-            </div>
-
+    if (id === "pay") {
+      return (
+        <StepCard
+          title="PAY"
+          icon="wallet"
+          bodyClassName="mt-8"
+          size="compact"
+          actions={actionsFor("pay", "basics", Boolean(canSaveBasics), onSaveBasics)}
+        >
+          <div className="flex flex-col gap-6">
             <Field
               id="job-compensation-mode"
               label={
@@ -1855,48 +1773,19 @@ export default function PostJobForm({
               </div>
             </Field>
           </div>
-          {basicsMessages.length ? (
-            <div className="mt-3 space-y-2">
-              {basicsMessages.map(([, message]) => (
-                <div
-                  key={message}
-                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-amber-200/90"
-                >
-                  <Icon name="alert" className="w-3.5 h-3.5" />
-                  <span>{message}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {basicsMessageBlock(["budgetMissing", "budgetRange"])}
         </StepCard>
       );
     }
 
-    if (id === "details") {
+    if (id === "arrangement") {
       return (
         <StepCard
-          title="Details"
+          title="WORKING TOGETHER"
           icon="sliders-horizontal"
           bodyClassName="mt-4"
           size="compact"
-          optional
-          actions={
-            <StepActions
-              id="details"
-              saveKey="basics"
-              canSave={Boolean(canSaveDetails)}
-              onSave={onSaveDetails || onSaveBasics}
-              canGoBack={hasBack}
-              canGoNext={hasNext}
-              onBack={onBack}
-              onNext={onNext}
-              isBusy={isSubmitting}
-              savedSection={savedSection}
-              onSaveClick={handleSave}
-              onSaveDraft={onSaveDraft}
-              saveDraftLabel={saveDraftLabel}
-            />
-          }
+          actions={actionsFor("arrangement", "basics", Boolean(canSaveDetails), onSaveDetails || onSaveBasics)}
         >
           <div className="flex flex-col gap-4">
             <Field id="job-engagement-type" label={<LabelWithIcon icon="briefcase">Engagement type</LabelWithIcon>} error={engagementError}>
@@ -1917,6 +1806,147 @@ export default function PostJobForm({
                 ))}
               </select>
             </Field>
+
+            <div className={workMode === "Hybrid" || workMode === "On-site" ? "grid gap-4 sm:grid-cols-2" : "max-w-full sm:max-w-[520px]"}>
+              <Field
+                id="job-work-mode"
+                label={
+                  <LabelWithIcon icon="laptop">
+                    Work mode <span className="text-white/50">*</span>
+                  </LabelWithIcon>
+                }
+                error={workModeError}
+              >
+                <div className="relative">
+                  <Icon name="globe" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70" />
+                  <select
+                    id="job-work-mode"
+                    aria-label="Work mode"
+                    aria-required="true"
+                    aria-invalid={Boolean(workModeError)}
+                    aria-describedby={workModeError ? "job-work-mode-error" : undefined}
+                    className={[basicsSelectBase, "w-full appearance-none pl-9 pr-9", workModeError ? invalidClass : ""].join(" ")}
+                    value={workMode}
+                    onChange={(e) => {
+                      const next = e.target.value as WorkMode;
+                      onWorkModeChange(next);
+                      if (next === "Remote") onCityChange("");
+                    }}
+                  >
+                    <option value="" className="bg-[#0b0b0f]">
+                      Choose work mode
+                    </option>
+                    {(["Remote", "Hybrid", "On-site"] as const).map((m) => (
+                      <option key={m} value={m} className="bg-[#0b0b0f]">
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none text-white/70">
+                    ⌄
+                  </span>
+                </div>
+              </Field>
+
+              {workMode === "Hybrid" || workMode === "On-site" ? (
+                <Field
+                  id="job-city"
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      City <span className="text-white/50">*</span>
+                    </span>
+                  }
+                  error={cityError}
+                >
+                  <div className="relative">
+                    <input
+                      id="job-city"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={cityOpen}
+                      aria-controls="job-city-options"
+                      aria-label="City"
+                      aria-required="true"
+                      aria-invalid={Boolean(cityError)}
+                      aria-activedescendant={
+                        cityOpen && citySuggestions[cityHighlight]
+                          ? `job-city-option-${cityHighlight}`
+                          : undefined
+                      }
+                      aria-describedby={cityError ? "job-city-error" : undefined}
+                      className={[basicsInputBase, cityError ? invalidClass : ""].join(" ")}
+                      placeholder="e.g. Chennai"
+                      value={city}
+                      onChange={(e) => {
+                        onCityChange(e.target.value);
+                        if (!cityOpen) setCityOpen(true);
+                        setCityHighlight(0);
+                      }}
+                      onFocus={() => {
+                        setCityOpen(true);
+                        setCityHighlight(0);
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => setCityOpen(false), 120);
+                        if (cityMatch && city !== cityMatch) onCityChange(cityMatch);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!cityOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                          setCityOpen(true);
+                          return;
+                        }
+                        if (!citySuggestions.length) return;
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setCityHighlight((prev) => Math.min(prev + 1, citySuggestions.length - 1));
+                        }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setCityHighlight((prev) => Math.max(prev - 1, 0));
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const nextCity = citySuggestions[cityHighlight];
+                          if (nextCity) {
+                            onCityChange(nextCity);
+                            setCityOpen(false);
+                          }
+                        }
+                        if (e.key === "Escape") {
+                          setCityOpen(false);
+                        }
+                      }}
+                    />
+                    {cityOpen && citySuggestions.length ? (
+                      <div id="job-city-options" role="listbox" className="absolute z-20 mt-2 w-full rounded-xl border border-white/10 bg-[#0b0b0f] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] overflow-hidden">
+                        {citySuggestions.map((c, idx) => (
+                          <button
+                            key={c}
+                            id={`job-city-option-${idx}`}
+                            type="button"
+                            tabIndex={-1}
+                            role="option"
+                            aria-selected={idx === cityHighlight}
+                            className={[
+                              "w-full cursor-pointer text-left px-3 py-2 text-sm text-white/85",
+                              idx === cityHighlight ? "bg-white/10" : "bg-transparent hover:bg-white/5",
+                            ].join(" ")}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              onCityChange(c);
+                              setCityOpen(false);
+                            }}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </Field>
+              ) : null}
+            </div>
+            {basicsMessageBlock(["workMode", "city", "cityInvalid"])}
 
             {engagementType && engagementType !== "one_time_project" ? (
               <Field id="job-weekly-hours-min" label={<LabelWithIcon icon="clock">Expected weekly hours</LabelWithIcon>} optional error={weeklyHoursError}>
@@ -2095,40 +2125,37 @@ export default function PostJobForm({
       );
     }
 
-    if (id === "toolsTags") {
+    if (id === "skills") {
+      return (
+        <StepCard
+          title="SKILLS"
+          icon="sliders-horizontal"
+          bodyClassName="mt-4"
+          size="compact"
+          actions={actionsFor("skills", "tags", Boolean(canSaveCreatorContext), onSaveCreatorContext)}
+        >
+          <SkillsQualificationsFields
+            state={domain}
+            onChange={onDomainChange}
+            errors={domainErrors}
+            roleName={selectedRoleName}
+            legacyLanguages={languages}
+            sections={["skills"]}
+          />
+        </StepCard>
+      );
+    }
+
+    if (id === "toolsLanguages") {
       return (
         <StepCard
           title="TOOLS & TAGS"
           icon="sliders-horizontal"
           bodyClassName="mt-4"
           size="compact"
-          actions={
-            <StepActions
-              id="toolsTags"
-              saveKey="tags"
-              canSave={Boolean(canSaveCreatorContext)}
-              onSave={onSaveCreatorContext}
-              canGoBack={hasBack}
-              canGoNext={hasNext}
-              onBack={onBack}
-              onNext={onNext}
-              isBusy={isSubmitting}
-              savedSection={savedSection}
-              onSaveClick={handleSave}
-              onSaveDraft={onSaveDraft}
-              saveDraftLabel={saveDraftLabel}
-            />
-          }
+          actions={actionsFor("toolsLanguages", "tags", Boolean(canSaveCreatorContext), onSaveCreatorContext)}
         >
           <div className="flex flex-col gap-5">
-            <SkillsQualificationsFields
-              state={domain}
-              onChange={onDomainChange}
-              errors={domainErrors}
-              roleName={selectedRoleName}
-              legacyLanguages={languages}
-            />
-
             <div data-quality-target="job-tools">
               {legacyToolsNotCaptured ? (
                 <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-white/52">
@@ -2151,41 +2178,25 @@ export default function PostJobForm({
     }
 
     if (id === "about") {
-      const aboutError = contentErrors?.about;
-      const aboutTitle = "About the brand";
-      const aboutPlaceholder = isRepresentedHiringIdentity
-        ? "Share the content creator’s vision, audience, and why this role matters."
-        : "Share your brand’s voice, audience, and why this role matters.";
       return (
         <StepCard
           title="About"
           icon="notebook-text"
           bodyClassName="mt-4"
           size="compact"
-          actions={
-            <StepActions
-              id="about"
-              saveKey="content"
-              canSave={typeof canSaveAbout === "boolean" ? canSaveAbout : canSaveContent}
-              onSave={onSaveAbout || onSaveContent}
-              canGoBack={hasBack}
-              canGoNext={hasNext}
-              onBack={onBack}
-              onNext={onNext}
-              isBusy={isSubmitting}
-              savedSection={savedSection}
-              onSaveClick={handleSave}
-              onSaveDraft={onSaveDraft}
-              saveDraftLabel={saveDraftLabel}
-            />
-          }
+          actions={actionsFor(
+            "about",
+            "content",
+            Boolean(typeof canSaveAbout === "boolean" ? canSaveAbout : canSaveContent),
+            onSaveAbout || onSaveContent
+          )}
         >
           <div className="flex flex-col gap-4">
             <Field
               id="job-about-brand"
               label={
                 <span className="inline-flex items-center gap-1.5">
-                  <LabelWithIcon icon="file">{aboutTitle}</LabelWithIcon>
+                  <LabelWithIcon icon="file">About the brand</LabelWithIcon>
                   <span className="text-white/50">*</span>
                 </span>
               }
@@ -2226,14 +2237,6 @@ export default function PostJobForm({
               </div>
             </div>
 
-            <WorkDeliverablesFields
-              state={domain}
-              onChange={onDomainChange}
-              errors={domainErrors}
-              roleName={selectedRoleName}
-              engagementType={engagementType}
-            />
-
             <div className="space-y-1.5">
               <div className="text-xs font-semibold text-white/80">
                 <LabelWithIcon icon="clipboard-check">Experience or portfolio expectations</LabelWithIcon>
@@ -2256,50 +2259,97 @@ export default function PostJobForm({
       );
     }
 
-    if (id === "applicationRequirements") {
-      const customInstructionError =
-        applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) && !howToApply.trim()
-          ? firstMessageError
-          : undefined;
+    if (id === "deliverables") {
+      return (
+        <StepCard
+          title="DELIVERABLES"
+          icon="notebook-text"
+          bodyClassName="mt-4"
+          size="compact"
+          actions={actionsFor(
+            "deliverables",
+            "content",
+            Boolean(typeof canSaveAbout === "boolean" ? canSaveAbout : canSaveContent),
+            onSaveAbout || onSaveContent
+          )}
+        >
+          <WorkDeliverablesFields
+            state={domain}
+            onChange={onDomainChange}
+            errors={domainErrors}
+            roleName={selectedRoleName}
+            engagementType={engagementType}
+            sections={["deliverables"]}
+          />
+        </StepCard>
+      );
+    }
+
+    if (id === "workflow") {
+      return (
+        <StepCard
+          title="WORKFLOW"
+          icon="notebook-text"
+          bodyClassName="mt-4"
+          size="compact"
+          actions={actionsFor(
+            "workflow",
+            "content",
+            Boolean(typeof canSaveAbout === "boolean" ? canSaveAbout : canSaveContent),
+            onSaveAbout || onSaveContent
+          )}
+        >
+          <WorkDeliverablesFields
+            state={domain}
+            onChange={onDomainChange}
+            errors={domainErrors}
+            roleName={selectedRoleName}
+            engagementType={engagementType}
+            sections={["workflow"]}
+          />
+        </StepCard>
+      );
+    }
+
+    if (id === "trial") {
+      return (
+        <StepCard
+          title="TRIAL"
+          icon="clipboard-list"
+          bodyClassName="mt-4"
+          size="compact"
+          actions={actionsFor("trial", "content", Boolean(canSaveApplicationRequirements), onSaveApplicationRequirements)}
+        >
+          <TrialApplicationFields {...trialApplicationProps} sections={["trial"]} />
+        </StepCard>
+      );
+    }
+
+    if (id === "process") {
+      return (
+        <StepCard
+          title="EVALUATION"
+          icon="clipboard-list"
+          bodyClassName="mt-4"
+          size="compact"
+          actions={actionsFor("process", "content", Boolean(canSaveApplicationRequirements), onSaveApplicationRequirements)}
+        >
+          <TrialApplicationFields {...trialApplicationProps} sections={["process"]} />
+        </StepCard>
+      );
+    }
+
+    if (id === "apply") {
       return (
         <StepCard
           title="APPLICATION REQUIREMENTS"
           icon="clipboard-list"
           bodyClassName="mt-4"
           size="compact"
-          actions={
-            <StepActions
-              id="applicationRequirements"
-              saveKey="content"
-              canSave={Boolean(canSaveApplicationRequirements)}
-              onSave={onSaveApplicationRequirements}
-              canGoBack={hasBack}
-              canGoNext={hasNext}
-              onBack={onBack}
-              onNext={onNext}
-              isBusy={isSubmitting}
-              savedSection={savedSection}
-              onSaveClick={handleSave}
-              onSaveDraft={onSaveDraft}
-              saveDraftLabel={saveDraftLabel}
-            />
-          }
+          actions={actionsFor("apply", "content", Boolean(canSaveApplicationRequirements), onSaveApplicationRequirements)}
         >
           <div className="flex flex-col gap-4">
-            <TrialApplicationFields
-              state={domain}
-              onChange={onDomainChange}
-              errors={domainErrors}
-              engagementType={engagementType}
-              compensationCurrency={budgetCurrency}
-              compensationUnit={budgetUnit}
-              legacyApplicationRequirements={applicationRequirements}
-              publicInstructionsLockedReason={
-                applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
-                  ? "Remove the preserved legacy prompt below before adding separate public instructions."
-                  : null
-              }
-            />
+            <TrialApplicationFields {...trialApplicationProps} sections={["apply"]} />
 
             <div className="flex flex-col gap-3" data-quality-target="job-first-message">
               <div>
@@ -2358,13 +2408,30 @@ export default function PostJobForm({
       );
     }
 
+    if (id === "references") {
+      return (
+        <StepCard
+          bodyClassName="mt-0"
+          size="compact"
+          actions={actionsFor("references", "refs", Boolean(canSaveReferenceVideos), onSaveReferenceVideos)}
+        >
+          <div className="space-y-4">
+            <p className="text-xs leading-5 text-white/48">
+              A strong reference helps candidates match your taste. You can publish without one.
+            </p>
+            {referenceVideoFields}
+          </div>
+        </StepCard>
+      );
+    }
+
     return (
       <StepCard
         bodyClassName="mt-0"
         size="compact"
         actions={
           <StepActions
-            id="referenceVideos"
+            id="review"
             saveKey="refs"
             canSave={Boolean(canSaveReferenceVideos)}
             onSave={onSaveReferenceVideos}
@@ -2400,7 +2467,6 @@ export default function PostJobForm({
               {reviewPreview}
             </section>
           ) : null}
-          <div className="border-t border-white/[0.08] pt-6">{referenceVideoFields}</div>
         </div>
       </StepCard>
     );
@@ -2409,37 +2475,20 @@ export default function PostJobForm({
   return (
     <div className="space-y-6">
       <section className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
-        <div className="grid items-start">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
-              Step {currentStepNumber} of {totalSteps}
-            </p>
-          </div>
-          <div>
-            <p className="mt-4 text-sm font-semibold text-white/88" aria-current="step">
-              {currentStepMeta?.label}
-            </p>
-            {STEP_SUBTITLES[step] ? (
-              <p className="mt-1 text-sm text-white/55">{STEP_SUBTITLES[step]}</p>
-            ) : null}
-            <div className="mt-3">
-              <div
-                className="h-[3px] overflow-hidden rounded-full bg-white/10"
-                role="progressbar"
-                aria-label="Job post progress"
-                aria-valuemin={1}
-                aria-valuemax={totalSteps}
-                aria-valuenow={currentStepNumber}
-                aria-valuetext={`${currentStepMeta?.label || "Step"}, step ${currentStepNumber} of ${totalSteps}`}
-              >
-                <div
-                  className="h-full rounded-full bg-white/45 transition-[width] duration-300 ease-out"
-                  style={{ width: `${progress * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
+        <div
+          className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/10"
+          role="progressbar"
+          aria-label="Job posting progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progressPercent}
+          aria-valuetext={`${progressPercent}% complete`}
+        >
+          <div
+            className="h-full rounded-full bg-white/45 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
       </section>
 
@@ -2453,7 +2502,7 @@ export default function PostJobForm({
         <div className="relative min-h-[420px]">
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <AnimatedStep key={step} direction={direction} flowLayout>
-              {renderStep(step)}
+              {renderScreen(step)}
             </AnimatedStep>
           </AnimatePresence>
         </div>
@@ -2469,13 +2518,7 @@ export default function PostJobForm({
           nextType={hasNext ? "button" : "submit"}
           nextLabel={hasNext ? "Continue" : isSubmitting ? "Saving…" : publishLabel}
           nextIcon={hasNext ? undefined : <Icon name="globe" className="h-4 w-4" />}
-          nextAriaLabel={
-            hasNext
-              ? `Continue to step ${currentStepNumber + 1}`
-              : isSubmitting
-                ? "Saving listing"
-                : publishLabel
-          }
+          nextAriaLabel={hasNext ? "Continue" : isSubmitting ? "Saving listing" : publishLabel}
           nextDisabled={!hasNext && publishDisabled}
           isBusy={isSubmitting}
           savedSection={savedSection}

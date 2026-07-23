@@ -93,9 +93,6 @@ export function seoRouteMatchesFields(intent: SeoRequiredIntent, fields: SeoInte
 }
 
 export function jobIntentFields(job: JobLike): SeoIntentFields {
-  const requiredLanguages = job.languageRequirements == null
-    ? job.languages
-    : job.languageRequirements.filter((item) => item.priority === "required").map((item) => item.language);
   return {
     role: bag(job.primaryRoleName, job.roleSpecialization, job.title, job.category, job.tags, job.formatsHiredFor),
     niche: bag(job.contentNiches, job.category, job.tags),
@@ -103,7 +100,9 @@ export function jobIntentFields(job: JobLike): SeoIntentFields {
     platform: bag(job.platform, job.postedPlatform, job.platforms, job.title, job.tags),
     format: bag(job.formatsHiredFor, job.title, job.tags),
     genre: bag(job.contentGenres, job.title, job.tags),
-    language: bag(requiredLanguages),
+    // Language is no longer a public job-discovery dimension, so jobs never match a
+    // language SEO intent (talent-profile language matching below is unaffected).
+    language: bag(),
     tool: bag(job.tools, job.requiredToolKeys, job.otherRequiredTools),
   };
 }

@@ -1,6 +1,14 @@
 // Pure helpers for rendering real backend messages in the inbox thread. Kept
 // framework-free so the sender-side / unread logic is unit-testable without a DOM.
 
+export type ScreeningQuestionSnapshot = {
+  id?: string;
+  position?: number;
+  prompt: string;
+  required: boolean;
+  response_guidance?: string | null;
+};
+
 export type ChatThreadMessage = {
   id: string;
   fromMe: boolean;
@@ -9,8 +17,16 @@ export type ChatThreadMessage = {
   atLabel: string;
   createdAt?: string | null;
   readByRecipient?: boolean;
-  /** "status" for platform-generated pipeline updates rendered apart from bubbles. */
-  kind?: "status";
+  /**
+   * "status" for platform-generated pipeline updates; "screening" for the automated
+   * screening-question message sent by the hiring side after an application.
+   */
+  kind?: "status" | "screening";
+  /** Structured snapshot for the automated screening-question message. */
+  screening?: {
+    automated: boolean;
+    questions: ScreeningQuestionSnapshot[];
+  };
 };
 
 type BackendMessageLike = {
@@ -19,6 +35,9 @@ type BackendMessageLike = {
   sender_name?: string | null;
   body: string;
   kind?: string | null;
+  message_kind?: string | null;
+  automated?: boolean;
+  screening?: { questions?: ScreeningQuestionSnapshot[] } | null;
   created_at?: string | null;
   read_by_recipient?: boolean;
 };
@@ -32,6 +51,7 @@ export function mapBackendMessage(
   counterpartyName: string,
   formatTime: (iso?: string | null) => string
 ): ChatThreadMessage {
+  const isScreening = message.message_kind === "screening_questions";
   return {
     id: message.id,
     fromMe: message.from_me,
@@ -40,7 +60,17 @@ export function mapBackendMessage(
     atLabel: formatTime(message.created_at),
     createdAt: message.created_at,
     readByRecipient: Boolean(message.read_by_recipient),
-    kind: message.kind === "status_update" || message.kind === "engagement_update" ? "status" : undefined,
+    kind: isScreening
+      ? "screening"
+      : message.kind === "status_update" || message.kind === "engagement_update"
+        ? "status"
+        : undefined,
+    screening: isScreening
+      ? {
+          automated: Boolean(message.automated),
+          questions: Array.isArray(message.screening?.questions) ? message.screening!.questions : [],
+        }
+      : undefined,
   };
 }
 
@@ -95,7 +125,8 @@ export function hasPendingLatestOutgoingReceipt(messages: BackendMessageLike[]):
       (message) =>
         message.from_me &&
         message.kind !== "status_update" &&
-        message.kind !== "engagement_update"
+        message.kind !== "engagement_update" &&
+        message.kind !== "screening_questions"
     );
   return Boolean(latest && !latest.read_by_recipient);
 }

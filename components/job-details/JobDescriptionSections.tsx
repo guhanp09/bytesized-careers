@@ -11,7 +11,6 @@ import {
   durationForJob,
   engagementForJob,
   formatJobDeliverable,
-  formatJobLanguage,
   formatTurnaround,
   formatWeeklyHours,
   hiringStageLabel,
@@ -28,7 +27,6 @@ import {
   uniqueJobText,
   workSetupForJob,
 } from "../../lib/jobPresentation";
-import { CUSTOM_INSTRUCTION_REQUIREMENT_KEY } from "../../lib/firstMessageRequirements";
 import type { Job } from "../../lib/types";
 import {
   BodySection,
@@ -58,34 +56,6 @@ function EmptyImportant({ children }: { children: React.ReactNode }) {
   );
 }
 
-function LanguageCards({ items }: { items: NonNullable<Job["languageRequirements"]> }) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {items.map((item, index) => {
-        const presentation = formatJobLanguage(item);
-        return (
-          <article
-            key={`${item.language}-${item.priority}-${index}`}
-            className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5"
-          >
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <h3 className="break-words font-medium text-white/86">{presentation.language}</h3>
-              <TagPill>{presentation.priority}</TagPill>
-            </div>
-            <p className="mt-2 text-xs text-white/50">{presentation.proficiency}</p>
-            {presentation.purposes ? (
-              <p className="mt-1.5 text-xs leading-relaxed text-white/62">{presentation.purposes}</p>
-            ) : null}
-            {presentation.notes ? (
-              <p className="mt-2 whitespace-pre-line text-sm text-white/62">{presentation.notes}</p>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function JobDescriptionSections({ job }: { job: Job }) {
   const about = cleanJobText(job.about);
   const responsibilities = splitJobLines(job.responsibilities);
@@ -94,11 +64,8 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   const requiredSkills = requiredSkillsForJob(job);
   const preferredSkills = preferredSkillsForJob(job);
   const requiredTools = requiredToolsForJob(job);
-  const canonicalLanguagesCaptured = job.languageRequirements !== null && job.languageRequirements !== undefined;
-  const languages = job.languageRequirements || [];
-  const requiredLanguages = languages.filter((item) => item.priority === "required");
-  const preferredLanguages = languages.filter((item) => item.priority === "preferred");
-  const legacyLanguages = canonicalLanguagesCaptured ? [] : uniqueJobText(job.languages || []);
+  // Language requirements are no longer shown on public job listings (stored values
+  // remain in the record for backward compatibility but are not presented here).
   const experience = cleanJobText(job.experience);
   const sourceInputs = job.sourceInputs || [];
   const revision = revisionForJob(job);
@@ -109,13 +76,8 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   // that there is no trial.
   const trialPresentation = job.trialStatus ? trialForJob(job) : null;
   const hiringProcess = job.hiringProcess || [];
-  const screeningQuestions = job.screeningQuestions || [];
   const applicationRequirements = uniqueJobText(job.applicationRequirements || []).map(applicationRequirementLabel);
-  const customInstructionIsApplicantRequirement = Boolean(
-    job.applicationRequirements?.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY),
-  );
   const howToApply = cleanJobText(job.howToApply);
-  const legacyScreeningPrompt = customInstructionIsApplicantRequirement ? howToApply : "";
   const externalUrl = safeJobExternalUrl(job.externalApplyUrl);
   const referenceVideos = job.referenceVideos || [];
   const tags = uniqueJobText(job.tags || []);
@@ -125,8 +87,6 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
       requiredSkills.length ||
       preferredSkills.length ||
       requiredTools.length ||
-      languages.length ||
-      legacyLanguages.length ||
       experience ||
       sourceInputs.length ||
       cleanJobText(job.sourceInputsNotes) ||
@@ -144,7 +104,6 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
       compensation.disclosed ||
       job.trialStatus ||
       hiringProcess.length ||
-      screeningQuestions.length ||
       applicationRequirements.length ||
       howToApply ||
       job.applicationMode ||
@@ -217,10 +176,10 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
         </section>
       ) : null}
 
-      {(requiredSkills.length || legacyRequirements.length || requiredTools.length || languages.length || legacyLanguages.length || preferredSkills.length || experience || cleanJobText(job.requiredSkillsNote) || cleanJobText(job.preferredSkillsNote)) ? (
+      {(requiredSkills.length || legacyRequirements.length || requiredTools.length || preferredSkills.length || experience || cleanJobText(job.requiredSkillsNote) || cleanJobText(job.preferredSkillsNote)) ? (
         <section className={`${LISTING_PANEL_CLASS} min-w-0`} aria-label="Qualifications">
           <div className="min-w-0 divide-y divide-white/[0.08]">
-            {(requiredSkills.length || requiredLanguages.length || experience || cleanJobText(job.requiredSkillsNote)) ? (
+            {(requiredSkills.length || experience || cleanJobText(job.requiredSkillsNote)) ? (
               <BodySection title="Must have" icon="clipboard-check">
                 <div className="space-y-4">
                   {requiredSkills.length ? <Pills items={requiredSkills} /> : null}
@@ -229,14 +188,6 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                   ) : null}
                   {cleanJobText(job.requiredSkillsNote) ? (
                     <p className="whitespace-pre-line text-white/68">{cleanJobText(job.requiredSkillsNote)}</p>
-                  ) : null}
-                  {requiredLanguages.length ? (
-                    <div>
-                      <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">
-                        Required languages
-                      </h3>
-                      <LanguageCards items={requiredLanguages} />
-                    </div>
                   ) : null}
                 </div>
               </BodySection>
@@ -258,26 +209,12 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
               </BodySection>
             ) : null}
 
-            {legacyLanguages.length && !languages.length ? (
-              <BodySection title="Languages listed" icon="languages">
-                <Pills items={legacyLanguages} />
-              </BodySection>
-            ) : null}
-
-            {(preferredSkills.length || preferredLanguages.length || cleanJobText(job.preferredSkillsNote)) ? (
+            {(preferredSkills.length || cleanJobText(job.preferredSkillsNote)) ? (
               <BodySection title="Nice to have" icon="sparkles">
                 <div className="space-y-4">
                   {preferredSkills.length ? <Pills items={preferredSkills} /> : null}
                   {cleanJobText(job.preferredSkillsNote) ? (
                       <p className="whitespace-pre-line text-white/68">{cleanJobText(job.preferredSkillsNote)}</p>
-                  ) : null}
-                  {preferredLanguages.length ? (
-                    <div>
-                      <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">
-                        Preferred languages
-                      </h3>
-                      <LanguageCards items={preferredLanguages} />
-                    </div>
                   ) : null}
                 </div>
               </BodySection>
@@ -372,7 +309,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
         </section>
       ) : null}
 
-      {(trialPresentation || hiringProcess.length || screeningQuestions.length || applicationRequirements.length || howToApply || job.applicationMode || deadline.valid) ? (
+      {(trialPresentation || hiringProcess.length || applicationRequirements.length || howToApply || job.applicationMode || deadline.valid) ? (
         <section className={`${LISTING_PANEL_CLASS} min-w-0`} aria-label="Trial and application">
           <div className="min-w-0 divide-y divide-white/[0.08]">
             {trialPresentation ? (
@@ -428,38 +365,6 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
               </BodySection>
             ) : null}
 
-            {(screeningQuestions.length || legacyScreeningPrompt) ? (
-              <BodySection title="Screening questions" icon="message-square-text">
-                <p className="mb-4 text-sm text-white/55">You can review these before starting your application.</p>
-                <ol className="space-y-3">
-                  {legacyScreeningPrompt ? (
-                    <li className="rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5">
-                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                        <p className="min-w-0 flex-1 whitespace-pre-line break-words font-medium text-white/84">
-                          1. {legacyScreeningPrompt}
-                        </p>
-                        <TagPill>Required</TagPill>
-                      </div>
-                    </li>
-                  ) : null}
-                  {screeningQuestions.map((question, index) => (
-                    <li key={`${question.prompt}-${index}`} className="rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5">
-                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                        <p className="min-w-0 flex-1 break-words font-medium text-white/84">
-                          {legacyScreeningPrompt ? `${index + 2}. ` : `${index + 1}. `}
-                          {cleanJobText(question.prompt)}
-                        </p>
-                        <TagPill>{question.required ? "Required" : "Optional"}</TagPill>
-                      </div>
-                      {cleanJobText(question.response_guidance) ? (
-                        <p className="mt-2 text-sm text-white/52">{cleanJobText(question.response_guidance)}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              </BodySection>
-            ) : null}
-
             <BodySection title="How to apply" icon="send">
               <div className="space-y-4">
                 <div>
@@ -480,7 +385,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                     <Pills items={applicationRequirements} />
                   </div>
                 ) : null}
-                {howToApply && !customInstructionIsApplicantRequirement ? (
+                {howToApply ? (
                   <p className="whitespace-pre-line text-white/68">{howToApply}</p>
                 ) : null}
                 {job.applicationMode === "external" ? (

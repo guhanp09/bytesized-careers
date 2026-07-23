@@ -13,6 +13,7 @@ from conftest import TestSessionLocal, valid_published_job_payload
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.core.job_domain_taxonomy import AI_FIELD_CONFIRMATION_POLICY
 from app.models import Job, Role
 
 DOMAIN_COLUMNS = {
@@ -535,7 +536,8 @@ async def test_public_job_exposes_application_language_revision_and_employer_con
         "expected_rate",
         "start_availability",
     ]
-    assert body["screening_questions"][0]["required"] is True
+    # Screening questions are private hiring configuration — never public listing content.
+    assert body["screening_questions"] is None
     assert body["how_to_apply"].startswith("Answer the questions")
     assert body["language_requirements"][0]["priority"] == "required"
     assert body["revision_policy"] == "fixed"
@@ -918,3 +920,32 @@ def test_v3_migration_preserves_v1_and_v2_rows_and_is_reversible(tmp_path: Path)
         v1_id: 1,
         v2_id: 2,
     }
+
+
+def test_future_ai_confirmation_policy_keeps_sensitive_fields_confirmation_gated() -> None:
+    assert DOMAIN_COLUMNS <= set(AI_FIELD_CONFIRMATION_POLICY)
+    explicit_fields = {
+        "source_inputs.type.account_access",
+        "source_inputs.type.analytics_access",
+        "source_inputs.sensitive_access_confirmed",
+        "trial_status",
+        "trial_compensation_amount",
+        "trial_work_usage",
+        "trial_portfolio_permission",
+        "unpaid_trial_confirmed",
+        "start_date",
+        "engagement_end_date",
+        "deadline_at",
+        "budget_amount",
+        "expected_weekly_hours_min",
+        "expected_weekly_hours_max",
+        "employer_context_type",
+    }
+    assert all(
+        AI_FIELD_CONFIRMATION_POLICY[field] == "explicit_recruiter_confirmation_required"
+        for field in explicit_fields
+    )
+    assert (
+        AI_FIELD_CONFIRMATION_POLICY["hiring_verification_status_snapshot"]
+        == "server_owned_never_infer"
+    )

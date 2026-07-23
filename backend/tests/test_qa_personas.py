@@ -334,9 +334,9 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
         session.add(
             JobApplication(
                 id=transient_application_id,
-                job_id=personas.persona_uuid("job:both-sides-1"),
+                job_id=personas.persona_uuid("job:hidden-moderation"),
                 applicant_user_id=personas.persona_user_id("new-empty"),
-                job_owner_user_id=personas.persona_user_id("both-sides"),
+                job_owner_user_id=personas.persona_user_id("recruiter-active"),
                 cover_note="Transient QA application to clear on restore.",
                 portfolio_item_ids=[],
                 first_message_answers={},
@@ -347,9 +347,9 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
         session.add(
             TalentInterest(
                 id=transient_interest_id,
-                talent_listing_id=personas.persona_uuid("listing:both-sides"),
+                talent_listing_id=personas.persona_uuid("listing:talent-complete"),
                 recruiter_user_id=personas.persona_user_id("recruiter-drafts"),
-                owner_user_id=personas.persona_user_id("both-sides"),
+                owner_user_id=personas.persona_user_id("talent-complete"),
                 note="Transient QA hiring request to clear on restore.",
                 first_message_answers={},
                 status="new",
@@ -431,6 +431,33 @@ async def test_each_targeted_restore_pack_is_repeatable(client, scenario, confir
             json={"confirmation": confirmation},
         )
         assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_inbox_restore_includes_deliberate_legacy_archive_resolution_fixtures(client):
+    token = await _prepare()
+    restored = await client.post(
+        "/api/v1/qa/scenarios/inbox-pipeline/restore",
+        headers=_auth(token),
+        json={"confirmation": "RESTORE INBOX"},
+    )
+    assert restored.status_code == 200, restored.text
+
+    async with TestSessionLocal() as session:
+        application = await session.get(
+            JobApplication,
+            personas.persona_uuid("application:new-empty:both-sides-1"),
+        )
+        interest = await session.get(
+            TalentInterest,
+            personas.persona_uuid("interest:recruiter-drafts:both-sides"),
+        )
+        assert application is not None
+        assert application.status == "archived"
+        assert application.legacy_archive_resolution_required is True
+        assert interest is not None
+        assert interest.status == "archived"
+        assert interest.legacy_archive_resolution_required is True
 
 
 @pytest.mark.asyncio

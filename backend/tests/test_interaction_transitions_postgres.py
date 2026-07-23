@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import (
+    Conversation,
     EmailOutbox,
     Engagement,
     InteractionStatusEvent,
@@ -146,6 +147,7 @@ async def _share_application_decision(
     application_id: uuid.UUID,
     *,
     key: str,
+    note: str | None = None,
 ) -> str:
     async with factory() as session:
         actor = await session.get(User, owner_id)
@@ -157,6 +159,7 @@ async def _share_application_decision(
             requested_status="rejected",
             expected_version=2,
             idempotency_key=key,
+            note=note,
         )
         await session.commit()
         return result.outcome
@@ -312,4 +315,58 @@ async def test_engagement_uniqueness_rejects_a_duplicate_historical_relationship
         await session.rollback()
         assert await _count(
             session, Engagement, Engagement.application_id == application_id
+        ) == 1
+
+
+async def test_concurrent_share_with_a_note_delivers_exactly_one_note() -> None:
+    """Two racing shares must not double-post the manager's explanation."""
+    factory = _session_factory()
+    owner_id, application_id = await _application_fixture(factory)
+    await _hire(
+        factory,
+        owner_id,
+        application_id,
+        key=str(uuid.uuid4()),
+        status="rejected",
+    )
+    note = "Going with a candidate who has more long-form experience."
+    outcomes = await asyncio.gather(
+        _share_application_decision(
+            factory, owner_id, application_id, key=str(uuid.uuid4()), note=note
+        ),
+        _share_application_decision(
+            factory, owner_id, application_id, key=str(uuid.uuid4()), note=note
+        ),
+    )
+    assert sorted(outcomes) == ["already_in_state", "transitioned"]
+
+    async with factory() as session:
+        # Scoped to this application's own thread: the module shares one
+        # database, so an unscoped message count picks up other tests' rows.
+        conversation_id = (
+            await session.execute(
+                select(Conversation.id).where(Conversation.application_id == application_id)
+            )
+        ).scalar_one()
+        # One decision, one explanation, one notification — under a real race.
+        assert await _count(
+            session,
+            Message,
+            Message.conversation_id == conversation_id,
+            Message.metadata_json["status_note"].as_boolean().is_(True),
+        ) == 1
+        assert await _count(
+            session,
+            Message,
+            Message.conversation_id == conversation_id,
+            Message.metadata_json["stage"].as_string() == "rejected",
+        ) == 2
+        assert await _count(
+            session, Notification, Notification.resource_id == str(application_id)
+        ) == 1
+        assert await _count(
+            session,
+            InteractionStatusEvent,
+            InteractionStatusEvent.interaction_id == application_id,
+            InteractionStatusEvent.event_kind == "communicated",
         ) == 1

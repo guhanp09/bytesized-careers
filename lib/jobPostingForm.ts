@@ -54,6 +54,150 @@ export const RECRUITER_JOB_STEPS: Array<{
   { id: "referenceVideos", label: "References & review", shortLabel: "Review" },
 ];
 
+/**
+ * `RecruiterJobStep` (above) is the **domain / routing group** — the backend
+ * field-ownership bucket used by `backendJobFieldStep`, publication validation,
+ * and the field registry. It is *not* what the recruiter navigates.
+ *
+ * The recruiter navigates finer **screens**: one coherent question each, grouped
+ * into chapters. Every screen maps back to exactly one domain group so backend
+ * errors and publication blockers still route to the right place.
+ */
+export type RecruiterJobScreen =
+  | "role"
+  | "creatorContext"
+  | "about"
+  | "deliverables"
+  | "workflow"
+  | "skills"
+  | "toolsLanguages"
+  | "arrangement"
+  | "pay"
+  | "trial"
+  | "process"
+  | "apply"
+  | "references"
+  | "review";
+
+export type RecruiterJobChapterId =
+  | "opportunity"
+  | "work"
+  | "person"
+  | "arrangement"
+  | "hiring"
+  | "review";
+
+export type RecruiterJobScreenMeta = {
+  id: RecruiterJobScreen;
+  chapterId: RecruiterJobChapterId;
+  /** Short label shown in the header. */
+  label: string;
+  /** Conversational one-line question shown under the label. */
+  question: string;
+  /** Owning domain/routing group (backend-error + publication routing). */
+  group: RecruiterJobStep;
+};
+
+export const RECRUITER_JOB_SCREENS: RecruiterJobScreenMeta[] = [
+  // Chapter 1 — The opportunity
+  { id: "role", chapterId: "opportunity", label: "The role", question: "What role are you hiring for, and who is it for?", group: "basics" },
+  { id: "creatorContext", chapterId: "opportunity", label: "The content", question: "What content is this work for?", group: "creatorContext" },
+  // Chapter 2 — The work
+  { id: "about", chapterId: "work", label: "The brief", question: "Introduce the work and what it involves.", group: "about" },
+  { id: "deliverables", chapterId: "work", label: "Deliverables", question: "What will they create for you?", group: "about" },
+  { id: "workflow", chapterId: "work", label: "Workflow", question: "How will the creative work flow?", group: "about" },
+  // Chapter 3 — The person
+  { id: "skills", chapterId: "person", label: "Skills", question: "What must they be great at?", group: "toolsTags" },
+  { id: "toolsLanguages", chapterId: "person", label: "Tools & languages", question: "Which tools and languages matter?", group: "toolsTags" },
+  // Chapter 4 — The arrangement (collaboration + timing merged into one coherent screen)
+  { id: "arrangement", chapterId: "arrangement", label: "Working together", question: "How will you work together, and when?", group: "details" },
+  { id: "pay", chapterId: "arrangement", label: "Pay", question: "What will you pay?", group: "basics" },
+  // Chapter 5 — Hiring
+  { id: "trial", chapterId: "hiring", label: "Trial", question: "Will there be a trial?", group: "applicationRequirements" },
+  { id: "process", chapterId: "hiring", label: "Evaluation", question: "How will you evaluate candidates?", group: "applicationRequirements" },
+  { id: "apply", chapterId: "hiring", label: "Applying", question: "What should candidates submit?", group: "applicationRequirements" },
+  // Chapter 6 — Review
+  { id: "references", chapterId: "review", label: "Reference work", question: "Show candidates what good looks like.", group: "referenceVideos" },
+  { id: "review", chapterId: "review", label: "Review", question: "One last look before you publish.", group: "referenceVideos" },
+];
+
+export type RecruiterJobChapter = {
+  id: RecruiterJobChapterId;
+  label: string;
+  screens: RecruiterJobScreen[];
+};
+
+export const RECRUITER_JOB_CHAPTERS: RecruiterJobChapter[] = [
+  { id: "opportunity", label: "The opportunity", screens: ["role", "creatorContext"] },
+  { id: "work", label: "The work", screens: ["about", "deliverables", "workflow"] },
+  { id: "person", label: "The person", screens: ["skills", "toolsLanguages"] },
+  { id: "arrangement", label: "The arrangement", screens: ["arrangement", "pay"] },
+  { id: "hiring", label: "Hiring", screens: ["trial", "process", "apply"] },
+  { id: "review", label: "Review", screens: ["references", "review"] },
+];
+
+export const screenMeta = (screen: RecruiterJobScreen): RecruiterJobScreenMeta =>
+  RECRUITER_JOB_SCREENS.find((item) => item.id === screen) ?? RECRUITER_JOB_SCREENS[0];
+
+export const groupForScreen = (screen: RecruiterJobScreen): RecruiterJobStep => screenMeta(screen).group;
+
+export const chapterForScreen = (screen: RecruiterJobScreen): RecruiterJobChapter =>
+  RECRUITER_JOB_CHAPTERS.find((chapter) => chapter.id === screenMeta(screen).chapterId) ??
+  RECRUITER_JOB_CHAPTERS[0];
+
+/** First screen owned by a domain group — where a group-level error should land. */
+export const firstScreenForGroup = (group: RecruiterJobStep): RecruiterJobScreen =>
+  (RECRUITER_JOB_SCREENS.find((item) => item.group === group) ?? RECRUITER_JOB_SCREENS[0]).id;
+
+/**
+ * Weighted, front-loaded progress model.
+ *
+ * The progress bar is a motivational device, not a literal work-remaining meter.
+ * We deliberately give the pivotal opening decisions (what role, for whom, the
+ * content) heavier weights than the long refinement tail, so the first few short
+ * screens visibly advance the bar and the flow *feels* brisk — without ever
+ * displaying completion before the work is genuinely done. The weights are the
+ * single source of truth for that behaviour (never scatter percentages in the UI),
+ * and the raw screen count is intentionally not exposed.
+ *
+ * The reported value is the share of weight *behind* the current screen, so the
+ * final Review screen sits just under 100% and reaching 100% is reserved for the
+ * publish action itself. A small floor keeps the first screen from looking empty.
+ */
+const SCREEN_PROGRESS_WEIGHTS: Record<RecruiterJobScreen, number> = {
+  role: 16,
+  creatorContext: 12,
+  about: 10,
+  deliverables: 9,
+  workflow: 8,
+  skills: 7,
+  toolsLanguages: 7,
+  arrangement: 9,
+  pay: 7,
+  trial: 6,
+  process: 5,
+  apply: 5,
+  references: 5,
+  review: 4,
+};
+
+const TOTAL_PROGRESS_WEIGHT = RECRUITER_JOB_SCREENS.reduce(
+  (sum, item) => sum + SCREEN_PROGRESS_WEIGHTS[item.id],
+  0
+);
+
+const PROGRESS_FLOOR = 0.04;
+
+export function weightedJobProgress(currentScreen: RecruiterJobScreen): number {
+  const order = RECRUITER_JOB_SCREENS.map((item) => item.id);
+  const index = Math.max(0, order.indexOf(currentScreen));
+  const behind = order
+    .slice(0, index)
+    .reduce((sum, id) => sum + SCREEN_PROGRESS_WEIGHTS[id], 0);
+  const raw = TOTAL_PROGRESS_WEIGHT ? behind / TOTAL_PROGRESS_WEIGHT : 0;
+  return Math.min(1, Math.max(PROGRESS_FLOOR, raw));
+}
+
 export type EditableDeliverable = {
   id: string;
   type: DeliverableType | "";
@@ -419,16 +563,8 @@ export function validateRepeatableDomainRows(state: JobPostingDomainState): JobP
       issues.push({ field: "deliverables", step: "about", target: `job-deliverable-${item.id}`, message: "Describe the custom frequency." });
     }
   });
-  state.languageRequirements?.forEach((item, index) => {
-    if (item.language.trim().length < 2 || !item.priority || !item.purposes.length) {
-      issues.push({
-        field: "language_requirements",
-        step: "toolsTags",
-        target: `job-language-${item.id}`,
-        message: `Finish language requirement ${index + 1} or remove it.`,
-      });
-    }
-  });
+  // Language requirements are no longer a recruiter-facing Post Job control; stored
+  // values are preserved but never validated as an editable field here.
   state.sourceInputs?.forEach((item) => {
     if (item.type === "other" && !item.custom_label?.trim()) {
       issues.push({
@@ -715,11 +851,11 @@ export const JOB_LANGUAGE_PURPOSES = LANGUAGE_PURPOSES;
 export const JOB_HIRING_STAGES = HIRING_PROCESS_STAGES;
 
 export const backendJobFieldStep = (field: string): RecruiterJobStep => {
-  if (["title", "primary_role_id", "role_specialization", "platforms", "work_mode", "location", "employer_context_type", "hiring_identity_id", "experience_level", "compensation_mode", "budget_amount", "budget_max", "budget_currency", "budget_unit", "budget_unit_custom", "budget_note"].includes(field)) return "basics";
+  if (["title", "primary_role_id", "role_specialization", "platforms", "employer_context_type", "hiring_identity_id", "experience_level", "compensation_mode", "budget_amount", "budget_max", "budget_currency", "budget_unit", "budget_unit_custom", "budget_note"].includes(field)) return "basics";
   if (["deliverables", "revision_policy", "revision_rounds", "revision_notes", "source_inputs", "source_inputs_notes", "creative_autonomy", "creative_autonomy_notes", "about_channel", "responsibilities", "requirements"].includes(field)) return "about";
   if (["content_niches", "content_genres", "formats_hired_for"].includes(field)) return "creatorContext";
-  if (["engagement_type", "expected_weekly_hours_min", "expected_weekly_hours_max", "turnaround_value", "turnaround_unit", "turnaround_basis", "start_timing", "start_date", "duration_type", "duration_value", "duration_unit", "engagement_end_date", "timezone_overlap"].includes(field)) return "details";
-  if (["required_skill_keys", "preferred_skill_keys", "other_required_skills", "other_preferred_skills", "required_skills_note", "preferred_skills_note", "required_tool_keys", "other_required_tools", "language_requirements", "tags"].includes(field)) return "toolsTags";
+  if (["engagement_type", "work_mode", "location", "expected_weekly_hours_min", "expected_weekly_hours_max", "turnaround_value", "turnaround_unit", "turnaround_basis", "start_timing", "start_date", "duration_type", "duration_value", "duration_unit", "engagement_end_date", "timezone_overlap"].includes(field)) return "details";
+  if (["required_skill_keys", "preferred_skill_keys", "other_required_skills", "other_preferred_skills", "required_skills_note", "preferred_skills_note", "required_tool_keys", "other_required_tools", "tags"].includes(field)) return "toolsTags";
   if (["trial_status", "trial_scope", "trial_effort_value", "trial_effort_unit", "trial_compensation_amount", "trial_compensation_currency", "trial_compensation_basis", "trial_work_usage", "trial_portfolio_permission", "trial_attribution", "unpaid_trial_confirmed", "trial_notes", "hiring_process", "hiring_process_notes", "screening_questions", "deadline_at", "application_mode", "external_apply_url", "application_requirements", "how_to_apply"].includes(field)) return "applicationRequirements";
   return "referenceVideos";
 };

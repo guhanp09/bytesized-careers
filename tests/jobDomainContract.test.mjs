@@ -147,25 +147,21 @@ test("candidate preview displays structured and legacy information without confl
 
   assert.match(preview, /const legacyRequirements = splitLines\(props\.legacyRequirements\)/);
   assert.match(preview, /const requiredSkills = unique\(\[[\s\S]*domain\.requiredSkillKeys/);
-  assert.match(preview, /const structuredLanguages = domain\.languageRequirements \|\| \[\]/);
-  assert.match(preview, /const legacyLanguages = unique\(props\.languages \|\| \[\]\)/);
-  assert.match(preview, /const screeningQuestions = domain\.screeningQuestions \|\| \[\]/);
   assert.match(preview, /const howToApply = text\(domain\.howToApply\) \|\| text\(props\.howToApply\)/);
   assert.match(preview, /const applicationRequirements = unique\(props\.applicationRequirements \|\| \[\]\)/);
 
   for (const heading of [
     "Must-have skills",
-    "Language requirements",
     "Trial terms",
     "Hiring process",
-    "Screening questions",
     "What applicants should include",
     "How to apply",
   ]) {
     assert.match(preview, new RegExp(`title="${heading}"`));
   }
-  assert.match(preview, /structuredLanguages\.length[\s\S]*legacyLanguages\.length/);
-  assert.match(preview, /screeningQuestions\.map/);
+  // Languages and screening questions are no longer candidate-visible listing content.
+  assert.doesNotMatch(preview, /title="Language requirements"/);
+  assert.doesNotMatch(preview, /title="Screening questions"/);
 });
 
 test("V3 adds typed local boundaries without introducing AI execution into job posting", () => {

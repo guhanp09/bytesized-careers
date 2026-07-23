@@ -35,6 +35,16 @@ INTEREST_SHARED_STATUSES = frozenset({"accepted", "declined"})
 # it is private until that explicit action occurs.
 APPLICATION_OPTIONAL_SHARED_STATUSES = frozenset({"shortlisted", "rejected"})
 
+# Old globally archived interactions did not preserve the private pipeline stage
+# they were archived from. A manager must explicitly choose the current stage
+# once; these are the only legitimate resolution targets.
+LEGACY_APPLICATION_RESOLUTION_TARGETS = frozenset(
+    {"new", "reviewing", "shortlisted", "interviewing", "hired", "rejected"}
+)
+LEGACY_INTEREST_RESOLUTION_TARGETS = frozenset(
+    {"new", "reviewing", "accepted", "declined"}
+)
+
 
 def application_targets(current_status: str) -> frozenset[str]:
     return APPLICATION_TRANSITIONS.get(current_status, frozenset())

@@ -1,5 +1,8 @@
 import type { Job } from "./types";
 
+// `language` was removed as a public job-discovery dimension. Old shared URLs that
+// still carry a `?language=` parameter are simply ignored (never parsed here), which
+// leaves unrelated parameters untouched and avoids any validation error.
 export const JOB_DISCOVERY_PARAMS = [
   "role",
   "filter",
@@ -8,7 +11,6 @@ export const JOB_DISCOVERY_PARAMS = [
   "workMode",
   "engagement",
   "compensationUnit",
-  "language",
   "location",
   "start_timeframe",
 ] as const;
@@ -100,12 +102,5 @@ export function jobMatchesDiscovery(job: Job, state: JobDiscoveryState) {
     if (!state.location.some((value) => location.includes(value.toLocaleLowerCase()))) return false;
   }
   if (state.start_timeframe.length && !includesFolded([job.startTimeframe || ""], state.start_timeframe)) return false;
-  if (state.language.length) {
-    const canonical = job.languageRequirements;
-    const required = canonical === null || canonical === undefined
-      ? job.languages || []
-      : canonical.filter((item) => item.priority === "required").map((item) => item.language);
-    if (!includesFolded(required, state.language)) return false;
-  }
   return true;
 }

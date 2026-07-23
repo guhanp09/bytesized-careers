@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 
 
 DELIVERABLE_TYPES: Final[tuple[str, ...]] = (
@@ -176,3 +176,84 @@ EMPLOYER_CONTEXT_TYPES: Final[tuple[str, ...]] = (
     "production_house",
     "other",
 )
+
+AIConfirmationPolicy = Literal[
+    "extract_when_explicit",
+    "suggest_with_recruiter_confirmation",
+    "explicit_recruiter_confirmation_required",
+    "server_owned_never_infer",
+]
+
+# This is documentation for a future importer, not an active provenance system.
+# It deliberately keeps sensitive and consequential values confirmation-gated.
+AI_FIELD_CONFIRMATION_POLICY: Final[dict[str, AIConfirmationPolicy]] = {
+    "deliverables": "extract_when_explicit",
+    "deliverables.type": "extract_when_explicit",
+    "deliverables.custom_type": "extract_when_explicit",
+    "deliverables.quantity": "extract_when_explicit",
+    "deliverables.frequency": "extract_when_explicit",
+    "deliverables.custom_frequency": "extract_when_explicit",
+    "deliverables.notes": "extract_when_explicit",
+    "required_skill_keys": "suggest_with_recruiter_confirmation",
+    "preferred_skill_keys": "suggest_with_recruiter_confirmation",
+    "other_required_skills": "extract_when_explicit",
+    "other_preferred_skills": "extract_when_explicit",
+    "required_skills_note": "extract_when_explicit",
+    "preferred_skills_note": "extract_when_explicit",
+    "revision_policy": "extract_when_explicit",
+    "revision_rounds": "extract_when_explicit",
+    "revision_notes": "extract_when_explicit",
+    "source_inputs": "suggest_with_recruiter_confirmation",
+    "source_inputs.type.account_access": "explicit_recruiter_confirmation_required",
+    "source_inputs.type.analytics_access": "explicit_recruiter_confirmation_required",
+    "source_inputs.custom_label": "extract_when_explicit",
+    "source_inputs.sensitive_access_confirmed": "explicit_recruiter_confirmation_required",
+    "source_inputs_notes": "extract_when_explicit",
+    "creative_autonomy": "suggest_with_recruiter_confirmation",
+    "creative_autonomy_notes": "extract_when_explicit",
+    "language_requirements": "extract_when_explicit",
+    "language_requirements.language": "extract_when_explicit",
+    "language_requirements.priority": "extract_when_explicit",
+    "language_requirements.proficiency": "suggest_with_recruiter_confirmation",
+    "language_requirements.purposes": "suggest_with_recruiter_confirmation",
+    "language_requirements.notes": "extract_when_explicit",
+    "trial_status": "explicit_recruiter_confirmation_required",
+    "trial_scope": "extract_when_explicit",
+    "trial_effort_value": "explicit_recruiter_confirmation_required",
+    "trial_effort_unit": "explicit_recruiter_confirmation_required",
+    "trial_compensation_amount": "explicit_recruiter_confirmation_required",
+    "trial_compensation_currency": "explicit_recruiter_confirmation_required",
+    "trial_compensation_basis": "explicit_recruiter_confirmation_required",
+    "trial_work_usage": "explicit_recruiter_confirmation_required",
+    "trial_portfolio_permission": "explicit_recruiter_confirmation_required",
+    "trial_attribution": "explicit_recruiter_confirmation_required",
+    "unpaid_trial_confirmed": "explicit_recruiter_confirmation_required",
+    "trial_notes": "extract_when_explicit",
+    "start_timing": "suggest_with_recruiter_confirmation",
+    "start_date": "explicit_recruiter_confirmation_required",
+    "duration_type": "extract_when_explicit",
+    "duration_value": "extract_when_explicit",
+    "duration_unit": "extract_when_explicit",
+    "engagement_end_date": "explicit_recruiter_confirmation_required",
+    "deadline_at": "explicit_recruiter_confirmation_required",
+    "hiring_process": "extract_when_explicit",
+    "hiring_process.stage": "extract_when_explicit",
+    "hiring_process.custom_label": "extract_when_explicit",
+    "hiring_process.notes": "extract_when_explicit",
+    "hiring_process_notes": "extract_when_explicit",
+    "application_requirements": "suggest_with_recruiter_confirmation",
+    "screening_questions": "extract_when_explicit",
+    "screening_questions.prompt": "extract_when_explicit",
+    "screening_questions.required": "suggest_with_recruiter_confirmation",
+    "screening_questions.response_guidance": "extract_when_explicit",
+    "how_to_apply": "extract_when_explicit",
+    "compensation_mode": "explicit_recruiter_confirmation_required",
+    "budget_amount": "explicit_recruiter_confirmation_required",
+    "budget_max": "explicit_recruiter_confirmation_required",
+    "budget_currency": "explicit_recruiter_confirmation_required",
+    "budget_unit": "explicit_recruiter_confirmation_required",
+    "expected_weekly_hours_min": "explicit_recruiter_confirmation_required",
+    "expected_weekly_hours_max": "explicit_recruiter_confirmation_required",
+    "employer_context_type": "explicit_recruiter_confirmation_required",
+    "hiring_verification_status_snapshot": "server_owned_never_infer",
+}

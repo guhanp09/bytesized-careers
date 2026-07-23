@@ -724,6 +724,66 @@ test("a hiring request acceptance carries back to recruiter outreach", async ({ 
   ).toBeVisible();
 });
 
+test("legacy archives require one deliberate stage choice and then behave normally", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "both-sides", "Aditi Verma");
+
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  const legacyApplication = page
+    .getByTestId("pipeline-group-archived")
+    .getByTestId("pipeline-row")
+    .filter({ hasText: "Dev New User" });
+  await expect(legacyApplication).toBeVisible();
+  await expect(legacyApplication.getByTestId("pipeline-stage-menu")).toContainText(
+    "Choose current stage"
+  );
+  await legacyApplication.getByTestId("pipeline-stage-menu").click();
+  await page.getByTestId("pipeline-stage-option-reviewing").click();
+  await expect(page.getByText("Saved privately", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByTestId("pipeline-group-reviewing")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Dev New User" })
+  ).toBeVisible();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const resolvedApplication = page
+    .getByTestId("pipeline-group-reviewing")
+    .getByTestId("pipeline-row")
+    .filter({ hasText: "Dev New User" });
+  await expect(resolvedApplication).toBeVisible();
+  await expect(resolvedApplication.getByTestId("pipeline-stage-menu")).not.toContainText(
+    "Choose current stage"
+  );
+
+  await page.goto("/applications?view=pipeline&mode=talent&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  const legacyRequest = page
+    .getByTestId("pipeline-group-archived")
+    .getByTestId("pipeline-row")
+    .filter({ hasText: "BrightLab Media" });
+  await expect(legacyRequest).toBeVisible();
+  await expect(legacyRequest.getByTestId("pipeline-stage-menu")).toContainText(
+    "Choose current stage"
+  );
+  await legacyRequest.getByTestId("pipeline-stage-menu").click();
+  await page.getByTestId("pipeline-stage-option-accepted").click();
+  const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
+  await confirmation.getByRole("button", { name: "Confirm acceptance" }).click();
+  await expect(page.getByText("Shared with BrightLab", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByTestId("pipeline-group-accepted")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "BrightLab Media" })
+  ).toBeVisible();
+});
+
 test("Accepted from Inbox is authoritative, persistent, shared once, and stays messageable", async ({
   page,
 }) => {
@@ -966,4 +1026,347 @@ test("message notifications stay reachable after a persona switch — the inbox 
   await page.goto("/applications", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/mode=recruiter/);
   await expect(page.getByRole("main")).not.toContainText("No applications yet.");
+});
+
+test("declining a hiring request delivers the note atomically to the recruiter", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "hiring-requests", "RESTORE REQUESTS");
+  await switchPersona(page, "both-sides", "Aditi Verma");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Finance Simplified" }).first().click();
+
+  const detail = page.getByTestId("applications-detail");
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Decline request", exact: true }).click();
+
+  // A decline shares immediately, so the confirmation is where the
+  // explanation has to be collected.
+  const confirmation = page.getByRole("dialog", { name: "Decline this hiring request?" });
+  const note = confirmation.getByTestId("stage-confirm-note");
+  await expect(note).toBeVisible();
+  await note.fill("Fully booked until March — please do reach out again then.");
+  await confirmation.getByRole("button", { name: "Confirm decline" }).click();
+
+  await expect(
+    detail.getByTestId("applications-detail-header").getByText("Declined", { exact: true })
+  ).toBeVisible();
+  await expect(detail).toContainText("Fully booked until March");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("applications-detail")).toContainText("Fully booked until March");
+
+  // The other participant must actually receive both the outcome and the note.
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Aditi Verma" }).first().click();
+  const recruiterDetail = page.getByTestId("applications-detail");
+  await expect(recruiterDetail).toContainText("Hiring request declined");
+  await expect(recruiterDetail).toContainText("Fully booked until March");
+  // Exactly one of each — the note is not duplicated by the status message.
+  await expect(recruiterDetail.getByText("Fully booked until March", { exact: false })).toHaveCount(1);
+});
+
+test("a private rejection tells nobody until it is shared, and then shares once with its note", async ({
+  page,
+}) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+
+  const detail = page.getByTestId("applications-detail");
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Not selected", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Mark this application as not selected?" });
+  // Private stages tell no one, so they must not collect an explanation here.
+  await expect(confirmation.getByTestId("stage-confirm-note")).toHaveCount(0);
+  await confirmation.getByRole("button", { name: "Confirm not selected" }).click();
+
+  // Saved privately: the prompt offers to share, and nothing has been sent yet.
+  const prompt = page.getByTestId("stage-notify-prompt");
+  await expect(prompt).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+  const applicantDetail = page.getByTestId("applications-detail");
+  await expect(applicantDetail).not.toContainText("Not moving forward");
+
+  // Now the recruiter deliberately shares it, with an explanation.
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: /Share decision with/ }).click();
+
+  const sharePrompt = page.getByTestId("stage-notify-prompt");
+  await sharePrompt.getByTestId("stage-notify-note").fill("Your edit test was strong — the brief needed more motion work.");
+  await sharePrompt.getByTestId("stage-notify-send").click();
+  await expect(sharePrompt.getByTestId("stage-notify-followup")).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+  const shared = page.getByTestId("applications-detail");
+  await expect(shared).toContainText("Not moving forward");
+  await expect(shared).toContainText("the brief needed more motion work");
+  await expect(shared.getByText("the brief needed more motion work", { exact: false })).toHaveCount(1);
+});
+
+test("Accepted from Pipeline confirms before committing and agrees with the Inbox", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "hiring-requests", "RESTORE REQUESTS");
+  await switchPersona(page, "both-sides", "Aditi Verma");
+  await page.goto("/applications?view=pipeline&mode=talent&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const board = page.getByTestId("pipeline-board");
+  const row = board.getByTestId("pipeline-row").filter({ hasText: "Finance Simplified" }).first();
+  await row.getByTestId("pipeline-stage-menu").click();
+  await page.getByTestId("pipeline-stage-option-accepted").click();
+
+  const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Confirm acceptance" }).click();
+
+  await expect(
+    board.getByTestId("pipeline-group-accepted").getByTestId("pipeline-row").filter({ hasText: "Finance Simplified" })
+  ).toBeVisible();
+
+  // The Inbox must agree after a hard reload, not just optimistically.
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Finance Simplified" }).first().click();
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Accepted", { exact: true })
+  ).toBeVisible();
+});
+
+test("Pipeline asks before a rejection, exactly as the Inbox does", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const board = page.getByTestId("pipeline-board");
+  const priya = board.getByTestId("pipeline-row").filter({ hasText: "Priya Nair" }).first();
+  await priya.getByTestId("pipeline-stage-menu").click();
+  await page.getByTestId("pipeline-stage-option-rejected").click();
+
+  // Previously this committed instantly from the board while the Inbox asked.
+  const confirmation = page.getByRole("dialog", { name: "Mark this application as not selected?" });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText("saved privately");
+
+  // Cancelling must leave the record exactly where it was.
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    board.getByTestId("pipeline-group-rejected").getByTestId("pipeline-row").filter({ hasText: "Priya Nair" })
+  ).toHaveCount(0);
+});
+
+test("archive and unarchive are personal and never touch the lifecycle", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+
+  const detail = page.getByTestId("applications-detail");
+  const squash = (value: string) => value.replace(/\s+/g, "");
+  const statusBefore = squash(
+    await detail.getByTestId("applications-detail-header").innerText()
+  );
+
+  await detail.getByRole("button", { name: "More actions" }).click();
+  // Archiving is reversible and private, so it commits without a confirmation.
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).first().click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  // The counterparty's view of the relationship is untouched by a personal tidy-up.
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await expect(
+    page.getByTestId("interaction-row").filter({ hasText: "Long-form video editor for a finance YouTube channel" }).first()
+  ).toBeVisible();
+
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-archived").click();
+  const archivedRow = page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first();
+  await expect(archivedRow).toBeVisible();
+  await archivedRow.click();
+  const archivedDetail = page.getByTestId("applications-detail");
+  await archivedDetail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Unarchive", exact: true }).click();
+
+  await page.goto("/applications?view=inbox&mode=recruiter", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-received").click();
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  // Same lifecycle status it had before it was ever archived.
+  await expect
+    .poll(async () => squash(await page.getByTestId("applications-detail-header").innerText()))
+    .toBe(statusBefore);
+});
+
+test("withdrawing an application reaches the recruiter and closes the thread", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+
+  const detail = page.getByTestId("applications-detail");
+  await detail.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Withdraw application", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Withdraw this application?" });
+  await confirmation.getByRole("button", { name: "Confirm withdraw" }).click();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first()
+    .click();
+  await expect(
+    page.getByTestId("applications-detail-header").getByText("Withdrawn", { exact: true })
+  ).toBeVisible();
+
+  // The recruiter must see it, and a withdrawn thread stops accepting messages.
+  await returnToController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page
+      .getByTestId("pipeline-group-withdrawn")
+      .getByTestId("pipeline-row")
+      .filter({ hasText: "Priya Nair" })
+      .first()
+  ).toBeVisible();
+});
+
+test("a stale second tab cannot silently overwrite the first tab's decision", async ({
+  page,
+  browser,
+}) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+
+  const secondContext = await browser.newContext({ baseURL: QA_BASE_URL });
+  const secondPage = await secondContext.newPage();
+  try {
+    await loginController(secondPage);
+    await switchPersona(secondPage, "recruiter-active", "Finance Simplified");
+
+    // Both tabs load the same record at the same version.
+    for (const target of [page, secondPage]) {
+      await target.goto("/applications?view=inbox&mode=recruiter&direction=received", {
+        waitUntil: "domcontentloaded",
+      });
+      await target.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+      await expect(target.getByTestId("applications-detail")).toBeVisible();
+    }
+
+    // Tab one moves it forward.
+    await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Move to Reviewing" }).click();
+    // The detail header speaks the display vocabulary ("Viewed"), not the
+    // backend stage name.
+    await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
+
+    // Tab two is now stale. Its attempt must not commit silently on top.
+    await secondPage
+      .getByTestId("applications-detail")
+      .getByRole("button", { name: "More actions" })
+      .click();
+    await secondPage.getByRole("menuitem", { name: "Move to Interviewing" }).click();
+
+    // Either the backend refuses the stale version and the UI explains it, or
+    // the UI reconciles to the authoritative state — never a silent overwrite
+    // that loses tab one's decision.
+    await expect
+      .poll(
+        async () => {
+          const detail = secondPage.getByTestId("applications-detail");
+          const text = await detail.innerText();
+          const reconciled = text.includes("Interviewing") || text.includes("Viewed");
+          const explained = /couldn|try again|refresh|changed/i.test(text);
+          return reconciled || explained;
+        },
+        { timeout: 15_000 }
+      )
+      .toBe(true);
+
+    // Whatever the second tab did, the server stays authoritative and coherent.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+    await expect(page.getByTestId("applications-detail-header")).not.toContainText("Shortlisted");
+  } finally {
+    await secondContext.close();
+  }
+});
+
+test("a destructive decision can be completed with the keyboard alone", async ({ page }) => {
+  await loginController(page);
+  await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/applications?view=inbox&mode=recruiter&direction=received", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+
+  const moreActions = page.getByTestId("applications-detail").getByRole("button", { name: "More actions" });
+  await moreActions.focus();
+  await expect(moreActions).toBeFocused();
+  await moreActions.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+
+  // Reachable and actionable without a pointer.
+  const notSelected = page.getByRole("menuitem", { name: "Not selected", exact: true });
+  await notSelected.press("Enter");
+
+  const confirmation = page.getByRole("dialog", { name: "Mark this application as not selected?" });
+  await expect(confirmation).toBeVisible();
+  // Escape must abandon it without any side effect.
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByTestId("applications-detail-header")).toContainText("Shortlisted");
 });

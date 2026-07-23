@@ -185,6 +185,30 @@ export function stageTargetsFor(kind: InteractionKind): PipelineStage[] {
   return INTEREST_RECEIVED_STAGES.filter((stage) => stage.key !== "new" && stage.key !== "withdrawn");
 }
 
+const LEGACY_APPLICATION_RESOLUTION_KEYS = new Set([
+  "new",
+  "reviewing",
+  "shortlisted",
+  "interviewing",
+  "hired",
+  "rejected",
+]);
+const LEGACY_INTEREST_RESOLUTION_KEYS = new Set([
+  "new",
+  "reviewing",
+  "accepted",
+  "declined",
+]);
+
+/** Explicit one-time choices for an archive whose historical stage is unknown. */
+export function legacyResolutionTargetsFor(kind: InteractionKind): PipelineStage[] {
+  const stages = kind === "application" ? APPLICATION_RECEIVED_STAGES : INTEREST_RECEIVED_STAGES;
+  const allowed = kind === "application"
+    ? LEGACY_APPLICATION_RESOLUTION_KEYS
+    : LEGACY_INTEREST_RESOLUTION_KEYS;
+  return stages.filter((stage) => allowed.has(stage.key));
+}
+
 /** Consequential shared outcomes are always confirmed one relationship at a time. */
 export function bulkStageTargetsFor(kind: InteractionKind): PipelineStage[] {
   const permitted = kind === "application"
@@ -217,13 +241,23 @@ const INTEREST_TRANSITIONS: Record<string, ReadonlySet<string>> = {
 export function validStageTargetsFor(
   kind: InteractionKind,
   currentStatus: string,
-  participantStatus?: string | null
+  participantStatus?: string | null,
+  legacyArchiveResolutionRequired = false
 ): PipelineStage[] {
   if (
     kind === "application" &&
     ["hired", "rejected", "withdrawn"].includes(participantStatus ?? "")
   ) {
     return [];
+  }
+  if (
+    kind === "hiring_request" &&
+    ["accepted", "declined", "withdrawn"].includes(participantStatus ?? "")
+  ) {
+    return [];
+  }
+  if (legacyArchiveResolutionRequired) {
+    return legacyResolutionTargetsFor(kind);
   }
   const allowed = (kind === "application" ? APPLICATION_TRANSITIONS : INTEREST_TRANSITIONS)[
     currentStatus

@@ -67,10 +67,15 @@ test("structured dimensions compose with OR within a filter and AND across filte
   assert.equal(jobMatchesDiscovery({ ...complete, engagementType: "full_time" }, state), false);
 });
 
-test("required language uses canonical priority and falls back to legacy only for uncaptured data", () => {
-  const english = parseJobDiscovery(new URLSearchParams("language=English"));
-  assert.equal(jobMatchesDiscovery(job({ languageRequirements: [{ language: "English", priority: "preferred", purposes: ["speaking"] }], languages: ["English"] }), english), false);
-  assert.equal(jobMatchesDiscovery(job({ languageRequirements: [], languages: ["English"] }), english), false);
-  assert.equal(jobMatchesDiscovery(job({ languageRequirements: null, languages: ["English"] }), english), true);
-  assert.equal(jobMatchesDiscovery(job({ languageRequirements: [{ language: "English", priority: "required", purposes: ["writing"] }] }), english), true);
+test("language is no longer a discovery dimension and obsolete ?language= params are ignored", () => {
+  // The obsolete parameter is not parsed into discovery state, so it never filters and
+  // unrelated parameters are preserved.
+  const state = parseJobDiscovery(new URLSearchParams("language=English&platform=youtube"));
+  assert.equal("language" in state, false);
+  assert.deepEqual(state.platform, ["youtube"]);
+  // A job that would previously have been excluded by a language filter now matches.
+  assert.equal(
+    jobMatchesDiscovery(job({ languageRequirements: [{ language: "Hindi", priority: "required", purposes: ["writing"] }], platforms: ["youtube"] }), state),
+    true,
+  );
 });

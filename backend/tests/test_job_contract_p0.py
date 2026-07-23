@@ -221,6 +221,11 @@ async def test_role_snapshot_other_specialization_and_no_category_inference(clie
     historical = await client.get(f"/api/v1/jobs/{specialized.json()['id']}")
     assert historical.status_code == 200
     assert historical.json()["primary_role_name_snapshot"] == "Other Creator Role"
+    async with TestSessionLocal() as session:
+        stored_other_role = await session.get(Role, other_role.id)
+        assert stored_other_role is not None
+        stored_other_role.is_active = True
+        await session.commit()
 
     inactive = Role(name="Inactive P0 Role", category="Other", is_active=False)
     async with TestSessionLocal() as session:

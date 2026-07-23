@@ -104,6 +104,8 @@ export type OwnerInteraction = {
   participantBackendStatus?: string | null;
   /** Per-viewer organization state; independent from lifecycle status. */
   archivedAt?: string | null;
+  /** Manager-only compatibility state for archives whose prior stage is unknown. */
+  legacyArchiveResolutionRequired?: boolean;
   /** The manager's private note on a received item. Never present on sent items. */
   managerNote?: string | null;
   /**
@@ -1647,6 +1649,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         statusVersion: application.status_version,
         participantBackendStatus: application.participant_status,
         archivedAt: application.archived_at,
+        legacyArchiveResolutionRequired:
+          application.legacy_archive_resolution_required === true,
         managerNote: application.manager_note || null,
         title: applicantName,
         counterpartyName: applicantName,
@@ -1742,6 +1746,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         statusVersion: interest.status_version,
         participantBackendStatus: interest.participant_status,
         archivedAt: interest.archived_at,
+        legacyArchiveResolutionRequired:
+          interest.legacy_archive_resolution_required === true,
         managerNote: interest.manager_note || null,
         title: relatedJob?.title || "Hiring request",
         counterpartyName: recruiterName,

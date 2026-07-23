@@ -1,15 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import React, { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import React, { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { signOut } from "next-auth/react";
 
 import { Icon } from "../Icons";
 import LocationAutocompleteField from "../you/LocationAutocompleteField";
+import { copyTextToClipboard } from "../ui";
 import {
   describeActionError,
   listMyYouTubeChannels,
   markAllNotificationsRead,
   refreshMyYouTubeChannels,
+  requestPasswordReset,
   updateMyOnboardingIntent,
   updateMyPrivacy,
   updateMyProfile,
@@ -41,18 +43,30 @@ import {
   validateRevisionsPreference,
   validateTurnaroundPreference,
 } from "../../lib/workPreferences";
+import {
+  CancelButton,
+  EditButton,
+  FieldLabel,
+  InlinePanel,
+  RowActionButton,
+  SaveButton,
+  SelectField,
+  SettingRow,
+  SettingsSection,
+  StatusPill,
+  TextField,
+  ToggleSwitch,
+  type RowFeedback,
+} from "./settingsPrimitives";
 
 type SettingsSectionId =
   | "account"
   | "profile-visibility"
-  | "marketplace"
+  | "work-preferences"
   | "connected-accounts"
   | "notifications"
-  | "payments"
-  | "privacy-data"
   | "security"
-  | "preferences"
-  | "support-legal";
+  | "data-support";
 
 type SettingsSessionUser = {
   name?: string | null;
@@ -71,9 +85,6 @@ type LoadErrors = {
   channels: boolean;
   notifications: boolean;
 };
-
-type RowTone = "active" | "neutral" | "readonly" | "future" | "danger";
-type RowFeedback = { state: "saving" | "saved" | "error"; message?: string };
 
 type SettingsClientProps = {
   backendAccessToken: string;
@@ -103,15 +114,12 @@ const SECTIONS: Array<{
   icon: React.ComponentProps<typeof Icon>["name"];
 }> = [
   { id: "account", title: "Account", icon: "user" },
-  { id: "profile-visibility", title: "Profile & Visibility", icon: "globe" },
-  { id: "marketplace", title: "Marketplace Preferences", icon: "briefcase" },
-  { id: "connected-accounts", title: "Connected Accounts", icon: "badge-check" },
+  { id: "profile-visibility", title: "Profile & visibility", icon: "globe" },
+  { id: "work-preferences", title: "Work preferences", icon: "briefcase" },
+  { id: "connected-accounts", title: "Connected accounts", icon: "badge-check" },
   { id: "notifications", title: "Notifications", icon: "bell" },
-  { id: "payments", title: "Payments", icon: "wallet" },
-  { id: "privacy-data", title: "Privacy & Data", icon: "shield" },
   { id: "security", title: "Security", icon: "shield" },
-  { id: "preferences", title: "Preferences", icon: "settings" },
-  { id: "support-legal", title: "Support & Legal", icon: "help" },
+  { id: "data-support", title: "Data & support", icon: "help" },
 ];
 
 const ONBOARDING_OPTIONS: Array<{ value: BackendOnboardingIntent; label: string; description: string }> = [
@@ -159,18 +167,12 @@ const compact = (value?: string | null, fallback = "Not set") => {
   return text || fallback;
 };
 
-const accountTypeLabel = (value?: string | null) => {
-  if (value === "TALENT") return "Talent";
-  if (value === "EMPLOYER") return "Recruiter";
-  if (value === "BOTH") return "Talent and recruiter";
-  if (value === "ADMIN") return "Admin";
-  return "Unified profile";
-};
-
 const onboardingIntentLabel = (value?: BackendOnboardingIntent | null) =>
   ONBOARDING_OPTIONS.find((item) => item.value === value)?.label || "Decide later";
 
-const providerLabel = (value?: string | null) => {
+const signInMethodLabel = (value?: string | null) => {
+  if (value === "google") return "Google";
+  if (value === "credentials") return "Email & password";
   if (!value) return "Email / OAuth";
   return value.charAt(0).toUpperCase() + value.slice(1);
 };
@@ -188,335 +190,6 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-function StatusPill({ label, tone = "neutral" }: { label: string; tone?: RowTone }) {
-  return (
-    <span
-      className={[
-        "inline-flex min-h-6 max-w-full items-center justify-center rounded-full border px-2.5 text-[11px] font-semibold leading-5",
-        tone === "active"
-          ? "border-emerald-300/16 bg-emerald-300/[0.08] text-emerald-100"
-          : tone === "danger"
-            ? "border-rose-300/18 bg-rose-400/[0.07] text-rose-100"
-            : tone === "future"
-              ? "border-white/[0.08] bg-white/[0.03] text-white/42"
-              : tone === "readonly"
-                ? "border-white/[0.09] bg-white/[0.04] text-white/48"
-                : "border-white/[0.1] bg-white/[0.045] text-white/62",
-      ].join(" ")}
-    >
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
-function RowFeedbackBadge({ feedback }: { feedback?: RowFeedback }) {
-  if (!feedback) return null;
-  if (feedback.state === "saving") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/44">
-        <span className="h-3 w-3 rounded-full border border-white/16 border-t-white/70 animate-spin" />
-        Saving
-      </span>
-    );
-  }
-  if (feedback.state === "saved") {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-100/76">
-        <Icon name="check" className="h-3.5 w-3.5" />
-        Saved
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex max-w-[260px] items-center gap-1.5 text-[11px] font-semibold text-amber-100/86">
-      <Icon name="alert" className="h-3.5 w-3.5 shrink-0" />
-      <span className="truncate">{feedback.message || "Could not save."}</span>
-    </span>
-  );
-}
-
-function SettingsSection({
-  id,
-  title,
-  description,
-  children,
-}: {
-  id: SettingsSectionId;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  const sectionIcon = SECTIONS.find((section) => section.id === id)?.icon;
-
-  return (
-    <section
-      id={id}
-      data-testid={`settings-section-${id}`}
-      className="scroll-mt-24 rounded-[20px] border border-white/[0.08] bg-white/[0.035] shadow-[0_18px_60px_-46px_rgba(0,0,0,0.95)]"
-    >
-      <div className="border-b border-white/[0.07] px-4 py-4 sm:px-5">
-        <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white">
-          {sectionIcon ? (
-            <span aria-hidden="true" className="inline-flex shrink-0 text-white/58">
-              <Icon name={sectionIcon} className="h-4 w-4" />
-            </span>
-          ) : null}
-          <span>{title}</span>
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-white/48">{description}</p>
-      </div>
-      <div className="divide-y divide-white/[0.065]">{children}</div>
-    </section>
-  );
-}
-
-function SettingRow({
-  rowId,
-  title,
-  description,
-  status,
-  statusTone = "neutral",
-  feedback,
-  action,
-  children,
-  danger = false,
-}: {
-  rowId: string;
-  title: string;
-  description: string;
-  status?: string;
-  statusTone?: RowTone;
-  feedback?: RowFeedback;
-  action?: ReactNode;
-  children?: ReactNode;
-  danger?: boolean;
-}) {
-  return (
-    <div data-testid={`settings-row-${rowId}`} className="px-4 py-4 sm:px-5">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-        <div className="min-w-0 space-y-1">
-          <h3 className={["text-sm font-semibold", danger ? "text-rose-100" : "text-white/86"].join(" ")}>
-            {title}
-          </h3>
-          <p className="max-w-2xl text-sm leading-6 text-white/48">{description}</p>
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
-          <RowFeedbackBadge feedback={feedback} />
-          {status ? <StatusPill label={status} tone={danger ? "danger" : statusTone} /> : null}
-          {action}
-        </div>
-      </div>
-      {children ? <div className="mt-4">{children}</div> : null}
-    </div>
-  );
-}
-
-function EditButton({
-  active,
-  onClick,
-  disabled,
-  label = "Edit",
-}: {
-  active?: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  label?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-expanded={active}
-      className={[
-        "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50",
-        active
-          ? "border-white/22 bg-white/[0.1] text-white"
-          : "border-white/[0.1] bg-white/[0.035] text-white/66 hover:border-white/[0.18] hover:bg-white/[0.065] hover:text-white",
-      ].join(" ")}
-    >
-      <Icon name="pencil" className="h-3.5 w-3.5" />
-      {label}
-    </button>
-  );
-}
-
-function InlinePanel({
-  children,
-  error,
-  actions,
-}: {
-  children: ReactNode;
-  error?: string | null;
-  actions: ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/[0.09] bg-black/20 p-4">
-      {error ? (
-        <p className="mb-3 rounded-xl border border-amber-200/18 bg-amber-200/[0.075] px-3 py-2 text-xs text-amber-50/84">
-          {error}
-        </p>
-      ) : null}
-      {children}
-      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">{actions}</div>
-    </div>
-  );
-}
-
-function CancelButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="h-9 cursor-pointer rounded-xl border border-white/10 bg-white/[0.03] px-3 text-xs font-semibold text-white/62 transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      Cancel
-    </button>
-  );
-}
-
-function SaveButton({ onClick, disabled, saving }: { onClick: () => void; disabled?: boolean; saving?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || saving}
-      className="h-9 cursor-pointer rounded-xl bg-white px-4 text-xs font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {saving ? "Saving..." : "Save"}
-    </button>
-  );
-}
-
-function FieldLabel({ children }: { children: ReactNode }) {
-  return <span className="text-xs font-semibold text-white/55">{children}</span>;
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  maxLength,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  maxLength?: number;
-  type?: string;
-}) {
-  return (
-    <label className="space-y-2">
-      <FieldLabel>{label}</FieldLabel>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        className="h-10 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
-      />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <label className="space-y-2">
-      <FieldLabel>{label}</FieldLabel>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full cursor-pointer rounded-xl border border-white/10 bg-[#101116] px-3 text-sm text-white outline-none transition-colors focus:border-white/24"
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function ToggleSwitch({
-  checked,
-  onChange,
-  disabled,
-  label,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={onChange}
-      disabled={disabled}
-      className={[
-        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-55",
-        checked ? "border-white/24 bg-white text-black" : "border-white/12 bg-white/[0.055] text-white/50",
-      ].join(" ")}
-    >
-      <span
-        className={[
-          "absolute h-5 w-5 rounded-full transition-transform",
-          checked ? "translate-x-5 bg-black" : "translate-x-1 bg-white/58",
-        ].join(" ")}
-      />
-    </button>
-  );
-}
-
-function DisabledFutureRow({
-  rowId,
-  title,
-  description,
-  status = "Coming soon",
-  danger = false,
-}: {
-  rowId: string;
-  title: string;
-  description: string;
-  status?: string;
-  danger?: boolean;
-}) {
-  return (
-    <SettingRow
-      rowId={rowId}
-      title={title}
-      description={description}
-      status={status}
-      statusTone="future"
-      danger={danger}
-      action={
-        <button
-          type="button"
-          disabled
-          className="inline-flex h-8 cursor-not-allowed items-center rounded-full border border-white/[0.07] bg-white/[0.02] px-3 text-xs font-semibold text-white/30"
-          title="This setting needs backend support before it can be edited."
-        >
-          Disabled
-        </button>
-      }
-    />
-  );
-}
-
 export default function SettingsClient({
   backendAccessToken,
   sessionUser,
@@ -533,6 +206,8 @@ export default function SettingsClient({
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("account");
   const [activeEditor, setActiveEditor] = useState<string | null>(null);
   const [rowFeedback, setRowFeedback] = useState<Record<string, RowFeedback>>({});
+  const [resetLinkSent, setResetLinkSent] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const feedbackTimers = useRef<Record<string, number>>({});
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -569,6 +244,8 @@ export default function SettingsClient({
   const email = profile?.email || me?.email || sessionUser.email || "Not available";
   const avatarUrl = profile?.avatar_url || sessionUser.image || null;
   const unreadCount = notifications?.unread_count || 0;
+  const usesPasswordSignIn = sessionUser.provider === "credentials";
+  const publicProfilePath = username ? `/u/${username}` : null;
 
   const setFeedback = (rowId: string, feedback?: RowFeedback) => {
     window.clearTimeout(feedbackTimers.current[rowId]);
@@ -722,7 +399,7 @@ export default function SettingsClient({
       setEditorError(locationValidation);
       return;
     }
-    await saveProfile("marketplace-location", {
+    await saveProfile("work-location", {
       location: locationSelection?.displayName || normalizedLocation,
       timezone: timezoneDraft.trim(),
     });
@@ -735,7 +412,7 @@ export default function SettingsClient({
       end: workingHoursEnd,
       timezone: workingHoursTimezone,
     });
-    await saveProfile("marketplace-availability", {
+    await saveProfile("work-availability", {
       availability_status: availabilityDraft,
       work_mode: workModeDraft || null,
       timezone: workingHoursMode === "fixed" ? workingHoursTimezone.trim() : timezoneDraft.trim(),
@@ -754,7 +431,7 @@ export default function SettingsClient({
       setEditorError(revisionsError);
       return;
     }
-    await saveProfile("marketplace-project-preferences", {
+    await saveProfile("work-project-preferences", {
       project_type_preference: (projectTypeDraft || null) as BackendProfileUpdatePayload["project_type_preference"],
       collaboration_turnaround: turnaroundDraft.trim(),
       collaboration_revisions: normalizeRevisionsPreferenceForSave(revisionsDraft),
@@ -852,6 +529,37 @@ export default function SettingsClient({
     }
   };
 
+  const copyProfileLink = async () => {
+    const rowId = "account-public-profile";
+    if (!publicProfilePath) return;
+    try {
+      await copyTextToClipboard(`${window.location.origin}${publicProfilePath}`);
+      setFeedback(rowId, { state: "saved", message: "Link copied" });
+    } catch {
+      setFeedback(rowId, { state: "error", message: "Could not copy link." });
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    const rowId = "security-password-reset";
+    setFeedback(rowId, { state: "saving" });
+    try {
+      await requestPasswordReset(email);
+      setResetLinkSent(true);
+      setFeedback(rowId, { state: "saved", message: "Reset link sent" });
+    } catch (error) {
+      setFeedback(rowId, {
+        state: "error",
+        message: describeActionError(error, "Could not send reset email."),
+      });
+    }
+  };
+
+  const handleSignOut = () => {
+    setSigningOut(true);
+    void signOut({ callbackUrl: "/" });
+  };
+
   const sectionButtons = useMemo(
     () =>
       SECTIONS.map((section) => (
@@ -864,7 +572,7 @@ export default function SettingsClient({
           }}
           className={[
             "inline-flex w-full min-w-max cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 lg:min-w-0",
-            activeSection === section.id ? "bg-white/[0.09] text-white" : "text-white/52 hover:bg-white/[0.055] hover:text-white/78",
+            activeSection === section.id ? "bg-white/[0.08] text-white" : "text-white/50 hover:bg-white/[0.05] hover:text-white/80",
           ].join(" ")}
         >
           <Icon name={section.icon} className="h-4 w-4 shrink-0" />
@@ -892,7 +600,7 @@ export default function SettingsClient({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[24px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,255,255,0.065),rgba(255,255,255,0.025))] px-4 py-4 shadow-[0_18px_70px_-50px_rgba(0,0,0,1)] sm:px-5">
+      <div className="rounded-2xl border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-5 py-5 shadow-[0_12px_40px_-30px_rgba(0,0,0,0.8)]">
         <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
           <input
             ref={avatarFileInputRef}
@@ -905,14 +613,14 @@ export default function SettingsClient({
           <button
             type="button"
             onClick={() => avatarFileInputRef.current?.click()}
-            className="group relative h-16 w-16 cursor-pointer overflow-hidden rounded-2xl border border-white/14 bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            className="group relative h-20 w-20 cursor-pointer overflow-hidden rounded-2xl border border-white/14 bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             aria-label="Upload profile picture"
           >
             {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
             ) : (
               <span className="flex h-full w-full items-center justify-center">
-                <Icon name="user" className="h-7 w-7 text-white/64" />
+                <Icon name="user" className="h-8 w-8 text-white/64" />
               </span>
             )}
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/42 group-hover:opacity-100 group-focus-visible:bg-black/42 group-focus-visible:opacity-100">
@@ -924,30 +632,38 @@ export default function SettingsClient({
             <p className="text-xl font-semibold tracking-tight text-white">{displayName}</p>
             <p className="mt-1 truncate text-sm text-white/48">{username ? `@${username}` : email}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <StatusPill label={onboardingIntentLabel(me?.onboarding_intent || profile?.onboarding_intent || sessionUser.onboardingIntent)} tone="active" />
+              <StatusPill
+                label={onboardingIntentLabel(me?.onboarding_intent || profile?.onboarding_intent || sessionUser.onboardingIntent)}
+                tone="active"
+              />
               <StatusPill label={channels.length ? `${channels.length} YouTube linked` : "No YouTube channel"} />
-              <StatusPill label={unreadCount ? `${unreadCount} unread` : "Notifications clear"} />
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            {loadErrors.profile ? <StatusPill label="Profile data unavailable" tone="future" /> : null}
-            {loadErrors.me ? <StatusPill label="Account data unavailable" tone="future" /> : null}
+          <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+            {publicProfilePath ? (
+              <RowActionButton icon="external-link" href={publicProfilePath} external>
+                View profile
+              </RowActionButton>
+            ) : null}
+            {loadErrors.profile ? <StatusPill label="Profile data unavailable" tone="readonly" /> : null}
+            {loadErrors.me ? <StatusPill label="Account data unavailable" tone="readonly" /> : null}
           </div>
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
         <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-20">
-          <div className="flex min-w-0 gap-2 overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.035] p-2 lg:block lg:space-y-1 lg:overflow-visible">
+          <div className="flex min-w-0 gap-2 overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.035] p-2 lg:block lg:space-y-0.5 lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0">
             {sectionButtons}
           </div>
         </nav>
 
-        <div className="min-w-0 space-y-5 pb-12">
+        <div className="min-w-0 space-y-5 pb-24">
           <SettingsSection
             id="account"
             title="Account"
+            icon="user"
             description="Identity and login details for your unified CreatorJobs account."
           >
             <SettingRow
@@ -958,14 +674,9 @@ export default function SettingsClient({
               statusTone={avatarUrl ? "active" : "neutral"}
               feedback={rowFeedback["account-avatar"]}
               action={
-                <button
-                  type="button"
-                  onClick={() => avatarFileInputRef.current?.click()}
-                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs font-semibold text-white/66 transition-colors hover:bg-white/[0.065] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                >
-                  <Icon name="image" className="h-3.5 w-3.5" />
+                <RowActionButton icon="image" onClick={() => avatarFileInputRef.current?.click()}>
                   Upload
-                </button>
+                </RowActionButton>
               }
             >
               {channels.length ? (
@@ -1056,6 +767,27 @@ export default function SettingsClient({
             </SettingRow>
 
             <SettingRow
+              rowId="account-public-profile"
+              title="Public profile"
+              description="Share your public CreatorJobs page with collaborators and clients."
+              status={publicProfilePath || "Set a username first"}
+              statusTone={publicProfilePath ? "readonly" : "neutral"}
+              feedback={rowFeedback["account-public-profile"]}
+              action={
+                publicProfilePath ? (
+                  <>
+                    <RowActionButton icon="copy" onClick={() => void copyProfileLink()}>
+                      Copy link
+                    </RowActionButton>
+                    <RowActionButton icon="external-link" href={publicProfilePath} external>
+                      Open
+                    </RowActionButton>
+                  </>
+                ) : undefined
+              }
+            />
+
+            <SettingRow
               rowId="account-onboarding"
               title="Account mode"
               description="Choose how CreatorJobs should orient your account experience."
@@ -1102,20 +834,26 @@ export default function SettingsClient({
 
             <SettingRow rowId="account-email" title="Email" description="Used for login and account communication." status={email} statusTone="readonly" />
             <SettingRow
-              rowId="account-type"
-              title="Legacy account type"
-              description="Derived from onboarding history and kept for compatibility."
-              status={accountTypeLabel(profile?.account_type || me?.account_type || sessionUser.accountType)}
-              statusTone="readonly"
+              rowId="account-plan"
+              title="Plan"
+              description="CreatorJobs is free during the beta — no payment method is required to post jobs or apply to them."
+              status="Free beta"
+              statusTone="active"
             />
-            <DisabledFutureRow rowId="account-change-email" title="Change email" description="Changing account email needs a verification flow." status="Requires backend" />
-            <DisabledFutureRow rowId="account-password" title="Password" description="Password changes are not wired into this settings workspace yet." status="Requires backend" />
           </SettingsSection>
 
           <SettingsSection
             id="profile-visibility"
-            title="Profile & Visibility"
+            title="Profile & visibility"
+            icon="globe"
             description="Control what parts of your public CreatorJobs presence are visible."
+            headerAction={
+              publicProfilePath ? (
+                <RowActionButton icon="external-link" href={publicProfilePath} external>
+                  View public profile
+                </RowActionButton>
+              ) : undefined
+            }
           >
             {([
               ["show_bio", "Bio", "Show your profile bio on the public profile."],
@@ -1143,31 +881,31 @@ export default function SettingsClient({
                 }
               />
             ))}
-            <DisabledFutureRow rowId="profile-discovery" title="Profile discovery" description="Search and marketplace discovery controls need backend support." status="Not wired yet" />
           </SettingsSection>
 
           <SettingsSection
-            id="marketplace"
-            title="Marketplace Preferences"
+            id="work-preferences"
+            title="Work preferences"
+            icon="briefcase"
             description="Defaults that shape hiring, applying, and collaboration context."
           >
             <SettingRow
-              rowId="marketplace-location"
+              rowId="work-location"
               title="Location and timezone"
               description="Used for profile availability and marketplace coordination."
               status={[compact(profile?.location), compact(profile?.timezone, "Timezone not set")].join(" / ")}
-              feedback={rowFeedback["marketplace-location"]}
-              action={<EditButton active={activeEditor === "marketplace-location"} onClick={() => openEditor("marketplace-location")} />}
+              feedback={rowFeedback["work-location"]}
+              action={<EditButton active={activeEditor === "work-location"} onClick={() => openEditor("work-location")} />}
             >
-              {activeEditor === "marketplace-location" ? (
+              {activeEditor === "work-location" ? (
                 <InlinePanel
                   error={editorError}
                   actions={
                     <>
-                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["marketplace-location"]?.state === "saving"} />
+                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["work-location"]?.state === "saving"} />
                       <SaveButton
                         onClick={() => void saveLocationTimezone()}
-                        saving={rowFeedback["marketplace-location"]?.state === "saving"}
+                        saving={rowFeedback["work-location"]?.state === "saving"}
                       />
                     </>
                   }
@@ -1192,22 +930,22 @@ export default function SettingsClient({
             </SettingRow>
 
             <SettingRow
-              rowId="marketplace-availability"
+              rowId="work-availability"
               title="Availability and work mode"
               description="Default collaboration availability, work mode, and working hours."
               status={[compact(profile?.availability_status, "Selective"), compact(profile?.collaboration_preferences?.work_mode, "Work mode not set")].join(" / ")}
-              feedback={rowFeedback["marketplace-availability"]}
-              action={<EditButton active={activeEditor === "marketplace-availability"} onClick={() => openEditor("marketplace-availability")} />}
+              feedback={rowFeedback["work-availability"]}
+              action={<EditButton active={activeEditor === "work-availability"} onClick={() => openEditor("work-availability")} />}
             >
-              {activeEditor === "marketplace-availability" ? (
+              {activeEditor === "work-availability" ? (
                 <InlinePanel
                   error={editorError}
                   actions={
                     <>
-                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["marketplace-availability"]?.state === "saving"} />
+                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["work-availability"]?.state === "saving"} />
                       <SaveButton
                         onClick={() => void saveAvailabilityWorkMode()}
-                        saving={rowFeedback["marketplace-availability"]?.state === "saving"}
+                        saving={rowFeedback["work-availability"]?.state === "saving"}
                       />
                     </>
                   }
@@ -1277,25 +1015,25 @@ export default function SettingsClient({
             </SettingRow>
 
             <SettingRow
-              rowId="marketplace-project-preferences"
+              rowId="work-project-preferences"
               title="Project preferences"
               description="Default project type, turnaround, and revision expectations."
               status={[
                 PROJECT_TYPE_OPTIONS.find((option) => option.value === profile?.collaboration_preferences?.project_type_preference)?.label || "Project type not set",
                 compact(profile?.collaboration_preferences?.turnaround, "Turnaround not set"),
               ].join(" / ")}
-              feedback={rowFeedback["marketplace-project-preferences"]}
-              action={<EditButton active={activeEditor === "marketplace-project-preferences"} onClick={() => openEditor("marketplace-project-preferences")} />}
+              feedback={rowFeedback["work-project-preferences"]}
+              action={<EditButton active={activeEditor === "work-project-preferences"} onClick={() => openEditor("work-project-preferences")} />}
             >
-              {activeEditor === "marketplace-project-preferences" ? (
+              {activeEditor === "work-project-preferences" ? (
                 <InlinePanel
                   error={editorError}
                   actions={
                     <>
-                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["marketplace-project-preferences"]?.state === "saving"} />
+                      <CancelButton onClick={cancelEditor} disabled={rowFeedback["work-project-preferences"]?.state === "saving"} />
                       <SaveButton
                         onClick={() => void saveProjectPreferences()}
-                        saving={rowFeedback["marketplace-project-preferences"]?.state === "saving"}
+                        saving={rowFeedback["work-project-preferences"]?.state === "saving"}
                       />
                     </>
                   }
@@ -1327,14 +1065,19 @@ export default function SettingsClient({
               ) : null}
             </SettingRow>
 
-            <SettingRow rowId="marketplace-currency" title="Default currency" description="Default marketplace display currency." status="INR" statusTone="readonly" />
-            <DisabledFutureRow rowId="marketplace-saved-search" title="Saved search defaults" description="Saved search and alert preferences need backend support." status="Not wired yet" />
-            <DisabledFutureRow rowId="marketplace-recommendations" title="Recommendations" description="Recommendation tuning is planned for a later preference system." status="Coming soon" />
+            <SettingRow
+              rowId="work-currency"
+              title="Currency"
+              description="Marketplace amounts are shown in INR during the India-first beta."
+              status="INR"
+              statusTone="readonly"
+            />
           </SettingsSection>
 
           <SettingsSection
             id="connected-accounts"
-            title="Connected Accounts"
+            title="Connected accounts"
+            icon="badge-check"
             description="Verified accounts used for profile trust and channel identity."
           >
             <SettingRow
@@ -1345,14 +1088,9 @@ export default function SettingsClient({
               statusTone={channels.length ? "active" : "neutral"}
               feedback={rowFeedback["connected-youtube"]}
               action={
-                <button
-                  type="button"
-                  onClick={() => void refreshChannels()}
-                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs font-semibold text-white/66 transition-colors hover:bg-white/[0.065] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                >
-                  <Icon name="refresh" className="h-3.5 w-3.5" />
+                <RowActionButton icon="refresh" onClick={() => void refreshChannels()}>
                   Refresh
-                </button>
+                </RowActionButton>
               }
             >
               {channels.length ? (
@@ -1402,13 +1140,13 @@ export default function SettingsClient({
                 </InlinePanel>
               ) : null}
             </SettingRow>
-            <DisabledFutureRow rowId="connected-oauth-connect" title="Connect provider" description="OAuth connect and revoke controls need a dedicated backend flow." status="Requires backend" />
           </SettingsSection>
 
           <SettingsSection
             id="notifications"
             title="Notifications"
-            description="Current notification status and future alert preferences."
+            icon="bell"
+            description="Your in-app notification activity for this account."
           >
             <SettingRow
               rowId="notifications-status"
@@ -1418,73 +1156,110 @@ export default function SettingsClient({
               statusTone={unreadCount ? "active" : "readonly"}
               feedback={rowFeedback["notifications-status"]}
               action={
-                <button
-                  type="button"
-                  onClick={() => void markNotificationsRead()}
-                  disabled={!unreadCount || loadErrors.notifications}
-                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs font-semibold text-white/66 transition-colors hover:bg-white/[0.065] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Icon name="check" className="h-3.5 w-3.5" />
-                  Mark all read
-                </button>
+                <>
+                  <RowActionButton
+                    icon="check"
+                    onClick={() => void markNotificationsRead()}
+                    disabled={!unreadCount || loadErrors.notifications}
+                  >
+                    Mark all read
+                  </RowActionButton>
+                  <RowActionButton icon="bell" href="/notifications">
+                    View all
+                  </RowActionButton>
+                </>
               }
             />
-            <DisabledFutureRow rowId="notifications-email" title="Email notifications" description="Email notification preferences need backend support." status="Not wired yet" />
-            <DisabledFutureRow rowId="notifications-applications" title="Application updates" description="Per-event application alert controls are planned." status="Coming soon" />
-            <DisabledFutureRow rowId="notifications-hiring" title="Hiring request updates" description="Hiring request alert controls are planned." status="Coming soon" />
-            <DisabledFutureRow rowId="notifications-messages" title="Messages" description="Message notification preferences are not wired yet." status="Requires backend" />
-            <DisabledFutureRow rowId="notifications-digest" title="Digest frequency" description="Digest emails require notification preference storage." status="Requires backend" />
           </SettingsSection>
 
           <SettingsSection
-            id="payments"
-            title="Payments, Billing & Payouts"
-            description="Future payment infrastructure for paid marketplace flows."
+            id="security"
+            title="Security"
+            icon="shield"
+            description="How you sign in to CreatorJobs and control this session."
           >
-            <SettingRow rowId="payments-beta" title="Beta payment status" description="CreatorJobs beta does not require a payment method to publish right now." status="No payment required" statusTone="readonly" />
-            <DisabledFutureRow rowId="payments-upi" title="UPI ID" description="Payout settings require payment infrastructure." status="Coming soon" />
-            <DisabledFutureRow rowId="payments-payout" title="Payout method" description="Payout methods are not wired yet." status="Coming soon" />
-            <DisabledFutureRow rowId="payments-billing" title="Billing details" description="Business name, GST, invoice address, and receipts are future billing settings." status="Not wired yet" />
-            <DisabledFutureRow rowId="payments-invoices" title="Invoices and receipts" description="Billing history requires a payment provider integration." status="Requires backend" />
-            <DisabledFutureRow rowId="payments-subscription" title="Subscriptions" description="Paid plans and featured placements are not active in beta." status="Coming soon" />
+            <SettingRow
+              rowId="security-signin-method"
+              title="Sign-in method"
+              description={
+                sessionUser.provider === "google"
+                  ? "You sign in with Google. This connection also powers your verified YouTube channels."
+                  : usesPasswordSignIn
+                    ? "You sign in with your email and password."
+                    : "The authentication method used for this session."
+              }
+              status={signInMethodLabel(sessionUser.provider)}
+              statusTone="readonly"
+            />
+
+            {usesPasswordSignIn && email.includes("@") ? (
+              <SettingRow
+                rowId="security-password-reset"
+                title="Password"
+                description={`Send a password reset link to ${email}.`}
+                feedback={rowFeedback["security-password-reset"]}
+                action={
+                  <RowActionButton
+                    icon="mail"
+                    onClick={() => void sendPasswordReset()}
+                    disabled={resetLinkSent || rowFeedback["security-password-reset"]?.state === "saving"}
+                  >
+                    {resetLinkSent ? "Sent" : "Send reset email"}
+                  </RowActionButton>
+                }
+              />
+            ) : null}
+
+            <SettingRow
+              rowId="security-sign-out"
+              title="Sign out"
+              description="Sign out of CreatorJobs on this device."
+              action={
+                <RowActionButton icon="log-out" onClick={handleSignOut} disabled={signingOut}>
+                  {signingOut ? "Signing out…" : "Sign out"}
+                </RowActionButton>
+              }
+            />
           </SettingsSection>
 
           <SettingsSection
-            id="privacy-data"
-            title="Privacy, Safety & Data"
-            description="Data controls, safety tools, legal links, and destructive account actions."
+            id="data-support"
+            title="Data & support"
+            icon="help"
+            description="Help, policies, and account-level requests."
           >
-            <SettingRow rowId="privacy-policy-link" title="Privacy Policy" description="Read how CreatorJobs handles marketplace and account data." status="Legal" statusTone="readonly" action={<Link className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-semibold text-white/66 hover:text-white" href="/privacy">Open</Link>} />
-            <SettingRow rowId="privacy-terms-link" title="Terms" description="Review marketplace terms and safety expectations." status="Legal" statusTone="readonly" action={<Link className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-semibold text-white/66 hover:text-white" href="/terms">Open</Link>} />
-            <DisabledFutureRow rowId="privacy-blocked" title="Blocked and muted users" description="Block/mute management needs safety backend support." status="Requires backend" />
-            <DisabledFutureRow rowId="privacy-data-export" title="Download my data" description="Data export needs an asynchronous backend export flow." status="Requires backend" />
-            <DisabledFutureRow rowId="privacy-deactivate" title="Deactivate account" description="Temporary deactivation requires product and backend policy." status="Requires backend" danger />
-            <DisabledFutureRow rowId="privacy-delete" title="Delete account" description="Permanent account deletion requires confirmation, retention policy, and backend deletion support." status="Requires backend" danger />
-          </SettingsSection>
-
-          <SettingsSection id="security" title="Security" description="Login methods, OAuth connections, sessions, and account protection.">
-            <SettingRow rowId="security-login-method" title="Login method" description="Current authentication method for this session." status={providerLabel(sessionUser.provider)} statusTone="readonly" />
-            <SettingRow rowId="security-oauth" title="Connected OAuth account" description="External account used for sign-in where available." status={sessionUser.providerAccountId ? "Connected" : "Not shown"} statusTone="readonly" />
-            <DisabledFutureRow rowId="security-password" title="Password reset" description="Password controls need a dedicated account security flow." status="Requires backend" />
-            <DisabledFutureRow rowId="security-2fa" title="Two-factor authentication" description="Second-factor authentication is not wired yet." status="Coming soon" />
-            <DisabledFutureRow rowId="security-sessions" title="Sessions and devices" description="Device/session management requires backend session inventory." status="Requires backend" />
-            <DisabledFutureRow rowId="security-revoke-oauth" title="Revoke OAuth provider" description="Provider revocation needs a safe disconnect backend flow." status="Requires backend" />
-          </SettingsSection>
-
-          <SettingsSection id="preferences" title="Preferences" description="Regional, language, currency, and appearance defaults.">
-            <SettingRow rowId="preferences-theme" title="Theme" description="CreatorJobs currently uses the dark premium theme." status="Dark" statusTone="readonly" />
-            <SettingRow rowId="preferences-region" title="Region" description="CreatorJobs is India-first today, with broader regional preferences planned." status="India-first beta" statusTone="readonly" />
-            <SettingRow rowId="preferences-currency" title="Currency" description="Default marketplace display currency." status="INR" statusTone="readonly" />
-            <DisabledFutureRow rowId="preferences-language" title="Language" description="Interface language preferences are planned." status="Coming soon" />
-            <DisabledFutureRow rowId="preferences-date-time" title="Date/time format" description="Regional date and time formatting preferences need support." status="Coming soon" />
-          </SettingsSection>
-
-          <SettingsSection id="support-legal" title="Support & Legal" description="Help, policies, and support resources that can live outside settings.">
-            <SettingRow rowId="support-link" title="Support" description="Get help with account access, verification, and marketplace workflows." status="Separate page" statusTone="readonly" action={<Link className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-semibold text-white/66 hover:text-white" href="/support">Open</Link>} />
-            <SettingRow rowId="support-terms-link" title="Terms" description="CreatorJobs marketplace terms." status="Legal" statusTone="readonly" action={<Link className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-semibold text-white/66 hover:text-white" href="/terms">Open</Link>} />
-            <SettingRow rowId="support-privacy-link" title="Privacy" description="Privacy policy and data handling." status="Legal" statusTone="readonly" action={<Link className="inline-flex h-8 items-center rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-semibold text-white/66 hover:text-white" href="/privacy">Open</Link>} />
-            <DisabledFutureRow rowId="support-bug-report" title="Report a problem" description="Bug-report routing needs a support backend or form target." status="Not wired yet" />
-            <DisabledFutureRow rowId="support-guidelines" title="Community guidelines" description="Guidelines page is planned but not published yet." status="Coming soon" />
+            <SettingRow
+              rowId="support-contact"
+              title="Contact support"
+              description="Get help with account access, verification, or reporting a problem."
+              action={
+                <RowActionButton icon="help" href="/support">
+                  Open
+                </RowActionButton>
+              }
+            />
+            <SettingRow
+              rowId="support-legal"
+              title="Legal"
+              description="The terms and privacy policy that govern CreatorJobs."
+              action={
+                <>
+                  <RowActionButton href="/terms">Terms</RowActionButton>
+                  <RowActionButton href="/privacy">Privacy</RowActionButton>
+                </>
+              }
+            />
+            <SettingRow
+              rowId="support-delete-account"
+              title="Delete account"
+              description="During the beta, account deletion is handled by our support team. Contact us from your account email and we'll confirm and process it."
+              danger
+              action={
+                <RowActionButton tone="danger" href="/support">
+                  Contact support
+                </RowActionButton>
+              }
+            />
           </SettingsSection>
         </div>
       </div>
