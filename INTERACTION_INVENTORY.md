@@ -28,6 +28,24 @@ records observed behaviour per control.
 
 ---
 
+## Phase A additions — recommendation, decision surface, work state
+
+Added by the *Effortless Status* Phase A slice (see
+[INBOX_PIPELINE_UX_AUDIT.md](INBOX_PIPELINE_UX_AUDIT.md)). All three are gated by
+independent flags and change presentation only — none of them writes state that
+the backend did not already own.
+
+| Control | Intended | Observed | Backend | Persistence | Counterparty | Coverage | Status |
+|---|---|---|---|---|---|---|---|
+| `next-action-primary` (header) | The one recommended action, out of the overflow menu | Renders the ladder's result; low confidence shows "Choose next step" and opens the decision surface instead of committing | whichever transition the chosen action maps to | none of its own | only via the action taken | `workspace-next-action` (reachable without overflow, keyboard-operable, low-confidence fallback) | **NEW** |
+| `row-next-action` (list row) | Act without opening the record | Rendered only for a high-confidence action on a row that is not open; in flow, never overlapping the timestamp; desktop only | same as above | none | via the action | `workspace-next-action` (mobile calm) | **NEW** |
+| `decision-strip` | One place to choose what happens next | Opens on first deliberate open of a new/reviewing record, and on demand from "Choose next step"; sits above the composer and can never cover it; never takes focus | none until a choice is made | dismissal only, user-scoped + versioned | none until a choice is made | `workspace-next-action` (never covers composer, never steals focus, dismissible, commits authoritatively) | **NEW** |
+| `decision-strip-option-<stage>` | Commit a real stage change | Dispatches the same `HeaderAction` the overflow menu would, then closes | transition endpoints | authoritative, survives reload | per the stage's notify policy | `workspace-next-action` (commit test) | **NEW** |
+| `decision-strip-ask` | Message instead of deciding | Closes the surface and focuses the composer; no state change | none | none | none | `workspace-next-action` | **NEW** |
+| `decision-strip-dismiss` | Leave it alone | Closes with zero side effects; stays dismissed for that record across navigation and reload; stage unchanged | none | user-scoped, versioned | none | `workspace-next-action` (dismissal persistence) | **NEW** |
+| `work-state-chip` / `pipeline-work-state` | Say what the record needs | One restrained label; never asserts "Needs your reply" without explicit evidence; replaces the status pill so rows carry exactly one indicator | none — derived | none | never visible to the counterparty | `workspace-next-action` (never overstates), `workspaceNextAction` unit tests | **NEW** |
+| `pipeline-next-action` | Same recommendation on the board | Only for actions the board owns (reply, share, confirm start); decision-type recommendations defer to the card's stage menu so two surfaces never compete | via the workspace dispatcher | none | via the action | `workspace-next-action` (Inbox/Pipeline parity) | **NEW** |
+
 ## Workspace shell
 
 | Control | Intended | Observed | Backend | Persistence | Counterparty | Coverage | Status |

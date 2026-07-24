@@ -19,8 +19,10 @@ import {
   pipelineSnippetOf,
   pipelineStagesFor,
   validStageTargetsFor,
+  type NextBestAction,
   type PipelineFirstMessageLine,
   type PipelineStage,
+  type WorkState,
 } from "../../lib/applicationPipeline";
 import type { InteractionDirection, InteractionKind, OwnerInteraction } from "../../lib/ownerInteractions";
 
@@ -102,7 +104,23 @@ type PipelineBoardProps = {
   onMessage: (item: OwnerInteraction) => void;
   /** Move one or many items to a backend stage. Resolves when committed. */
   onMoveStage: (items: OwnerInteraction[], stageKey: string) => Promise<void>;
+  /**
+   * Derived work state, supplied by the workspace so both views read from the
+   * same function. Omitted when the flag is off.
+   */
+  workStateFor?: (item: OwnerInteraction) => WorkState | null;
+  /** Recommended action, from the same shared ladder the Inbox uses. */
+  nextActionFor?: (item: OwnerInteraction) => NextBestAction | null;
+  /**
+   * Run a recommended action. Only called for actions the board should own —
+   * decision-type recommendations are served by the card's own stage menu, so
+   * the board never grows a second, competing decision surface.
+   */
+  onNextAction?: (item: OwnerInteraction, action: NextBestAction) => void;
 };
+
+/** Recommendations the board dispatches itself; the rest belong to the stage menu. */
+const BOARD_DISPATCHABLE_ACTIONS = new Set(["reply", "share-decision", "confirm-start"]);
 
 function avatarInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean);
@@ -404,6 +422,9 @@ export default function PipelineBoard({
   onStageFocusChange,
   onMessage,
   onMoveStage,
+  workStateFor,
+  nextActionFor,
+  onNextAction,
 }: PipelineBoardProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
@@ -863,6 +884,59 @@ export default function PipelineBoard({
                                 />
                               ) : null}
                             </div>
+
+                            {/*
+                              Parity with the Inbox: the same derivation and the
+                              same ladder. Decision-type recommendations are not
+                              rendered here — this card already carries a stage
+                              menu, and two decision surfaces would compete.
+                            */}
+                            {(() => {
+                              const workState = workStateFor?.(item) ?? null;
+                              const action = nextActionFor?.(item) ?? null;
+                              const dispatchable =
+                                action && BOARD_DISPATCHABLE_ACTIONS.has(action.key) ? action : null;
+                              if (!workState && !dispatchable) return null;
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {workState ? (
+                                    <span
+                                      data-testid="pipeline-work-state"
+                                      data-work-state={workState.key}
+                                      className={[
+                                        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
+                                        workState.highConfidence
+                                          ? "bg-white/[0.09] text-white/80"
+                                          : "text-white/45",
+                                      ].join(" ")}
+                                    >
+                                      {workState.highConfidence ? (
+                                        <span
+                                          className="h-1 w-1 shrink-0 rounded-full bg-white/70"
+                                          aria-hidden="true"
+                                        />
+                                      ) : null}
+                                      {workState.label}
+                                    </span>
+                                  ) : null}
+                                  {dispatchable ? (
+                                    <button
+                                      type="button"
+                                      data-no-drag
+                                      data-testid="pipeline-next-action"
+                                      data-action-key={dispatchable.key}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onNextAction?.(item, dispatchable);
+                                      }}
+                                      className="inline-flex h-6 cursor-pointer items-center rounded-md border border-white/15 bg-white/[0.05] px-2 text-[10.5px] font-semibold text-white/85 transition-colors hover:bg-white/[0.1]"
+                                    >
+                                      {dispatchable.label}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
 
                             {facts.length > 0 || portfolioCount > 0 ? (
                               <div className="flex flex-wrap items-center gap-1.5">

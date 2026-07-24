@@ -8,6 +8,7 @@ import {
   type RequirementIcon,
   type RequirementSummaryItem,
 } from "./firstMessageRequirements.ts";
+import { isArchivedInteraction } from "./ownerInteractions.ts";
 import type {
   InteractionDirection,
   InteractionKind,
@@ -552,4 +553,219 @@ export function pipelineFirstMessageLines(
       value: firstMessageLineValue(entry),
     }))
     .filter((line) => line.value);
+}
+
+/* ------------------------------------------------------------------ *
+ * Derived work state and the next-best-action ladder.
+ *
+ * Both are pure and shared by the Inbox and the Pipeline, so the two views can
+ * never disagree about what a record needs. Neither ever mutates lifecycle
+ * state: they are presentation over authoritative data.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Live evidence the workspace can supply that is not carried on the record
+ * itself. Everything is optional so the functions stay pure and unit-testable;
+ * absent evidence simply lowers confidence rather than inventing a state.
+ */
+export type WorkSignals = {
+  /** Unread messages from the counterparty in this thread. */
+  unreadCount?: number;
+  /**
+   * True only when the last message is known to expect an answer — an explicit
+   * composer intent or a scheduling proposal. Phase A never sets this, so
+   * "Needs your reply" is never asserted on weak evidence; the composer-intent
+   * work in Phase B is what will populate it.
+   */
+  responseExpected?: boolean;
+  /** A hire/acceptance produced an engagement whose start is unconfirmed. */
+  engagementUnconfirmed?: boolean;
+};
+
+export type WorkStateKey =
+  | "needs_review"
+  | "decision_not_shared"
+  | "start_confirmation_pending"
+  | "needs_reply"
+  | "review_latest";
+
+export type WorkState = {
+  key: WorkStateKey;
+  /** Short, human label. Never asserts more certainty than the evidence. */
+  label: string;
+  /**
+   * High-confidence states are backed by authoritative record state. Low
+   * confidence means "something arrived", so the label stays descriptive
+   * ("Review latest message") rather than prescriptive ("Needs your reply").
+   */
+  highConfidence: boolean;
+};
+
+/**
+ * Outcomes that end the conversation. These mirror the backend's closure policy
+ * (`messaging_service.CLOSED_*_STATUSES`): nobody owes anything afterwards.
+ */
+const CLOSED_BACKEND_STATUSES = new Set(["rejected", "declined", "withdrawn"]);
+
+/**
+ * Agreed outcomes. The funnel is finished — no stage decision is owed — but the
+ * thread stays open while the work happens, so an unread message there still
+ * deserves a reply.
+ */
+const AGREED_BACKEND_STATUSES = new Set(["hired", "accepted"]);
+
+/** Optional-shared decisions: recorded privately, communicated only on purpose. */
+const OPTIONAL_SHARED_STATUSES = new Set(["shortlisted", "rejected"]);
+
+/**
+ * Does this record carry a decision the manager saved privately and has not yet
+ * told the other side about? That is authoritative and actionable, so it is the
+ * one "unfinished business" signal Phase A can assert with confidence.
+ */
+function hasUnsharedDecision(
+  item: Pick<OwnerInteraction, "kind" | "direction" | "participantBackendStatus" | "status" | "backendStatus" | "archivedAt">
+): boolean {
+  if (item.direction !== "received" || item.kind !== "application") return false;
+  const stage = backendStatusOf(item);
+  if (!OPTIONAL_SHARED_STATUSES.has(stage)) return false;
+  return (item.participantBackendStatus ?? null) !== stage;
+}
+
+/**
+ * What this record needs from the viewer right now, or null when it needs
+ * nothing. Presentation only — it never changes stored state.
+ *
+ * Deliberate exclusions: archived records (personal organisation, out of the
+ * queue), terminal outcomes with nothing outstanding, and anything where the
+ * *other* participant is the one expected to act.
+ */
+export function deriveWorkState(
+  item: OwnerInteraction,
+  signals: WorkSignals = {}
+): WorkState | null {
+  if (isArchivedInteraction(item)) return null;
+
+  const stage = backendStatusOf(item);
+  const unread = signals.unreadCount ?? (item.unread ? 1 : 0);
+
+  // A hire or acceptance still owes a start confirmation. Authoritative.
+  if (signals.engagementUnconfirmed && (stage === "hired" || stage === "accepted")) {
+    return { key: "start_confirmation_pending", label: "Confirm start", highConfidence: true };
+  }
+
+  // A closed conversation owes nothing, unless a private decision was never
+  // communicated — that is still unfinished business for the manager.
+  if (CLOSED_BACKEND_STATUSES.has(stage) && !hasUnsharedDecision(item)) return null;
+
+  if (item.direction === "received" && !AGREED_BACKEND_STATUSES.has(stage)) {
+    // Nothing has been looked at yet — the strongest signal available.
+    if (stage === "new") {
+      return { key: "needs_review", label: "Needs review", highConfidence: true };
+    }
+    // A decision exists privately but the other side has not been told.
+    if (hasUnsharedDecision(item)) {
+      return { key: "decision_not_shared", label: "Decision not shared", highConfidence: true };
+    }
+  }
+
+  // Only an explicit response expectation may assert that a reply is owed.
+  if (signals.responseExpected && unread > 0) {
+    return { key: "needs_reply", label: "Needs your reply", highConfidence: true };
+  }
+
+  // Something arrived, but nothing proves it needs an answer: stay descriptive.
+  if (unread > 0) {
+    return { key: "review_latest", label: "Review latest message", highConfidence: false };
+  }
+
+  return null;
+}
+
+export type NextActionKey =
+  | "resolve-legacy-stage"
+  | "confirm-start"
+  | "share-decision"
+  | "record-decision"
+  | "reply"
+  | "choose-next-step";
+
+export type NextBestAction = {
+  key: NextActionKey;
+  /** The button label. Uses the counterparty's first name where it reads better. */
+  label: string;
+  /**
+   * True when the ladder matched a specific, well-evidenced action. False for
+   * the neutral fallback, which opens the decision surface instead of guessing.
+   */
+  highConfidence: boolean;
+};
+
+const firstName = (name: string) => (name || "").trim().split(/\s+/)[0] || "them";
+
+/**
+ * The single recommended action for a record, or null when nothing is
+ * recommended (the other side owes the next move).
+ *
+ * A strict first-match ladder — deterministic, testable, and identical for the
+ * Inbox and the Pipeline. When no rule matches with confidence it returns
+ * "Choose next step", which opens the decision surface rather than guessing that
+ * a new applicant should be interviewed, rejected, or messaged.
+ */
+export function nextBestActionFor(
+  item: OwnerInteraction,
+  signals: WorkSignals = {}
+): NextBestAction | null {
+  // Archived records are out of the workflow, except for the one-time legacy
+  // stage choice, which genuinely still needs a decision.
+  if (item.legacyArchiveResolutionRequired) {
+    return { key: "resolve-legacy-stage", label: "Choose current stage", highConfidence: true };
+  }
+  if (isArchivedInteraction(item)) return null;
+
+  const stage = backendStatusOf(item);
+  const unread = signals.unreadCount ?? (item.unread ? 1 : 0);
+  const name = firstName(item.counterpartyName);
+
+  // 1. An agreed engagement is waiting on a start confirmation.
+  if (signals.engagementUnconfirmed && (stage === "hired" || stage === "accepted")) {
+    return { key: "confirm-start", label: "Confirm start", highConfidence: true };
+  }
+
+  // 2. A decision was saved privately and never communicated.
+  if (hasUnsharedDecision(item)) {
+    return { key: "share-decision", label: `Tell ${name}`, highConfidence: true };
+  }
+
+  // 3. A closed conversation has nothing outstanding.
+  if (CLOSED_BACKEND_STATUSES.has(stage)) return null;
+
+  // 4. Agreed outcomes owe no stage decision, but the thread stays open while
+  //    the work happens, so an unread message there still deserves a reply.
+  if (AGREED_BACKEND_STATUSES.has(stage)) {
+    return unread > 0
+      ? { key: "reply", label: `Reply to ${name}`, highConfidence: true }
+      : null;
+  }
+
+  if (item.direction === "received") {
+    // 5. An interview is under way; the outstanding thing is the decision.
+    if (stage === "interviewing") {
+      return { key: "record-decision", label: "Record decision", highConfidence: true };
+    }
+    // 6. They wrote and it is unread — reading and replying comes first.
+    if (unread > 0) {
+      return { key: "reply", label: `Reply to ${name}`, highConfidence: true };
+    }
+    // 7. New or under review with no stronger signal. Do not guess an outcome.
+    if (stage === "new" || stage === "reviewing") {
+      return { key: "choose-next-step", label: "Choose next step", highConfidence: false };
+    }
+    return null;
+  }
+
+  // Sender side: the only thing owed is a reply to an unread message.
+  if (unread > 0) {
+    return { key: "reply", label: `Reply to ${name}`, highConfidence: true };
+  }
+  return null;
 }

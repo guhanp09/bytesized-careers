@@ -82,13 +82,25 @@ import {
 } from "../../lib/ownerInteractions";
 import {
   backendStatusOf,
+  deriveWorkState,
   directionLabelsFor,
+  nextBestActionFor,
   pipelineContextLabelOf,
   pipelineSummaryOf,
   stageNotifyPolicyOf,
   stageTargetsFor,
   validStageTargetsFor,
+  type NextBestAction,
+  type PipelineStage,
+  type WorkSignals,
+  type WorkState,
 } from "../../lib/applicationPipeline";
+import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
+import {
+  flagCohortLabel,
+  trackWorkspaceEvent,
+  type WorkspaceEventPayload,
+} from "../../lib/workspaceAnalytics";
 import CompactChatDock from "./CompactChatDock";
 import PipelineBoard from "./PipelineBoard";
 import EngagementStatusRow from "../reviews/EngagementStatusRow";
@@ -424,6 +436,14 @@ const SECTION_LABEL_CLASSES = "text-[11px] font-semibold text-white/40";
 const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
 /** localStorage key for the last-open inbox conversation (restored on return). */
 const SELECTED_STORAGE_KEY = "cj.applications.selected";
+/** Per-user record of decision-surface dismissals. */
+const DECISION_STRIP_DISMISS_KEY = "cj.applications.decisionDismissed";
+/**
+ * Bump when the triggering rules change so previously dismissed records are
+ * offered the surface again under the new rules, rather than staying silent
+ * forever on a decision that no longer means the same thing.
+ */
+const DECISION_STRIP_TRIGGER_VERSION = 1;
 const GHOST_BUTTON_CLASSES =
   "inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/[0.08]";
 const PRIMARY_BUTTON_CLASSES =
@@ -1090,6 +1110,125 @@ function openingEventLine(item: OwnerInteraction): string {
  * change). Centered and chip-shaped so it reads as the product speaking —
  * clearly apart from either side's bubbles — without an "automated" label.
  */
+/**
+ * The one restrained "what does this need from me?" label on a row or card.
+ *
+ * Deliberately quiet: it is presentation over authoritative data and must never
+ * read like a lifecycle status. Low-confidence states stay descriptive
+ * ("Review latest message") instead of prescriptive, so the indicator never
+ * claims more than the evidence supports. Colour is never the only signal — the
+ * text carries the meaning on its own.
+ */
+function WorkStateChip({ state }: { state: WorkState }) {
+  return (
+    <span
+      data-testid="work-state-chip"
+      data-work-state={state.key}
+      className={[
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
+        state.highConfidence ? "bg-white/[0.09] text-white/80" : "bg-transparent text-white/45",
+      ].join(" ")}
+    >
+      {state.highConfidence ? (
+        <span className="h-1 w-1 shrink-0 rounded-full bg-white/70" aria-hidden="true" />
+      ) : null}
+      {state.label}
+    </span>
+  );
+}
+
+/**
+ * The decision surface: the single place a manager picks what happens next.
+ *
+ * It serves two entry points so there is only ever one such surface to learn —
+ * it opens automatically on the first deliberate open of an eligible record, and
+ * on demand from the neutral "Choose next step" / "Record decision" actions.
+ *
+ * Rules it must honour (all covered by e2e):
+ *  - it is rendered *above* the composer in normal flow, never over it, so
+ *    messaging is always reachable;
+ *  - it never takes focus, so typing is never interrupted;
+ *  - dismissing it is free and remembered for that trigger;
+ *  - it collapses after a meaningful action, but not merely because the
+ *    composer gained focus.
+ */
+function DecisionStrip({
+  item,
+  targets,
+  headline,
+  onPick,
+  onAskQuestion,
+  onDismiss,
+}: {
+  item: OwnerInteraction;
+  targets: PipelineStage[];
+  headline: string;
+  onPick: (stageKey: string) => void;
+  onAskQuestion: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <section
+      data-testid="decision-strip"
+      aria-label={`Next step for ${item.counterpartyName}`}
+      className="ui-crossfade mb-2 rounded-2xl border border-white/[0.1] bg-white/[0.035] px-3.5 py-3"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[12.5px] font-medium text-white/80">{headline}</p>
+        <button
+          type="button"
+          data-testid="decision-strip-dismiss"
+          onClick={onDismiss}
+          aria-label="Dismiss next-step suggestions"
+          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white"
+        >
+          <Icon name="x" className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        {targets.map((stage) => (
+          <button
+            key={stage.key}
+            type="button"
+            data-testid={`decision-strip-option-${stage.key}`}
+            onClick={() => onPick(stage.key)}
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 text-[11.5px] font-semibold text-white/85 transition-colors hover:border-white/25 hover:bg-white/[0.09]"
+          >
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stage.dot}`} aria-hidden="true" />
+            {decisionActionLabel(item, stage.key, stage.label)}
+          </button>
+        ))}
+        {/* Messaging is a first-class choice here, never a fallback. */}
+        <button
+          type="button"
+          data-testid="decision-strip-ask"
+          onClick={onAskQuestion}
+          className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85"
+        >
+          Ask a question
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Action-voice labels ("Invite to interview"), not state names ("Interviewing"). */
+function decisionActionLabel(item: OwnerInteraction, stageKey: string, fallback: string): string {
+  const name = firstNameOf(item.counterpartyName);
+  const labels: Record<string, string> = {
+    reviewing: "Start reviewing",
+    shortlisted: "Keep in mind",
+    interviewing: "Invite to interview",
+    hired: `Hire ${name}`,
+    rejected: "Not proceeding",
+    accepted: "Accept request",
+    declined: "Decline request",
+    archived: "Archive",
+    new: "Move to New",
+  };
+  return labels[stageKey] ?? fallback;
+}
+
 export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "atLabel"> }) {
   return (
     <div data-testid="chat-status-update" className="flex justify-center px-2">
@@ -2623,6 +2762,10 @@ export default function ApplicationsWorkspace({
   const handleSendReply = async (target: OwnerInteraction) => {
     const body = replyDraft.trim();
     if (!body || sending) return;
+    // Sending is a meaningful action: it stops the time-to-action timer and
+    // collapses the decision surface. Merely focusing the composer does not.
+    trackWorkspaceEvent("workspace.message.sent", analyticsBase(target));
+    noteMeaningfulAction(target, "message");
 
     // Live mode: persist a real message through the backend conversation.
     if (liveMode && backendAccessToken) {
@@ -2703,6 +2846,225 @@ export default function ApplicationsWorkspace({
       typingTimersRef.current[selectedConversationId] = window.setTimeout(() => {
         sendTyping(selectedConversationId, false);
       }, 1_250);
+    }
+  };
+
+  /* ---------------- Phase A: recommendation, work state, decision surface ---------------- */
+
+  const flags = useMemo(() => workspaceFlagsFromEnv(), []);
+  const cohort = useMemo(() => flagCohortLabel(flags), [flags]);
+
+  /**
+   * Live evidence for the rule functions. `responseExpected` is intentionally
+   * absent: nothing in Phase A can prove a message needs an answer, so the
+   * derivation stays honest and never asserts "Needs your reply".
+   */
+  const signalsFor = useCallback(
+    (item: OwnerInteraction): WorkSignals => ({
+      unreadCount: liveMode ? unreadByThread[item.id] ?? 0 : item.unread ? 1 : 0,
+      engagementUnconfirmed: (() => {
+        const status = liveMode ? liveThreads[item.id]?.engagement?.status : undefined;
+        return status ? ["ready_to_start", "start_pending"].includes(status) : undefined;
+      })(),
+    }),
+    [liveMode, unreadByThread, liveThreads]
+  );
+
+  const selectedNextAction = useMemo(
+    () => (selected && flags.nextAction ? nextBestActionFor(selected, signalsFor(selected)) : null),
+    [selected, flags.nextAction, signalsFor]
+  );
+
+  const analyticsBase = useCallback(
+    (item: OwnerInteraction): WorkspaceEventPayload => ({
+      surface: "inbox",
+      interactionKind: item.kind,
+      direction: item.direction,
+      stage: backendStatusOf(item),
+      flagCohort: cohort,
+    }),
+    [cohort]
+  );
+
+  /**
+   * The decision surface, opened either automatically on first deliberate open
+   * or on demand from "Choose next step" / "Record decision". `reason` records
+   * which trigger opened it so dismissal is remembered per trigger rather than
+   * forever.
+   */
+  const [decisionSurface, setDecisionSurface] = useState<{
+    itemId: string;
+    reason: "first-open" | "requested";
+  } | null>(null);
+  /** Interactions whose auto-open has already been used or dismissed this session. */
+  const decisionSeenRef = useRef<Set<string>>(new Set());
+  const openedAtRef = useRef<{ id: string; at: number } | null>(null);
+  /** Engagement controls, so "Confirm start" can bring them into view. */
+  const engagementRef = useRef<HTMLDivElement | null>(null);
+
+  const decisionDismissKey = userStorageKey(DECISION_STRIP_DISMISS_KEY, backendUserId);
+
+  /** Persisted dismissals, user-scoped and schema-versioned. */
+  const readDismissed = useCallback((): Record<string, number> => {
+    try {
+      const raw = window.localStorage.getItem(decisionDismissKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as { v?: number; ids?: Record<string, number> };
+      // A version bump retires old dismissals rather than honouring them forever.
+      if (parsed?.v !== DECISION_STRIP_TRIGGER_VERSION) return {};
+      return parsed.ids ?? {};
+    } catch {
+      return {};
+    }
+  }, [decisionDismissKey]);
+
+  const rememberDismissed = useCallback(
+    (itemId: string) => {
+      try {
+        const ids = { ...readDismissed(), [itemId]: Date.now() };
+        window.localStorage.setItem(
+          decisionDismissKey,
+          JSON.stringify({ v: DECISION_STRIP_TRIGGER_VERSION, ids })
+        );
+      } catch {
+        // Storage can be unavailable; the in-session ref still suppresses it.
+      }
+    },
+    [decisionDismissKey, readDismissed]
+  );
+
+  /** Stage choices the surface offers, straight from the authoritative rules. */
+  const decisionTargets = useMemo(() => {
+    if (!selected) return [];
+    return validStageTargetsFor(
+      selected.kind,
+      backendStatusOf(selected),
+      selected.participantBackendStatus,
+      selected.legacyArchiveResolutionRequired
+    );
+  }, [selected]);
+
+  /**
+   * Auto-open on the first deliberate open of a record that still needs a
+   * decision. Only for the managing side, only when there is something to
+   * choose, and never twice for the same record.
+   */
+  useEffect(() => {
+    if (!flags.decisionStrip || !selected) return;
+    if (selected.direction !== "received") return;
+    if (isArchivedInteraction(selected) && !selected.legacyArchiveResolutionRequired) return;
+    if (decisionTargets.length === 0) return;
+    const stage = backendStatusOf(selected);
+    if (!["new", "reviewing"].includes(stage) && !selected.legacyArchiveResolutionRequired) return;
+    if (decisionSeenRef.current.has(selected.id)) return;
+    if (readDismissed()[selected.id]) return;
+    decisionSeenRef.current.add(selected.id);
+    setDecisionSurface({ itemId: selected.id, reason: "first-open" });
+    trackWorkspaceEvent("workspace.decision_strip.impression", analyticsBase(selected));
+  }, [flags.decisionStrip, selected, decisionTargets.length, readDismissed, analyticsBase]);
+
+  /** Time-to-action + abandonment instrumentation for the open record. */
+  useEffect(() => {
+    if (!selectedItemId) return;
+    openedAtRef.current = { id: selectedItemId, at: Date.now() };
+    const item = items.find((entry) => entry.id === selectedItemId);
+    return () => {
+      const opened = openedAtRef.current;
+      if (opened && opened.id === selectedItemId && item) {
+        trackWorkspaceEvent("workspace.interaction.abandoned", {
+          ...analyticsBase(item),
+          durationMs: Date.now() - opened.at,
+        });
+      }
+    };
+    // `items` is intentionally excluded: only a change of selection restarts the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItemId, analyticsBase]);
+
+  /** A meaningful action happened — stop the timer and collapse the surface. */
+  const noteMeaningfulAction = useCallback(
+    (item: OwnerInteraction, actionKey: string) => {
+      const opened = openedAtRef.current;
+      if (opened && opened.id === item.id) {
+        trackWorkspaceEvent("workspace.interaction.time_to_action", {
+          ...analyticsBase(item),
+          actionKey,
+          durationMs: Date.now() - opened.at,
+        });
+        openedAtRef.current = null;
+      }
+      setDecisionSurface((current) => (current?.itemId === item.id ? null : current));
+    },
+    [analyticsBase]
+  );
+
+  /**
+   * One dispatch path for every surface that can trigger a status action — the
+   * overflow menu, the promoted primary button, and the decision surface — so
+   * the three can never drift apart in behaviour or side effects.
+   */
+  const dispatchHeaderAction = (item: OwnerInteraction, action: HeaderAction) => {
+      if (action.flow === "instant") {
+        applyStatusAction(item, action);
+        noteMeaningfulAction(item, action.key);
+        return;
+      }
+      if (action.flow === "confirm") {
+        setPendingActionKey(action.key);
+        setPendingNote("");
+        setActionError(null);
+        return;
+      }
+      if (action.flow === "notify" && action.backendStatus) {
+        setNotifyNote("");
+        setNotifyPrompt({
+          itemIds: [item.id],
+          stageKey: action.backendStatus,
+          kind: item.kind,
+          phase: "ask",
+        });
+        noteMeaningfulAction(item, action.key);
+        return;
+      }
+      if (action.flow === "archive") {
+        void applyArchiveAction(item, action.archiveValue !== false);
+        noteMeaningfulAction(item, action.key);
+        return;
+      }
+    composerRef.current?.focus();
+  };
+
+  /**
+   * Run the recommended action. Low-confidence recommendations open the decision
+   * surface rather than committing anything, so the product never guesses an
+   * outcome on the user's behalf.
+   */
+  const runNextAction = (item: OwnerInteraction, action: NextBestAction) => {
+      trackWorkspaceEvent(
+        action.key === "choose-next-step"
+          ? "workspace.choose_next_step.activate"
+          : "workspace.next_action.activate",
+        { ...analyticsBase(item), actionKey: action.key, highConfidence: action.highConfidence }
+      );
+      switch (action.key) {
+        case "reply":
+          composerRef.current?.focus();
+          return;
+        case "choose-next-step":
+        case "record-decision":
+        case "resolve-legacy-stage":
+          setDecisionSurface({ itemId: item.id, reason: "requested" });
+          return;
+        case "share-decision": {
+          const share = headerActionsFor(item, liveMode).find((entry) => entry.flow === "notify");
+          if (share) dispatchHeaderAction(item, share);
+          return;
+        }
+        case "confirm-start":
+          // The engagement controls own this decision; bring them into view
+          // rather than duplicating a consequential action.
+        engagementRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+        return;
     }
   };
 
@@ -2788,6 +3150,7 @@ export default function ApplicationsWorkspace({
   const selectedActive = selected
     ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
     : false;
+
   const selectedConversationLoadFailed = selected
     ? Boolean(threadLoadErrors[selected.id]) && !liveThread
     : false;
@@ -2816,31 +3179,11 @@ export default function ApplicationsWorkspace({
         destructive: action.destructive,
         menuGroup: action.menuGroup,
         onClick: () => {
-          if (action.flow === "instant") {
-            applyStatusAction(selected, action);
-            return;
-          }
-          if (action.flow === "confirm") {
-            setPendingActionKey(action.key);
-            setPendingNote("");
-            setActionError(null);
-            return;
-          }
-          if (action.flow === "notify" && action.backendStatus) {
-            setNotifyNote("");
-            setNotifyPrompt({
-              itemIds: [selected.id],
-              stageKey: action.backendStatus,
-              kind: selected.kind,
-              phase: "ask",
-            });
-            return;
-          }
-          if (action.flow === "archive") {
-            void applyArchiveAction(selected, action.archiveValue !== false);
-            return;
-          }
-          composerRef.current?.focus();
+          trackWorkspaceEvent("workspace.overflow.use", {
+            ...analyticsBase(selected),
+            actionKey: action.key,
+          });
+          dispatchHeaderAction(selected, action);
         },
         disabled: Boolean(statusMutationKey),
         }))
@@ -3005,6 +3348,31 @@ export default function ApplicationsWorkspace({
                 setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }))
               }
               onMoveStage={handleMoveStage}
+              // Both views read from the same functions, so they can never
+              // disagree about what a record needs or what to do next.
+              workStateFor={
+                flags.workState ? (item) => deriveWorkState(item, signalsFor(item)) : undefined
+              }
+              nextActionFor={
+                flags.nextAction ? (item) => nextBestActionFor(item, signalsFor(item)) : undefined
+              }
+              onNextAction={(item, action) => {
+                trackWorkspaceEvent("workspace.next_action.activate", {
+                  ...analyticsBase(item),
+                  surface: "pipeline",
+                  actionKey: action.key,
+                  highConfidence: action.highConfidence,
+                });
+                if (action.key === "share-decision") {
+                  const share = headerActionsFor(item, liveMode).find(
+                    (entry) => entry.flow === "notify"
+                  );
+                  if (share) dispatchHeaderAction(item, share);
+                  return;
+                }
+                // Reply and start-confirmation both continue in the conversation.
+                setChatRequest((prev) => ({ id: item.id, nonce: (prev?.nonce ?? 0) + 1 }));
+              }}
             />
           </div>
         </div>
@@ -3052,9 +3420,17 @@ export default function ApplicationsWorkspace({
                   // still drives the simple "new" dot via item.unread.
                   const messageUnread = liveMode ? unreadByThread[item.id] ?? 0 : 0;
                   const rowUnread = Boolean(item.unread) || messageUnread > 0;
+                  const rowWorkState = flags.workState ? deriveWorkState(item, signalsFor(item)) : null;
+                  const rowAction = flags.nextAction ? nextBestActionFor(item, signalsFor(item)) : null;
+                  // Calm by default. A row earns a button only when it needs a
+                  // well-evidenced action *and* is not the open row — the detail
+                  // header already carries the action for that one, and showing
+                  // both reads as duplication. Low-confidence suggestions never
+                  // take row space at all; the work-state label is enough.
+                  const showRowAction = Boolean(rowAction?.highConfidence) && !isSelected;
                   return (
+                    <div key={item.id}>
                     <button
-                      key={item.id}
                       type="button"
                       data-testid="interaction-row"
                       aria-pressed={isSelected}
@@ -3100,10 +3476,46 @@ export default function ApplicationsWorkspace({
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <span className="truncate text-xs text-white/52">{rowSubtitle(item)}</span>
-                          <StatusPill status={item.status} />
+                          {/*
+                            Exactly one state indicator. When a row has a work
+                            state, that is the more useful of the two — the
+                            lifecycle stage stays available in the detail header
+                            and on the Pipeline, so showing both here would just
+                            be a badge cluster.
+                          */}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {rowWorkState ? (
+                              <WorkStateChip state={rowWorkState} />
+                            ) : (
+                              <StatusPill status={item.status} />
+                            )}
+                          </div>
                         </div>
                       </div>
                     </button>
+                    {/*
+                      Sibling, not a child: a button may not nest inside the row
+                      button. Rendered in flow beneath the row content so it can
+                      never overlap the timestamp. Desktop only — on mobile the
+                      action lives in the opened conversation instead.
+                    */}
+                    {showRowAction && rowAction ? (
+                      <div className="hidden justify-end px-4 pb-2.5 sm:flex">
+                        <button
+                          type="button"
+                          data-testid="row-next-action"
+                          data-action-key={rowAction.key}
+                          onClick={() => {
+                            handleSelect(item.id);
+                            runNextAction(item, rowAction);
+                          }}
+                          className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.05] px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-white/[0.1]"
+                        >
+                          {rowAction.label}
+                        </button>
+                      </div>
+                    ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -3164,6 +3576,28 @@ export default function ApplicationsWorkspace({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2.5">
+                    {/*
+                      The recommended action, promoted out of the overflow menu.
+                      Exactly one, so the header never presents competing
+                      primaries; everything else stays under More.
+                    */}
+                    {selectedNextAction ? (
+                      <button
+                        type="button"
+                        data-testid="next-action-primary"
+                        data-action-key={selectedNextAction.key}
+                        disabled={Boolean(statusMutationKey)}
+                        onClick={() => runNextAction(selected, selectedNextAction)}
+                        className={[
+                          "hidden h-8 cursor-pointer items-center rounded-xl px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
+                          selectedNextAction.highConfidence
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "border border-white/20 bg-white/[0.05] text-white/85 hover:bg-white/[0.1]",
+                        ].join(" ")}
+                      >
+                        {selectedNextAction.label}
+                      </button>
+                    ) : null}
                     <StatusPill status={selected.status} size="md" />
                     <OverflowMenu items={menuItems} />
                   </div>
@@ -3190,6 +3624,7 @@ export default function ApplicationsWorkspace({
                         </p>
                       ) : null}
                       {selectedEngagement && backendAccessToken ? (
+                        <div ref={engagementRef}>
                         <EngagementStatusRow
                           engagement={selectedEngagement}
                           accessToken={backendAccessToken}
@@ -3203,6 +3638,7 @@ export default function ApplicationsWorkspace({
                           }}
                           onReview={() => void openEngagementReview(selectedEngagement)}
                         />
+                        </div>
                       ) : null}
                       {blockConfirmOpen && selected.counterpartyUserId && backendAccessToken ? (
                         <section className={`mb-6 rounded-xl ${SURFACE} p-4`} data-testid="block-user-confirmation">
@@ -3275,6 +3711,46 @@ export default function ApplicationsWorkspace({
                   {/* Composer / resolution — pinned to the foot of the conversation */}
                   <div className="shrink-0 border-t border-white/[0.06] px-4 py-3 sm:px-6">
                     <div className="mx-auto w-full max-w-[860px]">
+                      {/*
+                        The decision surface sits in normal flow directly above
+                        the composer: prominent, but structurally incapable of
+                        covering it. It never receives focus on mount, so it
+                        cannot interrupt typing.
+                      */}
+                      {flags.decisionStrip &&
+                      decisionSurface?.itemId === selected.id &&
+                      decisionTargets.length > 0 ? (
+                        <DecisionStrip
+                          item={selected}
+                          targets={decisionTargets}
+                          headline={
+                            selected.legacyArchiveResolutionRequired
+                              ? "Where does this belong now?"
+                              : `What's next for ${firstNameOf(selected.counterpartyName)}?`
+                          }
+                          onPick={(stageKey) => {
+                            const action = headerActions.find(
+                              (entry) => entry.backendStatus === stageKey && entry.flow !== "reply"
+                            );
+                            trackWorkspaceEvent("workspace.decision_strip.action", {
+                              ...analyticsBase(selected),
+                              actionKey: action?.key ?? `stage-${stageKey}`,
+                            });
+                            if (action) dispatchHeaderAction(selected, action);
+                            setDecisionSurface(null);
+                          }}
+                          onAskQuestion={() => {
+                            trackWorkspaceEvent("workspace.decision_strip.bypass", analyticsBase(selected));
+                            setDecisionSurface(null);
+                            composerRef.current?.focus();
+                          }}
+                          onDismiss={() => {
+                            trackWorkspaceEvent("workspace.decision_strip.dismiss", analyticsBase(selected));
+                            rememberDismissed(selected.id);
+                            setDecisionSurface(null);
+                          }}
+                        />
+                      ) : null}
                       {selectedInteractionBlocked ? (
                         <div className="flex flex-col items-center gap-2 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
                           <p className="text-xs text-white/50">
