@@ -46,6 +46,17 @@ the backend did not already own.
 | `work-state-chip` / `pipeline-work-state` | Say what the record needs | One restrained label; never asserts "Needs your reply" without explicit evidence; replaces the status pill so rows carry exactly one indicator | none — derived | none | never visible to the counterparty | `workspace-next-action` (never overstates), `workspaceNextAction` unit tests | **NEW** |
 | `pipeline-next-action` | Same recommendation on the board | Only for actions the board owns (reply, share, confirm start); decision-type recommendations defer to the card's stage menu so two surfaces never compete | via the workspace dispatcher | none | via the action | `workspace-next-action` (Inbox/Pipeline parity) | **NEW** |
 
+## Phase B additions — Star, snooze, Auto-Reviewing
+
+| Control | Intended | Observed | Backend | Persistence | Counterparty | Coverage | Status |
+|---|---|---|---|---|---|---|---|
+| `star-toggle` (header) | Save privately | Optimistic toggle; rolls back on failure; never changes stage | `PUT /me/conversations/{id}/preferences/star` | `interaction_user_preferences`, per user | **never visible** | `workspace-next-action` (durable, independent, rollback) | **NEW (B1)** |
+| `row-starred` | Quiet saved marker | One small icon; no badge cluster | — | as above | none | same | **NEW (B1)** |
+| snooze / "No reply needed" | Correct a queue recommendation | Hides the recommendation only; status untouched | `.../preferences/snooze`, `.../preferences/queue-dismissal` | as above | none | 9 backend tests | **NEW (B1)** |
+| decision-strip dismissal | Remember a dismissal durably | Versioned per trigger | `.../preferences/decision-prompt` | as above | none | backend | **NEW (B1)** |
+| *(automatic)* deliberate open | Reading marks Reviewing privately | Dwell-gated, owner-only, idempotent, silent on failure | `POST /applications/{id}/review-started` | `review_started_at` + stage | **none — no message or notification** | 4 backend tests | **NEW (B2)** |
+| Shortlist stage | *(retired)* | Not offered anywhere; legacy records still move forward and read as "Under consideration" | migration 0047 | preserved history | honest legacy label | backend + e2e | **RETIRED (B4)** |
+
 ## Workspace shell
 
 | Control | Intended | Observed | Backend | Persistence | Counterparty | Coverage | Status |

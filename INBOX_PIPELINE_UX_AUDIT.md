@@ -140,7 +140,36 @@ staging/production.
   `smoke.spec.ts:453`. Reported rather than fixed, to avoid colliding with active
   job-domain work.
 
-## Deferred to Phase B / C
+## Phase B implemented (B1, B2, B3, B4)
+
+**B1 — durable per-user preferences** (`interaction_user_preferences`, migration
+0045). Keyed on the *conversation*, because that is the one identifier surviving
+every mode: the record is the thread on both sides, so switching between talent
+and recruiter modes — or acting through a hiring identity — still resolves to one
+row. Bounded to named columns rather than a JSON blob, and timestamps rather than
+booleans so "how long has this sat starred?" is answerable. Privacy is
+structural: every endpoint resolves the row from the authenticated user, so no
+parameter exists through which one participant could read the other's
+organisation, and there is no admin bypass. Concurrency is arbitrated by the
+unique constraint, not by checking. Star is optimistic with rollback.
+
+**B2 — deliberate-open Auto-Reviewing** (`review_started_at`, migration 0046).
+Reading an application *is* reviewing it. Record-level rather than per-user,
+because each interaction has one managing side and that is the question the New
+queue asks; a future per-member fact belongs in B1's table, which is already
+keyed per user. The timestamp is written once and never moved, so a short Undo
+can restore the visible stage without fabricating a "never opened" history.
+Failure is silent and releases its guard so a later attempt can succeed.
+
+**B4 — Shortlisted retired** (migration 0047). It conflated a private "keep in
+mind" with a real update some applicants were actually told. Never-communicated
+records become Reviewing plus a private Star; communicated ones keep every
+trusted event, message, notification and timeline entry and read as **"Under
+consideration"** until a later shared outcome supersedes them. Nothing
+transitions into it any more, but records already in it can still move forward
+and the schema still accepts the value, so older clients keep working.
+
+## Deferred
 
 **B** — `interaction_user_preferences` (Star, snooze, prompt dismissal); auto-Reviewing
 behind its own flag with instrumented dwell threshold and `review_started_at`;
