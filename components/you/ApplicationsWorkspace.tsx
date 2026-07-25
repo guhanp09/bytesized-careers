@@ -118,7 +118,8 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
-import { InteractionTime } from "./InteractionTime";
+import { AbsoluteTimeOnFocus, InteractionTime } from "./InteractionTime";
+import { groupThreadEntries } from "../../lib/systemEventGrouping";
 import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
@@ -1333,6 +1334,52 @@ function decisionActionLabel(item: OwnerInteraction, stageKey: string, fallback:
     new: "Move to New",
   };
   return labels[stageKey] ?? fallback;
+}
+
+/**
+ * A collapsed run of consecutive system events.
+ *
+ * The right-hand Timeline stays the complete authoritative history; this is a
+ * summary in the thread, so human messages are not buried under platform
+ * chrome. Native `<details>`/`<summary>`: it is keyboard-operable with Enter and
+ * Space, carries expanded/collapsed semantics for free, and needs no state of
+ * its own.
+ */
+function SystemEventGroup({
+  summary,
+  events,
+}: {
+  summary: string;
+  events: ChatMessage[];
+}) {
+  return (
+    <details data-testid="system-event-group" className="group flex justify-center px-2">
+      <summary
+        data-testid="system-event-summary"
+        className="mx-auto inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60 transition-colors hover:border-line-mid hover:text-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus [&::-webkit-details-marker]:hidden"
+      >
+        <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" aria-hidden="true" />
+        <span className="min-w-0 truncate">{summary}</span>
+        <Icon
+          name="chevron-right"
+          className="h-3 w-3 shrink-0 text-subtle transition-transform group-open:rotate-90"
+          aria-hidden="true"
+        />
+      </summary>
+      {/*
+        The events themselves, in order. Not the whole Timeline — only this run,
+        which is what the summary is standing in for.
+      */}
+      <ol className="mx-auto mt-2 max-w-[440px] space-y-1.5 rounded-xl border border-line bg-wash px-3.5 py-2.5">
+        {events.map((event) => (
+          <li key={event.id} className="flex items-baseline gap-2 text-[11.5px] text-muted">
+            <span className="min-w-0 flex-1">{event.body}</span>
+            <InteractionTime value={event.createdAt} className="shrink-0 text-[11px] text-subtle" />
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
 }
 
 export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "createdAt"> }) {
@@ -4557,7 +4604,7 @@ export default function ApplicationsWorkspace({
                           background make the selection unmistakable at a glance
                           without brightening every other row to compete.
                         */
-                        "relative flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left",
+                        "group/time-owner relative flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left",
                         "transition-[background-color,box-shadow] duration-150",
                         isSelected
                           ? "surface-selected bg-raised"
@@ -4622,6 +4669,8 @@ export default function ApplicationsWorkspace({
                             ) : null}
                             {/* One fixed home for the timestamp, always last. */}
                             <InteractionTime value={item.updatedAt} className="text-[11px] tabular-nums text-subtle" />
+                            {/* Same information a pointer gets from the tooltip. */}
+                            <AbsoluteTimeOnFocus value={item.updatedAt} />
                           </span>
                         </div>
                         <p className="mt-0.5 truncate text-[12px] leading-4 text-muted">{rowSubtitle(item)}</p>
@@ -4988,16 +5037,25 @@ export default function ApplicationsWorkspace({
                       ) : null}
                       {conversation.length > 0 ? (
                         <div className="space-y-5">
-                          {conversation.map((message) =>
-                            message.kind === "status" ? (
-                              <StatusUpdateLine key={message.id} message={message} />
+                          {groupThreadEntries(conversation).map((entry) =>
+                            entry.type === "system-group" ? (
+                              <SystemEventGroup
+                                key={entry.id}
+                                summary={entry.summary}
+                                events={entry.events}
+                              />
+                            ) : entry.message.kind === "status" ? (
+                              <StatusUpdateLine key={entry.message.id} message={entry.message} />
                             ) : (
                               <MessageBubble
-                                key={message.id}
-                                message={message}
+                                key={entry.message.id}
+                                message={entry.message}
                                 counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
                                 counterpartyHref={subtitle?.href ?? null}
-                                showSeen={message.id === latestOutgoingMessageId && Boolean(message.readByRecipient)}
+                                showSeen={
+                                  entry.message.id === latestOutgoingMessageId &&
+                                  Boolean(entry.message.readByRecipient)
+                                }
                               />
                             )
                           )}

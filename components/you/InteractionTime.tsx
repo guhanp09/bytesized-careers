@@ -140,3 +140,29 @@ export function InteractionTime({
 }
 
 export { nextRefreshDelay };
+
+/**
+ * The absolute value, revealed on the focusable ancestor's focus.
+ *
+ * `title` reaches a pointer, `aria-label` reaches a screen reader, and neither
+ * reaches a sighted keyboard-only user — they can focus the row but see no
+ * tooltip, because `title` only responds to hover. This renders a small visible
+ * panel while an ancestor marked `data-time-owner` holds focus, so all three
+ * routes carry the same information.
+ *
+ * Deliberately not a tab stop of its own: a full inbox would gain forty stops
+ * for text already available from the row that owns it.
+ */
+export function AbsoluteTimeOnFocus({ value }: { value: TimeInput }) {
+  const absolute = formatAbsoluteTime(value);
+  if (!absolute) return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="absolute-time-on-focus"
+      className="pointer-events-none absolute right-3 top-full z-20 mt-0.5 hidden whitespace-nowrap rounded-lg border border-line-mid bg-overlay px-2 py-1 text-[11px] text-default elev-2 group-focus-visible/time-owner:block"
+    >
+      {absolute}
+    </span>
+  );
+}
