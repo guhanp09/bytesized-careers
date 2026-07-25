@@ -160,7 +160,9 @@ export function interactionStatusLabel(status: InteractionStatus): string {
     case "responded":
       return "Responded";
     case "shortlisted":
-      return "Shortlisted";
+      // Legacy communicated value: honest to the applicant, and never offered
+      // as a new stage (see migration 0047).
+      return "Under consideration";
     case "accepted":
       return "Accepted";
     case "hired":
@@ -817,7 +819,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     mode: "hiring",
     direction: "received",
     kind: "application",
-    status: "shortlisted",
+    status: "viewed",
     managerNote: "Strong packaging systems — ask for the finance A/B board before an interview.",
     title: "Mira Shah",
     counterpartyName: "Mira Shah",

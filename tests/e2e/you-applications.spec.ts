@@ -245,7 +245,7 @@ test.describe("/you Applications workspace", () => {
       detail.getByRole("heading", { name: /Long-form editor for weekly finance explainers/ })
     ).toBeVisible();
     await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Shortlist" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
   });
 
   test("reply composer sends a local reply with quick actions", async ({ page }) => {
@@ -285,21 +285,22 @@ test.describe("/you Applications workspace", () => {
     await expect(detail.getByText("Declined", { exact: true })).toBeVisible();
     // The private decision can still be revised or explicitly shared later.
     await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Shortlist privately" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Share decision with Aarav" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Not selected", exact: true })).toHaveCount(0);
   });
 
-  test("shortlisting a received application updates its status", async ({ page }) => {
+  test("Shortlist is no longer offered as a stage", async ({ page }) => {
+    // Retired in favour of a private Star (migration 0047): keeping someone in
+    // mind is personal organisation, not a place in the funnel.
     await openApplicationsTab(page);
     await page.getByRole("button", { name: "Recruiter", exact: true }).click();
-
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
 
-    const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
-    await page.getByRole("menuitem", { name: "Shortlist" }).click();
-    await expect(detail.getByText("Shortlisted", { exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Shortlist/ })).toHaveCount(0);
+    // The stages that remain are real positions in the funnel.
+    await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
   });
 
   test("narrow viewport shows list first, opens detail on tap, and returns via back", async ({ page }) => {

@@ -95,9 +95,9 @@ test.describe("applications pipeline view", () => {
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
 
-    await board.getByTestId("pipeline-stage-chip-shortlisted").click();
+    await board.getByTestId("pipeline-stage-chip-reviewing").click();
     // Only the focused stage renders, even alongside other non-empty stages.
-    await expect(board.getByTestId("pipeline-group-shortlisted")).toBeVisible();
+    await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(board.getByTestId("pipeline-group-new")).toHaveCount(0);
     await expect(board.getByTestId("pipeline-row")).toHaveCount(1);
 
@@ -152,14 +152,14 @@ test.describe("applications pipeline view", () => {
     await openRecruiterPipeline(page);
 
     const board = page.getByTestId("pipeline-board");
-    // 6 received applications in the demo set: 2 new, 1 shortlisted, 1 interviewing, 1 rejected, 1 archived.
+    // 6 received applications in the demo set: 2 new, 1 reviewing, 1 interviewing, 1 rejected, 1 archived.
     await expect(board.getByTestId("pipeline-group-new").getByTestId("pipeline-row")).toHaveCount(2);
-    await expect(board.getByTestId("pipeline-group-shortlisted").getByTestId("pipeline-row")).toHaveCount(1);
+    await expect(board.getByTestId("pipeline-group-reviewing").getByTestId("pipeline-row")).toHaveCount(1);
     await expect(board.getByTestId("pipeline-group-interviewing").getByTestId("pipeline-row")).toHaveCount(1);
     await expect(board.getByTestId("pipeline-group-rejected").getByTestId("pipeline-row")).toHaveCount(1);
-    // The shortlisted applicant carries a private note, surfaced as an indicator.
+    // The reviewing applicant carries a private note, surfaced as an indicator.
     await expect(
-      board.getByTestId("pipeline-group-shortlisted").getByTestId("pipeline-note-indicator")
+      board.getByTestId("pipeline-group-reviewing").getByTestId("pipeline-note-indicator")
     ).toBeVisible();
   });
 
@@ -172,12 +172,12 @@ test.describe("applications pipeline view", () => {
     await expect(aarav).toHaveCount(1);
 
     await aarav.getByTestId("pipeline-stage-menu").click();
-    await page.getByTestId("pipeline-stage-option-shortlisted").click();
+    await page.getByTestId("pipeline-stage-option-reviewing").click();
 
-    // Aarav leaves New and lands in Shortlisted (joining Mira).
+    // Aarav leaves New and lands in Reviewing (joining Mira).
     await expect(newGroup.getByTestId("pipeline-row").filter({ hasText: "Aarav Mehta" })).toHaveCount(0);
     await expect(
-      board.getByTestId("pipeline-group-shortlisted").getByTestId("pipeline-row")
+      board.getByTestId("pipeline-group-reviewing").getByTestId("pipeline-row")
     ).toHaveCount(2);
   });
 
@@ -196,7 +196,9 @@ test.describe("applications pipeline view", () => {
     await page.getByTestId("bulk-move-reviewing").click();
 
     await expect(newGroup.getByTestId("pipeline-row")).toHaveCount(0);
-    await expect(board.getByTestId("pipeline-group-reviewing").getByTestId("pipeline-row")).toHaveCount(2);
+    // Reviewing already held the record that used to sit in Shortlisted, so the
+    // two moved applicants join it rather than arriving in an empty stage.
+    await expect(board.getByTestId("pipeline-group-reviewing").getByTestId("pipeline-row")).toHaveCount(3);
     // Selection clears after a successful move.
     await expect(bulkBar).toHaveCount(0);
   });
@@ -340,7 +342,7 @@ test.describe("applications pipeline view", () => {
       .getByTestId("pipeline-group-new")
       .getByTestId("pipeline-row")
       .filter({ hasText: "Aarav Mehta" });
-    const shortlistedGroup = board.getByTestId("pipeline-group-shortlisted");
+    const shortlistedGroup = board.getByTestId("pipeline-group-reviewing");
 
     // Native HTML5 drag events with a shared DataTransfer (the documented
     // Playwright pattern for draggable elements).
@@ -357,7 +359,7 @@ test.describe("applications pipeline view", () => {
       board.getByTestId("pipeline-group-new").getByTestId("pipeline-row").filter({ hasText: "Aarav Mehta" })
     ).toHaveCount(0);
     await expect(shortlistedGroup.getByTestId("pipeline-row")).toHaveCount(2);
-    await expect(board.getByTestId("pipeline-stage-chip-shortlisted")).toContainText("2");
+    await expect(board.getByTestId("pipeline-stage-chip-reviewing")).toContainText("2");
   });
 
   test("dropping on a funnel chip moves the card — empty stages stay reachable", async ({ page }) => {
@@ -567,13 +569,13 @@ test.describe("applications pipeline view", () => {
   });
 
   test("deep links restore a specific pipeline state; legacy links keep working", async ({ page }) => {
-    await page.goto("/applications?demo=1&view=pipeline&mode=recruiter&direction=received&stage=shortlisted");
+    await page.goto("/applications?demo=1&view=pipeline&mode=recruiter&direction=received&stage=reviewing");
     const main = page.getByRole("main");
     const board = main.getByTestId("pipeline-board");
     await expect(board).toBeVisible({ timeout: 15_000 });
     await expect(main.getByTestId("pipeline-direction-received")).toContainText("Applicants");
     // The linked stage arrives focused.
-    await expect(board.getByTestId("pipeline-group-shortlisted")).toBeVisible();
+    await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(board.getByTestId("pipeline-group-new")).toHaveCount(0);
 
     // The legacy notification contract (?view=<mode>&thread=<id>) still opens
@@ -598,19 +600,23 @@ test.describe("applications pipeline view", () => {
     await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
 
-    // Shortlisted is externally meaningful — the prompt shows the exact update.
+    // "Not selected" is the remaining optional-shared outcome: recorded
+    // privately, and the prompt offers to tell the applicant.
     await aaravIn("reviewing").getByTestId("pipeline-stage-menu").click();
-    await page.getByTestId("pipeline-stage-option-shortlisted").click();
+    await page.getByTestId("pipeline-stage-option-rejected").click();
+    const confirmation = page.getByRole("dialog", { name: /not selected/i });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm not selected" }).click();
+
     const prompt = page.getByTestId("stage-notify-prompt");
     await expect(prompt).toBeVisible();
     await expect(prompt).toContainText("Aarav Mehta");
-    await expect(prompt).toContainText("moved to Shortlisted");
-    await expect(prompt.getByTestId("stage-notify-preview")).toContainText("Shortlisted for");
+    await expect(prompt.getByTestId("stage-notify-preview")).toContainText("Not moving forward");
 
     // Skip sends nothing: the thread carries no platform update.
     await prompt.getByTestId("stage-notify-skip").click();
     await expect(prompt).toHaveCount(0);
-    await aaravIn("shortlisted").getByTestId("pipeline-message").click();
+    await aaravIn("rejected").getByTestId("pipeline-message").click();
     const dock = page.getByTestId("chat-dock-panel");
     await expect(dock).toContainText("Aarav Mehta");
     // Skipping the stage notice adds no extra platform update; the only status
