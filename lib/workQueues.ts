@@ -76,8 +76,6 @@ export const NO_QUEUE_PREFERENCES: WorkQueuePreferences = {
 };
 
 export type QueueSignals = WorkSignals & {
-  /** True when an interview has been proposed and the date has passed. */
-  interviewFollowUpDue?: boolean;
   /** Age of the last activity, in days. Drives the stale queue only. */
   idleDays?: number;
 };
@@ -113,6 +111,8 @@ export function deriveWorkQueue(
   switch (state.key) {
     case "start_confirmation_pending":
       return "start_confirmation_pending";
+    case "interview_follow_up":
+      return "interview_follow_up";
     case "needs_reply":
       // Only an explicit response expectation reaches this state, so the queue
       // inherits that precision rather than asserting it on weak evidence.
@@ -122,9 +122,9 @@ export function deriveWorkQueue(
     case "decision_not_shared":
       return "decision_needed";
     case "review_latest":
-      // Ambiguous inbound activity. An interview whose date has passed is the
-      // one case where a decision is genuinely outstanding.
-      return signals.interviewFollowUpDue ? "interview_follow_up" : "decision_needed";
+      // Ambiguous inbound activity — something arrived and nothing proves what
+      // it needs. It is a decision the viewer owes, not a reply we can promise.
+      return "decision_needed";
   }
 }
 

@@ -18,6 +18,7 @@ from app.services import blocking_service
 from app.services import messaging_service as ms
 from app.services import interaction_preference_service as prefs
 from app.services import interaction_transition_service as transitions
+from app.services import interview_service as interviews
 from app.services import review_service
 from app.schemas.reviews import EngagementSummary
 
@@ -64,10 +65,42 @@ class ConversationRead(BaseModel):
     is_closed: bool = False
 
 
+class InterviewRead(BaseModel):
+    """The arranged interview, as both participants may see it.
+
+    Every field here was deliberately communicated by the organiser, so there is
+    nothing private to withhold. The manager's assessment of how it went is a
+    private note and never appears in this shape.
+    """
+
+    id: str
+    conversation_id: str
+    status: Literal["proposed", "confirmed", "completed", "cancelled"]
+    scheduled_at: str | None = None
+    timezone: str
+    duration_minutes: int | None = None
+    meeting_method: str
+    meeting_detail: str | None = None
+    #: Pre-rendered "when and how" in the organiser's stated zone. Clients also
+    #: render `scheduled_at` in the reader's own zone; this is the shared truth.
+    schedule_label: str
+    previous_scheduled_at: str | None = None
+    reschedule_count: int = 0
+    round_number: int = 1
+    confirmed_at: str | None = None
+    confirmed_by_me: bool = False
+    completed_at: str | None = None
+    cancelled_at: str | None = None
+    version: int
+    can_manage: bool = False
+    follow_up_due: bool = False
+
+
 class ConversationDetail(BaseModel):
     conversation: ConversationRead
     messages: list[MessageRead]
     engagement: EngagementSummary | None = None
+    interview: InterviewRead | None = None
 
 
 class SendMessageRequest(BaseModel):
@@ -157,6 +190,15 @@ async def _conversation_detail(
         engagement=(
             await review_service.engagement_summary(session, engagement, viewer.id)
             if engagement is not None
+            else None
+        ),
+        interview=(
+            InterviewRead(**serialized)
+            if (
+                serialized := interviews.serialize_interview(
+                    await interviews.get_interview(session, conversation.id), conversation, viewer.id
+                )
+            )
             else None
         ),
     )
@@ -677,3 +719,257 @@ async def set_conversation_decision_prompt(
             trigger_version=payload.trigger_version,
         ),
     )
+
+
+# --- interview coordination ------------------------------------------------
+#
+# Structured scheduling on top of the existing conversation. Nothing here parses
+# message text: an interview exists because someone deliberately arranged one.
+# Where an arrangement implies a lifecycle change it goes through the ordinary
+# transition service, so there is exactly one authoritative status path.
+
+
+class ProposeInterviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_at: datetime
+    #: IANA zone the organiser was thinking in. Validated server-side, because a
+    #: wrong zone is a missed interview rather than a cosmetic error.
+    timezone: str = Field(min_length=1, max_length=64)
+    meeting_method: Literal["video_call", "phone", "in_person", "other"]
+    meeting_detail: str | None = Field(default=None, max_length=interviews.MAX_DETAIL_LENGTH)
+    duration_minutes: int | None = Field(default=None, ge=5, le=480)
+    #: The organiser's own accompanying message. Always editable in the client
+    #: and always optional — the arrangement stands on its own.
+    note: str | None = Field(default=None, max_length=interviews.MAX_NOTE_LENGTH)
+    #: 0 for a first invitation, the current interview version for a reschedule.
+    expected_version: int = Field(ge=0)
+    #: Required for the first invitation on an application, which also moves the
+    #: participant-visible stage and therefore needs the record's own version.
+    application_expected_version: int | None = Field(default=None, ge=1)
+    idempotency_key: UUID
+
+
+class InterviewActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int = Field(ge=1)
+    idempotency_key: UUID
+
+
+class CancelInterviewRequest(InterviewActionRequest):
+    reason: str | None = Field(default=None, max_length=interviews.MAX_NOTE_LENGTH)
+
+
+def _interview_error(exc: interviews.InterviewError) -> HTTPException:
+    if isinstance(exc, interviews.InterviewForbidden):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, interviews.InterviewNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, interviews.StaleInterview):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "current_version": exc.current_version,
+            },
+        )
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
+async def _emit_interview_message(
+    session: AsyncSession, conversation: Conversation, result: interviews.InterviewResult
+) -> None:
+    """Fan out the committed announcement, if this action made one.
+
+    Marking an interview complete deliberately produces nothing to emit: it is
+    private bookkeeping, and pushing an event for it would let the counterparty
+    infer a manager-only action from the timing of a socket frame.
+    """
+    for message_id in (result.message_id, result.note_message_id):
+        if message_id is None:
+            continue
+        message = await session.get(Message, message_id)
+        if message is not None:
+            await realtime_events.emit_message_created(
+                session, conversation=conversation, message=message
+            )
+
+
+async def _interview_response(
+    session: AsyncSession, conversation: Conversation, viewer: User, result: interviews.InterviewResult
+) -> InterviewRead:
+    serialized = interviews.serialize_interview(result.interview, conversation, viewer.id)
+    assert serialized is not None  # a result always carries its row
+    return InterviewRead(**serialized)
+
+
+@router.get("/interviews", response_model=list[InterviewRead])
+async def list_my_interviews(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[InterviewRead]:
+    """Every interview on a conversation the caller takes part in.
+
+    One request rather than one per thread: the workspace needs all of them to
+    derive its follow-up queue, and a per-thread fetch would turn a queue count
+    into N round-trips.
+    """
+    rows = await interviews.list_for_user(session, current_user.id)
+    by_conversation = {
+        row.conversation_id: row for row in rows
+    }
+    conversations = (
+        await session.execute(
+            select(Conversation).where(Conversation.id.in_(list(by_conversation.keys())))
+        )
+    ).scalars().all() if by_conversation else []
+    result: list[InterviewRead] = []
+    for conversation in conversations:
+        serialized = interviews.serialize_interview(
+            by_conversation[conversation.id], conversation, current_user.id
+        )
+        if serialized is not None:
+            result.append(InterviewRead(**serialized))
+    return result
+
+
+@router.put("/conversations/{conversation_id}/interview", response_model=InterviewRead)
+async def propose_interview(
+    conversation_id: UUID,
+    payload: ProposeInterviewRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InterviewRead:
+    """Invite to an interview, or move one already arranged.
+
+    One endpoint for both because they are the same user intent — "this is when
+    we're meeting" — and splitting them would let a client create a second
+    arrangement by calling the wrong route. Which one happened is decided by the
+    database state, not by the caller.
+    """
+    conversation = await _require_conversation(session, conversation_id)
+    _require_participant(conversation, current_user)
+    try:
+        result = await interviews.propose(
+            session,
+            conversation=conversation,
+            actor=current_user,
+            scheduled_at=payload.scheduled_at,
+            timezone_name=payload.timezone,
+            meeting_method=payload.meeting_method,
+            meeting_detail=payload.meeting_detail,
+            duration_minutes=payload.duration_minutes,
+            note=payload.note,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+            application_expected_version=payload.application_expected_version,
+        )
+        response = await _interview_response(session, conversation, current_user, result)
+        await session.commit()
+    except interviews.InterviewError as exc:
+        await session.rollback()
+        raise _interview_error(exc) from exc
+    except transitions.StaleTransition as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": "Changed elsewhere — latest status loaded.",
+                "current_status": exc.current_status,
+                "current_version": exc.current_version,
+            },
+        ) from exc
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)}) from exc
+    await _emit_interview_message(session, conversation, result)
+    return response
+
+
+@router.post("/conversations/{conversation_id}/interview/confirm", response_model=InterviewRead)
+async def confirm_interview(
+    conversation_id: UUID,
+    payload: InterviewActionRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InterviewRead:
+    conversation = await _require_conversation(session, conversation_id)
+    _require_participant(conversation, current_user)
+    try:
+        result = await interviews.confirm(
+            session,
+            conversation=conversation,
+            actor=current_user,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        response = await _interview_response(session, conversation, current_user, result)
+        await session.commit()
+    except interviews.InterviewError as exc:
+        await session.rollback()
+        raise _interview_error(exc) from exc
+    await _emit_interview_message(session, conversation, result)
+    return response
+
+
+@router.post("/conversations/{conversation_id}/interview/complete", response_model=InterviewRead)
+async def complete_interview(
+    conversation_id: UUID,
+    payload: InterviewActionRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InterviewRead:
+    """Close out the scheduling. Private: sends nothing, decides nothing."""
+    conversation = await _require_conversation(session, conversation_id)
+    _require_participant(conversation, current_user)
+    try:
+        result = await interviews.complete(
+            session,
+            conversation=conversation,
+            actor=current_user,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        response = await _interview_response(session, conversation, current_user, result)
+        await session.commit()
+    except interviews.InterviewError as exc:
+        await session.rollback()
+        raise _interview_error(exc) from exc
+    return response
+
+
+@router.post("/conversations/{conversation_id}/interview/cancel", response_model=InterviewRead)
+async def cancel_interview(
+    conversation_id: UUID,
+    payload: CancelInterviewRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InterviewRead:
+    conversation = await _require_conversation(session, conversation_id)
+    _require_participant(conversation, current_user)
+    try:
+        result = await interviews.cancel(
+            session,
+            conversation=conversation,
+            actor=current_user,
+            reason=payload.reason,
+            expected_version=payload.expected_version,
+            idempotency_key=str(payload.idempotency_key),
+        )
+        response = await _interview_response(session, conversation, current_user, result)
+        await session.commit()
+    except interviews.InterviewError as exc:
+        await session.rollback()
+        raise _interview_error(exc) from exc
+    await _emit_interview_message(session, conversation, result)
+    return response

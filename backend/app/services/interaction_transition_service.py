@@ -264,7 +264,18 @@ async def transition_application(
     requested_status: str,
     expected_version: int,
     idempotency_key: str,
+    detail_line: str | None = None,
+    note: str | None = None,
 ) -> TransitionResult:
+    """Move an application to ``requested_status``, atomically and exactly once.
+
+    ``detail_line`` appends structured specifics to the trusted status message —
+    an interview's time, method and link — so an invitation arrives as one
+    complete statement rather than a bare headline followed by a second message.
+    ``note`` is the manager's own words, posted beside it in the same
+    transaction and attributed to them rather than to the platform. Both are
+    optional and default to the exact prior behaviour.
+    """
     target = requested_status
     fingerprint = _fingerprint(
         actor_id=actor.id, interaction_type="application", interaction_id=application_id,
@@ -416,6 +427,7 @@ async def transition_application(
     )
     conversation: Conversation | None = None
     message_id: uuid.UUID | None = None
+    note_message_id: uuid.UUID | None = None
     notification_created = False
     if shared:
         title, conversation = await _application_context(session, application)
@@ -426,7 +438,8 @@ async def transition_application(
             "hired": "Hired",
             "withdrawn": "Application withdrawn",
         }[target]
-        body = f"{label} for “{title}”."
+        headline = f"{label} for “{title}”."
+        body = f"{headline}\n{detail_line}" if detail_line else headline
         message_key = uuid.uuid5(uuid.NAMESPACE_URL, f"creatorjobs:status:{event.id}")
         message = await messaging_service.post_message(
             session, conversation, actor, body, kind="status_update", allow_closed=True,
@@ -434,6 +447,9 @@ async def transition_application(
             client_message_id=message_key, metadata={"stage": target, "transition_id": str(event.id)},
         )
         message_id = message.id
+        note_message_id = await _post_status_note(
+            session, conversation=conversation, actor=actor, note=note, event=event, target=target
+        )
         recipient_id = (
             application.job_owner_user_id if sender_withdrawal else application.applicant_user_id
         )
@@ -443,7 +459,9 @@ async def transition_application(
             recipient_user_id=recipient_id,
             actor_user_id=actor.id,
             title="Application withdrawn" if sender_withdrawal else "Application status updated",
-            body=body,
+            # The headline only. A meeting link belongs in the thread, not in an
+            # email preview that may sit unencrypted in someone's notification shade.
+            body=headline,
             category="application", resource_type="job_application", resource_id=str(application.id),
             action_url=f"/applications?view=inbox&mode=talent&thread={application.id}",
             payload={"status": target}, dedupe_key=f"application:{application.id}:v{next_version}:{target}",
@@ -473,7 +491,10 @@ async def transition_application(
         idempotency_key=idempotency_key,
         final_outcome="transitioned",
     )
-    return TransitionResult("transitioned", "application", application, engagement, event, conversation, message_id, notification_created)
+    return TransitionResult(
+        "transitioned", "application", application, engagement, event, conversation, message_id,
+        notification_created, note_message_id,
+    )
 
 
 async def transition_interest(

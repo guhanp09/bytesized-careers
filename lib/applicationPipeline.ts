@@ -577,12 +577,25 @@ export type WorkSignals = {
   responseExpected?: boolean;
   /** A hire/acceptance produced an engagement whose start is unconfirmed. */
   engagementUnconfirmed?: boolean;
+  /**
+   * An interview is arranged and its time is still ahead. The next event is the
+   * date itself, so nothing is owed yet — this exists to stop the workspace
+   * nagging for a decision about a conversation that has not happened.
+   */
+  interviewScheduled?: boolean;
+  /**
+   * An arranged interview's time has passed, or the organiser marked it
+   * complete. Authoritative — the date was agreed and it is now behind us — and
+   * only ever supplied to the side that manages the arrangement.
+   */
+  interviewFollowUpDue?: boolean;
 };
 
 export type WorkStateKey =
   | "needs_review"
   | "decision_not_shared"
   | "start_confirmation_pending"
+  | "interview_follow_up"
   | "needs_reply"
   | "review_latest";
 
@@ -653,6 +666,12 @@ export function deriveWorkState(
   // A closed conversation owes nothing, unless a private decision was never
   // communicated — that is still unfinished business for the manager.
   if (CLOSED_BACKEND_STATUSES.has(stage) && !hasUnsharedDecision(item)) return null;
+
+  // An interview that has already happened. The date was agreed by both sides
+  // and it is now in the past, which is as authoritative as this system gets.
+  if (signals.interviewFollowUpDue) {
+    return { key: "interview_follow_up", label: "Interview follow-up", highConfidence: true };
+  }
 
   if (item.direction === "received" && !AGREED_BACKEND_STATUSES.has(stage)) {
     // Nothing has been looked at yet — the strongest signal available.
@@ -745,15 +764,23 @@ export function nextBestActionFor(
   }
 
   if (item.direction === "received") {
-    // 5. An interview is under way; the outstanding thing is the decision.
+    // 5. An interview is arranged and still ahead. The next event is the meeting
+    //    itself, so no decision is owed — but an unread message still is.
+    if (stage === "interviewing" && signals.interviewScheduled && !signals.interviewFollowUpDue) {
+      return unread > 0
+        ? { key: "reply", label: `Reply to ${name}`, highConfidence: true }
+        : null;
+    }
+    // 6. The interview has happened, or none was ever arranged. Either way the
+    //    outstanding thing is the decision.
     if (stage === "interviewing") {
       return { key: "record-decision", label: "Record decision", highConfidence: true };
     }
-    // 6. They wrote and it is unread — reading and replying comes first.
+    // 7. They wrote and it is unread — reading and replying comes first.
     if (unread > 0) {
       return { key: "reply", label: `Reply to ${name}`, highConfidence: true };
     }
-    // 7. New or under review with no stronger signal. Do not guess an outcome.
+    // 8. New or under review with no stronger signal. Do not guess an outcome.
     if (stage === "new" || stage === "reviewing") {
       return { key: "choose-next-step", label: "Choose next step", highConfidence: false };
     }

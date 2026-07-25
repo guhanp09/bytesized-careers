@@ -173,6 +173,22 @@ _EVENTS: tuple[NotificationEvent, ...] = (
         priority=PRIORITY_HIGH,
         notes="A participant sent a real message. Source: messaging_service.post_message.",
     ),
+    # ---- Interview coordination ----
+    NotificationEvent(
+        key="interview_updated",
+        category=CATEGORY_TRANSACTIONAL,
+        recipient="The other conversation participant",
+        actor="The person managing the conversation",
+        channels=_BOTH,
+        default_channels=_BOTH,
+        priority=PRIORITY_HIGH,
+        notes=(
+            "An interview was arranged, moved, confirmed, or cancelled. Email is on by "
+            "default because a missed interview is costly and the recipient may not be "
+            "in the product. Marking an interview complete is private bookkeeping and "
+            "deliberately sends nothing. Source: interview_service."
+        ),
+    ),
     # ---- Engagements and verified reviews (in-app only) ----
     NotificationEvent(
         key="engagement_start_requested",

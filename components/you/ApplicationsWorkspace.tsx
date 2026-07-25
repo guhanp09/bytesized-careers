@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
+import { InterviewCard, InterviewScheduler, type InterviewSubmission } from "./InterviewPanel";
+import {
+  interviewFollowUpDue,
+  interviewIsUpcoming,
+  interviewNextStep,
+  toInterview,
+} from "../../lib/interviewScheduling";
 import { MetaRow } from "../ui";
 import FirstMessageSummary from "../first-message/FirstMessageSummary";
 import PrivateNotesPanel from "./PrivateNotesPanel";
@@ -42,7 +49,12 @@ import {
   getMyReviewWorkspace,
   isBackendAuthError,
   listApplicationPrivateNotes,
+  cancelInterview,
+  completeInterview,
+  confirmInterview,
   listConversations,
+  listInterviews,
+  proposeInterview,
   listTalentInterestPrivateNotes,
   markConversationRead,
   blockUser,
@@ -67,6 +79,7 @@ import {
   type BackendEngagementSummary,
   type BackendInteractionPreference,
   type BackendInteractionPrivateNote,
+  type BackendInterview,
   type BackendPortfolioItem,
   type BackendReviewOpportunity,
   type BackendTalentInterest,
@@ -131,6 +144,8 @@ type LiveThread = {
   messages: BackendMessage[];
   conversation?: BackendConversation;
   engagement?: BackendEngagementSummary | null;
+  /** The arranged interview, if one exists. Both participants may read it. */
+  interview?: BackendInterview | null;
 };
 
 const UNREAD_POLL_INTERVAL_MS = 5_000;
@@ -1656,6 +1671,12 @@ export default function ApplicationsWorkspace({
   // Unread message count per inbox thread (keyed by record id == OwnerInteraction id),
   // sourced from the real GET /me/conversations endpoint in live mode.
   const [unreadByThread, setUnreadByThread] = useState<Record<string, number>>({});
+  /**
+   * Interaction id → conversation id for *every* thread, not only the opened
+   * ones. Queues and personal organisation are list-wide questions, so they
+   * cannot depend on a record having been opened first.
+   */
+  const [conversationIdByThread, setConversationIdByThread] = useState<Record<string, string>>({});
   const [typingByConversation, setTypingByConversation] = useState<
     Record<string, { senderUserId: string; expiresAt: number }>
   >({});
@@ -1943,7 +1964,14 @@ export default function ApplicationsWorkspace({
     const refreshUnread = async () => {
       try {
         const conversations = await listConversations(backendAccessToken);
-        if (!cancelled) setUnreadByThread(buildUnreadByThread(conversations));
+        if (!cancelled) {
+          setUnreadByThread(buildUnreadByThread(conversations));
+          setConversationIdByThread(
+            Object.fromEntries(
+              conversations.map((conversation) => [conversation.thread_id, conversation.id])
+            )
+          );
+        }
       } catch {
         // Unread badges are non-critical and recover on the next poll.
       } finally {
@@ -2096,6 +2124,7 @@ export default function ApplicationsWorkspace({
             messages: detail.messages,
             conversation: detail.conversation,
             engagement: detail.engagement,
+            interview: detail.interview ?? null,
           },
         }));
         setThreadLoadErrors((prev) => {
@@ -2909,8 +2938,9 @@ export default function ApplicationsWorkspace({
 
   /** Conversation id for an interaction, once its thread is known. */
   const conversationIdOf = useCallback(
-    (item: OwnerInteraction): string | null => liveThreads[item.id]?.conversationId ?? null,
-    [liveThreads]
+    (item: OwnerInteraction): string | null =>
+      liveThreads[item.id]?.conversationId ?? conversationIdByThread[item.id] ?? null,
+    [liveThreads, conversationIdByThread]
   );
 
   const isStarred = useCallback(
@@ -2967,10 +2997,13 @@ export default function ApplicationsWorkspace({
   const queuePreferences = useMemo<WorkQueuePreferences>(() => {
     if (!liveMode) return NO_QUEUE_PREFERENCES;
     const byInteraction = new Map<string, BackendInteractionPreference>();
-    for (const [id, thread] of Object.entries(liveThreads)) {
-      const row = thread?.conversationId ? preferences[thread.conversationId] : undefined;
-      if (row) byInteraction.set(id, row);
-    }
+    const record = (interactionId: string, conversationId: string | undefined) => {
+      const row = conversationId ? preferences[conversationId] : undefined;
+      if (row) byInteraction.set(interactionId, row);
+    };
+    // The list-wide map first, then anything an open thread knows more recently.
+    for (const [id, conversationId] of Object.entries(conversationIdByThread)) record(id, conversationId);
+    for (const [id, thread] of Object.entries(liveThreads)) record(id, thread?.conversationId);
     return {
       isDismissed: (interactionId) => Boolean(byInteraction.get(interactionId)?.queue_dismissed),
       snoozedUntil: (interactionId) => {
@@ -2978,7 +3011,130 @@ export default function ApplicationsWorkspace({
         return until ? Date.parse(until) : null;
       },
     };
-  }, [liveMode, liveThreads, preferences]);
+  }, [liveMode, liveThreads, conversationIdByThread, preferences]);
+
+  /* ---------------- Phase C: interview coordination ---------------- */
+
+  /**
+   * Every interview the signed-in user takes part in, keyed by conversation.
+   * Loaded list-wide because the follow-up queue is a question about the whole
+   * inbox, not about whichever thread happens to be open.
+   */
+  const [interviews, setInterviews] = useState<Record<string, BackendInterview>>({});
+
+  useEffect(() => {
+    if (!liveMode || !backendAccessToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listInterviews(backendAccessToken);
+        if (cancelled) return;
+        setInterviews(Object.fromEntries(rows.map((row) => [row.conversation_id, row])));
+      } catch {
+        // Scheduling is an enhancement layered on the conversation; failing to
+        // load it must never stop someone reading or answering their messages.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
+
+  /** The arrangement for an interaction, wherever its conversation id came from. */
+  const interviewOf = useCallback(
+    (item: OwnerInteraction): BackendInterview | null => {
+      const conversationId = conversationIdOf(item);
+      const fromThread = liveThreads[item.id]?.interview;
+      if (fromThread !== undefined && fromThread !== null) return fromThread;
+      return conversationId ? interviews[conversationId] ?? null : null;
+    },
+    [conversationIdOf, liveThreads, interviews]
+  );
+
+  /** Merge a server response into both caches so every surface agrees at once. */
+  const rememberInterview = useCallback((interview: BackendInterview) => {
+    setInterviews((current) => ({ ...current, [interview.conversation_id]: interview }));
+    setLiveThreads((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const [id, thread] of Object.entries(current)) {
+        if (thread.conversationId !== interview.conversation_id) continue;
+        next[id] = { ...thread, interview };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
+  /** Which interaction currently has the scheduling surface open. */
+  const [schedulingFor, setSchedulingFor] = useState<string | null>(null);
+  const [interviewBusy, setInterviewBusy] = useState(false);
+  const [interviewError, setInterviewError] = useState<string | null>(null);
+
+  /**
+   * One wrapper for every interview mutation.
+   *
+   * Interviews are consequential and shared — the other person may block out
+   * time — so nothing here is optimistic. The surface shows a pending state and
+   * only the server's answer is ever rendered. A conflict is reported in the
+   * words of the thing that changed rather than as a status code.
+   */
+  const runInterviewMutation = useCallback(
+    async (
+      item: OwnerInteraction,
+      mutate: (accessToken: string, conversationId: string) => Promise<BackendInterview>,
+      successMessage: string
+    ) => {
+      const conversationId = conversationIdOf(item);
+      if (!conversationId || !backendAccessToken) return;
+      setInterviewBusy(true);
+      setInterviewError(null);
+      try {
+        const saved = await mutate(backendAccessToken, conversationId);
+        rememberInterview(saved);
+        setSchedulingFor(null);
+        flashActionFeedback(successMessage);
+        // The stage may have moved with it, so re-read the authoritative record
+        // rather than inferring what the transition did.
+        setReloadNonce((value) => value + 1);
+      } catch (error) {
+        const conflict =
+          error instanceof BackendRequestError && (error.status === 409 || error.status === 422);
+        setInterviewError(
+          conflict
+            ? "This interview changed somewhere else. Reopen it to see the current time."
+            : "Couldn\u2019t save that. Try again."
+        );
+        if (conflict) setReloadNonce((value) => value + 1);
+      } finally {
+        setInterviewBusy(false);
+      }
+    },
+    [conversationIdOf, backendAccessToken, rememberInterview, flashActionFeedback]
+  );
+
+  const submitInterview = useCallback(
+    (item: OwnerInteraction, submission: InterviewSubmission) => {
+      const current = interviewOf(item);
+      // A completed or cancelled arrangement is replaced by a new round rather
+      // than moved, so the version still guards it but the semantics differ.
+      const expectedVersion = current ? current.version : 0;
+      void runInterviewMutation(
+        item,
+        (accessToken, conversationId) =>
+          proposeInterview(accessToken, conversationId, {
+            ...submission,
+            expectedVersion,
+            applicationExpectedVersion: item.statusVersion ?? null,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        current && current.status !== "cancelled" && current.status !== "completed"
+          ? "New time sent"
+          : "Invitation sent"
+      );
+    },
+    [interviewOf, runInterviewMutation]
+  );
 
   /* ---------------- Phase A: recommendation, work state, decision surface ---------------- */
 
@@ -3104,8 +3260,25 @@ export default function ApplicationsWorkspace({
         const status = liveMode ? liveThreads[item.id]?.engagement?.status : undefined;
         return status ? ["ready_to_start", "start_pending"].includes(status) : undefined;
       })(),
+      /**
+       * An arranged interview still ahead of us. The date is the next event, so
+       * the workspace stops asking for a decision about a meeting that has not
+       * happened yet.
+       */
+      interviewScheduled: liveMode ? interviewIsUpcoming(toInterview(interviewOf(item))) : undefined,
+      /**
+       * Only the side that manages the arrangement is told to follow it up.
+       * Recomputed locally rather than trusting the value fetched minutes ago,
+       * using the same rule the server uses so the two cannot disagree.
+       */
+      interviewFollowUpDue: (() => {
+        if (!liveMode) return undefined;
+        const interview = interviewOf(item);
+        if (!interview?.can_manage) return undefined;
+        return interviewFollowUpDue(toInterview(interview));
+      })(),
     }),
-    [liveMode, unreadByThread, liveThreads]
+    [liveMode, unreadByThread, liveThreads, interviewOf]
   );
 
   /** Signals for queue derivation — the same evidence the row labels use. */
@@ -3312,6 +3485,19 @@ export default function ApplicationsWorkspace({
    * the three can never drift apart in behaviour or side effects.
    */
   const dispatchHeaderAction = (item: OwnerInteraction, action: HeaderAction) => {
+      /*
+        "Invite to interview" is the one stage move that needs specifics before
+        it is worth sending. Routing it to the scheduling surface rather than the
+        bare confirm dialog is what makes the invitation a real arrangement — and
+        the surface still ends in the same authoritative transition, so there is
+        no second path to the Interviewing stage.
+      */
+      if (liveMode && action.backendStatus === "interviewing" && item.kind === "application") {
+        setInterviewError(null);
+        setSchedulingFor(item.id);
+        noteMeaningfulAction(item, action.key);
+        return;
+      }
       if (action.flow === "instant") {
         applyStatusAction(item, action);
         noteMeaningfulAction(item, action.key);
@@ -3375,6 +3561,7 @@ export default function ApplicationsWorkspace({
         return;
     }
   };
+
 
   if (liveMode && loadState === "loading") {
     return (
@@ -3455,6 +3642,16 @@ export default function ApplicationsWorkspace({
       : isMessagingClosedStatus(selected.status) || selectedInteractionBlocked
     : false;
   const selectedEngagement = liveThread?.engagement || null;
+  /** The open record's arrangement, from whichever cache resolved it first. */
+  const selectedInterview = selected && liveMode ? interviewOf(selected) : null;
+  /**
+   * The interview's own next step, when it has one. More specific than anything
+   * the generic ladder can infer, and it is what the reader is looking at.
+   *
+   * A plain derivation rather than a memo: it sits below the loading early
+   * returns, and the inputs are two field reads.
+   */
+  const interviewStep = liveMode ? interviewNextStep(toInterview(selectedInterview)) : null;
   const selectedActive = selected
     ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
     : false;
@@ -4098,7 +4295,39 @@ export default function ApplicationsWorkspace({
                         <Icon name={isStarred(selected) ? "bookmark" : "bookmark"} className="h-4 w-4" />
                       </button>
                     ) : null}
-                    {selectedNextAction ? (
+                    {/*
+                      An arranged interview names its own next step, and that is
+                      always more specific than the generic ladder can be. It
+                      replaces the primary action rather than sitting beside it,
+                      so there is still exactly one obvious thing to do.
+                    */}
+                    {interviewStep ? (
+                      <button
+                        type="button"
+                        data-testid="next-action-primary"
+                        data-action-key={`interview-${interviewStep.key}`}
+                        disabled={interviewBusy || Boolean(statusMutationKey)}
+                        onClick={() => {
+                          if (interviewStep.key === "record-decision") {
+                            setDecisionSurface({ itemId: selected.id, reason: "requested" });
+                            return;
+                          }
+                          const scrollTarget = document.querySelector(
+                            "[data-testid='interview-card']"
+                          );
+                          scrollTarget?.scrollIntoView({ block: "center", behavior: "smooth" });
+                          const control = document.querySelector<HTMLButtonElement>(
+                            interviewStep.key === "confirm"
+                              ? "[data-testid='interview-confirm']"
+                              : "[data-testid='interview-complete']"
+                          );
+                          control?.focus();
+                        }}
+                        className="hidden h-8 cursor-pointer items-center rounded-xl bg-white px-3 text-[12px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+                      >
+                        {interviewStep.label}
+                      </button>
+                    ) : selectedNextAction ? (
                       <button
                         type="button"
                         data-testid="next-action-primary"
@@ -4138,6 +4367,83 @@ export default function ApplicationsWorkspace({
                       {actionFeedback ? (
                         <p className="mb-5 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-3 text-xs text-emerald-100">
                           {actionFeedback}
+                        </p>
+                      ) : null}
+                      {/*
+                        Interview coordination sits above the engagement row and
+                        below the feedback lines: it is the most immediate thing
+                        about this conversation while a meeting is arranged, and
+                        it disappears entirely when there is nothing arranged.
+                      */}
+                      {liveMode && schedulingFor === selected.id ? (
+                        <InterviewScheduler
+                          interview={toInterview(selectedInterview)}
+                          counterpartyName={firstNameOf(selected.counterpartyName)}
+                          busy={interviewBusy}
+                          error={interviewError}
+                          onSubmit={(submission) => submitInterview(selected, submission)}
+                          onClose={() => {
+                            setSchedulingFor(null);
+                            setInterviewError(null);
+                          }}
+                        />
+                      ) : null}
+                      {liveMode && selectedInterview && schedulingFor !== selected.id ? (
+                        <InterviewCard
+                          interview={toInterview(selectedInterview) as NonNullable<ReturnType<typeof toInterview>>}
+                          counterpartyName={firstNameOf(selected.counterpartyName)}
+                          busy={interviewBusy}
+                          onReschedule={() => {
+                            setInterviewError(null);
+                            setSchedulingFor(selected.id);
+                          }}
+                          onConfirm={() =>
+                            void runInterviewMutation(
+                              selected,
+                              (accessToken, conversationId) =>
+                                confirmInterview(
+                                  accessToken,
+                                  conversationId,
+                                  selectedInterview.version,
+                                  crypto.randomUUID()
+                                ),
+                              "Interview confirmed"
+                            )
+                          }
+                          onComplete={() =>
+                            void runInterviewMutation(
+                              selected,
+                              (accessToken, conversationId) =>
+                                completeInterview(
+                                  accessToken,
+                                  conversationId,
+                                  selectedInterview.version,
+                                  crypto.randomUUID()
+                                ),
+                              "Marked done \u2014 only you can see this"
+                            )
+                          }
+                          onCancel={() =>
+                            void runInterviewMutation(
+                              selected,
+                              (accessToken, conversationId) =>
+                                cancelInterview(
+                                  accessToken,
+                                  conversationId,
+                                  selectedInterview.version,
+                                  crypto.randomUUID()
+                                ),
+                              "Interview cancelled"
+                            )
+                          }
+                        />
+                      ) : null}
+                      {interviewError && schedulingFor !== selected.id ? (
+                        <p
+                          role="alert"
+                          className="mb-5 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-3 text-xs text-amber-100"
+                        >
+                          {interviewError}
                         </p>
                       ) : null}
                       {selectedEngagement && backendAccessToken ? (

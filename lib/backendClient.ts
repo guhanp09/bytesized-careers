@@ -2891,6 +2891,8 @@ export type BackendConversationDetail = {
   conversation: BackendConversation;
   messages: BackendMessage[];
   engagement?: BackendEngagementSummary | null;
+  /** The arranged interview, if there is one. See {@link BackendInterview}. */
+  interview?: BackendInterview | null;
 };
 
 export async function listConversations(accessToken: string): Promise<BackendConversation[]> {
@@ -3093,6 +3095,132 @@ export async function setConversationDecisionPromptDismissed(
       accessToken,
     }
   );
+}
+
+/* -------------------------------------------------------------------------
+ * Interview coordination
+ *
+ * Both participants may read the arrangement — every field was deliberately
+ * communicated. Only the managing side may write, which the server enforces
+ * regardless of what `can_manage` tells the client.
+ * ---------------------------------------------------------------------- */
+
+export type BackendInterview = {
+  id: string;
+  conversation_id: string;
+  status: "proposed" | "confirmed" | "completed" | "cancelled";
+  scheduled_at?: string | null;
+  timezone: string;
+  duration_minutes?: number | null;
+  meeting_method: "video_call" | "phone" | "in_person" | "other";
+  meeting_detail?: string | null;
+  schedule_label: string;
+  previous_scheduled_at?: string | null;
+  reschedule_count: number;
+  round_number: number;
+  confirmed_at?: string | null;
+  confirmed_by_me: boolean;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  version: number;
+  can_manage: boolean;
+  follow_up_due: boolean;
+};
+
+export type ProposeInterviewInput = {
+  scheduledAt: string;
+  timezone: string;
+  meetingMethod: BackendInterview["meeting_method"];
+  meetingDetail?: string | null;
+  durationMinutes?: number | null;
+  note?: string | null;
+  /** 0 for a first invitation, the current version for a reschedule. */
+  expectedVersion: number;
+  /** Required for a first invitation on an application, which also moves the stage. */
+  applicationExpectedVersion?: number | null;
+  idempotencyKey: string;
+};
+
+/** Every interview on a conversation the caller takes part in, in one request. */
+export async function listInterviews(accessToken: string): Promise<BackendInterview[]> {
+  return requestJson<BackendInterview[]>("/me/interviews", { accessToken });
+}
+
+/** Invite, or move an arrangement. Which one happens is decided server-side. */
+export async function proposeInterview(
+  accessToken: string,
+  conversationId: string,
+  input: ProposeInterviewInput
+): Promise<BackendInterview> {
+  return requestJson<BackendInterview>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/interview`,
+    {
+      method: "PUT",
+      accessToken,
+      body: JSON.stringify({
+        scheduled_at: input.scheduledAt,
+        timezone: input.timezone,
+        meeting_method: input.meetingMethod,
+        meeting_detail: input.meetingDetail ?? null,
+        duration_minutes: input.durationMinutes ?? null,
+        note: input.note ?? null,
+        expected_version: input.expectedVersion,
+        application_expected_version: input.applicationExpectedVersion ?? null,
+        idempotency_key: input.idempotencyKey,
+      }),
+    }
+  );
+}
+
+async function interviewAction(
+  accessToken: string,
+  conversationId: string,
+  action: "confirm" | "complete" | "cancel",
+  body: Record<string, unknown>
+): Promise<BackendInterview> {
+  return requestJson<BackendInterview>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/interview/${action}`,
+    { method: "POST", accessToken, body: JSON.stringify(body) }
+  );
+}
+
+export async function confirmInterview(
+  accessToken: string,
+  conversationId: string,
+  expectedVersion: number,
+  idempotencyKey: string
+): Promise<BackendInterview> {
+  return interviewAction(accessToken, conversationId, "confirm", {
+    expected_version: expectedVersion,
+    idempotency_key: idempotencyKey,
+  });
+}
+
+/** Private bookkeeping: sends nothing, decides nothing. */
+export async function completeInterview(
+  accessToken: string,
+  conversationId: string,
+  expectedVersion: number,
+  idempotencyKey: string
+): Promise<BackendInterview> {
+  return interviewAction(accessToken, conversationId, "complete", {
+    expected_version: expectedVersion,
+    idempotency_key: idempotencyKey,
+  });
+}
+
+export async function cancelInterview(
+  accessToken: string,
+  conversationId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  reason?: string | null
+): Promise<BackendInterview> {
+  return interviewAction(accessToken, conversationId, "cancel", {
+    expected_version: expectedVersion,
+    idempotency_key: idempotencyKey,
+    reason: reason ?? null,
+  });
 }
 
 export type BackendReviewStarted = {
