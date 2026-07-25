@@ -9,11 +9,13 @@ from __future__ import annotations
 
 
 APPLICATION_TRANSITIONS: dict[str, frozenset[str]] = {
-    "new": frozenset({"reviewing", "shortlisted", "interviewing", "hired", "rejected"}),
-    "reviewing": frozenset({"shortlisted", "interviewing", "hired", "rejected"}),
+    "new": frozenset({"reviewing", "interviewing", "hired", "rejected"}),
+    "reviewing": frozenset({"interviewing", "hired", "rejected"}),
+    # Legacy only: nothing transitions *into* "shortlisted" any more, but
+    # records already sitting in it must still be able to move forward.
     "shortlisted": frozenset({"reviewing", "interviewing", "hired", "rejected"}),
     "interviewing": frozenset({"hired", "rejected"}),
-    "rejected": frozenset({"reviewing", "shortlisted", "interviewing", "hired"}),
+    "rejected": frozenset({"reviewing", "interviewing", "hired"}),
     "withdrawn": frozenset(),
     "hired": frozenset(),
     "archived": frozenset(),

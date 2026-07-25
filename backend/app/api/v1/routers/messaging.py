@@ -93,7 +93,9 @@ class SendMessageRequest(BaseModel):
 class SendStatusUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    stage: Literal["shortlisted", "rejected"]
+    #: "shortlisted" was retired with the stage itself (see 0047); only the
+    #: remaining optional-shared outcome can be communicated this way.
+    stage: Literal["rejected"]
     expected_version: int = Field(ge=1)
     idempotency_key: UUID
 

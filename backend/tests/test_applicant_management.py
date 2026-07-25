@@ -327,7 +327,7 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
     forbidden = await client.post(
         "/api/v1/applications/bulk-status",
         headers={"Authorization": f"Bearer {outsider_token}"},
-        json={"ids": [first_id, second_id], "status": "shortlisted"},
+        json={"ids": [first_id, second_id], "status": "reviewing"},
     )
     assert forbidden.status_code == 403
 
@@ -335,7 +335,7 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
     missing = await client.post(
         "/api/v1/applications/bulk-status",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"ids": [first_id, "00000000-0000-0000-0000-000000000000"], "status": "shortlisted"},
+        json={"ids": [first_id, "00000000-0000-0000-0000-000000000000"], "status": "reviewing"},
     )
     assert missing.status_code == 404
 
@@ -350,10 +350,10 @@ async def test_bulk_application_status_is_quiet_by_default_and_notifies_on_reque
     moved = await client.post(
         "/api/v1/applications/bulk-status",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"ids": [first_id, second_id], "status": "shortlisted"},
+        json={"ids": [first_id, second_id], "status": "reviewing"},
     )
     assert moved.status_code == 200
-    assert sorted(item["status"] for item in moved.json()) == ["shortlisted", "shortlisted"]
+    assert sorted(item["status"] for item in moved.json()) == ["reviewing", "reviewing"]
 
     # The applicants still see their participant-facing relationship as pending;
     # shortlisting is private until the manager explicitly shares it.
@@ -515,12 +515,12 @@ async def test_internal_application_stages_stay_private_until_explicitly_shared(
         for message in sender_conversation.json()["messages"]
     )
 
-    shortlisted = await client.patch(
+    privately_rejected = await client.patch(
         f"/api/v1/applications/{application_id}/status",
         headers=owner_h,
-        json={"status": "shortlisted"},
+        json={"status": "rejected"},
     )
-    assert shortlisted.status_code == 200
+    assert privately_rejected.status_code == 200
     assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
         "status"
     ] == "new"
@@ -529,15 +529,15 @@ async def test_internal_application_stages_stay_private_until_explicitly_shared(
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=owner_h,
         json={
-            "stage": "shortlisted",
-            "expected_version": shortlisted.json()["status_version"],
+            "stage": "rejected",
+            "expected_version": privately_rejected.json()["status_version"],
             "idempotency_key": str(uuid4()),
         },
     )
     assert shared.status_code == 201
     assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
         "status"
-    ] == "shortlisted"
+    ] == "rejected"
 
     forbidden = await client.patch(
         f"/api/v1/applications/{application_id}/status",
@@ -554,13 +554,17 @@ async def test_internal_application_stages_stay_private_until_explicitly_shared(
     assert rejected.status_code == 200
     assert (await client.get("/api/v1/me/applications/sent", headers=applicant_h)).json()[0][
         "status"
-    ] == "shortlisted"
-    can_reopen_private_decision = await client.patch(
+    ] == "rejected"
+    # Once the decision has actually been communicated it is terminal: reopening
+    # it would contradict what the applicant was already told. (A decision that
+    # is still private remains reversible — that is the point of keeping it
+    # private, and validStageTargetsFor covers it.)
+    cannot_reopen_communicated_decision = await client.patch(
         f"/api/v1/applications/{application_id}/status",
         headers=owner_h,
         json={"status": "reviewing"},
     )
-    assert can_reopen_private_decision.status_code == 200
+    assert cannot_reopen_communicated_decision.status_code == 409
 
 
 async def test_private_archive_does_not_publish_or_close_an_active_conversation(

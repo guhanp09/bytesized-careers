@@ -111,10 +111,10 @@ async def test_saved_jobs_applications_notifications_reports_and_launch_entitlem
     status_update = await client.patch(
         f"/api/v1/applications/{application_id}/status",
         headers={"Authorization": f"Bearer {owner_token}"},
-        json={"status": "shortlisted"},
+        json={"status": "reviewing"},
     )
     assert status_update.status_code == 200
-    assert status_update.json()["status"] == "shortlisted"
+    assert status_update.json()["status"] == "reviewing"
 
     notifications = await client.get("/api/v1/notifications", headers={"Authorization": f"Bearer {applicant_token}"})
     assert notifications.status_code == 200

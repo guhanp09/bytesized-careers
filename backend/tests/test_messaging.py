@@ -287,22 +287,31 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
     moved = await client.patch(
         f"/api/v1/applications/{application_id}/status",
         headers=owner_h,
-        json={"status": "shortlisted"},
+        json={"status": "rejected"},
     )
     assert moved.status_code == 200
+
+    # Plain text stays kind-less; the public text endpoint rejects a forged kind.
+    plain = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Looking forward to it."},
+    )
+    assert plain.status_code == 201
+    assert plain.json()["kind"] is None
 
     sent = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=owner_h,
         json={
-            "stage": "shortlisted",
+            "stage": "rejected",
             "expected_version": moved.json()["status_version"],
             "idempotency_key": str(uuid4()),
         },
     )
     assert sent.status_code == 201
     assert sent.json()["kind"] == "status_update"
-    assert sent.json()["body"] == "Shortlisted for “Editor for finance channel”."
+    assert sent.json()["body"] == "Not moving forward for “Editor for finance channel”."
 
     # The other participant reads the same kind back.
     view = await client.get(f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h)
@@ -313,7 +322,7 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=applicant_h,
         json={
-            "stage": "shortlisted",
+            "stage": "rejected",
             "expected_version": moved.json()["status_version"],
             "idempotency_key": str(uuid4()),
         },
@@ -325,21 +334,12 @@ async def test_status_update_is_server_generated_and_cannot_be_forged(client: As
         f"/api/v1/me/conversations/{conversation_id}/status-update",
         headers=owner_h,
         json={
-            "stage": "shortlisted",
+            "stage": "rejected",
             "expected_version": moved.json()["status_version"] + 1,
             "idempotency_key": str(uuid4()),
         },
     )
     assert stale.status_code == 409
-
-    # Plain text stays kind-less; the public text endpoint rejects a forged kind.
-    plain = await client.post(
-        f"/api/v1/me/conversations/{conversation_id}/messages",
-        headers=owner_h,
-        json={"body": "Looking forward to it."},
-    )
-    assert plain.status_code == 201
-    assert plain.json()["kind"] is None
 
     invalid = await client.post(
         f"/api/v1/me/conversations/{conversation_id}/messages",

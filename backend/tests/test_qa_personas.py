@@ -502,7 +502,9 @@ async def test_inbox_restore_clears_real_transition_side_effects_before_reuse(cl
     async with TestSessionLocal() as session:
         application = await session.get(JobApplication, application_id)
         assert application is not None
-        assert application.status == "shortlisted"
+        # The seed reflects the post-0047 model: a private "keep in mind" is
+        # Reviewing plus a private Star, not a stage of its own.
+        assert application.status == "reviewing"
         assert application.participant_status == "new"
         assert application.status_version == 1
         assert (

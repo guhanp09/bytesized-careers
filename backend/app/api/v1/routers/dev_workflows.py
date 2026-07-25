@@ -104,7 +104,7 @@ class ReplyApplicationRequest(BaseModel):
     actorKey: str = DEFAULT_RECRUITER
     targetKey: str = DEFAULT_TALENT
     applicationId: UUID | None = None
-    status: str = "shortlisted"
+    status: str = "reviewing"
 
 
 class ReplyInterestRequest(BaseModel):
@@ -408,7 +408,7 @@ async def workflow_reply_to_application(
             and (
                 item.status != payload.status
                 or (
-                    payload.status == "shortlisted"
+                    payload.status == "rejected"
                     and item.participant_status != payload.status
                 )
             )
@@ -431,12 +431,12 @@ async def workflow_reply_to_application(
     # Shortlisting is private by default. The dev workflow is explicitly a
     # cross-persona reply exercise, so follow the same trusted status-update
     # path the UI uses when the recruiter chooses to inform the applicant.
-    if payload.status == "shortlisted" and application.participant_status != payload.status:
+    if payload.status == "rejected" and application.participant_status != payload.status:
         conversation = await ms.get_or_create_conversation_for_application(session, application)
         await send_status_update(
             conversation_id=conversation.id,
             payload=SendStatusUpdateRequest(
-                stage="shortlisted",
+                stage="rejected",
                 expected_version=result.status_version,
                 idempotency_key=uuid4(),
             ),

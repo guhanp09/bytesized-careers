@@ -164,11 +164,26 @@ def _set_archive_state(
         )
 
 
+#: Historical participant-visible value. "Shortlisted" is no longer a stage a
+#: manager can enter, but some applicants were genuinely told it at the time, and
+#: that update really happened — regressing them to "Application received" would
+#: erase a real communication. They keep a stable, honest label until a later
+#: shared outcome supersedes it.
+LEGACY_SHARED_SHORTLISTED = "shortlisted"
+
+
+def _participant_facing_status(participant_status: str | None) -> str:
+    """Map stored participant state to what the sender should read."""
+    if participant_status == LEGACY_SHARED_SHORTLISTED:
+        return "under_consideration"
+    return participant_status or "new"
+
+
 def _application_read_for_sender(application: JobApplication) -> JobApplicationRead:
     """Serialize an application for its sender (applicant): the job owner's
     private manager_note must never leak to the applicant."""
     read = JobApplicationRead.model_validate(application)
-    read.status = application.participant_status or "new"
+    read.status = _participant_facing_status(application.participant_status)
     read.manager_note = None
     read.legacy_archive_resolution_required = False
     return read

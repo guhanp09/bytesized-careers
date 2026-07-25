@@ -64,8 +64,9 @@ const quoted = (label: string | null) => (label ? ` for “${label}”` : "");
  *
  * - new         — arrival state; set by the system; internal; reversible n/a.
  * - reviewing   — owner is reading; internal-only (never notifies); reversible.
- * - shortlisted — externally meaningful; notifying is allowed but optional
- *                 (owners often shortlist quietly while comparing); reversible.
+ * Shortlisted is retired: what it usually meant — "keep this one in mind" — is
+ * now a private Star, which is orthogonal to stage. Legacy records keep working
+ * (see APPLICATION_TRANSITIONS) but nothing enters it any more.
  * - interviewing— externally meaningful; notifying recommended (the applicant
  *                 has to take part); reversible.
  * - hired       — shared outcome; terminal in the pipeline because engagement
@@ -77,12 +78,6 @@ const quoted = (label: string | null) => (label ? ` for “${label}”` : "");
 const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
   { key: "new", label: "New", dot: "bg-white" },
   { key: "reviewing", label: "Reviewing", dot: "bg-sky-300" },
-  {
-    key: "shortlisted",
-    label: "Shortlisted",
-    dot: "bg-violet-300",
-    notify: { recommended: false, notice: ({ contextLabel }) => `Shortlisted${quoted(contextLabel)}.` },
-  },
   {
     key: "interviewing",
     label: "Interviewing",
@@ -120,7 +115,9 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
 const APPLICATION_SENT_STAGES: PipelineStage[] = [
   { key: "new", label: "Pending", dot: "bg-white" },
   { key: "reviewing", label: "Viewed", dot: "bg-sky-300" },
-  { key: "shortlisted", label: "Shortlisted", dot: "bg-violet-300" },
+  // Legacy only: applicants who were genuinely told keep an honest label.
+  { key: "shortlisted", label: "Under consideration", dot: "bg-violet-300", terminal: false },
+  { key: "under_consideration", label: "Under consideration", dot: "bg-violet-300" },
   { key: "interviewing", label: "Interviewing", dot: "bg-amber-300" },
   { key: "hired", label: "Hired", dot: "bg-emerald-300" },
   { key: "rejected", label: "Not selected", dot: "bg-rose-300/80", terminal: true },
@@ -213,17 +210,17 @@ export function legacyResolutionTargetsFor(kind: InteractionKind): PipelineStage
 /** Consequential shared outcomes are always confirmed one relationship at a time. */
 export function bulkStageTargetsFor(kind: InteractionKind): PipelineStage[] {
   const permitted = kind === "application"
-    ? new Set(["reviewing", "shortlisted", "rejected", "archived"])
+    ? new Set(["reviewing", "rejected", "archived"])
     : new Set(["reviewing", "archived"]);
   return stageTargetsFor(kind).filter((stage) => permitted.has(stage.key));
 }
 
 const APPLICATION_TRANSITIONS: Record<string, ReadonlySet<string>> = {
-  new: new Set(["reviewing", "shortlisted", "interviewing", "hired", "rejected"]),
-  reviewing: new Set(["shortlisted", "interviewing", "hired", "rejected"]),
+  new: new Set(["reviewing", "interviewing", "hired", "rejected"]),
+  reviewing: new Set(["interviewing", "hired", "rejected"]),
   shortlisted: new Set(["reviewing", "interviewing", "hired", "rejected"]),
   interviewing: new Set(["hired", "rejected"]),
-  rejected: new Set(["reviewing", "shortlisted", "interviewing", "hired"]),
+  rejected: new Set(["reviewing", "interviewing", "hired"]),
   withdrawn: new Set(),
   hired: new Set(),
   archived: new Set(),

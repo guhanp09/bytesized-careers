@@ -124,9 +124,9 @@ test("workspace controls switch real views, retain an empty mode, and open statu
     route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Temporary outage"}' })
   );
   await moreActions.press("Enter");
-  await page.getByRole("menuitem", { name: "Move to Reviewing" }).click();
+  await page.getByRole("menuitem", { name: "Move to Interviewing" }).click();
   await expect(page.getByTestId("applications-detail")).toContainText("Temporary outage");
-  await expect(page.getByTestId("applications-detail-header")).toContainText("Shortlisted");
+  await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
   await page.unroute("**/api/v1/applications/*/transition");
 });
 
@@ -228,7 +228,7 @@ test("Hired from Pipeline confirms before committing and agrees with Inbox", asy
   });
 
   const priya = page
-    .getByTestId("pipeline-group-shortlisted")
+    .getByTestId("pipeline-group-reviewing")
     .getByTestId("pipeline-row")
     .filter({ hasText: "Priya Nair" });
   await priya.getByTestId("pipeline-stage-menu").click();
@@ -260,10 +260,12 @@ test("internal application stages stay private while shared outcomes cross perso
   });
 
   const board = page.getByTestId("pipeline-board");
+  // New -> Reviewing is the private stage change now that Shortlisted is retired.
   const priya = board
-    .getByTestId("pipeline-group-shortlisted")
+    .getByTestId("pipeline-group-new")
     .getByTestId("pipeline-row")
-    .filter({ hasText: "Priya Nair" });
+    .filter({ hasText: "Priya Nair" })
+    .first();
   await expect(priya).toBeVisible();
   await priya.getByTestId("pipeline-stage-menu").click();
   await page.getByTestId("pipeline-stage-option-reviewing").click();
@@ -301,10 +303,14 @@ test("internal application stages stay private while shared outcomes cross perso
   await page.goto("/applications?view=pipeline&mode=recruiter&direction=received", {
     waitUntil: "domcontentloaded",
   });
+  // Both of Priya's applications now sit in Reviewing, so identify the one the
+  // talent-side assertions below actually check.
   const reviewingPriya = page
     .getByTestId("pipeline-group-reviewing")
     .getByTestId("pipeline-row")
-    .filter({ hasText: "Priya Nair" });
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
+    .first();
   await reviewingPriya.getByTestId("pipeline-stage-menu").click();
   await page.getByTestId("pipeline-stage-option-interviewing").click();
   await expect(
@@ -352,7 +358,7 @@ test("two online personas receive and reply to messages without reloading", asyn
       waitUntil: "domcontentloaded",
     });
     const priya = page
-      .getByTestId("pipeline-group-shortlisted")
+      .getByTestId("pipeline-group-reviewing")
       .getByTestId("pipeline-row")
       .filter({ hasText: "Priya Nair" })
       .filter({ hasText: "Long-form video editor for a finance YouTube channel" })
@@ -1307,7 +1313,7 @@ test("a stale second tab cannot silently overwrite the first tab's decision", as
 
     // Tab one moves it forward.
     await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
-    await page.getByRole("menuitem", { name: "Move to Reviewing" }).click();
+    await page.getByRole("menuitem", { name: "Move to Interviewing" }).click();
     // The detail header speaks the display vocabulary ("Viewed"), not the
     // backend stage name.
     await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
@@ -1338,7 +1344,7 @@ test("a stale second tab cannot silently overwrite the first tab's decision", as
     // Whatever the second tab did, the server stays authoritative and coherent.
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
-    await expect(page.getByTestId("applications-detail-header")).not.toContainText("Shortlisted");
+    await expect(page.getByTestId("applications-detail-header")).not.toContainText("Rejected");
   } finally {
     await secondContext.close();
   }
@@ -1368,5 +1374,5 @@ test("a destructive decision can be completed with the keyboard alone", async ({
   // Escape must abandon it without any side effect.
   await page.keyboard.press("Escape");
   await expect(confirmation).toHaveCount(0);
-  await expect(page.getByTestId("applications-detail-header")).toContainText("Shortlisted");
+  await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
 });

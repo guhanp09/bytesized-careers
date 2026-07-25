@@ -62,7 +62,8 @@ ManagedApplicationStatus = Literal[
     "reviewing", "shortlisted", "interviewing", "hired", "rejected"
 ]
 ManagedInterestStatus = Literal["reviewing", "accepted", "declined"]
-BulkApplicationStatus = Literal["reviewing", "shortlisted", "rejected"]
+#: "shortlisted" retired with the stage (0047); bulk never offered outcomes.
+BulkApplicationStatus = Literal["reviewing", "rejected"]
 BulkInterestStatus = Literal["reviewing"]
 
 

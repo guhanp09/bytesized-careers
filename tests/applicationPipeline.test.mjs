@@ -26,7 +26,8 @@ test("received applications expose the full ATS funnel in order", () => {
   assert.deepEqual(keys, [
     "new",
     "reviewing",
-    "shortlisted",
+    // "shortlisted" is retired: keeping someone in mind is a private Star now,
+    // which layers on any stage instead of being one.
     "interviewing",
     "hired",
     "rejected",
@@ -53,12 +54,12 @@ test("hiring-request stages use canonical Accepted vocabulary", () => {
 
 test("manager stage targets exclude arrival and sender-only statuses", () => {
   const applicationTargets = stageTargetsFor("application").map((stage) => stage.key);
-  assert.deepEqual(applicationTargets, ["reviewing", "shortlisted", "interviewing", "hired", "rejected", "archived"]);
+  assert.deepEqual(applicationTargets, ["reviewing", "interviewing", "hired", "rejected", "archived"]);
   const interestTargets = stageTargetsFor("hiring_request").map((stage) => stage.key);
   assert.deepEqual(interestTargets, ["reviewing", "accepted", "declined", "archived"]);
   assert.deepEqual(
     bulkStageTargetsFor("application").map((stage) => stage.key),
-    ["reviewing", "shortlisted", "rejected", "archived"]
+    ["reviewing", "rejected", "archived"]
   );
   assert.deepEqual(
     bulkStageTargetsFor("hiring_request").map((stage) => stage.key),
@@ -69,7 +70,7 @@ test("manager stage targets exclude arrival and sender-only statuses", () => {
 test("manager actions expose only legal next stages and never reopen terminal records", () => {
   assert.deepEqual(
     validStageTargetsFor("application", "new").map((stage) => stage.key),
-    ["reviewing", "shortlisted", "interviewing", "hired", "rejected"]
+    ["reviewing", "interviewing", "hired", "rejected"]
   );
   assert.deepEqual(
     validStageTargetsFor("application", "interviewing").map((stage) => stage.key),
@@ -77,7 +78,7 @@ test("manager actions expose only legal next stages and never reopen terminal re
   );
   assert.deepEqual(
     validStageTargetsFor("application", "rejected").map((stage) => stage.key),
-    ["reviewing", "shortlisted", "interviewing", "hired"]
+    ["reviewing", "interviewing", "hired"]
   );
   assert.deepEqual(
     validStageTargetsFor("application", "rejected", "rejected"),
@@ -94,7 +95,7 @@ test("manager actions expose only legal next stages and never reopen terminal re
 test("legacy archives expose deliberate one-time resolution targets", () => {
   assert.deepEqual(
     validStageTargetsFor("application", "archived", "new", true).map((stage) => stage.key),
-    ["new", "reviewing", "shortlisted", "interviewing", "hired", "rejected"]
+    ["new", "reviewing", "interviewing", "hired", "rejected"]
   );
   assert.deepEqual(
     validStageTargetsFor("hiring_request", "archived", "new", true).map((stage) => stage.key),
@@ -248,7 +249,7 @@ test("pipeline summary reads total, new arrivals, and the furthest active stage"
       "sent",
       "talent"
     ),
-    "2 applications · 1 pending · 1 shortlisted"
+    "2 applications · 1 pending · 1 under consideration"
   );
   assert.equal(pipelineSummaryOf([], "application", "received", "hiring"), null);
 });
@@ -260,10 +261,6 @@ test("notify taxonomy: internal-only stages have no policy; outcomes do", () => 
   assert.equal(stageNotifyPolicyOf("hiring_request", "reviewing"), null);
   assert.equal(stageNotifyPolicyOf("hiring_request", "archived"), null);
   // Externally meaningful stages carry a platform notice.
-  assert.equal(
-    stageNotifyPolicyOf("application", "shortlisted")?.notice({ contextLabel: "Thumbnail Designer" }),
-    "Shortlisted for “Thumbnail Designer”."
-  );
   assert.equal(
     stageNotifyPolicyOf("application", "hired")?.notice({ contextLabel: null }),
     "Hired."
@@ -280,11 +277,12 @@ test("notify taxonomy: internal-only stages have no policy; outcomes do", () => 
     stageNotifyPolicyOf("hiring_request", "declined")?.notice({ contextLabel: null }),
     "Hiring request declined."
   );
-  // Recommendation split: interviews/outcomes lead with send; shortlist stays neutral.
-  assert.equal(stageNotifyPolicyOf("application", "shortlisted")?.recommended, false);
+  // Recommendation split: interviews and outcomes lead with send.
+  // Retired stage: nothing can move into it, so it has no notify policy at all.
+  assert.equal(stageNotifyPolicyOf("application", "shortlisted"), null);
   assert.equal(stageNotifyPolicyOf("application", "interviewing")?.recommended, true);
   assert.equal(stageNotifyPolicyOf("application", "rejected")?.recommended, true);
-  assert.equal(stageNotifyPolicyOf("application", "shortlisted")?.automatic, undefined);
+  assert.equal(stageNotifyPolicyOf("application", "rejected")?.automatic, undefined);
   assert.equal(stageNotifyPolicyOf("application", "interviewing")?.automatic, true);
   assert.equal(stageNotifyPolicyOf("application", "hired")?.automatic, true);
   assert.equal(stageNotifyPolicyOf("hiring_request", "accepted")?.automatic, true);

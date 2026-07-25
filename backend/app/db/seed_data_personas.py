@@ -897,7 +897,7 @@ def _application(
 def build_persona_applications() -> list[dict[str, object]]:
     applications = [
         _application(
-            "talent-complete", "recruiter-active-1", "recruiter-active", "shortlisted",
+            "talent-complete", "recruiter-active-1", "recruiter-active", "reviewing",
             "Hi, I came across the listing and would love to help with the finance channel edits.",
             answers={
                 "expected_rate": {"amount": "25000", "unit": "per video"},

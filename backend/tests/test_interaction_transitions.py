@@ -306,7 +306,7 @@ async def test_stale_and_unauthorized_transitions_are_explicit(client: AsyncClie
         f"/api/v1/applications/{application_id}/transition",
         headers={"Authorization": f"Bearer {owner}"},
         json={
-            "status": "shortlisted",
+            "status": "rejected",
             "expected_version": 1,
             "idempotency_key": str(uuid.uuid4()),
         },
@@ -441,11 +441,13 @@ async def test_status_communication_rejects_a_mismatched_requested_status(
     client: AsyncClient,
 ) -> None:
     owner, _, application_id = await _application(client)
+    # The record sits in "reviewing"; communicating "rejected" therefore does not
+    # describe its actual state and must be refused.
     moved = await client.post(
         f"/api/v1/applications/{application_id}/transition",
         headers={"Authorization": f"Bearer {owner}"},
         json={
-            "status": "shortlisted",
+            "status": "reviewing",
             "expected_version": 1,
             "idempotency_key": str(uuid.uuid4()),
         },
