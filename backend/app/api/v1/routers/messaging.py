@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from app.models import Conversation, JobApplication, Message, TalentInterest, Us
 from app.realtime import events as realtime_events
 from app.services import blocking_service
 from app.services import messaging_service as ms
+from app.services import interaction_preference_service as prefs
 from app.services import interaction_transition_service as transitions
 from app.services import review_service
 from app.schemas.reviews import EngagementSummary
@@ -504,4 +506,172 @@ async def unblock_user(
     return BlockMutationRead(
         interaction_blocked=state.interaction_blocked,
         blocked_by_me=state.blocked_by_me,
+    )
+
+
+# --- personal interaction preferences --------------------------------------
+#
+# Strictly owner-scoped. Every endpoint resolves the row from the authenticated
+# user, so there is no parameter through which one participant could read or
+# mutate the other's organisation. None of these writes touch lifecycle status,
+# post a message, create a notification, or emit a trusted event.
+
+
+class InteractionPreferenceRead(BaseModel):
+    conversation_id: str
+    starred: bool = False
+    starred_at: str | None = None
+    snoozed_until: str | None = None
+    queue_dismissed: bool = False
+    decision_prompt_dismissed: bool = False
+    decision_prompt_trigger_version: int | None = None
+
+
+class StarUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starred: bool
+
+
+class SnoozeUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: ISO-8601 instant to stay quiet until, or null to clear the snooze.
+    until: datetime | None = None
+
+
+class QueueDismissalUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dismissed: bool
+
+
+class DecisionPromptUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dismissed: bool
+    trigger_version: int | None = None
+
+
+def _preference_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, prefs.ConversationNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation participant"
+    )
+
+
+@router.get("/interaction-preferences", response_model=list[InteractionPreferenceRead])
+async def list_interaction_preferences(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[InteractionPreferenceRead]:
+    """Every preference the caller owns, in one request.
+
+    The workspace loads many conversations at once, so fetching these per thread
+    would multiply round-trips for what is a small, user-scoped set.
+    """
+    rows = await prefs.list_preferences(session, user_id=current_user.id)
+    return [
+        InteractionPreferenceRead(
+            conversation_id=str(row.conversation_id), **prefs.serialize_preference(row)
+        )
+        for row in rows
+    ]
+
+
+async def _apply_preference(
+    session: AsyncSession, conversation_id: UUID, user_id: UUID, mutate
+) -> InteractionPreferenceRead:
+    try:
+        preference = await mutate()
+    except (prefs.NotAParticipant, prefs.ConversationNotFound) as exc:
+        await session.rollback()
+        raise _preference_error(exc) from exc
+    await session.commit()
+    return InteractionPreferenceRead(
+        conversation_id=str(conversation_id), **prefs.serialize_preference(preference)
+    )
+
+
+@router.put("/conversations/{conversation_id}/preferences/star", response_model=InteractionPreferenceRead)
+async def set_conversation_star(
+    conversation_id: UUID,
+    payload: StarUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPreferenceRead:
+    return await _apply_preference(
+        session,
+        conversation_id,
+        current_user.id,
+        lambda: prefs.set_starred(
+            session,
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+            starred=payload.starred,
+        ),
+    )
+
+
+@router.put("/conversations/{conversation_id}/preferences/snooze", response_model=InteractionPreferenceRead)
+async def set_conversation_snooze(
+    conversation_id: UUID,
+    payload: SnoozeUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPreferenceRead:
+    return await _apply_preference(
+        session,
+        conversation_id,
+        current_user.id,
+        lambda: prefs.set_snooze(
+            session,
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+            until=payload.until,
+        ),
+    )
+
+
+@router.put(
+    "/conversations/{conversation_id}/preferences/queue-dismissal",
+    response_model=InteractionPreferenceRead,
+)
+async def set_conversation_queue_dismissal(
+    conversation_id: UUID,
+    payload: QueueDismissalUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPreferenceRead:
+    return await _apply_preference(
+        session,
+        conversation_id,
+        current_user.id,
+        lambda: prefs.set_queue_dismissed(
+            session,
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+            dismissed=payload.dismissed,
+        ),
+    )
+
+
+@router.put(
+    "/conversations/{conversation_id}/preferences/decision-prompt",
+    response_model=InteractionPreferenceRead,
+)
+async def set_conversation_decision_prompt(
+    conversation_id: UUID,
+    payload: DecisionPromptUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> InteractionPreferenceRead:
+    return await _apply_preference(
+        session,
+        conversation_id,
+        current_user.id,
+        lambda: prefs.set_decision_prompt_dismissed(
+            session,
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+            dismissed=payload.dismissed,
+            trigger_version=payload.trigger_version,
+        ),
     )

@@ -46,7 +46,10 @@ import {
   listTalentInterestPrivateNotes,
   markConversationRead,
   blockUser,
+  listInteractionPreferences,
   sendConversationMessage,
+  setConversationQueueDismissed,
+  setConversationStarred,
   setApplicationArchived,
   setTalentInterestArchived,
   communicateApplicationStatus,
@@ -60,6 +63,7 @@ import {
   type BackendConversation,
   type BackendMessage,
   type BackendEngagementSummary,
+  type BackendInteractionPreference,
   type BackendInteractionPrivateNote,
   type BackendPortfolioItem,
   type BackendReviewOpportunity,
@@ -97,6 +101,7 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
+import { NO_QUEUE_PREFERENCES, type WorkQueuePreferences } from "../../lib/workQueues";
 import {
   flagCohortLabel,
   trackWorkspaceEvent,
@@ -2859,6 +2864,106 @@ export default function ApplicationsWorkspace({
    */
   const [pendingIntent, setPendingIntent] = useState<string | null>(null);
 
+  /* ---------------- B1: durable per-user interaction preferences ---------------- */
+
+  /**
+   * The signed-in user's private organisation, keyed by conversation id.
+   * Owner-scoped by construction: the endpoint only ever returns the caller's
+   * own rows, so nothing here can describe the counterparty.
+   */
+  const [preferences, setPreferences] = useState<Record<string, BackendInteractionPreference>>({});
+
+  useEffect(() => {
+    if (!liveMode || !backendAccessToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listInteractionPreferences(backendAccessToken);
+        if (cancelled) return;
+        setPreferences(Object.fromEntries(rows.map((row) => [row.conversation_id, row])));
+      } catch {
+        // Personal organisation is an enhancement: failing to load it must never
+        // stop someone reading or answering their messages.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveMode, backendAccessToken, reloadNonce]);
+
+  /** Conversation id for an interaction, once its thread is known. */
+  const conversationIdOf = useCallback(
+    (item: OwnerInteraction): string | null => liveThreads[item.id]?.conversationId ?? null,
+    [liveThreads]
+  );
+
+  const isStarred = useCallback(
+    (item: OwnerInteraction): boolean => {
+      const conversationId = conversationIdOf(item);
+      return conversationId ? Boolean(preferences[conversationId]?.starred) : false;
+    },
+    [conversationIdOf, preferences]
+  );
+
+  /**
+   * Star is private, reversible, and never touches lifecycle state, so it is
+   * applied optimistically — and rolled back to the previous value if the write
+   * fails, rather than leaving a star the server never accepted.
+   */
+  const toggleStar = useCallback(
+    async (item: OwnerInteraction) => {
+      const conversationId = conversationIdOf(item);
+      if (!conversationId || !backendAccessToken) return;
+      const previous = preferences[conversationId];
+      const next = !previous?.starred;
+      setPreferences((current) => ({
+        ...current,
+        [conversationId]: {
+          ...(current[conversationId] ?? {
+            conversation_id: conversationId,
+            starred: false,
+            queue_dismissed: false,
+            decision_prompt_dismissed: false,
+          }),
+          starred: next,
+        },
+      }));
+      try {
+        const saved = await setConversationStarred(backendAccessToken, conversationId, next);
+        setPreferences((current) => ({ ...current, [conversationId]: saved }));
+      } catch {
+        setPreferences((current) => {
+          const restored = { ...current };
+          if (previous) restored[conversationId] = previous;
+          else delete restored[conversationId];
+          return restored;
+        });
+        setActionError("Couldn\u2019t save that. Try again.");
+      }
+    },
+    [conversationIdOf, backendAccessToken, preferences]
+  );
+
+  /**
+   * Fulfils the seam B3 committed. Queue recommendations are hidden by a
+   * dismissal or an unexpired snooze; neither changes any status.
+   */
+  const queuePreferences = useMemo<WorkQueuePreferences>(() => {
+    if (!liveMode) return NO_QUEUE_PREFERENCES;
+    const byInteraction = new Map<string, BackendInteractionPreference>();
+    for (const [id, thread] of Object.entries(liveThreads)) {
+      const row = thread?.conversationId ? preferences[thread.conversationId] : undefined;
+      if (row) byInteraction.set(id, row);
+    }
+    return {
+      isDismissed: (interactionId) => Boolean(byInteraction.get(interactionId)?.queue_dismissed),
+      snoozedUntil: (interactionId) => {
+        const until = byInteraction.get(interactionId)?.snoozed_until;
+        return until ? Date.parse(until) : null;
+      },
+    };
+  }, [liveMode, liveThreads, preferences]);
+
   /* ---------------- Phase A: recommendation, work state, decision surface ---------------- */
 
   const flags = useMemo(() => workspaceFlagsFromEnv(), []);
@@ -3532,6 +3637,16 @@ export default function ApplicationsWorkspace({
                             be a badge cluster.
                           */}
                           <div className="flex shrink-0 items-center gap-1.5">
+                            {isStarred(item) ? (
+                              <span
+                                data-testid="row-starred"
+                                aria-label="Saved"
+                                title="Saved"
+                                className="inline-flex shrink-0 text-amber-200/80"
+                              >
+                                <Icon name="bookmark" className="h-3 w-3" />
+                              </span>
+                            ) : null}
                             {rowWorkState ? (
                               <WorkStateChip state={rowWorkState} />
                             ) : (
@@ -3629,6 +3744,29 @@ export default function ApplicationsWorkspace({
                       Exactly one, so the header never presents competing
                       primaries; everything else stays under More.
                     */}
+                    {/*
+                      Personal organisation, so it stays quiet: an icon toggle
+                      rather than a labelled button competing with the
+                      recommended action. Never visible to the counterparty.
+                    */}
+                    {liveMode && conversationIdOf(selected) ? (
+                      <button
+                        type="button"
+                        data-testid="star-toggle"
+                        aria-pressed={isStarred(selected)}
+                        aria-label={isStarred(selected) ? "Remove from saved" : "Save for later"}
+                        title={isStarred(selected) ? "Saved" : "Save for later"}
+                        onClick={() => void toggleStar(selected)}
+                        className={[
+                          "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors",
+                          isStarred(selected)
+                            ? "text-amber-200/90 hover:bg-white/[0.07]"
+                            : "text-white/40 hover:bg-white/[0.07] hover:text-white/70",
+                        ].join(" ")}
+                      >
+                        <Icon name={isStarred(selected) ? "bookmark" : "bookmark"} className="h-4 w-4" />
+                      </button>
+                    ) : null}
                     {selectedNextAction ? (
                       <button
                         type="button"

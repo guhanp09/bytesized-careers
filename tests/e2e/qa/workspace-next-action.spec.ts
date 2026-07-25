@@ -33,6 +33,13 @@ async function restoreScenario(page: Page, key: string, confirmation: string) {
   expect(response.ok(), await response.text()).toBeTruthy();
 }
 
+async function returnToController(page: Page) {
+  await page.getByTestId("qa-persona-open").click();
+  await expect(page.getByTestId("qa-persona-drawer")).toBeVisible();
+  await page.getByRole("button", { name: "Return to Guhan" }).click();
+  await expect(page.getByTestId("qa-persona-open")).toContainText("QA personas", { timeout: 20_000 });
+}
+
 async function openRecruiterInbox(page: Page) {
   await loginController(page);
   await restoreScenario(page, "inbox-pipeline", "RESTORE INBOX");
@@ -370,4 +377,64 @@ test("only one chip row is ever on screen", async ({ page }) => {
   await page.getByTestId("decision-strip-dismiss").click();
   await expect(strip).toHaveCount(0);
   await expect(page.getByTestId("composer-intents")).toBeVisible();
+});
+
+test("Star is private, durable, and independent per participant", async ({ page }) => {
+  await openRecruiterInbox(page);
+  const row = page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" });
+  await row.click();
+
+  const star = page.getByTestId("star-toggle");
+  await expect(star).toBeVisible();
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+  await star.click();
+  await expect(star).toHaveAttribute("aria-pressed", "true");
+  // A quiet row marker, not a badge cluster.
+  await expect(row.getByTestId("row-starred")).toBeVisible();
+
+  // Durable across a full reload.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await row.click();
+  await expect(page.getByTestId("star-toggle")).toHaveAttribute("aria-pressed", "true");
+
+  // Starring changed no lifecycle state.
+  await expect(page.getByTestId("applications-detail-header")).toContainText("New");
+
+  // The applicant sees nothing of it, and can save the same thread themselves.
+  await returnToController(page);
+  await switchPersona(page, "talent-complete", "Priya Nair");
+  await page.goto("/applications?view=inbox&mode=talent", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("applications-filter-sent").click();
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Shorts editor for a fitness creator" })
+    .first()
+    .click();
+  const talentStar = page.getByTestId("star-toggle");
+  await expect(talentStar).toBeVisible();
+  // Independent: the recruiter's star is invisible here.
+  await expect(talentStar).toHaveAttribute("aria-pressed", "false");
+});
+
+test("a failed Star write rolls back instead of showing a star the server refused", async ({ page }) => {
+  await openRecruiterInbox(page);
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" })
+    .click();
+
+  const star = page.getByTestId("star-toggle");
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+
+  await page.route("**/preferences/star", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"nope"}' })
+  );
+  await star.click();
+  // Optimistically on, then rolled back to the authoritative value.
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+  await page.unroute("**/preferences/star");
 });

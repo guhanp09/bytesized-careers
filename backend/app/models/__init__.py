@@ -3,6 +3,7 @@ from app.models.conversation import Conversation, Message
 from app.models.email_outbox import EmailOutbox
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.hiring_identity import HiringIdentity
+from app.models.interaction_preference import InteractionUserPreference
 from app.models.job import Job
 from app.models.job_import import JobImportDraft, JobImportField, JobImportSource
 from app.models.marketplace import (
@@ -43,6 +44,7 @@ __all__ = [
     "EmailOutbox",
     "EmailVerificationToken",
     "HiringIdentity",
+    "InteractionUserPreference",
     "Entitlement",
     "Engagement",
     "EngagementReview",

@@ -3023,6 +3023,78 @@ export async function sendConversationMessage(
   );
 }
 
+/**
+ * A participant's private organisation of one conversation. Owner-scoped: the
+ * counterparty can never read these, and nothing here is lifecycle state.
+ */
+export type BackendInteractionPreference = {
+  conversation_id: string;
+  starred: boolean;
+  starred_at?: string | null;
+  snoozed_until?: string | null;
+  queue_dismissed: boolean;
+  decision_prompt_dismissed: boolean;
+  decision_prompt_trigger_version?: number | null;
+};
+
+/** Every preference the signed-in user owns, in one request. */
+export async function listInteractionPreferences(
+  accessToken: string
+): Promise<BackendInteractionPreference[]> {
+  return requestJson<BackendInteractionPreference[]>("/me/interaction-preferences", { accessToken });
+}
+
+export async function setConversationStarred(
+  accessToken: string,
+  conversationId: string,
+  starred: boolean
+): Promise<BackendInteractionPreference> {
+  return requestJson<BackendInteractionPreference>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/preferences/star`,
+    { method: "PUT", body: JSON.stringify({ starred }), accessToken }
+  );
+}
+
+/** `until` of null clears the snooze. */
+export async function setConversationSnooze(
+  accessToken: string,
+  conversationId: string,
+  until: string | null
+): Promise<BackendInteractionPreference> {
+  return requestJson<BackendInteractionPreference>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/preferences/snooze`,
+    { method: "PUT", body: JSON.stringify({ until }), accessToken }
+  );
+}
+
+/** "No reply needed" — corrects a queue recommendation, never the status. */
+export async function setConversationQueueDismissed(
+  accessToken: string,
+  conversationId: string,
+  dismissed: boolean
+): Promise<BackendInteractionPreference> {
+  return requestJson<BackendInteractionPreference>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/preferences/queue-dismissal`,
+    { method: "PUT", body: JSON.stringify({ dismissed }), accessToken }
+  );
+}
+
+export async function setConversationDecisionPromptDismissed(
+  accessToken: string,
+  conversationId: string,
+  dismissed: boolean,
+  triggerVersion?: number
+): Promise<BackendInteractionPreference> {
+  return requestJson<BackendInteractionPreference>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/preferences/decision-prompt`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ dismissed, trigger_version: triggerVersion ?? null }),
+      accessToken,
+    }
+  );
+}
+
 export async function markConversationRead(
   accessToken: string,
   conversationId: string
