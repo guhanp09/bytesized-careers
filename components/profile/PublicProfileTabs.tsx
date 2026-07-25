@@ -128,7 +128,7 @@ function OverviewModule({
       <div className="flex items-start justify-between gap-4">
         <h3 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
           {icon ? (
-            <span aria-hidden="true" className="inline-flex shrink-0 text-white/48">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
               <Icon name={icon} className="h-4 w-4" />
             </span>
           ) : null}
@@ -154,7 +154,7 @@ function MetadataRail({
       <div className="space-y-5">
         {visibleGroups.map((group) => (
           <div key={`metadata-${group.label}`} className="space-y-2">
-            <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{group.label}</h4>
+            <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">{group.label}</h4>
             <div className="flex flex-wrap gap-1.5">
               {group.values.slice(0, 8).map((value) => (
                 <TagPill key={`metadata-${group.label}-${value}`}>{value}</TagPill>
@@ -384,7 +384,7 @@ function HiringForRail({ items }: { items: BackendRepresentedChannel[] }) {
               </span>
               <span className="flex max-w-[116px] items-start justify-center gap-1 text-sm font-semibold leading-snug text-white/76 group-hover:text-white">
                 <span className="line-clamp-2 min-w-0">{item.name}</span>
-                <Icon name="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/48" />
+                <Icon name="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
               </span>
             </a>
           );
@@ -427,7 +427,7 @@ function HiringExperienceList({ items }: { items: BackendPublicJobItem[] }) {
                 {roleLabel} | {orgName}
               </p>
               <p className="mt-1 text-sm font-medium text-white/58">{job.status === "closed" ? "Completed engagement" : "Open engagement"}</p>
-              <p className="mt-1 text-xs text-white/45">
+              <p className="mt-1 text-xs text-muted">
                 {[formatDateShort(job.created_at), job.location].filter(Boolean).join(" · ")}
               </p>
               <p className="mt-2 text-sm leading-6 text-white/62">{normalizedDescription}</p>
@@ -635,7 +635,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
                 type="button"
                 aria-label="View Full Portfolio"
                 onClick={() => setTopTab("portfolio")}
-                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
               >
                 <span className="inline-flex items-center gap-1">
                   <span>View Full Portfolio</span>
@@ -671,7 +671,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
               <button
                 type="button"
                 onClick={() => setTopTab("jobs")}
-                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
               >
                 View All Jobs <span aria-hidden="true">→</span>
               </button>
@@ -689,7 +689,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
               <button
                 type="button"
                 onClick={() => setTopTab("reviews")}
-                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
               >
                 View All Reviews <span aria-hidden="true">→</span>
               </button>
@@ -765,7 +765,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
                             className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
                           />
                         ) : (
-                          <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                          <div className="flex h-full min-h-[150px] w-full items-center justify-center text-subtle">
                             <Icon name="image" className="h-8 w-8" />
                           </div>
                         )}
@@ -773,7 +773,7 @@ export default function PublicProfileTabs({ profile, initialView, initialTab }: 
                       <div className="p-4">
                         <p className="text-sm font-semibold text-white/90">{item.title}</p>
                         {roleLabel ? <p className="mt-1 text-sm font-medium text-white/72">{roleLabel}</p> : null}
-                        {sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null}
+                        {sourceLine ? <p className="mt-1 text-xs text-muted">{sourceLine}</p> : null}
                         {portfolioSummaryPreview(item) ? (
                           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/65">
                             {portfolioSummaryPreview(item)}

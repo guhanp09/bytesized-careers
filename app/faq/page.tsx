@@ -6,7 +6,7 @@ export default function FaqPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16 sm:px-8">
       <div className="mb-10 flex flex-col items-center text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">FAQ</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">FAQ</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">Questions we get a lot</h1>
         <p className="mt-4 max-w-xl text-sm leading-6 text-white/55">
           Everything you need to know about CreatorJobs — roles, applications, hiring, and how the platform works.
@@ -23,7 +23,7 @@ export default function FaqPage() {
               {faq.q}
               <span
                 aria-hidden="true"
-                className="shrink-0 text-lg leading-none text-white/40 transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
+                className="shrink-0 text-lg leading-none text-subtle transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
               >
                 +
               </span>

@@ -35,7 +35,7 @@ import {
 } from "../../lib/ownerDrafts";
 import type { CompletionItem } from "../../lib/draftCompletion";
 
-const SECTION_LABEL_CLASSES = "text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40";
+const SECTION_LABEL_CLASSES = "text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle";
 const PRIMARY_BUTTON_CLASSES =
   "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40";
 const SECONDARY_BUTTON_CLASSES =
@@ -88,7 +88,7 @@ function EmptyState({ kind }: { kind: DraftKind | "all" }) {
         : { title: "No drafts yet.", body: "Unfinished job and talent listings you save will appear here, ready to resume.", href: "/post-job", cta: "Create job listing" };
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-white/45">
+      <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-muted">
         <Icon name="file" className="h-5 w-5" />
       </span>
       <p className="text-base font-semibold text-white/90">{copy.title}</p>
@@ -166,7 +166,7 @@ function CompletionTodoRow({ item, resumeHref }: { item: CompletionItem; resumeH
         href={jumpHref(resumeHref, item.target)}
         className={[
           "group flex min-h-8 items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
-          item.done ? "text-white/38 hover:bg-white/[0.025] hover:text-white/48" : "text-white/82 hover:bg-white/[0.045] hover:text-white",
+          item.done ? "text-subtle hover:bg-white/[0.025] hover:text-muted" : "text-white/82 hover:bg-white/[0.045] hover:text-white",
         ].join(" ")}
         aria-label={item.done ? `${item.label} completed, edit` : item.label}
       >
@@ -185,7 +185,7 @@ function CompletionTodoRow({ item, resumeHref }: { item: CompletionItem; resumeH
           <span
             className={[
               "relative inline-block text-[13px] transition-colors duration-300 motion-reduce:transition-none",
-              item.done ? "text-white/43 line-through decoration-white/25 decoration-1" : "text-white/82",
+              item.done ? "text-muted line-through decoration-white/25 decoration-1" : "text-white/82",
             ].join(" ")}
           >
             {item.label}
@@ -420,11 +420,11 @@ export default function DraftsPageClient({
             }}
             className={[
               "relative -mb-px inline-flex h-11 cursor-pointer items-center gap-2 border-b-2 px-0.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f]",
-              isActive ? "border-white text-white" : "border-transparent text-white/50 hover:text-white/85",
+              isActive ? "border-white text-white" : "border-transparent text-muted hover:text-white/85",
             ].join(" ")}
           >
             {option.label}
-            <span className={["text-[12px] tabular-nums", isActive ? "text-white/65" : "text-white/35"].join(" ")}>
+            <span className={["text-[12px] tabular-nums", isActive ? "text-white/65" : "text-subtle"].join(" ")}>
               {counts[option.key]}
             </span>
           </button>
@@ -438,7 +438,7 @@ export default function DraftsPageClient({
       <div data-testid="drafts-workspace" className="flex min-h-0 flex-1 flex-col">
         {savedBanner}
         <div className="flex w-full flex-1 items-center justify-center px-6 py-16 lg:min-h-0">
-          <p className="text-sm text-white/45">Loading drafts…</p>
+          <p className="text-sm text-muted">Loading drafts…</p>
         </div>
       </div>
     );
@@ -560,7 +560,7 @@ export default function DraftsPageClient({
                 onConfirmDelete={() => handleConfirmDelete(selected)}
               />
             ) : (
-              <div className="hidden h-full items-center justify-center px-6 py-16 text-xs text-white/40 lg:flex">
+              <div className="hidden h-full items-center justify-center px-6 py-16 text-xs text-subtle lg:flex">
                 Select a draft to open its completion workspace.
               </div>
             )}
@@ -610,7 +610,7 @@ function ResumeQueueRow({
           <span className={`block truncate text-sm ${item.untitled ? "font-medium text-white/55" : "font-semibold text-white/88"}`}>
             {displayTitle}
           </span>
-          <p className="mt-0.5 truncate text-[11px] text-white/45">
+          <p className="mt-0.5 truncate text-[11px] text-muted">
             {item.kind === "job" ? "Job listing" : "Talent listing"} · Last saved {relativeTimeLabel(item.updatedAtIso)}
           </p>
         </div>
@@ -625,7 +625,7 @@ function ResumeQueueRow({
             />
           </div>
         </div>
-        <span className="pb-[3px] text-[11px] text-white/35">+</span>
+        <span className="pb-[3px] text-[11px] text-subtle">+</span>
         <div>
           <p className="text-[11px] text-white/55">Strong {c.recommendedPercent}%</p>
           <div className="mt-1 h-[5px] overflow-hidden rounded-full bg-white/10">
@@ -634,8 +634,8 @@ function ResumeQueueRow({
         </div>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[11px] text-white/48">{queueNextLabel(item)}</p>
-        <span aria-hidden="true" className="text-base leading-none text-white/30 transition-transform group-hover:translate-x-0.5">›</span>
+        <p className="truncate text-[11px] text-muted">{queueNextLabel(item)}</p>
+        <span aria-hidden="true" className="text-base leading-none text-subtle transition-transform group-hover:translate-x-0.5">›</span>
       </div>
     </button>
   );
@@ -722,13 +722,13 @@ function DraftCompletionWorkspace({
                   aria-label="Edit draft title"
                   title="Edit draft title"
                   data-testid="draft-title-edit"
-                  className="shrink-0 rounded text-white/40 transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+                  className="shrink-0 rounded text-subtle transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                 >
                   <Icon name="pencil" className="h-4 w-4" />
                 </button>
               </div>
             )}
-            <p className="mt-1 text-[12px] text-white/45">
+            <p className="mt-1 text-[12px] text-muted">
               {selected.kind === "job" ? "Job listing" : "Talent listing"} · Last saved {relativeTimeLabel(selected.updatedAtIso)}
             </p>
           </div>
@@ -963,7 +963,7 @@ function InlineTitleEditor({
         }}
         onBlur={handleBlur}
         className={[
-          "-mx-1.5 -my-0.5 w-full min-w-0 rounded-md bg-transparent px-1.5 py-0.5 text-lg font-semibold text-white outline-none placeholder:font-semibold placeholder:text-white/35 sm:text-xl",
+          "-mx-1.5 -my-0.5 w-full min-w-0 rounded-md bg-transparent px-1.5 py-0.5 text-lg font-semibold text-white outline-none placeholder:font-semibold placeholder:text-subtle sm:text-xl",
           error ? "ring-2 ring-amber-300/50" : "focus:ring-2 focus:ring-white/25",
         ].join(" ")}
       />

@@ -244,9 +244,9 @@ const StepCard = forwardRef<HTMLElement, { step: StepNode; testId: string }>(fun
       <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#0b0b0f] shadow-[0_14px_34px_-18px_rgba(255,255,255,0.5)]">
         <Icon name={step.icon} className="h-5 w-5" />
       </span>
-      <span className="mt-4 text-[11px] font-semibold tracking-[0.16em] text-white/40">{step.label}</span>
+      <span className="mt-4 text-[11px] font-semibold tracking-[0.16em] text-subtle">{step.label}</span>
       <h3 className="mt-2 text-sm font-semibold tracking-tight text-white">{step.title}</h3>
-      <p className="mx-auto mt-2 max-w-[26ch] text-[13px] leading-6 text-white/52">{step.body}</p>
+      <p className="mx-auto mt-2 max-w-[26ch] text-[13px] leading-6 text-muted">{step.body}</p>
     </article>
   );
 });
@@ -265,9 +265,9 @@ export function HomeHowItWorks() {
     <section className="space-y-8">
       <Reveal>
         <div className="flex flex-col items-center text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">How it works</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">How it works</p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{active.title}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-white/50">
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted">
             Whether you&rsquo;re hiring for a channel or looking for creator-native work, the path is short.
           </p>
 

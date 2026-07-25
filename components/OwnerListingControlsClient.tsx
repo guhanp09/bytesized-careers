@@ -86,7 +86,7 @@ export default function OwnerListingControlsClient({
     <section className="rounded-3xl border border-white/[0.08] bg-white/[0.055] p-5 text-sm text-white/70 shadow-[0_18px_55px_-42px_rgba(0,0,0,0.95)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/36">Owner controls</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-subtle">Owner controls</p>
           <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/78">
             <span className="h-2 w-2 rounded-full bg-white/60" />
             {statusLabel}

@@ -71,7 +71,7 @@ export default function AdminShell({
     <div className="mx-auto flex w-full max-w-[1600px] flex-col px-3 py-4 sm:px-5 lg:flex-row lg:gap-6 xl:px-8">
       <aside className="shrink-0 lg:w-56" data-testid="admin-nav">
         <div className="mb-4 px-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">CreatorJobs</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">CreatorJobs</p>
           <h1 className="mt-0.5 text-lg font-semibold text-white">Admin</h1>
         </div>
         {environment !== "production" ? (
@@ -118,11 +118,11 @@ export default function AdminShell({
               <Link
                 href="/dev/emails"
                 data-testid="admin-nav-dev-tools"
-                className="inline-flex h-9 items-center gap-2.5 rounded-xl px-3 text-[12.5px] font-semibold text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white"
+                className="inline-flex h-9 items-center gap-2.5 rounded-xl px-3 text-[12.5px] font-semibold text-muted transition-colors hover:bg-white/[0.06] hover:text-white"
               >
                 <Icon name="menu" className="h-3.5 w-3.5" />
                 Dev tools
-                <span className="ml-auto rounded-full border border-white/[0.09] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">
+                <span className="ml-auto rounded-full border border-white/[0.09] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-subtle">
                   Dev
                 </span>
               </Link>

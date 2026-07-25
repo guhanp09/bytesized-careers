@@ -42,7 +42,7 @@ function ChoiceGroup({
   const selectedKeys = new Set(selected.map((value) => value.toLocaleLowerCase()));
   return (
     <fieldset className="min-w-0">
-      <legend className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">{label}</legend>
+      <legend className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">{label}</legend>
       <div className="mt-2.5 flex min-w-0 flex-wrap gap-2">
         {values.map((value) => {
           const active = selectedKeys.has(value.toLocaleLowerCase());
@@ -157,7 +157,7 @@ export default function JobFiltersDrawer({
         <header className="flex items-start justify-between gap-3 border-b border-white/[0.07] px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <h2 id={titleId} className="text-lg font-semibold tracking-tight text-white">Filter jobs</h2>
-            <p className="mt-1 text-xs leading-relaxed text-white/48">Structured filters stay in the URL so this view can be shared.</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted">Structured filters stay in the URL so this view can be shared.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/65 hover:bg-white/[0.08] hover:text-white">
             <Icon name="x" className="h-4 w-4" />
@@ -166,7 +166,7 @@ export default function JobFiltersDrawer({
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-5">
           <label className="block min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Primary role</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Primary role</span>
             <select
               value={draft.role[0] || ""}
               onChange={(event) => {
@@ -203,17 +203,17 @@ export default function JobFiltersDrawer({
             onChange={(next) => set("compensationUnit", next)}
           />
           <label className="block min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Location</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Location</span>
             <input
               value={draft.location[0] || ""}
               onChange={(event) => set("location", event.target.value.trimStart() ? [event.target.value] : [])}
               placeholder="City, region, or country"
-              className="mt-2.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none placeholder:text-white/32 focus:border-white/25"
+              className="mt-2.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/25"
             />
           </label>
 
           <label className="block min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Start timeframe</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Start timeframe</span>
             <select
               value={draft.start_timeframe[0] || ""}
               onChange={(event) => set("start_timeframe", event.target.value ? [event.target.value] : [])}

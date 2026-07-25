@@ -596,7 +596,7 @@ export default function CompactChatDock({
                     <span className="block truncate text-[13px] font-semibold leading-tight text-white">
                       {thread.counterpartyName}
                     </span>
-                    <span className="block truncate text-[10px] text-white/40">
+                    <span className="block truncate text-[10px] text-subtle">
                       {interactionKindLabel(thread)}
                     </span>
                   </span>
@@ -624,7 +624,7 @@ export default function CompactChatDock({
               }}
               aria-label="Open in Inbox"
               title="Open in Inbox"
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white"
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.07] hover:text-white"
             >
               <Icon name="external-link" className="h-3.5 w-3.5" />
             </button>
@@ -666,10 +666,10 @@ export default function CompactChatDock({
                 )}
               </div>
             ) : (
-              <p className="px-2 py-8 text-center text-xs text-white/40">No messages yet.</p>
+              <p className="px-2 py-8 text-center text-xs text-subtle">No messages yet.</p>
             )}
             {typing ? (
-              <p data-testid="chat-dock-typing" className="mt-3 px-1 text-[10.5px] font-medium text-white/45">
+              <p data-testid="chat-dock-typing" className="mt-3 px-1 text-[10.5px] font-medium text-muted">
                 {thread.counterpartyName.split(/\s+/)[0]} is typing…
               </p>
             ) : null}
@@ -677,13 +677,13 @@ export default function CompactChatDock({
           {/* Composer */}
           <div className="shrink-0 border-t border-white/[0.07] px-2.5 py-2">
             {threadInteractionBlocked ? (
-              <p className="px-1.5 py-1 text-[11px] text-white/40">
+              <p className="px-1.5 py-1 text-[11px] text-subtle">
                 {threadBlockedByMe
                   ? `You blocked ${thread.counterpartyName.split(/\s+/)[0]}. Open Inbox to unblock.`
                   : "This conversation is unavailable for new messages."}
               </p>
             ) : threadMessagingClosed ? (
-              <p className="px-1.5 py-1 text-[11px] text-white/40">This thread is closed to new messages.</p>
+              <p className="px-1.5 py-1 text-[11px] text-subtle">This thread is closed to new messages.</p>
             ) : (
               <>
                 <div className="flex items-end gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1.5 transition-colors focus-within:border-white/25">
@@ -702,7 +702,7 @@ export default function CompactChatDock({
                     data-testid="chat-dock-composer"
                     aria-label="Reply message"
                     placeholder={`Message ${thread.counterpartyName.split(/\s+/)[0]}…`}
-                    className="max-h-24 min-h-[32px] flex-1 resize-none bg-transparent px-2 py-1 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:outline-none"
+                    className="max-h-24 min-h-[32px] flex-1 resize-none bg-transparent px-2 py-1 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle focus:outline-none"
                   />
                   <button
                     type="button"
@@ -713,7 +713,7 @@ export default function CompactChatDock({
                     className={
                       draft.trim() && !sending && composerReady
                         ? "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-white text-black transition-colors hover:bg-white/90"
-                        : "inline-flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/30"
+                        : "inline-flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-subtle"
                     }
                   >
                     <Icon name="send" className="h-3.5 w-3.5" />
@@ -722,11 +722,11 @@ export default function CompactChatDock({
                 {sendError ? (
                   <p className="mt-1 px-1 text-[10px] text-rose-300/80">{sendError}</p>
                 ) : liveMode && !threadLive ? (
-                  <p className="mt-1 px-1 text-[10px] text-white/35">
+                  <p className="mt-1 px-1 text-[10px] text-subtle">
                     {loadFailed ? "Couldn’t load this conversation. Retrying…" : "Loading conversation…"}
                   </p>
                 ) : !liveMode ? (
-                  <p className="mt-1 px-1 text-[10px] text-white/30">Demo only — replies aren’t delivered yet.</p>
+                  <p className="mt-1 px-1 text-[10px] text-subtle">Demo only — replies aren’t delivered yet.</p>
                 ) : null}
               </>
             )}
@@ -747,7 +747,7 @@ export default function CompactChatDock({
                   onClick={() => setFilter(option.key)}
                   className={[
                     "relative h-8 shrink-0 cursor-pointer text-[11px] font-semibold transition-colors",
-                    isActive ? "text-white" : "text-white/45 hover:text-white/75",
+                    isActive ? "text-white" : "text-muted hover:text-white/75",
                   ].join(" ")}
                 >
                   {option.label}
@@ -763,7 +763,7 @@ export default function CompactChatDock({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {filteredThreads.length === 0 ? (
-              <p className="px-4 py-10 text-center text-xs text-white/40">Nothing here yet.</p>
+              <p className="px-4 py-10 text-center text-xs text-subtle">Nothing here yet.</p>
             ) : (
               <div className="divide-y divide-white/[0.05]">
                 {filteredThreads.map((item) => {
@@ -800,7 +800,7 @@ export default function CompactChatDock({
                             {item.counterpartyName}
                           </span>
                         </span>
-                        <span className="block truncate text-[10.5px] text-white/40">
+                        <span className="block truncate text-[10.5px] text-subtle">
                           {interactionKindLabel(item)}
                         </span>
                       </span>
@@ -809,7 +809,7 @@ export default function CompactChatDock({
                           {formatBadgeCount(messageUnread)}
                         </span>
                       ) : null}
-                      <span className="shrink-0 text-[10.5px] text-white/35">{item.updatedAtLabel}</span>
+                      <span className="shrink-0 text-[10.5px] text-subtle">{item.updatedAtLabel}</span>
                     </button>
                   );
                 })}

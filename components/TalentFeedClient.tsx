@@ -180,7 +180,7 @@ export default function TalentFeedClient({
           </div>
           </div>
           <label className="flex shrink-0 items-center gap-2">
-            <span className="hidden text-xs text-white/45 sm:inline">Sort</span>
+            <span className="hidden text-xs text-muted sm:inline">Sort</span>
             <select
               aria-label="Sort talent"
               value={sort}

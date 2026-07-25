@@ -130,7 +130,7 @@ export default function AdminPlatformClient({ accessToken }: { accessToken: stri
       {tab === "notices" ? (
         <AdminCard className="max-w-xl p-4" >
           <AdminSectionLabel>Send a platform notice</AdminSectionLabel>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-white/45">
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
             Delivers an in-app notification through the <code className="text-white/60">platform_notice</code>{" "}
             event (support follow-ups, policy notices). Copy user ids from the Users directory. Every send
             is audited.
@@ -141,20 +141,20 @@ export default function AdminPlatformClient({ accessToken }: { accessToken: stri
               onChange={(event) => setUserIds(event.target.value)}
               rows={2}
               placeholder="User ids (comma or newline separated, max 100)"
-              className="w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12px] text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+              className="w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12px] text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
             />
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Title"
-              className="h-9 w-full rounded-lg border border-white/[0.1] bg-black/25 px-3 text-[12.5px] text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+              className="h-9 w-full rounded-lg border border-white/[0.1] bg-black/25 px-3 text-[12.5px] text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
             />
             <textarea
               value={body}
               onChange={(event) => setBody(event.target.value)}
               rows={3}
               placeholder="Message body"
-              className="w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+              className="w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
             />
             <div className="flex items-center justify-between gap-2">
               {sendError ? (
@@ -205,7 +205,7 @@ export default function AdminPlatformClient({ accessToken }: { accessToken: stri
                   <Td className="font-medium text-white/85">{item.kind.replaceAll("_", " ")}</Td>
                   <Td className="max-w-[220px] truncate text-white/55">{item.user_id}</Td>
                   <Td className="text-white/55">{item.source.replaceAll("_", " ")}</Td>
-                  <Td className="whitespace-nowrap text-white/50">{formatDateTime(item.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatDateTime(item.created_at)}</Td>
                   <Td>
                     <TonePill tone={statusTone(item.status)}>{item.status}</TonePill>
                   </Td>
@@ -289,7 +289,7 @@ export default function AdminPlatformClient({ accessToken }: { accessToken: stri
                 <Td className="max-w-[200px] truncate">{item.to_email}</Td>
                 <Td className="whitespace-nowrap text-white/55">{item.event_key}</Td>
                 <Td className="max-w-[260px] truncate text-white/70">{item.subject}</Td>
-                <Td className="whitespace-nowrap text-white/50">{formatDateTime(item.created_at)}</Td>
+                <Td className="whitespace-nowrap text-muted">{formatDateTime(item.created_at)}</Td>
                 <Td>
                   <TonePill tone={item.status === "sent" ? "active" : item.status === "failed" ? "danger" : "dim"}>
                     {item.status}

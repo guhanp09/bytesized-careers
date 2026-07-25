@@ -42,7 +42,7 @@ import ReferenceVideos from "./ReferenceVideos";
 function DecisionFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3.5">
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">{label}</dt>
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">{label}</dt>
       <dd className="mt-1.5 break-words text-sm font-medium leading-snug text-white/84">{value}</dd>
     </div>
   );
@@ -50,7 +50,7 @@ function DecisionFact({ label, value }: { label: string; value: string }) {
 
 function EmptyImportant({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.02] px-3.5 py-3 text-sm leading-relaxed text-white/48">
+    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.02] px-3.5 py-3 text-sm leading-relaxed text-muted">
       {children}
     </p>
   );
@@ -150,7 +150,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                       <div className="flex min-w-0 items-start gap-3">
                         <span
                           aria-hidden="true"
-                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-white/50"
+                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-muted"
                         >
                           {index + 1}
                         </span>
@@ -184,7 +184,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                 <div className="space-y-4">
                   {requiredSkills.length ? <Pills items={requiredSkills} /> : null}
                   {experience ? (
-                    <p className="text-white/68"><span className="text-white/42">Experience:</span> {experience}</p>
+                    <p className="text-white/68"><span className="text-subtle">Experience:</span> {experience}</p>
                   ) : null}
                   {cleanJobText(job.requiredSkillsNote) ? (
                     <p className="whitespace-pre-line text-white/68">{cleanJobText(job.requiredSkillsNote)}</p>
@@ -249,7 +249,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
               </dl>
               {cleanJobText(job.timezoneOverlap) ? (
                 <p className="mt-4 text-sm text-white/65">
-                  <span className="text-white/42">Timezone overlap:</span> {cleanJobText(job.timezoneOverlap)}
+                  <span className="text-subtle">Timezone overlap:</span> {cleanJobText(job.timezoneOverlap)}
                 </p>
               ) : null}
             </BodySection>
@@ -259,7 +259,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
               {compensation.note ? <p className="mt-2 whitespace-pre-line text-white/65">{compensation.note}</p> : null}
               {compensation.outputBased && deliverables.length ? (
                 <div className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Expected volume</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Expected volume</p>
                   <ul className="mt-2 space-y-1.5 text-sm text-white/70">
                     {deliverables.map((item, index) => (
                       <li key={`${item.type}-comp-${index}`}>{formatJobDeliverable(item)}</li>
@@ -278,7 +278,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
             <div className="space-y-5">
               {sourceInputs.length ? (
                 <div>
-                  <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">
+                  <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
                     Materials and access provided
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -302,8 +302,8 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
               {cleanJobText(job.sourceInputsNotes) ? (
                 <p className="whitespace-pre-line text-white/68">{cleanJobText(job.sourceInputsNotes)}</p>
               ) : null}
-              {revision ? <p><span className="text-white/42">Revisions:</span> {revision}</p> : null}
-              {autonomy ? <p><span className="text-white/42">Creative direction:</span> {autonomy}</p> : null}
+              {revision ? <p><span className="text-subtle">Revisions:</span> {revision}</p> : null}
+              {autonomy ? <p><span className="text-subtle">Creative direction:</span> {autonomy}</p> : null}
             </div>
           </BodySection>
         </section>
@@ -379,7 +379,7 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                 </div>
                 {applicationRequirements.length ? (
                   <div>
-                    <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">
+                    <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
                       Required application materials
                     </h3>
                     <Pills items={applicationRequirements} />

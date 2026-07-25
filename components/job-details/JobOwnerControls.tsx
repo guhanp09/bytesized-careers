@@ -91,7 +91,7 @@ export default function JobOwnerControls({
   const statusDotClass = isPaused ? "bg-amber-300/80" : "bg-white/35";
 
   const iconBtn =
-    "inline-flex h-8 w-8 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/[0.06] hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-white/[0.06] hover:text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-50";
   const menuItem =
     "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-white/75 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -141,7 +141,7 @@ export default function JobOwnerControls({
                 onClick={() => setMenuOpen(false)}
                 className={menuItem}
               >
-                <Icon name="users" className="h-4 w-4 text-white/50" />
+                <Icon name="users" className="h-4 w-4 text-muted" />
                 View applicants
               </Link>
 
@@ -155,7 +155,7 @@ export default function JobOwnerControls({
                   onClick={() => requestAction("published")}
                   className={menuItem}
                 >
-                  <Icon name="check" className="h-4 w-4 text-white/50" />
+                  <Icon name="check" className="h-4 w-4 text-muted" />
                   Republish
                 </button>
               ) : null}
@@ -167,7 +167,7 @@ export default function JobOwnerControls({
                   onClick={() => requestAction("paused")}
                   className={menuItem}
                 >
-                  <Icon name="pause" className="h-4 w-4 text-white/50" />
+                  <Icon name="pause" className="h-4 w-4 text-muted" />
                   Pause listing
                 </button>
               ) : null}
@@ -179,7 +179,7 @@ export default function JobOwnerControls({
                   onClick={() => requestAction("closed")}
                   className={menuItem}
                 >
-                  <Icon name="x" className="h-4 w-4 text-white/50" />
+                  <Icon name="x" className="h-4 w-4 text-muted" />
                   Close listing
                 </button>
               ) : null}
@@ -191,7 +191,7 @@ export default function JobOwnerControls({
                   onClick={() => requestAction("archived")}
                   className={menuItem}
                 >
-                  <Icon name="trash" className="h-4 w-4 text-white/50" />
+                  <Icon name="trash" className="h-4 w-4 text-muted" />
                   Delete job
                 </button>
               ) : null}

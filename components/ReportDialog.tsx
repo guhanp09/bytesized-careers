@@ -65,7 +65,7 @@ function ReportDialogBody({
         className="relative w-full max-w-md rounded-2xl border border-white/[0.1] bg-[#15151b] p-5 shadow-[0_32px_90px_-30px_rgba(0,0,0,1)]"
       >
         <h3 className="text-sm font-semibold text-white">Report {targetLabel}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-white/50">
+        <p className="mt-1 text-xs leading-relaxed text-muted">
           Reports go to CreatorJobs moderation. The other side isn’t told who reported.
         </p>
         <div className="mt-3 max-h-[300px] space-y-1 overflow-y-auto pr-1">
@@ -93,7 +93,7 @@ function ReportDialogBody({
                   <span className={`block text-[12.5px] font-semibold ${active ? "text-white" : "text-white/75"}`}>
                     {reason.label}
                   </span>
-                  <span className="block text-[10.5px] text-white/38">{reason.hint}</span>
+                  <span className="block text-[10.5px] text-subtle">{reason.hint}</span>
                 </span>
               </button>
             );
@@ -106,7 +106,7 @@ function ReportDialogBody({
           maxLength={3000}
           data-testid="report-note"
           placeholder="Anything that helps us review (optional)…"
-          className="mt-3 w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+          className="mt-3 w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
         />
         {error ? <p className="mt-2 text-[11px] text-rose-300/85">{error}</p> : null}
         <div className="mt-4 flex items-center justify-end gap-2">

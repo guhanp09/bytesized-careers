@@ -100,7 +100,7 @@ export default function AdminConversationsClient({ accessToken }: { accessToken:
         ) : null}
       </div>
 
-      <p className="text-[11px] leading-relaxed text-white/38">
+      <p className="text-[11px] leading-relaxed text-subtle">
         Metadata only — who, what, when, and status. Message content opens exclusively through a
         message report in <span className="text-white/60">Reports</span>, and every such view is
         written to the audit log.
@@ -136,8 +136,8 @@ export default function AdminConversationsClient({ accessToken }: { accessToken:
                   <Td>
                     <TonePill tone="neutral">{item.status}</TonePill>
                   </Td>
-                  <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
-                  <Td className="whitespace-nowrap text-white/50">{formatAge(item.updated_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatAge(item.updated_at)}</Td>
                 </tr>
               ))}
             </AdminTable>
@@ -176,8 +176,8 @@ export default function AdminConversationsClient({ accessToken }: { accessToken:
                   <Td>
                     <TonePill tone="neutral">{item.status}</TonePill>
                   </Td>
-                  <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
-                  <Td className="whitespace-nowrap text-white/50">{formatAge(item.updated_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatAge(item.updated_at)}</Td>
                 </tr>
               ))}
             </AdminTable>
@@ -199,12 +199,12 @@ export default function AdminConversationsClient({ accessToken }: { accessToken:
               <AdminSectionLabel>Most hiring requests sent · 7d</AdminSectionLabel>
               <div className="mt-2.5 space-y-1.5">
                 {signals.data.top_interest_senders.length === 0 ? (
-                  <p className="text-[11.5px] text-white/38">No outreach in the window.</p>
+                  <p className="text-[11.5px] text-subtle">No outreach in the window.</p>
                 ) : (
                   signals.data.top_interest_senders.map((row) => (
                     <div key={row.user.id} className="flex items-center justify-between gap-2 text-[12px]">
                       <span className="min-w-0 truncate text-white/75">{personLabel(row.user)}</span>
-                      <span className="tabular-nums text-white/50">{row.count}</span>
+                      <span className="tabular-nums text-muted">{row.count}</span>
                     </div>
                   ))
                 )}
@@ -214,18 +214,18 @@ export default function AdminConversationsClient({ accessToken }: { accessToken:
               <AdminSectionLabel>Most applications sent · 7d</AdminSectionLabel>
               <div className="mt-2.5 space-y-1.5">
                 {signals.data.top_applicants.length === 0 ? (
-                  <p className="text-[11.5px] text-white/38">No applications in the window.</p>
+                  <p className="text-[11.5px] text-subtle">No applications in the window.</p>
                 ) : (
                   signals.data.top_applicants.map((row) => (
                     <div key={row.user.id} className="flex items-center justify-between gap-2 text-[12px]">
                       <span className="min-w-0 truncate text-white/75">{personLabel(row.user)}</span>
-                      <span className="tabular-nums text-white/50">{row.count}</span>
+                      <span className="tabular-nums text-muted">{row.count}</span>
                     </div>
                   ))
                 )}
               </div>
             </AdminCard>
-            <p className="text-[10.5px] leading-relaxed text-white/32 lg:col-span-2">
+            <p className="text-[10.5px] leading-relaxed text-subtle lg:col-span-2">
               Volume is a review signal, not a verdict — cross-check high senders in Users before acting.
             </p>
           </div>

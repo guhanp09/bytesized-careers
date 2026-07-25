@@ -263,13 +263,13 @@ export default function DevEmailInboxClient() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/40">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-subtle">
                     <Icon name="inbox" className="h-3.5 w-3.5" />
                     {email.typeLabel}
                   </div>
                   <p className="mt-2 truncate text-sm font-semibold text-white">To: {email.to}</p>
                   <p className="mt-1 truncate text-xs text-white/60">Subject: {email.subject}</p>
-                  <p className="mt-1 text-xs text-white/45">Created: {formatTime(email.createdAt)}</p>
+                  <p className="mt-1 text-xs text-muted">Created: {formatTime(email.createdAt)}</p>
                   {email.preview ? (
                     <p className="mt-3 line-clamp-3 text-sm leading-6 text-white/55">{email.preview}</p>
                   ) : null}
@@ -292,7 +292,7 @@ export default function DevEmailInboxClient() {
                     </button>
                   </div>
                 ) : (
-                  <p className="shrink-0 text-xs text-white/35">No action link found</p>
+                  <p className="shrink-0 text-xs text-subtle">No action link found</p>
                 )}
               </div>
             </article>

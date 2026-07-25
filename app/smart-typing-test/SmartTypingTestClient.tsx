@@ -68,7 +68,7 @@ export default function SmartTypingTestClient() {
             Single-line Input
           </div>
           <input
-            className="mt-3 h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/7"
+            className="mt-3 h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/7"
             value={single}
             onChange={(event) => setSingle(event.target.value)}
             placeholder="Type a sentence..."
@@ -80,7 +80,7 @@ export default function SmartTypingTestClient() {
             Paragraph
           </div>
           <textarea
-            className="mt-3 min-h-[120px] w-full rounded-xl border border-white/10 bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/7"
+            className="mt-3 min-h-[120px] w-full rounded-xl border border-white/10 bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/7"
             value={para}
             onChange={(event) => setPara(event.target.value)}
             placeholder="Write a short paragraph..."

@@ -80,7 +80,7 @@ export function NotificationList({
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-white/52">{unread ? `${unread} unread` : "All caught up"}</p>
+        <p className="text-sm text-muted">{unread ? `${unread} unread` : "All caught up"}</p>
         {unread ? (
           <button
             type="button"
@@ -106,7 +106,7 @@ export function NotificationList({
         ) : null}
       </div>
       {error ? (
-        <p className="text-sm text-white/45">{error}</p>
+        <p className="text-sm text-muted">{error}</p>
       ) : null}
 
       {items.length ? (
@@ -177,11 +177,11 @@ export function NotificationList({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-white/88">{item.title}</p>
-                      <span className="text-[11px] uppercase tracking-[0.14em] text-white/35">
+                      <span className="text-[11px] uppercase tracking-[0.14em] text-subtle">
                         {item.category || "system"}
                       </span>
                     </div>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-white/38">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-subtle">
                       <Icon name="clock" className="h-3.5 w-3.5" />
                       {formatTime(item.created_at)}
                     </span>

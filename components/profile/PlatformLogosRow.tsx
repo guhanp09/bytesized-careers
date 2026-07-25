@@ -141,7 +141,7 @@ export default function PlatformLogosRow({
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30",
                 hasAccounts
                   ? "border-white/15 bg-white/[0.05] text-white/70 hover:bg-white/[0.1] hover:text-white/90"
-                  : "border-white/10 bg-white/[0.03] text-white/50 hover:bg-white/[0.08] hover:text-white/75",
+                  : "border-white/10 bg-white/[0.03] text-muted hover:bg-white/[0.08] hover:text-white/75",
               ].join(" ")}
               aria-label={`${platform.label} accounts`}
               aria-haspopup="dialog"
@@ -184,7 +184,7 @@ export default function PlatformLogosRow({
                             <div className="min-w-0">
                               <p className="truncate text-xs text-white/85">{getAccountName(account)}</p>
                               {handleLabel ? (
-                                <p className="truncate text-[11px] text-white/45">{handleLabel}</p>
+                                <p className="truncate text-[11px] text-muted">{handleLabel}</p>
                               ) : null}
                             </div>
                             <div className="ml-auto inline-flex items-center gap-2">
@@ -204,7 +204,7 @@ export default function PlatformLogosRow({
                                   type="button"
                                   onClick={() => void handleRemove(platform.key, platform.label, account)}
                                   disabled={isRemoving || !onRemoveAccount}
-                                  className="text-[11px] text-white/45 hover:text-white/85 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="text-[11px] text-muted hover:text-white/85 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {isRemoving ? "Removing..." : "Remove"}
                                 </button>

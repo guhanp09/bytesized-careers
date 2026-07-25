@@ -159,7 +159,7 @@ export default function AdminUsersClient({ accessToken }: { accessToken: string 
                     {item.display_name || item.username || "—"}
                   </span>
                   {item.username ? (
-                    <span className="mt-0.5 block truncate text-[10.5px] text-white/38">@{item.username}</span>
+                    <span className="mt-0.5 block truncate text-[10.5px] text-subtle">@{item.username}</span>
                   ) : null}
                 </Td>
                 <Td className="max-w-[200px]">
@@ -182,8 +182,8 @@ export default function AdminUsersClient({ accessToken }: { accessToken: string 
                     "—"
                   )}
                 </Td>
-                <Td className="whitespace-nowrap text-white/50">{formatAge(item.last_active_at)}</Td>
-                <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
+                <Td className="whitespace-nowrap text-muted">{formatAge(item.last_active_at)}</Td>
+                <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
                 <Td>
                   {item.suspended_at ? (
                     <TonePill tone="danger">suspended</TonePill>
@@ -260,7 +260,7 @@ export default function AdminUsersClient({ accessToken }: { accessToken: string 
                     >
                       <span className="min-w-0 truncate text-[12px] text-white/78">
                         {identity.display_name}
-                        <span className="ml-1.5 text-[10.5px] text-white/38">{identity.platform}</span>
+                        <span className="ml-1.5 text-[10.5px] text-subtle">{identity.platform}</span>
                       </span>
                       <TonePill tone={statusTone(identity.verification_status)}>
                         {identity.verification_status.toLowerCase()}
@@ -298,10 +298,10 @@ export default function AdminUsersClient({ accessToken }: { accessToken: string 
                     <div key={entry.id} className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
                       <div className="flex items-center justify-between gap-2 text-[11px]">
                         <span className="font-semibold text-white/70">{entry.action}</span>
-                        <span className="text-white/35">{formatDateTime(entry.created_at)}</span>
+                        <span className="text-subtle">{formatDateTime(entry.created_at)}</span>
                       </div>
                       {entry.justification ? (
-                        <p className="mt-0.5 text-[11px] text-white/48">{entry.justification}</p>
+                        <p className="mt-0.5 text-[11px] text-muted">{entry.justification}</p>
                       ) : null}
                     </div>
                   ))}
@@ -341,7 +341,7 @@ export default function AdminUsersClient({ accessToken }: { accessToken: string 
                   </button>
                 ) : null}
               </div>
-              <p className="mt-2 text-[10.5px] leading-relaxed text-white/32">
+              <p className="mt-2 text-[10.5px] leading-relaxed text-subtle">
                 Warnings deliver a moderation notice. Suspension locks the account and hides all public
                 content; it is reversible. There is no impersonation — use the read-only facts above.
               </p>

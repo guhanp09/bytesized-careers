@@ -355,7 +355,7 @@ export function HomeMarketSignalHero() {
         </div>
 
         <div className="grid items-end gap-9 lg:grid-cols-[minmax(0,0.58fr)_minmax(0,0.9fr)]">
-          <p className="home-rise home-rise-delay-actions max-w-lg text-sm leading-6 text-white/42 sm:text-base sm:leading-7">
+          <p className="home-rise home-rise-delay-actions max-w-lg text-sm leading-6 text-subtle sm:text-base sm:leading-7">
             A marketplace for the teams behind creator-led media.
           </p>
 
@@ -369,7 +369,7 @@ export function HomeMarketSignalHero() {
               </div>
               <div className="mt-4 max-w-xl lg:ml-auto lg:text-right">
                 <p data-testid="hero-stat-label" className="text-sm font-semibold uppercase tracking-[0.14em] text-white/72">{activeStat.label}</p>
-                <p className="mt-2 text-sm leading-6 text-white/48">{activeStat.caption}</p>
+                <p className="mt-2 text-sm leading-6 text-muted">{activeStat.caption}</p>
                 {!reducedMotion ? (
                   <div
                     className="market-signal-progress-track mt-4 lg:ml-auto"

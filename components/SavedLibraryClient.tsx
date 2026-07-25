@@ -148,7 +148,7 @@ export default function SavedLibraryClient({
           </button>
         ))}
         </div>
-        <p className="text-xs text-white/42">{feedback || "Your shortlist stays private to your account."}</p>
+        <p className="text-xs text-subtle">{feedback || "Your shortlist stays private to your account."}</p>
       </div>
 
       {tab === "jobs" ? (

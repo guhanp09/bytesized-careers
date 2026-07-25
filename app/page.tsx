@@ -77,7 +77,7 @@ export default async function Home() {
           <Reveal>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
                   Marketplace · Jobs
                 </p>
                 <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
@@ -118,7 +118,7 @@ export default async function Home() {
           <Reveal>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
                   Marketplace · Talent
                 </p>
                 <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-white">

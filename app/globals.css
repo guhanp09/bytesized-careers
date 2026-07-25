@@ -12,11 +12,166 @@
   --dur-slow: 320ms;
 }
 
+/* ==========================================================================
+   Semantic design tokens
+   --------------------------------------------------------------------------
+   The product previously expressed every colour as a raw opacity utility
+   (`text-white/38`, `bg-white/[0.04]`, `border-white/10`). Two problems followed
+   from that: the same nominal opacity produced different contrast on different
+   surfaces, so nothing was verifiable; and there was no vocabulary for "this is
+   the raised layer" — every container looked the same.
+
+   These tokens fix both. Text values are chosen so that the *lowest* tier still
+   clears WCAG AA (4.5:1) on the *lightest* surface in the scale, verified in
+   `tests/contrastTokens.test.mjs` rather than by eye. Surfaces are a real tonal
+   ladder, so depth is expressible without leaning on borders.
+
+   Declared in `@theme` so Tailwind generates the full utility set with every
+   variant (`hover:text-muted`, `sm:bg-raised`, `focus-visible:ring-focus`).
+   ========================================================================== */
+@theme {
+  /* --- Text ------------------------------------------------------------
+     Six tiers. More than this and nobody can tell them apart; fewer and the
+     hierarchy collapses into "bright" and "grey". */
+  --color-ink: rgba(255, 255, 255, 0.96);
+  --color-default: rgba(255, 255, 255, 0.87);
+  --color-secondary: rgba(255, 255, 255, 0.74);
+  --color-muted: rgba(255, 255, 255, 0.64);
+  --color-subtle: rgba(255, 255, 255, 0.56);
+  /* Disabled is the one tier permitted below AA: WCAG exempts inactive
+     controls, and a disabled control that reads as active is worse. Never use
+     it for information. */
+  --color-disabled: rgba(255, 255, 255, 0.38);
+
+  /* --- Surfaces --------------------------------------------------------
+     A tonal ladder, deepest first. Opaque rather than translucent so a
+     nested surface never inherits a random composite from its parent — that
+     was the root cause of identical classes measuring different contrast. */
+  --color-canvas: #08080b;
+  --color-shell: #0c0c10;
+  --color-panel: #101015;
+  --color-raised: #16161c;
+  --color-elevated: #1d1d24;
+  --color-overlay: #23232c;
+  /* Translucent washes for hover/selected states over any of the above. */
+  --color-wash: rgba(255, 255, 255, 0.04);
+  --color-wash-strong: rgba(255, 255, 255, 0.07);
+
+  /* --- Lines -----------------------------------------------------------
+     `line-strong` and above clear the 3:1 non-text contrast requirement
+     against `raised`, so they can carry meaning; `line` is decoration. */
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-line-mid: rgba(255, 255, 255, 0.14);
+  --color-line-strong: rgba(255, 255, 255, 0.36);
+  --color-focus: rgba(255, 255, 255, 0.85);
+
+  /* --- Semantic state hues ---------------------------------------------
+     Not new brand colours: these are the hues the pipeline taxonomy already
+     used for its stage dots, promoted to a system so a stage reads the same
+     everywhere. Each pairs a text tone (AA on `raised`) with a fill and an
+     edge for accents. */
+  --color-state-new: rgba(255, 255, 255, 0.92);
+  --color-state-review: #8ec5ff;
+  --color-state-review-fill: rgba(125, 185, 255, 0.14);
+  --color-state-interview: #f4c76a;
+  --color-state-interview-fill: rgba(244, 199, 106, 0.14);
+  --color-state-agreed: #6fd9a6;
+  --color-state-agreed-fill: rgba(111, 217, 166, 0.14);
+  --color-state-closed: #f39aa6;
+  --color-state-closed-fill: rgba(243, 154, 166, 0.13);
+  --color-state-hold: #c3aef5;
+  --color-state-hold-fill: rgba(195, 174, 245, 0.14);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+}
+
+/* ==========================================================================
+   Elevation
+   --------------------------------------------------------------------------
+   Shadow alone reads as a drop-shadow effect on a dark UI. Each level here
+   combines a soft ambient shadow with a 1px inner top highlight, which is what
+   actually makes a dark surface look lit from above rather than cut out.
+   ========================================================================== */
+@utility elev-1 {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.045) inset,
+    0 1px 2px -1px rgba(0, 0, 0, 0.6);
+}
+@utility elev-2 {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 6px -2px rgba(0, 0, 0, 0.5),
+    0 8px 20px -12px rgba(0, 0, 0, 0.7);
+}
+@utility elev-3 {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.075) inset,
+    0 4px 12px -4px rgba(0, 0, 0, 0.55),
+    0 16px 36px -18px rgba(0, 0, 0, 0.8);
+}
+@utility elev-4 {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.09) inset,
+    0 8px 24px -8px rgba(0, 0, 0, 0.6),
+    0 28px 60px -24px rgba(0, 0, 0, 0.85);
+}
+
+/* ==========================================================================
+   Purposeful gradients
+   --------------------------------------------------------------------------
+   Each one earns its place by explaining something: where the page begins,
+   which row is open, which surface is raised, which action is primary. None is
+   decorative, and each keeps its foreground text above AA.
+   ========================================================================== */
+
+/* The workspace canvas. A cool vertical fall plus one corner lift, so the
+   viewport has a top and the shell reads as sitting on something. */
+@utility surface-canvas {
+  background-color: var(--color-canvas);
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.045), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 40%);
+}
+
+/* Any raised card. The highlight sits along the top edge only, matching the
+   inset in the elevation tokens so light comes from one direction throughout. */
+@utility surface-raised {
+  background-color: var(--color-raised);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 52px);
+}
+
+@utility surface-elevated {
+  background-color: var(--color-elevated);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 64px);
+}
+
+/* The open conversation row. A leftward wash under the accent edge, so the
+   selection reads as a lit band rather than a 1px rule. */
+@utility surface-selected {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.055) 38%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+
+/* Primary action. A barely-there vertical fall reads as a physical key rather
+   than a painted rectangle; text stays pure black, so contrast is ~19:1. */
+@utility surface-primary {
+  background-image: linear-gradient(180deg, #ffffff 0%, #e8e8ec 100%);
+}
+
+/* A quiet tinted plate for grouped metadata — the alternative to a chip. */
+@utility surface-inset {
+  background-color: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.035) inset;
 }
 
 @media (prefers-color-scheme: dark) {

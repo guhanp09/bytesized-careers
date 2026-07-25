@@ -32,7 +32,7 @@ export default function ProfileRatingLink({
     >
       <span aria-hidden="true" className="text-white/68">★</span>
       <span>{rating.average.toFixed(1)}</span>
-      <span className="font-medium text-white/42">({rating.count})</span>
+      <span className="font-medium text-subtle">({rating.count})</span>
     </Link>
   );
 }

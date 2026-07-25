@@ -24,7 +24,7 @@ export default function PageHeader({
     >
       <div className="space-y-2">
         {eyebrow ? (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-subtle">
             {eyebrow}
           </p>
         ) : null}
@@ -33,7 +33,7 @@ export default function PageHeader({
             {title}
           </h1>
           {description ? (
-            <p className="max-w-2xl text-sm leading-6 text-white/52">{description}</p>
+            <p className="max-w-2xl text-sm leading-6 text-muted">{description}</p>
           ) : null}
         </div>
       </div>

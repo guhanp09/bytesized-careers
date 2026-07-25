@@ -47,11 +47,11 @@ export type PortfolioState = {
 };
 
 const inputBase =
-  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 const textareaBase =
-  "w-full min-h-[96px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full min-h-[96px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 const customTextareaBase =
-  "w-full min-h-[150px] rounded-xl bg-white/6 border border-white/10 px-3 py-3 text-sm leading-relaxed text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full min-h-[150px] rounded-xl bg-white/6 border border-white/10 px-3 py-3 text-sm leading-relaxed text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 const selectBase =
   "h-11 cursor-pointer rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 const invalidClass = "border-amber-200/40 ring-1 ring-amber-200/25 focus:border-amber-200/50";
@@ -90,7 +90,7 @@ function FieldShell({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-white/82">
-          <Icon name={icon} className="h-3.5 w-3.5 text-white/45" />
+          <Icon name={icon} className="h-3.5 w-3.5 text-muted" />
           <span>{label}</span>
         </div>
         {error ? (
@@ -101,7 +101,7 @@ function FieldShell({
         ) : null}
       </div>
       {children}
-      {!error && hint ? <div id={descriptionId} className="text-[11px] text-white/40">{hint}</div> : null}
+      {!error && hint ? <div id={descriptionId} className="text-[11px] text-subtle">{hint}</div> : null}
     </div>
   );
 }
@@ -150,7 +150,7 @@ function PortfolioPicker({
   return (
     <div className="space-y-2.5">
       {loading ? (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-white/45">
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-4 text-xs text-muted">
           Loading your portfolio…
         </div>
       ) : items.length ? (
@@ -173,14 +173,14 @@ function PortfolioPicker({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={opt.thumbnailUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="flex h-full w-full items-center justify-center text-white/35">
+                    <span className="flex h-full w-full items-center justify-center text-subtle">
                       <Icon name="image" className="h-4 w-4" />
                     </span>
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-semibold text-white/88">{opt.title}</span>
-                  {opt.subtitle ? <span className="mt-0.5 block truncate text-[11px] text-white/42">{opt.subtitle}</span> : null}
+                  {opt.subtitle ? <span className="mt-0.5 block truncate text-[11px] text-subtle">{opt.subtitle}</span> : null}
                 </span>
                 <span
                   className={[
@@ -196,7 +196,7 @@ function PortfolioPicker({
           })}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-white/12 bg-white/[0.02] px-3 py-4 text-xs leading-relaxed text-white/50">
+        <div className="rounded-xl border border-dashed border-white/12 bg-white/[0.02] px-3 py-4 text-xs leading-relaxed text-muted">
           {onAddProject
             ? "No portfolio projects on your profile yet. Add one below — it’s saved to your profile and attached to this application."
             : "No portfolio items on your profile yet. Add work to your profile, or attach a link below so they can still see your work."}
@@ -212,7 +212,7 @@ function PortfolioPicker({
               key={ref.id}
               className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/8 px-2 py-1 text-[11px] text-white/80"
             >
-              <Icon name="external-link" className="h-3 w-3 text-white/45" />
+              <Icon name="external-link" className="h-3 w-3 text-muted" />
               <span className="max-w-[180px] truncate">{ref.url}</span>
               <button
                 type="button"
@@ -245,7 +245,7 @@ function PortfolioPicker({
             className={[
               "inline-flex cursor-pointer items-center gap-1.5 font-semibold transition-colors",
               onAddProject
-                ? "text-[11px] text-white/45 hover:text-white/75"
+                ? "text-[11px] text-muted hover:text-white/75"
                 : "text-[11px] text-white/55 hover:text-white/80",
             ].join(" ")}
           >
@@ -281,7 +281,7 @@ function PortfolioPicker({
           </button>
         </div>
       ) : null}
-      {placeholder && items.length ? <p className="text-[11px] text-white/40">{placeholder}</p> : null}
+      {placeholder && items.length ? <p className="text-[11px] text-subtle">{placeholder}</p> : null}
     </div>
   );
 }
@@ -316,7 +316,7 @@ function CustomInstructionField({
     <div className="space-y-2" data-requirement-key={CUSTOM_INSTRUCTION_REQUIREMENT_KEY}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-white/82">
-          <Icon name="message-square-plus" className="h-3.5 w-3.5 shrink-0 text-white/45" />
+          <Icon name="message-square-plus" className="h-3.5 w-3.5 shrink-0 text-muted" />
           <span className="truncate">Listing prompt</span>
         </div>
         {error ? (
@@ -347,7 +347,7 @@ function CustomInstructionField({
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
         />
-        <div className="mt-1 text-right text-[10px] tabular-nums text-white/35">
+        <div className="mt-1 text-right text-[10px] tabular-nums text-subtle">
           {(answer.response || "").length}/{CUSTOM_INSTRUCTION_MAX_LENGTH}
         </div>
 
@@ -383,7 +383,7 @@ function CustomInstructionField({
         <button
           type="button"
           onClick={() => update({ links: [...links, ""] })}
-          className="mt-3 inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-white/50 transition-colors hover:text-white/78"
+          className="mt-3 inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-muted transition-colors hover:text-white/78"
         >
           <Icon name="plus" className="h-3 w-3" />
           Add link
@@ -457,7 +457,7 @@ export default function FirstMessageFields({
             <FieldShell key={key} dataKey={key} icon={def.icon} label={copy.requester} error={error}>
               <div className="flex gap-2">
                 <div className={["flex flex-1 items-center rounded-xl bg-white/6 border px-3 transition-colors focus-within:border-white/25 focus-within:bg-white/7", error ? "border-amber-200/40" : "border-white/10"].join(" ")}>
-                  <span className="pointer-events-none mr-1 text-sm text-white/45">{currencyPrefix}</span>
+                  <span className="pointer-events-none mr-1 text-sm text-muted">{currencyPrefix}</span>
                   <input
                     aria-label={`${copy.requester} amount`}
                     aria-invalid={Boolean(error)}
@@ -472,7 +472,7 @@ export default function FirstMessageFields({
                     // style outranks any selector rule, so it reliably removes that inner ring; the
                     // wrapper owns the focus treatment via `focus-within`, giving one continuous field.
                     style={{ outline: "none" }}
-                    className="h-11 w-full bg-transparent text-sm text-white placeholder:text-white/35"
+                    className="h-11 w-full bg-transparent text-sm text-white placeholder:text-subtle"
                   />
                 </div>
                 {copy.units?.length ? (

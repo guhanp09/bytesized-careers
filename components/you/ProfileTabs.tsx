@@ -117,8 +117,8 @@ export default function ProfileTabs({ marketplaceJobs }: ProfileTabsProps) {
             <SubCard title="Portfolio links">
               <ul className="space-y-1.5">
                 <li className="text-white/65">Add links to your best work from Portfolio</li>
-                <li className="text-white/50">youtube.com/@yourchannel</li>
-                <li className="text-white/50">behance.net/yourprofile</li>
+                <li className="text-muted">youtube.com/@yourchannel</li>
+                <li className="text-muted">behance.net/yourprofile</li>
               </ul>
             </SubCard>
 
@@ -134,7 +134,7 @@ export default function ProfileTabs({ marketplaceJobs }: ProfileTabsProps) {
           <div className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-white/90">Your posted jobs</h3>
-              <p className="mt-1 text-xs text-white/50">
+              <p className="mt-1 text-xs text-muted">
                 Recent jobs you posted
               </p>
             </div>
@@ -155,7 +155,7 @@ export default function ProfileTabs({ marketplaceJobs }: ProfileTabsProps) {
                           {job.channel.name} | {job.category}
                         </p>
                       </div>
-                      <span className="text-xs text-white/45 whitespace-nowrap">
+                      <span className="text-xs text-muted whitespace-nowrap">
                         {job.postedShort}
                       </span>
                     </div>

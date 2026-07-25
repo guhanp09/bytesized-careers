@@ -34,7 +34,7 @@ export default function SupportPage() {
 
         <section className="rounded-[28px] border border-white/[0.08] bg-white/[0.04] p-6">
           <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
-            <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
               <Icon name="help" className="h-4 w-4" />
             </span>
             <span>What support can help with</span>
@@ -48,7 +48,7 @@ export default function SupportPage() {
 
         <section className="rounded-[28px] border border-white/[0.08] bg-white/[0.04] p-6">
           <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
-            <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
               <Icon name="shield" className="h-4 w-4" />
             </span>
             <span>Safety reports</span>

@@ -93,7 +93,7 @@ export default function PortfolioPreviewRail({
                     className="h-full w-full object-cover transition-[filter,transform] duration-500 group-hover:scale-[1.015] group-hover:brightness-110"
                   />
                 ) : (
-                  <div className="flex h-full min-h-[150px] w-full items-center justify-center text-white/34">
+                  <div className="flex h-full min-h-[150px] w-full items-center justify-center text-subtle">
                     <Icon name="image" className="h-8 w-8" />
                   </div>
                 )}
@@ -101,7 +101,7 @@ export default function PortfolioPreviewRail({
               <div className="p-4">
                 <p className="truncate text-sm font-semibold text-white/90 transition-colors group-hover:text-white">{item.title}</p>
                 {roleLabel ? <p className="mt-1 text-sm font-medium text-white/72">{roleLabel}</p> : null}
-                {sourceLine ? <p className="mt-1 text-xs text-white/45">{sourceLine}</p> : null}
+                {sourceLine ? <p className="mt-1 text-xs text-muted">{sourceLine}</p> : null}
                 {summaryPreview ? (
                   <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/65">{summaryPreview}</p>
                 ) : null}

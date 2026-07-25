@@ -52,7 +52,7 @@ export default function PrivacyPage() {
           {sections.map((section) => (
             <section key={section.title} className="rounded-[28px] border border-white/[0.08] bg-white/[0.04] p-6">
               <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-white/92">
-                <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+                <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
                   <Icon name={section.icon} className="h-4 w-4" />
                 </span>
                 <span>{section.title}</span>
@@ -62,7 +62,7 @@ export default function PrivacyPage() {
           ))}
         </div>
 
-        <p className="text-sm text-white/48">
+        <p className="text-sm text-muted">
           For privacy or account requests,{" "}
           <Link href="/support" className="font-semibold text-white/78 hover:text-white hover:underline">
             contact support

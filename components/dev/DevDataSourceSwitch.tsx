@@ -82,7 +82,7 @@ export default function DevDataSourceSwitch() {
       aria-label="Development marketplace data source"
       title="Development only marketplace data source"
     >
-      <span className="px-2 text-[10px] uppercase tracking-[0.16em] text-white/38">DEV</span>
+      <span className="px-2 text-[10px] uppercase tracking-[0.16em] text-subtle">DEV</span>
       {(["backend", "mock"] as const).map((source) => {
         const active = status.source === source;
         const busy = busySource === source;

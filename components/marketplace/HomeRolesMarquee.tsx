@@ -22,11 +22,11 @@ function MarqueeList({ hidden }: { hidden?: boolean }) {
           <Link
             href={`/jobs?q=${encodeURIComponent(name)}`}
             tabIndex={hidden ? -1 : undefined}
-            className="cursor-pointer text-sm font-medium text-white/45 transition-colors hover:text-white"
+            className="cursor-pointer text-sm font-medium text-muted transition-colors hover:text-white"
           >
             {name}
           </Link>
-          <span aria-hidden="true" className="ml-6 text-white/20">
+          <span aria-hidden="true" className="ml-6 text-disabled">
             ·
           </span>
         </li>

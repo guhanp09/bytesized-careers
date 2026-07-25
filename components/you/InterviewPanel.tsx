@@ -121,7 +121,7 @@ export function InterviewCard({
           <p
             className={[
               "mt-1.5 text-sm font-semibold",
-              inactive ? "text-white/50 line-through decoration-white/25" : "text-white/90",
+              inactive ? "text-muted line-through decoration-white/25" : "text-white/90",
             ].join(" ")}
           >
             {local ?? interview.scheduleLabel}

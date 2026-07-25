@@ -199,7 +199,7 @@ const TRIAL_BASIS_LABELS: Record<string, string> = {
 
 function EmptyReview({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.025] px-3.5 py-3 text-sm leading-relaxed text-white/42">
+    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.025] px-3.5 py-3 text-sm leading-relaxed text-subtle">
       {children}
     </p>
   );
@@ -208,7 +208,7 @@ function EmptyReview({ children }: { children: ReactNode }) {
 function PreviewFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3.5">
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">{label}</dt>
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">{label}</dt>
       <dd className="mt-1.5 break-words text-sm font-medium leading-snug text-white/84">{value}</dd>
     </div>
   );
@@ -217,7 +217,7 @@ function PreviewFact({ label, value }: { label: string; value: string }) {
 function CompactGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-white/[0.07] px-4 py-4 first:border-t-0" aria-label={title}>
-      <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">{title}</h3>
+      <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">{title}</h3>
       <div className="mt-2.5 space-y-2 text-xs leading-relaxed text-white/67">{children}</div>
     </section>
   );
@@ -226,7 +226,7 @@ function CompactGroup({ title, children }: { title: string; children: ReactNode 
 function CompactLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2.5">
-      <span className="text-white/38">{label}</span>
+      <span className="text-subtle">{label}</span>
       <span className="min-w-0 break-words text-right font-medium text-white/76">{value}</span>
     </div>
   );
@@ -291,7 +291,7 @@ function EmployerHeader({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-xs text-white/42">
+          <p className="mt-0.5 text-xs text-subtle">
             {[employerContext, platform].filter(Boolean).join(" · ") || "Hiring context not added"}
           </p>
         </div>
@@ -307,7 +307,7 @@ function EmployerHeader({
       </h2>
       <p className={`${compact ? "mt-1.5 text-xs" : "mt-2 text-sm"} text-white/55`}>
         {role || "Creator role not selected"}
-        {specialization ? <span className="text-white/38"> · {specialization}</span> : null}
+        {specialization ? <span className="text-subtle"> · {specialization}</span> : null}
       </p>
     </header>
   );
@@ -407,7 +407,7 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
       data-preview-mode="rail"
     >
       <div className="border-b border-white/[0.07] px-4 py-3">
-        <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">
+        <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
           <Icon name="eye" className="h-3.5 w-3.5" />
           Candidate preview
         </p>
@@ -454,9 +454,9 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
               );
             })
           ) : (
-            <p className="text-white/42">No deliverables added yet.</p>
+            <p className="text-subtle">No deliverables added yet.</p>
           )}
-          {deliverables.length > 3 ? <p className="text-white/42">+{deliverables.length - 3} more</p> : null}
+          {deliverables.length > 3 ? <p className="text-subtle">+{deliverables.length - 3} more</p> : null}
         </CompactGroup>
 
         <CompactGroup title="Candidate fit">
@@ -534,7 +534,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
     <section aria-label="Candidate listing preview" className="min-w-0 space-y-6" data-preview-mode="full">
       <div className="overflow-hidden rounded-3xl border border-[var(--vt-card-line,rgba(255,255,255,0.1))] bg-[var(--vt-card,rgba(255,255,255,0.06))] shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]">
         <div className="border-b border-white/[0.07] px-5 py-3 sm:px-7">
-          <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">
+          <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
             <Icon name="eye" className="h-3.5 w-3.5" />
             Candidate preview
           </p>
@@ -589,7 +589,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                       <div className="flex items-start gap-3">
                         <span
                           aria-hidden="true"
-                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-white/50"
+                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-muted"
                         >
                           {index + 1}
                         </span>
@@ -597,7 +597,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                           <p className="font-medium text-white/86">
                             {text(item.quantity) || "Quantity not added"} {type}
                           </p>
-                          <p className="mt-1 text-xs text-white/48">{frequency}</p>
+                          <p className="mt-1 text-xs text-muted">{frequency}</p>
                           {text(item.notes) ? <p className="mt-2 text-sm text-white/65">{text(item.notes)}</p> : null}
                         </div>
                       </div>
@@ -681,7 +681,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
               <div className="space-y-5">
                 {sourceInputs.length ? (
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/38">Provided inputs</p>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-subtle">Provided inputs</p>
                     <div className="flex flex-wrap gap-2">
                       {sourceInputs.map((item, index) => (
                         <TagPill key={`${item.type}-${item.custom_label || ""}-${index}`}>
@@ -695,8 +695,8 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                   </div>
                 ) : null}
                 {text(domain.sourceInputsNotes) ? <p className="whitespace-pre-line">{text(domain.sourceInputsNotes)}</p> : null}
-                {revisionSummary ? <p><span className="text-white/42">Revisions:</span> {revisionSummary}</p> : null}
-                {autonomySummary ? <p><span className="text-white/42">Creative direction:</span> {autonomySummary}</p> : null}
+                {revisionSummary ? <p><span className="text-subtle">Revisions:</span> {revisionSummary}</p> : null}
+                {autonomySummary ? <p><span className="text-subtle">Creative direction:</span> {autonomySummary}</p> : null}
               </div>
             ) : (
               <EmptyReview>Source materials, revisions, and creative direction have not been described.</EmptyReview>
@@ -765,7 +765,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                   <li key={item.id || index} className="flex gap-3">
                     <span
                       aria-hidden="true"
-                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-white/50"
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-muted"
                     >
                       {index + 1}
                     </span>
@@ -823,7 +823,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                 )
               ) : null}
               {!deadline && !howToApply && domain.applicationMode === "internal" ? (
-                <p className="text-sm text-white/48">Candidates will apply through CreatorJobs.</p>
+                <p className="text-sm text-muted">Candidates will apply through CreatorJobs.</p>
               ) : null}
             </div>
           </BodySection>
@@ -846,17 +846,17 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-1.5 inline-flex max-w-full items-center gap-1.5 text-xs text-white/50 underline decoration-white/20 underline-offset-4 hover:text-white/75"
+                      className="mt-1.5 inline-flex max-w-full items-center gap-1.5 text-xs text-muted underline decoration-white/20 underline-offset-4 hover:text-white/75"
                     >
                       <span className="truncate">{referenceHost(url)}</span>
                       <Icon name="external-link" className="h-3.5 w-3.5 shrink-0" />
                     </a>
                   ) : (
-                    <p className="mt-1.5 text-xs text-white/38">Reference URL is incomplete.</p>
+                    <p className="mt-1.5 text-xs text-subtle">Reference URL is incomplete.</p>
                   )}
                   {note ? <p className="mt-3 text-sm leading-relaxed text-white/62">{note}</p> : null}
                   {video.timestampNotes?.length ? (
-                    <p className="mt-3 text-xs text-white/42">
+                    <p className="mt-3 text-xs text-subtle">
                       {video.timestampNotes.length} timestamp note{video.timestampNotes.length === 1 ? "" : "s"}
                     </p>
                   ) : null}
@@ -873,7 +873,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
           <div className="mt-5 space-y-5">
             {contextGroups.map((group) => (
               <div key={group.label}>
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">{group.label}</h3>
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">{group.label}</h3>
                 <div className="flex flex-wrap gap-2">
                   {group.values.map((value) => (
                     <TagPill key={`${group.label}-${value.toLowerCase()}`}>{value}</TagPill>

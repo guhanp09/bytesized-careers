@@ -198,7 +198,7 @@ function PostedByCard({ job }: { job: Job }) {
           </p>
 
           {isAgencyPost ? (
-            <p className="mt-1 text-xs leading-5 text-white/50">
+            <p className="mt-1 text-xs leading-5 text-muted">
               <span>Hiring on behalf of </span>
               <InlineIdentityLink
                 href={channelExternalHref}
@@ -211,20 +211,20 @@ function PostedByCard({ job }: { job: Job }) {
             </p>
           ) : (
             usesCanonicalEmployerContext ? (
-              <p className="mt-1 text-xs leading-5 text-white/50">
+              <p className="mt-1 text-xs leading-5 text-muted">
                 Hiring directly{employerType ? ` · ${employerType}` : ""}
               </p>
             ) : employerType ? (
-              <p className="mt-1 text-xs leading-5 text-white/50">{employerType}</p>
+              <p className="mt-1 text-xs leading-5 text-muted">{employerType}</p>
             ) : null
           )}
           {verificationLabel ? (
-            <p className={verified ? "mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-100/75" : "mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-white/45"}>
+            <p className={verified ? "mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-100/75" : "mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-muted"}>
               <Icon name={verified ? "badge-check" : "shield"} className="h-3.5 w-3.5" />
               {verificationLabel}
             </p>
           ) : null}
-          {isAgencyPost ? <p className="mt-1 text-xs text-white/42">Managed by {agencyName}</p> : null}
+          {isAgencyPost ? <p className="mt-1 text-xs text-subtle">Managed by {agencyName}</p> : null}
         </div>
       </div>
     </section>
@@ -241,7 +241,7 @@ function TransparencyCard({ job }: { job: Job }) {
       data-testid="job-transparency-card"
     >
       <h2 id="listing-transparency-title" className="text-sm font-semibold text-white/88">Listing transparency</h2>
-      <p className="mt-1 text-xs leading-relaxed text-white/45">Factual details disclosed on this listing, not a safety or quality score.</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted">Factual details disclosed on this listing, not a safety or quality score.</p>
       {transparency.explicit.length ? (
         <ul className="mt-4 space-y-2 text-xs leading-relaxed text-white/66">
           {transparency.explicit.map((item) => (
@@ -254,7 +254,7 @@ function TransparencyCard({ job }: { job: Job }) {
       ) : null}
       {transparency.attention.length ? (
         <div className="mt-4 border-t border-white/[0.07] pt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/38">Worth confirming</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-subtle">Worth confirming</p>
           <ul className="mt-2 space-y-2 text-xs leading-relaxed text-white/58">
             {transparency.attention.map((item) => (
               <li key={item.label} className="flex min-w-0 gap-2">
@@ -265,7 +265,7 @@ function TransparencyCard({ job }: { job: Job }) {
           </ul>
         </div>
       ) : null}
-      {transparency.legacyNotice ? <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-relaxed text-white/48">{transparency.legacyNotice}</p> : null}
+      {transparency.legacyNotice ? <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-relaxed text-muted">{transparency.legacyNotice}</p> : null}
     </section>
   );
 }
@@ -353,7 +353,7 @@ function CreatorContextCard({ job }: { job: Job }) {
       <div className="space-y-4">
         {groups.map((group) => (
           <div key={group.label} className="min-w-0 space-y-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
               {group.label}
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
@@ -419,9 +419,9 @@ export default function JobActionsPanel({
         className="rounded-3xl bg-white/[0.06] border border-white/[0.08] p-6 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]"
       >
         <PrimaryApplicationAction action={primaryAction} applyState={applyState} onApply={onApply} className="hidden lg:flex" />
-        {applicationNotice ? <p className="mt-3 text-xs leading-relaxed text-white/52">{applicationNotice}</p> : null}
+        {applicationNotice ? <p className="mt-3 text-xs leading-relaxed text-muted">{applicationNotice}</p> : null}
         {applicationStatusLabel ? (
-          <p data-testid="job-application-status" className="mt-2 text-center text-xs font-medium text-white/52">
+          <p data-testid="job-application-status" className="mt-2 text-center text-xs font-medium text-muted">
             {applicationStatusLabel}
           </p>
         ) : null}
@@ -454,7 +454,7 @@ export default function JobActionsPanel({
         {saveState === "error" ? (
           <p role="alert" className="mt-2 text-xs text-amber-200/80">{saveError || "Couldn’t save this job right now."}</p>
         ) : null}
-        {shareState === "copied" ? <p role="status" className="mt-2 text-xs text-white/45">Link copied to your clipboard.</p> : null}
+        {shareState === "copied" ? <p role="status" className="mt-2 text-xs text-muted">Link copied to your clipboard.</p> : null}
 
         <div className="mt-4 hidden grid-cols-3 gap-3 lg:grid">
           <StatTile icon="users" value={`${job.applicants}`} label="Applicants" />
@@ -484,20 +484,20 @@ export default function JobActionsPanel({
           type="button"
           onClick={onReport}
           disabled={reportState === "sending" || reportState === "sent"}
-          className="cursor-pointer inline-flex items-center gap-2 rounded-md text-xs font-semibold text-white/42 underline-offset-4 transition hover:text-white/72 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f] disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer inline-flex items-center gap-2 rounded-md text-xs font-semibold text-subtle underline-offset-4 transition hover:text-white/72 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Icon name="alert" className="h-3.5 w-3.5" />
           {reportState === "sending" ? "Reporting..." : reportState === "sent" ? "Reported" : "Report this listing"}
         </button>
         {reportState === "error" ? (
-          <p className="mt-2 text-xs text-white/45">Couldn’t send the report. Try again.</p>
+          <p className="mt-2 text-xs text-muted">Couldn’t send the report. Try again.</p>
         ) : null}
       </div>
       )}
       {isOwner ? null : (
         <div className="fixed bottom-0 left-20 right-0 z-40 border-t border-white/10 bg-[#0b0b0f]/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden" data-testid="job-mobile-apply-bar">
           <PrimaryApplicationAction action={primaryAction} applyState={applyState} onApply={onApply} />
-          {applicationMode === "external" && primaryAction?.href ? <p className="mt-1.5 text-center text-[10px] text-white/45">Opens another site in a new tab</p> : null}
+          {applicationMode === "external" && primaryAction?.href ? <p className="mt-1.5 text-center text-[10px] text-muted">Opens another site in a new tab</p> : null}
         </div>
       )}
     </div>

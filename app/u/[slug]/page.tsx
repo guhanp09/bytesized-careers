@@ -293,7 +293,7 @@ export default async function PublicProfilePage({
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[15px] font-medium text-white/55">
                     {metadataParts.map((part, index) => (
                       <span key={`public-hero-meta-${index}-${part}`} className="inline-flex items-center gap-2.5">
-                        {index > 0 ? <span className="text-white/22">•</span> : null}
+                        {index > 0 ? <span className="text-disabled">•</span> : null}
                         <span>{part}</span>
                       </span>
                     ))}
@@ -330,7 +330,7 @@ export default async function PublicProfilePage({
                       <p className="text-lg font-semibold leading-none text-white/90 tabular-nums">
                         {formatCompactNumber(stat.value)}
                       </p>
-                      <p className="mt-1 text-[11px] font-medium text-white/44">{stat.label}</p>
+                      <p className="mt-1 text-[11px] font-medium text-muted">{stat.label}</p>
                     </div>
                   ))}
                 </div>

@@ -166,7 +166,7 @@ export default function AdminVerificationClient({ accessToken }: { accessToken: 
               >
                 <Td className="max-w-[260px]">
                   <span className="block truncate font-medium text-white/88">{item.display_name}</span>
-                  <span className="mt-0.5 block truncate text-[10.5px] text-white/38">
+                  <span className="mt-0.5 block truncate text-[10.5px] text-subtle">
                     {item.platform} · {item.type === "AGENCY_REPRESENTED_CHANNEL" ? "agency-represented" : "individual"}
                   </span>
                 </Td>
@@ -174,7 +174,7 @@ export default function AdminVerificationClient({ accessToken }: { accessToken: 
                 <Td className="whitespace-nowrap text-white/55">{item.verification_method.replaceAll("_", " ").toLowerCase()}</Td>
                 <Td className="text-right tabular-nums">{item.verification_attempt_count}</Td>
                 <Td className="text-right tabular-nums">{item.jobs_count}</Td>
-                <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
+                <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
                 <Td>
                   <TonePill tone={statusTone(item.verification_status)}>{item.verification_status.toLowerCase()}</TonePill>
                 </Td>
@@ -231,7 +231,7 @@ export default function AdminVerificationClient({ accessToken }: { accessToken: 
                   </a>
                 ) : null}
               </div>
-              <p className="mt-2 text-[10.5px] text-white/35">External links — open with care.</p>
+              <p className="mt-2 text-[10.5px] text-subtle">External links — open with care.</p>
               {selected.verification_last_error ? (
                 <p className="mt-2 rounded-xl border border-amber-200/20 bg-amber-200/[0.05] px-3 py-2 text-[11.5px] text-amber-100/80">
                   Last error / reason: {selected.verification_last_error}

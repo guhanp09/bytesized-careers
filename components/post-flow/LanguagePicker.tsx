@@ -150,7 +150,7 @@ export default function LanguagePicker({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search languages"
               aria-label="Search languages"
-              className="h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/35 focus:bg-white/[0.08]"
+              className="h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm text-white outline-none transition placeholder:text-subtle focus:border-white/35 focus:bg-white/[0.08]"
             />
           </div>
           <div className="max-h-72 overflow-y-auto p-2" role="listbox" aria-multiselectable="true">
@@ -177,7 +177,7 @@ export default function LanguagePicker({
                 );
               })
             ) : (
-              <div className="px-3 py-6 text-sm text-white/45">No languages found.</div>
+              <div className="px-3 py-6 text-sm text-muted">No languages found.</div>
             )}
           </div>
         </div>

@@ -112,13 +112,13 @@ function ExperienceLinkDialog({
             <h2 id="experience-links-title" className="text-base font-semibold text-white">
               {organization}
             </h2>
-            <p className="mt-1 text-sm text-white/45">Choose where to open</p>
+            <p className="mt-1 text-sm text-muted">Choose where to open</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close organization links"
-            className="cursor-pointer rounded-full p-1.5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+            className="cursor-pointer rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-white"
           >
             <Icon name="x" className="h-4 w-4" />
           </button>
@@ -137,7 +137,7 @@ function ExperienceLinkDialog({
               </span>
               <span className="min-w-0">
                 <span className="block font-semibold">{link.platform || "Website"}</span>
-                <span className="block truncate text-xs text-white/42">{linkLabelForExperience(link.url)}</span>
+                <span className="block truncate text-xs text-subtle">{linkLabelForExperience(link.url)}</span>
               </span>
             </a>
           ))}
@@ -212,15 +212,15 @@ export default function ProfileExperienceList({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white/86">
                     <span>{cleanExperienceText(item.role) || "Creator role"}</span>
-                    <span className="px-1.5 text-white/28">|</span>
+                    <span className="px-1.5 text-subtle">|</span>
                     <ExperienceIdentityAction links={organizationLinks} onOpenChoices={() => setActiveLinkItemId(itemKey)}>
                       <span className="text-white/68 hover:text-white">{organization}</span>
                     </ExperienceIdentityAction>
                   </p>
                   {cleanExperienceText(item.work_type) ? (
-                    <p className="mt-1 text-xs text-white/48">{cleanExperienceText(item.work_type)}</p>
+                    <p className="mt-1 text-xs text-muted">{cleanExperienceText(item.work_type)}</p>
                   ) : null}
-                  {secondaryMeta ? <p className="mt-1 text-xs text-white/38">{secondaryMeta}</p> : null}
+                  {secondaryMeta ? <p className="mt-1 text-xs text-subtle">{secondaryMeta}</p> : null}
                 </div>
                 {actions ? (
                   <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -230,7 +230,7 @@ export default function ProfileExperienceList({
               </div>
 
               {tools.length ? (
-                <p className="mt-2 text-xs text-white/42">{tools.join(" · ")}</p>
+                <p className="mt-2 text-xs text-subtle">{tools.join(" · ")}</p>
               ) : null}
               {cleanExperienceText(item.description) ? (
                 <p className="mt-2 text-sm leading-6 text-white/62">{cleanExperienceText(item.description)}</p>

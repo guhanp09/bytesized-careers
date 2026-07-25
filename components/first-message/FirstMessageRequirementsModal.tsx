@@ -224,9 +224,9 @@ export default function FirstMessageRequirementsModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5" data-testid={copy.fieldsTestId}>
           {context === "job" && (preflightNotice || requirementKeys.length || unknownRequirementKeys.length || screeningQuestions.length) ? (
             <section className="mb-5 rounded-2xl border border-white/[0.08] bg-white/[0.025] px-4 py-3.5" aria-label="Application overview">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Before you apply</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Before you apply</p>
               {preflightNotice ? <p className="mt-2 text-sm leading-relaxed text-white/72">{preflightNotice}</p> : null}
-              <p className="mt-2 text-xs leading-relaxed text-white/48">
+              <p className="mt-2 text-xs leading-relaxed text-muted">
                 {requirementKeys.length + unknownRequirementKeys.length
                   ? `${requirementKeys.length + unknownRequirementKeys.length} requested detail${requirementKeys.length + unknownRequirementKeys.length === 1 ? "" : "s"}`
                   : "No additional details requested"}
@@ -266,7 +266,7 @@ export default function FirstMessageRequirementsModal({
                       aria-invalid={Boolean(error)}
                       aria-describedby={error ? errorId : undefined}
                       className={[
-                        "min-h-[96px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:bg-white/7",
+                        "min-h-[96px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:bg-white/7",
                         error ? "border-amber-200/40 focus:border-amber-200/50" : "border-white/10 focus:border-white/25",
                       ].join(" ")}
                       placeholder="Add the requested detail"
@@ -290,12 +290,12 @@ export default function FirstMessageRequirementsModal({
                   <div key={`${question.prompt}-${index}`} className="space-y-1.5" data-requirement-key={key}>
                     <label htmlFor={id} className="block text-sm font-medium leading-relaxed text-white/86">
                       {question.prompt}
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-subtle">
                         {question.required ? "Required" : "Optional"}
                       </span>
                     </label>
                     {question.response_guidance ? (
-                      <p id={hintId} className="text-xs leading-relaxed text-white/45">{question.response_guidance}</p>
+                      <p id={hintId} className="text-xs leading-relaxed text-muted">{question.response_guidance}</p>
                     ) : null}
                     <textarea
                       id={id}
@@ -306,7 +306,7 @@ export default function FirstMessageRequirementsModal({
                       aria-invalid={Boolean(error)}
                       aria-describedby={[question.response_guidance ? hintId : "", error ? errorId : ""].filter(Boolean).join(" ") || undefined}
                       className={[
-                        "min-h-[108px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:bg-white/7",
+                        "min-h-[108px] w-full rounded-xl border bg-white/6 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:bg-white/7",
                         error ? "border-amber-200/40 focus:border-amber-200/50" : "border-white/10 focus:border-white/25",
                       ].join(" ")}
                       placeholder="Write your answer"

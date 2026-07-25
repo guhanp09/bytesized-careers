@@ -51,7 +51,7 @@ export function HomeJobAlerts() {
                   placeholder="your@email.com"
                   aria-invalid={status === "invalid"}
                   aria-describedby="job-alerts-status"
-                  className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.06]"
+                  className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.06]"
                 />
                 <button
                   type="submit"

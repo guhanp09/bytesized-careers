@@ -340,7 +340,7 @@ export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewL
                   void handleContinue();
                 }
               }}
-              className="mt-2 h-12 w-full rounded-2xl border border-white/12 bg-white/[0.045] px-4 text-sm text-white outline-none transition-colors placeholder:text-white/34 focus:border-white/24 focus:bg-white/[0.065]"
+              className="mt-2 h-12 w-full rounded-2xl border border-white/12 bg-white/[0.045] px-4 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24 focus:bg-white/[0.065]"
               placeholder={displayedPlaceholder}
               autoFocus
             />
@@ -359,14 +359,14 @@ export default function AddWorkSampleChoiceModal({ onClose, onChoose, onPreviewL
             >
               {fetchingPreview ? "Fetching preview..." : "Continue"}
             </button>
-            <p className="text-xs leading-relaxed text-white/42">
+            <p className="text-xs leading-relaxed text-subtle">
               Use a public or shareable URL. You can fill in missing details after preview.
             </p>
           </div>
-          <p className="text-xs leading-relaxed text-white/42">
+          <p className="text-xs leading-relaxed text-subtle">
             YouTube · Vimeo · Google Drive · Google Docs · Notion · Behance · Instagram · Figma · Canva
           </p>
-          <p className="text-xs leading-relaxed text-white/34">
+          <p className="text-xs leading-relaxed text-subtle">
             Portfolio sites and other public URLs also work.
           </p>
         </div>

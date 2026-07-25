@@ -358,7 +358,7 @@ export default function Header() {
                                   "mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-full border",
                                   unread
                                     ? "border-white/[0.18] bg-white/[0.12] text-white"
-                                    : "border-white/[0.1] bg-white/[0.06] text-white/52",
+                                    : "border-white/[0.1] bg-white/[0.06] text-muted",
                                 ].join(" ")}
                               >
                                 <Icon name={iconName} className="h-[18px] w-[18px]" />
@@ -373,11 +373,11 @@ export default function Header() {
                                   {item.title}
                                 </span>
                                 {item.body ? (
-                                  <span className="mt-0.5 block line-clamp-2 text-[12px] leading-5 text-white/52">
+                                  <span className="mt-0.5 block line-clamp-2 text-[12px] leading-5 text-muted">
                                     {item.body}
                                   </span>
                                 ) : null}
-                                <span className="mt-1.5 block text-[11px] font-medium text-white/38">
+                                <span className="mt-1.5 block text-[11px] font-medium text-subtle">
                                   {formatNotificationTime(item.created_at)}
                                 </span>
                               </span>
@@ -416,7 +416,7 @@ export default function Header() {
                           return <div key={item.id}>{row}</div>;
                         })
                       ) : (
-                        <p className="px-4 py-8 text-center text-sm text-white/48">
+                        <p className="px-4 py-8 text-center text-sm text-muted">
                           No notifications yet.
                         </p>
                       )}
@@ -476,7 +476,7 @@ export default function Header() {
                           </div>
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-white/90 truncate">{showName}</div>
-                            <div className="text-xs text-white/50 truncate">{showSub}</div>
+                            <div className="text-xs text-muted truncate">{showSub}</div>
                           </div>
                         </div>
 
@@ -494,7 +494,7 @@ export default function Header() {
                             <Icon name="user" className="w-4 h-4" />
                             Account
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
 
                         <button
@@ -503,7 +503,7 @@ export default function Header() {
                             "flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
                             profileUsername
                               ? "cursor-pointer text-white/85 hover:bg-white/10"
-                              : "text-white/45 cursor-not-allowed",
+                              : "text-muted cursor-not-allowed",
                           ].join(" ")}
                           onClick={() => {
                             if (!profileUsername) return;
@@ -516,7 +516,7 @@ export default function Header() {
                             <Icon name="globe" className="w-4 h-4" />
                             Public profile
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
 
                         <button
@@ -531,7 +531,7 @@ export default function Header() {
                             <Icon name="settings" className="w-4 h-4" />
                             Settings
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
 
                         <button
@@ -560,7 +560,7 @@ export default function Header() {
                               <Icon name="alert" className="w-4 h-4" />
                               Admin
                             </span>
-                            <span className="text-white/45">›</span>
+                            <span className="text-muted">›</span>
                           </button>
                         ) : null}
 
@@ -587,7 +587,7 @@ export default function Header() {
                             <Icon name="user" className="w-4 h-4" />
                             Log in
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
 
                         <button
@@ -602,7 +602,7 @@ export default function Header() {
                             <Icon name="plus" className="w-4 h-4" />
                             Sign up
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
 
                         <button
@@ -617,7 +617,7 @@ export default function Header() {
                             <Icon name="inbox" className="w-4 h-4" />
                             Support
                           </span>
-                          <span className="text-white/45">›</span>
+                          <span className="text-muted">›</span>
                         </button>
                       </div>
                     )}

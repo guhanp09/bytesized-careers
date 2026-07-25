@@ -231,7 +231,7 @@ function StageMenu({
                     data-testid={`pipeline-stage-menu-group-${groupLabel.toLowerCase().replace(/\s+/g, "-")}`}
                     className={[
                       "px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.16em]",
-                      stage.notify ? "text-white/45" : "text-white/28",
+                      stage.notify ? "text-muted" : "text-subtle",
                     ].join(" ")}
                   >
                     {groupLabel}
@@ -251,7 +251,7 @@ function StageMenu({
                   className={[
                     "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-xs font-semibold transition-colors",
                     isCurrent
-                      ? "cursor-default text-white/35"
+                      ? "cursor-default text-subtle"
                       : stage.key === "rejected" || stage.key === "declined"
                         ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
                         : "text-white/75 hover:bg-white/[0.07] hover:text-white",
@@ -259,7 +259,7 @@ function StageMenu({
                 >
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stage.dot}`} aria-hidden />
                   {stage.label}
-                  {isCurrent ? <span className="ml-auto text-[10px] font-medium text-white/30">Current</span> : null}
+                  {isCurrent ? <span className="ml-auto text-[10px] font-medium text-subtle">Current</span> : null}
                 </button>
               </Fragment>
             );
@@ -368,10 +368,10 @@ function FirstMessagePreview({
         onBlur={closePreview}
         className={
           teaser
-            ? "line-clamp-2 w-full text-[11.5px] leading-relaxed text-white/48 transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70"
+            ? "line-clamp-2 w-full text-[11.5px] leading-relaxed text-muted transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70"
             : // Full-width, slightly taller target so hovering anywhere on the row
               // reveals the requirements — a bare w-fit label was too small to hit.
-              "flex w-full items-center gap-1 py-0.5 text-[11px] font-medium text-white/40 transition-colors hover:text-white/65 focus:outline-none focus-visible:text-white/70"
+              "flex w-full items-center gap-1 py-0.5 text-[11px] font-medium text-subtle transition-colors hover:text-white/65 focus:outline-none focus-visible:text-white/70"
         }
       >
         {teaser ?? (
@@ -390,7 +390,7 @@ function FirstMessagePreview({
               className="pointer-events-none fixed z-[9999] rounded-lg border border-white/12 bg-[#12131a]/95 px-2.5 py-2 text-[11px] leading-snug text-white/90 shadow-[0_14px_30px_-14px_rgba(0,0,0,0.95)] backdrop-blur-sm"
               style={{ left: preview.left, top: preview.top, width: preview.width }}
             >
-              <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-white/35">First message</p>
+              <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-subtle">First message</p>
               {message ? (
                 <p className="mt-1 line-clamp-4 italic text-white/70">“{message}”</p>
               ) : null}
@@ -398,8 +398,8 @@ function FirstMessagePreview({
                 <div className={`space-y-1 ${message ? "mt-2 border-t border-white/[0.08] pt-2" : "mt-1.5"}`}>
                   {lines.map((line) => (
                     <div key={`${line.label}-${line.value}`} className="flex items-start gap-1.5">
-                      <Icon name={line.icon} className="mt-[1px] h-3 w-3 shrink-0 text-white/40" />
-                      <span className="shrink-0 text-white/45">{line.label}</span>
+                      <Icon name={line.icon} className="mt-[1px] h-3 w-3 shrink-0 text-subtle" />
+                      <span className="shrink-0 text-muted">{line.label}</span>
                       <span className="min-w-0 flex-1 line-clamp-2 text-right font-medium text-white/85">{line.value}</span>
                     </div>
                   ))}
@@ -659,9 +659,9 @@ export default function PipelineBoard({
                             ? "border-white/30 bg-white/[0.09] text-white"
                             : count > 0
                               ? stage.terminal
-                                ? "border-white/[0.07] bg-transparent text-white/40 hover:border-white/15 hover:text-white/70"
+                                ? "border-white/[0.07] bg-transparent text-subtle hover:border-white/15 hover:text-white/70"
                                 : "border-white/[0.09] bg-transparent text-white/60 hover:border-white/20 hover:text-white/90"
-                              : "border-white/[0.06] bg-transparent text-white/28 hover:text-white/50",
+                              : "border-white/[0.06] bg-transparent text-subtle hover:text-muted",
                     ].join(" ")}
                   >
                     <span
@@ -669,7 +669,7 @@ export default function PipelineBoard({
                       aria-hidden
                     />
                     {stage.label}
-                    <span className={isActive || dragHover ? "text-white/70" : "text-white/35"}>{count}</span>
+                    <span className={isActive || dragHover ? "text-white/70" : "text-subtle"}>{count}</span>
                   </button>
                 </span>
               );
@@ -677,13 +677,13 @@ export default function PipelineBoard({
           </div>
           <div className="ml-auto flex min-w-0 items-center gap-2">
             <div className="relative w-40 sm:w-52">
-              <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
+              <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 data-testid="pipeline-search"
                 placeholder={kind === "application" && direction === "received" ? "Search applicants or jobs…" : "Search…"}
-                className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.03] pl-8 pr-3 text-xs text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+                className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.03] pl-8 pr-3 text-xs text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
               />
             </div>
             {contextOptions.length > 1 ? (
@@ -712,7 +712,7 @@ export default function PipelineBoard({
           {filteredItems.length === 0 ? (
             <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-10 text-center">
               <p className="text-sm font-medium text-white/55">Nothing matches here.</p>
-              <p className="mx-auto mt-1 max-w-xs text-xs text-white/40">
+              <p className="mx-auto mt-1 max-w-xs text-xs text-subtle">
                 {search || contextFilter !== "all"
                   ? "Try clearing the search or filter."
                   : "New activity will land in this pipeline."}
@@ -734,7 +734,7 @@ export default function PipelineBoard({
                 {startsClosedGroup ? (
                   <div data-testid="pipeline-closed-divider" className="flex items-center gap-3 px-1 pt-2">
                     <span className="h-px flex-1 bg-white/[0.05]" aria-hidden />
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
                       Closed
                     </span>
                     <span className="h-px flex-1 bg-white/[0.05]" aria-hidden />
@@ -775,7 +775,7 @@ export default function PipelineBoard({
                     <h3
                       className={[
                         "text-[11px] font-semibold uppercase tracking-[0.14em]",
-                        isTerminal ? "text-white/45" : "text-white/85",
+                        isTerminal ? "text-muted" : "text-white/85",
                       ].join(" ")}
                     >
                       {stage.label}
@@ -784,7 +784,7 @@ export default function PipelineBoard({
                       className={[
                         "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border px-1.5 text-[10px] font-semibold",
                         isTerminal
-                          ? "border-white/[0.06] bg-transparent text-white/32"
+                          ? "border-white/[0.06] bg-transparent text-subtle"
                           : "border-white/[0.09] bg-white/[0.04] text-white/55",
                       ].join(" ")}
                     >
@@ -797,7 +797,7 @@ export default function PipelineBoard({
                     ) : null}
                   </header>
                   {groupItems.length === 0 ? (
-                    <p className="mt-2 px-0.5 text-[11px] text-white/30">
+                    <p className="mt-2 px-0.5 text-[11px] text-subtle">
                       No one in {stage.label.toLowerCase()} yet.
                     </p>
                   ) : (
@@ -868,7 +868,7 @@ export default function PipelineBoard({
                                   )}
                                 </div>
                                 {context ? (
-                                  <p className="mt-0.5 truncate text-[11px] text-white/45">{context}</p>
+                                  <p className="mt-0.5 truncate text-[11px] text-muted">{context}</p>
                                 ) : null}
                               </div>
                               {manageable ? (
@@ -907,7 +907,7 @@ export default function PipelineBoard({
                                         "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
                                         workState.highConfidence
                                           ? "bg-white/[0.09] text-white/80"
-                                          : "text-white/45",
+                                          : "text-muted",
                                       ].join(" ")}
                                     >
                                       {workState.highConfidence ? (
@@ -980,7 +980,7 @@ export default function PipelineBoard({
                             ) : null}
 
                             <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.05] pt-2">
-                              <span className="shrink-0 text-[11px] text-white/35">{item.updatedAtLabel}</span>
+                              <span className="shrink-0 text-[11px] text-subtle">{item.updatedAtLabel}</span>
                               <div className="flex items-center gap-1.5" data-no-drag>
                                 {(() => {
                                   // Messaging is the frequent action, so it's the card's

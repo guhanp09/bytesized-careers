@@ -18,11 +18,11 @@ function StatTile({ label, value, caption }: StatTileProps) {
         "shadow-[0_12px_34px_-24px_rgba(0,0,0,0.9)]",
       ].join(" ")}
     >
-      <p className="text-xs uppercase tracking-[0.14em] text-white/45">{label}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-muted">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-white/90 leading-none tabular-nums">
         {value}
       </p>
-      <p className="mt-2 text-xs text-white/50">{caption}</p>
+      <p className="mt-2 text-xs text-muted">{caption}</p>
     </article>
   );
 }

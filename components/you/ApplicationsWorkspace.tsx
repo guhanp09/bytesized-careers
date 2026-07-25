@@ -255,12 +255,12 @@ function FilterBar({
               onClick={() => onSelect(option.key)}
               className={[
                 "group/filter relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-0.5 text-[13px] font-semibold transition-colors",
-                isActive ? "text-white" : "text-white/50 hover:text-white/80",
+                isActive ? "text-white" : "text-muted hover:text-white/80",
               ].join(" ")}
             >
               {option.label}
               {count > 0 ? (
-                <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-white/32"}`}>
+                <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-subtle"}`}>
                   {count}
                 </span>
               ) : null}
@@ -380,7 +380,7 @@ function SampleDataChip({ demoMode, onToggleDemo }: { demoMode?: boolean; onTogg
         "hidden h-8 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-[11px] font-semibold shadow-[0_14px_40px_-20px_rgba(0,0,0,0.9)] backdrop-blur transition-colors lg:inline-flex",
         demoMode
           ? "border-amber-200/30 bg-amber-200/[0.12] text-amber-100/90"
-          : "border-white/[0.1] bg-[#131419]/90 text-white/45 hover:text-white/80",
+          : "border-white/[0.1] bg-[#131419]/90 text-muted hover:text-white/80",
       ].join(" ")}
     >
       <span
@@ -468,7 +468,7 @@ function EmptyModeState({
 // Dedicated full-page workspace: the route wrapper already sits below the fixed
 // global top bar, so the inbox owns the full remaining vertical canvas.
 const WORKSPACE_HEIGHT_CLASSES = "h-full min-h-0";
-const SECTION_LABEL_CLASSES = "text-[11px] font-semibold text-white/40";
+const SECTION_LABEL_CLASSES = "text-[11px] font-semibold text-subtle";
 const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
 /** localStorage key for the last-open inbox conversation (restored on return). */
 const SELECTED_STORAGE_KEY = "cj.applications.selected";
@@ -501,7 +501,7 @@ function statusPillClasses(status: InteractionStatus): string {
     case "declined":
     case "withdrawn":
     case "closed":
-      return "border-white/[0.08] bg-transparent text-white/42";
+      return "border-white/[0.08] bg-transparent text-subtle";
   }
 }
 
@@ -787,7 +787,7 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
               return (
                 <Fragment key={item.key}>
                   {showGroup ? (
-                    <p className="px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-white/35">
+                    <p className="px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-subtle">
                       {item.menuGroup}
                     </p>
                   ) : null}
@@ -804,7 +804,7 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
                     className={[
                       "flex h-9 w-full items-center gap-2 rounded-xl px-2.5 text-left text-xs font-semibold transition-colors",
                       item.disabled
-                        ? "cursor-not-allowed text-white/30"
+                        ? "cursor-not-allowed text-disabled"
                         : item.primary
                         ? "text-white hover:bg-white/[0.09]"
                         : item.destructive
@@ -819,7 +819,7 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
               );
             })
           ) : (
-            <p className="px-3 py-2 text-xs text-white/40">No actions available.</p>
+            <p className="px-3 py-2 text-xs text-subtle">No actions available.</p>
           )}
         </div>
       ) : null}
@@ -841,7 +841,7 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
       {href ? (
         <Icon
           name="external-link"
-          className="absolute right-0 top-0 h-3.5 w-3.5 text-white/30 opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute right-0 top-0 h-3.5 w-3.5 text-subtle opacity-0 transition-opacity group-hover:opacity-100"
         />
       ) : null}
       <div className="flex items-center gap-2.5">
@@ -898,7 +898,7 @@ function CompactTalentCard({ talent }: { talent: InteractionTalentSnapshot }) {
       {href ? (
         <Icon
           name="external-link"
-          className="absolute right-0 top-0 h-3.5 w-3.5 text-white/30 opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute right-0 top-0 h-3.5 w-3.5 text-subtle opacity-0 transition-opacity group-hover:opacity-100"
         />
       ) : null}
       <div className="flex items-center gap-2.5">
@@ -945,7 +945,7 @@ function InteractionTimeline({ item }: { item: OwnerInteraction }) {
                 <span className="absolute bottom-0 left-[2.5px] top-3.5 w-px bg-white/[0.09]" />
               ) : null}
               <p className={`text-xs ${isLatest ? "text-white/82" : "text-white/62"}`}>{event.label}</p>
-              <p className="mt-0.5 text-[11px] text-white/40">{event.at}</p>
+              <p className="mt-0.5 text-[11px] text-subtle">{event.at}</p>
             </li>
           );
         })}
@@ -974,7 +974,7 @@ function contextCardFor(item: OwnerInteraction): ReactNode {
 function ProposalCard({ terms }: { terms: string }) {
   return (
     <div className={`inline-flex max-w-full items-center gap-2 rounded-xl ${SURFACE} px-3 py-2 text-sm text-white/74`}>
-      <Icon name="cash" className="h-4 w-4 shrink-0 text-white/42" />
+      <Icon name="cash" className="h-4 w-4 shrink-0 text-subtle" />
       <span className="min-w-0 break-words">{terms}</span>
     </div>
   );
@@ -1162,7 +1162,7 @@ function WorkStateChip({ state }: { state: WorkState }) {
       data-work-state={state.key}
       className={[
         "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
-        state.highConfidence ? "bg-white/[0.09] text-white/80" : "bg-transparent text-white/45",
+        state.highConfidence ? "bg-white/[0.09] text-white/80" : "bg-transparent text-muted",
       ].join(" ")}
     >
       {state.highConfidence ? (
@@ -1269,9 +1269,9 @@ export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body
   return (
     <div data-testid="chat-status-update" className="flex justify-center px-2">
       <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60">
-        <Icon name="sparkles" className="h-3 w-3 shrink-0 text-white/40" />
+        <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" />
         <span className="min-w-0">{message.body}</span>
-        <span className="shrink-0 text-white/30">· {message.atLabel}</span>
+        <span className="shrink-0 text-subtle">· {message.atLabel}</span>
       </span>
     </div>
   );
@@ -1339,7 +1339,7 @@ function StageNotifyPrompt({
           data-testid="stage-notify-close"
           onClick={onDismiss}
           aria-label="Dismiss without notifying"
-          className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.07] hover:text-white"
         >
           <Icon name="x" className="h-3.5 w-3.5" />
         </button>
@@ -1379,7 +1379,7 @@ function StageNotifyPrompt({
             data-testid="stage-notify-preview"
             className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11.5px] text-white/60"
           >
-            <Icon name="sparkles" className="h-3 w-3 shrink-0 text-white/40" />
+            <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" />
             <span className="min-w-0">{preview}</span>
           </p>
           {/*
@@ -1396,7 +1396,7 @@ function StageNotifyPrompt({
               rows={2}
               maxLength={2000}
               placeholder={`Add a note for ${single ? firstNameOf(single.counterpartyName) : "them"} (optional)`}
-              className="mt-2.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.06] disabled:opacity-50"
+              className="mt-2.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.06] disabled:opacity-50"
             />
           ) : null}
           {phase === "error" ? (
@@ -1426,7 +1426,7 @@ function StageNotifyPrompt({
             >
               Skip
             </button>
-            <span className="text-[10.5px] text-white/32">
+            <span className="text-[10.5px] text-subtle">
               {liveMode ? "Posts in the chat thread." : "Demo only — posts into the demo thread."}
             </span>
           </div>
@@ -1504,16 +1504,16 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
         "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
       ].join(" ")}
     >
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
         <Icon name="message-square-text" className="h-3.5 w-3.5 opacity-70" />
         <span>Screening questions</span>
       </div>
-      <p className="mt-0.5 text-[11px] text-white/40">Sent automatically after the application</p>
+      <p className="mt-0.5 text-[11px] text-subtle">Sent automatically after the application</p>
       {questions.length ? (
         <ol className="mt-2.5 space-y-2">
           {questions.map((question, index) => (
             <li key={question.id || index} className="flex min-w-0 gap-2 text-[13px] leading-relaxed text-white/85">
-              <span className="shrink-0 tabular-nums text-white/45">{index + 1}.</span>
+              <span className="shrink-0 tabular-nums text-muted">{index + 1}.</span>
               <span className="min-w-0">
                 <span className="whitespace-pre-line break-words">{question.prompt}</span>
                 {question.required ? (
@@ -1522,7 +1522,7 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
                   </span>
                 ) : null}
                 {question.response_guidance ? (
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-white/48">{question.response_guidance}</span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">{question.response_guidance}</span>
                 ) : null}
               </span>
             </li>
@@ -1531,7 +1531,7 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
       ) : (
         <p className="mt-2 whitespace-pre-line break-words text-[13px] leading-relaxed text-white/82">{message.body}</p>
       )}
-      <p className="mt-2.5 text-[11px] text-white/42">Reply in this conversation with your answers.</p>
+      <p className="mt-2.5 text-[11px] text-subtle">Reply in this conversation with your answers.</p>
     </div>
   );
 }
@@ -1579,7 +1579,7 @@ export function MessageBubble({
         avatar
       )}
       <div className={["flex max-w-[82%] min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}>
-        <p className="px-1 text-[11px] font-medium text-white/40">
+        <p className="px-1 text-[11px] font-medium text-subtle">
           {message.senderName} · {message.atLabel}
         </p>
         {message.kind === "screening" ? (
@@ -1628,7 +1628,7 @@ export function MessageBubble({
             className="w-full"
           />
         ) : null}
-        {showSeen ? <p className="px-1 text-[10.5px] font-medium text-white/38">Seen</p> : null}
+        {showSeen ? <p className="px-1 text-[10.5px] font-medium text-subtle">Seen</p> : null}
         {portfolioPopup.popover}
       </div>
     </div>
@@ -3726,7 +3726,7 @@ export default function ApplicationsWorkspace({
         className={`flex w-full items-center justify-center px-6 py-16 ${WORKSPACE_HEIGHT_CLASSES}`}
         data-testid="applications-workspace"
       >
-        <p className="text-sm text-white/45">Loading applications…</p>
+        <p className="text-sm text-muted">Loading applications…</p>
       </div>
     );
   }
@@ -4114,12 +4114,12 @@ export default function ApplicationsWorkspace({
                     onClick={() => setPipelineDirection(option.key)}
                     className={[
                       "group/direction relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-0.5 text-[13px] font-semibold transition-colors",
-                      isActive ? "text-white" : "text-white/50 hover:text-white/80",
+                      isActive ? "text-white" : "text-muted hover:text-white/80",
                     ].join(" ")}
                   >
                     {option.label}
                     {option.count > 0 ? (
-                      <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-white/32"}`}>
+                      <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-subtle"}`}>
                         {option.count}
                       </span>
                     ) : null}
@@ -4136,7 +4136,7 @@ export default function ApplicationsWorkspace({
               {pipelineSummary ? (
                 <p
                   data-testid="pipeline-summary"
-                  className="ml-auto hidden min-w-0 self-center truncate pl-3 text-[11px] font-medium text-white/40 md:block"
+                  className="ml-auto hidden min-w-0 self-center truncate pl-3 text-[11px] font-medium text-subtle md:block"
                 >
                   {pipelineSummary}
                 </p>
@@ -4341,7 +4341,7 @@ export default function ApplicationsWorkspace({
           {totalUnreadCount > 0 ? (
             <div
               data-testid="inbox-unread-total"
-              className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5 text-[11px] text-white/45"
+              className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5 text-[11px] text-muted"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-white/80" aria-hidden="true" />
               {totalUnreadCount} unread message{totalUnreadCount === 1 ? "" : "s"}
@@ -4424,7 +4424,7 @@ export default function ApplicationsWorkspace({
                       <InteractionAvatar name={item.counterpartyName} src={item.counterpartyAvatarUrl} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[11px] font-medium text-white/42">
+                          <span className="truncate text-[11px] font-medium text-subtle">
                             {interactionKindLabel(item)}
                           </span>
                           <div className="flex shrink-0 items-center gap-1.5">
@@ -4437,7 +4437,7 @@ export default function ApplicationsWorkspace({
                                 {formatBadgeCount(messageUnread)}
                               </span>
                             ) : null}
-                            <span className="text-[11px] text-white/38">{item.updatedAtLabel}</span>
+                            <span className="text-[11px] text-subtle">{item.updatedAtLabel}</span>
                           </div>
                         </div>
                         <div className="mt-0.5 flex items-center gap-2">
@@ -4454,7 +4454,7 @@ export default function ApplicationsWorkspace({
                           </span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs text-white/52">{rowSubtitle(item)}</span>
+                          <span className="truncate text-xs text-muted">{rowSubtitle(item)}</span>
                           {/*
                             Exactly one state indicator. When a row has a work
                             state, that is the more useful of the two — the
@@ -4587,7 +4587,7 @@ export default function ApplicationsWorkspace({
                           "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors",
                           isStarred(selected)
                             ? "text-amber-200/90 hover:bg-white/[0.07]"
-                            : "text-white/40 hover:bg-white/[0.07] hover:text-white/70",
+                            : "text-subtle hover:bg-white/[0.07] hover:text-white/70",
                         ].join(" ")}
                       >
                         <Icon name={isStarred(selected) ? "bookmark" : "bookmark"} className="h-4 w-4" />
@@ -4814,7 +4814,7 @@ export default function ApplicationsWorkspace({
                       ) : (
                         <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-12 text-center">
                           <p className="text-sm font-medium text-white/55">No messages yet.</p>
-                          <p className="mx-auto mt-1 max-w-xs text-xs text-white/40">
+                          <p className="mx-auto mt-1 max-w-xs text-xs text-subtle">
                             {selectedActive
                               ? "Start the conversation with a quick reply below."
                               : "There aren’t any messages on this thread yet."}
@@ -4822,7 +4822,7 @@ export default function ApplicationsWorkspace({
                         </div>
                       )}
                       {typing ? (
-                        <p data-testid="conversation-typing" className="mt-4 px-1 text-xs font-medium text-white/45">
+                        <p data-testid="conversation-typing" className="mt-4 px-1 text-xs font-medium text-muted">
                           {firstNameOf(selected.counterpartyName)} is typing…
                         </p>
                       ) : null}
@@ -4874,7 +4874,7 @@ export default function ApplicationsWorkspace({
                       ) : null}
                       {selectedInteractionBlocked ? (
                         <div className="flex flex-col items-center gap-2 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
-                          <p className="text-xs text-white/50">
+                          <p className="text-xs text-muted">
                             {selectedBlockedByMe
                               ? `You blocked ${firstNameOf(selected.counterpartyName)}. This history remains available.`
                               : "This conversation is unavailable for new messages."}
@@ -4900,7 +4900,7 @@ export default function ApplicationsWorkspace({
                         </div>
                       ) : selectedMessagingClosed ? (
                         <div className="flex flex-col items-center gap-1.5 py-1 text-center sm:flex-row sm:justify-between sm:gap-3 sm:text-left">
-                          <p className="text-xs text-white/50">{resolutionLine(selected)}</p>
+                          <p className="text-xs text-muted">{resolutionLine(selected)}</p>
                           {forward ? (
                             <Link
                               href={forward.href}
@@ -5011,7 +5011,7 @@ export default function ApplicationsWorkspace({
                               rows={1}
                               aria-label="Reply message"
                               placeholder={`Message ${firstNameOf(selected.counterpartyName)}…`}
-                              className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:outline-none"
+                              className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle focus:outline-none"
                             />
                             <button
                               type="button"
@@ -5021,7 +5021,7 @@ export default function ApplicationsWorkspace({
                               className={
                                 replyDraft.trim() && !sending
                                   ? "inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white text-black transition-colors hover:bg-white/90"
-                                  : "inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/30"
+                                  : "inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-subtle"
                               }
                             >
                               <Icon name="send" className="h-4 w-4" />
@@ -5030,15 +5030,15 @@ export default function ApplicationsWorkspace({
                           {sendError ? (
                             <p className="mt-1.5 text-[11px] text-rose-300/80">{sendError}</p>
                           ) : !liveMode ? (
-                            <p className="mt-1.5 text-[11px] text-white/35">
+                            <p className="mt-1.5 text-[11px] text-subtle">
                               Demo only — replies aren’t delivered yet.
                             </p>
                           ) : null}
                         </div>
                       ) : liveMode && selected && !selectedMessagingClosed ? (
                         <div className="flex items-center gap-2 py-1">
-                          <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
-                          <p className="text-[11px] text-white/40">
+                          <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-subtle" />
+                          <p className="text-[11px] text-subtle">
                             {selectedConversationLoadFailed
                               ? "Couldn’t load this conversation. Retrying…"
                               : "Loading conversation…"}
@@ -5046,8 +5046,8 @@ export default function ApplicationsWorkspace({
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 py-1">
-                          <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-white/30" />
-                          <p className="text-[11px] text-white/40">
+                          <Icon name="send" className="h-3.5 w-3.5 shrink-0 text-subtle" />
+                          <p className="text-[11px] text-subtle">
                             {selectedMessagingClosed
                               ? "This thread is closed to new messages."
                               : "Messaging will open up here once the thread is active."}
@@ -5100,7 +5100,7 @@ export default function ApplicationsWorkspace({
               onSwitchMode={onModeChange ? () => onModeChange(otherMode) : undefined}
             />
           ) : (
-            <div className="hidden h-full items-center justify-center px-6 py-16 text-xs text-white/40 lg:flex">
+            <div className="hidden h-full items-center justify-center px-6 py-16 text-xs text-subtle lg:flex">
               Nothing to review in this section yet.
             </div>
           )}
@@ -5201,7 +5201,7 @@ export default function ApplicationsWorkspace({
               maxLength={2000}
               data-testid="stage-confirm-note"
               placeholder={`Optional message to ${firstNameOf(selected.counterpartyName)}…`}
-              className="mt-2 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 focus:border-white/25 focus:outline-none"
+              className="mt-2 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
             />
           ) : pendingAction?.backendStatus === "hired" ? (
             <p>This shares the decision and creates the work engagement.</p>

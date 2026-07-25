@@ -90,7 +90,7 @@ export default function RecommendedChecklistPopup<StepId extends string>({
               {strengthLabel}
             </span>
             <span
-              className="text-[11px] font-semibold tabular-nums text-white/48"
+              className="text-[11px] font-semibold tabular-nums text-muted"
               aria-label={`${progress}% complete`}
             >
               {progress}%
@@ -103,7 +103,7 @@ export default function RecommendedChecklistPopup<StepId extends string>({
             style={{ width: `${progress}%` }}
           />
         </div>
-        <p className="mt-2 text-[11px] leading-4 text-white/38">
+        <p className="mt-2 text-[11px] leading-4 text-subtle">
           Small details can help the right people decide faster.
         </p>
         <ul className="mt-2.5 space-y-1" aria-label={`Recommended details ${progress}% complete`}>
@@ -119,7 +119,7 @@ export default function RecommendedChecklistPopup<StepId extends string>({
                   className={[
                     "group flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/24",
                     item.complete
-                      ? "text-white/42 hover:bg-white/[0.025] hover:text-white/52"
+                      ? "text-subtle hover:bg-white/[0.025] hover:text-muted"
                       : "text-white/66 hover:bg-white/[0.045] hover:text-white/86",
                   ].join(" ")}
                 >

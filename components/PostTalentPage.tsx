@@ -107,7 +107,7 @@ const LEGACY_STEP_MAP: Record<string, Step> = {
 };
 
 const inputBase =
-  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.07]";
+  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.07]";
 const selectBase =
   "h-11 w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.055] px-3 text-sm text-white outline-none transition-colors focus:border-white/25 focus:bg-white/[0.07]";
 const choiceButton = (active: boolean) =>
@@ -120,9 +120,9 @@ const choiceButton = (active: boolean) =>
 const footerSecondaryButton =
   "inline-flex h-10 min-w-[116px] cursor-pointer items-center justify-center rounded-xl border border-white/[0.16] bg-white/[0.065] px-4 text-sm font-semibold text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[background-color,border-color,color,transform] hover:border-white/25 hover:bg-white/[0.095] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55";
 const footerIconButton =
-  "inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-white bg-white text-black transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/15 disabled:text-white/36 disabled:opacity-100";
+  "inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-white bg-white text-black transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/15 disabled:text-subtle disabled:opacity-100";
 const footerDisabledIconButton =
-  "inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl border border-white/10 bg-white/15 text-white/36";
+  "inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl border border-white/10 bg-white/15 text-subtle";
 
 const parseList = (value: string) =>
   value
@@ -275,9 +275,9 @@ function CreatorContextChipField({
           <div className="text-xs font-semibold text-white/78">
             <LabelWithIcon icon={icon}>{label}</LabelWithIcon>
           </div>
-          <div className="mt-0.5 text-[11px] text-white/42">{helper}</div>
+          <div className="mt-0.5 text-[11px] text-subtle">{helper}</div>
         </div>
-        <div className="text-[11px] text-white/35">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
+        <div className="text-[11px] text-subtle">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
       </div>
 
       {value.length ? (
@@ -291,7 +291,7 @@ function CreatorContextChipField({
       ) : null}
 
       <input
-        className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25 focus:bg-white/[0.065]"
+        className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.065]"
         value={query}
         placeholder={`Add ${label.toLowerCase()}`}
         onChange={(event) => setQuery(event.target.value)}
@@ -431,7 +431,7 @@ function ServicesBulletEditor({
             <button
               type="button"
               onClick={() => removeRow(row.id)}
-              className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/48 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+              className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-muted transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
               aria-label={`Remove service ${index + 1}`}
               title="Remove"
             >
@@ -443,7 +443,7 @@ function ServicesBulletEditor({
       <button
         type="button"
         onClick={addRow}
-        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-semibold text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+        className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-semibold text-muted transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
       >
         <Icon name="plus" className="h-4 w-4" />
         Add service
@@ -484,7 +484,7 @@ function Field({
       <span className="flex items-center justify-between gap-3 text-xs font-medium text-white/55">
         <span>
           {label}
-          {required ? <span className="text-white/50"> *</span> : null}
+          {required ? <span className="text-muted"> *</span> : null}
         </span>
         {error ? (
           <span className="inline-flex items-center gap-1 text-amber-100/78">
@@ -507,7 +507,7 @@ function LabelWithIcon({
 }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <Icon name={icon} className="h-3.5 w-3.5 shrink-0 text-white/45" />
+      <Icon name={icon} className="h-3.5 w-3.5 shrink-0 text-muted" />
       <span>{children}</span>
     </span>
   );
@@ -722,7 +722,7 @@ function TalentPublishReadyDialog({
           <ul className="mt-4 space-y-2 text-sm text-white/58">
             {missing.slice(0, 4).map((item) => (
               <li key={item.id} className="flex items-center gap-2">
-                <Icon name="plus" className="h-3.5 w-3.5 text-white/35" />
+                <Icon name="plus" className="h-3.5 w-3.5 text-subtle" />
                 <span>{item.label}</span>
               </li>
             ))}
@@ -1438,7 +1438,7 @@ export default function PostTalentPage() {
             <Field
               label={
                 <LabelWithIcon icon="indian-rupee">
-                  Rate <span className="text-white/50">*</span>
+                  Rate <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
               wide
@@ -1468,7 +1468,7 @@ export default function PostTalentPage() {
                       placeholder="Min"
                     />
                   </div>
-                  <span className="hidden text-base text-white/50 select-none sm:inline-flex">–</span>
+                  <span className="hidden text-base text-muted select-none sm:inline-flex">–</span>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/55">
                       ₹
@@ -1660,7 +1660,7 @@ export default function PostTalentPage() {
                       ].join(" ")}
                     >
                       <p className="line-clamp-1 text-sm font-semibold text-white/88">{item.title}</p>
-                      <p className="mt-1 line-clamp-1 text-xs text-white/48">
+                      <p className="mt-1 line-clamp-1 text-xs text-muted">
                         {[item.role_name || item.role || item.user_role_in_project, item.source_type, item.tools?.slice(0, 2).join(" · ")]
                           .filter(Boolean)
                           .join(" · ")}

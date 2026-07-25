@@ -100,7 +100,7 @@ export default function RequirementSelector({
                 <span className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white/90">{copy.owner}</span>
                 </span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-white/45">{copy.ownerHint}</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted">{copy.ownerHint}</span>
               </span>
               <span
                 className={[
@@ -134,7 +134,7 @@ export default function RequirementSelector({
             placeholder="e.g. Share one similar video and explain your role."
             aria-invalid={Boolean(customInstructionError)}
             className={[
-              "mt-2 min-h-[84px] w-full rounded-xl border bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.07]",
+              "mt-2 min-h-[84px] w-full rounded-xl border bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.07]",
               customInstructionError ? "border-amber-200/35" : "border-white/10",
             ].join(" ")}
           />

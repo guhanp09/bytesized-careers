@@ -232,7 +232,7 @@ export function ChipSelectEditor({
               : searchPlaceholder ?? `Search ${title.toLowerCase()}`
           }
           aria-label={allowCustom ? `Add ${title.toLowerCase()}` : `Search ${title.toLowerCase()}`}
-          className="h-9 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+          className="h-9 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
         />
       ) : null}
 
@@ -333,7 +333,7 @@ export function SingleChoiceChips({
           onChange={(event) => onChange(event.target.value)}
           placeholder={customPlaceholder ?? "Or type your own"}
           aria-label={`Custom ${label.toLowerCase()}`}
-          className="h-9 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+          className="h-9 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
         />
       ) : null}
     </div>
@@ -414,7 +414,7 @@ export function WorkingHoursField({
               onChange={(event) => onTimezoneChange(event.target.value)}
               aria-label="Timezone"
               placeholder="IST"
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
             />
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -454,7 +454,7 @@ export function EditorActions({
       <button
         type="button"
         onClick={onCancel}
-        className="cursor-pointer text-xs font-medium text-white/48 transition-colors hover:text-white"
+        className="cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
       >
         Cancel
       </button>
@@ -466,7 +466,7 @@ export function EditorActions({
         title={`Save ${title.toLowerCase()}`}
         className={[
           "inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
-          saving ? "bg-white/20 text-white/45" : "cursor-pointer bg-white text-black hover:bg-white/90",
+          saving ? "bg-white/20 text-muted" : "cursor-pointer bg-white text-black hover:bg-white/90",
         ].join(" ")}
       >
         <Icon name={saving ? "clock" : "check"} className="h-4 w-4" />

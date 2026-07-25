@@ -37,7 +37,7 @@ type SummaryFactProps = {
 function SummaryFact({ icon, label, value, prominent = false }: SummaryFactProps) {
   return (
     <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3.5">
-      <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">
+      <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
         <Icon name={icon} className="h-3.5 w-3.5 shrink-0" />
         <span>{label}</span>
       </dt>
@@ -107,9 +107,9 @@ export default function JobHero({
     verificationState.verified
       ? { icon: "check" as const, label: "Verified hiring identity", tone: "text-emerald-100/78" }
       : verificationStatus === "PENDING"
-        ? { icon: "clock" as const, label: "Verification pending", tone: "text-white/52" }
+        ? { icon: "clock" as const, label: "Verification pending", tone: "text-muted" }
         : verificationStatus === "UNVERIFIED" || verificationStatus === "REJECTED"
-          ? { icon: "shield" as const, label: "Hiring identity not verified", tone: "text-white/48" }
+          ? { icon: "shield" as const, label: "Hiring identity not verified", tone: "text-muted" }
           : null;
   const platforms = uniqueJobText([...(job.platforms || []), job.platform]).map(platformLabel);
   const formats = uniqueJobText(job.formatsHiredFor || []);
@@ -122,11 +122,11 @@ export default function JobHero({
     <section className="rounded-3xl border border-white/[0.08] bg-white/[0.06] p-5 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)] sm:p-7">
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/48">
+          <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
             <span>{role.name}</span>
             {role.specialization ? (
               <>
-                <span aria-hidden="true" className="text-white/22">•</span>
+                <span aria-hidden="true" className="text-disabled">•</span>
                 <span className="normal-case tracking-normal text-white/56">{role.specialization}</span>
               </>
             ) : null}
@@ -150,7 +150,7 @@ export default function JobHero({
             className="h-11 w-11 flex-shrink-0 rounded-full border border-white/15 bg-white/10 object-cover sm:h-12 sm:w-12"
           />
         ) : (
-          <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white/52 sm:h-12 sm:w-12">
+          <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-muted sm:h-12 sm:w-12">
             <Icon name="briefcase" className="h-4 w-4" />
           </span>
         )}
@@ -169,7 +169,7 @@ export default function JobHero({
             />
           </div>
           {relationshipText ? <p className="mt-1 break-words text-sm text-white/55">{relationshipText}</p> : null}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/42">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle">
             {job.channel.subscribers !== null ? <span>{formatSubs(job.channel.subscribers)}</span> : null}
             {verification ? (
               <span className={`inline-flex items-center gap-1 ${verification.tone}`}>
@@ -189,9 +189,9 @@ export default function JobHero({
       </dl>
 
       {postedText || deadline.valid ? (
-        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-white/42">
+        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-subtle">
           {postedText ? <span>{postedText}</span> : null}
-          {postedText && deadline.valid ? <span aria-hidden="true" className="text-white/20">•</span> : null}
+          {postedText && deadline.valid ? <span aria-hidden="true" className="text-disabled">•</span> : null}
           {deadline.valid ? (
             <span className={deadline.expired ? "font-medium text-amber-100/76" : "text-white/58"}>
               {deadline.label}

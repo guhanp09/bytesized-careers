@@ -119,7 +119,7 @@ function TalentMetadataCard({
       <div className="space-y-4">
         {visibleRows.map((row) => (
           <div key={row.label} className="min-w-0 space-y-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
               {row.label}
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
@@ -137,7 +137,7 @@ function TalentMetadataCard({
 
         {visibleTools.length ? (
           <div className="min-w-0 space-y-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
               Tools
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
@@ -411,9 +411,9 @@ export default function TalentListingActionsClient({
           <p className="mt-2 text-xs text-amber-200/80">{interestError || "Couldn’t contact talent. Try again."}</p>
         ) : null}
         {interestPresentation?.statusLabel ? (
-          <p className="mt-2 text-xs text-white/52">{interestPresentation.statusLabel}</p>
+          <p className="mt-2 text-xs text-muted">{interestPresentation.statusLabel}</p>
         ) : interestState === "sent" ? (
-          <p className="mt-2 text-xs text-white/52">
+          <p className="mt-2 text-xs text-muted">
             Your hiring request is now visible in Inbox.
           </p>
         ) : null}
@@ -440,7 +440,7 @@ export default function TalentListingActionsClient({
         {saveState === "error" ? (
           <p className="mt-2 text-xs text-amber-200/80">{saveError || "Couldn’t save this listing right now."}</p>
         ) : null}
-        {shareState === "copied" ? <p className="mt-2 text-xs text-white/45">Link copied to your clipboard.</p> : null}
+        {shareState === "copied" ? <p className="mt-2 text-xs text-muted">Link copied to your clipboard.</p> : null}
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           <StatTile icon="eye" value={formatCompactNumber(views)} label="Currently viewing" />
@@ -462,13 +462,13 @@ export default function TalentListingActionsClient({
           type="button"
           onClick={reportListing}
           disabled={reportState === "saving" || reportState === "sent"}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs font-semibold text-white/42 underline-offset-4 transition hover:text-white/72 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs font-semibold text-subtle underline-offset-4 transition hover:text-white/72 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0f] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Icon name="alert" className="h-3.5 w-3.5" />
           {reportState === "saving" ? "Reporting..." : reportState === "sent" ? "Reported" : "Report this listing"}
         </button>
         {reportState === "error" ? (
-          <p className="mt-2 text-xs text-white/45">Couldn’t send the report. Try again.</p>
+          <p className="mt-2 text-xs text-muted">Couldn’t send the report. Try again.</p>
         ) : null}
       </div>
 

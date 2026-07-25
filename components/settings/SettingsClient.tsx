@@ -572,7 +572,7 @@ export default function SettingsClient({
           }}
           className={[
             "inline-flex w-full min-w-max cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 lg:min-w-0",
-            activeSection === section.id ? "bg-white/[0.08] text-white" : "text-white/50 hover:bg-white/[0.05] hover:text-white/80",
+            activeSection === section.id ? "bg-white/[0.08] text-white" : "text-muted hover:bg-white/[0.05] hover:text-white/80",
           ].join(" ")}
         >
           <Icon name={section.icon} className="h-4 w-4 shrink-0" />
@@ -630,7 +630,7 @@ export default function SettingsClient({
 
           <div className="min-w-0">
             <p className="text-xl font-semibold tracking-tight text-white">{displayName}</p>
-            <p className="mt-1 truncate text-sm text-white/48">{username ? `@${username}` : email}</p>
+            <p className="mt-1 truncate text-sm text-muted">{username ? `@${username}` : email}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <StatusPill
                 label={onboardingIntentLabel(me?.onboarding_intent || profile?.onboarding_intent || sessionUser.onboardingIntent)}
@@ -752,11 +752,11 @@ export default function SettingsClient({
                   <label className="space-y-2">
                     <FieldLabel>Username</FieldLabel>
                     <div className="flex h-10 items-center rounded-xl border border-white/10 bg-black/18 px-3 transition-colors focus-within:border-white/24">
-                      <span className="text-sm text-white/38">@</span>
+                      <span className="text-sm text-subtle">@</span>
                       <input
                         value={usernameDraft}
                         onChange={(event) => setUsernameDraft(event.target.value)}
-                        className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-white/28"
+                        className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-subtle"
                         placeholder="your_profile"
                         maxLength={30}
                       />
@@ -824,7 +824,7 @@ export default function SettingsClient({
                         ].join(" ")}
                       >
                         <span className="block text-sm font-semibold">{option.label}</span>
-                        <span className="mt-1 block text-xs leading-5 text-white/46">{option.description}</span>
+                        <span className="mt-1 block text-xs leading-5 text-muted">{option.description}</span>
                       </button>
                     ))}
                   </div>
@@ -1004,7 +1004,7 @@ export default function SettingsClient({
                             value={workingHoursTimezone}
                             onChange={(event) => setWorkingHoursTimezone(event.target.value)}
                             placeholder={DEFAULT_WORKING_HOURS_TIMEZONE}
-                            className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                            className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/24"
                           />
                         </div>
                       ) : null}

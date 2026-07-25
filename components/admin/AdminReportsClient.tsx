@@ -342,7 +342,7 @@ export default function AdminReportsClient({ accessToken }: { accessToken: strin
                   <span className="block truncate font-medium text-white/88">
                     {item.target_label || `${item.target_type} · ${item.target_id.slice(0, 8)}…`}
                   </span>
-                  <span className="mt-0.5 block truncate text-[10.5px] text-white/38">
+                  <span className="mt-0.5 block truncate text-[10.5px] text-subtle">
                     {personLabel(item.target_owner)}
                   </span>
                 </Td>
@@ -353,7 +353,7 @@ export default function AdminReportsClient({ accessToken }: { accessToken: strin
                 </Td>
                 <Td className="max-w-[160px] truncate">{item.reporter ? personLabel(item.reporter) : "Anonymous"}</Td>
                 <Td className="text-right tabular-nums">{item.sibling_count > 0 ? `+${item.sibling_count}` : "—"}</Td>
-                <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
+                <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
                 <Td>
                   <TonePill tone={statusTone(item.status)}>{item.status.replaceAll("_", " ")}</TonePill>
                 </Td>
@@ -413,7 +413,7 @@ export default function AdminReportsClient({ accessToken }: { accessToken: strin
                 <AdminSectionLabel>Reported conversation</AdminSectionLabel>
                 {thread === null ? (
                   <div className="mt-2">
-                    <p className="text-[11.5px] leading-relaxed text-white/45">
+                    <p className="text-[11.5px] leading-relaxed text-muted">
                       Message content opens only through this report, and the view itself is written to
                       the audit log.
                     </p>
@@ -447,18 +447,18 @@ export default function AdminReportsClient({ accessToken }: { accessToken: strin
                             <p className="text-[10.5px] font-semibold text-white/55">
                               {personLabel(message.sender)}
                               {reported ? <span className="ml-2 text-rose-200/85">reported</span> : null}
-                              {message.hidden ? <span className="ml-2 text-white/35">hidden</span> : null}
+                              {message.hidden ? <span className="ml-2 text-subtle">hidden</span> : null}
                             </p>
                             <button
                               type="button"
                               disabled={busy}
                               onClick={() => void toggleMessageHidden(message.id, message.hidden)}
-                              className="cursor-pointer text-[10.5px] font-semibold text-white/45 transition-colors hover:text-white disabled:opacity-40"
+                              className="cursor-pointer text-[10.5px] font-semibold text-muted transition-colors hover:text-white disabled:opacity-40"
                             >
                               {message.hidden ? "Unhide" : "Hide"}
                             </button>
                           </div>
-                          <p className={`mt-1 text-[12px] leading-relaxed ${message.hidden ? "text-white/30 line-through" : "text-white/78"}`}>
+                          <p className={`mt-1 text-[12px] leading-relaxed ${message.hidden ? "text-subtle line-through" : "text-white/78"}`}>
                             {message.body}
                           </p>
                         </div>

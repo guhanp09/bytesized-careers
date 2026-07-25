@@ -85,13 +85,13 @@ export default function AdminAuditClient({ accessToken }: { accessToken: string 
                   onClick={() => setExpanded((value) => (value === entry.id ? null : entry.id))}
                   className="cursor-pointer transition-colors hover:bg-white/[0.03]"
                 >
-                  <Td className="whitespace-nowrap text-white/50">{formatDateTime(entry.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatDateTime(entry.created_at)}</Td>
                   <Td className="max-w-[150px] truncate">{personLabel(entry.actor)}</Td>
                   <Td className="whitespace-nowrap font-medium text-white/85">{entry.action}</Td>
                   <Td className="max-w-[260px] truncate text-white/60">
                     {entry.target_label || `${entry.target_type} · ${entry.target_id.slice(0, 8)}…`}
                   </Td>
-                  <Td className="max-w-[260px] truncate text-white/48">{entry.justification || "—"}</Td>
+                  <Td className="max-w-[260px] truncate text-muted">{entry.justification || "—"}</Td>
                 </tr>
                 {expanded === entry.id && (entry.before_json || entry.after_json || entry.justification) ? (
                   <tr className="bg-white/[0.015]">
@@ -99,7 +99,7 @@ export default function AdminAuditClient({ accessToken }: { accessToken: string 
                       <div className="grid gap-3 text-[11px] sm:grid-cols-2">
                         {entry.before_json ? (
                           <div>
-                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">Before</p>
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle">Before</p>
                             <pre className="overflow-x-auto rounded-lg bg-black/30 p-2.5 text-[10.5px] leading-relaxed text-white/60">
                               {JSON.stringify(entry.before_json, null, 2)}
                             </pre>
@@ -107,7 +107,7 @@ export default function AdminAuditClient({ accessToken }: { accessToken: string 
                         ) : null}
                         {entry.after_json ? (
                           <div>
-                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">After</p>
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle">After</p>
                             <pre className="overflow-x-auto rounded-lg bg-black/30 p-2.5 text-[10.5px] leading-relaxed text-white/60">
                               {JSON.stringify(entry.after_json, null, 2)}
                             </pre>

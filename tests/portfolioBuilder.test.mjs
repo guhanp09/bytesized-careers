@@ -186,7 +186,9 @@ test("non-preview header is a quiet motivational line; no mechanical labels", ()
 test("Back is disabled/greyed on step 1 and active from step 2 onward", () => {
   const source = read(BUILDER);
   assert.match(source, /aria-label="Previous step"/);
-  assert.match(source, /currentWizardIndex === 0\s*\n?\s*\?\s*"cursor-not-allowed text-white\/25"/);
+  // Disabled uses the one tier permitted below AA; active uses an informational
+  // tier, so the two are distinguishable by more than a few percent of opacity.
+  assert.match(source, /currentWizardIndex === 0\s*\n?\s*\?\s*"cursor-not-allowed text-disabled"/);
   assert.match(source, /:\s*"cursor-pointer text-white\/70 hover:text-white"/);
 });
 

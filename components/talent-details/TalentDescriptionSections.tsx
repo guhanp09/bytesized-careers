@@ -52,7 +52,7 @@ export default function TalentDescriptionSections({
         <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
           {rows.map((row) => (
             <div key={row.label}>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">
                 {row.label}
               </dt>
               <dd className="mt-2 text-sm leading-6 text-white/75">{row.value}</dd>
@@ -93,7 +93,7 @@ export default function TalentDescriptionSections({
             {fullPortfolioHref ? (
               <Link
                 href={fullPortfolioHref}
-                className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
               >
                 View Full Portfolio <span aria-hidden="true">→</span>
               </Link>

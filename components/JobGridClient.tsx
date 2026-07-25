@@ -154,7 +154,7 @@ export default function JobGridClient({
       <section className={`min-w-0 px-3 py-8 sm:px-6 ${hasSubfilterRow ? "pt-[8.5rem]" : "pt-24"}`}>
         {notice ? <div className="mb-6 rounded-2xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-4 py-3 text-sm text-[var(--vt-text-secondary,rgba(255,255,255,0.85))]">{notice}</div> : null}
         {activeCount ? (
-          <div className="mb-5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/52" aria-live="polite">
+          <div className="mb-5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted" aria-live="polite">
             <span>{filtered.length} matching job{filtered.length === 1 ? "" : "s"}</span>
             <Link href={clearHref} className="cursor-pointer font-semibold text-white/72 underline decoration-white/20 underline-offset-4 hover:text-white">Reset filters</Link>
           </div>

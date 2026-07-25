@@ -97,7 +97,7 @@ export default function VerifyEmailPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="Email"
                 autoComplete="email"
-                className="h-10 w-full rounded-lg border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
               />
               <button
                 type="button"
@@ -106,7 +106,7 @@ export default function VerifyEmailPage() {
                 className={[
                   "h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] text-sm font-semibold transition-colors",
                   !canResendVerification || resendBusy
-                    ? "text-white/35 cursor-not-allowed"
+                    ? "text-subtle cursor-not-allowed"
                     : "text-white/90 hover:bg-white/[0.08]",
                 ].join(" ")}
               >

@@ -72,7 +72,7 @@ export default function DraftTipTicker({
   return (
     <div
       data-testid="draft-tip"
-      className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-white/45"
+      className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs text-muted"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <Icon name="bolt" className="h-3.5 w-3.5 shrink-0 text-amber-200/65" />

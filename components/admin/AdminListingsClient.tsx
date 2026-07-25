@@ -237,7 +237,7 @@ export default function AdminListingsClient({ accessToken }: { accessToken: stri
                       >
                         {item.title}
                       </a>
-                      <span className="mt-0.5 block truncate text-[10.5px] text-white/38">
+                      <span className="mt-0.5 block truncate text-[10.5px] text-subtle">
                         {item.channel_name || item.category || "—"}
                         {item.is_verified ? <span className="ml-1.5 text-emerald-200/80">verified</span> : null}
                       </span>
@@ -247,7 +247,7 @@ export default function AdminListingsClient({ accessToken }: { accessToken: stri
                     <Td className="text-right tabular-nums">
                       {item.reports_count > 0 ? <span className="text-amber-200/85">{item.reports_count}</span> : "—"}
                     </Td>
-                    <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
+                    <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
                     <Td>
                       <TonePill tone={statusTone(item.deleted_at ? "hidden" : item.status)}>
                         {item.deleted_at ? "hidden" : item.status}
@@ -287,7 +287,7 @@ export default function AdminListingsClient({ accessToken }: { accessToken: stri
                       >
                         {item.title}
                       </a>
-                      <span className="mt-0.5 block truncate text-[10.5px] text-white/38">
+                      <span className="mt-0.5 block truncate text-[10.5px] text-subtle">
                         {item.primary_role || "—"}
                       </span>
                     </Td>
@@ -296,7 +296,7 @@ export default function AdminListingsClient({ accessToken }: { accessToken: stri
                     <Td className="text-right tabular-nums">
                       {item.reports_count > 0 ? <span className="text-amber-200/85">{item.reports_count}</span> : "—"}
                     </Td>
-                    <Td className="whitespace-nowrap text-white/50">{formatAge(item.created_at)}</Td>
+                    <Td className="whitespace-nowrap text-muted">{formatAge(item.created_at)}</Td>
                     <Td>
                       <TonePill tone={statusTone(item.deleted_at ? "hidden" : item.status)}>
                         {item.deleted_at ? "hidden" : item.status}

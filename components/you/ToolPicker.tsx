@@ -321,14 +321,14 @@ export default function ToolPicker({
       ) : null}
 
       <div className="relative">
-        <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+        <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" />
         <input
           id={resolvedInputId}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] pl-9 pr-3 text-sm text-white placeholder:text-white/35 focus:border-white/28 focus:outline-none focus:ring-2 focus:ring-white/10"
+          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] pl-9 pr-3 text-sm text-white placeholder:text-subtle focus:border-white/28 focus:outline-none focus:ring-2 focus:ring-white/10"
           placeholder={placeholder}
         />
       </div>
@@ -345,7 +345,7 @@ export default function ToolPicker({
                 type="button"
                 onClick={() => removeTool(tool)}
                 aria-label={`Remove ${tool}`}
-                className="cursor-pointer rounded-full text-white/45 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                className="cursor-pointer rounded-full text-muted transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
               >
                 <Icon name="x" className="h-3.5 w-3.5" />
               </button>
@@ -366,7 +366,7 @@ export default function ToolPicker({
                   "relative h-9 shrink-0 cursor-pointer px-0.5 text-xs font-semibold whitespace-nowrap transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:ring-offset-2 focus-visible:ring-offset-[#141519]",
                   activeCategory === category.name
                     ? "text-white after:bg-white"
-                    : "text-white/42 after:bg-transparent hover:text-white/72",
+                    : "text-subtle after:bg-transparent hover:text-white/72",
                 ].join(" ")}
               >
                 {category.name}
@@ -384,7 +384,7 @@ export default function ToolPicker({
             onClick={() => addTools([tool])}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:border-white/22 hover:bg-white/[0.07] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
           >
-            <Icon name="plus" className="h-3.5 w-3.5 text-white/40" />
+            <Icon name="plus" className="h-3.5 w-3.5 text-subtle" />
             {tool}
           </button>
         ))}
@@ -394,7 +394,7 @@ export default function ToolPicker({
             onClick={addFromInput}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/82 transition-colors hover:border-white/26 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
           >
-            <Icon name="plus" className="h-3.5 w-3.5 text-white/45" />
+            <Icon name="plus" className="h-3.5 w-3.5 text-muted" />
             Add &quot;{trimmedQuery}&quot;
           </button>
         ) : null}

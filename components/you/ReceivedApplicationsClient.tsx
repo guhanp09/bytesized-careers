@@ -33,7 +33,7 @@ function SectionHeading({
 }) {
   return (
     <h2 className={join("inline-flex items-center gap-2", className)}>
-      <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+      <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
         <Icon name={icon} className="h-4 w-4" />
       </span>
       <span>{children}</span>
@@ -85,13 +85,13 @@ export default function ReceivedApplicationsClient({
             </div>
 
             <label className="mt-3 h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 inline-flex items-center gap-2">
-              <Icon name="search" className="h-4 w-4 text-white/45" />
+              <Icon name="search" className="h-4 w-4 text-muted" />
               <input
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search applicant"
-                className="w-full bg-transparent text-xs text-white/80 placeholder:text-white/35 outline-none"
+                className="w-full bg-transparent text-xs text-white/80 placeholder:text-subtle outline-none"
               />
             </label>
 
@@ -124,11 +124,11 @@ export default function ReceivedApplicationsClient({
                             <span className="mt-0.5 block">
                               <RatingDisplay />
                             </span>
-                            <span className="mt-1 block truncate text-[11px] text-white/50">
+                            <span className="mt-1 block truncate text-[11px] text-muted">
                               Applied to: {applicant.jobAppliedToTitle}
                             </span>
                           </span>
-                          <span className="text-[10px] text-white/45">{applicant.appliedAt}</span>
+                          <span className="text-[10px] text-muted">{applicant.appliedAt}</span>
                         </div>
                       </button>
                     );
@@ -170,7 +170,7 @@ export default function ReceivedApplicationsClient({
                 </div>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <SectionHeading icon="notebook-text" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  <SectionHeading icon="notebook-text" className="text-xs uppercase tracking-[0.14em] text-muted">
                     Applicant summary
                   </SectionHeading>
                   <p className="mt-2 text-sm leading-relaxed text-white/75">{selectedApplicant.bio}</p>
@@ -178,14 +178,14 @@ export default function ReceivedApplicationsClient({
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <SectionHeading icon="briefcase" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    <SectionHeading icon="briefcase" className="text-xs uppercase tracking-[0.14em] text-muted">
                       Applied To
                     </SectionHeading>
                     <p className="mt-2 text-sm text-white/85">{selectedApplicant.jobAppliedToTitle}</p>
-                    <p className="mt-1 text-xs text-white/50">Applied {selectedApplicant.appliedAt}</p>
+                    <p className="mt-1 text-xs text-muted">Applied {selectedApplicant.appliedAt}</p>
                   </article>
                   <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <SectionHeading icon="pin" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    <SectionHeading icon="pin" className="text-xs uppercase tracking-[0.14em] text-muted">
                       Location / Availability
                     </SectionHeading>
                     <p className="mt-2 text-sm text-white/85">{selectedApplicant.location}</p>
@@ -194,7 +194,7 @@ export default function ReceivedApplicationsClient({
                 </div>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <SectionHeading icon="sliders-horizontal" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  <SectionHeading icon="sliders-horizontal" className="text-xs uppercase tracking-[0.14em] text-muted">
                     Skills & Tools
                   </SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -210,7 +210,7 @@ export default function ReceivedApplicationsClient({
                 </article>
 
                 <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <SectionHeading icon="images" className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  <SectionHeading icon="images" className="text-xs uppercase tracking-[0.14em] text-muted">
                     Portfolio Links
                   </SectionHeading>
                   {selectedApplicant.portfolioLinks.length ? (

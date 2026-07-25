@@ -17,9 +17,9 @@ export const LISTING_PANEL_CLASS =
 
 export function SectionLabel({ children, icon }: { children: ReactNode; icon?: IconName }) {
   return (
-    <h2 className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-white/40">
+    <h2 className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-subtle">
       {icon ? (
-        <span aria-hidden="true" className="inline-flex shrink-0 text-white/45">
+        <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
           <Icon name={icon} className="h-4 w-4" />
         </span>
       ) : null}

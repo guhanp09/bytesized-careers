@@ -73,7 +73,7 @@ export default function ImportReviewBanner({
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
-                  className="h-8 cursor-pointer rounded-lg px-2 text-xs font-semibold text-white/50 transition-colors hover:text-white"
+                  className="h-8 cursor-pointer rounded-lg px-2 text-xs font-semibold text-muted transition-colors hover:text-white"
                 >
                   Show all ({attention.length})
                 </button>
@@ -94,7 +94,7 @@ export default function ImportReviewBanner({
         <button
           type="button"
           onClick={onDismiss}
-          className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-xs font-semibold text-white/50 transition-colors hover:text-white"
+          className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-xs font-semibold text-muted transition-colors hover:text-white"
           aria-label="Dismiss import summary"
           data-testid="import-banner-dismiss"
         >

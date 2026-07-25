@@ -303,7 +303,7 @@ export default function AuthPage() {
               placeholder="Email"
               autoComplete="email"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
             <input
               type="password"
@@ -312,7 +312,7 @@ export default function AuthPage() {
               placeholder="Password"
               autoComplete="current-password"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
             <div className="flex items-center justify-between gap-3">
               <Link
@@ -328,7 +328,7 @@ export default function AuthPage() {
                 className={[
                   "text-xs transition-colors cursor-pointer",
                   !canResendVerification || busy || resendBusy
-                    ? "text-white/30 cursor-not-allowed"
+                    ? "text-subtle cursor-not-allowed"
                     : "text-white/65 hover:text-white",
                 ].join(" ")}
               >
@@ -356,9 +356,9 @@ export default function AuthPage() {
               placeholder="Username (lowercase, 3-20 chars)"
               autoComplete="username"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
-            <p className="px-1 text-[11px] text-white/45">
+            <p className="px-1 text-[11px] text-muted">
               Use lowercase letters, numbers, and underscore only. Cannot start with underscore.
             </p>
             <input
@@ -368,7 +368,7 @@ export default function AuthPage() {
               placeholder="Email"
               autoComplete="email"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
             <input
               type="password"
@@ -377,7 +377,7 @@ export default function AuthPage() {
               placeholder="Password (min 8 chars)"
               autoComplete="new-password"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
             <input
               type="password"
@@ -386,7 +386,7 @@ export default function AuthPage() {
               placeholder="Confirm password"
               autoComplete="new-password"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7"
             />
             <div className="flex justify-end">
               <button
@@ -396,7 +396,7 @@ export default function AuthPage() {
                 className={[
                   "text-xs transition-colors cursor-pointer",
                   !canResendVerification || busy || resendBusy
-                    ? "text-white/30 cursor-not-allowed"
+                    ? "text-subtle cursor-not-allowed"
                     : "text-white/65 hover:text-white",
                 ].join(" ")}
               >
@@ -418,7 +418,7 @@ export default function AuthPage() {
         ) : null}
 
         {emailAuthEnabled ? (
-          <div className="my-5 flex items-center gap-3 text-xs text-white/45">
+          <div className="my-5 flex items-center gap-3 text-xs text-muted">
             <span className="h-px flex-1 bg-white/10" />
             <span>or</span>
             <span className="h-px flex-1 bg-white/10" />
@@ -439,7 +439,7 @@ export default function AuthPage() {
           {busy ? "Starting YouTube login..." : "Continue with YouTube"}
         </button>
 
-        <p className="mt-4 text-xs text-white/45">
+        <p className="mt-4 text-xs text-muted">
           By continuing, you agree to use CreatorJobs responsibly.
           <Link href="/" className="ml-1 text-white/70 hover:text-white">
             Back to jobs

@@ -31,7 +31,7 @@ export function HomeWhySection() {
     <section className="space-y-8">
       <Reveal>
         <div className="flex flex-col items-center text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Why CreatorJobs</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">Why CreatorJobs</p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
             Everything creator work needs
           </h2>
@@ -49,7 +49,7 @@ export function HomeWhySection() {
                 <Icon name={item.icon} className="h-5 w-5" />
               </span>
               <p className="text-sm font-semibold text-white">{item.title}</p>
-              <p className="text-[13px] leading-6 text-white/52">{item.body}</p>
+              <p className="text-[13px] leading-6 text-muted">{item.body}</p>
             </div>
           </Reveal>
         ))}

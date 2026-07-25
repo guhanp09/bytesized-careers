@@ -247,9 +247,9 @@ function Section({
 }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">
-      <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-white/42">
+      <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-subtle">
         {icon ? (
-          <span aria-hidden="true" className="inline-flex shrink-0 text-white/48">
+          <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
             <Icon name={icon} className="h-4 w-4" />
           </span>
         ) : null}
@@ -262,7 +262,7 @@ function Section({
 
 function EmptyOwnerPrompt({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2 text-sm text-white/42">
+    <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2 text-sm text-subtle">
       {children}
     </p>
   );
@@ -272,7 +272,7 @@ function FactRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
     <div className="flex items-start justify-between gap-4 border-b border-white/8 py-3 last:border-b-0">
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/36">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-subtle">{label}</span>
       <span className="max-w-[180px] text-right text-sm text-white/76">{value}</span>
     </div>
   );
@@ -344,16 +344,16 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-white/50">{label}</span>
+      <span className="text-xs font-semibold text-muted">{label}</span>
       <div className="mt-2">{children}</div>
     </label>
   );
 }
 
 const fieldClass =
-  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/22 focus:bg-white/[0.06]";
+  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/22 focus:bg-white/[0.06]";
 const textareaClass =
-  "min-h-[118px] w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm leading-relaxed text-white outline-none placeholder:text-white/28 focus:border-white/22 focus:bg-white/[0.06]";
+  "min-h-[118px] w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm leading-relaxed text-white outline-none placeholder:text-subtle focus:border-white/22 focus:bg-white/[0.06]";
 
 export default function ProjectDetailPage({
   project: initialProject,
@@ -599,7 +599,7 @@ export default function ProjectDetailPage({
                       className="h-full w-full object-cover transition-[filter,transform] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-white/42 transition-[filter] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]">
+                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-subtle transition-[filter] duration-300 group-hover/project:brightness-[0.82] group-focus-visible/project:brightness-[0.82]">
                       <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
                     </div>
                   )}
@@ -615,7 +615,7 @@ export default function ProjectDetailPage({
                   {project.thumbnail_url ? (
                     <img src={project.thumbnail_url} alt={project.title} className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-white/42">
+                    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_34%),linear-gradient(135deg,#202126,#111216)] text-subtle">
                       <Icon name={project.source_type === "youtube" ? "youtube" : "briefcase"} className="h-14 w-14" />
                     </div>
                   )}
@@ -641,7 +641,7 @@ export default function ProjectDetailPage({
                     <h1 className="max-w-full text-3xl font-semibold tracking-tight text-inherit underline-offset-4 group-hover/title:underline sm:text-4xl lg:text-5xl">
                       {project.title}
                     </h1>
-                    <span className="mt-2 shrink-0 text-white/42 transition-colors group-hover/title:text-white/72 group-focus-visible/title:text-white/72 sm:mt-2.5">
+                    <span className="mt-2 shrink-0 text-subtle transition-colors group-hover/title:text-white/72 group-focus-visible/title:text-white/72 sm:mt-2.5">
                       <Icon name="external-link" className="h-4 w-4" />
                     </span>
                   </InteractiveProjectLink>
@@ -653,7 +653,7 @@ export default function ProjectDetailPage({
                 {role ? (
                   <p className="mt-3 text-lg font-semibold text-white/82 sm:text-xl">{role}</p>
                 ) : owner ? (
-                  <p className="mt-3 text-sm text-white/42">Add a role for this project.</p>
+                  <p className="mt-3 text-sm text-subtle">Add a role for this project.</p>
                 ) : null}
                 {contextLine ? <p className="mt-3 text-sm text-white/54">{contextLine}</p> : null}
               </div>
@@ -707,7 +707,7 @@ export default function ProjectDetailPage({
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {metricItems.map((metric) => (
                       <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                        <p className="text-xs uppercase tracking-[0.14em] text-white/36">{metric.label}</p>
+                        <p className="text-xs uppercase tracking-[0.14em] text-subtle">{metric.label}</p>
                         <p className="mt-2 text-xl font-semibold text-white/90">{metric.value}</p>
                       </div>
                     ))}
@@ -866,7 +866,7 @@ export default function ProjectDetailPage({
                   <Link
                     href={profileHref}
                     aria-label={`Open profile: ${displayName}`}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.055] text-white/50 transition-[border-color,background-color,color] hover:border-white/18 hover:bg-white/[0.08] hover:text-white/72 focus:outline-none focus:ring-2 focus:ring-white/15"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.055] text-muted transition-[border-color,background-color,color] hover:border-white/18 hover:bg-white/[0.08] hover:text-white/72 focus:outline-none focus:ring-2 focus:ring-white/15"
                   >
                     <Icon name="user" className="h-5 w-5" />
                   </Link>
@@ -878,11 +878,11 @@ export default function ProjectDetailPage({
                   >
                     {displayName}
                   </Link>
-                  <p className="truncate text-xs text-white/48">@{username}</p>
+                  <p className="truncate text-xs text-muted">@{username}</p>
                 </div>
               </div>
               {creatorRole ? <p className="mt-4 text-sm leading-relaxed text-white/68">{creatorRole}</p> : null}
-              {profile.location ? <p className="mt-2 text-sm text-white/48">{profile.location}</p> : null}
+              {profile.location ? <p className="mt-2 text-sm text-muted">{profile.location}</p> : null}
               <div className="mt-3">
                 <RatingDisplay />
               </div>
@@ -890,7 +890,7 @@ export default function ProjectDetailPage({
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.045] p-5">
               <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-white/90">
-                <span aria-hidden="true" className="inline-flex shrink-0 text-white/52">
+                <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
                   <Icon name="file" className="h-4 w-4" />
                 </span>
                 <span>Project facts</span>

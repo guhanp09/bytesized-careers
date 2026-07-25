@@ -719,7 +719,7 @@ function InlineHelpTooltip({
           type="button"
           aria-label={`${label} help`}
           aria-describedby={tooltipId}
-          className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-white/45 transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
+          className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-muted transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
         >
           <Icon name="help" className="h-3.5 w-3.5" />
         </button>
@@ -754,7 +754,7 @@ function OwnerInlineActionButton({
       onClick={onClick}
       aria-expanded={expanded}
       aria-controls={expanded ? controlsId : undefined}
-      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-white"
     >
       <Icon name={icon} className="h-3.5 w-3.5" />
       <span>{label}</span>
@@ -770,7 +770,7 @@ function OwnerInlineGhostLink({
   href: string;
 }) {
   return (
-    <Link href={href} className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-white/50 transition-colors hover:text-white">
+    <Link href={href} className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-white">
       <span>{label}</span>
     </Link>
   );
@@ -792,7 +792,7 @@ function OwnerInlineEditorActions({
       <button
         type="button"
         onClick={onCancel}
-        className="cursor-pointer text-xs font-medium text-white/48 transition-colors hover:text-white"
+        className="cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
       >
         Cancel
       </button>
@@ -819,7 +819,7 @@ function OwnerMetadataSidebar({
         {groups.map((group) => (
           <div key={`owner-metadata-${group.key}`} className="space-y-2">
             <div className="flex items-start justify-between gap-3">
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">{group.label}</h4>
+              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">{group.label}</h4>
               {group.actions}
             </div>
             {group.editor ? (
@@ -831,7 +831,7 @@ function OwnerMetadataSidebar({
                 ))}
               </div>
             ) : (
-              <p className="text-sm leading-6 text-white/46">{group.emptyLabel}</p>
+              <p className="text-sm leading-6 text-muted">{group.emptyLabel}</p>
             )}
           </div>
         ))}
@@ -928,7 +928,7 @@ function OwnerJobCard({
                 }}
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-white/75 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Icon name="trash" className="h-4 w-4 text-white/50" />
+                <Icon name="trash" className="h-4 w-4 text-muted" />
                 Delete job
               </button>
             </div>
@@ -1010,10 +1010,10 @@ function OwnerHiringExperienceList({ items }: { items: Job[] }) {
                 {roleLabel} | {orgName}
               </p>
               <p className="mt-1 text-sm font-medium text-white/58">{job.type || job.contractType || "Engagement"}</p>
-              <p className="mt-1 text-xs text-white/45">
+              <p className="mt-1 text-xs text-muted">
                 {[job.postedShort, job.workMode || job.location].filter(Boolean).join(" · ")}
               </p>
-              {job.tags.length ? <p className="mt-1 text-xs text-white/45">{job.tags.slice(0, 4).join(" · ")}</p> : null}
+              {job.tags.length ? <p className="mt-1 text-xs text-muted">{job.tags.slice(0, 4).join(" · ")}</p> : null}
               <p className="mt-2 text-sm leading-6 text-white/62">{formatListingTitle(job.title)}</p>
             </div>
           </div>
@@ -1130,7 +1130,7 @@ function SaveIconButton({
       className={[
         "inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
         disabled
-          ? "bg-white/20 text-white/45"
+          ? "bg-white/20 text-muted"
           : "cursor-pointer bg-white text-black hover:bg-white/90",
         className,
       ].join(" ")}
@@ -3696,7 +3696,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
           />
         </div>
       ) : draftWorkMode === "Remote" ? (
-        <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] leading-4 text-white/45">
+        <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] leading-4 text-muted">
           Remote — talent can work from anywhere, so no city is needed. Set your timezone below so
           they know your overlap.
         </p>
@@ -4387,7 +4387,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
         <section className="rounded-[28px] border border-white/10 bg-[#15161a] p-5 shadow-[0_24px_78px_-48px_rgba(0,0,0,1)] sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">
                 Profile editor
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
@@ -4403,7 +4403,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   ariaLabel="Save profile changes"
                 />
                 {saveStatus === "saved" ? (
-                  <p className="inline-flex items-center gap-1.5 text-xs text-white/48">
+                  <p className="inline-flex items-center gap-1.5 text-xs text-muted">
                     <Icon name="check" className="h-3.5 w-3.5" />
                     Changes saved
                   </p>
@@ -4436,7 +4436,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     "flex w-full origin-left cursor-pointer items-center rounded-xl px-3 py-2 text-left text-sm transition-all duration-200",
                     active
                       ? "translate-x-1 font-semibold text-white"
-                      : "font-medium text-white/46 hover:translate-x-0.5 hover:text-white/72",
+                      : "font-medium text-muted hover:translate-x-0.5 hover:text-white/72",
                   ].join(" ")}
                 >
                   {label}
@@ -4488,7 +4488,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     value={draftDisplayName}
                     onChange={(event) => setDraftDisplayName(event.target.value)}
                     disabled={hasYouTubeDisplayName}
-                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 disabled:text-white/40"
+                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle disabled:text-subtle"
                     placeholder="Add your name"
                   />
                 </label>
@@ -4497,7 +4497,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <input
                     value={draftHeadline}
                     onChange={(event) => setDraftHeadline(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                     placeholder="Video editor for creator-led channels"
                   />
                 </label>
@@ -4535,7 +4535,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   {workingHoursMode === "fixed" ? (
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(120px,0.8fr)]">
                       <label className="space-y-1">
-                        <span className="text-xs text-white/45">From</span>
+                        <span className="text-xs text-muted">From</span>
                         <input
                           type="time"
                           value={workingHoursStart}
@@ -4544,7 +4544,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-xs text-white/45">To</span>
+                        <span className="text-xs text-muted">To</span>
                         <input
                           type="time"
                           value={workingHoursEnd}
@@ -4553,11 +4553,11 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-xs text-white/45">Time zone</span>
+                        <span className="text-xs text-muted">Time zone</span>
                         <input
                           value={workingHoursTimezone}
                           onChange={(event) => setWorkingHoursTimezone(event.target.value)}
-                          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                          className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                           placeholder="IST"
                         />
                       </label>
@@ -4583,7 +4583,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <button
                     type="button"
                     onClick={startAddExperience}
-                    className="w-fit cursor-pointer text-xs font-semibold text-white/50 transition-colors hover:text-white"
+                    className="w-fit cursor-pointer text-xs font-semibold text-muted transition-colors hover:text-white"
                   >
                     Add new
                   </button>
@@ -4610,7 +4610,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
 
                   <ProfileExperienceList
                     items={experienceDraft}
-                    emptyState={<p className="text-sm text-white/50">No experience added yet.</p>}
+                    emptyState={<p className="text-sm text-muted">No experience added yet.</p>}
                     editingItemId={editingExperienceId}
                     renderEditingItem={() => renderExperienceEditor(true)}
                     actions={(item) => (
@@ -4619,7 +4619,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           type="button"
                           onClick={() => editExperienceItem(item)}
                           aria-label={`Edit experience at ${item.organization_name}`}
-                          className="cursor-pointer text-[11px] font-semibold text-white/48 transition-colors hover:text-white"
+                          className="cursor-pointer text-[11px] font-semibold text-muted transition-colors hover:text-white"
                         >
                           Edit
                         </button>
@@ -4628,7 +4628,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           onClick={() => void removeExperienceItem(item.id)}
                           aria-label={`Remove experience at ${item.organization_name}`}
                           disabled={experienceSaving}
-                          className="cursor-pointer text-[11px] font-semibold text-white/38 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          className="cursor-pointer text-[11px] font-semibold text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Remove
                         </button>
@@ -4649,7 +4649,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       value={roleSearch}
                       onChange={(event) => setRoleSearch(event.target.value)}
                       placeholder="Video editor, thumbnail designer..."
-                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                     />
                   </label>
                   <label className="block space-y-1.5">
@@ -4661,7 +4661,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         setContentStyleDraft((prev) => ({ ...prev, primary_niche: event.target.value }))
                       }
                       placeholder="Retention editing, faceless finance, podcasts..."
-                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                     />
                   </label>
                 </div>
@@ -4753,7 +4753,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     onChange={(event) =>
                       setContentStyleDraft((prev) => ({ ...prev, target_audience: event.target.value }))
                     }
-                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                    className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                     placeholder="New content creators learning retention editing"
                   />
                 </label>
@@ -4806,7 +4806,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     <input
                       value={draftHiringWebsiteOrSocialUrl}
                       onChange={(event) => setDraftHiringWebsiteOrSocialUrl(event.target.value)}
-                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                      className="h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                       placeholder="https://youtube.com/@channel"
                     />
                   </label>
@@ -4816,7 +4816,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <textarea
                     value={draftHiringChannelsOrPagesManaged}
                     onChange={(event) => setDraftHiringChannelsOrPagesManaged(event.target.value)}
-                    className="min-h-[82px] w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35"
+                    className="min-h-[82px] w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-subtle"
                     placeholder="Optional context applicants can use to understand your hiring background."
                   />
                 </label>
@@ -4916,7 +4916,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                 ].map(([label, enabled]) => (
                   <div key={String(label)} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
                     <p className="text-sm font-semibold text-white/82">{label}</p>
-                    <p className="mt-1 text-xs text-white/48">{enabled ? "Shown when populated" : "Hidden by privacy settings"}</p>
+                    <p className="mt-1 text-xs text-muted">{enabled ? "Shown when populated" : "Hidden by privacy settings"}</p>
                   </div>
                 ))}
               </div>
@@ -4981,7 +4981,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         ? "Change banner image"
                         : "Add banner image"}
                   </span>
-                  <span className="mt-1 block text-xs text-white/42">Recommended 3200 × 410px</span>
+                  <span className="mt-1 block text-xs text-subtle">Recommended 3200 × 410px</span>
                 </span>
               </button>
             </>
@@ -5121,7 +5121,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     type="button"
                     onClick={openBasicsEditor}
                     aria-label="Edit profile"
-                    className="group/action relative mt-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/[0.045] hover:text-white/86 focus:outline-none focus:ring-2 focus:ring-white/15"
+                    className="group/action relative mt-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-white/[0.045] hover:text-white/86 focus:outline-none focus:ring-2 focus:ring-white/15"
                   >
                     <Icon name="pencil" className="h-4 w-4" />
                     <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-[#111216] px-2 py-1 text-[11px] font-semibold text-white/72 opacity-0 shadow-[0_14px_35px_-22px_rgba(0,0,0,1)] transition-opacity group-hover/action:opacity-100 group-focus-visible/action:opacity-100">
@@ -5132,7 +5132,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[15px] font-medium text-white/55">
                   {heroMetadataParts.map((part, index) => (
                     <span key={`hero-meta-${part}`} className="inline-flex items-center gap-2.5">
-                      {index > 0 ? <span className="text-white/22">•</span> : null}
+                      {index > 0 ? <span className="text-disabled">•</span> : null}
                       <span>{part}</span>
                     </span>
                   ))}
@@ -5177,8 +5177,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   className={[
                     "group/action relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors",
                     profile.username
-                      ? "text-white/48 hover:bg-white/[0.045] hover:text-white/86 focus:outline-none focus:ring-2 focus:ring-white/15 cursor-pointer"
-                      : "text-white/28 cursor-not-allowed",
+                      ? "text-muted hover:bg-white/[0.045] hover:text-white/86 focus:outline-none focus:ring-2 focus:ring-white/15 cursor-pointer"
+                      : "text-subtle cursor-not-allowed",
                   ].join(" ")}
                 >
                   <Icon name="external-link" className="h-4 w-4" />
@@ -5215,7 +5215,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   <input
                     value={draftDisplayName}
                     onChange={(event) => setDraftDisplayName(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24"
                     placeholder="Your name or brand"
                     maxLength={80}
                   />
@@ -5224,11 +5224,11 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                 <label className="space-y-2">
                   <span className="text-xs font-semibold text-white/55">Username</span>
                   <div className="flex h-11 items-center rounded-xl border border-white/10 bg-black/18 px-3 transition-colors focus-within:border-white/24">
-                    <span className="text-sm text-white/38">@</span>
+                    <span className="text-sm text-subtle">@</span>
                     <input
                       value={draftUsername}
                       onChange={(event) => setDraftUsername(event.target.value)}
-                      className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-white/28"
+                      className="min-w-0 flex-1 bg-transparent px-1 text-sm text-white outline-none placeholder:text-subtle"
                       placeholder="your_profile"
                       maxLength={30}
                     />
@@ -5285,7 +5285,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       <input
                         value={workingHoursTimezone}
                         onChange={(event) => setWorkingHoursTimezone(event.target.value)}
-                        className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                        className="h-10 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/24"
                         placeholder="IST"
                       />
                     </div>
@@ -5300,7 +5300,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         type="button"
                         aria-label="Headline help"
                         aria-describedby="headline-help-tooltip"
-                        className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-white/45 transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
+                        className="peer inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/12 text-muted transition-colors hover:border-white/22 hover:text-white/74 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/74"
                       >
                         <Icon name="help" className="h-3.5 w-3.5" />
                       </button>
@@ -5317,14 +5317,14 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     <input
                       value={draftHeadline}
                       onChange={(event) => setDraftHeadline(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24"
                       placeholder=""
                       maxLength={160}
                     />
                     {!draftHeadline.trim() ? (
                       <span
                         aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-3 right-3 flex items-center overflow-hidden whitespace-nowrap text-sm text-white/28"
+                        className="pointer-events-none absolute inset-y-0 left-3 right-3 flex items-center overflow-hidden whitespace-nowrap text-sm text-subtle"
                       >
                         <span className="truncate">{headlineGhostText}</span>
                         <span className="ml-0.5 h-4 border-l border-white/35 motion-safe:animate-pulse" />
@@ -5362,7 +5362,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           <input
                             value={link.value}
                             onChange={(event) => updateBasicsSocialLink(link.id, event.target.value)}
-                            className="h-11 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+                            className="h-11 rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24"
                             placeholder="https://instagram.com/yourhandle"
                           />
                           <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.025] px-3 text-xs font-semibold text-white/58">
@@ -5375,7 +5375,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                             type="button"
                             onClick={() => removeBasicsSocialLink(link.id)}
                             aria-label="Remove social link"
-                            className="h-11 cursor-pointer rounded-xl border border-white/10 bg-white/[0.025] px-3 text-xs font-semibold text-white/50 transition-colors hover:bg-white/[0.07] hover:text-white"
+                            className="h-11 cursor-pointer rounded-xl border border-white/10 bg-white/[0.025] px-3 text-xs font-semibold text-muted transition-colors hover:bg-white/[0.07] hover:text-white"
                           >
                             Remove
                           </button>
@@ -5491,7 +5491,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         value={draftBio}
                         onChange={(event) => setDraftBio(event.target.value)}
                         autoFocus
-                        className="min-h-[124px] w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-white/15"
+                        className="min-h-[124px] w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-3 text-sm leading-6 text-white placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-white/15"
                         placeholder={OWNER_BIO_EMPTY_STATE}
                         maxLength={1200}
                       />
@@ -5508,7 +5508,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                   ) : ownerBioText ? (
                     <p className="max-w-3xl text-sm leading-6 text-white/68 sm:text-[15px]">{ownerBioText}</p>
                   ) : (
-                    <p className="max-w-3xl text-sm leading-6 text-white/46 sm:text-[15px]">
+                    <p className="max-w-3xl text-sm leading-6 text-muted sm:text-[15px]">
                       {OWNER_BIO_EMPTY_STATE}
                     </p>
                   )}
@@ -5557,7 +5557,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                 type="button"
                                 onClick={() => editExperienceItem(item)}
                                 aria-label={`Edit experience at ${item.organization_name}`}
-                                className="cursor-pointer text-[11px] font-semibold text-white/48 transition-colors hover:text-white"
+                                className="cursor-pointer text-[11px] font-semibold text-muted transition-colors hover:text-white"
                               >
                                 Edit
                               </button>
@@ -5566,7 +5566,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                 onClick={() => void removeExperienceItem(item.id)}
                                 aria-label={`Remove experience at ${item.organization_name}`}
                                 disabled={experienceSaving}
-                                className="cursor-pointer text-[11px] font-semibold text-white/38 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                className="cursor-pointer text-[11px] font-semibold text-subtle transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Remove
                               </button>
@@ -5574,7 +5574,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           )}
                         />
                       ) : experienceEditorOpen ? null : (
-                        <p className="text-sm leading-6 text-white/50">No experience added yet.</p>
+                        <p className="text-sm leading-6 text-muted">No experience added yet.</p>
                       )}
                     </OwnerProfileInfoSection>
 
@@ -5587,7 +5587,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                             type="button"
                             aria-label="View Full Portfolio"
                             onClick={() => setTab("portfolio")}
-                            className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                            className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
                           >
                             <span className="inline-flex items-center gap-1">
                               <span>View Full Portfolio</span>
@@ -5600,7 +5600,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       {ownerPortfolioPreview.length ? (
                         <OwnerPortfolioPreviewList items={ownerPortfolioPreview} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/46">
+                        <p className="text-sm leading-6 text-muted">
                           Add a few strong projects so visitors can see the work exactly as it will appear publicly.
                         </p>
                       )}
@@ -5612,7 +5612,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         <button
                           type="button"
                           onClick={() => setTab("reviews")}
-                          className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                          className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
                         >
                           View All Reviews <span aria-hidden="true">→</span>
                         </button>
@@ -5621,7 +5621,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       {ownerReviewItems.length ? (
                         <ProfileReviewsPreviewRail items={ownerReviewItems} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/46">
+                        <p className="text-sm leading-6 text-muted">
                           Reviews will appear here after collaborators leave feedback. They cannot be added from your profile.
                         </p>
                       )}
@@ -5642,7 +5642,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       {ownerHiringExperiencePreview.length ? (
                         <OwnerHiringExperienceList items={ownerHiringExperiencePreview} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/46">
+                        <p className="text-sm leading-6 text-muted">
                           Closed or completed jobs will show up here once you have recruiter-side hiring history.
                         </p>
                       )}
@@ -5656,7 +5656,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           <button
                             type="button"
                             onClick={() => setTab("jobs")}
-                            className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                            className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
                           >
                             View All Jobs <span aria-hidden="true">→</span>
                           </button>
@@ -5670,7 +5670,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           onJobDeleted={handleJobDeleted}
                         />
                       ) : (
-                        <p className="text-sm leading-6 text-white/46">
+                        <p className="text-sm leading-6 text-muted">
                           Posted jobs will appear here. Use your existing job posting flow to add or manage them.
                         </p>
                       )}
@@ -5682,7 +5682,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                         <button
                           type="button"
                           onClick={() => setTab("reviews")}
-                          className="shrink-0 cursor-pointer text-xs font-medium text-white/50 transition-colors hover:text-white"
+                          className="shrink-0 cursor-pointer text-xs font-medium text-muted transition-colors hover:text-white"
                         >
                           View All Reviews <span aria-hidden="true">→</span>
                         </button>
@@ -5691,7 +5691,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       {ownerReviewItems.length ? (
                         <ProfileReviewsPreviewRail items={ownerReviewItems} />
                       ) : (
-                        <p className="text-sm leading-6 text-white/46">
+                        <p className="text-sm leading-6 text-muted">
                           Reviews will appear here after talent leave feedback. They cannot be added from your profile.
                         </p>
                       )}
@@ -5796,7 +5796,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <input
-                        className="h-10 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                        className="h-10 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                         placeholder="https://www.youtube.com/watch?v=..."
                         value={portfolioYouTubeUrl}
                         onChange={(event) => setPortfolioYouTubeUrl(event.target.value)}
@@ -5823,7 +5823,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                 className="h-full w-full object-cover"
                               />
                             ) : (
-                              <div className="h-full w-full inline-flex items-center justify-center text-white/35">
+                              <div className="h-full w-full inline-flex items-center justify-center text-subtle">
                                 <Icon name="youtube" className="h-8 w-8" />
                               </div>
                             )}
@@ -5846,7 +5846,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                             <label className="text-xs text-white/60">Your role in this project (optional)</label>
                             <input
                               list="portfolio-role-options"
-                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                               placeholder="Video Editor"
                               value={portfolioRoleInProject}
                               onChange={(event) => setPortfolioRoleInProject(event.target.value)}
@@ -5859,7 +5859,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                             </label>
                             <input
                               list="portfolio-tool-options"
-                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                               placeholder="Premiere Pro, After Effects"
                               value={portfolioYouTubeTools}
                               onChange={(event) => setPortfolioYouTubeTools(event.target.value)}
@@ -5895,7 +5895,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           <div className="space-y-1">
                             <label className="text-xs text-white/60">Self-reported retention %</label>
                             <input
-                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                               type="number"
                               min="0"
                               max="100"
@@ -5925,7 +5925,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           </div>
                         </div>
                         <textarea
-                          className="min-h-[80px] w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35"
+                          className="min-h-[80px] w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-subtle"
                           placeholder="Notes / contribution summary"
                           value={portfolioYouTubeContributionSummary}
                           onChange={(event) => setPortfolioYouTubeContributionSummary(event.target.value)}
@@ -5945,16 +5945,16 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       {editingPortfolioId ? "Edit work sample" : "Add custom project"}
                     </h3>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Project title" value={portfolioTitle} onChange={(event) => setPortfolioTitle(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Project title" value={portfolioTitle} onChange={(event) => setPortfolioTitle(event.target.value)} />
                       <select className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white cursor-pointer" value={portfolioSourceType} onChange={(event) => setPortfolioSourceType(event.target.value as typeof portfolioSourceType)}>
                         {PORTFOLIO_SOURCE_OPTIONS.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
                       </select>
                     </div>
-                    <input list="portfolio-role-options" className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Role (optional), e.g. Video Editor" value={portfolioRole} onChange={(event) => setPortfolioRole(event.target.value)} />
-                    <textarea className="min-h-[90px] w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35" placeholder="Description / contribution summary" value={portfolioContributionSummary} onChange={(event) => setPortfolioContributionSummary(event.target.value)} />
+                    <input list="portfolio-role-options" className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Role (optional), e.g. Video Editor" value={portfolioRole} onChange={(event) => setPortfolioRole(event.target.value)} />
+                    <textarea className="min-h-[90px] w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-subtle" placeholder="Description / contribution summary" value={portfolioContributionSummary} onChange={(event) => setPortfolioContributionSummary(event.target.value)} />
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Media URL or project link" value={portfolioMediaUrl} onChange={(event) => setPortfolioMediaUrl(event.target.value)} />
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Thumbnail image URL" value={portfolioThumbnailUrl} onChange={(event) => setPortfolioThumbnailUrl(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Media URL or project link" value={portfolioMediaUrl} onChange={(event) => setPortfolioMediaUrl(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Thumbnail image URL" value={portfolioThumbnailUrl} onChange={(event) => setPortfolioThumbnailUrl(event.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <p className="text-xs text-white/60">Contribution details</p>
@@ -5970,16 +5970,16 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-4">
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Views" value={portfolioManualViews} onChange={(event) => setPortfolioManualViews(event.target.value)} />
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Retention %" value={portfolioCustomRetentionPercent} onChange={(event) => setPortfolioCustomRetentionPercent(event.target.value)} />
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="CTR %" value={portfolioCtrPercent} onChange={(event) => setPortfolioCtrPercent(event.target.value)} />
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Turnaround days" value={portfolioTurnaroundDays} onChange={(event) => setPortfolioTurnaroundDays(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Views" value={portfolioManualViews} onChange={(event) => setPortfolioManualViews(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Retention %" value={portfolioCustomRetentionPercent} onChange={(event) => setPortfolioCustomRetentionPercent(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="CTR %" value={portfolioCtrPercent} onChange={(event) => setPortfolioCtrPercent(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Turnaround days" value={portfolioTurnaroundDays} onChange={(event) => setPortfolioTurnaroundDays(event.target.value)} />
                     </div>
-                    <input className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Metric notes, links, conversion, subscribers gained, etc." value={portfolioMetricNotes} onChange={(event) => setPortfolioMetricNotes(event.target.value)} />
-                    <input className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Links (comma or newline separated)" value={portfolioLinks} onChange={(event) => setPortfolioLinks(event.target.value)} />
+                    <input className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Metric notes, links, conversion, subscribers gained, etc." value={portfolioMetricNotes} onChange={(event) => setPortfolioMetricNotes(event.target.value)} />
+                    <input className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Links (comma or newline separated)" value={portfolioLinks} onChange={(event) => setPortfolioLinks(event.target.value)} />
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input list="portfolio-tool-options" className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Tools (comma separated)" value={portfolioTools} onChange={(event) => setPortfolioTools(event.target.value)} />
-                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35" placeholder="Tags (comma separated)" value={portfolioTags} onChange={(event) => setPortfolioTags(event.target.value)} />
+                      <input list="portfolio-tool-options" className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Tools (comma separated)" value={portfolioTools} onChange={(event) => setPortfolioTools(event.target.value)} />
+                      <input className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle" placeholder="Tags (comma separated)" value={portfolioTags} onChange={(event) => setPortfolioTags(event.target.value)} />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4">
                       <select className="h-10 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white cursor-pointer" value={portfolioStatus} onChange={(event) => setPortfolioStatus(event.target.value as "now" | "past")}>
@@ -6019,7 +6019,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                       <div className="grid gap-3 md:grid-cols-2">
                         {featuredPortfolio.slice(0, 2).map((item) => (
                           <article key={`featured-${item.id}`} className="rounded-2xl border border-white/15 bg-white/[0.06] p-3">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">Featured</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Featured</p>
                             <p className="mt-1 text-sm font-semibold text-white/90">{item.title}</p>
                             <p className="mt-1 text-xs text-white/55">{item.role_name || item.role || sourceLabel(item.source_type, item.public_metrics?.source_type)}</p>
                           </article>
@@ -6040,7 +6040,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                           <option value="all">All sources</option>
                           {PORTFOLIO_SOURCE_OPTIONS.map((source) => <option key={`filter-${source}`} value={source}>{sourceLabel(source)}</option>)}
                         </select>
-                        <input className="h-8 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-white placeholder:text-white/35" placeholder="Filter role" value={portfolioFilterRole} onChange={(event) => setPortfolioFilterRole(event.target.value)} />
+                        <input className="h-8 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-white placeholder:text-subtle" placeholder="Filter role" value={portfolioFilterRole} onChange={(event) => setPortfolioFilterRole(event.target.value)} />
                       </div>
                     </div>
 
@@ -6062,7 +6062,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                   {item.thumbnail_url ? (
                                     <img src={item.thumbnail_url} alt={item.title} className="h-full w-full object-cover" />
                                   ) : (
-                                    <div className="h-full min-h-[150px] w-full inline-flex items-center justify-center text-white/35">
+                                    <div className="h-full min-h-[150px] w-full inline-flex items-center justify-center text-subtle">
                                       <Icon name={item.source_type === "youtube" ? "youtube" : "briefcase"} className="h-9 w-9" />
                                     </div>
                                   )}
@@ -6072,7 +6072,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
                                     <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">{sourceLabel(item.source_type, item.public_metrics?.source_type)}</span>
                                     <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] font-semibold text-white/65">{item.verification_status === "youtube_metadata_verified" ? "YouTube metadata verified" : "Self-reported"}</span>
                                     {item.is_featured ? <span className="rounded-full border border-white/20 bg-white/[0.1] px-2 py-1 text-[11px] font-semibold text-white">Featured</span> : null}
-                                    <span className="text-[11px] text-white/45">{formatDateShort(item.published_at || item.published_date || item.created_at)}</span>
+                                    <span className="text-[11px] text-muted">{formatDateShort(item.published_at || item.published_date || item.created_at)}</span>
                                   </div>
                                   <h4 className="mt-3 text-base font-semibold text-white/90">{item.title}</h4>
                                   <p className="mt-1 text-xs text-white/55">{item.role_name || item.role || item.user_role_in_project || "Role not set"}</p>
@@ -6138,7 +6138,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-white/95">Profile setup</h2>
-                  <p className="mt-1 text-xs text-white/50">
+                  <p className="mt-1 text-xs text-muted">
                     {setupCompletionCount} of {setupTasks.length} complete
                   </p>
                 </div>
@@ -6204,7 +6204,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
               </span>
               <span>
                 <span className="block text-xs font-semibold text-white/90">Profile setup</span>
-                <span className="block text-[11px] text-white/48">{setupWidgetPercent}% complete</span>
+                <span className="block text-[11px] text-muted">{setupWidgetPercent}% complete</span>
               </span>
             </button>
           )}

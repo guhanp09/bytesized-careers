@@ -74,7 +74,7 @@ function FieldShell({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-white/34">
+      <label htmlFor={htmlFor} className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">
         {label}
         {required ? <span className="ml-1 text-red-300/70">*</span> : null}
       </label>
@@ -160,7 +160,7 @@ function UrlSourceIconButton({ value, error }: { value: string; error?: string |
         type="button"
         disabled
         aria-label="URL link unavailable"
-        className="cursor-default rounded-md p-1 text-white/35"
+        className="cursor-default rounded-md p-1 text-subtle"
       >
         {icon}
       </button>
@@ -173,7 +173,7 @@ function UrlSourceIconButton({ value, error }: { value: string; error?: string |
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open ${platformLabel(inferred.platform)} link`}
-      className="cursor-pointer rounded-md p-1 text-white/48 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      className="cursor-pointer rounded-md p-1 text-muted transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
     >
       {icon}
     </a>
@@ -200,7 +200,7 @@ function SaveIconButton({
       title={ariaLabel}
       className={[
         "inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 disabled:cursor-not-allowed disabled:opacity-55",
-        disabled ? "bg-white/20 text-white/45" : "cursor-pointer bg-white text-black hover:bg-white/90",
+        disabled ? "bg-white/20 text-muted" : "cursor-pointer bg-white text-black hover:bg-white/90",
       ].join(" ")}
     >
       <Icon name={saving ? "clock" : "check"} className="h-4 w-4" />
@@ -305,7 +305,7 @@ export default function ProfileExperienceEditor({
 
   const inputClassName = (hasError?: boolean) =>
     [
-      "h-11 w-full rounded-xl border bg-white/[0.035] px-3 text-sm text-white [color-scheme:dark] placeholder:text-white/34 hover:bg-white/[0.04] focus:bg-white/[0.035] focus:text-white focus:outline-none focus:ring-2",
+      "h-11 w-full rounded-xl border bg-white/[0.035] px-3 text-sm text-white [color-scheme:dark] placeholder:text-subtle hover:bg-white/[0.04] focus:bg-white/[0.035] focus:text-white focus:outline-none focus:ring-2",
       hasError
         ? "border-red-300/35 focus:border-red-300/45 focus:ring-red-300/15"
         : "border-white/10 focus:border-white/20 focus:ring-white/10",
@@ -558,7 +558,7 @@ export default function ProfileExperienceEditor({
               }}
               rows={2}
               className={[
-                "w-full max-w-[9rem] resize-none rounded-lg border bg-transparent px-1 py-1 text-center text-sm font-semibold leading-5 text-white/76 placeholder:text-white/28 hover:bg-white/[0.025] focus:bg-white/[0.035] focus:outline-none focus:ring-2",
+                "w-full max-w-[9rem] resize-none rounded-lg border bg-transparent px-1 py-1 text-center text-sm font-semibold leading-5 text-white/76 placeholder:text-subtle hover:bg-white/[0.025] focus:bg-white/[0.035] focus:outline-none focus:ring-2",
                 validationErrors.organization_name
                   ? "border-red-300/35 focus:border-red-300/45 focus:ring-red-300/15"
                   : "border-transparent hover:border-white/10 focus:border-white/15 focus:ring-white/10",
@@ -648,7 +648,7 @@ export default function ProfileExperienceEditor({
                               organization_links: draft.organization_links.filter((item) => item.id !== link.id),
                             })
                           }
-                          className="cursor-pointer text-white/40 transition-colors hover:text-white"
+                          className="cursor-pointer text-subtle transition-colors hover:text-white"
                         >
                           ×
                         </button>
@@ -690,7 +690,7 @@ export default function ProfileExperienceEditor({
                   <button
                     type="button"
                     onClick={() => setIsAddingLink(true)}
-                    className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-white/48 transition-colors hover:text-white"
+                    className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-muted transition-colors hover:text-white"
                   >
                     <Icon name="plus" className="h-3.5 w-3.5" />
                     Add another link
@@ -738,10 +738,10 @@ export default function ProfileExperienceEditor({
                 />
               </div>
             </FieldShell>
-            <span className="hidden pb-3 text-sm text-white/32 lg:block">→</span>
+            <span className="hidden pb-3 text-sm text-subtle lg:block">→</span>
             <FieldShell label="End" required={!draft.is_current} error={validationErrors.end_date}>
               {draft.is_current ? (
-                <div className="flex h-10 min-w-[122px] items-center rounded-xl border border-white/10 bg-white/[0.02] px-3 text-sm text-white/52">
+                <div className="flex h-10 min-w-[122px] items-center rounded-xl border border-white/10 bg-white/[0.02] px-3 text-sm text-muted">
                   Present
                 </div>
               ) : (
@@ -779,7 +779,7 @@ export default function ProfileExperienceEditor({
                 </div>
               )}
             </FieldShell>
-            <label className="inline-flex w-fit cursor-pointer items-center gap-2 pb-2 text-xs font-medium text-white/52">
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 pb-2 text-xs font-medium text-muted">
               <input
                 type="checkbox"
                 checked={draft.is_current}
@@ -841,10 +841,10 @@ export default function ProfileExperienceEditor({
                 maxLength={500}
                 onChange={(event) => updateDraft({ description: event.target.value.slice(0, 500) })}
                 rows={3}
-                className="min-h-[96px] w-full resize-y rounded-[20px] border border-white/10 bg-white/[0.035] px-3 pb-7 pt-2.5 text-sm leading-6 text-white placeholder:text-white/34 focus:border-white/20 focus:bg-white/[0.035] focus:outline-none focus:ring-2 focus:ring-white/10"
+                className="min-h-[96px] w-full resize-y rounded-[20px] border border-white/10 bg-white/[0.035] px-3 pb-7 pt-2.5 text-sm leading-6 text-white placeholder:text-subtle focus:border-white/20 focus:bg-white/[0.035] focus:outline-none focus:ring-2 focus:ring-white/10"
                 placeholder="Describe your contribution. What did you create, improve, manage, or deliver for this channel/page?"
               />
-              <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] text-white/35">
+              <span className="pointer-events-none absolute bottom-2 right-3 text-[11px] text-subtle">
                 {draft.description.length}/500
               </span>
             </div>

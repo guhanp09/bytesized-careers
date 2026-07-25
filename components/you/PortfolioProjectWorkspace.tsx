@@ -637,7 +637,7 @@ export function PortfolioProjectCard({
             ].join(" ")}
           />
         ) : (
-          <div className="h-full w-full inline-flex items-center justify-center text-white/35">
+          <div className="h-full w-full inline-flex items-center justify-center text-subtle">
             <Icon name={item.source_type === "youtube" ? "youtube" : "briefcase"} className="h-10 w-10" />
           </div>
         )}
@@ -654,7 +654,7 @@ export function PortfolioProjectCard({
         ) : null}
         <h4 className="line-clamp-2 text-base font-semibold leading-snug text-white/95">{item.title}</h4>
         <p className="mt-1 line-clamp-1 text-sm font-semibold text-white/78">{item.role_name || item.role || item.user_role_in_project || "Role not set"}</p>
-        {sourceLine ? <p className="mt-1 line-clamp-1 text-xs text-white/48">{sourceLine}</p> : null}
+        {sourceLine ? <p className="mt-1 line-clamp-1 text-xs text-muted">{sourceLine}</p> : null}
         {summaryPreview ? (
           <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-white/62">{summaryPreview}</p>
         ) : null}
@@ -672,7 +672,7 @@ export function PortfolioProjectCard({
                   aria-expanded={menuOpen}
                   aria-label="Project actions"
                   onClick={() => setMenuOpen((open) => !open)}
-                  className="group/action relative inline-flex h-8 w-8 items-center justify-center rounded-full text-white/38 transition-colors hover:bg-white/[0.045] hover:text-white/82 focus:outline-none focus:ring-2 focus:ring-white/15 cursor-pointer"
+                  className="group/action relative inline-flex h-8 w-8 items-center justify-center rounded-full text-subtle transition-colors hover:bg-white/[0.045] hover:text-white/82 focus:outline-none focus:ring-2 focus:ring-white/15 cursor-pointer"
                 >
                   <span className="-mt-1 text-xl leading-none">⋯</span>
                   <span className="pointer-events-none absolute bottom-full right-0 mb-1.5 whitespace-nowrap rounded-lg border border-white/10 bg-[#111216] px-2 py-1 text-[11px] font-semibold text-white/72 opacity-0 shadow-[0_14px_35px_-22px_rgba(0,0,0,1)] transition-opacity group-hover/action:opacity-100 group-focus-visible/action:opacity-100">
@@ -770,7 +770,7 @@ export function AddWorkSampleCard({
       <div className="flex w-full flex-col">
         <div className="relative aspect-video overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.018))]">
           <div className="absolute inset-0 bg-black/8 transition-colors duration-200 group-hover:bg-black/[0.03]" />
-          <div className="absolute inset-0 flex items-center justify-center text-white/52 transition-colors duration-200 group-hover:text-white/78">
+          <div className="absolute inset-0 flex items-center justify-center text-muted transition-colors duration-200 group-hover:text-white/78">
             <div className="flex flex-col items-center gap-3">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/12 bg-white/[0.035] shadow-[0_16px_40px_-26px_rgba(0,0,0,1)] transition-colors duration-200 group-hover:border-white/22 group-hover:bg-white/[0.06]">
                 <Icon name="plus" className="h-7 w-7 transition-colors duration-200 group-hover:text-white/92" />
@@ -788,8 +788,8 @@ export function AddWorkSampleCard({
           <div className="space-y-2">
             <p className="text-[16px] font-semibold leading-snug text-white/86">Project title</p>
             <p className="text-sm font-medium text-white/58">Role</p>
-            <p className="text-xs text-white/40">Source · date</p>
-            <p className="text-sm leading-relaxed text-white/30">Short summary preview…</p>
+            <p className="text-xs text-subtle">Source · date</p>
+            <p className="text-sm leading-relaxed text-subtle">Short summary preview…</p>
           </div>
         </div>
       </div>
@@ -1598,7 +1598,7 @@ export default function PortfolioProjectWorkspace({
       <div className="p-4">
         <p className="truncate text-sm font-semibold text-white/90">{draft.title || "Project title"}</p>
         <p className="mt-1 text-sm font-medium text-white/72">{draft.roleName || "Role"}</p>
-        <p className="mt-1 text-xs text-white/45">{previewSourceLine || "Source · date"}</p>
+        <p className="mt-1 text-xs text-muted">{previewSourceLine || "Source · date"}</p>
         <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-white/65">
           {previewSummary || "Short summary preview..."}
         </p>
@@ -1666,7 +1666,7 @@ export default function PortfolioProjectWorkspace({
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input
                   id="project-builder-url"
-                  className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                   placeholder="https://..."
                   value={draft.sourceUrl}
                   onChange={(event) => {
@@ -1689,7 +1689,7 @@ export default function PortfolioProjectWorkspace({
             <label className="block">
               <span className="text-xs font-semibold text-white/55">Project title</span>
               <input
-                className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                 placeholder="e.g. Finance explainer cleanup"
                 value={draft.title}
                 onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
@@ -1702,7 +1702,7 @@ export default function PortfolioProjectWorkspace({
               <input
                 list="portfolio-project-role-options"
                 aria-invalid={localError === REQUIRED_ROLE_ERROR}
-                className={`mt-2 h-11 w-full rounded-xl border bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 ${
+                className={`mt-2 h-11 w-full rounded-xl border bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle ${
                   localError === REQUIRED_ROLE_ERROR
                     ? "border-amber-200/50 focus:border-amber-200/70"
                     : "border-white/10"
@@ -1720,7 +1720,7 @@ export default function PortfolioProjectWorkspace({
             <label className="block sm:col-span-2">
               <span className="text-xs font-semibold text-white/55">Brief summary of your contribution</span>
               <textarea
-                className="mt-2 min-h-[86px] w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35"
+                className="mt-2 min-h-[86px] w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-subtle"
                 maxLength={220}
                 placeholder="Packaging, pacing, and execution for a creator-led YouTube workflow."
                 value={draft.shortSummary}
@@ -1737,7 +1737,7 @@ export default function PortfolioProjectWorkspace({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={draft.thumbnailUrl} alt="Thumbnail preview" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm font-semibold text-white/42">
+                  <div className="flex h-full items-center justify-center text-sm font-semibold text-subtle">
                     No thumbnail found
                   </div>
                 )}
@@ -1747,13 +1747,13 @@ export default function PortfolioProjectWorkspace({
               <label className="block">
                 <span className="text-xs font-semibold text-white/55">Thumbnail image URL</span>
                 <input
-                  className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35"
+                  className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle"
                   placeholder="https://image-url..."
                   value={draft.thumbnailUrl}
                   onChange={(event) => setDraft((prev) => ({ ...prev, thumbnailUrl: event.target.value }))}
                 />
               </label>
-              <p className="text-xs leading-relaxed text-white/48">Optional. Paste an image URL to override the generated cover.</p>
+              <p className="text-xs leading-relaxed text-muted">Optional. Paste an image URL to override the generated cover.</p>
               {draft.thumbnailOptions.length ? (
                 <div className="flex flex-wrap gap-2">
                   {draft.thumbnailOptions.map((option) => (
@@ -1790,14 +1790,14 @@ export default function PortfolioProjectWorkspace({
                 const filled = row.trim().length > 0;
                 return (
                   <div key={`highlight-${index}`} className="flex items-center gap-3">
-                    <span className="w-5 shrink-0 text-right text-sm tabular-nums text-white/35" aria-hidden>
+                    <span className="w-5 shrink-0 text-right text-sm tabular-nums text-subtle" aria-hidden>
                       {index + 1}.
                     </span>
                     <input
                       ref={(element) => {
                         highlightRefs.current[index] = element;
                       }}
-                      className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30 focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
                       maxLength={140}
                       placeholder={index === 0 ? "e.g. Reworked hooks for better retention" : "Add another highlight"}
                       value={row}
@@ -1815,7 +1815,7 @@ export default function PortfolioProjectWorkspace({
                         type="button"
                         onClick={() => removeHighlight(index)}
                         aria-label={`Remove highlight: ${row}`}
-                        className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/30 transition-colors hover:bg-white/[0.07] hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                        className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-subtle transition-colors hover:bg-white/[0.07] hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                       >
                         <Icon name="x" className="h-3 w-3" />
                       </button>
@@ -1830,7 +1830,7 @@ export default function PortfolioProjectWorkspace({
                   type="button"
                   onClick={addHighlightRow}
                   aria-label="Add contribution highlight"
-                  className="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-medium text-white/50 transition-colors hover:text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 cursor-pointer"
                 >
                   <Icon name="plus" className="h-4 w-4" />
                   Add highlight
@@ -1844,9 +1844,9 @@ export default function PortfolioProjectWorkspace({
             <BuilderSectionHeading icon="clock">Timestamp notes</BuilderSectionHeading>
             <div className="mt-4 space-y-2">
               <div className="grid grid-cols-[72px_minmax(0,0.9fr)_minmax(0,1.5fr)_auto] items-center gap-2 px-0.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/35">Time</span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/35">Label</span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/35">What changed</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">Time</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">Label</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle">What changed</span>
                 <span aria-hidden />
               </div>
               {timestampRows.map((row, index) => {
@@ -1860,14 +1860,14 @@ export default function PortfolioProjectWorkspace({
                       ref={(element) => {
                         timestampTimeRefs.current[index] = element;
                       }}
-                      className="h-10 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
+                      className="h-10 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 text-sm text-white placeholder:text-subtle focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
                       placeholder="0:12"
                       value={row.time}
                       aria-label={`Timestamp ${index + 1} time`}
                       onChange={(event) => updateTimestampRow(index, "time", event.target.value)}
                     />
                     <input
-                      className="h-10 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30 focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
+                      className="h-10 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
                       maxLength={60}
                       placeholder="Opening hook"
                       value={row.title}
@@ -1875,7 +1875,7 @@ export default function PortfolioProjectWorkspace({
                       onChange={(event) => updateTimestampRow(index, "title", event.target.value)}
                     />
                     <input
-                      className="h-10 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/30 focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
+                      className="h-10 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white placeholder:text-subtle focus:border-white/24 focus:outline-none focus:ring-2 focus:ring-white/10"
                       maxLength={220}
                       placeholder="What changed at this moment"
                       value={row.description}
@@ -1893,7 +1893,7 @@ export default function PortfolioProjectWorkspace({
                         type="button"
                         onClick={() => removeTimestampNote(index)}
                         aria-label={`Remove timestamp note ${index + 1}`}
-                        className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/30 transition-colors hover:bg-white/[0.07] hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
+                        className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-subtle transition-colors hover:bg-white/[0.07] hover:text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15"
                       >
                         <Icon name="x" className="h-3 w-3" />
                       </button>
@@ -1908,7 +1908,7 @@ export default function PortfolioProjectWorkspace({
                   type="button"
                   onClick={addTimestampRow}
                   aria-label="Add timestamp note"
-                  className="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-medium text-white/50 transition-colors hover:text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-sm font-medium text-muted transition-colors hover:text-white/85 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/15 cursor-pointer"
                 >
                   <Icon name="plus" className="h-4 w-4" />
                   Add timestamp
@@ -1951,11 +1951,11 @@ export default function PortfolioProjectWorkspace({
             {editorStep === 0 ? (
               // Step 1 keeps its fuller header (it carries the wide preview layout).
               <>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/42">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-subtle">
                   {editingId ? "Edit project" : draft.sourceType === "youtube" ? "YouTube import" : "New project"}
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-white">Project builder</h3>
-                <p className="mt-1 flex items-center gap-2 text-sm text-white/52">
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted">
                   <Icon name={activeWizardStep.icon} className="h-4 w-4 text-white/55" />
                   <span>{activeWizardStep.label}</span>
                 </p>
@@ -1985,7 +1985,7 @@ export default function PortfolioProjectWorkspace({
               style={{ width: `${wizardProgress}%` }}
             />
           </div>
-          <span className="shrink-0 text-xs font-medium text-white/45">
+          <span className="shrink-0 text-xs font-medium text-muted">
             Step {currentWizardIndex + 1} of {WIZARD_STEPS.length}
           </span>
         </div>
@@ -2042,7 +2042,7 @@ export default function PortfolioProjectWorkspace({
             className={[
               "inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
               currentWizardIndex === 0
-                ? "cursor-not-allowed text-white/25"
+                ? "cursor-not-allowed text-disabled"
                 : "cursor-pointer text-white/70 hover:text-white",
             ].join(" ")}
           >
@@ -2132,7 +2132,7 @@ export default function PortfolioProjectWorkspace({
               <option value="past">Past</option>
             </select>
             <input
-              className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs text-white placeholder:text-white/35"
+              className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs text-white placeholder:text-subtle"
               placeholder="Filter role"
               value={roleFilter}
               onChange={(event) => setRoleFilter(event.target.value)}

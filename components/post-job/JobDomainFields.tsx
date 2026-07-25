@@ -66,9 +66,9 @@ export type JobDomainBaseProps = {
 export type JobDomainWorkMode = "" | "Remote" | "Hybrid" | "On-site";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none transition placeholder:text-subtle focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
 const textareaClass =
-  "min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-sm leading-6 text-white outline-none transition placeholder:text-white/35 focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
+  "min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-sm leading-6 text-white outline-none transition placeholder:text-subtle focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
 const selectClass = `${inputClass} cursor-pointer appearance-none pr-9`;
 const secondaryButtonClass =
   "inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.09] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-40";
@@ -385,7 +385,7 @@ function Notice({ tone = "neutral", children }: { tone?: "neutral" | "amber"; ch
         "rounded-xl border px-3 py-2.5 text-xs leading-5",
         tone === "amber"
           ? "border-amber-200/20 bg-amber-200/[0.07] text-amber-100/85"
-          : "border-white/10 bg-black/10 text-white/50",
+          : "border-white/10 bg-black/10 text-muted",
       ].join(" ")}
     >
       {children}
@@ -414,10 +414,10 @@ export function EmployerContextFields({
     <div className={className}>
       {recruiterIdentityLabel ? (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 text-xs text-white/55">
-          <span className="text-white/38">Posting as</span>
+          <span className="text-subtle">Posting as</span>
           <span className="font-semibold text-white/85">{recruiterIdentityLabel}</span>
           {recruiterIdentityKind ? (
-            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white/48">
+            <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-muted">
               {recruiterIdentityKind}
             </span>
           ) : null}
@@ -579,7 +579,7 @@ export function WorkDeliverablesFields({
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1.25fr)_100px_minmax(0,1fr)]">
                     <div className="space-y-1.5">
-                      <label htmlFor={`${rowId}-type`} className="text-[11px] font-medium text-white/52">
+                      <label htmlFor={`${rowId}-type`} className="text-[11px] font-medium text-muted">
                         Output
                       </label>
                       <select
@@ -605,7 +605,7 @@ export function WorkDeliverablesFields({
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label htmlFor={`${rowId}-quantity`} className="text-[11px] font-medium text-white/52">
+                      <label htmlFor={`${rowId}-quantity`} className="text-[11px] font-medium text-muted">
                         Quantity
                       </label>
                       <input
@@ -624,7 +624,7 @@ export function WorkDeliverablesFields({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label htmlFor={`${rowId}-frequency`} className="text-[11px] font-medium text-white/52">
+                      <label htmlFor={`${rowId}-frequency`} className="text-[11px] font-medium text-muted">
                         Frequency
                       </label>
                       <select
@@ -712,14 +712,14 @@ export function WorkDeliverablesFields({
         ) : (
           <div className="rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-6 text-center">
             <p className="text-sm font-medium text-white/64">No structured deliverables yet</p>
-            <p className="mt-1 text-xs leading-5 text-white/40">
+            <p className="mt-1 text-xs leading-5 text-subtle">
               Add them when quantity and frequency make the workload easier to judge.
             </p>
           </div>
         )}
         {deliverablesError ? <p role="alert" className="mt-2 text-[11px] text-amber-200/90">{deliverablesError}</p> : null}
         {engagementType ? (
-          <p className="mt-3 text-[11px] text-white/38">
+          <p className="mt-3 text-[11px] text-subtle">
             Engagement: {engagementLabel(engagementType)}. Deliverables describe outputs; they do not replace hours or turnaround.
           </p>
         ) : null}
@@ -1232,7 +1232,7 @@ function CustomSkillEditor({
 
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="text-[11px] font-medium text-white/52">
+      <label htmlFor={id} className="text-[11px] font-medium text-muted">
         {label}
       </label>
       {values.length ? (
@@ -1669,7 +1669,7 @@ export function SkillsQualificationsFields({
             })}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-5 text-center text-xs leading-5 text-white/42">
+          <div className="rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-5 text-center text-xs leading-5 text-subtle">
             No structured language requirement. Candidates will not be excluded by an implied proficiency level.
           </div>
         )}
@@ -1913,7 +1913,7 @@ export function TrialApplicationFields({
                 <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3.5">
                   <div className="mb-3">
                     <p className="text-xs font-semibold text-white/80">Trial compensation</p>
-                    <p className="mt-1 text-[11px] leading-4 text-white/42">
+                    <p className="mt-1 text-[11px] leading-4 text-subtle">
                       Trial pay is explicit and separate from the main job rate
                       {compensationUnit ? ` (${compensationUnit})` : ""}.
                     </p>
@@ -2307,7 +2307,7 @@ export function TrialApplicationFields({
             })}
           </ol>
         ) : (
-          <div className="rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-5 text-center text-xs leading-5 text-white/42">
+          <div className="rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-5 text-center text-xs leading-5 text-subtle">
             No stages listed yet. A short, honest process usually gets better-completed applications.
           </div>
         )}
@@ -2330,7 +2330,7 @@ export function TrialApplicationFields({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h4 className="text-xs font-semibold text-white/80">Screening questions</h4>
-              <p className="mt-1 text-[11px] leading-4 text-white/42">
+              <p className="mt-1 text-[11px] leading-4 text-subtle">
                 Ask only what helps you shortlist. Portfolio requests can stay in the existing application requirements.
               </p>
             </div>

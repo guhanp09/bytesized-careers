@@ -231,7 +231,7 @@ export default function QaPersonaDrawer() {
               <span className="h-2 w-2 rounded-full bg-amber-300" />
               <h2 className="text-sm font-semibold">QA workspace</h2>
             </div>
-            <p className="mt-1 text-xs text-white/45">
+            <p className="mt-1 text-xs text-muted">
               {activePersona
                 ? `Acting as ${activePersona.displayName}`
                 : `Controller · ${qaStatus?.controllerEmail || "authorized"}`}
@@ -272,7 +272,7 @@ export default function QaPersonaDrawer() {
               type="button"
               onClick={() => setTab(item)}
               className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-[11px] font-medium capitalize transition ${
-                tab === item ? "bg-white text-black" : "text-white/48 hover:text-white/80"
+                tab === item ? "bg-white text-black" : "text-muted hover:text-white/80"
               }`}
               aria-current={tab === item ? "page" : undefined}
             >
@@ -301,11 +301,11 @@ export default function QaPersonaDrawer() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-semibold text-white/90">{persona.displayName}</h3>
-                        <span className="rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white/45">
+                        <span className="rounded border border-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted">
                           {persona.modes.join(" · ")}
                         </span>
                       </div>
-                      <p className="mt-1 text-[11px] leading-4 text-white/48">{persona.description}</p>
+                      <p className="mt-1 text-[11px] leading-4 text-muted">{persona.description}</p>
                     </div>
                     <button
                       type="button"
@@ -319,7 +319,7 @@ export default function QaPersonaDrawer() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {persona.coverage.slice(0, 4).map((item) => (
-                      <span key={item} className="rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[10px] text-white/38">
+                      <span key={item} className="rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[10px] text-subtle">
                         {item}
                       </span>
                     ))}
@@ -335,7 +335,7 @@ export default function QaPersonaDrawer() {
 
         {tab === "scenarios" ? (
           <div className="space-y-2" data-testid="qa-scenario-list">
-            <p className="px-1 pb-1 text-[11px] leading-4 text-white/40">
+            <p className="px-1 pb-1 text-[11px] leading-4 text-subtle">
               Restore only deterministic QA records. Ordinary staging accounts are never touched.
             </p>
             {scenarios.map((scenario) => (
@@ -343,7 +343,7 @@ export default function QaPersonaDrawer() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-white/85">{scenario.title}</h3>
-                    <p className="mt-1 text-[11px] leading-4 text-white/45">{scenario.purpose}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-muted">{scenario.purpose}</p>
                   </div>
                   <button
                     type="button"
@@ -374,19 +374,19 @@ export default function QaPersonaDrawer() {
           <div className="space-y-2">
             {GUIDE.map((item, index) => (
               <article key={item.title} className="flex gap-3 rounded-lg border border-white/8 bg-white/[0.025] p-3">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-white/12 text-[10px] font-semibold text-white/50">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-white/12 text-[10px] font-semibold text-muted">
                   {index + 1}
                 </span>
                 <div>
                   <h3 className="text-sm font-semibold text-white/85">{item.title}</h3>
-                  <p className="mt-1 text-[11px] leading-4 text-white/45">{item.copy}</p>
+                  <p className="mt-1 text-[11px] leading-4 text-muted">{item.copy}</p>
                   <a href={item.route} className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-blue-300/70 hover:text-blue-200">
                     Begin workflow <Icon name="chevron-right" className="h-3 w-3" />
                   </a>
                 </div>
               </article>
             ))}
-            <p className="px-1 pt-1 text-[10px] leading-4 text-white/35">
+            <p className="px-1 pt-1 text-[10px] leading-4 text-subtle">
               Full two-sided instructions are in QA_PERSONA_TESTING.md.
             </p>
           </div>
@@ -403,7 +403,7 @@ export default function QaPersonaDrawer() {
               ["Backend mode", "Real persistence"],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between gap-4 border-b border-white/7 px-3 py-2.5 last:border-0">
-                <dt className="text-white/42">{label}</dt>
+                <dt className="text-subtle">{label}</dt>
                 <dd className="max-w-[220px] truncate text-right font-medium text-white/75">{value}</dd>
               </div>
             ))}
@@ -422,7 +422,7 @@ export default function QaPersonaDrawer() {
           <div className="w-full rounded-xl border border-amber-200/25 bg-[#15130f] p-4 shadow-2xl" role="alertdialog" aria-modal="true" aria-label="Confirm QA Moderator">
             <Icon name="shield" className="h-6 w-6 text-amber-200" />
             <h3 className="mt-3 text-base font-semibold">Enter QA Moderator?</h3>
-            <p className="mt-1.5 text-xs leading-5 text-white/50">
+            <p className="mt-1.5 text-xs leading-5 text-muted">
               This persona can hide listings, resolve reports, suspend QA users, and view the audit trail. Use only deterministic fixtures.
             </p>
             <div className="mt-4 flex justify-end gap-2">
@@ -451,7 +451,7 @@ export default function QaPersonaDrawer() {
           <div className="w-full rounded-xl border border-white/15 bg-[#121216] p-4 shadow-2xl" role="dialog" aria-modal="true" aria-label={`Restore ${restoreScenario.title}`}>
             <Icon name="refresh" className="h-6 w-6 text-white/65" />
             <h3 className="mt-3 text-base font-semibold">Restore {restoreScenario.title}?</h3>
-            <p className="mt-1.5 text-xs leading-5 text-white/45">Type the phrase below. Only deterministic QA records in this scenario are replaced.</p>
+            <p className="mt-1.5 text-xs leading-5 text-muted">Type the phrase below. Only deterministic QA records in this scenario are replaced.</p>
             <code className="mt-3 block rounded-lg border border-white/8 bg-black/25 px-3 py-2 text-xs text-amber-100/75">
               {restoreScenario.confirmation}
             </code>

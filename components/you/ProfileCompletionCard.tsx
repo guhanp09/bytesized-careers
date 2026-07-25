@@ -187,7 +187,7 @@ export default function ProfileCompletionCard({
                 </span>
               </span>
 
-              {!item.done ? <span className="text-base leading-none text-white/35">›</span> : null}
+              {!item.done ? <span className="text-base leading-none text-subtle">›</span> : null}
             </button>
           ))}
         </div>

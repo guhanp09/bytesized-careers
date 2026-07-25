@@ -782,8 +782,8 @@ function HiringIdentityModal({
                         <HiringIdentityAvatar name={item.name} imageUrl={item.imageUrl} platform={item.platform} />
                         <span className="max-w-full">
                           <span className="line-clamp-2 text-sm font-semibold leading-snug text-white/88">{item.name}</span>
-                          {item.subline ? <span className="mt-1 block truncate text-xs text-white/48">{item.subline}</span> : null}
-                          {item.status ? <span className="mt-1 block text-[11px] text-white/42">{item.status}</span> : null}
+                          {item.subline ? <span className="mt-1 block truncate text-xs text-muted">{item.subline}</span> : null}
+                          {item.status ? <span className="mt-1 block text-[11px] text-subtle">{item.status}</span> : null}
                         </span>
                       </button>
                       {item.removable ? (
@@ -792,7 +792,7 @@ function HiringIdentityModal({
                           aria-label={`Remove ${item.name}`}
                           onClick={() => void removeSavedIdentity(item.choice.id)}
                           disabled={removingIdentityId === item.choice.id}
-                          className="absolute right-3 top-3 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white/44 transition-colors hover:border-white/18 hover:bg-black/45 hover:text-white/72 disabled:cursor-not-allowed disabled:opacity-45"
+                          className="absolute right-3 top-3 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/30 text-muted transition-colors hover:border-white/18 hover:bg-black/45 hover:text-white/72 disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           <Icon name="x" className="h-3.5 w-3.5" />
                         </button>
@@ -818,7 +818,7 @@ function HiringIdentityModal({
               </div>
 
               {!savedTiles.length && !connectedTiles.length ? (
-                <p className="mt-4 text-sm text-white/48">Connect or add the channel/page this job represents.</p>
+                <p className="mt-4 text-sm text-muted">Connect or add the channel/page this job represents.</p>
               ) : null}
 
               <div className="mt-6 flex justify-end gap-2">
@@ -833,7 +833,7 @@ function HiringIdentityModal({
                   type="button"
                   onClick={confirmExisting}
                   disabled={!draftChoice}
-                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle"
                 >
                   Confirm
                 </button>
@@ -872,7 +872,7 @@ function HiringIdentityModal({
                 placeholder="youtube.com/@channel, instagram.com/page..."
                 aria-invalid={Boolean(urlError)}
                 aria-describedby={urlError ? "represented-channel-url-error" : undefined}
-                className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition-colors placeholder:text-white/32 focus:border-white/28 focus:bg-black/24"
+                className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/28 focus:bg-black/24"
               />
               {urlError ? <p id="represented-channel-url-error" role="alert" className="mt-2 text-sm text-amber-100/82">{urlError}</p> : null}
               <div className="mt-6 flex justify-end gap-2">
@@ -887,7 +887,7 @@ function HiringIdentityModal({
                   type="button"
                   onClick={() => void resolveUrl()}
                   disabled={resolveLoading || !url.trim()}
-                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                  className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle"
                 >
                   {resolveLoading ? "Resolving..." : "Continue"}
                 </button>
@@ -909,7 +909,7 @@ function HiringIdentityModal({
                 <p className="mt-1 text-sm text-white/54">
                   {[resolved.platformLabel, resolved.handle || resolved.normalizedUrl].filter(Boolean).join(" · ")}
                 </p>
-                {resolved.followersText ? <p className="mt-1 text-sm text-white/44">{resolved.followersText}</p> : null}
+                {resolved.followersText ? <p className="mt-1 text-sm text-muted">{resolved.followersText}</p> : null}
                 <p className="mt-6 text-sm font-medium text-white/76">Are you hiring for this channel?</p>
               </div>
               <div className="mt-7 flex justify-center gap-2.5">
@@ -943,11 +943,11 @@ function HiringIdentityModal({
                 <div className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 opacity-70">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm font-semibold text-white/72">Sign in as this channel/page</span>
-                    <span className="shrink-0 rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/45">
+                    <span className="shrink-0 rounded-full border border-white/12 bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">
                       Coming soon
                     </span>
                   </div>
-                  <span className="mt-1 block text-sm text-white/45">
+                  <span className="mt-1 block text-sm text-muted">
                     Connect the account that owns this channel/page.
                   </span>
                 </div>
@@ -962,13 +962,13 @@ function HiringIdentityModal({
                     {!verificationCode ? (
                       <span
                         aria-hidden="true"
-                        className="shrink-0 text-base leading-none text-white/35 transition-transform group-hover/code:translate-x-0.5"
+                        className="shrink-0 text-base leading-none text-subtle transition-transform group-hover/code:translate-x-0.5"
                       >
                         →
                       </span>
                     ) : null}
                   </div>
-                  <span className="mt-1 block text-sm text-white/52">
+                  <span className="mt-1 block text-sm text-muted">
                     {createLoading && !verificationCode
                       ? "Generating your code…"
                       : verificationCode
@@ -979,7 +979,7 @@ function HiringIdentityModal({
               </div>
               {verificationCode ? (
                 <div className="mt-5 rounded-2xl border border-white/[0.1] bg-black/24 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-white/38">Your public code</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-subtle">Your public code</p>
                   <div className="mt-2 flex items-stretch gap-2">
                     <p className="flex-1 select-all rounded-xl border border-white/[0.08] bg-white/[0.055] px-3 py-2 font-mono text-lg font-semibold tracking-[0.08em] text-white">
                       {verificationCode}
@@ -997,7 +997,7 @@ function HiringIdentityModal({
                     Add this code to the channel/page bio or About section, then come back and check.
                   </p>
                   {verificationExpiresText ? (
-                    <p className="mt-1 text-xs text-white/38">Expires {verificationExpiresText}</p>
+                    <p className="mt-1 text-xs text-subtle">Expires {verificationExpiresText}</p>
                   ) : null}
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <button
@@ -1012,7 +1012,7 @@ function HiringIdentityModal({
                       type="button"
                       onClick={() => void checkBioVerification()}
                       disabled={checkLoading || createLoading || verificationSucceeded}
-                      className="ui-press h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                      className="ui-press h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle"
                     >
                       {checkLoading ? "Checking…" : verificationSucceeded ? "Confirmed" : "Check code"}
                     </button>
@@ -1044,13 +1044,13 @@ function HiringIdentityModal({
                   type="button"
                   onClick={() => void continueDrafting()}
                   disabled={createLoading}
-                  className="ui-press h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/36"
+                  className="ui-press h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle"
                 >
                   {createLoading ? "Saving…" : "Continue to job post"}
                 </button>
               </div>
               {sessionDisplayName ? (
-                <p className="mt-3 text-right text-[11px] text-white/34">Posting as {sessionDisplayName}</p>
+                <p className="mt-3 text-right text-[11px] text-subtle">Posting as {sessionDisplayName}</p>
               ) : null}
             </>
           ) : null}
@@ -1138,7 +1138,7 @@ function PublishReadyDialog({
           <ul className="mt-4 space-y-2 text-sm text-white/58">
             {missing.slice(0, 4).map((item) => (
               <li key={item.id} className="flex items-center gap-2">
-                <Icon name="plus" className="h-3.5 w-3.5 text-white/35" />
+                <Icon name="plus" className="h-3.5 w-3.5 text-subtle" />
                 <span>{item.label}</span>
               </li>
             ))}
@@ -3312,8 +3312,8 @@ export default function PostJobPage() {
             className="h-10 w-10"
           />
           <div className="min-w-0">
-            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-white/36">
-              <Icon name="briefcase" className="h-3.5 w-3.5 text-white/38" />
+            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-subtle">
+              <Icon name="briefcase" className="h-3.5 w-3.5 text-subtle" />
               <span>Hiring for</span>
             </p>
             <p className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-semibold text-white/86">
@@ -3331,7 +3331,7 @@ export default function PostJobPage() {
                 This job can be completed as a draft, but it will not go live until authorization is verified.
               </p>
             ) : draftId ? (
-              <p className="mt-1 text-xs text-white/42">Editing job draft.</p>
+              <p className="mt-1 text-xs text-subtle">Editing job draft.</p>
             ) : null}
           </div>
         </div>

@@ -49,7 +49,7 @@ function StarPicker({
     <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] py-3 last:border-b-0">
       <div>
         <p className="text-[13px] font-semibold text-white/82">{label}{required ? " *" : ""}</p>
-        {!required ? <p className="mt-0.5 text-[10.5px] text-white/34">Optional</p> : null}
+        {!required ? <p className="mt-0.5 text-[10.5px] text-subtle">Optional</p> : null}
       </div>
       <div className="flex items-center gap-1" role="radiogroup" aria-label={label}>
         {Array.from({ length: 5 }, (_, index) => {
@@ -64,7 +64,7 @@ function StarPicker({
               aria-label={`${rating} star${rating === 1 ? "" : "s"}`}
               onClick={() => onChange(value === rating && !required ? 0 : rating)}
               className={`h-8 w-8 cursor-pointer text-xl transition-[color,transform] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 ${
-                rating <= value ? "text-amber-200" : "text-white/18 hover:text-white/38"
+                rating <= value ? "text-amber-200" : "text-disabled hover:text-subtle"
               }`}
             >
               ★
@@ -198,9 +198,9 @@ export default function ReviewDialog({
       <section ref={dialogRef} className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-white/[0.1] bg-[#15151b] shadow-[0_28px_90px_-25px_rgba(0,0,0,1)] sm:max-w-xl sm:rounded-2xl">
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/[0.07] bg-[#15151b]/95 px-5 py-4 backdrop-blur-xl sm:px-6">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/38">Verified engagement</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Verified engagement</p>
             <h2 id="review-dialog-title" className="mt-1 truncate text-lg font-semibold text-white">Share feedback</h2>
-            <p className="mt-1 truncate text-xs text-white/45">{opportunity.engagement.context_label}</p>
+            <p className="mt-1 truncate text-xs text-muted">{opportunity.engagement.context_label}</p>
           </div>
           <button type="button" aria-label="Close" disabled={saving} onClick={onClose} className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/10 text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-40">
             <Icon name="close" className="h-4 w-4" />
@@ -223,16 +223,16 @@ export default function ReviewDialog({
             rows={4}
             maxLength={1000}
             placeholder="Share what future collaborators should know."
-            className="mt-2 w-full resize-none rounded-xl border border-white/[0.1] bg-black/25 px-3.5 py-3 text-[13px] leading-6 text-white/85 placeholder:text-white/30 focus:border-white/25 focus:outline-none"
+            className="mt-2 w-full resize-none rounded-xl border border-white/[0.1] bg-black/25 px-3.5 py-3 text-[13px] leading-6 text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
           />
-          <div className="mt-1.5 flex justify-between gap-3 text-[10.5px] text-white/34">
+          <div className="mt-1.5 flex justify-between gap-3 text-[10.5px] text-subtle">
             <span>Optional, unless the overall rating is 1–2.</span>
             <span>{draft.feedback.length}/1000</span>
           </div>
 
           <div className="mt-5 flex gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
-            <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-white/42" />
-            <p className="text-[11px] leading-relaxed text-white/48">Your feedback stays private until both sides submit or the 14-day window closes. Before then, the other person is not told whether you submitted.</p>
+            <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-subtle" />
+            <p className="text-[11px] leading-relaxed text-muted">Your feedback stays private until both sides submit or the 14-day window closes. Before then, the other person is not told whether you submitted.</p>
           </div>
           {error ? <p className="mt-3 text-[11px] text-rose-300/85">{error}</p> : null}
         </div>

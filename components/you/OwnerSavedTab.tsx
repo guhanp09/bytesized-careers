@@ -73,7 +73,7 @@ export default function OwnerSavedTab({ backendAccessToken }: { backendAccessTok
     return (
       <div className="w-full max-w-7xl rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-12 text-center">
         <p className="text-sm text-white/70">Nothing saved yet.</p>
-        <p className="mx-auto mt-1.5 max-w-md text-xs text-white/45">
+        <p className="mx-auto mt-1.5 max-w-md text-xs text-muted">
           Save jobs and talent while browsing to keep your shortlist together here.
         </p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">

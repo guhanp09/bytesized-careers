@@ -54,7 +54,7 @@ export default function AdminOverviewClient({ accessToken }: { accessToken: stri
                 : "border-white/[0.07] bg-white/[0.03] hover:border-white/[0.18]",
             ].join(" ")}
           >
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/45">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">
               {entry.label}
             </p>
             <p className="mt-1.5 text-2xl font-semibold tabular-nums text-white">{entry.value}</p>
@@ -66,37 +66,37 @@ export default function AdminOverviewClient({ accessToken }: { accessToken: stri
         <AdminCard className="p-4">
           <AdminSectionLabel>Marketplace shape</AdminSectionLabel>
           <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-[12px]">
-            <p className="text-white/45">Users</p>
+            <p className="text-muted">Users</p>
             <p className="text-right tabular-nums text-white/85">
               {data.users_total}
               {data.users_suspended > 0 ? (
                 <span className="ml-2 text-rose-200/75">{data.users_suspended} suspended</span>
               ) : null}
             </p>
-            <p className="text-white/45">Jobs (live / drafts / paused)</p>
+            <p className="text-muted">Jobs (live / drafts / paused)</p>
             <p className="text-right tabular-nums text-white/85">
               {data.jobs_by_status.published ?? 0} / {data.jobs_by_status.draft ?? 0} /{" "}
               {data.jobs_by_status.paused ?? 0}
             </p>
-            <p className="text-white/45">Talent listings (live / drafts)</p>
+            <p className="text-muted">Talent listings (live / drafts)</p>
             <p className="text-right tabular-nums text-white/85">
               {data.talent_by_status.published ?? 0} / {data.talent_by_status.draft ?? 0}
             </p>
-            <p className="text-white/45">Hidden by moderation</p>
+            <p className="text-muted">Hidden by moderation</p>
             <p className="text-right tabular-nums text-white/85">
               {data.jobs_deleted + data.talent_deleted}
             </p>
-            <p className="text-white/45">Applications (total · 7d)</p>
+            <p className="text-muted">Applications (total · 7d)</p>
             <p className="text-right tabular-nums text-white/85">
               {data.applications_total} · {data.applications_new_7d}
             </p>
-            <p className="text-white/45">Hiring requests (total · 7d)</p>
+            <p className="text-muted">Hiring requests (total · 7d)</p>
             <p className="text-right tabular-nums text-white/85">
               {data.interests_total} · {data.interests_new_7d}
             </p>
-            <p className="text-white/45">Messages</p>
+            <p className="text-muted">Messages</p>
             <p className="text-right tabular-nums text-white/85">{data.messages_total}</p>
-            <p className="text-white/45">Active entitlements</p>
+            <p className="text-muted">Active entitlements</p>
             <p className="text-right tabular-nums text-white/85">{data.entitlements_active}</p>
           </div>
         </AdminCard>
@@ -105,20 +105,20 @@ export default function AdminOverviewClient({ accessToken }: { accessToken: stri
           <AdminSectionLabel>System</AdminSectionLabel>
           <div className="mt-3 space-y-2.5 text-[12px]">
             <div className="flex items-center justify-between">
-              <span className="text-white/45">Environment</span>
+              <span className="text-muted">Environment</span>
               <TonePill tone={data.env === "production" ? "active" : "warn"}>{data.env}</TonePill>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-white/45">Email mode</span>
+              <span className="text-muted">Email mode</span>
               <TonePill tone="neutral">{data.email_mode}</TonePill>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-white/45">Email delivery</span>
+              <span className="text-muted">Email delivery</span>
               <TonePill tone={data.email_delivery_enabled ? "active" : "dim"}>
                 {data.email_delivery_enabled ? "enabled" : "mocked"}
               </TonePill>
             </div>
-            <p className="pt-1 text-[11px] leading-relaxed text-white/38">
+            <p className="pt-1 text-[11px] leading-relaxed text-subtle">
               Notification emails queue to the outbox and are mocked until a domain + provider are
               configured. Inspect them under Platform.
             </p>

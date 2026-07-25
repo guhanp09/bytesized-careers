@@ -94,7 +94,7 @@ export default function ProfileHeaderCard({
             </h1>
 
             <p className="mt-1 text-sm text-white/65">
-              YouTube channel <span className="text-white/40">•</span>{" "}
+              YouTube channel <span className="text-subtle">•</span>{" "}
               <span className={connectionColor}>{connectionText}</span>
             </p>
 
@@ -106,9 +106,9 @@ export default function ProfileHeaderCard({
 
         <div className="w-full lg:w-auto lg:min-w-[230px] flex flex-col gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">Profile visibility</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-muted">Profile visibility</div>
             <div className="mt-2 text-sm font-semibold text-white/80 leading-none">Public when core details are filled out</div>
-            <p className="mt-2 text-xs leading-5 text-white/45">
+            <p className="mt-2 text-xs leading-5 text-muted">
               Add a headline, tools, and work samples to make this profile easier to trust and scan.
             </p>
           </div>

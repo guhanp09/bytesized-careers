@@ -264,7 +264,7 @@ export default function DevToolsPanel() {
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="rounded-md px-2 py-1 text-xs text-white/50 hover:bg-white/5 hover:text-white"
+          className="rounded-md px-2 py-1 text-xs text-muted hover:bg-white/5 hover:text-white"
           aria-label="Collapse dev tools"
         >
           Hide
@@ -276,7 +276,7 @@ export default function DevToolsPanel() {
 
       {/* Persona */}
       <div className="mt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Persona</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">Persona</p>
         <select
           data-testid="dev-persona-select"
           className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-white/[0.05] px-2 text-xs text-white outline-none focus:border-amber-300/40"
@@ -297,13 +297,13 @@ export default function DevToolsPanel() {
           ))}
         </select>
         {activePersona ? (
-          <p className="mt-1 text-[11px] leading-4 text-white/45">{activePersona.description}</p>
+          <p className="mt-1 text-[11px] leading-4 text-muted">{activePersona.description}</p>
         ) : null}
       </div>
 
       {/* Seed */}
       <div className="mt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Seed</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">Seed</p>
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           {SEED_BUTTONS.map((scenario) => (
             <button
@@ -322,7 +322,7 @@ export default function DevToolsPanel() {
 
       {/* Workflow tester — real cross-persona marketplace actions */}
       <div className="mt-3" data-testid="dev-workflow-tester">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">
           Workflow tester
         </p>
         <select
@@ -345,7 +345,7 @@ export default function DevToolsPanel() {
           const action = getWorkflowAction(workflowId);
           if (!action) return null;
           return (
-            <p className="mt-1 text-[11px] leading-4 text-white/45">
+            <p className="mt-1 text-[11px] leading-4 text-muted">
               {action.actorKey} → {action.targetKey}
               {action.note ? ` · ${action.note}` : ""}
             </p>
@@ -392,7 +392,7 @@ export default function DevToolsPanel() {
                   </span>
                   <span className="text-white/70">
                     {check.label}
-                    {check.detail ? <span className="text-white/40"> — {check.detail}</span> : null}
+                    {check.detail ? <span className="text-subtle"> — {check.detail}</span> : null}
                   </span>
                 </li>
               ))}
@@ -410,7 +410,7 @@ export default function DevToolsPanel() {
                 ))}
               </div>
             ) : null}
-            <p className="mt-1.5 text-[10px] leading-3 text-white/35">
+            <p className="mt-1.5 text-[10px] leading-3 text-subtle">
               Switch to the target persona to see it in the real UI.
             </p>
           </div>
@@ -419,7 +419,7 @@ export default function DevToolsPanel() {
 
       {/* Reset */}
       <div className="mt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Reset</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">Reset</p>
         {confirmingReset ? (
           <div className="mt-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 p-2">
             <p className="text-[11px] leading-4 text-rose-100/90">
@@ -460,7 +460,7 @@ export default function DevToolsPanel() {
 
       {/* Status */}
       <div className="mt-3 border-t border-white/10 pt-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Status</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle">Status</p>
         <dl className="mt-1.5 space-y-0.5 text-[11px] text-white/55">
           <div className="flex justify-between">
             <dt>Environment</dt>

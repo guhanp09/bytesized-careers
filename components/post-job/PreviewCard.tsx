@@ -139,7 +139,7 @@ export default function PreviewCard({
                 {formatFollowerText(showSubs, platform) ? (
                   <>
                     <span>{formatFollowerText(showSubs, platform)}</span>
-                    <span className="text-white/40">• {postedLabel}</span>
+                    <span className="text-subtle">• {postedLabel}</span>
                   </>
                 ) : (
                   <span>{postedLabel}</span>

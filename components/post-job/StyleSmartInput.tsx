@@ -144,9 +144,9 @@ export default function StyleSmartInput({
             {inputValue.length ? (
               <span className="text-white/90">{inputValue}</span>
             ) : (
-              <span className="text-white/35">{placeholder}</span>
+              <span className="text-subtle">{placeholder}</span>
             )}
-            {ghost ? <span className="text-white/35">{ghost}</span> : null}
+            {ghost ? <span className="text-subtle">{ghost}</span> : null}
             {ghost ? <span className={tabPill}>Tab</span> : null}
           </div>
         ) : null}

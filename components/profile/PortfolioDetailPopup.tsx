@@ -117,7 +117,7 @@ function PortfolioDetailPopup({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.thumbnail_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-white/34">
+                <div className="flex h-full w-full items-center justify-center text-subtle">
                   <Icon name="image" className="h-8 w-8" />
                 </div>
               )}
@@ -127,7 +127,7 @@ function PortfolioDetailPopup({
                 {item.title}
               </h2>
               {metaItems.length ? (
-                <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-white/50">
+                <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-muted">
                   {metaItems.map((meta, index) => (
                     <span key={`${meta}-${index}`} className="inline-flex items-center gap-3">
                       {index > 0 ? <span aria-hidden className="h-1 w-1 rounded-full bg-white/24" /> : null}
@@ -197,7 +197,7 @@ function PortfolioDetailPopup({
                           <Icon name="external-link" className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                         </a>
                       ) : (
-                        <span className="text-base font-semibold text-white/46">{label}</span>
+                        <span className="text-base font-semibold text-muted">{label}</span>
                       )}
                       <p className="min-w-0 text-base font-semibold leading-7 text-white/86">{note.title}</p>
                       {note.description ? (

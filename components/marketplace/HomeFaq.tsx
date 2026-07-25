@@ -8,7 +8,7 @@ export function HomeFaq() {
     <section className="space-y-8">
       <Reveal>
         <div className="flex flex-col items-center text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">FAQ</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">FAQ</p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Questions we get a lot</h2>
         </div>
       </Reveal>
@@ -21,7 +21,7 @@ export function HomeFaq() {
                 {faq.q}
                 <span
                   aria-hidden="true"
-                  className="shrink-0 text-lg leading-none text-white/40 transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
+                  className="shrink-0 text-lg leading-none text-subtle transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
                 >
                   +
                 </span>

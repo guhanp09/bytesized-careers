@@ -107,7 +107,7 @@ export default function TalentHero({
             <ProfileRatingLink rating={rating} ariaLabel="View talent reviews" testId="talent-hero-rating" />
           </div>
           <div className="text-sm text-white/55">{metaLine}</div>
-          <div className="text-sm text-white/45">{postedText}</div>
+          <div className="text-sm text-muted">{postedText}</div>
         </div>
       </div>
 

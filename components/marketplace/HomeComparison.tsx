@@ -34,7 +34,7 @@ export function HomeComparison() {
     <section className="space-y-8" data-testid="home-comparison">
       <Reveal>
         <div className="flex flex-col items-center text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">Comparison</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">Comparison</p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
             Built for creator hiring, not generic freelancing
           </h2>
@@ -78,7 +78,7 @@ export function HomeComparison() {
               <div className={`flex items-center gap-2.5 px-5 pb-1 pt-1 lg:justify-center lg:py-5 ${COL.cj.body} ${VRULE}`}>
                 <span
                   aria-hidden="true"
-                  className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45 lg:hidden"
+                  className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted lg:hidden"
                 >
                   CreatorJobs
                 </span>
@@ -90,11 +90,11 @@ export function HomeComparison() {
               <div className={`flex items-center gap-2.5 px-5 pb-4 pt-1 lg:justify-center lg:py-5 ${COL.general.body} ${VRULE}`}>
                 <span
                   aria-hidden="true"
-                  className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35 lg:hidden"
+                  className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtle lg:hidden"
                 >
                   General Freelance Platforms
                 </span>
-                <Icon name="close" className="h-[18px] w-[18px] shrink-0 text-white/35" />
+                <Icon name="close" className="h-[18px] w-[18px] shrink-0 text-subtle" />
                 <span className="sr-only">General freelance platforms: no</span>
               </div>
             </div>

@@ -102,7 +102,7 @@ export function HomeJobAlertsPopup() {
           onClick={dismiss}
           data-testid="job-alerts-popup-close"
           aria-label="Close"
-          className="absolute right-3 top-3 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+          className="absolute right-3 top-3 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
         >
           <Icon name="x" className="h-4 w-4" />
         </button>
@@ -155,7 +155,7 @@ export function HomeJobAlertsPopup() {
                   placeholder="your@email.com"
                   aria-invalid={status === "invalid"}
                   aria-describedby="job-alerts-popup-status"
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-center text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.06]"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-center text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.06]"
                 />
                 <button
                   type="submit"
@@ -183,7 +183,7 @@ export function HomeJobAlertsPopup() {
               type="button"
               onClick={dismiss}
               data-testid="job-alerts-popup-later"
-              className="mt-1 cursor-pointer text-xs font-medium text-white/40 underline-offset-4 transition-colors hover:text-white/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+              className="mt-1 cursor-pointer text-xs font-medium text-subtle underline-offset-4 transition-colors hover:text-white/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
             >
               Maybe later
             </button>

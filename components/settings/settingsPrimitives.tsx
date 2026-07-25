@@ -25,7 +25,7 @@ export function StatusPill({ label, tone = "neutral" }: { label: string; tone?: 
           : tone === "danger"
             ? "border-rose-300/18 bg-rose-400/[0.07] text-rose-100"
             : tone === "readonly"
-              ? "border-white/[0.09] bg-white/[0.04] text-white/48"
+              ? "border-white/[0.09] bg-white/[0.04] text-muted"
               : "border-white/[0.1] bg-white/[0.045] text-white/62",
       ].join(" ")}
     >
@@ -38,7 +38,7 @@ export function RowFeedbackBadge({ feedback }: { feedback?: RowFeedback }) {
   if (!feedback) return null;
   if (feedback.state === "saving") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/44">
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted">
         <span className="h-3 w-3 rounded-full border border-white/16 border-t-white/70 animate-spin" />
         Saving
       </span>
@@ -91,7 +91,7 @@ export function SettingsSection({
             ) : null}
             <span>{title}</span>
           </h2>
-          <p className="mt-1 max-w-3xl text-[13px] leading-6 text-white/45">{description}</p>
+          <p className="mt-1 max-w-3xl text-[13px] leading-6 text-muted">{description}</p>
         </div>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
@@ -128,7 +128,7 @@ export function SettingRow({
           <h3 className={["text-sm font-semibold", danger ? "text-rose-100" : "text-white/86"].join(" ")}>
             {title}
           </h3>
-          <p className="max-w-2xl text-sm leading-6 text-white/48">{description}</p>
+          <p className="max-w-2xl text-sm leading-6 text-muted">{description}</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
           <RowFeedbackBadge feedback={feedback} />
@@ -299,7 +299,7 @@ export function TextField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className="h-10 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24"
+        className="h-10 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24"
       />
     </label>
   );
@@ -351,7 +351,7 @@ export function ToggleSwitch({
       disabled={disabled}
       className={[
         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-55",
-        checked ? "border-white/24 bg-white text-black" : "border-white/12 bg-white/[0.055] text-white/50",
+        checked ? "border-white/24 bg-white text-black" : "border-white/12 bg-white/[0.055] text-muted",
       ].join(" ")}
     >
       <span

@@ -12,7 +12,7 @@ export function HomeBetaBanner() {
         <Icon name="bolt" className="h-3.5 w-3.5 shrink-0 text-white/55" />
         <p className="truncate text-[12px] font-medium">
           <span className="text-white/80">Free during beta</span>
-          <span className="text-white/40"> — post jobs and create talent listings at no cost.</span>
+          <span className="text-subtle"> — post jobs and create talent listings at no cost.</span>
         </p>
       </div>
     </div>

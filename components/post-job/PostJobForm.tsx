@@ -58,16 +58,16 @@ type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type JobPlatform = "youtube" | "instagram";
 
 const inputBase =
-  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 
 const textareaBase =
-  "w-full min-h-[110px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full min-h-[110px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 
 const selectBase =
   "w-full h-11 cursor-pointer rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
 
 const basicsInputBase =
-  "w-full h-11 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
+  "w-full h-11 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
 
 const basicsSelectBase =
   "h-11 cursor-pointer rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
@@ -148,7 +148,7 @@ function BulletListEditor({
             {ghostLines.map((text) => (
               <div key={`ghost-${text}`} className="flex items-start gap-3">
                 <span className="mt-[6px] h-2.5 w-2.5 rounded-full bg-white/35 flex-shrink-0" />
-                <div className="text-sm text-white/35 leading-relaxed">{text}</div>
+                <div className="text-sm text-subtle leading-relaxed">{text}</div>
               </div>
             ))}
           </div>
@@ -464,12 +464,12 @@ function ReferenceNotesEditor({
             <div className="text-xs font-semibold text-white/80">
               <LabelWithIcon icon="clock">Timestamp notes</LabelWithIcon>
             </div>
-            <div className="mt-1 text-[11px] text-white/45">Add moments candidates should jump to.</div>
+            <div className="mt-1 text-[11px] text-muted">Add moments candidates should jump to.</div>
           </div>
-          <div className="text-[11px] text-white/38">{rows.length}/{MAX_REFERENCE_TIMESTAMP_ROWS}</div>
+          <div className="text-[11px] text-subtle">{rows.length}/{MAX_REFERENCE_TIMESTAMP_ROWS}</div>
         </div>
 
-        <div className="hidden grid-cols-[112px_minmax(0,0.7fr)_minmax(0,1fr)] gap-3 px-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/32 sm:grid">
+        <div className="hidden grid-cols-[112px_minmax(0,0.7fr)_minmax(0,1fr)] gap-3 px-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle sm:grid">
           <span>Time</span>
           <span>Label</span>
           <span>Note</span>
@@ -524,7 +524,7 @@ function ReferenceNotesEditor({
               <button
                 type="button"
                 onClick={() => removeRow(row.id)}
-                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/48 transition-colors hover:bg-white/[0.08] hover:text-white"
+                className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-muted transition-colors hover:bg-white/[0.08] hover:text-white"
                 aria-label={`Remove timestamp row ${idx + 1}`}
               >
                 ×
@@ -538,12 +538,12 @@ function ReferenceNotesEditor({
             type="button"
             onClick={addRow}
             disabled={maxNotesReached}
-            className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-semibold text-white/50 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+            className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-1 text-sm font-semibold text-muted transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
           >
             <Icon name="plus" className="h-4 w-4" />
             Add timestamp
           </button>
-          {maxNotesReached ? <span className="text-[11px] text-white/35">Maximum 8 timestamps</span> : null}
+          {maxNotesReached ? <span className="text-[11px] text-subtle">Maximum 8 timestamps</span> : null}
         </div>
       </div>
     </div>
@@ -594,7 +594,7 @@ function StepCard({
             title
           )}
           {hint ? (
-            <div className="text-xs text-white/45">{hint}</div>
+            <div className="text-xs text-muted">{hint}</div>
           ) : null}
         </div>
       ) : null}
@@ -685,9 +685,9 @@ function CreatorContextChipField({
           <div className="text-xs font-semibold text-white/78">
             <LabelWithIcon icon={icon}>{label}</LabelWithIcon>
           </div>
-          <div className="mt-0.5 text-[11px] text-white/42">{helper}</div>
+          <div className="mt-0.5 text-[11px] text-subtle">{helper}</div>
         </div>
-        <div className="text-[11px] text-white/35">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
+        <div className="text-[11px] text-subtle">{value.length}/{CREATOR_CONTEXT_MAX_ITEMS}</div>
       </div>
 
       {value.length ? (
@@ -702,7 +702,7 @@ function CreatorContextChipField({
 
       <input
         aria-label={`Add ${label.toLowerCase()}`}
-        className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25 focus:bg-white/[0.065]"
+        className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.045] px-3 text-xs text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.065]"
         value={query}
         placeholder={`Add ${label.toLowerCase()}`}
         onChange={(event) => setQuery(event.target.value)}
@@ -834,7 +834,7 @@ function StepActions({
             className={[
               "inline-flex items-center justify-center rounded-xl border transition-colors",
               nextDisabled || isBusy
-                ? "cursor-not-allowed border-white/10 bg-white/15 text-white/36"
+                ? "cursor-not-allowed border-white/10 bg-white/15 text-subtle"
                 : "cursor-pointer bg-white text-black border-white hover:bg-white/90",
               nextLabel ? "min-h-11 px-4 gap-2" : "h-11 w-11",
             ].join(" ")}
@@ -1294,7 +1294,7 @@ export default function PostJobForm({
             ))
           ) : null}
         </div>
-        <div className="text-xs text-white/45">
+        <div className="text-xs text-muted">
           Use keywords uniquely associated with this role to improve search and discovery.
         </div>
       </div>
@@ -1317,7 +1317,7 @@ export default function PostJobForm({
               <div key={`${v.url}-${idx}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
                 <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-subtle">
                       Video {idx + 1}
                     </div>
                     <div className="mt-1 truncate text-sm font-semibold text-white/85">
@@ -1365,7 +1365,7 @@ export default function PostJobForm({
         {canCreateMoreReferenceVideos ? (
           <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
             <div className="border-b border-white/[0.08] px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-subtle">
                 Video {nextReferenceVideoNumber}
               </div>
             </div>
@@ -1405,7 +1405,7 @@ export default function PostJobForm({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/45">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-muted">
             Maximum 3 reference videos
           </div>
         )}
@@ -1415,9 +1415,9 @@ export default function PostJobForm({
           className={[
             "inline-flex h-16 w-full items-center justify-center gap-2 rounded-2xl",
             "border border-dashed border-white/12 bg-white/[0.025]",
-            "cursor-pointer text-sm font-semibold text-white/42 transition-colors",
+            "cursor-pointer text-sm font-semibold text-subtle transition-colors",
             "hover:border-white/20 hover:bg-white/[0.045] hover:text-white/72",
-            "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/12 disabled:hover:bg-white/[0.025] disabled:hover:text-white/42",
+            "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-white/12 disabled:hover:bg-white/[0.025] disabled:hover:text-subtle",
           ].join(" ")}
           onClick={onAddRefVideo}
           disabled={!canCreateMoreReferenceVideos}
@@ -1442,7 +1442,7 @@ export default function PostJobForm({
               id="job-title"
               label={
                 <LabelWithIcon icon="briefcase">
-                  Job title <span className="text-white/50">*</span>
+                  Job title <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
               error={titleError}
@@ -1463,7 +1463,7 @@ export default function PostJobForm({
                     if (next.length <= JOB_TITLE_MAX_LENGTH) onTitleChange(next);
                   }}
                 />
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-white/45">
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted">
                   {title.length}/{JOB_TITLE_MAX_LENGTH}
                 </div>
               </div>
@@ -1473,7 +1473,7 @@ export default function PostJobForm({
               id="job-primary-role"
               label={
                 <LabelWithIcon icon="users">
-                  Creator role <span className="text-white/50">*</span>
+                  Creator role <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
               helper="Choose the closest creator-economy role. Legacy categories are kept only for compatibility."
@@ -1542,7 +1542,7 @@ export default function PostJobForm({
             <Field
               label={
                 <LabelWithIcon icon="screen">
-                  Platform <span className="text-white/50">*</span>
+                  Platform <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
               error={platformError}
@@ -1592,7 +1592,7 @@ export default function PostJobForm({
               id="job-compensation-mode"
               label={
                 <LabelWithIcon icon="wallet">
-                  Compensation <span className="text-white/50">*</span>
+                  Compensation <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
               error={budgetError}
@@ -1654,7 +1654,7 @@ export default function PostJobForm({
                 ) : null}
 
                 {compensationMode === "range" ? (
-                  <span className="hidden text-base text-white/50 select-none sm:inline-flex">–</span>
+                  <span className="hidden text-base text-muted select-none sm:inline-flex">–</span>
                 ) : null}
 
                 {compensationMode === "range" ? (
@@ -1748,7 +1748,7 @@ export default function PostJobForm({
                   ))}
                 </select>
 
-                <span className="text-white/45 select-none">–</span>
+                <span className="text-muted select-none">–</span>
 
                 <select
                   className={selectBase}
@@ -1812,7 +1812,7 @@ export default function PostJobForm({
                 id="job-work-mode"
                 label={
                   <LabelWithIcon icon="laptop">
-                    Work mode <span className="text-white/50">*</span>
+                    Work mode <span className="text-muted">*</span>
                   </LabelWithIcon>
                 }
                 error={workModeError}
@@ -1853,7 +1853,7 @@ export default function PostJobForm({
                   id="job-city"
                   label={
                     <span className="inline-flex items-center gap-1">
-                      City <span className="text-white/50">*</span>
+                      City <span className="text-muted">*</span>
                     </span>
                   }
                   error={cityError}
@@ -2058,7 +2058,7 @@ export default function PostJobForm({
               compensationUnit={budgetUnit}
             />
             {listingSchemaVersion != null && listingSchemaVersion < 3 && startWithin && !domain.startTiming ? (
-              <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-white/52">
+              <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-muted">
                 Legacy start window: <span className="font-semibold text-white/78">{startWithin}</span>. It is preserved until you choose the clearer start timing above.
               </div>
             ) : null}
@@ -2158,7 +2158,7 @@ export default function PostJobForm({
           <div className="flex flex-col gap-5">
             <div data-quality-target="job-tools">
               {legacyToolsNotCaptured ? (
-                <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-white/52">
+                <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-muted">
                   Required tools were not captured on this older listing. Leaving this untouched preserves that unknown state.
                 </div>
               ) : null}
@@ -2197,7 +2197,7 @@ export default function PostJobForm({
               label={
                 <span className="inline-flex items-center gap-1.5">
                   <LabelWithIcon icon="file">About the brand</LabelWithIcon>
-                  <span className="text-white/50">*</span>
+                  <span className="text-muted">*</span>
                 </span>
               }
               error={aboutError}
@@ -2416,7 +2416,7 @@ export default function PostJobForm({
           actions={actionsFor("references", "refs", Boolean(canSaveReferenceVideos), onSaveReferenceVideos)}
         >
           <div className="space-y-4">
-            <p className="text-xs leading-5 text-white/48">
+            <p className="text-xs leading-5 text-muted">
               A strong reference helps candidates match your taste. You can publish without one.
             </p>
             {referenceVideoFields}
@@ -2456,11 +2456,11 @@ export default function PostJobForm({
           {reviewPreview ? (
             <section aria-labelledby="job-review-preview-title" className="space-y-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/38">Candidate view</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">Candidate view</p>
                 <h2 id="job-review-preview-title" className="mt-1 text-xl font-extrabold tracking-tight text-white">
                   Review before publishing
                 </h2>
-                <p className="mt-1 text-xs leading-5 text-white/48">
+                <p className="mt-1 text-xs leading-5 text-muted">
                   This preview uses the same information candidates need to judge the opportunity.
                 </p>
               </div>

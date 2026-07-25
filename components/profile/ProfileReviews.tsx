@@ -39,7 +39,7 @@ function ReviewStars({
   return (
     <span className={["inline-flex items-center gap-0.5 text-sm", className].filter(Boolean).join(" ")}>
       {Array.from({ length: 5 }, (_, index) => (
-        <span key={`review-star-${index}`} className={index < rounded ? "text-white/82" : "text-white/22"}>
+        <span key={`review-star-${index}`} className={index < rounded ? "text-white/82" : "text-disabled"}>
           ★
         </span>
       ))}
@@ -68,9 +68,9 @@ function ReviewIdentity({
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <p className="truncate text-sm font-semibold text-white/90">{item.reviewer_name}</p>
-          {item.verified ? <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-white/46" /> : null}
+          {item.verified ? <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-muted" /> : null}
         </div>
-        {item.reviewer_role ? <p className="truncate text-xs text-white/45">{item.reviewer_role}</p> : null}
+        {item.reviewer_role ? <p className="truncate text-xs text-muted">{item.reviewer_role}</p> : null}
       </div>
     </div>
   );
@@ -99,7 +99,7 @@ export function ProfileReviewsPreviewRail({
               <ReviewIdentity item={item} />
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <ReviewStars rating={item.rating} />
-                {meta ? <p className="text-xs text-white/45">{meta}</p> : null}
+                {meta ? <p className="text-xs text-muted">{meta}</p> : null}
               </div>
               <p className="mt-4 line-clamp-4 text-sm leading-6 text-white/68">{item.body}</p>
             </article>
@@ -186,7 +186,7 @@ export function ProfileReviewsTabContent({
                   <ReviewIdentity item={item} />
                   <ReviewStars rating={item.rating} className="sm:justify-end" />
                 </div>
-                {meta ? <p className="mt-4 text-xs text-white/45">{meta}</p> : null}
+                {meta ? <p className="mt-4 text-xs text-muted">{meta}</p> : null}
                 <p className="mt-4 text-sm leading-7 text-white/68">{item.body}</p>
                 <div className="mt-4 flex justify-end">
                   {reportSent === item.id ? (
@@ -198,7 +198,7 @@ export function ProfileReviewsTabContent({
                         setReportError(null);
                         setReportingReviewId(item.id);
                       }}
-                      className="cursor-pointer text-[11px] font-medium text-white/32 transition-colors hover:text-white/60"
+                      className="cursor-pointer text-[11px] font-medium text-subtle transition-colors hover:text-white/60"
                     >
                       Report review
                     </button>

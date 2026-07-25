@@ -195,7 +195,7 @@ export function JobCard({ job }: { job: Job }) {
         </header>
 
         <div className="mt-4 min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-white/42">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-subtle">
             {role.name}
           </p>
           {role.specialization ? <p className="mt-1 break-words text-xs text-white/58">{role.specialization}</p> : null}
@@ -206,21 +206,21 @@ export function JobCard({ job }: { job: Job }) {
 
         <div className="mt-4 min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
           <p className="break-words text-[15px] font-semibold leading-snug text-white/90">{compensation.headline}</p>
-          {compensation.note ? <p className="mt-1 line-clamp-1 break-words text-[11px] text-white/48">{compensation.note}</p> : null}
+          {compensation.note ? <p className="mt-1 line-clamp-1 break-words text-[11px] text-muted">{compensation.note}</p> : null}
         </div>
 
         <div className="mt-3 min-w-0 space-y-1.5 text-xs leading-relaxed text-white/62">
           <p className="flex min-w-0 items-start gap-2">
-            <Icon name="briefcase" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+            <Icon name="briefcase" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="min-w-0 break-words">{engagementForJob(job)}</span>
           </p>
           <p className="flex min-w-0 items-start gap-2">
-            <Icon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+            <Icon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="min-w-0 break-words">{workSetupForJob(job)}</span>
           </p>
           {deadline.valid ? (
             <p className={`flex min-w-0 items-start gap-2 ${deadline.expired ? "font-medium text-amber-100/80" : ""}`}>
-              <Icon name="calendar-clock" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/38" />
+              <Icon name="calendar-clock" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
               <span className="min-w-0 break-words">{deadline.label}</span>
             </p>
           ) : null}
@@ -245,7 +245,7 @@ export function JobCard({ job }: { job: Job }) {
             <StatRow icon="users" value={formatCompactNumber(applicantCount)} label="Applicants" interactive />
             <StatRow icon="bolt" value={`${responseRate}%`} label="Response rate" interactive />
           </div>
-          <p className="min-w-0 truncate text-[11px] text-white/42 xl:hidden">
+          <p className="min-w-0 truncate text-[11px] text-subtle xl:hidden">
             {applicantCount} applicant{applicantCount === 1 ? "" : "s"}{postedLabel ? ` · ${postedLabel}` : ""}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-2">

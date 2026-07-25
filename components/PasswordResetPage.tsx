@@ -111,7 +111,7 @@ export default function PasswordResetPage() {
               placeholder="New password"
               autoComplete="new-password"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/25 focus:bg-white/7"
             />
             <input
               type="password"
@@ -120,7 +120,7 @@ export default function PasswordResetPage() {
               placeholder="Confirm new password"
               autoComplete="new-password"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/25 focus:bg-white/7"
             />
             <button
               type="submit"
@@ -143,7 +143,7 @@ export default function PasswordResetPage() {
               placeholder="Email"
               autoComplete="email"
               required
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25 focus:bg-white/7"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/6 px-3 text-sm text-white outline-none placeholder:text-subtle focus:border-white/25 focus:bg-white/7"
             />
             <button
               type="submit"

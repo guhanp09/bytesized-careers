@@ -55,7 +55,7 @@ const PILL_TONES: Record<PillTone, string> = {
   active: "border-emerald-200/30 bg-emerald-200/[0.08] text-emerald-100/90",
   warn: "border-amber-200/30 bg-amber-200/[0.08] text-amber-100/90",
   danger: "border-rose-300/30 bg-rose-300/[0.08] text-rose-200/90",
-  dim: "border-white/[0.07] bg-transparent text-white/40",
+  dim: "border-white/[0.07] bg-transparent text-subtle",
 };
 
 export function TonePill({ tone = "neutral", children }: { tone?: PillTone; children: ReactNode }) {
@@ -109,14 +109,14 @@ export function AdminCard({ children, className = "" }: { children: ReactNode; c
 
 export function AdminSectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/45">{children}</p>
+    <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted">{children}</p>
   );
 }
 
 export function KV({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <span className="shrink-0 text-[11px] text-white/40">{label}</span>
+      <span className="shrink-0 text-[11px] text-subtle">{label}</span>
       <span className="min-w-0 text-right text-[12px] text-white/80">{children}</span>
     </div>
   );
@@ -168,14 +168,14 @@ export function AdminSearch({
     <div className="relative w-48 sm:w-64">
       <Icon
         name="search"
-        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle"
       />
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         data-testid={testId}
         placeholder={placeholder}
-        className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.03] pl-8 pr-3 text-xs text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+        className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.03] pl-8 pr-3 text-xs text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
       />
     </div>
   );
@@ -196,7 +196,7 @@ export function Paginator({
   const from = offset + 1;
   const to = Math.min(offset + limit, total);
   return (
-    <div className="flex items-center justify-end gap-2 px-1 pt-3 text-[11px] text-white/45">
+    <div className="flex items-center justify-end gap-2 px-1 pt-3 text-[11px] text-muted">
       <span>
         {from}–{to} of {total}
       </span>
@@ -248,7 +248,7 @@ export function AdminTable({
 export function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
   return (
     <th
-      className={`px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40 ${className}`}
+      className={`px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle ${className}`}
     >
       {children}
     </th>
@@ -278,7 +278,7 @@ export function AdminEmpty({ title, hint }: { title: string; hint?: string }) {
       className="flex min-h-[160px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-10 text-center"
     >
       <p className="text-sm font-medium text-white/55">{title}</p>
-      {hint ? <p className="mx-auto mt-1 max-w-sm text-xs text-white/38">{hint}</p> : null}
+      {hint ? <p className="mx-auto mt-1 max-w-sm text-xs text-subtle">{hint}</p> : null}
     </div>
   );
 }
@@ -290,7 +290,7 @@ export function AdminError({ onRetry }: { onRetry: () => void }) {
       className="flex min-h-[160px] flex-col items-center justify-center rounded-2xl border border-amber-200/20 bg-amber-200/[0.04] px-6 py-10 text-center"
     >
       <p className="text-sm font-medium text-amber-100/85">Couldn’t load this from the backend.</p>
-      <p className="mx-auto mt-1 max-w-sm text-xs text-white/40">
+      <p className="mx-auto mt-1 max-w-sm text-xs text-subtle">
         The admin panel needs the CreatorJobs backend running and an ADMIN account.
       </p>
       <button
@@ -378,7 +378,7 @@ export function DetailDrawer({
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.07] px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-[15px] font-semibold text-white">{title}</h2>
-            {subtitle ? <div className="mt-0.5 text-[11px] text-white/45">{subtitle}</div> : null}
+            {subtitle ? <div className="mt-0.5 text-[11px] text-muted">{subtitle}</div> : null}
           </div>
           <button
             type="button"
@@ -457,7 +457,7 @@ function ReasonDialogBody({
           maxLength={3000}
           data-testid="admin-reason-input"
           placeholder={placeholder}
-          className="mt-3 w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+          className="mt-3 w-full resize-none rounded-lg border border-white/[0.1] bg-black/25 px-3 py-2.5 text-[12.5px] leading-relaxed text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
         />
         {error ? <p className="mt-2 text-[11px] text-rose-300/85">{error}</p> : null}
         <div className="mt-4 flex items-center justify-end gap-2">
@@ -502,7 +502,7 @@ export function PlannedModule({
   return (
     <AdminCard className="p-5" >
       <div data-testid="admin-planned" className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.03] text-white/40">
+        <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.03] text-subtle">
           <Icon name="clock" className="h-4 w-4" />
         </span>
         <div className="min-w-0">
@@ -510,8 +510,8 @@ export function PlannedModule({
             <h3 className="text-[13px] font-semibold text-white/80">{title}</h3>
             <TonePill tone="dim">Planned</TonePill>
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-white/48">{description}</p>
-          <p className="mt-2 text-[10.5px] uppercase tracking-[0.12em] text-white/30">
+          <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
+          <p className="mt-2 text-[10.5px] uppercase tracking-[0.12em] text-subtle">
             Needs: {dependencies.join(" · ")}
           </p>
         </div>

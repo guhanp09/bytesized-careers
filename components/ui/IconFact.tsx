@@ -35,7 +35,7 @@ export default function IconFact({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
           className={[
-            "peer inline-flex h-4 w-4 flex-none cursor-help items-center justify-center rounded-full text-white/50 transition-colors",
+            "peer inline-flex h-4 w-4 flex-none cursor-help items-center justify-center rounded-full text-muted transition-colors",
             "hover:text-white/78 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15 focus-visible:text-white/78",
             iconClassName,
           ].join(" ")}
@@ -47,7 +47,7 @@ export default function IconFact({
           aria-hidden="true"
           title={label}
           className={[
-            "peer inline-flex h-4 w-4 flex-none cursor-help items-center justify-center text-white/50 transition-colors",
+            "peer inline-flex h-4 w-4 flex-none cursor-help items-center justify-center text-muted transition-colors",
             "group-hover/iconfact:text-white/78",
             iconClassName,
           ].join(" ")}

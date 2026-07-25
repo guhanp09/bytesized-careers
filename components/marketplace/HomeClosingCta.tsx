@@ -8,7 +8,7 @@ export function HomeClosingCta() {
         <div className="home-grain absolute inset-0" />
       </div>
       <div className="relative z-10 mx-auto max-w-2xl">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">CreatorJobs</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-subtle">CreatorJobs</p>
         <h2 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           Build your creator team.
         </h2>

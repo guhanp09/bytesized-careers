@@ -134,7 +134,7 @@ export default function ReferenceVideos({ videos }: { videos: ReferenceVideo[] }
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={activeItem.thumbnail_url} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-white/34">
+                  <div className="flex h-full w-full items-center justify-center text-subtle">
                     <Icon name="youtube" className="h-7 w-7" />
                   </div>
                 )}
@@ -143,7 +143,7 @@ export default function ReferenceVideos({ videos }: { videos: ReferenceVideo[] }
                 <h2 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-white sm:text-[26px]">
                   {activeItem.title}
                 </h2>
-                <p className="mt-4 text-sm font-medium text-white/50">{activeItem.channel_name || "YouTube Reference"}</p>
+                <p className="mt-4 text-sm font-medium text-muted">{activeItem.channel_name || "YouTube Reference"}</p>
                 <a
                   href={activeVideo.url}
                   target="_blank"

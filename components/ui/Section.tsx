@@ -29,13 +29,13 @@ export default function Section({
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-white/90">
           {icon ? (
-            <span aria-hidden="true" className="inline-flex shrink-0 text-white/50">
+            <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
               <Icon name={icon} className="h-4 w-4" />
             </span>
           ) : null}
           <span>{title}</span>
         </h2>
-        {hint ? <div className="text-xs text-white/45">{hint}</div> : null}
+        {hint ? <div className="text-xs text-muted">{hint}</div> : null}
       </div>
       <div className={bodyClassName}>{children}</div>
     </section>

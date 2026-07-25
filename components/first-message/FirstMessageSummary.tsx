@@ -81,7 +81,7 @@ function displayUrl(url?: string): string {
   }
 }
 
-const SECTION_LABEL = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/38";
+const SECTION_LABEL = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-subtle";
 
 /**
  * A titled group of link mini-cards — the shared design + behaviour for BOTH the
@@ -124,12 +124,12 @@ function LinkCardSection({
           const tags = (link.tags ?? []).slice(0, 3);
           const inner = (
             <>
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-white/45">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-muted">
                 <Icon name={icon} className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold text-white/90">{link.label}</span>
-                {subtitle ? <span className="block truncate text-[11px] text-white/40">{subtitle}</span> : null}
+                {subtitle ? <span className="block truncate text-[11px] text-subtle">{subtitle}</span> : null}
                 {tags.length ? (
                   <span className="mt-1.5 flex flex-wrap gap-1">
                     {tags.map((tag) => (
@@ -144,7 +144,7 @@ function LinkCardSection({
                 ) : null}
               </span>
               {link.url ? (
-                <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-white/35 transition-colors group-hover:text-white/65">
+                <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-subtle transition-colors group-hover:text-white/65">
                   Open
                   <Icon name="external-link" className="h-3 w-3" />
                 </span>
@@ -287,7 +287,7 @@ export default function FirstMessageSummary({
           {/* Inline (not flex) with a real space so the amount + cadence read as
               one string ("₹1,000 per month") in the accessible text, while the
               amount still dominates visually. */}
-          <p className="text-[13px] leading-none text-white/45">
+          <p className="text-[13px] leading-none text-muted">
             <span className="align-baseline text-[1.7rem] font-bold tracking-tight text-white">
               {budgetAmount}
             </span>
@@ -308,7 +308,7 @@ export default function FirstMessageSummary({
               key={item.key}
               className="flex flex-col gap-0.5 text-[13px] leading-relaxed sm:flex-row sm:gap-3"
             >
-              <div className="flex items-center gap-2 text-white/42 sm:w-[112px] sm:shrink-0">
+              <div className="flex items-center gap-2 text-subtle sm:w-[112px] sm:shrink-0">
                 <Icon name={item.icon} className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{item.label}</span>
               </div>
@@ -383,7 +383,7 @@ export default function FirstMessageSummary({
         <div className="px-4 py-3">
           <span className={`mb-1.5 block ${SECTION_LABEL}`}>Screener</span>
           {screener.prompt ? (
-            <p className="text-[13px] leading-relaxed text-white/45">{screener.prompt}</p>
+            <p className="text-[13px] leading-relaxed text-muted">{screener.prompt}</p>
           ) : null}
           <div className="mt-2 border-l-2 border-blue-400/40 pl-3">
             {screener.text ? (
@@ -411,13 +411,13 @@ export default function FirstMessageSummary({
           <ol className="space-y-3">
             {screeningAnswers.map((answer, index) => (
               <li key={`${answer.question_index}-${answer.prompt}-${index}`} className="min-w-0">
-                <p className="break-words text-[12px] leading-relaxed text-white/48">
+                <p className="break-words text-[12px] leading-relaxed text-muted">
                   {answer.prompt}
-                  <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-white/30">
+                  <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-subtle">
                     {answer.required ? "Required" : "Optional"}
                   </span>
                 </p>
-                <p className={answer.response.trim() ? "mt-1.5 border-l-2 border-blue-400/40 pl-3 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/85" : "mt-1.5 border-l-2 border-white/10 pl-3 text-[12px] italic text-white/38"}>
+                <p className={answer.response.trim() ? "mt-1.5 border-l-2 border-blue-400/40 pl-3 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/85" : "mt-1.5 border-l-2 border-white/10 pl-3 text-[12px] italic text-subtle"}>
                   {answer.response.trim() || "No optional answer provided"}
                 </p>
               </li>
@@ -437,7 +437,7 @@ export default function FirstMessageSummary({
           <dl className="space-y-3">
             {additionalAnswers.map((answer) => (
               <div key={answer.key}>
-                <dt className="text-[12px] text-white/45">{answer.label}</dt>
+                <dt className="text-[12px] text-muted">{answer.label}</dt>
                 <dd className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-white/85">{answer.response}</dd>
               </div>
             ))}

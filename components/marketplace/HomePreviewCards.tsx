@@ -168,14 +168,14 @@ export function HomeJobPreviewCard({ job }: { job: Job }) {
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white/86">{job.channel.name}</p>
-          <p className="mt-1 truncate text-xs text-white/45">{[job.category, job.platform || "YouTube"].filter(Boolean).join(" · ")}</p>
+          <p className="mt-1 truncate text-xs text-muted">{[job.category, job.platform || "YouTube"].filter(Boolean).join(" · ")}</p>
         </div>
       </div>
 
       <h3 className="mt-5 line-clamp-2 text-lg font-semibold leading-tight tracking-tight text-white">{displayTitle}</h3>
 
       {meta ? <p className="mt-4 line-clamp-2 text-sm leading-6 text-white/58">{meta}</p> : null}
-      {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-white/36">{tags}</p> : null}
+      {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-subtle">{tags}</p> : null}
 
       <div className="mt-auto flex items-center justify-end gap-3 pt-5">
         <div className="flex items-center gap-2">
@@ -312,7 +312,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
             ) : (
               <p className="truncate text-sm font-semibold text-white/86">{name}</p>
             )}
-            <p className="mt-1 truncate text-xs text-white/45">{meta}</p>
+            <p className="mt-1 truncate text-xs text-muted">{meta}</p>
           </div>
         </div>
       </div>
@@ -332,7 +332,7 @@ export function HomeTalentPreviewCard({ item }: { item: BackendTalentListing }) 
           ))}
         </div>
       ) : null}
-      {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-white/36">{tags}</p> : null}
+      {tags ? <p className="mt-2 line-clamp-1 text-xs font-medium uppercase tracking-[0.12em] text-subtle">{tags}</p> : null}
 
       <div className="mt-auto flex items-center justify-end gap-3 pt-5">
         <div className="flex items-center gap-2">

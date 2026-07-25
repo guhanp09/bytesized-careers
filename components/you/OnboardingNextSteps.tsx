@@ -79,7 +79,7 @@ export default function OnboardingNextSteps({
             type="button"
             onClick={() => onChooseIntent("DECIDE_LATER")}
             disabled={saving}
-            className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-xs font-medium text-white/45 transition-colors hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+            className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-xs font-medium text-muted transition-colors hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Decide later
           </button>
@@ -98,7 +98,7 @@ export default function OnboardingNextSteps({
                 <Icon name={choice.icon} className="h-4 w-4" />
               </span>
               <span className="text-sm font-semibold text-white/90">{choice.label}</span>
-              <span className="text-xs leading-5 text-white/50">{choice.helper}</span>
+              <span className="text-xs leading-5 text-muted">{choice.helper}</span>
             </button>
           ))}
         </div>
@@ -119,7 +119,7 @@ export default function OnboardingNextSteps({
       aria-label="Recommended next step"
     >
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-subtle">
           Next step
         </p>
         <h2 className="mt-1.5 text-base font-semibold tracking-tight text-white/95">

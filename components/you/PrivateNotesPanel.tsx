@@ -11,7 +11,7 @@ import {
 } from "../../lib/privateNotes";
 
 const INPUT_SURFACE = "rounded-2xl border border-white/[0.08] bg-white/[0.035]";
-const LABEL = "text-[11px] font-semibold text-white/40";
+const LABEL = "text-[11px] font-semibold text-subtle";
 
 /**
  * Private notes for a received interaction: a calm, persistent note surface.
@@ -203,7 +203,7 @@ export default function PrivateNotesPanel({
                 {activeNote.body}
               </p>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[10.5px] text-white/40">
+                <span className="inline-flex items-center gap-1.5 text-[10.5px] text-subtle">
                   <Icon name="eye" className="h-3 w-3" />
                   {activeNote.createdAt} · Only you
                 </span>
@@ -212,7 +212,7 @@ export default function PrivateNotesPanel({
                   onClick={() => void handleDelete(activeNote.id)}
                   disabled={deletingId === activeNote.id}
                   aria-label="Delete this note"
-                  className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+                  className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle transition-colors hover:bg-white/[0.06] hover:text-white/60"
                 >
                   <Icon name="trash" className="h-3 w-3" />
                 </button>
@@ -248,7 +248,7 @@ export default function PrivateNotesPanel({
                     />
                   ))}
                 </div>
-                <span className="text-[10.5px] tabular-nums text-white/40">
+                <span className="text-[10.5px] tabular-nums text-subtle">
                   {activeIndex + 1} of {notes.length}
                 </span>
               </div>
@@ -270,7 +270,7 @@ export default function PrivateNotesPanel({
       <section data-testid="private-note-card" className={`${INPUT_SURFACE} p-4`}>
         <div className="flex items-center justify-between gap-2">
           <p className={LABEL}>{hasNotes ? "Add a note" : "Private notes"}</p>
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/35">
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-subtle">
             <Icon name="eye" className="h-3 w-3" />
             Only you can see this
           </span>
@@ -283,7 +283,7 @@ export default function PrivateNotesPanel({
           data-testid="private-note-input"
           aria-label="Private note"
           placeholder={`Jot down where ${firstName} stands — rates, fit, next steps…`}
-          className="mt-2.5 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-white/35 transition-colors focus:border-white/25 focus:outline-none"
+          className="mt-2.5 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
@@ -298,7 +298,7 @@ export default function PrivateNotesPanel({
               Saved
             </p>
           ) : !hasNotes ? (
-            <p className="text-[11px] text-white/35">Add a private note for follow-ups, rates, or things to confirm.</p>
+            <p className="text-[11px] text-subtle">Add a private note for follow-ups, rates, or things to confirm.</p>
           ) : (
             <span />
           )}
@@ -313,7 +313,7 @@ export default function PrivateNotesPanel({
           </button>
         </div>
         {loadState === "loading" ? (
-          <p className="mt-2 text-[11px] text-white/35">Loading saved notes…</p>
+          <p className="mt-2 text-[11px] text-subtle">Loading saved notes…</p>
         ) : loadState === "error" ? (
           <p className="mt-2 text-[11px] text-amber-200/75">Couldn’t refresh saved notes.</p>
         ) : null}

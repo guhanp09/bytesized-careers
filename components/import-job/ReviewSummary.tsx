@@ -108,10 +108,10 @@ function FieldRow({
           <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-white/20" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
-          <p className={`text-sm ${tone === "missing" ? "text-white/38" : "text-white/85"}`}>
+          <p className={`text-sm ${tone === "missing" ? "text-subtle" : "text-white/85"}`}>
             <span className="font-semibold">{label}</span>
             {value ? <span className="text-white/60"> — {value}</span> : null}
-            {suffix ? <span className="text-white/38"> {suffix}</span> : null}
+            {suffix ? <span className="text-subtle"> {suffix}</span> : null}
           </p>
           {snippet && tone !== "missing" ? <p className={importEvidenceClass}>“{snippet}”</p> : null}
           {extraction.note ? <p className={`${importHelperClass} mt-1`}>{extraction.note}</p> : null}
@@ -181,7 +181,7 @@ function ChipGroup({
               data-testid={`${testPrefix}-${option.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
             >
               {option}
-              {isSuggested ? <span className="ml-1.5 text-[10px] uppercase tracking-wide text-white/45">Suggested</span> : null}
+              {isSuggested ? <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted">Suggested</span> : null}
             </button>
           );
         })}
@@ -389,7 +389,7 @@ export default function ReviewSummary({
             </summary>
             <ul className="mt-2 space-y-1.5">
               {result.unmapped.map((line, index) => (
-                <li key={index} className="text-[12px] leading-relaxed text-white/45 break-words">
+                <li key={index} className="text-[12px] leading-relaxed text-muted break-words">
                   {line}
                 </li>
               ))}

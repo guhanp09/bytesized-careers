@@ -215,8 +215,8 @@ export default function LocationAutocompleteField({
 
   const inputClassName =
     size === "compact"
-      ? "h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-white/24"
-      : "h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-white/28 focus:border-white/24";
+      ? "h-10 w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24"
+      : "h-11 w-full rounded-xl border border-white/10 bg-black/18 px-3 text-sm text-white outline-none transition-colors placeholder:text-subtle focus:border-white/24";
   const labelClassName =
     size === "compact" ? "text-xs text-white/55" : "text-xs font-semibold text-white/55";
   const message = error || statusMessage;
@@ -293,7 +293,7 @@ export default function LocationAutocompleteField({
                     ].join(" ")}
                   >
                     <span className="text-sm font-semibold text-white">Use &quot;{option.value}&quot;</span>
-                    <span className="mt-0.5 text-xs text-white/46">Custom location</span>
+                    <span className="mt-0.5 text-xs text-muted">Custom location</span>
                   </button>
                 );
               }
@@ -315,7 +315,7 @@ export default function LocationAutocompleteField({
                 >
                   <span className="text-sm font-semibold text-white">{option.suggestion.primaryText}</span>
                   {option.suggestion.secondaryText ? (
-                    <span className="mt-0.5 text-xs text-white/50">{option.suggestion.secondaryText}</span>
+                    <span className="mt-0.5 text-xs text-muted">{option.suggestion.secondaryText}</span>
                   ) : null}
                 </button>
               );
@@ -324,7 +324,7 @@ export default function LocationAutocompleteField({
         ) : null}
       </div>
       {message ? (
-        <p className={error ? "text-xs text-amber-100" : "text-xs text-white/45"}>{message}</p>
+        <p className={error ? "text-xs text-amber-100" : "text-xs text-muted"}>{message}</p>
       ) : null}
     </div>
   );

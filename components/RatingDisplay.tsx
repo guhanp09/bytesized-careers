@@ -26,7 +26,7 @@ export default function RatingDisplay({
   return (
     <span
       className={[
-        "inline-flex items-center text-xs font-medium tracking-[0.04em] text-white/52",
+        "inline-flex items-center text-xs font-medium tracking-[0.04em] text-muted",
         className,
       ]
         .filter(Boolean)
