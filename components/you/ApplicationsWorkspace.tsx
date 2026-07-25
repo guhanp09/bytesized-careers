@@ -90,7 +90,6 @@ import {
 } from "../../lib/backendClient";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
-  MOCK_OWNER_INTERACTIONS,
   interactionKindLabel,
   interactionStatusFromBackend,
   interactionStatusLabel,
@@ -120,6 +119,7 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
+import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   NO_QUEUE_PREFERENCES,

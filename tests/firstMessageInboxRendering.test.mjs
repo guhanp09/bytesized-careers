@@ -190,7 +190,7 @@ test("empty / missing answers summarise to nothing (legacy messages render uncha
 });
 
 test("mock interactions keep structured requirements out of duplicate proposed terms", () => {
-  const source = read("lib/ownerInteractions.ts");
+  const source = read("lib/seed/ownerInteractionFixtures.ts");
   for (const id of ["t-req-recv-1", "r-app-recv-1"]) {
     const snippet = source.match(new RegExp(`id: "${id}"[\\s\\S]*?firstMessageAnswers:`));
     assert.ok(snippet, `expected ${id} to carry structured first-message answers`);
@@ -202,7 +202,7 @@ test("mock interactions keep structured requirements out of duplicate proposed t
 });
 
 test("mock inbox conversations include full structured-answer examples for both contexts", () => {
-  const source = read("lib/ownerInteractions.ts");
+  const source = read("lib/seed/ownerInteractionFixtures.ts");
   const jobSnippet = source.match(/id: "t-app-sent-1"[\s\S]*?job: \{/);
   const talentSnippet = source.match(/id: "t-req-recv-1"[\s\S]*?recruiter: \{/);
   assert.ok(jobSnippet, "expected a full job-application structured-answer mock thread");

@@ -24,6 +24,7 @@ const read = (relPath) => readFileSync(join(repoRoot, relPath), "utf8");
 
 const workspaceSrc = read("components/you/ApplicationsWorkspace.tsx");
 const interactionsSrc = read("lib/ownerInteractions.ts");
+const fixturesSrc = read("lib/seed/ownerInteractionFixtures.ts");
 
 // Slice a single function body out of the source so assertions about ordering and
 // presence are scoped to that component, not the whole file.
@@ -183,8 +184,8 @@ test("rendered mock talent snapshots use exact-year experience, not ranges or le
     ["tara-iyer", "4 years", "₹1,500 per thumbnail"],
     ["arjun-nair", "5 years", "₹2,500 per episode"],
   ]) {
-    assert.ok(interactionsSrc.includes(rate), `expected ${name} rate "${rate}"`);
-    assert.ok(interactionsSrc.includes(`experience: "${experience}"`), `expected ${name} experience "${experience}"`);
+    assert.ok(fixturesSrc.includes(rate), `expected ${name} rate "${rate}"`);
+    assert.ok(fixturesSrc.includes(`experience: "${experience}"`), `expected ${name} experience "${experience}"`);
   }
   // Talent snapshots must never carry a level label as their experience value.
   assert.doesNotMatch(interactionsSrc, /experience: "(Senior|Junior|Mid-level|Intermediate|Expert)"/);
