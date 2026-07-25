@@ -48,6 +48,7 @@ import {
   blockUser,
   listInteractionPreferences,
   markInteractionReviewStarted,
+  setConversationSnooze,
   sendConversationMessage,
   setConversationQueueDismissed,
   setConversationStarred,
@@ -102,7 +103,14 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
-import { NO_QUEUE_PREFERENCES, type WorkQueuePreferences } from "../../lib/workQueues";
+import {
+  NO_QUEUE_PREFERENCES,
+  WORK_QUEUE_ORDER,
+  deriveWorkQueue,
+  type QueueSignals,
+  type WorkQueueKey,
+  type WorkQueuePreferences,
+} from "../../lib/workQueues";
 import {
   flagCohortLabel,
   trackWorkspaceEvent,
@@ -159,7 +167,7 @@ type ApplicationsWorkspaceProps = {
 type HeaderAction = {
   key: string;
   label: string;
-  icon: "check" | "x" | "send" | "bookmark";
+  icon: "check" | "x" | "send" | "bookmark" | "clock";
   primary?: boolean;
   destructive?: boolean;
   flow: "instant" | "confirm" | "reply" | "notify" | "archive";
@@ -176,6 +184,8 @@ type HeaderAction = {
     | "Share a decision"
     | "Thread"
     | "Relationship"
+    // Personal organisation: quietens a recommendation, never the relationship.
+    | "Just for you"
     | "Safety";
 };
 
@@ -2865,6 +2875,11 @@ export default function ApplicationsWorkspace({
    */
   const [pendingIntent, setPendingIntent] = useState<string | null>(null);
 
+  /* ---------------- Queue views ---------------- */
+
+  /** Null means "no queue filter" — the ordinary full list. */
+  const [activeQueue, setActiveQueue] = useState<WorkQueueKey | "starred" | "snoozed" | null>(null);
+
   /* ---------------- B1: durable per-user interaction preferences ---------------- */
 
   /**
@@ -3091,6 +3106,76 @@ export default function ApplicationsWorkspace({
       })(),
     }),
     [liveMode, unreadByThread, liveThreads]
+  );
+
+  /** Signals for queue derivation — the same evidence the row labels use. */
+  const queueSignalsFor = useCallback(
+    (item: OwnerInteraction): QueueSignals => signalsFor(item),
+    [signalsFor]
+  );
+
+  /** Live counts, so a queue never advertises work that is not there. */
+  const queueCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of modeItems) {
+      const key = deriveWorkQueue(item, queueSignalsFor(item), queuePreferences);
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+      if (isStarred(item)) counts.set("starred", (counts.get("starred") ?? 0) + 1);
+      const until = queuePreferences.snoozedUntil(item.id);
+      if (until !== null && until > Date.now()) {
+        counts.set("snoozed", (counts.get("snoozed") ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [modeItems, queueSignalsFor, queuePreferences, isStarred]);
+
+  /** Nothing outstanding anywhere — the honest "all caught up" signal. */
+  const allCaughtUp = useMemo(
+    () => WORK_QUEUE_ORDER.every((queue) => (queueCounts.get(queue.key) ?? 0) === 0),
+    [queueCounts]
+  );
+
+  /**
+   * Snooze quietens a *recommendation*, never the conversation: the thread stays
+   * fully visible and actionable, and no status changes.
+   */
+  const applySnooze = useCallback(
+    async (item: OwnerInteraction, until: Date | null) => {
+      const conversationId = conversationIdOf(item);
+      if (!conversationId || !backendAccessToken) return;
+      try {
+        const saved = await setConversationSnooze(
+          backendAccessToken,
+          conversationId,
+          until ? until.toISOString() : null
+        );
+        setPreferences((current) => ({ ...current, [conversationId]: saved }));
+        flashActionFeedback(until ? "Snoozed" : "Unsnoozed");
+      } catch {
+        setActionError("Couldn\u2019t save that. Try again.");
+      }
+    },
+    [conversationIdOf, backendAccessToken, flashActionFeedback]
+  );
+
+  /** "No reply needed": corrects the recommendation, never the lifecycle. */
+  const applyQueueDismissal = useCallback(
+    async (item: OwnerInteraction, dismissed: boolean) => {
+      const conversationId = conversationIdOf(item);
+      if (!conversationId || !backendAccessToken) return;
+      try {
+        const saved = await setConversationQueueDismissed(
+          backendAccessToken,
+          conversationId,
+          dismissed
+        );
+        setPreferences((current) => ({ ...current, [conversationId]: saved }));
+        flashActionFeedback(dismissed ? "Marked as no reply needed" : "Back in your queue");
+      } catch {
+        setActionError("Couldn\u2019t save that. Try again.");
+      }
+    },
+    [conversationIdOf, backendAccessToken, flashActionFeedback]
   );
 
   const selectedNextAction = useMemo(
@@ -3463,7 +3548,78 @@ export default function ApplicationsWorkspace({
           },
         ]
       : [];
-  const menuItems: OverflowMenuItem[] = [...pipelineMenuItems, ...blockMenuItem];
+  /**
+   * Personal organisation lives in the overflow, not on the row: these quieten a
+   * recommendation, they never change the relationship. Snooze durations are
+   * coarse on purpose — a hiring decision does not need minute precision.
+   */
+  const preferenceMenuItems: OverflowMenuItem[] = selected && liveMode && conversationIdOf(selected)
+    ? (() => {
+        const conversationId = conversationIdOf(selected) as string;
+        const preference = preferences[conversationId];
+        const snoozedUntil = preference?.snoozed_until ? Date.parse(preference.snoozed_until) : null;
+        const isSnoozed = snoozedUntil !== null && snoozedUntil > Date.now();
+        const dismissed = Boolean(preference?.queue_dismissed);
+        const at = (hours: number) => new Date(Date.now() + hours * 3_600_000);
+        const items: OverflowMenuItem[] = [];
+
+        if (isSnoozed) {
+          items.push({
+            key: "unsnooze",
+            label: "Unsnooze",
+            icon: "clock",
+            menuGroup: "Just for you",
+            onClick: () => void applySnooze(selected, null),
+          });
+        } else {
+          items.push(
+            {
+              key: "snooze-later-today",
+              label: "Snooze until later today",
+              icon: "clock",
+              menuGroup: "Just for you",
+              onClick: () => void applySnooze(selected, at(4)),
+            },
+            {
+              key: "snooze-tomorrow",
+              label: "Snooze until tomorrow",
+              icon: "clock",
+              menuGroup: "Just for you",
+              onClick: () => void applySnooze(selected, at(24)),
+            },
+            {
+              key: "snooze-next-week",
+              label: "Snooze for a week",
+              icon: "clock",
+              menuGroup: "Just for you",
+              onClick: () => void applySnooze(selected, at(24 * 7)),
+            }
+          );
+        }
+
+        // Offered only when something is actually recommending a reply —
+        // otherwise there is nothing to dismiss.
+        const state = flags.workState ? deriveWorkState(selected, signalsFor(selected)) : null;
+        const suggestsReply =
+          state?.key === "needs_reply" || state?.key === "review_latest" || dismissed;
+        if (suggestsReply) {
+          items.push({
+            key: "queue-dismissal",
+            label: dismissed ? "Put back in my queue" : "No reply needed",
+            icon: "check",
+            menuGroup: "Just for you",
+            onClick: () => void applyQueueDismissal(selected, !dismissed),
+          });
+        }
+        return items;
+      })()
+    : [];
+
+  const menuItems: OverflowMenuItem[] = [
+    ...pipelineMenuItems,
+    ...preferenceMenuItems,
+    ...blockMenuItem,
+  ];
   // The opening message carries the proposed rate inside its bubble; when there's
   // no opening message, surface the rate in the context card so it isn't lost.
   const hasOpeningMessage = selected
@@ -3501,6 +3657,41 @@ export default function ApplicationsWorkspace({
   const pipelineItems = modeItems.filter((item) => item.direction === pipelineDirection);
   const directionLabels = directionLabelsFor(mode);
   const pipelineSummary = pipelineSummaryOf(pipelineItems, pipelineKind, pipelineDirection, mode);
+  /**
+   * The list as rendered. The queue narrows what is shown but deliberately does
+   * not feed selection normalisation — filtering your view should never throw
+   * away the conversation you are reading.
+   */
+  /** Queues worth offering: those with work, plus the personal views. */
+  const queueChips = ((): Array<{ key: string; label: string; count: number }> => {
+    const chips: Array<{ key: string; label: string; count: number }> = [];
+    for (const queue of WORK_QUEUE_ORDER) {
+      const count = queueCounts.get(queue.key) ?? 0;
+      if (count > 0) chips.push({ key: queue.key, label: queue.label, count });
+    }
+    for (const personal of ["starred", "snoozed"] as const) {
+      const count = queueCounts.get(personal) ?? 0;
+      if (count > 0) {
+        chips.push({ key: personal, label: personal === "starred" ? "Saved" : "Snoozed", count });
+      }
+    }
+    return chips;
+  })();
+
+  const listItems = ((): OwnerInteraction[] => {
+    if (!activeQueue) return visibleItems;
+    if (activeQueue === "starred") return visibleItems.filter((item) => isStarred(item));
+    if (activeQueue === "snoozed") {
+      return visibleItems.filter((item) => {
+        const until = queuePreferences.snoozedUntil(item.id);
+        return until !== null && until > Date.now();
+      });
+    }
+    return visibleItems.filter(
+      (item) => deriveWorkQueue(item, queueSignalsFor(item), queuePreferences) === activeQueue
+    );
+  })();
+
   const notifyPromptItems = notifyPrompt
     ? notifyPrompt.itemIds
         .map((id) => items.find((item) => item.id === id))
@@ -3641,6 +3832,51 @@ export default function ApplicationsWorkspace({
             ready={controlsReady}
           />
           <FilterBar mode={mode} filter={filter} counts={filterCounts} onSelect={selectFilter} />
+          {/*
+            Queues are recommendations, so they sit *under* the ownership
+            filters rather than replacing them, and only appear when they
+            actually contain work — an empty queue advertising nothing would be
+            worse than no queue at all. Horizontally scrollable so a narrow
+            screen never wraps into a wall of tabs.
+          */}
+          {flags.workState && queueChips.length > 0 ? (
+            <div
+              className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/[0.06] px-4 py-2"
+              data-testid="queue-selector"
+              role="group"
+              aria-label="Filter by what needs attention"
+            >
+              {queueChips.map((chip) => {
+                const isActive = activeQueue === chip.key;
+                return (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    data-testid={`queue-chip-${chip.key}`}
+                    aria-pressed={isActive}
+                    onClick={() => setActiveQueue(isActive ? null : (chip.key as typeof activeQueue))}
+                    className={[
+                      "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors",
+                      isActive
+                        ? "border-white/30 bg-white/[0.1] text-white"
+                        : "border-white/[0.08] bg-transparent text-white/55 hover:bg-white/[0.05] hover:text-white/85",
+                    ].join(" ")}
+                  >
+                    {chip.label}
+                    <span className={isActive ? "text-white/60" : "text-white/35"}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {flags.workState && allCaughtUp && queueChips.length === 0 && listItems.length > 0 ? (
+            <p
+              data-testid="all-caught-up"
+              className="shrink-0 border-b border-white/[0.06] px-4 py-2 text-[11.5px] text-white/45"
+            >
+              All caught up — nothing needs you right now.
+            </p>
+          ) : null}
           {totalUnreadCount > 0 ? (
             <div
               data-testid="inbox-unread-total"
@@ -3662,7 +3898,7 @@ export default function ApplicationsWorkspace({
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05]">
-                {visibleItems.map((item) => {
+                {listItems.map((item) => {
                   const isSelected = item.id === selectedItemId;
                   // Real unread message count for this thread (live mode); demo data
                   // still drives the simple "new" dot via item.unread.

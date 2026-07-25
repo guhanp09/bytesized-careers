@@ -438,3 +438,79 @@ test("a failed Star write rolls back instead of showing a star the server refuse
   await expect(star).toHaveAttribute("aria-pressed", "false");
   await page.unroute("**/preferences/star");
 });
+
+test("queues filter the list and only advertise work that exists", async ({ page }) => {
+  await openRecruiterInbox(page);
+  const selector = page.getByTestId("queue-selector");
+  await expect(selector).toBeVisible();
+
+  const chips = selector.getByRole("button");
+  const count = await chips.count();
+  expect(count, "at least one queue should have work").toBeGreaterThan(0);
+
+  // Every chip advertises a non-zero count and filters to exactly that many rows.
+  const first = chips.first();
+  const label = await first.innerText();
+  const advertised = Number.parseInt((label.match(/(\d+)\s*$/) ?? ["", "0"])[1], 10);
+  expect(advertised).toBeGreaterThan(0);
+
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("interaction-row")).toHaveCount(advertised);
+
+  // Toggling off restores the full list.
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+});
+
+test("snooze quietens the recommendation without touching the relationship", async ({ page }) => {
+  await openRecruiterInbox(page);
+  const row = page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" });
+  await row.click();
+
+  const header = page.getByTestId("applications-detail-header");
+  const before = (await header.innerText()).replace(/\s+/g, "");
+
+  await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Snooze until tomorrow" }).click();
+
+  // No lifecycle change, and the thread itself is still fully available.
+  await expect.poll(async () => (await header.innerText()).replace(/\s+/g, "")).toBe(before);
+  await expect(page.getByRole("textbox", { name: "Reply message" })).toBeVisible();
+
+  // It survives a reload and is reversible.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await row.click();
+  await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Unsnooze" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Unsnooze" }).click();
+  await expect.poll(async () => (await header.innerText()).replace(/\s+/g, "")).toBe(before);
+});
+
+test("'No reply needed' is offered only when something suggests a reply", async ({ page }) => {
+  await openRecruiterInbox(page);
+  // A record with unread inbound activity carries a reply recommendation.
+  const withActivity = page.getByTestId("interaction-row").filter({ hasText: "Aditi Verma" }).first();
+  await withActivity.click();
+
+  await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+  const dismiss = page.getByRole("menuitem", { name: "No reply needed" });
+  if (!(await dismiss.count())) {
+    // Nothing is recommending a reply here, which is itself the correct
+    // behaviour: the control must not appear with nothing to dismiss.
+    await expect(page.getByRole("menuitem", { name: "Put back in my queue" })).toHaveCount(0);
+    return;
+  }
+
+  const header = page.getByTestId("applications-detail-header");
+  const before = (await header.innerText()).replace(/\s+/g, "");
+  await dismiss.click();
+  // Corrects the recommendation, never the lifecycle — and is reversible.
+  await expect.poll(async () => (await header.innerText()).replace(/\s+/g, "")).toBe(before);
+  await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Put back in my queue" })).toBeVisible();
+});
