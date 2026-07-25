@@ -96,6 +96,7 @@ import {
   type WorkState,
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
+import { intentsFor } from "../../lib/messageIntents";
 import {
   flagCohortLabel,
   trackWorkspaceEvent,
@@ -2789,8 +2790,11 @@ export default function ApplicationsWorkspace({
           backendAccessToken,
           thread.conversationId,
           body,
-          clientMessageId
+          clientMessageId,
+          pendingIntent ?? undefined
         );
+        // One intent applies to one message; the next send is plain again.
+        setPendingIntent(null);
         setLiveThreads((prev) => {
           const current = prev[target.id];
           if (!current || current.messages.some((entry) => entry.id === message.id)) return prev;
@@ -2849,6 +2853,12 @@ export default function ApplicationsWorkspace({
     }
   };
 
+  /**
+   * The optional intent attached to the next send. Null means an ordinary
+   * freeform message — always the fastest path, and always available.
+   */
+  const [pendingIntent, setPendingIntent] = useState<string | null>(null);
+
   /* ---------------- Phase A: recommendation, work state, decision surface ---------------- */
 
   const flags = useMemo(() => workspaceFlagsFromEnv(), []);
@@ -2862,6 +2872,19 @@ export default function ApplicationsWorkspace({
   const signalsFor = useCallback(
     (item: OwnerInteraction): WorkSignals => ({
       unreadCount: liveMode ? unreadByThread[item.id] ?? 0 : item.unread ? 1 : 0,
+      /**
+       * Only an inbound message whose sender explicitly used an asking intent
+       * justifies "Needs your reply". A message merely arriving does not, so
+       * ambiguous traffic keeps the descriptive label instead.
+       */
+      responseExpected: (() => {
+        const thread = liveMode ? liveThreads[item.id] : undefined;
+        if (!thread) return undefined;
+        const lastInbound = [...thread.messages]
+          .reverse()
+          .find((message) => !message.from_me && message.kind !== "status_update");
+        return lastInbound ? Boolean(lastInbound.response_expected) : undefined;
+      })(),
       engagementUnconfirmed: (() => {
         const status = liveMode ? liveThreads[item.id]?.engagement?.status : undefined;
         return status ? ["ready_to_start", "start_pending"].includes(status) : undefined;
@@ -3150,6 +3173,31 @@ export default function ApplicationsWorkspace({
   const selectedActive = selected
     ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
     : false;
+
+  /**
+   * The decision surface and the intent chips answer the same question, so only
+   * one of them is ever on screen. The surface wins while it is open — it
+   * already offers the decisions plus "Ask a question" — and the chips return
+   * the moment it closes. Two stacked chip rows would just be clutter.
+   */
+  const decisionSurfaceOpen = Boolean(
+    flags.decisionStrip && selected && decisionSurface?.itemId === selected.id && decisionTargets.length > 0
+  );
+
+  /** Intents worth offering here, filtered to transitions the backend allows. */
+  const composerIntents =
+    selected && liveMode
+      ? intentsFor({
+          direction: selected.direction,
+          allowedStages: validStageTargetsFor(
+            selected.kind,
+            backendStatusOf(selected),
+            selected.participantBackendStatus,
+            selected.legacyArchiveResolutionRequired
+          ).map((stage) => stage.key),
+          messagingClosed: selectedMessagingClosed,
+        })
+      : [];
 
   const selectedConversationLoadFailed = selected
     ? Boolean(threadLoadErrors[selected.id]) && !liveThread
@@ -3792,7 +3840,20 @@ export default function ApplicationsWorkspace({
                         </div>
                       ) : selectedActive ? (
                         <div>
-                          {replyTemplates.length > 0 ? (
+                          {/*
+                            Optional accelerators. Typing and sending never
+                            requires touching these: they only pre-fill an
+                            editable draft (and record that the message asked
+                            for something), or hand off to the existing
+                            confirmed action for a consequential outcome. No
+                            intent is ever required to send.
+                          */}
+                          {/*
+                            Demo mode has no backend to record an intent on, so
+                            it keeps the original quick-reply chips: same
+                            affordance, no promise of persistence it cannot keep.
+                          */}
+                          {!liveMode && replyTemplates.length > 0 ? (
                             <div className="mb-2 flex flex-wrap gap-1.5">
                               {replyTemplates.map((template) => (
                                 <button
@@ -3800,7 +3861,9 @@ export default function ApplicationsWorkspace({
                                   type="button"
                                   onClick={() => {
                                     handleReplyDraftChange(
-                                      replyDraft.trim() ? `${replyDraft.trimEnd()} ${template.text}` : template.text
+                                      replyDraft.trim()
+                                        ? `${replyDraft.trimEnd()} ${template.text}`
+                                        : template.text
                                     );
                                     composerRef.current?.focus();
                                   }}
@@ -3809,6 +3872,53 @@ export default function ApplicationsWorkspace({
                                   {template.label}
                                 </button>
                               ))}
+                            </div>
+                          ) : null}
+                          {composerIntents.length > 0 && !decisionSurfaceOpen ? (
+                            <div className="mb-2 flex flex-wrap gap-1.5" data-testid="composer-intents">
+                              {composerIntents.map((intent) => {
+                                const active = pendingIntent === intent.key;
+                                return (
+                                  <button
+                                    key={`${selected.id}-intent-${intent.key}`}
+                                    type="button"
+                                    data-testid={`composer-intent-${intent.key}`}
+                                    aria-pressed={intent.kind === "message" ? active : undefined}
+                                    onClick={() => {
+                                      if (intent.kind === "decision" && intent.stage) {
+                                        // Outcomes go through the confirmed
+                                        // transition flow, never a message body.
+                                        const action = headerActions.find(
+                                          (entry) =>
+                                            entry.backendStatus === intent.stage &&
+                                            entry.flow !== "reply"
+                                        );
+                                        if (action) dispatchHeaderAction(selected, action);
+                                        return;
+                                      }
+                                      // Toggling off restores a plain freeform send.
+                                      if (active) {
+                                        setPendingIntent(null);
+                                        composerRef.current?.focus();
+                                        return;
+                                      }
+                                      setPendingIntent(intent.key);
+                                      if (intent.template && !replyDraft.trim()) {
+                                        handleReplyDraftChange(intent.template);
+                                      }
+                                      composerRef.current?.focus();
+                                    }}
+                                    className={[
+                                      "inline-flex h-7 cursor-pointer items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors",
+                                      active
+                                        ? "border-white/30 bg-white/[0.1] text-white"
+                                        : "border-white/[0.08] bg-transparent text-white/55 hover:bg-white/[0.05] hover:text-white/85",
+                                    ].join(" ")}
+                                  >
+                                    {intent.label}
+                                  </button>
+                                );
+                              })}
                             </div>
                           ) : null}
                           <div className="flex items-end gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-2 transition-colors focus-within:border-white/25">

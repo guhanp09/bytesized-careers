@@ -424,6 +424,32 @@ async def post_message(
     return message
 
 
+#: Composer intents that genuinely ask the other participant for something.
+#: Only these justify a high-confidence "waiting on them" / "needs your reply"
+#: work state; anything else stays descriptive.
+RESPONSE_EXPECTING_INTENTS = frozenset(
+    {
+        "ask_question",
+        "request_portfolio",
+        "check_availability",
+        "propose_interview",
+        "request_confirmation",
+    }
+)
+
+
+def intent_metadata(intent: str | None) -> dict | None:
+    """Message metadata for an optional composer intent.
+
+    Returns ``None`` for a plain freeform message so ordinary sends stay exactly
+    as they were — no metadata, no behaviour change, and no way for freeform text
+    to imply an expectation the sender never made.
+    """
+    if not intent:
+        return None
+    return {"intent": intent, "response_expected": intent in RESPONSE_EXPECTING_INTENTS}
+
+
 def serialize_message(
     message: Message,
     viewer_id: UUID,
@@ -450,6 +476,14 @@ def serialize_message(
             and message_created_at <= counterparty_read_at
         ),
     }
+    # The composer intent, curated like everything else here. Both participants
+    # may see it: it says only "this message asked for something", which is
+    # exactly what the sender chose to communicate, and it carries no private
+    # evaluation state.
+    intent = metadata.get("intent")
+    if isinstance(intent, str) and intent:
+        serialized["intent"] = intent
+        serialized["response_expected"] = bool(metadata.get("response_expected"))
     # Expose a curated structured payload for the automated screening-question message so
     # the Inbox can render it natively instead of reparsing the text body. No other
     # message metadata is leaked.

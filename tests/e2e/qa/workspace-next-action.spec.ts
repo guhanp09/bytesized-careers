@@ -241,10 +241,13 @@ test("mobile keeps the list calm and acts from the opened conversation", async (
   await openRecruiterInbox(page);
 
   // Row-level action buttons are desktop-only; the list must not be crowded.
-  const rowActions = page.getByTestId("row-next-action");
-  for (let index = 0; index < (await rowActions.count()); index += 1) {
-    await expect(rowActions.nth(index)).toBeHidden();
-  }
+  // Counted in one pass rather than awaited per element, so the assertion stays
+  // fast and deterministic regardless of how many rows are present.
+  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+  const visibleRowActions = await page
+    .getByTestId("row-next-action")
+    .evaluateAll((nodes) => nodes.filter((node) => (node as HTMLElement).offsetParent !== null).length);
+  expect(visibleRowActions, "list rows must stay calm on mobile").toBe(0);
 
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
   await expect(page.getByTestId("applications-detail")).toBeVisible();
@@ -278,4 +281,93 @@ test("the recommended action is operable by keyboard", async ({ page }) => {
       return strip + notify + dialog + menu > 0 || composerFocused;
     })
     .toBe(true);
+});
+
+test("composer intents are optional accelerators, never a required step", async ({ page }) => {
+  await openRecruiterInbox(page);
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" })
+    .click();
+
+  const composer = page.getByRole("textbox", { name: "Reply message" });
+  const header = page.getByTestId("applications-detail-header");
+  const stageBefore = (await header.innerText()).replace(/\s+/g, "");
+
+  // Freeform is available immediately, with no intent selected.
+  await composer.fill("Plain message, no intent chosen.");
+  await page.getByTestId("applications-detail").getByRole("button", { name: "Send", exact: true }).click();
+  await expect(composer).toHaveValue("");
+  // ...and it changes nothing about the relationship.
+  await expect.poll(async () => (await header.innerText()).replace(/\s+/g, "")).toBe(stageBefore);
+
+  // Choosing an asking intent pre-fills an editable draft.
+  const intents = page.getByTestId("composer-intents");
+  await expect(intents).toBeVisible();
+  await page.getByTestId("composer-intent-request_portfolio").click();
+  await expect(composer).not.toHaveValue("");
+  await expect(page.getByTestId("composer-intent-request_portfolio")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // The draft remains fully editable.
+  await composer.fill("Rewritten entirely before sending.");
+  await expect(composer).toHaveValue("Rewritten entirely before sending.");
+
+  // Toggling the intent off returns to a plain send.
+  await page.getByTestId("composer-intent-request_portfolio").click();
+  await expect(page.getByTestId("composer-intent-request_portfolio")).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+
+  // Selecting an intent never moved the stage.
+  await expect.poll(async () => (await header.innerText()).replace(/\s+/g, "")).toBe(stageBefore);
+});
+
+test("a consequential intent routes to the confirmed action, never a message", async ({ page }) => {
+  await openRecruiterInbox(page);
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" })
+    .click();
+
+  // The decision surface and the intent chips answer the same question, so only
+  // one shows at a time. Close the surface to reach the chips.
+  const strip = page.getByTestId("decision-strip");
+  if (await strip.count()) await page.getByTestId("decision-strip-dismiss").click();
+  await expect(page.getByTestId("composer-intents")).toBeVisible();
+  const notProceeding = page.getByTestId("composer-intent-not_proceeding");
+  await expect(notProceeding).toBeVisible();
+
+  await notProceeding.click();
+  // It opens the existing confirmation rather than sending anything.
+  const dialog = page.getByRole("dialog", { name: /not selected/i });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  // Escaping leaves the record untouched.
+  await expect(page.getByTestId("applications-detail-header")).toContainText("New");
+});
+
+test("only one chip row is ever on screen", async ({ page }) => {
+  await openRecruiterInbox(page);
+  await page
+    .getByTestId("interaction-row")
+    .filter({ hasText: "Priya Nair" })
+    .filter({ hasText: "Shorts editor" })
+    .click();
+
+  // The decision surface owns the moment while it is open.
+  const strip = page.getByTestId("decision-strip");
+  await expect(strip).toBeVisible();
+  await expect(page.getByTestId("composer-intents")).toHaveCount(0);
+
+  // Closing it hands the moment back to the composer.
+  await page.getByTestId("decision-strip-dismiss").click();
+  await expect(strip).toHaveCount(0);
+  await expect(page.getByTestId("composer-intents")).toBeVisible();
 });

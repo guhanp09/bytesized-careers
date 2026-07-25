@@ -27,6 +27,12 @@ export type ChatThreadMessage = {
     automated: boolean;
     questions: ScreeningQuestionSnapshot[];
   };
+  /**
+   * True when the sender used a composer intent that genuinely asked for
+   * something. The only evidence that justifies a high-confidence "needs your
+   * reply" work state — a message merely arriving never does.
+   */
+  responseExpected?: boolean;
 };
 
 type BackendMessageLike = {
@@ -40,6 +46,7 @@ type BackendMessageLike = {
   screening?: { questions?: ScreeningQuestionSnapshot[] } | null;
   created_at?: string | null;
   read_by_recipient?: boolean;
+  response_expected?: boolean;
 };
 
 /**
@@ -60,6 +67,7 @@ export function mapBackendMessage(
     atLabel: formatTime(message.created_at),
     createdAt: message.created_at,
     readByRecipient: Boolean(message.read_by_recipient),
+    responseExpected: Boolean(message.response_expected),
     kind: isScreening
       ? "screening"
       : message.kind === "status_update" || message.kind === "engagement_update"

@@ -39,6 +39,10 @@ class MessageRead(BaseModel):
     message_kind: str | None = None
     automated: bool = False
     screening: dict | None = None
+    # Optional composer intent the sender chose, and whether it asked for a
+    # reply. Presentation evidence only — it never affects lifecycle status.
+    intent: str | None = None
+    response_expected: bool = False
     created_at: str | None = None
     read_by_recipient: bool = False
 
@@ -69,6 +73,19 @@ class SendMessageRequest(BaseModel):
 
     body: str = Field(min_length=1, max_length=ms.MAX_MESSAGE_LENGTH)
     client_message_id: UUID | None = None
+    #: Optional composer intent. Purely an accelerator: it records that the
+    #: sender was asking for something, so the other side's workspace can say
+    #: "waiting on you" with evidence instead of guessing from the fact that a
+    #: message merely arrived. It never changes status and is restricted to the
+    #: message-sending intents — consequential outcomes go through the
+    #: confirmed transition endpoints, never through a message body.
+    intent: Literal[
+        "ask_question",
+        "request_portfolio",
+        "check_availability",
+        "propose_interview",
+        "request_confirmation",
+    ] | None = None
 
 
 class SendStatusUpdateRequest(BaseModel):
@@ -276,6 +293,9 @@ async def send_message(
             current_user,
             payload.body,
             client_message_id=payload.client_message_id,
+            # Recorded on the message itself so the expectation is durable and
+            # visible on every device, rather than inferred later from text.
+            metadata=ms.intent_metadata(payload.intent),
         )
     except ms.EmptyMessageBody as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Message cannot be empty") from exc

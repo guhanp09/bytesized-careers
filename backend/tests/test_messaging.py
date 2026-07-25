@@ -787,3 +787,67 @@ async def test_message_notification_thread_is_locatable_in_recipient_activity_su
     assert creator_thread in {row["id"] for row in creator_summary["received_interests"]}, (
         "creator notification thread missing from the talent-side interest records"
     )
+
+
+async def test_composer_intent_is_recorded_and_freeform_stays_inert(client: AsyncClient) -> None:
+    """An intent records that the sender asked for something; freeform does not."""
+    owner = await _register_verified_login(client, email="mi_owner@example.com", username="mi_owner")
+    applicant = await _register_verified_login(client, email="mi_appl@example.com", username="mi_appl")
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    applicant_h = {"Authorization": f"Bearer {applicant}"}
+    conversation_id = (
+        await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h)
+    ).json()["conversation"]["id"]
+
+    # A plain message carries no expectation at all.
+    plain = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Just a note, nothing needed."},
+    )
+    assert plain.status_code == 201, plain.text
+    assert plain.json()["intent"] is None
+    assert plain.json()["response_expected"] is False
+
+    # An explicit ask does, and the other participant can see it.
+    asked = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/messages",
+        headers=owner_h,
+        json={"body": "Could you share a sample?", "intent": "request_portfolio"},
+    )
+    assert asked.status_code == 201, asked.text
+    assert asked.json()["intent"] == "request_portfolio"
+    assert asked.json()["response_expected"] is True
+
+    counterparty = await client.get(
+        f"/api/v1/me/conversations/{conversation_id}", headers=applicant_h
+    )
+    messages = counterparty.json()["messages"]
+    assert [m.get("response_expected") for m in messages] == [False, True]
+
+    # An intent must never move the relationship on its own.
+    received = await client.get("/api/v1/me/applications/received", headers=owner_h)
+    assert received.json()[0]["status"] == "new"
+    assert received.json()[0]["participant_status"] == "new"
+
+
+async def test_unknown_or_consequential_intents_are_rejected(client: AsyncClient) -> None:
+    """Outcomes are never reachable through a message body."""
+    owner = await _register_verified_login(client, email="mi2_owner@example.com", username="mi2_owner")
+    applicant = await _register_verified_login(client, email="mi2_appl@example.com", username="mi2_appl")
+    job_id = await _published_job(client, owner)
+    application_id = await _apply(client, applicant, job_id)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    conversation_id = (
+        await client.get(f"/api/v1/me/applications/{application_id}/conversation", headers=owner_h)
+    ).json()["conversation"]["id"]
+
+    for forbidden in ("hire", "decline", "not_proceeding", "totally_made_up"):
+        response = await client.post(
+            f"/api/v1/me/conversations/{conversation_id}/messages",
+            headers=owner_h,
+            json={"body": "Attempting a shortcut.", "intent": forbidden},
+        )
+        assert response.status_code == 422, f"{forbidden} must not be sendable"

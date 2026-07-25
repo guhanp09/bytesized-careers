@@ -2826,6 +2826,10 @@ export type BackendMessage = {
   body: string;
   /** "status_update" for platform-generated pipeline updates; absent for user text. */
   kind?: string | null;
+  /** Optional composer intent the sender chose; absent for freeform messages. */
+  intent?: string | null;
+  /** True when that intent genuinely asked the other side for something. */
+  response_expected?: boolean;
   created_at?: string | null;
   read_by_recipient?: boolean;
 };
@@ -2954,19 +2958,28 @@ export async function getMyReviewWorkspace(
   return requestJson<BackendReviewWorkspace>(`/me/reviews?mode=${encodeURIComponent(mode)}`, { accessToken });
 }
 
+/**
+ * Send a message. `intent` is optional and purely an accelerator — it records
+ * that the sender was asking for something so the other side's workspace can be
+ * precise about what is outstanding. It never changes status; consequential
+ * outcomes go through the transition endpoints.
+ */
 export async function sendConversationMessage(
   accessToken: string,
   conversationId: string,
   body: string,
-  clientMessageId?: string
+  clientMessageId?: string,
+  intent?: string
 ): Promise<BackendMessage> {
   return requestJson<BackendMessage>(
     `/me/conversations/${encodeURIComponent(conversationId)}/messages`,
     {
       method: "POST",
-      body: JSON.stringify(
-        clientMessageId ? { body, client_message_id: clientMessageId } : { body }
-      ),
+      body: JSON.stringify({
+        body,
+        ...(clientMessageId ? { client_message_id: clientMessageId } : {}),
+        ...(intent ? { intent } : {}),
+      }),
       accessToken,
     }
   );
