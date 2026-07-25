@@ -169,6 +169,23 @@ consideration"** until a later shared outcome supersedes them. Nothing
 transitions into it any more, but records already in it can still move forward
 and the schema still accepts the value, so older clients keep working.
 
+## Phase B user-facing completion
+
+Queues, snooze and "No reply needed" are now reachable. Three judgements shaped
+the surface:
+
+- **Queues appear only when they hold work.** A permanent row of ten tabs, most
+  reading zero, would be clutter pretending to be information. Counts and rows
+  come from one derivation so a chip can never promise a number the list cannot
+  show.
+- **Filtering never changes what you are reading.** The queue narrows the
+  rendered list but is deliberately excluded from selection normalisation.
+- **Personal organisation stays in the overflow.** Snooze and "No reply needed"
+  quieten a recommendation, not the relationship: the thread stays visible and
+  messageable, no status moves, the counterparty learns nothing, and both are
+  reversible. The dismissal is offered only when something actually recommends a
+  reply.
+
 ## Deferred
 
 **B** — `interaction_user_preferences` (Star, snooze, prompt dismissal); auto-Reviewing

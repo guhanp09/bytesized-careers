@@ -52,7 +52,10 @@ the backend did not already own.
 |---|---|---|---|---|---|---|---|
 | `star-toggle` (header) | Save privately | Optimistic toggle; rolls back on failure; never changes stage | `PUT /me/conversations/{id}/preferences/star` | `interaction_user_preferences`, per user | **never visible** | `workspace-next-action` (durable, independent, rollback) | **NEW (B1)** |
 | `row-starred` | Quiet saved marker | One small icon; no badge cluster | — | as above | none | same | **NEW (B1)** |
-| snooze / "No reply needed" | Correct a queue recommendation | Hides the recommendation only; status untouched | `.../preferences/snooze`, `.../preferences/queue-dismissal` | as above | none | 9 backend tests | **NEW (B1)** |
+| `queue-selector` / `queue-chip-*` | Show only what needs attention | Rendered only for queues with live work; counts and rows share one derivation; toggling off restores the list; never narrows selection | — derived | in-memory | none | e2e (advertises only real work) | **NEW** |
+| `all-caught-up` | Say when nothing is outstanding | Replaces the selector when every queue is empty | — | — | none | e2e | **NEW** |
+| Menu → *Snooze … / Unsnooze* | Quieten a recommendation | Coarse durations; thread stays visible and messageable; no status change; reversible; survives reload | `PUT .../preferences/snooze` | `interaction_user_preferences` | **none** | e2e + 9 backend | **NEW (B1 UI)** |
+| Menu → *No reply needed / Put back in my queue* | Correct a reply recommendation | Offered **only** when something recommends a reply; reversible; no lifecycle change; no unread rewriting | `PUT .../preferences/queue-dismissal` | as above | **none** | e2e | **NEW (B1 UI)** |
 | decision-strip dismissal | Remember a dismissal durably | Versioned per trigger | `.../preferences/decision-prompt` | as above | none | backend | **NEW (B1)** |
 | *(automatic)* deliberate open | Reading marks Reviewing privately | Dwell-gated, owner-only, idempotent, silent on failure | `POST /applications/{id}/review-started` | `review_started_at` + stage | **none — no message or notification** | 4 backend tests | **NEW (B2)** |
 | Shortlist stage | *(retired)* | Not offered anywhere; legacy records still move forward and read as "Under consideration" | migration 0047 | preserved history | honest legacy label | backend + e2e | **RETIRED (B4)** |
