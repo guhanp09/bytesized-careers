@@ -120,6 +120,7 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
+import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   NO_QUEUE_PREFERENCES,
   WORK_QUEUE_ORDER,
@@ -556,6 +557,27 @@ function firstNameOf(name: string): string {
   return name.split(/\s+/)[0] || name;
 }
 
+/**
+ * The one line of the conversation worth previewing.
+ *
+ * The row used to show the opportunity title twice — once as the subtitle and
+ * once inside the snippet slot — which is why every row read as two labels and
+ * no content. This returns the actual last thing said.
+ */
+function rowSnippet(item: OwnerInteraction): string {
+  const last = item.replies?.at(-1)?.body || item.response?.body || item.message;
+  return (last || "").replace(/\s+/g, " ").trim();
+}
+
+/** The stage's dot, from the shared taxonomy rather than a local colour map. */
+function statusDotClass(item: OwnerInteraction): string {
+  const current = backendStatusOf(item);
+  const stage = pipelineStagesFor(item.kind, item.direction).find(
+    (entry: PipelineStage) => entry.key === current
+  );
+  return stage?.dot ?? "bg-white/40";
+}
+
 function rowSubtitle(item: OwnerInteraction): string {
   if (item.kind === "application" && item.direction === "received") {
     return item.job?.title || item.counterpartyName;
@@ -787,7 +809,7 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
               return (
                 <Fragment key={item.key}>
                   {showGroup ? (
-                    <p className="px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-subtle">
+                    <p className="px-2.5 pb-1 pt-2 text-[11px] font-semibold text-subtle">
                       {item.menuGroup}
                     </p>
                   ) : null}
@@ -1155,19 +1177,40 @@ function openingEventLine(item: OwnerInteraction): string {
  * claims more than the evidence supports. Colour is never the only signal — the
  * text carries the meaning on its own.
  */
+/**
+ * How each work state looks and reads.
+ *
+ * The icon is the point: "needs your reply" and "waiting on them" are opposite
+ * facts that a reader should be able to tell apart without finishing the
+ * sentence. Colour is never the only signal — every chip still carries its
+ * words — but a consistent mark per state is what makes a list of forty
+ * scannable instead of readable.
+ */
+const WORK_STATE_STYLE: Record<
+  WorkState["key"],
+  { icon: Parameters<typeof Icon>[0]["name"]; tone: string }
+> = {
+  needs_review: { icon: "eye", tone: "text-state-new" },
+  decision_not_shared: { icon: "send", tone: "text-state-hold" },
+  start_confirmation_pending: { icon: "circle-play", tone: "text-state-agreed" },
+  interview_confirmation: { icon: "calendar-check", tone: "text-state-interview" },
+  interview_follow_up: { icon: "calendar-clock", tone: "text-state-interview" },
+  needs_reply: { icon: "send", tone: "text-state-review" },
+  review_latest: { icon: "message-text", tone: "text-muted" },
+};
+
 function WorkStateChip({ state }: { state: WorkState }) {
+  const style = WORK_STATE_STYLE[state.key];
   return (
     <span
       data-testid="work-state-chip"
       data-work-state={state.key}
       className={[
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
-        state.highConfidence ? "bg-white/[0.09] text-white/80" : "bg-transparent text-muted",
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
+        state.highConfidence ? `bg-wash-strong ${style.tone}` : "bg-transparent text-muted",
       ].join(" ")}
     >
-      {state.highConfidence ? (
-        <span className="h-1 w-1 shrink-0 rounded-full bg-white/70" aria-hidden="true" />
-      ) : null}
+      <Icon name={style.icon} className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       {state.label}
     </span>
   );
@@ -1207,10 +1250,13 @@ function DecisionStrip({
     <section
       data-testid="decision-strip"
       aria-label={`Next step for ${item.counterpartyName}`}
-      className="ui-crossfade mb-2 rounded-2xl border border-white/[0.1] bg-white/[0.035] px-3.5 py-3"
+      className="ui-crossfade surface-elevated mb-2.5 rounded-2xl border border-line-mid px-3.5 py-3 elev-3"
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[12.5px] font-medium text-white/80">{headline}</p>
+        <p className="flex items-center gap-2 text-[12.5px] font-semibold text-ink">
+          <Icon name="sparkles" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
+          {headline}
+        </p>
         <button
           type="button"
           data-testid="decision-strip-dismiss"
@@ -1228,7 +1274,7 @@ function DecisionStrip({
             type="button"
             data-testid={`decision-strip-option-${stage.key}`}
             onClick={() => onPick(stage.key)}
-            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 text-[11.5px] font-semibold text-white/85 transition-colors hover:border-white/25 hover:bg-white/[0.09]"
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line-mid bg-raised px-2.5 text-[11.5px] font-semibold text-default transition-all elev-1 hover:border-line-strong hover:bg-overlay hover:text-ink"
           >
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stage.dot}`} aria-hidden="true" />
             {decisionActionLabel(item, stage.key, stage.label)}
@@ -1239,7 +1285,7 @@ function DecisionStrip({
           type="button"
           data-testid="decision-strip-ask"
           onClick={onAskQuestion}
-          className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/75 transition-colors hover:bg-white/[0.06] hover:text-white"
+          className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-muted transition-colors hover:bg-wash hover:text-ink"
         >
           Ask a question
         </button>
@@ -1504,7 +1550,7 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
         "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
       ].join(" ")}
     >
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-secondary">
         <Icon name="message-square-text" className="h-3.5 w-3.5 opacity-70" />
         <span>Screening questions</span>
       </div>
@@ -1517,7 +1563,7 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
               <span className="min-w-0">
                 <span className="whitespace-pre-line break-words">{question.prompt}</span>
                 {question.required ? (
-                  <span className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-100/70">
+                  <span className="ml-1.5 align-middle text-[11px] font-medium text-state-interview">
                     Required
                   </span>
                 ) : null}
@@ -4168,7 +4214,7 @@ export default function ApplicationsWorkspace({
             {shouldShowJobSummaries(jobSummaries) ? (
               <div
                 data-testid="job-summaries"
-                className="flex shrink-0 gap-2 overflow-x-auto border-b border-white/[0.06] px-4 py-2.5"
+                className="bg-shell flex shrink-0 gap-2.5 overflow-x-auto border-b border-line px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 role="group"
                 aria-label="Workload by job"
               >
@@ -4176,14 +4222,26 @@ export default function ApplicationsWorkspace({
                   <div
                     key={summary.jobKey}
                     data-testid="job-summary"
-                    className="min-w-[168px] shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2"
+                    className="surface-raised min-w-[196px] shrink-0 rounded-xl border border-line px-3 py-2.5 elev-2"
                   >
-                    <p className="truncate text-[11.5px] font-semibold text-white/90" title={summary.title}>
+                    <p className="truncate text-[12px] font-semibold text-ink" title={summary.title}>
                       {summary.title}
                     </p>
-                    <p className="mt-0.5 text-[10.5px] text-white/60">
-                      {summary.activeCount} active
-                      {summary.outstandingCount > 0 ? ` · ${summary.outstandingCount} need you` : ""}
+                    {/*
+                      Two facts, ranked: how much is here, and how much of it is
+                      yours. "Needs you" is the actionable half, so it carries
+                      the weight and the attention hue; the total stays quiet.
+                    */}
+                    <p className="mt-1 flex items-baseline gap-1.5 text-[11px]">
+                      <span className="tabular-nums text-muted">{summary.activeCount} active</span>
+                      {summary.outstandingCount > 0 ? (
+                        <>
+                          <span aria-hidden="true" className="text-disabled">·</span>
+                          <span className="font-semibold tabular-nums text-state-interview">
+                            {summary.outstandingCount} need you
+                          </span>
+                        </>
+                      ) : null}
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {summary.counts.map((entry) => (
@@ -4205,10 +4263,10 @@ export default function ApplicationsWorkspace({
                               setView("pipeline");
                             }
                           }}
-                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 text-[10.5px] font-medium text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-wash px-1.5 text-[10.5px] font-medium text-secondary transition-colors hover:bg-wash-strong hover:text-ink"
                         >
                           {entry.label}
-                          <span className="text-white/60">{entry.count}</span>
+                          <span className="tabular-nums text-subtle">{entry.count}</span>
                         </button>
                       ))}
                     </div>
@@ -4258,10 +4316,16 @@ export default function ApplicationsWorkspace({
           </div>
         </div>
       ) : (
-      <div className="min-h-0 flex-1 lg:grid lg:grid-cols-[390px_minmax(0,1fr)]">
+      /*
+        Three layers, not three identical panes. The list sits on `panel`, the
+        conversation on `shell` with the canvas gradient behind it, and the cards
+        inside each are `raised`. Tone does the separating; the hairline is only
+        there to keep the edge crisp.
+      */
+      <div className="surface-canvas min-h-0 flex-1 lg:grid lg:grid-cols-[390px_minmax(0,1fr)]">
         <aside
           className={[
-            "border-white/[0.06] lg:flex lg:min-h-0 lg:flex-col lg:border-r",
+            "bg-shell border-line lg:flex lg:min-h-0 lg:flex-col lg:border-r",
             mobileDetailOpen ? "hidden lg:flex" : "block",
           ].join(" ")}
         >
@@ -4293,41 +4357,81 @@ export default function ApplicationsWorkspace({
               data-testid="work-reminder"
               data-reminder-key={reminder.key}
               onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
-              className="flex shrink-0 cursor-pointer items-center gap-2 border-b border-white/[0.06] px-4 py-2 text-left text-[11.5px] text-white/75 transition-colors hover:bg-white/[0.03] hover:text-white"
+              className="group mx-3 mt-2.5 flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
             >
-              <Icon name="clock" className="h-3.5 w-3.5 shrink-0 text-white/55" aria-hidden="true" />
-              <span className="min-w-0 flex-1">{reminder.text}</span>
-              <span className="shrink-0 text-white/60">Show</span>
+              <Icon
+                name="clock"
+                className="h-3.5 w-3.5 shrink-0 text-state-interview"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1 leading-snug">{reminder.text}</span>
+              <span className="shrink-0 text-[11px] font-semibold text-muted transition-colors group-hover:text-ink">
+                Show
+              </span>
             </button>
           ) : null}
           {flags.workState && queueChips.length > 0 ? (
-            <div
-              className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/[0.06] px-4 py-2"
-              data-testid="queue-selector"
-              role="group"
-              aria-label="Filter by what needs attention"
-            >
-              {queueChips.map((chip) => {
-                const isActive = activeQueue === chip.key;
-                return (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    data-testid={`queue-chip-${chip.key}`}
-                    aria-pressed={isActive}
-                    onClick={() => setActiveQueue(isActive ? null : (chip.key as typeof activeQueue))}
-                    className={[
-                      "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors",
-                      isActive
-                        ? "border-white/30 bg-white/[0.1] text-white"
-                        : "border-white/[0.08] bg-transparent text-white/70 hover:bg-white/[0.05] hover:text-white",
-                    ].join(" ")}
-                  >
-                    {chip.label}
-                    <span className={isActive ? "text-white/70" : "text-white/60"}>{chip.count}</span>
-                  </button>
-                );
-              })}
+            /*
+              Integrated with the list rather than pasted above it: one inset
+              rail whose chips lift out of it when active, and a right-edge
+              fade so a clipped chip reads as "more this way" instead of as a
+              broken layout. `All` is always first, so leaving a queue is never
+              a hunt for the escape.
+            */
+            <div className="relative shrink-0 px-3 pb-2 pt-2.5">
+              <div
+                className="surface-inset flex items-center gap-1 overflow-x-auto rounded-lg p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                data-testid="queue-selector"
+                role="group"
+                aria-label="Filter by what needs attention"
+              >
+                <button
+                  type="button"
+                  data-testid="queue-chip-all"
+                  aria-pressed={activeQueue === null}
+                  onClick={() => setActiveQueue(null)}
+                  className={[
+                    "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md px-2.5 text-[11.5px] font-semibold transition-all",
+                    activeQueue === null
+                      ? "bg-elevated text-ink elev-1"
+                      : "text-muted hover:bg-wash hover:text-default",
+                  ].join(" ")}
+                >
+                  All
+                </button>
+                {queueChips.map((chip) => {
+                  const isActive = activeQueue === chip.key;
+                  return (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      data-testid={`queue-chip-${chip.key}`}
+                      aria-pressed={isActive}
+                      onClick={() => setActiveQueue(isActive ? null : (chip.key as typeof activeQueue))}
+                      className={[
+                        "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-[11.5px] font-medium transition-all",
+                        isActive
+                          ? "bg-elevated font-semibold text-ink elev-1"
+                          : "text-muted hover:bg-wash hover:text-default",
+                      ].join(" ")}
+                    >
+                      {chip.label}
+                      <span
+                        className={[
+                          "rounded px-1 text-[10.5px] tabular-nums",
+                          isActive ? "bg-wash-strong text-default" : "text-subtle",
+                        ].join(" ")}
+                      >
+                        {chip.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-2.5 right-3 w-8 rounded-r-lg bg-gradient-to-l from-shell to-transparent"
+              />
             </div>
           ) : null}
           {flags.workState && queueChips.length === 0 && listItems.length > 0 && caughtUp ? (
@@ -4415,46 +4519,84 @@ export default function ApplicationsWorkspace({
                       aria-pressed={isSelected}
                       onClick={() => handleSelect(item.id)}
                       className={[
-                        "flex w-full cursor-pointer items-start gap-3 border-l-2 px-4 py-3.5 text-left transition-colors",
+                        /*
+                          The open row is a lit band, not a 1px rule. A 3px
+                          accent edge, a leftward tonal wash, and a raised
+                          background make the selection unmistakable at a glance
+                          without brightening every other row to compete.
+                        */
+                        "relative flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left",
+                        "transition-[background-color,box-shadow] duration-150",
                         isSelected
-                          ? "border-l-white/85 bg-white/[0.055]"
-                          : "border-l-transparent hover:bg-white/[0.035]",
+                          ? "surface-selected bg-raised"
+                          : "hover:bg-wash",
                       ].join(" ")}
                     >
-                      <InteractionAvatar name={item.counterpartyName} src={item.counterpartyAvatarUrl} />
+                      {isSelected ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-ink"
+                        />
+                      ) : null}
+                      <span className="relative shrink-0">
+                        <InteractionAvatar name={item.counterpartyName} src={item.counterpartyAvatarUrl} />
+                        {/*
+                          The direction of the relationship, as a mark on the
+                          avatar rather than a line of backend vocabulary above
+                          the person's name. The accessible name carries the
+                          full phrase, so nothing is lost to a screen reader.
+                        */}
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-elevated text-subtle ring-2 ring-shell"
+                          title={interactionKindLabel(item)}
+                        >
+                          <span className="sr-only">{interactionKindLabel(item)}</span>
+                          <Icon
+                            name={item.direction === "received" ? "arrow-down-left" : "arrow-up-right"}
+                            className="h-2 w-2"
+                          />
+                        </span>
+                      </span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[11px] font-medium text-subtle">
-                            {interactionKindLabel(item)}
-                          </span>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {messageUnread > 0 ? (
-                              <span
-                                data-testid="inbox-unread-badge"
-                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
-                                className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold leading-none text-black"
-                              >
-                                {formatBadgeCount(messageUnread)}
-                              </span>
-                            ) : null}
-                            <span className="text-[11px] text-subtle">{item.updatedAtLabel}</span>
-                          </div>
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          {rowUnread ? (
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/90" aria-hidden="true" />
-                          ) : null}
+                        {/* The person leads. Everything else is context for them. */}
+                        <div className="flex items-baseline justify-between gap-2">
                           <span
                             className={[
-                              "truncate text-sm",
-                              rowUnread ? "font-semibold text-white" : "font-medium text-white/85",
+                              "truncate text-[13.5px] leading-5",
+                              rowUnread ? "font-semibold text-ink" : "font-medium text-default",
                             ].join(" ")}
                           >
                             {item.title}
                           </span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            {isStarred(item) ? (
+                              <span
+                                data-testid="row-starred"
+                                aria-label="Saved"
+                                title="Saved"
+                                className="inline-flex shrink-0 text-state-interview"
+                              >
+                                <Icon name="bookmark" className="h-3 w-3" />
+                              </span>
+                            ) : null}
+                            {messageUnread > 0 ? (
+                              <span
+                                data-testid="inbox-unread-badge"
+                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
+                                className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
+                              >
+                                {formatBadgeCount(messageUnread)}
+                              </span>
+                            ) : null}
+                            {/* One fixed home for the timestamp, always last. */}
+                            <span className="text-[11px] tabular-nums text-subtle">{item.updatedAtLabel}</span>
+                          </span>
                         </div>
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <span className="truncate text-xs text-muted">{rowSubtitle(item)}</span>
+                        <p className="mt-0.5 truncate text-[12px] leading-4 text-muted">{rowSubtitle(item)}</p>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-[12px] leading-4 text-subtle">
+                            {rowSnippet(item)}
+                          </span>
                           {/*
                             Exactly one state indicator. When a row has a work
                             state, that is the more useful of the two — the
@@ -4462,23 +4604,11 @@ export default function ApplicationsWorkspace({
                             and on the Pipeline, so showing both here would just
                             be a badge cluster.
                           */}
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {isStarred(item) ? (
-                              <span
-                                data-testid="row-starred"
-                                aria-label="Saved"
-                                title="Saved"
-                                className="inline-flex shrink-0 text-amber-200/80"
-                              >
-                                <Icon name="bookmark" className="h-3 w-3" />
-                              </span>
-                            ) : null}
-                            {rowWorkState ? (
-                              <WorkStateChip state={rowWorkState} />
-                            ) : (
-                              <StatusPill status={item.status} />
-                            )}
-                          </div>
+                          {rowWorkState ? (
+                            <WorkStateChip state={rowWorkState} />
+                          ) : (
+                            <StatusPill status={item.status} />
+                          )}
                         </div>
                       </div>
                     </button>
@@ -4525,10 +4655,14 @@ export default function ApplicationsWorkspace({
               data-testid="applications-detail"
             >
               {/* Conversation column — the focus */}
-              <div className="flex min-w-0 flex-col lg:min-h-0 lg:border-r lg:border-white/[0.06]">
-                {/* Header bar: subject + counterparty · status · overflow */}
+              <div className="bg-panel flex min-w-0 flex-col lg:min-h-0 lg:border-r lg:border-line">
+                {/*
+                  Header bar. Given its own tone and a hairline so it reads as
+                  chrome the conversation scrolls *under*, rather than as the
+                  first message in the thread.
+                */}
                 <div
-                  className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-3 sm:px-5"
+                  className="bg-raised flex shrink-0 items-center justify-between gap-3 border-b border-line px-3 py-2.5 sm:px-5"
                   data-testid="applications-detail-header"
                 >
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -4547,9 +4681,22 @@ export default function ApplicationsWorkspace({
                         className="group flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90"
                       >
                         <InteractionAvatar name={subtitle.avatarName} src={subtitle.avatarSrc} sizeClasses="h-9 w-9" />
-                        <h1 className="truncate text-[15px] font-semibold leading-tight text-white sm:text-base">
-                          {subtitle.lead}
-                        </h1>
+                        <span className="min-w-0">
+                          <h1 className="truncate text-[15px] font-semibold leading-tight text-ink">
+                            {subtitle.lead}
+                          </h1>
+                          <span className="flex items-center gap-1.5 text-[11.5px] leading-4">
+                            <span className="truncate text-muted">{rowSubtitle(selected)}</span>
+                            <span aria-hidden="true" className="text-disabled">·</span>
+                            <span className="inline-flex shrink-0 items-center gap-1 font-medium text-secondary">
+                              <span
+                                aria-hidden="true"
+                                className={`h-1.5 w-1.5 rounded-full ${statusDotClass(selected)}`}
+                              />
+                              {interactionStatusLabel(selected.status)}
+                            </span>
+                          </span>
+                        </span>
                       </Link>
                     ) : (
                       <div className="flex min-w-0 items-center gap-2.5">
@@ -4558,9 +4705,22 @@ export default function ApplicationsWorkspace({
                           src={subtitle?.avatarSrc ?? selected.counterpartyAvatarUrl}
                           sizeClasses="h-9 w-9"
                         />
-                        <h1 className="truncate text-[15px] font-semibold leading-tight text-white sm:text-base">
-                          {subtitle?.lead ?? selected.counterpartyName}
-                        </h1>
+                        <span className="min-w-0">
+                          <h1 className="truncate text-[15px] font-semibold leading-tight text-ink">
+                            {subtitle?.lead ?? selected.counterpartyName}
+                          </h1>
+                          <span className="flex items-center gap-1.5 text-[11.5px] leading-4">
+                            <span className="truncate text-muted">{rowSubtitle(selected)}</span>
+                            <span aria-hidden="true" className="text-disabled">·</span>
+                            <span className="inline-flex shrink-0 items-center gap-1 font-medium text-secondary">
+                              <span
+                                aria-hidden="true"
+                                className={`h-1.5 w-1.5 rounded-full ${statusDotClass(selected)}`}
+                              />
+                              {interactionStatusLabel(selected.status)}
+                            </span>
+                          </span>
+                        </span>
                       </div>
                     )}
                   </div>
@@ -4586,8 +4746,8 @@ export default function ApplicationsWorkspace({
                         className={[
                           "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors",
                           isStarred(selected)
-                            ? "text-amber-200/90 hover:bg-white/[0.07]"
-                            : "text-subtle hover:bg-white/[0.07] hover:text-white/70",
+                            ? "text-state-interview hover:bg-wash-strong"
+                            : "text-subtle hover:bg-wash-strong hover:text-default",
                         ].join(" ")}
                       >
                         <Icon name={isStarred(selected) ? "bookmark" : "bookmark"} className="h-4 w-4" />
@@ -4621,7 +4781,7 @@ export default function ApplicationsWorkspace({
                           );
                           control?.focus();
                         }}
-                        className="hidden h-8 cursor-pointer items-center rounded-xl bg-white px-3 text-[12px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+                        className="surface-primary hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
                       >
                         {interviewStep.label}
                       </button>
@@ -4633,16 +4793,15 @@ export default function ApplicationsWorkspace({
                         disabled={Boolean(statusMutationKey)}
                         onClick={() => runNextAction(selected, selectedNextAction)}
                         className={[
-                          "hidden h-8 cursor-pointer items-center rounded-xl px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
+                          "hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
                           selectedNextAction.highConfidence
-                            ? "bg-white text-black hover:bg-white/90"
-                            : "border border-white/20 bg-white/[0.05] text-white/85 hover:bg-white/[0.1]",
+                            ? "surface-primary text-black elev-2 hover:brightness-105"
+                            : "border border-line-mid bg-raised text-default elev-1 hover:bg-elevated hover:text-ink",
                         ].join(" ")}
                       >
                         {selectedNextAction.label}
                       </button>
                     ) : null}
-                    <StatusPill status={selected.status} size="md" />
                     <OverflowMenu items={menuItems} />
                   </div>
                 </div>
@@ -5002,7 +5161,13 @@ export default function ApplicationsWorkspace({
                               })}
                             </div>
                           ) : null}
-                          <div className="flex items-end gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-2 transition-colors focus-within:border-white/25">
+                          {/*
+                            A surface, not an input dropped at the bottom. It is
+                            raised off the thread, lifts and brightens its edge
+                            on focus, and keeps the send key visually attached to
+                            the field it belongs to.
+                          */}
+                          <div className="flex items-end gap-2 rounded-2xl border border-line bg-raised p-2 transition-all elev-2 focus-within:border-line-strong focus-within:elev-3">
                             <textarea
                               ref={composerRef}
                               value={replyDraft}

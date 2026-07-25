@@ -49,6 +49,8 @@ export function Icon({
     | "send"
     | "circle-play"
     | "inbox"
+    | "arrow-down-left"
+    | "arrow-up-right"
     | "mail"
     | "youtube"
     | "check"
@@ -463,6 +465,21 @@ export function Icon({
         </svg>
       );
 
+    /* Relationship direction, used as a small mark on the inbox avatar: an
+       arrow into the corner for something that arrived, out of it for
+       something sent. Always paired with an accessible name. */
+    case "arrow-down-left":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 7 7 17m0 0h7m-7 0v-7" />
+        </svg>
+      );
+    case "arrow-up-right":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 17 17 7m0 0h-7m7 0v7" />
+        </svg>
+      );
     case "inbox":
       return (
         <svg viewBox="0 0 24 24" {...common}>

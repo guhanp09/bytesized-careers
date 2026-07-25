@@ -444,11 +444,17 @@ test("queues filter the list and only advertise work that exists", async ({ page
   const selector = page.getByTestId("queue-selector");
   await expect(selector).toBeVisible();
 
-  const chips = selector.getByRole("button");
+  // "All" leads the rail and is pressed by default, so leaving a queue is never
+  // a hunt for the way back.
+  const all = page.getByTestId("queue-chip-all");
+  await expect(all).toBeVisible();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+
+  const chips = selector.getByRole("button").filter({ hasNotText: /^All$/ });
   const count = await chips.count();
   expect(count, "at least one queue should have work").toBeGreaterThan(0);
 
-  // Every chip advertises a non-zero count and filters to exactly that many rows.
+  // Every queue chip advertises a non-zero count and filters to exactly that many rows.
   const first = chips.first();
   const label = await first.innerText();
   const advertised = Number.parseInt((label.match(/(\d+)\s*$/) ?? ["", "0"])[1], 10);
@@ -456,12 +462,19 @@ test("queues filter the list and only advertise work that exists", async ({ page
 
   await first.click();
   await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(all).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("interaction-row")).toHaveCount(advertised);
 
-  // Toggling off restores the full list.
+  // Toggling off restores the full list, and so does "All".
   await first.click();
   await expect(first).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+
+  await first.click();
+  await expect(page.getByTestId("interaction-row")).toHaveCount(advertised);
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await expect(first).toHaveAttribute("aria-pressed", "false");
 });
 
 test("snooze quietens the recommendation without touching the relationship", async ({ page }) => {

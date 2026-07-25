@@ -32,28 +32,6 @@ type AxeViolation = {
 };
 
 /**
- * The surfaces this work owns. axe is run against these rather than the whole
- * document for a specific reason: the product's muted-text scale
- * (`text-white/32` … `text-white/45` at 10–13px on a near-black background)
- * falls below 4.5:1 across components far outside this task — the global DEV
- * badge, the portfolio card, the job facts rail, the status pills. Asserting on
- * the whole page would either fail permanently or have to be muted with an
- * allowlist that quietly grows. Scoping keeps the assertion true and keeps the
- * systemic finding visible instead of absorbed. It is recorded, with numbers, in
- * `INBOX_PIPELINE_UX_AUDIT.md`.
- */
-const OWNED_SURFACES = [
-  "[data-testid='interview-card']",
-  "[data-testid='interview-scheduler']",
-  "[data-testid='work-reminder']",
-  "[data-testid='job-summaries']",
-  "[data-testid='inbox-empty-state']",
-  "[data-testid='queue-selector']",
-  "[data-testid='all-caught-up']",
-  "[data-testid='decision-strip']",
-];
-
-/**
  * Wait for entry animations to finish before measuring.
  *
  * Surfaces here enter with `.ui-crossfade`, which animates opacity on a
@@ -77,15 +55,21 @@ async function settle(page: Page): Promise<void> {
   });
 }
 
-async function runAxe(page: Page, include: string[] | null): Promise<AxeViolation[]> {
+/**
+ * axe runs against the **whole document**, not a curated subset.
+ *
+ * It was previously scoped to the surfaces this workstream owned, because the
+ * product's inherited muted-text scale failed AA across components far outside
+ * it. That scale has since been replaced with verified semantic tokens, so the
+ * exemption no longer has a justification — and a scoped accessibility
+ * assertion is one that stops finding things.
+ */
+async function runAxe(page: Page): Promise<AxeViolation[]> {
   await settle(page);
   await page.addScriptTag({ content: AXE_SOURCE });
-  return page.evaluate(async (selectors: string[] | null) => {
-    const present = (selectors ?? []).filter((selector) => document.querySelector(selector));
-    const context = selectors === null ? document : present.length > 0 ? { include: present.map((s) => [s]) } : null;
-    if (context === null) return [];
+  return page.evaluate(async () => {
     // @ts-expect-error injected at runtime
-    const results = await window.axe.run(context, {
+    const results = await window.axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
     });
     return results.violations.map((violation: AxeViolation) => ({
@@ -97,12 +81,12 @@ async function runAxe(page: Page, include: string[] | null): Promise<AxeViolatio
         failureSummary: node.failureSummary,
       })),
     }));
-  }, include);
+  });
 }
 
-/** Serious and critical violations on the surfaces this task is responsible for. */
+/** Serious and critical violations anywhere on the page. */
 async function analyse(page: Page, label: string): Promise<AxeViolation[]> {
-  const violations = await runAxe(page, OWNED_SURFACES);
+  const violations = await runAxe(page);
   const blocking = violations.filter(
     (violation) => violation.impact === "serious" || violation.impact === "critical"
   );

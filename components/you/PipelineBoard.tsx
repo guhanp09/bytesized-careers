@@ -392,7 +392,7 @@ function FirstMessagePreview({
             >
               <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-subtle">First message</p>
               {message ? (
-                <p className="mt-1 line-clamp-4 italic text-white/70">“{message}”</p>
+                <p className="mt-1 line-clamp-2 italic text-secondary">“{message}”</p>
               ) : null}
               {lines.length ? (
                 <div className={`space-y-1 ${message ? "mt-2 border-t border-white/[0.08] pt-2" : "mt-1.5"}`}>
@@ -733,7 +733,7 @@ export default function PipelineBoard({
                 <Fragment key={stage.key}>
                 {startsClosedGroup ? (
                   <div data-testid="pipeline-closed-divider" className="flex items-center gap-3 px-1 pt-2">
-                    <span className="h-px flex-1 bg-white/[0.05]" aria-hidden />
+                    <span className="h-px flex-1 bg-line" aria-hidden />
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
                       Closed
                     </span>
@@ -744,17 +744,30 @@ export default function PipelineBoard({
                   data-testid={`pipeline-group-${stage.key}`}
                   {...dropHandlers(stage.key)}
                   className={[
-                    "rounded-2xl border transition-colors",
+                    /*
+                      A section is a place, so it gets a surface. The stage's own
+                      hue appears once, as a 2px edge along the top — enough to
+                      tell columns apart while scanning, far short of painting
+                      the whole group a colour. Terminal groups stay flat: they
+                      are history, not work.
+                    */
+                    "relative overflow-hidden rounded-2xl border transition-colors",
                     groupItems.length === 0 ? "p-3 sm:p-3" : "p-3.5 sm:p-4",
                     dragHover
-                      ? "border-white/35 bg-white/[0.045]"
+                      ? "border-line-strong bg-elevated"
                       : dragValid
-                        ? "border-white/[0.16] bg-white/[0.02]"
+                        ? "border-line-mid bg-raised"
                         : isTerminal
-                          ? "border-white/[0.035] bg-transparent"
-                          : "border-white/[0.05] bg-white/[0.014]",
+                          ? "border-line bg-transparent"
+                          : "border-line bg-shell",
                   ].join(" ")}
                 >
+                  {!isTerminal ? (
+                    <span
+                      aria-hidden="true"
+                      className={`absolute inset-x-0 top-0 h-[2px] ${stage.dot} opacity-45`}
+                    />
+                  ) : null}
                   <header className="flex items-center gap-2.5 px-0.5">
                     {manageable ? (
                       <input
@@ -770,22 +783,21 @@ export default function PipelineBoard({
                       className={`h-2 w-2 shrink-0 rounded-full ${stage.dot} ${isTerminal ? "opacity-60" : ""}`}
                       aria-hidden
                     />
-                    {/* Tracked small caps + a count pill: unmistakably a section
-                        heading, never a candidate name. */}
+                    {/* A section heading reads at a size people read. Its rank
+                        comes from weight and the stage dot beside it, not from
+                        letter-spacing that makes it harder to take in. */}
                     <h3
                       className={[
-                        "text-[11px] font-semibold uppercase tracking-[0.14em]",
-                        isTerminal ? "text-muted" : "text-white/85",
+                        "text-[12.5px] font-semibold",
+                        isTerminal ? "text-muted" : "text-ink",
                       ].join(" ")}
                     >
                       {stage.label}
                     </h3>
                     <span
                       className={[
-                        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border px-1.5 text-[10px] font-semibold",
-                        isTerminal
-                          ? "border-white/[0.06] bg-transparent text-subtle"
-                          : "border-white/[0.09] bg-white/[0.04] text-white/55",
+                        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10.5px] font-semibold tabular-nums",
+                        isTerminal ? "text-subtle" : "bg-wash-strong text-secondary",
                       ].join(" ")}
                     >
                       {groupItems.length}
@@ -801,7 +813,7 @@ export default function PipelineBoard({
                       No one in {stage.label.toLowerCase()} yet.
                     </p>
                   ) : (
-                    <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                    <div className="mt-3 grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
                       {groupItems.map((item) => {
                         const checked = selectedIds.has(item.id);
                         const context = pipelineContextLabelOf(item);
@@ -821,26 +833,29 @@ export default function PipelineBoard({
                           <div
                             key={item.id}
                             data-testid="pipeline-row"
-                            role="button"
-                            tabIndex={0}
+                            /*
+                              Not `role="button"`. The card contains a profile
+                              link, a checkbox, a stage menu and a Message
+                              button, and a button containing buttons is both an
+                              axe `nested-interactive` failure and genuinely
+                              ambiguous to a screen reader. The click handler
+                              stays for pointer convenience; the labelled
+                              Message button is the keyboard and AT path, which
+                              is also the honest description of what it does.
+                            */
                             draggable={manageable}
                             onDragStart={(event) => handleCardDragStart(event, item)}
                             onDragEnd={endDrag}
                             onClick={() => onMessage(item)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                onMessage(item);
-                              }
-                            }}
                             className={[
-                              "group flex flex-col gap-2 rounded-xl border p-3 text-left transition-all",
+                              "group relative flex flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
+                              "transition-[transform,box-shadow,background-color,border-color] duration-150",
                               manageable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               isDragging
-                                ? "scale-[0.98] border-white/25 bg-white/[0.05] opacity-40"
+                                ? "scale-[0.98] border-line-strong bg-elevated opacity-40"
                                 : checked
-                                  ? "border-white/25 bg-white/[0.07] shadow-[0_14px_40px_-24px_rgba(0,0,0,0.9)]"
-                                  : "border-white/[0.09] bg-white/[0.035] hover:-translate-y-0.5 hover:border-white/[0.2] hover:bg-white/[0.055] hover:shadow-[0_18px_50px_-28px_rgba(0,0,0,0.95)]",
+                                  ? "border-line-strong surface-elevated elev-3"
+                                  : "border-line surface-raised elev-2 hover:-translate-y-0.5 hover:border-line-mid hover:elev-3",
                             ].join(" ")}
                           >
                             <div className="flex items-start gap-2.5">
@@ -859,12 +874,12 @@ export default function PipelineBoard({
                                       data-no-drag
                                       onClick={(event) => event.stopPropagation()}
                                       title={`Open ${name}'s profile`}
-                                      className="truncate text-[13px] font-semibold text-white/90 underline-offset-2 transition-colors hover:text-white hover:underline hover:decoration-white/40"
+                                      className="truncate text-[13px] font-semibold text-ink underline-offset-2 transition-colors hover:underline hover:decoration-line-strong"
                                     >
                                       {name}
                                     </Link>
                                   ) : (
-                                    <span className="truncate text-[13px] font-semibold text-white/90">{name}</span>
+                                    <span className="truncate text-[13px] font-semibold text-ink">{name}</span>
                                   )}
                                 </div>
                                 {context ? (
@@ -906,13 +921,13 @@ export default function PipelineBoard({
                                       className={[
                                         "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
                                         workState.highConfidence
-                                          ? "bg-white/[0.09] text-white/80"
+                                          ? "bg-wash-strong text-default"
                                           : "text-muted",
                                       ].join(" ")}
                                     >
                                       {workState.highConfidence ? (
                                         <span
-                                          className="h-1 w-1 shrink-0 rounded-full bg-white/70"
+                                          className="h-1 w-1 shrink-0 rounded-full bg-current"
                                           aria-hidden="true"
                                         />
                                       ) : null}
@@ -929,7 +944,7 @@ export default function PipelineBoard({
                                         event.stopPropagation();
                                         onNextAction?.(item, dispatchable);
                                       }}
-                                      className="inline-flex h-6 cursor-pointer items-center rounded-md border border-white/15 bg-white/[0.05] px-2 text-[10.5px] font-semibold text-white/85 transition-colors hover:bg-white/[0.1]"
+                                      className="inline-flex h-6 cursor-pointer items-center rounded-md border border-line-mid bg-overlay px-2 text-[10.5px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
                                     >
                                       {dispatchable.label}
                                     </button>
@@ -939,20 +954,34 @@ export default function PipelineBoard({
                             })()}
 
                             {facts.length > 0 || portfolioCount > 0 ? (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {facts.map((fact) => (
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted">
+                                {facts.map((fact, factIndex) => (
                                   <span
                                     key={fact.text}
                                     data-testid="pipeline-fact"
-                                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10.5px] font-medium text-white/62"
+                                    className="inline-flex min-w-0 max-w-full items-center gap-1"
                                   >
-                                    <Icon name={fact.icon} className="h-3 w-3 shrink-0 opacity-70" />
+                                    {factIndex > 0 ? (
+                                      <span aria-hidden="true" className="mr-1 text-disabled">·</span>
+                                    ) : null}
+                                    <Icon
+                                      name={fact.icon}
+                                      className="h-3 w-3 shrink-0 text-subtle"
+                                      aria-hidden="true"
+                                    />
                                     <span className="truncate">{fact.text}</span>
                                   </span>
                                 ))}
                                 {portfolioCount > 0 ? (
-                                  <span className="inline-flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10.5px] font-medium text-white/62">
-                                    <Icon name="images" className="h-3 w-3 opacity-70" />
+                                  <span className="inline-flex items-center gap-1">
+                                    {facts.length > 0 ? (
+                                      <span aria-hidden="true" className="mr-1 text-disabled">·</span>
+                                    ) : null}
+                                    <Icon
+                                      name="images"
+                                      className="h-3 w-3 shrink-0 text-subtle"
+                                      aria-hidden="true"
+                                    />
                                     {portfolioCount} portfolio
                                   </span>
                                 ) : null}
@@ -972,14 +1001,14 @@ export default function PipelineBoard({
                               <p
                                 data-testid="pipeline-note-indicator"
                                 title={item.managerNote}
-                                className="flex min-w-0 items-center gap-1.5 rounded-md bg-amber-200/[0.06] px-1.5 py-1 text-[11px] text-amber-100/75"
+                                className="flex min-w-0 items-center gap-1.5 rounded-md bg-state-interview-fill px-1.5 py-1 text-[11px] text-state-interview"
                               >
-                                <Icon name="notebook-text" className="h-3 w-3 shrink-0 text-amber-200/70" />
+                                <Icon name="notebook-text" className="h-3 w-3 shrink-0" aria-hidden="true" />
                                 <span className="truncate">{item.managerNote}</span>
                               </p>
                             ) : null}
 
-                            <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/[0.05] pt-2">
+                            <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-2">
                               <span className="shrink-0 text-[11px] text-subtle">{item.updatedAtLabel}</span>
                               <div className="flex items-center gap-1.5" data-no-drag>
                                 {(() => {
@@ -1004,8 +1033,8 @@ export default function PipelineBoard({
                                       className={[
                                         "inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-semibold transition-colors",
                                         messageUnread > 0
-                                          ? "bg-white text-black hover:bg-white/90"
-                                          : "border border-white/[0.16] bg-white/[0.06] text-white/85 hover:border-white/30 hover:bg-white/[0.11] hover:text-white",
+                                          ? "surface-primary text-black elev-1 hover:brightness-105"
+                                          : "border border-line-mid bg-overlay text-default hover:border-line-strong hover:text-ink",
                                       ].join(" ")}
                                     >
                                       <Icon name="message-square-text" className="h-3.5 w-3.5" />

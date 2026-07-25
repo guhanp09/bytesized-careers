@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Fragment } from "react";
 import {
   CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
   FirstMessageAnswers,
@@ -81,7 +81,12 @@ function displayUrl(url?: string): string {
   }
 }
 
-const SECTION_LABEL = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-subtle";
+/**
+ * Group heading. Sentence case at a legible size rather than tracked-out
+ * micro-caps: uppercase at 10.5px is the least readable text in a UI, and it
+ * was being used for *every* group, so nothing stood out from anything else.
+ */
+const SECTION_LABEL = "text-[11.5px] font-semibold text-secondary";
 
 /**
  * A titled group of link mini-cards — the shared design + behaviour for BOTH the
@@ -107,9 +112,9 @@ function LinkCardSection({
 }) {
   return (
     <div className="px-4 py-3">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex items-baseline gap-2">
         <span className={SECTION_LABEL}>{heading}</span>
-        <span className="inline-flex items-center rounded-md bg-blue-400/12 px-1.5 py-0.5 text-[10px] font-semibold text-blue-200/90">
+        <span className="text-[11px] tabular-nums text-subtle">
           {links.length} {links.length === 1 ? noun : `${noun}s`}
         </span>
       </div>
@@ -302,27 +307,30 @@ export default function FirstMessageSummary({
     sections.push({
       key: "rows",
       node: (
-        <div className="space-y-2.5 px-4 py-3">
+        /*
+          A definition list whose label column sizes to its longest label, so a
+          value never floats a hundred pixels away from the word describing it.
+          The previous fixed 112px column produced exactly that gap, and it grew
+          worse the narrower the rail became.
+        */
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2 px-4 py-3 text-[13px] leading-relaxed">
           {rows.map((item) => (
-            <div
-              key={item.key}
-              className="flex flex-col gap-0.5 text-[13px] leading-relaxed sm:flex-row sm:gap-3"
-            >
-              <div className="flex items-center gap-2 text-subtle sm:w-[112px] sm:shrink-0">
-                <Icon name={item.icon} className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </div>
-              <div className="min-w-0 flex-1 pl-[22px] text-white/85 sm:pl-0">
+            <Fragment key={item.key}>
+              <dt className="flex items-center gap-2 text-subtle">
+                <Icon name={item.icon} className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </dt>
+              <dd className="min-w-0 text-default">
                 {item.text && !item.links?.length ? (
                   <p className="whitespace-pre-wrap break-words">{item.text}</p>
                 ) : null}
                 {item.links?.length ? (
                   <span className="flex flex-col items-start gap-1">{item.links.map(renderLink)}</span>
                 ) : null}
-              </div>
-            </div>
+              </dd>
+            </Fragment>
           ))}
-        </div>
+        </dl>
       ),
     });
   }
