@@ -622,59 +622,65 @@ export default function PipelineBoard({
   // funnel. Empty stages stay intentionally compact instead of disappearing.
   const sectionStages = stageFilter
     ? stages.filter((stage) => stage.key === stageFilter)
-    : stages;
+    : /*
+        Funnel order is kept. Sorting populated stages first was tried and
+        reverted: it fights the "Closed" divider, which marks where terminal
+        stages begin and assumes the funnel's own order. Collapsing an empty
+        stage to a single line already removes the ~600px wall — three of them
+        now cost 99px, not a screenful — so the reorder bought nothing and cost
+        a real structure.
+      */
+      stages;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="pipeline-board">
       {/* Toolbar: funnel strip (stage chips w/ counts, also drop targets) + search + context filter */}
       <div className="shrink-0 border-b border-line px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Pipeline stages">
-            {stages.map((stage, index) => {
-              const count = grouped.get(stage.key)?.length ?? 0;
-              const isActive = stageFilter === stage.key;
-              const dragValid = dragId !== null && isValidDropStage(stage.key);
-              const dragHover = dragValid && dropStage === stage.key;
-              // Closed/terminal stages sit past a quiet divider and read softer,
-              // so the funnel's active steps carry the visual weight.
-              const startsTerminal = Boolean(stage.terminal) && !stages[index - 1]?.terminal;
-              return (
-                <span key={stage.key} className="inline-flex items-center gap-1.5">
-                  {startsTerminal ? (
-                    <span className="mx-1 h-4 w-px shrink-0 bg-overlay" aria-hidden />
-                  ) : null}
-                  <button
-                    type="button"
-                    data-testid={`pipeline-stage-chip-${stage.key}`}
-                    aria-pressed={isActive}
-                    title={isActive ? "Show all stages" : `Focus on ${stage.label}`}
-                    onClick={() => setStageFilter((prev) => (prev === stage.key ? null : stage.key))}
-                    {...dropHandlers(stage.key)}
-                    className={[
-                      "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition-all",
-                      dragHover
-                        ? "scale-105 border-white/60 bg-white/[0.14] text-white"
-                        : dragValid
-                          ? "border-line-strong bg-raised text-white/85"
-                          : isActive
-                            ? "border-line-strong bg-overlay text-white"
-                            : count > 0
-                              ? stage.terminal
-                                ? "border-line bg-transparent text-subtle hover:border-line-mid hover:text-white/70"
-                                : "border-line bg-transparent text-white/60 hover:border-line-strong hover:text-white/90"
-                              : "border-line bg-transparent text-subtle hover:text-muted",
-                    ].join(" ")}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${count > 0 || isActive || dragValid ? stage.dot : "bg-white/20"}`}
-                      aria-hidden
-                    />
-                    {stage.label}
-                    <span className={isActive || dragHover ? "text-white/70" : "text-subtle"}>{count}</span>
-                  </button>
-                </span>
-              );
-            })}
+          {/*
+            One compact scope control, replacing a row that repeated every
+            stage name and count immediately above the section headings that
+            already carry them.
+
+            The original defect asked for one of the two to go. Deleting the
+            headings would have cost real capability — they group the board and
+            are valid drag targets — and deleting the chips would have cost
+            focusing. So neither is deleted: the headings stay as structure, and
+            focusing becomes a select whose options are the same stages. Native
+            <select> because it is keyboard-operable, screen-reader-labelled and
+            renders as a platform picker on mobile for free.
+          */}
+          <div className="flex min-w-0 items-center gap-2">
+            <label
+              htmlFor="pipeline-scope"
+              className="shrink-0 text-[11px] font-semibold text-muted"
+            >
+              Showing
+            </label>
+            <select
+              id="pipeline-scope"
+              data-testid="pipeline-scope"
+              value={stageFilter ?? ""}
+              onChange={(event) => setStageFilter(event.target.value || null)}
+              className="h-8 max-w-[200px] cursor-pointer rounded-lg border border-line bg-wash px-2 text-xs font-semibold text-default transition-colors focus:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            >
+              <option value="">All stages ({items.length})</option>
+              {stages.map((stage) => (
+                <option key={stage.key} value={stage.key}>
+                  {stage.label} ({grouped.get(stage.key)?.length ?? 0})
+                </option>
+              ))}
+            </select>
+            {stageFilter ? (
+              <button
+                type="button"
+                data-testid="pipeline-scope-clear"
+                onClick={() => setStageFilter(null)}
+                className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-2.5 text-[11px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
+              >
+                Show all stages
+              </button>
+            ) : null}
           </div>
           <div className="ml-auto flex min-w-0 items-center gap-2">
             <div className="relative w-40 sm:w-52">
@@ -753,7 +759,14 @@ export default function PipelineBoard({
                       are history, not work.
                     */
                     "relative overflow-hidden rounded-2xl border transition-colors",
-                    groupItems.length === 0 ? "p-3 sm:p-3" : "p-3.5 sm:p-4",
+                    /*
+                      An empty stage is a single line, not a card-height
+                      container. Seven of them stacked ahead of the first real
+                      card, which is the ~600px wall. It keeps its heading, its
+                      zero, and its drop target — so the workflow still reads as
+                      a complete funnel and a card can still be dragged into it.
+                    */
+                    groupItems.length === 0 ? "px-3 py-1.5" : "p-3.5 sm:p-4",
                     dragHover
                       ? "border-line-strong bg-elevated"
                       : dragValid
@@ -790,7 +803,7 @@ export default function PipelineBoard({
                     <h3
                       className={[
                         "text-[12.5px] font-semibold",
-                        isTerminal ? "text-muted" : "text-ink",
+                        groupItems.length === 0 ? "text-muted" : isTerminal ? "text-muted" : "text-ink",
                       ].join(" ")}
                     >
                       {stage.label}
@@ -810,9 +823,11 @@ export default function PipelineBoard({
                     ) : null}
                   </header>
                   {groupItems.length === 0 ? (
-                    <p className="mt-2 px-0.5 text-[11px] text-subtle">
-                      No one in {stage.label.toLowerCase()} yet.
-                    </p>
+                    dragValid ? (
+                      <p className="mt-1 px-0.5 text-[11px] text-subtle">
+                        Drop here to move to {stage.label.toLowerCase()}.
+                      </p>
+                    ) : null
                   ) : (
                     <div className="mt-3 grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
                       {groupItems.map((item) => {
@@ -829,6 +844,12 @@ export default function PipelineBoard({
                         // requirements are the first message (matching the inbox).
                         const legacyMessage = firstMessageLines.length ? null : item.message?.trim() || null;
                         const isDragging = dragId === item.id || (dragId !== null && draggedItems.some((entry) => entry.id === item.id));
+                        // Derived once per card: the state slot renders one,
+                        // the footer renders the other, and they must agree.
+                        const workState = workStateFor?.(item) ?? null;
+                        const cardAction = nextActionFor?.(item) ?? null;
+                        const dispatchable =
+                          cardAction && BOARD_DISPATCHABLE_ACTIONS.has(cardAction.key) ? cardAction : null;
                         const name = direction === "received" ? item.counterpartyName : item.title;
                         return (
                           <div
@@ -907,54 +928,37 @@ export default function PipelineBoard({
                               rendered here — this card already carries a stage
                               menu, and two decision surfaces would compete.
                             */}
-                            {(() => {
-                              const workState = workStateFor?.(item) ?? null;
-                              const action = nextActionFor?.(item) ?? null;
-                              const dispatchable =
-                                action && BOARD_DISPATCHABLE_ACTIONS.has(action.key) ? action : null;
-                              if (!workState && !dispatchable) return null;
-                              return (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {workState ? (
+                            {/*
+                              A reserved slot, not a conditional block. It
+                              renders even when there is nothing to say, so
+                              facts, snippet and footer never slide upward to
+                              fill a gap — that drift is what made two Hired
+                              cards with different data read as two templates.
+                            */}
+                            <div className="flex min-h-[20px] flex-wrap items-center gap-1.5">
+                              {workState ? (
+                                <span
+                                  data-testid="pipeline-work-state"
+                                  data-work-state={workState.key}
+                                  className={[
+                                    // No border, no hover, full-round: a label,
+                                    // not something to press.
+                                    "inline-flex items-center gap-1 rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
+                                    workState.highConfidence
+                                      ? "bg-wash-strong text-default"
+                                      : "text-muted",
+                                  ].join(" ")}
+                                >
+                                  {workState.highConfidence ? (
                                     <span
-                                      data-testid="pipeline-work-state"
-                                      data-work-state={workState.key}
-                                      className={[
-                                        // No border, no hover, full-round: a
-                                        // label, not something to press.
-                                        "inline-flex items-center gap-1 rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
-                                        workState.highConfidence
-                                          ? "bg-wash-strong text-default"
-                                          : "text-muted",
-                                      ].join(" ")}
-                                    >
-                                      {workState.highConfidence ? (
-                                        <span
-                                          className="h-1 w-1 shrink-0 rounded-full bg-current"
-                                          aria-hidden="true"
-                                        />
-                                      ) : null}
-                                      {workState.label}
-                                    </span>
+                                      className="h-1 w-1 shrink-0 rounded-full bg-current"
+                                      aria-hidden="true"
+                                    />
                                   ) : null}
-                                  {dispatchable ? (
-                                    <button
-                                      type="button"
-                                      data-no-drag
-                                      data-testid="pipeline-next-action"
-                                      data-action-key={dispatchable.key}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        onNextAction?.(item, dispatchable);
-                                      }}
-                                      className="inline-flex h-6 cursor-pointer items-center rounded-md border border-line-mid bg-overlay px-2 text-[10.5px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
-                                    >
-                                      {dispatchable.label}
-                                    </button>
-                                  ) : null}
-                                </div>
-                              );
-                            })()}
+                                  {workState.label}
+                                </span>
+                              ) : null}
+                            </div>
 
                             {facts.length > 0 || portfolioCount > 0 ? (
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted">
@@ -1011,9 +1015,30 @@ export default function PipelineBoard({
                               </p>
                             ) : null}
 
+                            {/*
+                              One action slot. The recommended action used to
+                              sit mid-card while Message sat here, so a card
+                              presented two control regions and the eye had to
+                              search for the one that mattered.
+                            */}
                             <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-2">
                               <InteractionTime value={item.updatedAt} className="shrink-0 text-[11px] text-subtle" />
-                              <div className="flex items-center gap-1.5" data-no-drag>
+                              <div className="flex min-w-0 items-center gap-1.5" data-no-drag>
+                                {dispatchable && dispatchable.key !== "reply" ? (
+                                  <button
+                                    type="button"
+                                    data-no-drag
+                                    data-testid="pipeline-next-action"
+                                    data-action-key={dispatchable.key}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onNextAction?.(item, dispatchable);
+                                    }}
+                                    className="inline-flex h-7 min-w-0 cursor-pointer items-center rounded-lg border border-line-mid bg-overlay px-2.5 text-[11.5px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
+                                  >
+                                    <span className="truncate">{dispatchable.label}</span>
+                                  </button>
+                                ) : null}
                                 {(() => {
                                   // Messaging is the frequent action, so it's the card's
                                   // prominent labelled CTA (and the whole-card click).

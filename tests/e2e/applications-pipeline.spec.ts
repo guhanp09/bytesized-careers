@@ -81,32 +81,45 @@ test.describe("applications pipeline view", () => {
     await expect(board).toBeVisible();
     // The funnel strip always shows every stage with its count — including zeros —
     // so empty stages never render as wasted section blocks.
-    await expect(board.getByTestId("pipeline-stage-chip-new")).toContainText("2");
-    await expect(board.getByTestId("pipeline-stage-chip-reviewing")).toContainText("0");
-    await expect(board.getByTestId("pipeline-stage-chip-accepted")).toContainText("1");
-    await expect(board.getByTestId("pipeline-group-reviewing")).toContainText("No one in reviewing yet.");
+    // Every stage and its count, including zeros — now in the scope control
+    // rather than in a chip row duplicating the section headings below it.
+    const scope = board.getByTestId("pipeline-scope");
+    await expect(scope).toContainText("New (2)");
+    await expect(scope).toContainText("Reviewing (0)");
+    await expect(scope).toContainText("Accepted (1)");
+    /*
+      An empty stage is now one compact line — its name and its zero — rather
+      than a card-height container holding a sentence. It stays visible and
+      droppable; it simply stops standing between the reader and the work.
+    */
+    const emptyStage = board.getByTestId("pipeline-group-reviewing");
+    await expect(emptyStage).toContainText("Reviewing");
+    await expect(emptyStage).toContainText("0");
+    expect(await emptyStage.evaluate((node) => node.getBoundingClientRect().height)).toBeLessThan(80);
     // Sections stay visible even at zero, while populated stages still show their cards.
     await expect(board.getByTestId("pipeline-group-new").getByTestId("pipeline-row")).toHaveCount(2);
     await expect(board.getByTestId("pipeline-group-accepted").getByTestId("pipeline-row")).toHaveCount(1);
     await expect(board.getByTestId("pipeline-group-declined").getByTestId("pipeline-row")).toHaveCount(1);
   });
 
-  test("a stage chip focuses the board on that stage and toggles back", async ({ page }) => {
+  test("the scope control focuses one stage and returns to the full board", async ({ page }) => {
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
+    const scope = board.getByTestId("pipeline-scope");
 
-    await board.getByTestId("pipeline-stage-chip-reviewing").click();
+    await scope.selectOption("reviewing");
     // Only the focused stage renders, even alongside other non-empty stages.
     await expect(board.getByTestId("pipeline-group-reviewing")).toBeVisible();
     await expect(board.getByTestId("pipeline-group-new")).toHaveCount(0);
     await expect(board.getByTestId("pipeline-row")).toHaveCount(1);
 
-    // Focusing an empty stage shows its quiet one-line state, not a large block.
-    await board.getByTestId("pipeline-stage-chip-hired").click();
-    await expect(board.getByTestId("pipeline-group-hired")).toContainText("No one in hired yet.");
+    // Focusing an empty stage shows a single compact line, not a card block.
+    await scope.selectOption("hired");
+    const hired = board.getByTestId("pipeline-group-hired");
+    await expect(hired).toBeVisible();
+    expect(await hired.evaluate((node) => node.getBoundingClientRect().height)).toBeLessThan(80);
 
-    // Clicking the active chip returns to the full board.
-    await board.getByTestId("pipeline-stage-chip-hired").click();
+    await board.getByTestId("pipeline-scope-clear").click();
     await expect(board.getByTestId("pipeline-group-new")).toBeVisible();
   });
 
@@ -359,25 +372,57 @@ test.describe("applications pipeline view", () => {
       board.getByTestId("pipeline-group-new").getByTestId("pipeline-row").filter({ hasText: "Aarav Mehta" })
     ).toHaveCount(0);
     await expect(shortlistedGroup.getByTestId("pipeline-row")).toHaveCount(2);
-    await expect(board.getByTestId("pipeline-stage-chip-reviewing")).toContainText("2");
+    await expect(board.getByTestId("pipeline-scope")).toContainText("Reviewing (2)");
   });
 
-  test("dropping on a funnel chip moves the card — empty stages stay reachable", async ({ page }) => {
+  test("an empty stage collapses but stays a valid drop target", async ({ page }) => {
+    /*
+      The funnel chip row is gone — it repeated the stage names and counts that
+      the section headings already carry, and focusing moved to one compact
+      scope control. The capability it provided is what matters: a collapsed,
+      empty stage must still accept a card, or "empty stages stay reachable"
+      becomes false the moment they stop taking full height.
+    */
     await openRecruiterPipeline(page);
     const board = page.getByTestId("pipeline-board");
     const aarav = board.getByTestId("pipeline-row").filter({ hasText: "Aarav Mehta" });
-    const hiredChip = board.getByTestId("pipeline-stage-chip-hired");
+    const hiredSection = board.getByTestId("pipeline-group-hired");
+
+    // Empty, and therefore compact — but present and droppable.
+    await expect(hiredSection).toBeVisible();
+    const collapsedHeight = await hiredSection.evaluate((node) => node.getBoundingClientRect().height);
+    expect(collapsedHeight, "an empty stage should not occupy card height").toBeLessThan(80);
 
     const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
     await aarav.dispatchEvent("dragstart", { dataTransfer });
-    await hiredChip.dispatchEvent("dragover", { dataTransfer });
-    await hiredChip.dispatchEvent("drop", { dataTransfer });
+    await hiredSection.dispatchEvent("dragover", { dataTransfer });
+    await hiredSection.dispatchEvent("drop", { dataTransfer });
     const confirmation = page.getByRole("dialog", { name: "Hire this candidate?" });
     await expect(confirmation).toBeVisible();
     await confirmation.getByRole("button", { name: "Confirm hire" }).click();
 
-    await expect(hiredChip).toContainText("1");
-    await expect(board.getByTestId("pipeline-group-hired").getByTestId("pipeline-row")).toHaveCount(1);
+    await expect(hiredSection.getByTestId("pipeline-row")).toHaveCount(1);
+    // And the scope control's count follows, since both read one derivation.
+    await expect(board.getByTestId("pipeline-scope")).toContainText("Hired (1)");
+  });
+
+  test("the scope control focuses one stage and offers the way back", async ({ page }) => {
+    await openRecruiterPipeline(page);
+    const board = page.getByTestId("pipeline-board");
+    const scope = board.getByTestId("pipeline-scope");
+    await expect(scope).toBeVisible();
+
+    // No duplicated row of every stage and count.
+    await expect(board.locator("[data-testid^='pipeline-stage-chip-']")).toHaveCount(0);
+
+    const allSections = await board.locator("[data-testid^='pipeline-group-']").count();
+    expect(allSections).toBeGreaterThan(1);
+
+    await scope.selectOption("new");
+    await expect(board.locator("[data-testid^='pipeline-group-']")).toHaveCount(1);
+
+    await board.getByTestId("pipeline-scope-clear").click();
+    await expect(board.locator("[data-testid^='pipeline-group-']")).toHaveCount(allSections);
   });
 
   test("the message action opens the compact chat dock on that thread", async ({ page }) => {
@@ -509,7 +554,7 @@ test.describe("applications pipeline view", () => {
     expect(dividerBox && rejectedBox && dividerBox.y < rejectedBox.y).toBeTruthy();
 
     // Focusing a single stage drops the divider (nothing to separate).
-    await board.getByTestId("pipeline-stage-chip-rejected").click();
+    await board.getByTestId("pipeline-scope").selectOption("rejected");
     await expect(divider).toHaveCount(0);
   });
 

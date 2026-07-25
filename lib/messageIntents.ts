@@ -107,16 +107,63 @@ export function intentExpectsResponse(key: string | null | undefined): boolean {
  * Decision intents are filtered to the stages the transition rules allow, so the
  * composer can never offer an outcome the backend would reject.
  */
+/**
+ * Message intents that only make sense while a hire is still being decided.
+ *
+ * Offering "Request portfolio" or "Check availability" on a finished engagement
+ * was the reported defect: the questions belong to assessment, and assessment
+ * is over. They are dropped once an outcome is agreed rather than left to be
+ * clicked into an awkward conversation.
+ */
+const ASSESSMENT_INTENT_KEYS = new Set([
+  "request_portfolio",
+  "check_availability",
+  "propose_interview",
+]);
+
+/** Stages at which the decision is made and assessment questions are moot. */
+const SETTLED_STAGES = new Set(["hired", "accepted", "rejected", "declined", "withdrawn", "archived"]);
+
 export function intentsFor(options: {
   direction: "sent" | "received";
   allowedStages: string[];
   messagingClosed: boolean;
+  /** Authoritative lifecycle stage of the record. */
+  stage?: string | null;
+  /** Engagement status, when one exists. Work has its own vocabulary. */
+  engagementStatus?: string | null;
+  /** True when a functioning review flow is reachable for this record. */
+  canReview?: boolean;
 }): MessageIntent[] {
   if (options.messagingClosed) return [];
+
+  const settled =
+    Boolean(options.stage && SETTLED_STAGES.has(options.stage)) ||
+    Boolean(options.engagementStatus);
+
+  const messages = settled
+    ? MESSAGE_INTENTS.filter((intent) => !ASSESSMENT_INTENT_KEYS.has(intent.key))
+    : MESSAGE_INTENTS;
+
+  /*
+    A finished engagement gets exactly one extra action, and only because the
+    flow behind it exists. Rehire and Download invoice were suggested but have
+    no implementation, and a chip that silently does nothing is worse than an
+    absent one — so they are omitted rather than stubbed.
+  */
+  const engagementActions: MessageIntent[] =
+    options.canReview && isFinishedEngagement(options.engagementStatus)
+      ? [{ key: "leave_review", label: "Leave a review", kind: "decision" }]
+      : [];
+
   const decisions = DECISION_INTENTS.filter(
     (intent) => intent.stage && options.allowedStages.includes(intent.stage)
   );
   // The sender side manages nothing, so it only ever gets message intents.
-  if (options.direction === "sent") return MESSAGE_INTENTS;
-  return [...MESSAGE_INTENTS, ...decisions];
+  if (options.direction === "sent") return [...messages, ...engagementActions];
+  return [...messages, ...decisions, ...engagementActions];
+}
+
+function isFinishedEngagement(status: string | null | undefined): boolean {
+  return status === "completed" || status === "ended_after_start";
 }

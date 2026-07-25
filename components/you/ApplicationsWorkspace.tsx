@@ -3905,6 +3905,14 @@ export default function ApplicationsWorkspace({
             selected.legacyArchiveResolutionRequired
           ).map((stage) => stage.key),
           messagingClosed: selectedMessagingClosed,
+          stage: backendStatusOf(selected),
+          engagementStatus: selectedEngagement?.status ?? null,
+          // Only where the review flow is genuinely reachable.
+          canReview: Boolean(
+            selectedEngagement?.available_actions?.some(
+              (action) => action === "write_review" || action === "edit_review"
+            )
+          ),
         })
       : [];
 
@@ -5149,6 +5157,20 @@ export default function ApplicationsWorkspace({
                                     data-testid={`composer-intent-${intent.key}`}
                                     aria-pressed={intent.kind === "message" ? active : undefined}
                                     onClick={() => {
+                                      /*
+                                        The one engagement action offered, and
+                                        only because this flow exists. It is
+                                        wired here rather than left to fall
+                                        through to the message branch, where it
+                                        would have focused the composer and done
+                                        nothing a reader could interpret.
+                                      */
+                                      if (intent.key === "leave_review") {
+                                        if (selectedEngagement) {
+                                          void openEngagementReview(selectedEngagement);
+                                        }
+                                        return;
+                                      }
                                       if (intent.kind === "decision" && intent.stage) {
                                         // Outcomes go through the confirmed
                                         // transition flow, never a message body.
