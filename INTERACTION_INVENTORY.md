@@ -193,3 +193,35 @@ a half-hour-offset zone, so a dropped conversion cannot coincidentally look righ
 | Offline | What was loaded stays readable; reconnect resumes without a reload | `workspace-performance` |
 | Retry | Interview mutations are never optimistic — the surface shows pending and only the server's answer renders. A conflict is reported in the words of the thing that changed | `workspace-interviews`, `test_interviews` |
 | Reduced motion | Entry animation removed, not shortened | `workspace-accessibility` |
+
+---
+
+# Visual system controls
+
+Added by the visual redesign. Same columns; these are presentation controls, so
+"backend request", "persistence" and "counterparty effect" are `none` by
+construction — nothing in this layer may write state.
+
+| Control | User intent | Actual behavior | Backend request | Persistence | Counterparty effect | Error behavior | Test coverage | Final status |
+|---|---|---|---|---|---|---|---|---|
+| `queue-chip-all` | Return to every conversation | Pressed by default and visually raised, so "no filter" is a state you can see rather than the absence of one; always first in the rail | none | none | none | — | `workspace-next-action`, `workspace-visual-system` | **NEW** |
+| Avatar direction mark | Know whether this arrived or was sent | A 3.5px arrow on the avatar carrying the full phrase ("Received application") as its accessible name; replaces a line of backend vocabulary above the person's name | none | none | none | — | `workspace-visual-system` | **CHANGED** |
+| Row selected state | See which conversation is open | 3px accent edge + leftward tonal wash + raised fill | none | none | none | — | `workspace-visual-system` | **CHANGED** |
+| Work-state chip | Tell states apart at a glance | Familiar icon + the state's own hue + its words; colour is never the only signal | none | none | none | — | `workspace-visual-system`, `workspace-accessibility` | **CHANGED** |
+| Header stage | Know where this stands | Grouped with the opportunity under the name (*role · ● Responded*) with the dot from the shared taxonomy, instead of a third pill competing with the action | none | none | none | — | `qa-personas`, `workspace-workflow-audit` | **CHANGED** |
+| `next-action-primary` | Do the recommended thing | Filled gradient + elevation when confident; bordered raised surface when the recommendation is the neutral "Choose next step" | as before | as before | as before | as before | `workspace-visual-system` ×2 | **CHANGED** |
+| `pipeline-row` | Open a candidate's conversation | No longer `role="button"` — it contains a link, a checkbox, a menu and a Message button. Pointer click still opens; the labelled Message button is the keyboard and AT path | as before | none | none | — | `workspace-visual-system`, `workspace-accessibility` | **FIXED** — was 14 axe `nested-interactive` failures |
+| Stage section accent | Tell stages apart while scanning | One 2px edge in the stage's own hue; terminal groups stay flat because they are history, not work | none | none | none | — | `workspace-visual-system` | **NEW** |
+| `work-reminder` | Notice what has been sitting | A lifted card with an attention-hue clock, not another hairline bar | none | none | none | cannot fail | `workspace-interviews` | **CHANGED** |
+
+## Contrast and motion
+
+| Property | Guarantee | Coverage |
+|---|---|---|
+| Informational text | ≥ 4.5:1 on every surface in the ladder | `contrastTokens` (7 tests, parsed from `globals.css`) |
+| Meaningful borders, focus ring | ≥ 3:1 non-text contrast | `contrastTokens` |
+| Disabled text | The one tier below AA; asserted quieter than `subtle` so it reads as inactive | `contrastTokens` |
+| Text over gradients | ≥ 4.5:1, sampled from the rendered page | `workspace-visual-system` |
+| Whole document | Zero serious/critical axe violations, unscoped | `workspace-accessibility` ×3 |
+| Reduced motion | Animations **and transitions** disabled, not shortened | `workspace-accessibility` |
+| 200% zoom / 320px | No horizontal overflow | `workspace-accessibility` |

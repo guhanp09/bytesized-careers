@@ -309,3 +309,149 @@ measurements justified it.
 - **`restoreScenario` does not clear `interaction_interviews`,** so an
   arrangement made by one QA test is visible to the next in the same worker.
   Tests are written to tolerate it; the scenario reset could usefully be widened.
+
+---
+
+# Visual redesign and product-wide contrast remediation
+
+The functionality above was accepted; the interface it produced was not. It was
+uniformly flat — three panes at one tone separated by hairlines, nothing casting
+a shadow, and every row led by backend vocabulary rather than by a person.
+
+## What the screenshots showed
+
+Audited by running the product against backend-backed data and inspecting
+captures, not by reading code.
+
+| # | Finding |
+|---|---|
+| S1 | **One tonal value everywhere.** List, conversation and context rail all near-identical; only a 1px hairline separated them. |
+| S2 | **The open row was barely open** — a 1px left border and a ~2% background change. |
+| S3 | **Backend vocabulary led the hierarchy.** "Received application" was the topmost line of every row, above the name. |
+| S4 | **Labels floated away from values.** A fixed 112px label column put every value a hundred pixels from the word describing it, worse the narrower the rail. |
+| S5 | **Chips for ordinary metadata** — "2 items", "₹3000 per video", "2-day turnaround". |
+| S6 | **Chrome stack** — up to six bars before the first row; ~250px of a 700px phone. |
+| S7 | Queue chips clipped with no scroll affordance and no visible way back to "all". |
+| S8 | Timestamps competed with controls at the row's top-right. |
+| S9 | **630 occurrences of `text-white/30…48` across 104 files**, measuring 2.8–4.16:1. |
+| S10 | **No elevation anywhere.** Cards were indistinguishable from their containers. |
+| P1 | Pipeline sections were full-width bands holding one narrow portrait card. |
+| P2 | Cards shared their section's fill and cast no shadow. |
+| P5 | Three chip-ish elements plus a four-line quote per card. |
+
+## The surface model
+
+Before: one background, one border, repeated. After: a tonal ladder, where each
+layer is separated by tone *and* elevation, never by border alone.
+
+| Layer | Token | Used for |
+|---|---|---|
+| Canvas | `canvas` #08080b + `surface-canvas` | the workspace ground; a vertical fall and one corner lift so the viewport has a top |
+| Shell | `shell` #0c0c10 | the conversation column, the summary strip |
+| Panel | `panel` #101015 | the recessed conversation list |
+| Raised | `raised` #16161c + `surface-raised` | cards, the detail header, the composer, the open row |
+| Elevated | `elevated` #1d1d24 + `surface-elevated` | decision surface, arrangement card, active queue chip |
+| Overlay | `overlay` #23232c | menus, controls sitting on a raised card |
+
+Elevation is four levels, each pairing an ambient shadow with a 1px inner top
+highlight. Shadow alone reads as a drop-shadow *effect* on a dark UI; the inner
+highlight is what makes a surface look lit from above.
+
+## Gradients, and why each exists
+
+Six, all subtle, none decorative:
+
+| Gradient | Explains |
+|---|---|
+| `surface-canvas` | where the page begins |
+| `surface-raised` / `surface-elevated` | that a surface is lit from above, matching the elevation inset |
+| `surface-selected` | which row is open — a lit band under the accent edge rather than a rule |
+| `surface-primary` | that the recommended action is a physical key; text stays pure black (~19:1) |
+| `surface-inset` | that a field or a rail is recessed and therefore editable/scrollable |
+| queue-rail edge fade | that a clipped chip means "more this way", not a broken layout |
+
+Only a **confident** recommendation wears the filled gradient. "Choose next
+step" is the neutral fallback the derivation returns when it will not guess, and
+dressing it as a primary would assert certainty the product explicitly refused
+to claim. Asserted in `workspace-visual-system.spec.ts`.
+
+## Typography and spacing
+
+Six text tokens replace twenty-five ad-hoc opacities. The row scale is now
+name 13.5px/600 → opportunity 12px → snippet 12px subtle → timestamp 11px
+tabular. Group headings moved off 9–11px tracked-out uppercase, which is the
+least readable text in a UI and was being used for *every* group, so nothing
+stood out from anything else.
+
+## Awkward labels corrected
+
+| Was | Now |
+|---|---|
+| "Received application" as the row's first line | a directional mark on the avatar, keeping the full phrase as its accessible name |
+| Row snippet repeating the opportunity title shown one line above | the last thing actually said in the conversation |
+| Fixed 112px label column with the value far right | a definition list whose label column sizes to its longest label |
+| "PORTFOLIO" + a "2 items" chip | "Portfolio  2 items" — a count is metadata, not a status |
+| Stage pill competing with the recommended action (and truncating the name to "Priy…") | grouped with the opportunity under the name: *Long-form video editor · ● Responded* |
+| Two stacked metadata chips per Pipeline card | one quiet icon·value run with separators |
+
+## Contrast: before and after
+
+| | Before | After |
+|---|---|---|
+| Failing text sites | 630 across 104 files | 0 |
+| Measured range | 2.8 – 4.16:1 | every informational tier ≥ 4.5:1 on every surface |
+| axe, Inbox list | serious violations present | 0 |
+| axe, conversation | serious violations present | 0 |
+| axe, Pipeline | 33 nodes incl. 14 `nested-interactive` | 0 |
+| axe, `/jobs` | serious violations present | 0 |
+
+The migration was **banded**, not blanket: failing bands moved onto the scale
+while preserving each component's relative hierarchy, and bands already above AA
+were left alone. Token values are proved in `tests/contrastTokens.test.mjs`,
+which parses them out of `globals.css` so it cannot drift from what ships, and
+which caught `line-strong` at 2.52:1 during authoring.
+
+Two edge cases the band function got wrong, corrected by hand: `text-white/0` is
+an invisible hover-reveal, not muted text; and a disabled wizard control belongs
+in `text-disabled`, the one tier WCAG permits below AA.
+
+`nested-interactive` was structural, not colour: Pipeline cards were
+`role="button"` containing a link, a checkbox, a menu and a Message button. The
+card is no longer a button; the labelled Message button is the keyboard path,
+which is also the honest description of what it does.
+
+axe now runs against the **whole document**. It had been scoped to the surfaces
+this workstream owned, because the inherited scale failed product-wide; with
+tokens in place that exemption has no justification, and a scoped accessibility
+assertion is one that stops finding things.
+
+## Motion
+
+Three rules: motion may only explain a change, nothing loops, nothing delays an
+interaction. `ui-rise` for surfaces the user asked for, `ui-ack` for a private
+reversible act, `ui-crossfade` for content swapping in place. Under
+`prefers-reduced-motion` all animations *and the transitions* are disabled —
+the previous block covered only animations, and shortening is not reducing.
+
+**No sound. No haptics.**
+
+## Patterns considered and rejected
+
+- **Kanban columns for the Pipeline.** Would have restructured a working view
+  rather than refining it, and the stage count makes horizontal scrolling worse
+  than vertical grouping.
+- **A new brand accent.** The accent stays white. The five state hues were
+  already in the pipeline taxonomy as stage dots and were promoted to a system;
+  inventing a brand colour is a decision that needs sign-off, not a refactor.
+- **Screenshot-diff tests.** They fail on every deliberate change and explain
+  nothing. The visual-system suite asserts *properties* instead: that layers
+  differ, that the open row differs by more than a border, that depth exists
+  where the design claims it, that no text sits unreadable under a gradient.
+- **Repainting the whole product's already-compliant muted text.** Real churn
+  across areas this task has no business changing.
+
+## Known limitation
+
+A Pipeline stage holding one card still leaves horizontal space in its band.
+That is a property of the vertical stage-section layout, not a styling defect;
+closing it would mean changing the view's architecture.
