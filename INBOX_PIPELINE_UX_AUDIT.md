@@ -186,13 +186,126 @@ the surface:
   reversible. The dismissal is offered only when something actually recommends a
   reply.
 
-## Deferred
+## Phase C implemented
 
-**B** — `interaction_user_preferences` (Star, snooze, prompt dismissal); auto-Reviewing
-behind its own flag with instrumented dwell threshold and `review_started_at`;
-decision-aware composer intents (optional accelerators, freeform always fastest);
-trustworthy work queues; Shortlisted → Star migration with "Under consideration"
-compatibility.
+### Interview coordination (migration 0048)
 
-**C** — interview coordination, consolidated reminders, per-job summaries,
-optional confirmed suggestions, analytics-driven refinement.
+The gap: arranging an interview was a stage change and a hope. The applicant was
+told they had been "invited to interview" and had to work out *when* from the
+conversation.
+
+**Deliberately not a calendar.** No third-party invitations, availability grids,
+recurrence, external sync, or reminder scheduler. Those are the features that
+turn scheduling into administration. The scope is the four facts two people need
+in order to meet.
+
+Three judgements shaped it:
+
+- **One row per conversation**, for the same reason `interaction_user_preferences`
+  is keyed that way: the conversation is the one identifier surviving every mode,
+  so a recruiter acting through a hiring identity and the applicant replying from
+  their own account resolve to a single arrangement. Rescheduling updates the row;
+  the history of what was proposed lives in the thread, where both people can
+  already read it, so the table never becomes a second, divergent narrative.
+- **One authoritative status path.** An invitation on an application moves the
+  record through `transition_application`, which already owns the version check,
+  the trusted event, the exactly-once notification and the delivery intent. That
+  service gained optional `detail_line` and `note` parameters so an invitation
+  arrives as one complete statement rather than a headline chased by a second
+  message. Both default to the previous behaviour exactly.
+- **Nothing is inferred.** No message text is parsed. Marking an interview
+  complete is private bookkeeping — no message, no notification, no
+  participant-visible change — and it decides nothing. Cancelling always tells
+  the other participant, who may have blocked out the time, but never touches the
+  stage: calling off a call is not a decision about the person.
+
+**Talent-side parity without inventing vocabulary.** A hiring request has no
+Interviewing stage, because a call before accepting is not an acceptance. The
+arrangement is recorded and announced; the request stays where it was.
+
+### Workload assistance
+
+**Reminders are a reading of state, not a delivery.** One line, derived from the
+queues, present while the work is and gone when it is not — so there is nothing
+to repeat, nothing to dismiss, and no scheduler to build. An email or push for
+"you have three decisions waiting" would need a cadence, an unsubscribe, and a
+quiet-hours policy: that is the separate reminder framework the brief ruled out.
+Snoozes and dismissals are honoured structurally rather than by a second set of
+checks, and nothing is ever mentioned while the other participant owes the move.
+
+**Per-job summaries live in the Pipeline.** They began above the Inbox list and
+the visual pass killed that placement: reminder, summaries, queue chips and
+unread count stacked four bars above the conversations people came to read. The
+Pipeline is the surveying lens in this product and a per-job breakdown is a
+survey. No percentages — that would imply a fixed denominator and a linear
+funnel, and hiring has neither.
+
+**Empty states distinguish an empty system from an empty filter.** Telling
+someone "no applications" when they have forty and a chip selected is how a
+product loses trust.
+
+### Defects found by using the product
+
+| Defect | Why it mattered | Fix |
+|---|---|---|
+| **Stored instants came back naive.** SQLite has no time-zone type, so `isoformat` emitted no offset and the browser parsed it as *its* local time — the card read 10:30 AM beside a message saying 4:00 PM. | A confident, wrong interview time is the single worst thing this feature could do. | Every read goes through `_as_utc`; regression-tested with a half-hour-offset zone so a dropped conversion cannot coincidentally look right. |
+| **Locale-dependent text rendered on the server.** Same defect by another route: a hydration mismatch leaves the server's zone on screen. | ditto | `useHydrated` (a `useSyncExternalStore` gate); the organiser's pre-rendered label holds the space until the client can do better. |
+| **The talent list said "Nothing needs you right now" while the open conversation asked them to confirm an interview.** | Four surfaces disagreeing is how a queue stops being trusted. | `interviewAwaitingMyConfirmation` feeds the shared derivation, so the chip, the row label, the header action and the card now come from one source. Only the invited side is told — the organiser is waiting, not owing. |
+| **The start-confirmation queue could never populate.** Phase A could only see the engagement of the record already opened. | The highest-priority queue was structurally empty. | `GET /me/engagements` — one list-wide read, scoped by participation. |
+| **The mobile Inbox dropped you into a conversation.** Restoring the last selection also opened it, and on a phone the list and conversation are separate screens — so tapping "Inbox" landed in whichever thread you last read, with Back as the only way out. | Also the true cause of a long-standing "load-sensitive flake": the race was the product's, not the test's. | The selection is restored; the automatic descent is withheld below `lg`. `?thread=` still opens. |
+| **The sticky arrangement card was translucent.** Messages scrolling under it were unreadable. | A scheduling detail is exactly the wrong text to render ambiguously. | Opaque, with a shadow rather than transparency saying "this floats". |
+| **Touch targets on the arrangement were 32px.** | These are tapped while walking to a meeting. | 44px on mobile, compact from a pointer device up. |
+
+### Accessibility: what was fixed, and what was not
+
+Every piece of text this work introduced clears 4.5:1. **The muted scale it
+inherited does not.** `text-white/32` … `text-white/45` at 10–13px on a
+near-black background measures **2.8–4.16 across 33 nodes**, in components this
+task does not own: the global DEV badge, the portfolio card, the job facts rail,
+the status pills, the row meta lines.
+
+That is a design-system decision with product-wide visual consequences — raising
+the whole muted scale changes how every surface reads — so it is measured and
+recorded here rather than quietly half-fixed inside one feature. The axe
+assertion in `workspace-accessibility.spec.ts` is scoped to the surfaces this
+work is responsible for, which keeps it true instead of permanently red or muted
+behind an allowlist that would grow.
+
+One false positive was removed at the source: axe sampled surfaces mid-fade —
+`.ui-crossfade` animates opacity on a *container*, so every descendant read
+dimmer than it renders. The sweep now waits for finite animations to settle.
+
+### Performance
+
+Budgets, not benchmarks: deliberately loose, so the suite catches "this feels
+broken" rather than defending a millisecond, and every measurement is printed so
+the trend stays visible. Measured locally on the QA stack:
+
+| | |
+|---|---|
+| Initial load → first conversation row | 357 ms |
+| Conversation switch | 72 ms |
+| Inbox ↔ Pipeline | 43–59 ms |
+| Queue filter | 31 ms |
+| Send → message on screen | 40 ms |
+| Offline → recovered | 39 ms |
+
+The three list-wide reads Phase B and C added (`/me/interaction-preferences`,
+`/me/interviews`, `/me/engagements`) are asserted to stay **one request each**,
+so a queue count can never silently become N round-trips; conversation details
+are asserted to load on demand. No virtualization was added — nothing in the
+measurements justified it.
+
+## Known limitations
+
+- **Flag independence is proven at unit level, not e2e.** Flags are inlined at
+  build time, so a matrix would need one build per combination. The workflow
+  audit asserts the property the flags exist to protect instead: nothing
+  assistive is load-bearing.
+- **Interview coordination has no email or push reminder.** Deliberate — see
+  "reminders are a reading of state" above.
+- **The muted-text contrast scale is a recorded finding, not a fix.** Numbers
+  above.
+- **`restoreScenario` does not clear `interaction_interviews`,** so an
+  arrangement made by one QA test is visible to the next in the same worker.
+  Tests are written to tolerate it; the scenario reset could usefully be widened.

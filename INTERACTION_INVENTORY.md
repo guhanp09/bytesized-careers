@@ -130,3 +130,66 @@ the backend did not already own.
 ## Known gaps
 
 - **No "share this later" step exists for hiring requests.** `accepted`/`declined` are auto-shared at transition, and there is no `share_interest_status` service or endpoint. This is a deliberate domain asymmetry, not an oversight; the UI now states it plainly instead of pretending to send something.
+
+---
+
+# Phase C — interview coordination and workload assistance
+
+Everything below was added after the Phase A/B entries above. The columns are the
+same, so a control's whole story stays readable in one place.
+
+## Interview coordination
+
+The organiser is the managing side — participant B in both context types, i.e.
+the job owner on an application and the listing owner on a hiring request. The
+server checks this on every write; `can_manage` in the payload only tells the
+client which controls to draw.
+
+| Control | User intent | Actual behavior | Backend request | Persistence | Counterparty effect | Error behavior | Test coverage | Final status |
+|---|---|---|---|---|---|---|---|---|
+| Decision surface → *Invite to interview* | Arrange a call | Opens `interview-scheduler`; **nothing is sent yet** — an invitation without a time is not worth sending | none until submit | none | none | — | `workspace-interviews` ("asks for a real time before anything is sent") | OK |
+| `interview-date` / `interview-time` | Name a time | Local inputs; combined into one absolute instant in the reader's own zone | — | — | — | Blank or past → `interview-scheduler-error` with the reason, form stays open | `interviewScheduling` unit, `workspace-interviews` | OK |
+| `interview-method-*` | Say how you'll meet | Toggle group, `aria-pressed`, Space/Enter operable; changes the detail field's label and placeholder | — | — | — | — | `workspace-accessibility` (pointerless form) | OK |
+| `interview-meeting-detail` | Link, number, or address | Free text — every provider formats these differently and validating them would reject working ones | — | `meeting_detail` | Sees it on the arrangement and in the thread | Truncated at 500 chars | `workspace-interviews` | OK |
+| `interview-duration-*` | How long | Optional; clicking the selected chip clears it | — | `duration_minutes` | Shown on the arrangement | — | `interviewScheduling` unit | OK |
+| `interview-note` | Say something with the invitation | Optional, always editable; posted as an ordinary message attributed to the organiser, in the same transaction as the invitation | part of the same request | a `Message` with a deterministic client id | Reads it beside the invitation | Retry resolves to the same row | `test_interviews`, `workspace-interviews` | OK |
+| `interview-submit` (first time) | Send the invitation | Moves the application to **Interviewing** through the ordinary transition service, posts one trusted message carrying the time, notifies once | `PUT /me/conversations/{id}/interview` + `transition_application` | `interaction_interviews` row v1; `status`, `participant_status`, `status_version`; one `InteractionStatusEvent`; one notification + outbox intent | Sees Interviewing, the invitation, the time, the link, and the note | 409 `stale_interview` with `current_version`; 409 on a stale *record* version; 422 on a bad zone or an absurd date | `test_interviews` ×6, `workspace-interviews`, `workspace-workflow-audit` | OK |
+| `interview-submit` (reschedule) | Move it | Updates in place, bumps `reschedule_count`, **re-opens confirmation**, posts one clear update naming what moved | same endpoint, `expected_version` = current | v+1, `previous_scheduled_at` | Told it moved; must confirm again | as above | `test_interviews`, `workspace-interviews` | OK |
+| `interview-confirm` ("This time works") | Agree to the time | Either participant may confirm; the notification always goes to the other side | `POST .../interview/confirm` | `status=confirmed`, `confirmed_at`, `confirmed_by_user_id`, v+1 | Sees "Interview confirmed" | Repeat is a no-op returning the same row | `test_interviews` ×2, `workspace-interviews`, `workspace-workflow-audit` | OK |
+| `interview-reschedule` ("Move it") | Change the time | Reopens the scheduler pre-filled with what is arranged | — | — | — | — | `workspace-interviews` | OK |
+| `interview-complete` ("Mark interview done") | Close out the scheduling | **Private bookkeeping.** No message, no notification, no participant-visible change, and it decides nothing — the record moves to Interview follow-up and waits | `POST .../interview/complete` | `status=completed`, `completed_at`, v+1 | **none** | Repeat is a no-op | `test_interviews` (asserts message count and notification count unchanged) | OK |
+| `interview-cancel` ("Call it off") | Call it off | Always tells the other participant — they may have blocked out the time — and **never touches the stage**: cancelling a call is not a decision about the person | `POST .../interview/cancel` | `status=cancelled`, `cancelled_at`, `cancel_reason`, v+1 | Sees the cancellation and the reason | Repeat is a no-op | `test_interviews`, `workspace-interviews` | OK |
+| `interview-new-round` | Arrange another | Reuses the row, `round_number`+1, resets `reschedule_count` | same as first invitation | v+1 | Sees a fresh invitation | — | `test_interviews` | OK |
+| Header primary action (interview) | The one next step | Replaces the generic recommendation while an arrangement exists — "Confirm this time" for the invited side, "Mark interview done" once the time has passed, "Record decision" once closed out | — | — | — | — | `interviewScheduling` unit, `workspace-workflow-audit` | OK |
+
+**Time zones.** The reader's own clock leads, because that is the one they act
+on; the organiser's stated zone follows whenever the two differ. Stored instants
+are read back through `_as_utc` — SQLite has no time-zone type, and a naive
+value serialised without an offset is parsed by the browser as *its* local time.
+Locale-dependent text is deferred to the client (`useHydrated`) so a hydration
+mismatch cannot leave a confident, wrong time on screen. Regression-tested with
+a half-hour-offset zone, so a dropped conversion cannot coincidentally look right.
+
+## Workload assistance
+
+| Control | User intent | Actual behavior | Backend request | Persistence | Counterparty effect | Error behavior | Test coverage | Final status |
+|---|---|---|---|---|---|---|---|---|
+| `work-reminder` | Notice what has been sitting | One line, derived from the queues; present while the work is, gone when it is not. Activating it filters to exactly what it counted | none — a reading of state | none | none | cannot fail | `workspaceAssistance` ×10, `workspace-interviews` | OK |
+| `job-summary` / `job-summary-count-*` | Scan workload across roles | Pipeline only; shown when there is more than one job. Counts are independent facts — no percentage, no funnel — and each leads to the matching queue or stage | none | none | none | cannot fail | `workspaceAssistance` ×5, `workspace-interviews` | OK |
+| `inbox-empty-state` / `inbox-empty-action` | Understand why the list is empty | Distinguishes an empty system from an empty filter, search, or queue; offers at most one way out; never celebrates | none | none | none | — | `workspaceAssistance` ×6, `workspace-interviews` | OK |
+| `all-caught-up` | Know nothing needs you | Honest about who is holding things up ("Nothing needs you. 3 conversations are waiting on the other side.") and never shown to an empty system | none | none | none | — | `workspaceAssistance` ×2 | OK |
+| `queue-chip-interview_confirmation` | Find a time you owe an answer on | New queue, ranked just below start confirmation — someone is holding a slot open | none | none | none | — | `workQueues`, `interviewScheduling` | OK |
+| Engagement row (start) | Confirm or decline a start | Unchanged authoritative flow; now **states its dates** — the confirmation deadline and the agreed start | `GET /me/engagements` for the list-wide read | no new state | unchanged | unchanged | `test_engagement_reviews` | OK |
+| `GET /me/engagements` | Populate the start-confirmation queue | One request for the whole inbox; scoped by participation | — | — | — | Degrades to the open record only | `test_engagement_reviews`, `workspace-performance` | **FIXED** — the queue could not populate before |
+
+## Mobile, keyboard, offline
+
+| Behaviour | Observed | Coverage |
+|---|---|---|
+| Mobile inbox landing | Restores the last selection but **does not open it** — the list is the screen you asked for. `?thread=` still opens, being a deliberate request | `workspace-next-action` mobile, `qa-personas` mobile |
+| Touch targets | Interview actions are 44px on mobile, compact from a pointer device up | `workspace-accessibility` |
+| Keyboard lifecycle | Reach the recommendation, operate it, open the scheduler (which takes focus into its first field, having been asked for), Escape to close | `workspace-accessibility` ×2 |
+| Focus | The decision surface never takes focus on mount, so typing is never interrupted; focus rings verified by tabbing, since `:focus-visible` does not match programmatic focus | `workspace-accessibility` |
+| Offline | What was loaded stays readable; reconnect resumes without a reload | `workspace-performance` |
+| Retry | Interview mutations are never optimistic — the surface shows pending and only the server's answer renders. A conflict is reported in the words of the thing that changed | `workspace-interviews`, `test_interviews` |
+| Reduced motion | Entry animation removed, not shortened | `workspace-accessibility` |
