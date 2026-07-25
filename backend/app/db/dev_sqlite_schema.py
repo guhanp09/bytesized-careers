@@ -33,6 +33,8 @@ async def sync_dev_sqlite_schema(engine: AsyncEngine) -> None:
     import app.models  # noqa: F401
 
     async with engine.begin() as conn:
+        if conn.dialect.name == "sqlite":
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
         await conn.run_sync(Base.metadata.create_all)
 
         def add_missing_columns(sync_conn) -> list[str]:

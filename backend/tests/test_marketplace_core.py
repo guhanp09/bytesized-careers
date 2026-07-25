@@ -912,6 +912,21 @@ async def test_application_succeeds_without_screening_and_delivers_questions_to_
     my_job = [j for j in mine.json() if j["id"] == job_id][0]
     assert [q["prompt"] for q in my_job["screening_questions"]] == [required_prompt, optional_prompt]
 
+    saved = await client.post(
+        f"/api/v1/jobs/{job_id}/save",
+        headers=applicant_headers,
+        json={},
+    )
+    assert saved.status_code == 200
+    saved_summary = await client.get(
+        "/api/v1/me/saved/summary",
+        headers=applicant_headers,
+    )
+    saved_job = saved_summary.json()["jobs"][0]["job"]
+    assert saved_job["screening_questions"] is None
+    assert saved_job["languages"] == []
+    assert saved_job["language_requirements"] is None
+
     # The application succeeds without any screening answers, and a client-supplied
     # screening payload is dropped rather than stored.
     accepted = await client.post(
@@ -945,6 +960,15 @@ async def test_application_succeeds_without_screening_and_delivers_questions_to_
     assert [q["required"] for q in screening["screening"]["questions"]] == [True, False]
     assert convo.json()["conversation"]["unread_count"] == 1
 
+    applicant_activity = await client.get(
+        "/api/v1/me/activity/summary",
+        headers=applicant_headers,
+    )
+    related = next(
+        row for row in applicant_activity.json()["related_jobs"] if row["id"] == job_id
+    )
+    assert related["screening_questions"] is None
+
     # The recruiter sees the same message as their own (from_me), not counted unread.
     owner_convo = await client.get(
         f"/api/v1/me/applications/{application_id}/conversation", headers=owner_headers
@@ -964,6 +988,34 @@ async def test_application_succeeds_without_screening_and_delivers_questions_to_
         f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_headers
     )
     assert len(convo_again.json()["messages"]) == 1
+
+    paused = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers=owner_headers,
+        json={"status": "paused"},
+    )
+    assert paused.status_code == 200
+    hidden_saved = await client.get(
+        "/api/v1/me/saved/summary",
+        headers=applicant_headers,
+    )
+    assert hidden_saved.json()["jobs"][0]["job"] is None
+
+    draft = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Private screened draft",
+        status="draft",
+        screening_questions=[{"prompt": "Private prompt", "required": True}],
+    )
+    assert draft.status_code == 201
+    assert (
+        await client.post(
+            f"/api/v1/jobs/{draft.json()['id']}/save",
+            headers=applicant_headers,
+            json={},
+        )
+    ).status_code == 404
 
 
 async def test_screening_message_keeps_its_original_snapshot_after_the_job_is_edited(

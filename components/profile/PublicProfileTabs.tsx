@@ -206,6 +206,20 @@ const publicJobLookup = new Map(JOBS.map((job) => [String(job.id), job] as const
 
 const basePublicJobId = (value: string) => value.split("-past-hiring-")[0];
 
+const PUBLIC_JOB_CATEGORIES = new Set<Job["category"]>([
+  "Editing",
+  "Design",
+  "Writing",
+  "Thumbnails",
+  "Shorts",
+  "Motion Graphics",
+  "Channel Manager",
+  "Research",
+  "Voice Over",
+  "Marketing",
+  "Uncategorized",
+]);
+
 const RECENT_HIRE_ROLE_LABELS: Record<string, string> = {
   editing: "Video Editor",
   design: "Designer",
@@ -235,12 +249,21 @@ const mapPublicJobToCanonical = (
   const baseJob = publicJobLookup.get(lookupId) || publicJobLookup.get(basePublicJobId(lookupId));
   const channelName = cleanText(item.channel_name) || baseJob?.channel.name || cleanText(fallbackChannelName) || "Creator profile";
   const isClosed = String(item.status || "").toLowerCase() === "closed";
+  const legacyCategory = cleanText(item.category);
+  const category = PUBLIC_JOB_CATEGORIES.has(legacyCategory as Job["category"])
+    ? (legacyCategory as Job["category"])
+    : baseJob?.category || "Uncategorized";
+  const primaryRoleName = cleanText(item.primary_role_name_snapshot);
+  const roleSpecialization = cleanText(item.role_specialization);
 
   return {
     ...(baseJob || {
       id: lookupId,
       title: cleanText(item.title) || "Job listing",
-      category: (cleanText(item.category) as Job["category"]) || "Editing",
+      category,
+      legacyCategory: legacyCategory || null,
+      primaryRoleName: primaryRoleName || undefined,
+      roleSpecialization: roleSpecialization || undefined,
       budget: "",
       experience: "",
       location: cleanText(item.location) || "",
@@ -260,7 +283,10 @@ const mapPublicJobToCanonical = (
     }),
     id: baseJob?.id || lookupId,
     title: cleanText(item.title) || baseJob?.title || "Job listing",
-    category: (cleanText(item.category) as Job["category"]) || baseJob?.category || "Editing",
+    category,
+    legacyCategory: legacyCategory || baseJob?.legacyCategory || null,
+    primaryRoleName: primaryRoleName || baseJob?.primaryRoleName,
+    roleSpecialization: roleSpecialization || baseJob?.roleSpecialization,
     location: cleanText(item.location) || baseJob?.location || "",
     channel: {
       name: channelName,
@@ -272,6 +298,8 @@ const mapPublicJobToCanonical = (
       baseJob?.tags?.length
         ? baseJob.tags
         : cleanList([
+            primaryRoleName,
+            roleSpecialization,
             cleanText(item.category),
             cleanText(item.location),
             isClosed ? "Closed" : "Open",

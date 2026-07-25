@@ -122,7 +122,16 @@ async def test_create_and_fetch_job(client: AsyncClient) -> None:
     fetched = get_response.json()
     assert fetched["id"] == job_id
     assert fetched["platforms"] == ["instagram"]
-    assert fetched["languages"] == ["Hindi", "English"]
+    assert fetched["languages"] == []
+    assert fetched["language_requirements"] is None
+
+    owner_jobs = await client.get(
+        "/api/v1/me/jobs",
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert owner_jobs.status_code == 200
+    owner_copy = next(job for job in owner_jobs.json() if job["id"] == job_id)
+    assert owner_copy["languages"] == ["Hindi", "English"]
     assert fetched["content_niches"] == ["Finance", "Education"]
     assert fetched["content_genres"] == ["Explainers"]
     assert fetched["formats_hired_for"] == ["Long-form video", "Thumbnails"]

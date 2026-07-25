@@ -182,9 +182,15 @@ type BackendListResponse = {
 type BackendErrorShape = {
   detail?: string | { message?: string; code?: string; field_errors?: Record<string, string[]> };
   error?: {
+    code?: string;
     message?: string;
+    request_id?: string;
     details?:
-      | { field_errors?: Record<string, string[]> }
+      | {
+          field_errors?: Record<string, string[]>;
+          details?: unknown;
+          [key: string]: unknown;
+        }
       | Array<{ loc?: Array<string | number>; msg?: string; message?: string }>;
   };
 };
@@ -914,7 +920,9 @@ export type BackendPortfolioLinkPreviewResponse = {
 export type BackendPublicJobItem = {
   id: string;
   title: string;
-  category: string;
+  category?: string | null;
+  primary_role_name_snapshot?: string | null;
+  role_specialization?: string | null;
   location?: string | null;
   status: string;
   created_at: string;
@@ -1726,12 +1734,23 @@ const getRequestTimeoutMs = (init?: RequestJsonOptions) => {
 export class BackendRequestError extends Error {
   status: number;
   fieldErrors?: Record<string, string[]>;
+  code?: string;
+  details?: unknown;
+  requestId?: string;
 
-  constructor(status: number, message: string, fieldErrors?: Record<string, string[]>) {
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors?: Record<string, string[]>,
+    metadata?: { code?: string; details?: unknown; requestId?: string }
+  ) {
     super(message);
     this.name = "BackendRequestError";
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.code = metadata?.code;
+    this.details = metadata?.details;
+    this.requestId = metadata?.requestId;
   }
 }
 
@@ -1830,16 +1849,35 @@ export async function requestJson<T>(path: string, init?: RequestJsonOptions): P
   if (!response.ok) {
     const text = await response.text();
     let fieldErrors: Record<string, string[]> | undefined;
+    let errorMetadata:
+      | { code?: string; details?: unknown; requestId?: string }
+      | undefined;
     try {
       const parsed = JSON.parse(text) as BackendErrorShape;
       fieldErrors = normalizeBackendFieldErrors(parsed);
+      const wrappedDetails = parsed.error?.details;
+      errorMetadata = {
+        code:
+          parsed.error?.code ||
+          (typeof parsed.detail === "object" && parsed.detail !== null
+            ? parsed.detail.code
+            : undefined),
+        details:
+          wrappedDetails &&
+          !Array.isArray(wrappedDetails) &&
+          Object.prototype.hasOwnProperty.call(wrappedDetails, "details")
+            ? wrappedDetails.details
+            : wrappedDetails,
+        requestId: parsed.error?.request_id,
+      };
     } catch {
       // The message parser below handles non-JSON responses.
     }
     throw new BackendRequestError(
       response.status,
       getBackendErrorMessage(response.status, text),
-      fieldErrors
+      fieldErrors,
+      errorMetadata
     );
   }
 

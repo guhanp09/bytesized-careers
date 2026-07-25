@@ -193,7 +193,9 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
             [
                 Job(
                     title="Active profile job",
-                    category="Editing",
+                    category=None,
+                    primary_role_name_snapshot="Video Editor",
+                    role_specialization="Retention-focused long-form editing",
                     listing_schema_version=1,
                     platforms=["instagram"],
                     posted_by_user_id=owner.id,
@@ -292,6 +294,15 @@ async def test_public_profile_applies_privacy_and_jobs_split(client: AsyncClient
     assert data["experience"][0]["role"] == "Video Editor"
     assert data["experience"][0]["organization_name"] == "Finance Creator"
     assert len(data["jobs_active"]) >= 1
+    active_profile_job = next(
+        item for item in data["jobs_active"] if item["title"] == "Active profile job"
+    )
+    assert active_profile_job["category"] is None
+    assert active_profile_job["primary_role_name_snapshot"] == "Video Editor"
+    assert (
+        active_profile_job["role_specialization"]
+        == "Retention-focused long-form editing"
+    )
     assert len(data["jobs_past"]) == 0
     assert any(item["title"] == "Current brand reel" for item in data["portfolio_now"])
     assert len(data["portfolio_past"]) == 0

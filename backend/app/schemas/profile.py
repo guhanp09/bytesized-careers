@@ -426,7 +426,9 @@ class PortfolioListResponse(BaseModel):
 class PublicJobItem(BaseModel):
     id: uuid.UUID
     title: str
-    category: str
+    category: str | None = None
+    primary_role_name_snapshot: str | None = None
+    role_specialization: str | None = None
     location: str | None = None
     status: str
     created_at: datetime

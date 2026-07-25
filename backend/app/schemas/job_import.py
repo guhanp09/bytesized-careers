@@ -29,6 +29,7 @@ MAX_IMPORT_SOURCE_TEXT_LENGTH = 100_000
 MAX_EVIDENCE_SNIPPET_LENGTH = 500
 MAX_FIELD_JSON_BYTES = 16_384
 MAX_MACHINE_METADATA_BYTES = 16_384
+MAX_EXTRACTION_RESPONSE_BYTES = 1_000_000
 
 JobImportSourceType = Literal[
     "pasted_text",
@@ -77,7 +78,7 @@ JobImportAuthorityState = Literal[
 def _bounded_json(value: object, *, maximum: int, label: str) -> object:
     try:
         raw = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError(f"{label} must be JSON serializable") from exc
     if len(raw.encode("utf-8")) > maximum:
         raise ValueError(f"{label} is too large")
@@ -116,7 +117,7 @@ class JobImportSourceCreate(BaseModel):
         default=None,
         max_length=MAX_IMPORT_SOURCE_TEXT_LENGTH,
     )
-    source_url: HttpUrl | None = None
+    source_url: HttpUrl | None = Field(default=None, max_length=2048)
     original_filename: str | None = Field(default=None, max_length=255)
     content_type: str | None = Field(default=None, max_length=128)
     storage_references: list[str] = Field(default_factory=list, max_length=20)
@@ -253,9 +254,9 @@ class JobImportEvidenceLocation(BaseModel):
         if (
             self.char_start is not None
             and self.char_end is not None
-            and self.char_end < self.char_start
+            and self.char_end <= self.char_start
         ):
-            raise ValueError("char_end must be greater than or equal to char_start")
+            raise ValueError("char_end must be greater than char_start")
         return self
 
 
@@ -431,6 +432,11 @@ class JobImportExtractionResponse(BaseModel):
         ]
         if len(paths) != len(set(paths)):
             raise ValueError("each field path may appear only once in an extraction response")
+        _bounded_json(
+            self.model_dump(mode="json"),
+            maximum=MAX_EXTRACTION_RESPONSE_BYTES,
+            label="extraction response",
+        )
         return self
 
 
@@ -483,7 +489,15 @@ class JobImportFieldDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field_path: str
+    native_field: str | None
+    value_schema: dict[str, JsonValue]
     confirmation_policy: AIConfirmationPolicy
+    nested_confirmation_policies: dict[str, AIConfirmationPolicy]
+    allowed_provenance: list[
+        Literal["directly_supplied", "extracted_from_source", "suggested_inference"]
+    ]
+    evidence_required_for_extraction: bool
+    requires_recruiter_review: Literal[True] = True
     missing_requirement: MissingRequirement
     review_section: ReviewSection
     custom_values_allowed: bool

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import JobImportDraft, JobImportField, JobImportSource, Role
@@ -26,6 +26,7 @@ class JobImportRepository:
         owner_user_id: UUID,
         *,
         include_deleted: bool = False,
+        for_update: bool = False,
     ) -> JobImportSource | None:
         query = select(JobImportSource).where(
             JobImportSource.id == source_id,
@@ -33,6 +34,8 @@ class JobImportRepository:
         )
         if not include_deleted:
             query = query.where(JobImportSource.deleted_at.is_(None))
+        if for_update:
+            query = query.with_for_update()
         return (await self.session.execute(query)).scalar_one_or_none()
 
     async def get_source_by_request_id(
@@ -56,6 +59,30 @@ class JobImportRepository:
         await self.session.flush()
         await self.session.refresh(source)
         return source
+
+    async def claim_source_mutation(
+        self,
+        source_id: UUID,
+        owner_user_id: UUID,
+    ) -> JobImportSource | None:
+        result = await self.session.execute(
+            update(JobImportSource)
+            .where(
+                JobImportSource.id == source_id,
+                JobImportSource.owner_user_id == owner_user_id,
+                JobImportSource.deleted_at.is_(None),
+            )
+            .values(updated_at=func.now())
+            .returning(JobImportSource.id)
+        )
+        claimed_id = result.scalar_one_or_none()
+        if claimed_id is None:
+            return None
+        return await self.get_source_for_owner(
+            claimed_id,
+            owner_user_id,
+            for_update=True,
+        )
 
     async def create_draft(self, data: dict[str, Any]) -> JobImportDraft:
         draft = JobImportDraft(**data)
@@ -97,16 +124,58 @@ class JobImportRepository:
         self,
         source_id: UUID,
         owner_user_id: UUID,
+        *,
+        include_deleted: bool = False,
     ) -> list[JobImportDraft]:
-        query = (
-            select(JobImportDraft)
-            .where(
-                JobImportDraft.source_id == source_id,
-                JobImportDraft.owner_user_id == owner_user_id,
-            )
-            .order_by(JobImportDraft.created_at.asc())
+        query = select(JobImportDraft).where(
+            JobImportDraft.source_id == source_id,
+            JobImportDraft.owner_user_id == owner_user_id,
         )
+        if not include_deleted:
+            query = query.where(JobImportDraft.deleted_at.is_(None))
+        query = query.order_by(JobImportDraft.created_at.asc())
         return list((await self.session.execute(query)).scalars().all())
+
+    async def claim_draft_mutation(
+        self,
+        draft_id: UUID,
+        owner_user_id: UUID,
+        claim_token: UUID,
+        *,
+        allowed_statuses: set[str] | None = None,
+        require_target_unset: bool = False,
+    ) -> JobImportDraft | None:
+        """Atomically reserve one draft for a state-changing transaction.
+
+        Unlike ``SELECT .. FOR UPDATE``, the compare-and-set UPDATE also serializes
+        writers on SQLite. The caller must clear the token before committing; a
+        rollback clears the uncommitted claim automatically.
+        """
+
+        conditions = [
+            JobImportDraft.id == draft_id,
+            JobImportDraft.owner_user_id == owner_user_id,
+            JobImportDraft.deleted_at.is_(None),
+            JobImportDraft.mutation_claim_token.is_(None),
+        ]
+        if allowed_statuses is not None:
+            conditions.append(JobImportDraft.processing_status.in_(allowed_statuses))
+        if require_target_unset:
+            conditions.append(JobImportDraft.target_job_id.is_(None))
+        result = await self.session.execute(
+            update(JobImportDraft)
+            .where(*conditions)
+            .values(mutation_claim_token=claim_token)
+            .returning(JobImportDraft.id)
+        )
+        claimed_id = result.scalar_one_or_none()
+        if claimed_id is None:
+            return None
+        return await self.get_draft_for_owner(
+            claimed_id,
+            owner_user_id,
+            for_update=True,
+        )
 
     async def update_draft(
         self,
@@ -170,10 +239,7 @@ class JobImportRepository:
         normalized = key.strip().casefold()
         query = select(Role).where(
             Role.is_active.is_(True),
-            or_(
-                func.lower(Role.slug) == normalized,
-                func.lower(Role.name) == normalized,
-            ),
+            func.lower(Role.slug) == normalized,
         )
         return (await self.session.execute(query)).scalar_one_or_none()
 

@@ -68,7 +68,9 @@ test.describe("candidate V3 job experience", () => {
     await drawer.getByLabel("Primary role").selectOption({ label: "Thumbnail Designer" });
     await drawer.getByRole("button", { name: "YouTube", exact: true }).click();
     await drawer.getByRole("button", { name: "Remote", exact: true }).click();
-    await drawer.getByRole("button", { name: "English", exact: true }).click();
+    await expect(
+      drawer.getByRole("button", { name: "English", exact: true }),
+    ).toHaveCount(0);
     await drawer.getByRole("button", { name: "Show jobs" }).click();
 
     await expect
@@ -78,7 +80,6 @@ test.describe("candidate V3 job experience", () => {
           role: params.get("role"),
           platform: params.get("platform"),
           workMode: params.get("workMode"),
-          language: params.get("language"),
           legacyCategory: params.get("filter"),
         };
       })
@@ -86,24 +87,25 @@ test.describe("candidate V3 job experience", () => {
         role: "thumbnail-designer",
         platform: "YouTube",
         workMode: "remote",
-        language: "English",
         legacyCategory: null,
       });
 
     await expect(page.getByText("Thumbnail designer for technology reviews and comparisons", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Long-form YouTube editor", { exact: false })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Filters\s*4/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Filters\s*3/ })).toBeVisible();
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: /Filters\s*4/ }).click();
+    await page.getByRole("button", { name: /Filters\s*3/ }).click();
     const reloadedDrawer = page.getByRole("dialog", { name: "Filter jobs" });
     await expect(reloadedDrawer.getByLabel("Primary role")).toHaveValue("thumbnail-designer");
     await expect(reloadedDrawer.getByRole("button", { name: "YouTube", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(reloadedDrawer.getByRole("button", { name: "Remote", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(reloadedDrawer.getByRole("button", { name: "English", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      reloadedDrawer.getByRole("button", { name: "English", exact: true }),
+    ).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(reloadedDrawer).toBeHidden();
-    await expect(page.getByRole("button", { name: /Filters\s*4/ })).toBeFocused();
+    await expect(page.getByRole("button", { name: /Filters\s*3/ })).toBeFocused();
 
     await page.getByRole("link", { name: "Reset filters" }).click();
     await expect
@@ -114,7 +116,7 @@ test.describe("candidate V3 job experience", () => {
       .toBe(true);
   });
 
-  test("internal applications expose materials, trial terms, and screening questions before submit", async ({
+  test("internal applications expose materials and trial terms while screening stays private", async ({
     context,
     page,
   }) => {
@@ -123,12 +125,12 @@ test.describe("candidate V3 job experience", () => {
     await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "Required application materials" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Screening questions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Screening questions" })).toHaveCount(0);
     await expect(
       page.getByRole("main").getByText(
         /Which portfolio edit best shows your approach to retention without over-editing\?/,
       ).first(),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Trial terms" })).toBeVisible();
     await expect(page.getByText("Paid trial", { exact: true })).toBeVisible();
     await expect(page.getByText(/Trial pay:.*90/)).toBeVisible();
@@ -142,21 +144,24 @@ test.describe("candidate V3 job experience", () => {
     await expect(modal.getByRole("textbox", { name: "Expected rate amount" })).toBeFocused();
     await expect(modal.getByRole("region", { name: "Application overview" })).toContainText("Paid trial");
     await expect(modal.getByRole("region", { name: "Application overview" })).toContainText(
-      "9 requested details · 2 screening questions",
+      "9 requested details",
     );
+    await expect(
+      modal.getByRole("region", { name: "Application overview" }),
+    ).not.toContainText("screening");
     await expect(
       modal.getByRole("textbox", {
         name: /Which portfolio edit best shows your approach to retention without over-editing\?\s*Required/,
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       modal.getByRole("textbox", {
         name: /How do you use viewer-retention data after a video ships\?\s*Optional/,
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     await modal.getByTestId("first-message-modal-submit").click();
-    await expect(modal.getByText("Answer this required question.")).toBeVisible();
+    await expect(modal.getByText("Answer this required question.")).toHaveCount(0);
     await expect(modal.getByText("Expected rate is required.")).toBeVisible();
     await expect(page).toHaveURL(/\/jobs\/1$/);
   });

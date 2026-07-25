@@ -125,7 +125,6 @@ class JobRepository:
                     func.lower(Job.about_channel).like(term),
                     func.lower(Job.platforms.cast(String)).like(term),
                     func.lower(Job.tags.cast(String)).like(term),
-                    func.lower(Job.languages.cast(String)).like(term),
                     func.lower(Job.content_niches.cast(String)).like(term),
                     func.lower(Job.content_genres.cast(String)).like(term),
                     func.lower(Job.formats_hired_for.cast(String)).like(term),
@@ -133,7 +132,6 @@ class JobRepository:
                     func.lower(Job.other_required_tools.cast(String)).like(term),
                     func.lower(Job.required_skill_keys.cast(String)).like(term),
                     func.lower(Job.other_required_skills.cast(String)).like(term),
-                    func.lower(Job.language_requirements.cast(String)).like(term),
                 )
             )
 

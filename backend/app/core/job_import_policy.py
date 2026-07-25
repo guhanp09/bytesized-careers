@@ -35,6 +35,9 @@ class JobImportFieldPolicy:
     missing_requirement: MissingRequirement
     review_section: ReviewSection
     custom_values_allowed: bool = False
+    nested_confirmation_policies: tuple[
+        tuple[str, AIConfirmationPolicy], ...
+    ] = ()
 
 
 _SUPPORTED_NATIVE_FIELDS: Final[tuple[str, ...]] = (
@@ -324,6 +327,13 @@ def _policy(field_path: str, native_field: str | None) -> JobImportFieldPolicy:
         missing_requirement=_missing_requirement(field_path),
         review_section=_section(field_path),
         custom_values_allowed=field_path in _CUSTOM_VALUE_FIELDS,
+        nested_confirmation_policies=tuple(
+            sorted(
+                (nested_path, nested_policy)
+                for nested_path, nested_policy in AI_FIELD_CONFIRMATION_POLICY.items()
+                if nested_path.startswith(f"{field_path}.")
+            )
+        ),
     )
 
 

@@ -406,10 +406,10 @@ test("job apply exposes requirements on the listing and opens the structured pre
   // Mock job "1" declares every job-context first-message requirement.
   await page.goto("/jobs/1", { waitUntil: "domcontentloaded" });
 
-  // Candidates can inspect the requested materials and questions before they
-  // commit to opening the application modal.
+  // Candidates can inspect requested materials, while private screening prompts
+  // are delivered only after a successful application.
   await expect(page.getByRole("heading", { name: "Required application materials" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Screening questions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Screening questions" })).toHaveCount(0);
   await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
   const applyButton = page.getByTestId("job-apply-button").first();
   await expect(applyButton).toHaveText("Apply");

@@ -224,10 +224,69 @@ EXTERNAL_APPLICATION = response(
     ]
 )
 
+INTERNAL_APPLICATION = response(
+    fields=[
+        extracted("title", "Internal application creator editor"),
+        extracted("application_mode", "internal"),
+        extracted(
+            "application_requirements",
+            ["Share one relevant creator-economy portfolio example"],
+        ),
+    ]
+)
+
+PAST_APPLICATION_DEADLINE = response(
+    fields=[
+        extracted("title", "Creator editor with expired deadline"),
+        extracted("deadline_at", "2020-01-01T00:00:00Z"),
+    ]
+)
+
+TRIAL_STATUS_CONFLICT = response(
+    fields=[extracted("title", "Creator editor with unclear trial")],
+    conflicts=[
+        {
+            "field_path": "trial_status",
+            "values": [
+                {"value": "paid", "evidence": evidence("The test is paid.")},
+                {"value": "unpaid", "evidence": evidence("Unpaid sample required.")},
+            ],
+            "explanation": "The source contradicts itself about trial payment.",
+        }
+    ],
+)
+
+CUSTOM_TAXONOMY_VALUES = response(
+    fields=[
+        extracted("title", "Creator editor with custom workflow"),
+        extracted("other_required_tools", ["Frame.io Enterprise Review"]),
+        extracted("other_required_skills", ["Retention-curve diagnosis"]),
+        extracted(
+            "deliverables",
+            [
+                {
+                    "type": "other",
+                    "custom_type": "Interactive end-screen package",
+                    "quantity": 1,
+                    "frequency": "other",
+                    "custom_frequency": "Per campaign launch",
+                }
+            ],
+        ),
+    ]
+)
+
 INVALID_CONTROLLED_TAXONOMY = response(
     fields=[
         extracted("title", "Creator editor"),
         extracted("budget_unit", "per lunar cycle"),
+    ]
+)
+
+DUPLICATE_FIELD_PATH = response(
+    fields=[
+        extracted("title", "First provider title"),
+        extracted("title", "Second provider title"),
     ]
 )
 
@@ -240,6 +299,13 @@ UNSUPPORTED_SERVER_FIELD = response(
     fields=[
         extracted("title", "Unsafe provider response"),
         extracted("status", "published"),
+    ]
+)
+
+PROVIDER_VERIFICATION_CLAIM = response(
+    fields=[
+        extracted("title", "Provider verification injection attempt"),
+        extracted("hiring_verification_status_snapshot", "verified"),
     ]
 )
 
@@ -272,6 +338,13 @@ REPROCESSED_SOURCE = response(
     ],
 )
 
+COMPLETE_REVIEWED_CONVERSION = deepcopy(COMPLETE_CREATOR_JOB)
+INCOMPLETE_REVIEWED_CONVERSION = deepcopy(VAGUE_ONE_LINE)
+CONCURRENT_DUPLICATE_CONVERSION = deepcopy(COMPLETE_CREATOR_JOB)
+REDACTED_SOURCE_AUDIT = response(
+    fields=[extracted("title", "Redaction audit creator editor")]
+)
+
 
 SCENARIOS: dict[str, dict[str, Any]] = {
     "complete_creator_job": COMPLETE_CREATOR_JOB,
@@ -282,13 +355,23 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     "multiple_roles": MULTIPLE_ROLES,
     "paid_trial": PAID_TRIAL,
     "unpaid_trial": UNPAID_TRIAL,
+    "trial_status_conflict": TRIAL_STATUS_CONFLICT,
     "sensitive_account_access": SENSITIVE_ACCOUNT_ACCESS,
+    "internal_application": INTERNAL_APPLICATION,
     "external_application_url": EXTERNAL_APPLICATION,
+    "past_application_deadline": PAST_APPLICATION_DEADLINE,
     "invalid_controlled_taxonomy": INVALID_CONTROLLED_TAXONOMY,
+    "custom_taxonomy_values": CUSTOM_TAXONOMY_VALUES,
     "malformed_provider_output": MALFORMED_PROVIDER_OUTPUT,
+    "duplicate_field_path": DUPLICATE_FIELD_PATH,
     "unsupported_fields": UNSUPPORTED_SERVER_FIELD,
+    "provider_verification_claim": PROVIDER_VERIFICATION_CLAIM,
     "historical_language_field": HISTORICAL_LANGUAGE_FIELD,
     "reprocessed_source": REPROCESSED_SOURCE,
+    "complete_reviewed_conversion": COMPLETE_REVIEWED_CONVERSION,
+    "incomplete_reviewed_conversion": INCOMPLETE_REVIEWED_CONVERSION,
+    "concurrent_duplicate_conversion": CONCURRENT_DUPLICATE_CONVERSION,
+    "redacted_source_audit": REDACTED_SOURCE_AUDIT,
 }
 
 

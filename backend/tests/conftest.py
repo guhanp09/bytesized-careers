@@ -13,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.api.deps import get_db
 from app.db.base import Base
+from app.db.session import enable_sqlite_foreign_keys
 from app.main import app
 from app.models import Role
 from app.services.email_service import clear_dev_auth_emails
@@ -21,6 +22,7 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_creatorjobs_backend.db"
 
 
 test_engine = create_async_engine(TEST_DATABASE_URL, future=True)
+enable_sqlite_foreign_keys(test_engine)
 TestSessionLocal = async_sessionmaker(
     bind=test_engine,
     class_=AsyncSession,

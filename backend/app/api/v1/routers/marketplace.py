@@ -622,6 +622,30 @@ def _job_snapshot(job: Job) -> dict:
     }
 
 
+def _candidate_safe_job_read(job: Job) -> JobRead:
+    read = JobRead.model_validate(job)
+    read.screening_questions = None
+    read.languages = []
+    read.language_requirements = None
+    return read
+
+
+def _public_job_predicates() -> tuple[object, ...]:
+    suspended_owner = (
+        select(User.id)
+        .where(
+            User.id == Job.posted_by_user_id,
+            User.suspended_at.isnot(None),
+        )
+        .exists()
+    )
+    return (
+        Job.status == "published",
+        Job.deleted_at.is_(None),
+        ~suspended_owner,
+    )
+
+
 def _talent_snapshot(listing: TalentListing) -> dict:
     return {
         "id": str(listing.id),
@@ -711,7 +735,16 @@ async def save_job(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> SavedJobRead:
-    job = await _get_job_or_404(session, job_id)
+    job = (
+        await session.execute(
+            select(Job).where(Job.id == job_id, *_public_job_predicates())
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
     snapshot = _job_snapshot(job)
     existing = (
         await session.execute(select(SavedJob).where(SavedJob.user_id == current_user.id, SavedJob.job_id == job_id))
@@ -1799,7 +1832,9 @@ async def saved_summary(
 
     job_ids = [row.job_id for row in saved_jobs]
     jobs = (
-        await session.execute(select(Job).where(Job.id.in_(job_ids), Job.deleted_at.is_(None)))
+        await session.execute(
+            select(Job).where(Job.id.in_(job_ids), *_public_job_predicates())
+        )
         if job_ids
         else None
     )
@@ -1824,7 +1859,7 @@ async def saved_summary(
         jobs=[
             SavedJobSummaryItem(
                 saved=SavedJobRead.model_validate(saved),
-                job=JobRead.model_validate(jobs_by_id[saved.job_id])
+                job=_candidate_safe_job_read(jobs_by_id[saved.job_id])
                 if saved.job_id in jobs_by_id
                 else None,
             )
@@ -2221,7 +2256,12 @@ async def activity_summary(
             for row in sent_interests
         ],
         related_jobs=[
-            JobRead.model_validate(row) for row in (related_jobs.scalars().all() if related_jobs is not None else [])
+            _candidate_safe_job_read(row)
+            for row in (
+                related_jobs.scalars().all()
+                if related_jobs is not None
+                else []
+            )
         ],
         related_talent_listings=await _talent_reads_with_owners(session, related_listing_rows),
     )

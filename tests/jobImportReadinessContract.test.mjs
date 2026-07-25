@@ -52,6 +52,28 @@ test("job-import readiness client owns the private typed contract", () => {
   assert.doesNotMatch(draftWrite[0], /provider_name|processing_status|target_job_id/);
   assert.doesNotMatch(contract, /language_requirements|languageRequirements/);
   assert.doesNotMatch(contract, /processWithAI|runModel|generateWithAI/);
+  for (const decoder of ["decodeJobImportSource", "decodeJobImportDraft"]) {
+    assert.match(contract, new RegExp(`export const ${decoder}`));
+  }
+  assert.match(contract, /Unsupported \$\{label\} state/);
+  assert.match(contract, /SOURCE_PROCESSING_STATES/);
+  assert.match(contract, /DRAFT_PROCESSING_STATES/);
+  assert.match(contract, /PROVENANCE_STATES/);
+  assert.match(contract, /REVIEW_STATES/);
+  assert.match(contract, /AUTHORITY_STATES/);
+});
+
+test("structured backend errors retain machine-readable import metadata", () => {
+  const client = read("lib/backendClient.ts");
+  const errorClass = client.match(
+    /export class BackendRequestError extends Error \{[\s\S]*?\n\}/
+  );
+  assert.ok(errorClass);
+  assert.match(errorClass[0], /code\?: string/);
+  assert.match(errorClass[0], /details\?: unknown/);
+  assert.match(errorClass[0], /requestId\?: string/);
+  assert.match(client, /parsed\.error\?\.code/);
+  assert.match(client, /parsed\.error\?\.request_id/);
 });
 
 test("no application or component links the readiness substrate into user-facing UI", () => {

@@ -490,7 +490,7 @@ async def test_output_publication_and_patch_use_effective_deliverables(
     assert len(published.json()["deliverables"]) == 2
 
 
-async def test_public_job_exposes_application_language_revision_and_employer_context(
+async def test_public_job_exposes_application_revision_and_employer_context_but_not_legacy_language(
     client: AsyncClient,
 ) -> None:
     headers, _ = await _auth(client, "v3-candidate-visible-contract")
@@ -539,7 +539,8 @@ async def test_public_job_exposes_application_language_revision_and_employer_con
     # Screening questions are private hiring configuration — never public listing content.
     assert body["screening_questions"] is None
     assert body["how_to_apply"].startswith("Answer the questions")
-    assert body["language_requirements"][0]["priority"] == "required"
+    assert body["languages"] == []
+    assert body["language_requirements"] is None
     assert body["revision_policy"] == "fixed"
     assert body["revision_rounds"] == 2
     assert body["source_inputs"] == []

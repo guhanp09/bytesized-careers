@@ -2225,6 +2225,8 @@ class ProfileService:
                 id=job.id,
                 title=job.title,
                 category=job.category,
+                primary_role_name_snapshot=job.primary_role_name_snapshot,
+                role_specialization=job.role_specialization,
                 location=job.location,
                 status=job.status,
                 created_at=job.created_at,

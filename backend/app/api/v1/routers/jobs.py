@@ -35,6 +35,8 @@ def _public_job_read(job: Job) -> JobRead:
     """
     read = JobRead.model_validate(job)
     read.screening_questions = None
+    read.languages = []
+    read.language_requirements = None
     return read
 
 
@@ -59,7 +61,10 @@ async def list_jobs(
         description="Filter by engagement type",
     ),
     budget_unit: list[str] | None = Query(default=None, description="Filter by compensation unit"),
-    language: list[str] | None = Query(default=None, description="Filter by required language"),
+    language: list[str] | None = Query(
+        default=None,
+        description="Deprecated compatibility parameter; no longer filters public jobs",
+    ),
     location: str | None = Query(default=None, description="Filter by location substring"),
     start_timeframe: str | None = Query(default=None, description="Filter by start timeframe"),
     status_filter: JobStatus | None = Query(default=None, alias="status", description="Filter by status"),

@@ -4,11 +4,14 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter, ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.core.job_domain_taxonomy import (
+    CREATOR_JOB_FORMATS,
+    CREATOR_JOB_PLATFORMS,
     CREATIVE_AUTONOMY_LEVELS,
     DELIVERABLE_FREQUENCIES,
     DELIVERABLE_TYPES,
@@ -65,9 +68,51 @@ from app.schemas.job_import import (
     JobImportSourceRepresentation,
 )
 from app.services.job_service import (
+    JobAuthRequiredError,
     JobForbiddenError,
+    JobNotFoundError,
     JobService,
     JobValidationError,
+    JobVerificationRequiredError,
+)
+
+
+_NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
+    "deliverables": frozenset(
+        {"type", "custom_type", "quantity", "frequency", "custom_frequency", "notes"}
+    ),
+    "source_inputs": frozenset(
+        {"type", "custom_label", "sensitive_access_confirmed"}
+    ),
+    "hiring_process": frozenset({"stage", "custom_label", "notes"}),
+    "screening_questions": frozenset(
+        {"prompt", "required", "response_guidance"}
+    ),
+    "reference_videos": frozenset(
+        {
+            "id",
+            "title",
+            "url",
+            "thumbnail_url",
+            "platform",
+            "description",
+            "what_to_reference",
+            "timestamp_notes",
+        }
+    ),
+}
+_REFERENCE_TIMESTAMP_KEYS = frozenset(
+    {"id", "time", "seconds", "title", "description"}
+)
+_CUSTOM_LABEL_LIST_FIELDS = frozenset(
+    {
+        "other_required_tools",
+        "other_required_skills",
+        "other_preferred_skills",
+    }
+)
+_CREATOR_CONTEXT_FIELDS = frozenset(
+    {"content_niches", "content_genres", "formats_hired_for"}
 )
 
 
@@ -148,7 +193,28 @@ class JobImportService:
                 "client_request_id": payload.idempotency_key,
             }
         )
-        source = await self.repository.create_source(data)
+        try:
+            source = await self.repository.create_source(data)
+        except IntegrityError as exc:
+            await self.repository.session.rollback()
+            if payload.idempotency_key:
+                existing = await self.repository.get_source_by_request_id(
+                    owner_user_id,
+                    payload.idempotency_key,
+                )
+                if existing is not None:
+                    if existing.content_fingerprint != fingerprint:
+                        raise JobImportError(
+                            "JOB_IMPORT_IDEMPOTENCY_CONFLICT",
+                            "This idempotency key was already used for different source content.",
+                            status_code=409,
+                        ) from exc
+                    return existing
+            raise JobImportError(
+                "JOB_IMPORT_SOURCE_CREATE_CONFLICT",
+                "The import source could not be created because its request conflicts with an existing record.",
+                status_code=409,
+            ) from exc
         await self.repository.session.commit()
         return source
 
@@ -173,51 +239,125 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> None:
-        source = await self.get_source(source_id, owner_user_id=owner_user_id)
-        now = datetime.now(UTC)
-        drafts = await self.repository.list_drafts_for_source(source.id, owner_user_id)
-        for draft in drafts:
-            fields = await self.repository.list_fields(draft.id)
-            for field in fields:
-                redacted_conflicts = [
+        source = await self.repository.claim_source_mutation(
+            source_id,
+            owner_user_id,
+        )
+        if source is None:
+            existing = await self.repository.get_source_for_owner(
+                source_id,
+                owner_user_id,
+                include_deleted=True,
+            )
+            if existing is not None and existing.deleted_at is not None:
+                return
+            raise JobImportError(
+                "JOB_IMPORT_SOURCE_NOT_FOUND",
+                "Import source not found.",
+                status_code=404,
+            )
+        try:
+            now = datetime.now(UTC)
+            drafts = await self.repository.list_drafts_for_source(
+                source.id,
+                owner_user_id,
+            )
+            for listed_draft in drafts:
+                claim_token = uuid4()
+                draft = await self.repository.claim_draft_mutation(
+                    listed_draft.id,
+                    owner_user_id,
+                    claim_token,
+                )
+                if draft is None:
+                    raise JobImportError(
+                        "JOB_IMPORT_CONCURRENT_MUTATION",
+                        "An import draft changed while its source was being redacted. Retry the deletion.",
+                        status_code=409,
+                    )
+                fields = await self.repository.list_fields(draft.id)
+                for field in fields:
+                    redacted_conflicts = [
+                        {
+                            "value": item.get("value"),
+                            "evidence": [],
+                        }
+                        for item in field.conflicting_values
+                        if isinstance(item, dict)
+                    ]
+                    await self.repository.update_field(
+                        field,
+                        {
+                            "evidence": [],
+                            "conflicting_values": redacted_conflicts,
+                            "explanation": None,
+                            "provider_confidence": None,
+                            "validation_errors": [],
+                        },
+                    )
+                redacted_missing_fields = [
                     {
-                        "value": item.get("value"),
-                        "evidence": [],
+                        "field_path": item.get("field_path"),
+                        "requirement": item.get("requirement"),
                     }
-                    for item in field.conflicting_values
+                    for item in draft.missing_fields
                     if isinstance(item, dict)
                 ]
-                await self.repository.update_field(
-                    field,
+                await self.repository.update_draft(
+                    draft,
                     {
-                        "evidence": [],
-                        "conflicting_values": redacted_conflicts,
-                        "explanation": None,
+                        "processing_status": (
+                            draft.processing_status
+                            if draft.processing_status
+                            in {
+                                "applied_to_native_draft",
+                                "discarded",
+                                "superseded",
+                            }
+                            else "discarded"
+                        ),
+                        "machine_output": None,
+                        "provider_metadata": None,
+                        "processing_warnings": [],
+                        "missing_fields": redacted_missing_fields,
+                        "validation_errors": {},
+                        "can_apply_to_native_draft": False,
+                        "can_publish_directly": False,
+                        "discarded_at": (
+                            draft.discarded_at
+                            or (
+                                now
+                                if draft.processing_status
+                                not in {
+                                    "applied_to_native_draft",
+                                    "superseded",
+                                }
+                                else None
+                            )
+                        ),
+                        "mutation_claim_token": None,
                     },
                 )
-            await self.repository.update_draft(
-                draft,
+            await self.repository.update_source(
+                source,
                 {
-                    "machine_output": None,
-                    "provider_metadata": None,
-                    "processing_warnings": [],
+                    "source_title": None,
+                    "original_text": None,
+                    "source_url": None,
+                    "original_filename": None,
+                    "content_type": None,
+                    "storage_references": [],
+                    "content_fingerprint": "0" * 64,
+                    "client_request_id": None,
+                    "processing_state": "deleted",
+                    "content_redacted_at": now,
+                    "deleted_at": now,
                 },
             )
-        await self.repository.update_source(
-            source,
-            {
-                "source_title": None,
-                "original_text": None,
-                "source_url": None,
-                "original_filename": None,
-                "content_type": None,
-                "storage_references": [],
-                "processing_state": "deleted",
-                "content_redacted_at": now,
-                "deleted_at": now,
-            },
-        )
-        await self.repository.session.commit()
+            await self.repository.session.commit()
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def initialize_draft(
         self,
@@ -226,7 +366,6 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> JobImportDraft:
-        source = await self.get_source(source_id, owner_user_id=owner_user_id)
         if payload.extraction_schema_version != CURRENT_EXTRACTION_SCHEMA_VERSION:
             raise JobImportError(
                 "JOB_IMPORT_EXTRACTION_SCHEMA_UNSUPPORTED",
@@ -238,6 +377,18 @@ class JobImportService:
                 "JOB_IMPORT_TARGET_SCHEMA_UNSUPPORTED",
                 "New import drafts must target the current listing schema.",
                 details={"supported": CURRENT_LISTING_SCHEMA_VERSION},
+            )
+
+        source = await self.repository.claim_source_mutation(
+            source_id,
+            owner_user_id,
+        )
+        if source is None:
+            await self.repository.session.rollback()
+            raise JobImportError(
+                "JOB_IMPORT_SOURCE_NOT_FOUND",
+                "Import source not found.",
+                status_code=404,
             )
 
         if payload.idempotency_key:
@@ -254,47 +405,88 @@ class JobImportService:
                     != payload.target_listing_schema_version
                     or existing.supersedes_draft_id != payload.supersedes_draft_id
                 ):
+                    await self.repository.session.rollback()
                     raise JobImportError(
                         "JOB_IMPORT_IDEMPOTENCY_CONFLICT",
                         "This idempotency key was already used for a different import draft.",
                         status_code=409,
                     )
+                await self.repository.session.commit()
                 return existing
 
         superseded: JobImportDraft | None = None
         if payload.supersedes_draft_id is not None:
-            superseded = await self.repository.get_draft_for_owner(
+            superseded = await self.repository.claim_draft_mutation(
                 payload.supersedes_draft_id,
                 owner_user_id,
+                uuid4(),
             )
             if superseded is None or superseded.source_id != source.id:
+                await self.repository.session.rollback()
                 raise JobImportError(
                     "JOB_IMPORT_SUPERSEDED_DRAFT_NOT_FOUND",
                     "The draft to supersede was not found for this source.",
                     status_code=404,
                 )
 
-        draft = await self.repository.create_draft(
-            {
-                "owner_user_id": owner_user_id,
-                "source_id": source.id,
-                "supersedes_draft_id": payload.supersedes_draft_id,
-                "extraction_schema_version": payload.extraction_schema_version,
-                "target_listing_schema_version": payload.target_listing_schema_version,
-                "client_request_id": payload.idempotency_key,
-                "processing_warnings": [],
-                "missing_fields": [],
-                "validation_errors": {},
-                "review_sections": [],
-            }
-        )
+        draft_data = {
+            "owner_user_id": owner_user_id,
+            "source_id": source.id,
+            "supersedes_draft_id": payload.supersedes_draft_id,
+            "extraction_schema_version": payload.extraction_schema_version,
+            "target_listing_schema_version": payload.target_listing_schema_version,
+            "client_request_id": payload.idempotency_key,
+            "processing_warnings": [],
+            "missing_fields": [],
+            "validation_errors": {},
+            "review_sections": [],
+        }
+        try:
+            draft = await self.repository.create_draft(draft_data)
+        except IntegrityError as exc:
+            await self.repository.session.rollback()
+            if payload.idempotency_key:
+                existing = await self.repository.get_draft_by_request_id(
+                    owner_user_id,
+                    payload.idempotency_key,
+                )
+                if existing is not None:
+                    if (
+                        existing.source_id != source_id
+                        or existing.extraction_schema_version
+                        != payload.extraction_schema_version
+                        or existing.target_listing_schema_version
+                        != payload.target_listing_schema_version
+                        or existing.supersedes_draft_id != payload.supersedes_draft_id
+                    ):
+                        raise JobImportError(
+                            "JOB_IMPORT_IDEMPOTENCY_CONFLICT",
+                            "This idempotency key was already used for a different import draft.",
+                            status_code=409,
+                        ) from exc
+                    return existing
+            raise JobImportError(
+                "JOB_IMPORT_DRAFT_CREATE_CONFLICT",
+                "The import draft could not be created because its request conflicts with an existing record.",
+                status_code=409,
+            ) from exc
         if superseded is not None and superseded.processing_status not in {
             "applied_to_native_draft",
             "discarded",
         }:
             await self.repository.update_draft(
                 superseded,
-                {"processing_status": "superseded"},
+                {
+                    "processing_status": "superseded",
+                    "can_apply_to_native_draft": False,
+                    "can_publish_directly": False,
+                    "mutation_claim_token": None,
+                },
+            )
+        elif superseded is not None:
+            await self.repository.update_draft(
+                superseded,
+                {"mutation_claim_token": None},
             )
         await self.repository.session.commit()
         return draft
@@ -325,6 +517,8 @@ class JobImportService:
         roles = await self.repository.list_active_roles()
         allowed_taxonomies = {
             "roles": [role.slug for role in roles],
+            "platforms": list(CREATOR_JOB_PLATFORMS),
+            "formats": list(CREATOR_JOB_FORMATS),
             "compensation_modes": list(COMPENSATION_MODES),
             "compensation_units": list(COMPENSATION_UNITS),
             "engagement_types": list(ENGAGEMENT_TYPES),
@@ -350,16 +544,42 @@ class JobImportService:
             "hiring_process_stages": list(HIRING_PROCESS_STAGES),
             "employer_context_types": list(EMPLOYER_CONTEXT_TYPES),
         }
-        definitions = [
-            JobImportFieldDefinition(
-                field_path=policy.field_path,
-                confirmation_policy=policy.confirmation_policy,
-                missing_requirement=policy.missing_requirement,
-                review_section=policy.review_section,
-                custom_values_allowed=policy.custom_values_allowed,
+        definitions: list[JobImportFieldDefinition] = []
+        for policy in JOB_IMPORT_FIELD_POLICIES.values():
+            if policy.field_path == "primary_role_key":
+                value_schema: dict[str, object] = {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160,
+                }
+            else:
+                assert policy.native_field is not None
+                value_schema = self._adapter_for_native_field(
+                    policy.native_field
+                ).json_schema()
+            allowed_provenance = [
+                "directly_supplied",
+                "extracted_from_source",
+            ]
+            if policy.confirmation_policy == "suggest_with_recruiter_confirmation":
+                allowed_provenance.append("suggested_inference")
+            definitions.append(
+                JobImportFieldDefinition(
+                    field_path=policy.field_path,
+                    native_field=policy.native_field,
+                    value_schema=value_schema,
+                    confirmation_policy=policy.confirmation_policy,
+                    nested_confirmation_policies=dict(
+                        policy.nested_confirmation_policies
+                    ),
+                    allowed_provenance=allowed_provenance,
+                    evidence_required_for_extraction=True,
+                    requires_recruiter_review=True,
+                    missing_requirement=policy.missing_requirement,
+                    review_section=policy.review_section,
+                    custom_values_allowed=policy.custom_values_allowed,
+                )
             )
-            for policy in JOB_IMPORT_FIELD_POLICIES.values()
-        ]
         return JobImportExtractionRequest(
             extraction_schema_version=draft.extraction_schema_version,
             target_listing_schema_version=draft.target_listing_schema_version,
@@ -394,24 +614,50 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> JobImportDraft:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        if draft.processing_status not in {"awaiting_processing", "processing_failed"}:
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            uuid4(),
+            allowed_statuses={"awaiting_processing", "processing_failed"},
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
             raise JobImportError(
                 "JOB_IMPORT_INVALID_TRANSITION",
                 "This import draft cannot begin processing from its current state.",
                 status_code=409,
             )
-        source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
-        await self.repository.update_draft(
-            draft,
-            {
-                "processing_status": "processing",
-                "validation_status": "not_validated",
-            },
-        )
-        await self.repository.update_source(source, {"processing_state": "processing"})
-        await self.repository.session.commit()
-        return draft
+        try:
+            source = await self.get_source(
+                draft.source_id,
+                owner_user_id=owner_user_id,
+            )
+            await self.repository.update_draft(
+                draft,
+                {
+                    "processing_status": "processing",
+                    "validation_status": "not_validated",
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.update_source(
+                source,
+                {"processing_state": "processing"},
+            )
+            await self.repository.session.commit()
+            return draft
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def mark_processing_failed(
         self,
@@ -421,31 +667,57 @@ class JobImportService:
         error_code: str,
         message: str,
     ) -> JobImportDraft:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        if draft.processing_status not in {"awaiting_processing", "processing"}:
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            uuid4(),
+            allowed_statuses={"awaiting_processing", "processing"},
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
             raise JobImportError(
                 "JOB_IMPORT_INVALID_TRANSITION",
                 "This import draft cannot be marked failed from its current state.",
                 status_code=409,
             )
-        source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
-        safe_message = " ".join(message.split())[:500]
-        await self.repository.update_draft(
-            draft,
-            {
-                "processing_status": "processing_failed",
-                "validation_status": "invalid",
-                "validation_errors": {
-                    "processing": {
-                        "code": error_code[:80],
-                        "message": safe_message,
-                    }
+        try:
+            source = await self.get_source(
+                draft.source_id,
+                owner_user_id=owner_user_id,
+            )
+            safe_message = " ".join(message.split())[:500]
+            await self.repository.update_draft(
+                draft,
+                {
+                    "processing_status": "processing_failed",
+                    "validation_status": "invalid",
+                    "validation_errors": {
+                        "processing": {
+                            "code": error_code[:80],
+                            "message": safe_message,
+                        }
+                    },
+                    "mutation_claim_token": None,
                 },
-            },
-        )
-        await self.repository.update_source(source, {"processing_state": "failed"})
-        await self.repository.session.commit()
-        return draft
+            )
+            await self.repository.update_source(
+                source,
+                {"processing_state": "failed"},
+            )
+            await self.repository.session.commit()
+            return draft
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     @staticmethod
     def _adapter_for_native_field(field_name: str) -> TypeAdapter[Any]:
@@ -468,11 +740,41 @@ class JobImportService:
                 return value, ["The proposed creator role key is unknown or inactive."]
             return role.slug, []
 
+        nested_errors = self._nested_shape_errors(policy.field_path, value)
+        if nested_errors:
+            return value, nested_errors
+        if policy.field_path in _CUSTOM_LABEL_LIST_FIELDS and isinstance(value, list):
+            oversized = [
+                index
+                for index, item in enumerate(value)
+                if isinstance(item, str) and len(" ".join(item.split())) > 120
+            ]
+            if oversized:
+                return value, [
+                    f"Custom label at index {index} must be 120 characters or fewer."
+                    for index in oversized
+                ]
+        if policy.field_path in _CREATOR_CONTEXT_FIELDS and isinstance(value, list):
+            oversized = [
+                index
+                for index, item in enumerate(value)
+                if isinstance(item, str) and len(" ".join(item.split())) > 40
+            ]
+            if oversized:
+                return value, [
+                    f"Creator-context label at index {index} must be 40 characters or fewer."
+                    for index in oversized
+                ]
+
         assert policy.native_field is not None
         try:
-            adapter = self._adapter_for_native_field(policy.native_field)
-            validated = adapter.validate_python(value)
-            normalized = adapter.dump_python(validated, mode="json")
+            validated_update = JobUpdate.model_validate(
+                {policy.native_field: value}
+            )
+            normalized = validated_update.model_dump(
+                mode="json",
+                exclude_unset=True,
+            )[policy.native_field]
         except (ValidationError, ValueError, TypeError) as exc:
             return value, [str(exc)]
 
@@ -484,19 +786,183 @@ class JobImportService:
             ]
             if unknown:
                 return normalized, [f"Unknown tool key: {item}" for item in unknown]
+        if policy.field_path == "platforms":
+            unknown = [
+                str(item)
+                for item in normalized or []
+                if item not in CREATOR_JOB_PLATFORMS
+            ]
+            if unknown:
+                return normalized, [
+                    f"Unknown platform key: {item}" for item in unknown
+                ]
         return normalized, []
+
+    @staticmethod
+    def _nested_shape_errors(field_path: str, value: object) -> list[str]:
+        allowed_keys = _NESTED_FIELD_KEYS.get(field_path)
+        if allowed_keys is None or not isinstance(value, list):
+            return []
+        errors: list[str] = []
+        for index, item in enumerate(value):
+            if field_path == "reference_videos" and isinstance(item, str):
+                continue
+            if not isinstance(item, dict):
+                continue
+            unexpected = sorted(set(item) - allowed_keys)
+            errors.extend(
+                f"Unsupported nested key at {field_path}[{index}].{key}."
+                for key in unexpected
+            )
+            if field_path == "screening_questions" and "required" not in item:
+                errors.append(
+                    "screening_questions"
+                    f"[{index}].required must be explicitly supplied for review."
+                )
+            if field_path == "reference_videos":
+                timestamp_notes = item.get("timestamp_notes")
+                if isinstance(timestamp_notes, list):
+                    for note_index, note in enumerate(timestamp_notes):
+                        if not isinstance(note, dict):
+                            continue
+                        nested_unexpected = sorted(
+                            set(note) - _REFERENCE_TIMESTAMP_KEYS
+                        )
+                        errors.extend(
+                            "Unsupported nested key at "
+                            f"{field_path}[{index}].timestamp_notes"
+                            f"[{note_index}].{key}."
+                            for key in nested_unexpected
+                        )
+        return errors
 
     @staticmethod
     def _provider_inference_errors(
         policy: JobImportFieldPolicy,
         provenance: str,
+        value: object,
     ) -> list[str]:
-        if (
-            provenance == "suggested_inference"
-            and policy.confirmation_policy == "extract_when_explicit"
-        ):
-            return ["This field may only be extracted from explicit source wording."]
-        return []
+        errors: list[str] = []
+        if provenance == "suggested_inference":
+            if policy.confirmation_policy != "suggest_with_recruiter_confirmation":
+                errors.append(
+                    "This field may only be extracted from explicit source wording."
+                )
+            if policy.field_path == "source_inputs" and isinstance(value, list):
+                sensitive = any(
+                    isinstance(item, dict)
+                    and (
+                        item.get("type") in {"account_access", "analytics_access"}
+                        or item.get("sensitive_access_confirmed") is True
+                    )
+                    for item in value
+                )
+                if sensitive:
+                    errors.append(
+                        "Sensitive source access may only be extracted from explicit source wording."
+                    )
+        if policy.field_path == "source_inputs" and isinstance(value, list):
+            provider_asserted_sensitive_confirmation = any(
+                isinstance(item, dict)
+                and item.get("sensitive_access_confirmed") is True
+                for item in value
+            )
+            if provider_asserted_sensitive_confirmation:
+                errors.append(
+                    "Sensitive source access must be confirmed through an explicit recruiter edit."
+                )
+        return list(dict.fromkeys(errors))
+
+    @staticmethod
+    def _validate_evidence_references(
+        response: JobImportExtractionResponse,
+        source: JobImportSource,
+    ) -> None:
+        evidence_items = [
+            *(evidence for field in response.fields for evidence in field.evidence),
+            *(
+                evidence
+                for conflict in response.conflicts
+                for alternative in conflict.values
+                for evidence in alternative.evidence
+            ),
+            *(
+                evidence
+                for missing in response.missing_fields
+                for evidence in missing.evidence
+            ),
+            *(
+                evidence
+                for warning in response.warnings
+                for evidence in warning.evidence
+            ),
+        ]
+        errors: list[dict[str, object]] = []
+        text_length = len(source.original_text) if source.original_text is not None else None
+        source_url = str(source.source_url).rstrip("/") if source.source_url else None
+        for index, evidence in enumerate(evidence_items):
+            location = evidence.location
+            if location is None:
+                continue
+            if location.char_start is not None:
+                if text_length is None:
+                    errors.append(
+                        {
+                            "evidence_index": index,
+                            "location": "character_range",
+                            "message": "Character offsets require source text.",
+                        }
+                    )
+                elif (
+                    location.char_start >= text_length
+                    or location.char_end is None
+                    or location.char_end > text_length
+                ):
+                    errors.append(
+                        {
+                            "evidence_index": index,
+                            "location": "character_range",
+                            "message": "Character offsets fall outside the owned source text.",
+                        }
+                    )
+            if location.screenshot_index is not None and (
+                source.source_type not in {"screenshot", "screenshots"}
+                or location.screenshot_index >= len(source.storage_references)
+            ):
+                errors.append(
+                    {
+                        "evidence_index": index,
+                        "location": "screenshot_index",
+                        "message": "Screenshot index does not reference this import source.",
+                    }
+                )
+            if (
+                location.document_page is not None
+                and source.source_type not in {"document", "pdf"}
+            ):
+                errors.append(
+                    {
+                        "evidence_index": index,
+                        "location": "document_page",
+                        "message": "Document page does not reference this import source.",
+                    }
+                )
+            if location.source_url is not None:
+                evidence_url = str(location.source_url).rstrip("/")
+                if source_url is None or evidence_url != source_url:
+                    errors.append(
+                        {
+                            "evidence_index": index,
+                            "location": "source_url",
+                            "message": "Evidence URL does not match this import source.",
+                        }
+                    )
+        if errors:
+            raise JobImportError(
+                "JOB_IMPORT_EVIDENCE_REFERENCE_INVALID",
+                "Extraction evidence contains a reference outside its owned source.",
+                details={"references": errors},
+            )
 
     async def record_extraction_result(
         self,
@@ -506,17 +972,51 @@ class JobImportService:
         owner_user_id: UUID,
         provider_metadata: JobImportProviderMetadata | None = None,
     ) -> JobImportDraft:
-        draft = await self.repository.get_draft_for_owner(
+        draft = await self.repository.claim_draft_mutation(
             draft_id,
             owner_user_id,
-            for_update=True,
+            uuid4(),
+            allowed_statuses={
+                "awaiting_processing",
+                "processing",
+                "processing_failed",
+            },
         )
         if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is not None:
+                raise JobImportError(
+                    "JOB_IMPORT_MACHINE_OUTPUT_IMMUTABLE",
+                    "Processed import drafts are immutable; create a superseding draft to reprocess.",
+                    status_code=409,
+                )
             raise JobImportError(
                 "JOB_IMPORT_DRAFT_NOT_FOUND",
                 "Import draft not found.",
                 status_code=404,
             )
+        try:
+            return await self._record_extraction_result_claimed(
+                draft,
+                response,
+                owner_user_id=owner_user_id,
+                provider_metadata=provider_metadata,
+            )
+        except Exception:
+            await self.repository.session.rollback()
+            raise
+
+    async def _record_extraction_result_claimed(
+        self,
+        draft: JobImportDraft,
+        response: JobImportExtractionResponse,
+        *,
+        owner_user_id: UUID,
+        provider_metadata: JobImportProviderMetadata | None,
+    ) -> JobImportDraft:
         if draft.processing_status not in {
             "awaiting_processing",
             "processing",
@@ -544,6 +1044,7 @@ class JobImportService:
                 status_code=409,
             )
         source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
+        self._validate_evidence_references(response, source)
 
         all_paths = {
             *(item.field_path for item in response.fields),
@@ -570,7 +1071,25 @@ class JobImportService:
         for item in response.fields:
             policy = JOB_IMPORT_FIELD_POLICIES[item.field_path]
             normalized, errors = await self._validate_field_value(policy, item.value)
-            errors.extend(self._provider_inference_errors(policy, item.provenance))
+            unsupported_nested = [
+                error for error in errors if error.startswith("Unsupported nested key")
+            ]
+            if unsupported_nested:
+                raise JobImportError(
+                    "JOB_IMPORT_UNSUPPORTED_NESTED_FIELD",
+                    "Extraction output contains unsupported nested fields.",
+                    details={
+                        "field_path": item.field_path,
+                        "errors": unsupported_nested,
+                    },
+                )
+            errors.extend(
+                self._provider_inference_errors(
+                    policy,
+                    item.provenance,
+                    item.value,
+                )
+            )
             rows.append(
                 {
                     "draft_id": draft.id,
@@ -602,6 +1121,21 @@ class JobImportService:
                     policy,
                     alternative.value,
                 )
+                unsupported_nested = [
+                    error
+                    for error in alternative_errors
+                    if error.startswith("Unsupported nested key")
+                ]
+                if unsupported_nested:
+                    raise JobImportError(
+                        "JOB_IMPORT_UNSUPPORTED_NESTED_FIELD",
+                        "Extraction output contains unsupported nested fields.",
+                        details={
+                            "field_path": conflict.field_path,
+                            "alternative_index": index,
+                            "errors": unsupported_nested,
+                        },
+                    )
                 errors.extend(
                     f"Alternative {index + 1}: {error}" for error in alternative_errors
                 )
@@ -613,6 +1147,16 @@ class JobImportService:
                             for evidence in alternative.evidence
                         ],
                     }
+                )
+            normalized_distinct = {
+                json.dumps(item["value"], ensure_ascii=False, sort_keys=True)
+                for item in normalized_values
+            }
+            if len(normalized_distinct) < 2:
+                raise JobImportError(
+                    "JOB_IMPORT_CONFLICT_VALUES_NOT_DISTINCT",
+                    "Conflicting alternatives must remain distinct after CreatorJobs normalization.",
+                    details={"field_path": conflict.field_path},
                 )
             rows.append(
                 {
@@ -683,6 +1227,7 @@ class JobImportService:
                 ],
                 "processing_status": "awaiting_recruiter_review",
                 "processed_at": now,
+                "mutation_claim_token": None,
             },
         )
         await self.repository.update_source(source, {"processing_state": "processed"})
@@ -711,7 +1256,12 @@ class JobImportService:
             if field.field_path == "primary_role_key":
                 role = await self.repository.get_active_role_by_key(str(value))
                 if role is None:
-                    continue
+                    raise JobImportError(
+                        "JOB_IMPORT_ROLE_UNAVAILABLE",
+                        "The confirmed creator role is no longer active. Select another role before conversion.",
+                        status_code=409,
+                        details={"field_path": "primary_role_key"},
+                    )
                 payload["primary_role_id"] = role.id
             elif policy.native_field is not None:
                 payload[policy.native_field] = value
@@ -762,7 +1312,7 @@ class JobImportService:
         field_errors = {
             field.field_path: list(field.validation_errors)
             for field in fields
-            if field.validation_errors
+            if field.validation_errors and field.review_status != "rejected"
         }
         unresolved = [
             field
@@ -804,7 +1354,9 @@ class JobImportService:
             and not unresolved
             and not draft_errors
         )
-        can_publish = bool(can_apply and not publication_errors)
+        # Imports can only create private native drafts. Publication readiness is
+        # retained in validation_errors["publication"], never exposed as authority.
+        can_publish = False
         if field_errors or draft_errors:
             validation_status = "invalid"
         elif unresolved:
@@ -900,84 +1452,128 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> JobImportDraft:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        self._assert_reviewable(draft)
-        field = await self.repository.get_field(draft.id, field_path)
-        if field is None:
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+            allowed_statuses={
+                "awaiting_recruiter_review",
+                "partially_reviewed",
+                "ready_to_apply",
+            },
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            self._assert_reviewable(existing)
             raise JobImportError(
-                "JOB_IMPORT_FIELD_NOT_FOUND",
-                "Import field not found.",
-                status_code=404,
+                "JOB_IMPORT_CONCURRENT_MUTATION",
+                "This import draft is being changed by another request. Retry the review action.",
+                status_code=409,
             )
-        now = datetime.now(UTC)
-        updates: dict[str, object | None] = {
-            "reviewed_by_user_id": owner_user_id,
-            "reviewed_at": now,
-            "selected_conflict_index": None,
-        }
-        if payload.action == "accept":
-            if field.provenance_state in {"missing", "conflicting_source_values"}:
+        try:
+            source = await self.repository.get_source_for_owner(
+                draft.source_id,
+                owner_user_id,
+            )
+            if source is None:
                 raise JobImportError(
-                    "JOB_IMPORT_FIELD_REQUIRES_EDIT_OR_RESOLUTION",
-                    "Missing and conflicting fields cannot be accepted as-is.",
+                    "JOB_IMPORT_SOURCE_REDACTED",
+                    "A redacted source cannot be reviewed.",
                     status_code=409,
                 )
-            if field.validation_errors:
+            field = await self.repository.get_field(draft.id, field_path)
+            if field is None:
                 raise JobImportError(
-                    "JOB_IMPORT_FIELD_INVALID",
-                    "The proposed value is invalid and must be edited or rejected.",
-                    status_code=409,
-                    details={"errors": field.validation_errors},
+                    "JOB_IMPORT_FIELD_NOT_FOUND",
+                    "Import field not found.",
+                    status_code=404,
                 )
-            updates.update(
-                {
-                    "review_status": "confirmed",
-                    "confirmed_value": field.proposed_value,
-                    "edited_value": None,
-                }
-            )
-        elif payload.action == "edit":
-            policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
-            normalized, errors = await self._validate_field_value(
-                policy,
-                payload.edited_value,
-            )
-            if errors:
-                raise JobImportError(
-                    "JOB_IMPORT_FIELD_INVALID",
-                    "The recruiter-edited value is invalid.",
-                    details={"errors": errors},
+            now = datetime.now(UTC)
+            updates: dict[str, object | None] = {
+                "reviewed_by_user_id": owner_user_id,
+                "reviewed_at": now,
+                "selected_conflict_index": None,
+            }
+            if payload.action == "accept":
+                if field.provenance_state in {"missing", "conflicting_source_values"}:
+                    raise JobImportError(
+                        "JOB_IMPORT_FIELD_REQUIRES_EDIT_OR_RESOLUTION",
+                        "Missing and conflicting fields cannot be accepted as-is.",
+                        status_code=409,
+                    )
+                if field.validation_errors:
+                    raise JobImportError(
+                        "JOB_IMPORT_FIELD_INVALID",
+                        "The proposed value is invalid and must be edited or rejected.",
+                        status_code=409,
+                        details={"errors": field.validation_errors},
+                    )
+                updates.update(
+                    {
+                        "review_status": "confirmed",
+                        "confirmed_value": field.proposed_value,
+                        "edited_value": None,
+                    }
                 )
-            updates.update(
-                {
-                    "review_status": "edited",
-                    "confirmed_value": None,
-                    "edited_value": normalized,
-                    "validation_errors": [],
-                }
+            elif payload.action == "edit":
+                policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
+                normalized, errors = await self._validate_field_value(
+                    policy,
+                    payload.edited_value,
+                )
+                if errors:
+                    raise JobImportError(
+                        "JOB_IMPORT_FIELD_INVALID",
+                        "The recruiter-edited value is invalid.",
+                        details={"errors": errors},
+                    )
+                updates.update(
+                    {
+                        "review_status": "edited",
+                        "confirmed_value": None,
+                        "edited_value": normalized,
+                        "validation_errors": [],
+                    }
+                )
+            elif payload.action == "reject":
+                updates.update(
+                    {
+                        "review_status": "rejected",
+                        "confirmed_value": None,
+                        "edited_value": None,
+                    }
+                )
+            else:
+                updates.update(
+                    {
+                        "review_status": "pending",
+                        "confirmed_value": None,
+                        "edited_value": None,
+                        "reviewed_by_user_id": None,
+                        "reviewed_at": None,
+                    }
+                )
+            await self.repository.update_field(field, updates)
+            await self._refresh_draft_state(draft, owner_user_id=owner_user_id)
+            await self.repository.update_draft(
+                draft,
+                {"mutation_claim_token": None},
             )
-        elif payload.action == "reject":
-            updates.update(
-                {
-                    "review_status": "rejected",
-                    "confirmed_value": None,
-                    "edited_value": None,
-                }
-            )
-        else:
-            updates.update(
-                {
-                    "review_status": "pending",
-                    "confirmed_value": None,
-                    "edited_value": None,
-                    "reviewed_by_user_id": None,
-                    "reviewed_at": None,
-                }
-            )
-        await self.repository.update_field(field, updates)
-        await self._refresh_draft_state(draft, owner_user_id=owner_user_id)
-        await self.repository.session.commit()
-        return draft
+            await self.repository.session.commit()
+            return draft
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def resolve_conflict(
         self,
@@ -987,64 +1583,111 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> JobImportDraft:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        self._assert_reviewable(draft)
-        field = await self.repository.get_field(draft.id, field_path)
-        if field is None:
-            raise JobImportError(
-                "JOB_IMPORT_FIELD_NOT_FOUND",
-                "Import field not found.",
-                status_code=404,
-            )
-        if field.provenance_state != "conflicting_source_values":
-            raise JobImportError(
-                "JOB_IMPORT_FIELD_NOT_CONFLICTING",
-                "This field does not contain conflicting source values.",
-                status_code=409,
-            )
-
-        policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
-        selected_index = payload.selected_value_index
-        if selected_index is not None:
-            if selected_index >= len(field.conflicting_values):
-                raise JobImportError(
-                    "JOB_IMPORT_CONFLICT_INDEX_INVALID",
-                    "The selected conflicting value does not exist.",
-                )
-            selected = field.conflicting_values[selected_index].get("value")
-            normalized, errors = await self._validate_field_value(policy, selected)
-            review_status = "confirmed"
-            confirmed_value = normalized
-            edited_value = None
-        else:
-            normalized, errors = await self._validate_field_value(
-                policy,
-                payload.replacement_value,
-            )
-            review_status = "edited"
-            confirmed_value = None
-            edited_value = normalized
-        if errors:
-            raise JobImportError(
-                "JOB_IMPORT_FIELD_INVALID",
-                "The selected conflict resolution is invalid.",
-                details={"errors": errors},
-            )
-        await self.repository.update_field(
-            field,
-            {
-                "review_status": review_status,
-                "confirmed_value": confirmed_value,
-                "edited_value": edited_value,
-                "selected_conflict_index": selected_index,
-                "validation_errors": [],
-                "reviewed_by_user_id": owner_user_id,
-                "reviewed_at": datetime.now(UTC),
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+            allowed_statuses={
+                "awaiting_recruiter_review",
+                "partially_reviewed",
+                "ready_to_apply",
             },
         )
-        await self._refresh_draft_state(draft, owner_user_id=owner_user_id)
-        await self.repository.session.commit()
-        return draft
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            self._assert_reviewable(existing)
+            raise JobImportError(
+                "JOB_IMPORT_CONCURRENT_MUTATION",
+                "This import draft is being changed by another request. Retry the conflict resolution.",
+                status_code=409,
+            )
+        try:
+            source = await self.repository.get_source_for_owner(
+                draft.source_id,
+                owner_user_id,
+            )
+            if source is None:
+                raise JobImportError(
+                    "JOB_IMPORT_SOURCE_REDACTED",
+                    "A redacted source cannot be reviewed.",
+                    status_code=409,
+                )
+            field = await self.repository.get_field(draft.id, field_path)
+            if field is None:
+                raise JobImportError(
+                    "JOB_IMPORT_FIELD_NOT_FOUND",
+                    "Import field not found.",
+                    status_code=404,
+                )
+            if field.provenance_state != "conflicting_source_values":
+                raise JobImportError(
+                    "JOB_IMPORT_FIELD_NOT_CONFLICTING",
+                    "This field does not contain conflicting source values.",
+                    status_code=409,
+                )
+
+            policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
+            selected_index = payload.selected_value_index
+            if selected_index is not None:
+                if selected_index >= len(field.conflicting_values):
+                    raise JobImportError(
+                        "JOB_IMPORT_CONFLICT_INDEX_INVALID",
+                        "The selected conflicting value does not exist.",
+                    )
+                selected = field.conflicting_values[selected_index].get("value")
+                normalized, errors = await self._validate_field_value(
+                    policy,
+                    selected,
+                )
+                review_status = "confirmed"
+                confirmed_value = normalized
+                edited_value = None
+            else:
+                normalized, errors = await self._validate_field_value(
+                    policy,
+                    payload.replacement_value,
+                )
+                review_status = "edited"
+                confirmed_value = None
+                edited_value = normalized
+            if errors:
+                raise JobImportError(
+                    "JOB_IMPORT_FIELD_INVALID",
+                    "The selected conflict resolution is invalid.",
+                    details={"errors": errors},
+                )
+            await self.repository.update_field(
+                field,
+                {
+                    "review_status": review_status,
+                    "confirmed_value": confirmed_value,
+                    "edited_value": edited_value,
+                    "selected_conflict_index": selected_index,
+                    "validation_errors": [],
+                    "reviewed_by_user_id": owner_user_id,
+                    "reviewed_at": datetime.now(UTC),
+                },
+            )
+            await self._refresh_draft_state(draft, owner_user_id=owner_user_id)
+            await self.repository.update_draft(
+                draft,
+                {"mutation_claim_token": None},
+            )
+            await self.repository.session.commit()
+            return draft
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def discard_draft(
         self,
@@ -1052,28 +1695,54 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> JobImportDraft:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        if draft.processing_status in {
-            "applied_to_native_draft",
-            "discarded",
-            "superseded",
-        }:
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+            allowed_statuses={
+                "awaiting_processing",
+                "processing",
+                "processing_failed",
+                "awaiting_recruiter_review",
+                "partially_reviewed",
+                "ready_to_apply",
+            },
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
+            )
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            if existing.processing_status == "discarded":
+                return existing
             raise JobImportError(
                 "JOB_IMPORT_INVALID_TRANSITION",
                 "This import draft cannot be discarded from its current state.",
                 status_code=409,
             )
-        await self.repository.update_draft(
-            draft,
-            {
-                "processing_status": "discarded",
-                "discarded_at": datetime.now(UTC),
-                "can_apply_to_native_draft": False,
-                "can_publish_directly": False,
-            },
-        )
-        await self.repository.session.commit()
-        return draft
+        try:
+            await self.repository.update_draft(
+                draft,
+                {
+                    "processing_status": "discarded",
+                    "discarded_at": datetime.now(UTC),
+                    "can_apply_to_native_draft": False,
+                    "can_publish_directly": False,
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.session.commit()
+            return draft
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def delete_draft(
         self,
@@ -1081,32 +1750,61 @@ class JobImportService:
         *,
         owner_user_id: UUID,
     ) -> None:
-        draft = await self.get_draft(draft_id, owner_user_id=owner_user_id)
-        await self.repository.delete_fields(draft.id)
-        now = datetime.now(UTC)
-        await self.repository.update_draft(
-            draft,
-            {
-                "processing_status": (
-                    draft.processing_status
-                    if draft.processing_status == "applied_to_native_draft"
-                    else "discarded"
-                ),
-                "validation_status": "not_validated",
-                "confirmation_state": "unreviewed",
-                "can_apply_to_native_draft": False,
-                "can_publish_directly": False,
-                "provider_metadata": None,
-                "machine_output": None,
-                "processing_warnings": [],
-                "missing_fields": [],
-                "validation_errors": {},
-                "review_sections": [],
-                "discarded_at": draft.discarded_at or now,
-                "deleted_at": now,
-            },
+        existing = await self.repository.get_draft_for_owner(
+            draft_id,
+            owner_user_id,
+            include_deleted=True,
         )
-        await self.repository.session.commit()
+        if existing is None:
+            raise JobImportError(
+                "JOB_IMPORT_DRAFT_NOT_FOUND",
+                "Import draft not found.",
+                status_code=404,
+            )
+        if existing.deleted_at is not None:
+            return
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+        )
+        if draft is None:
+            raise JobImportError(
+                "JOB_IMPORT_CONCURRENT_MUTATION",
+                "This import draft is being changed by another request. Retry the deletion.",
+                status_code=409,
+            )
+        try:
+            await self.repository.delete_fields(draft.id)
+            now = datetime.now(UTC)
+            await self.repository.update_draft(
+                draft,
+                {
+                    "processing_status": (
+                        draft.processing_status
+                        if draft.processing_status == "applied_to_native_draft"
+                        else "discarded"
+                    ),
+                    "validation_status": "not_validated",
+                    "confirmation_state": "unreviewed",
+                    "can_apply_to_native_draft": False,
+                    "can_publish_directly": False,
+                    "provider_metadata": None,
+                    "machine_output": None,
+                    "processing_warnings": [],
+                    "missing_fields": [],
+                    "validation_errors": {},
+                    "review_sections": [],
+                    "discarded_at": draft.discarded_at or now,
+                    "deleted_at": now,
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.session.commit()
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     async def apply_to_native_draft(
         self,
@@ -1116,61 +1814,130 @@ class JobImportService:
         owner_user_id: UUID,
     ) -> tuple[JobImportDraft, Job, bool]:
         del payload  # create_new is the only accepted mode in this phase.
-        draft = await self.repository.get_draft_for_owner(
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
             draft_id,
             owner_user_id,
-            for_update=True,
+            claim_token,
+            allowed_statuses={"ready_to_apply"},
+            require_target_unset=True,
         )
         if draft is None:
-            raise JobImportError(
-                "JOB_IMPORT_DRAFT_NOT_FOUND",
-                "Import draft not found.",
-                status_code=404,
+            existing = await self.repository.get_draft_for_owner(
+                draft_id,
+                owner_user_id,
             )
-        if draft.target_job_id is not None:
-            job = await self.job_service.get_job_internal(draft.target_job_id)
-            return draft, job, False
-        source = await self.repository.get_source_for_owner(
-            draft.source_id,
-            owner_user_id,
-        )
-        if source is None:
-            raise JobImportError(
-                "JOB_IMPORT_SOURCE_REDACTED",
-                "A deleted source cannot be applied to a native job draft.",
-                status_code=409,
-            )
-        await self._refresh_draft_state(draft, owner_user_id=owner_user_id)
-        if not draft.can_apply_to_native_draft or draft.processing_status != "ready_to_apply":
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            if existing.target_job_id is not None:
+                try:
+                    job = await self.job_service.get_job_internal(
+                        existing.target_job_id
+                    )
+                except JobNotFoundError as exc:
+                    raise JobImportError(
+                        "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
+                        "The native job linked to this import draft no longer exists.",
+                        status_code=409,
+                    ) from exc
+                if job.posted_by_user_id != owner_user_id:
+                    raise JobImportError(
+                        "JOB_IMPORT_TARGET_OWNERSHIP_MISMATCH",
+                        "The native job linked to this import draft is not owned by the recruiter.",
+                        status_code=409,
+                    )
+                return existing, job, False
             raise JobImportError(
                 "JOB_IMPORT_DRAFT_NOT_READY",
                 "Resolve or review the remaining import fields before creating a native draft.",
                 status_code=409,
                 details={
-                    "validation_errors": draft.validation_errors,
-                    "review_sections": draft.review_sections,
+                    "validation_errors": existing.validation_errors,
+                    "review_sections": existing.review_sections,
                 },
             )
-        fields = await self.repository.list_fields(draft.id)
-        native_payload = await self._effective_native_payload(fields)
-        job_payload = JobCreate.model_validate({**native_payload, "status": "draft"})
-        job = await self.job_service.create_job(
-            job_payload,
-            actor_user_id=owner_user_id,
-            commit_transaction=False,
-        )
-        await self.repository.update_draft(
-            draft,
-            {
-                "target_job_id": job.id,
-                "processing_status": "applied_to_native_draft",
-                "applied_at": datetime.now(UTC),
-                "can_apply_to_native_draft": False,
-                "can_publish_directly": False,
-            },
-        )
-        await self.repository.session.commit()
-        return draft, job, True
+        try:
+            source = await self.repository.get_source_for_owner(
+                draft.source_id,
+                owner_user_id,
+            )
+            if source is None:
+                raise JobImportError(
+                    "JOB_IMPORT_SOURCE_REDACTED",
+                    "A deleted source cannot be applied to a native job draft.",
+                    status_code=409,
+                )
+            fields = await self.repository.list_fields(draft.id)
+            native_payload = await self._effective_native_payload(fields)
+            job_payload, native_errors = await self._native_validation(
+                native_payload,
+                owner_user_id=owner_user_id,
+                status="draft",
+            )
+            if job_payload is None or native_errors:
+                raise JobImportError(
+                    "JOB_IMPORT_NATIVE_DRAFT_VALIDATION_FAILED",
+                    "Confirmed import values do not form a valid native job draft.",
+                    details={"field_errors": native_errors},
+                )
+            job = await self.job_service.create_job(
+                job_payload,
+                actor_user_id=owner_user_id,
+                commit_transaction=False,
+            )
+            await self.repository.update_draft(
+                draft,
+                {
+                    "target_job_id": job.id,
+                    "processing_status": "applied_to_native_draft",
+                    "applied_at": datetime.now(UTC),
+                    "can_apply_to_native_draft": False,
+                    "can_publish_directly": False,
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.session.commit()
+            return draft, job, True
+        except JobImportError:
+            await self.repository.session.rollback()
+            raise
+        except ValidationError as exc:
+            await self.repository.session.rollback()
+            raise JobImportError(
+                "JOB_IMPORT_NATIVE_DRAFT_VALIDATION_FAILED",
+                "Confirmed import values do not form a valid native job draft.",
+                details={"field_errors": self._pydantic_errors(exc)},
+            ) from exc
+        except (JobValidationError, JobForbiddenError) as exc:
+            await self.repository.session.rollback()
+            details = (
+                {"field_errors": exc.field_errors}
+                if isinstance(exc, JobValidationError)
+                else {"field_errors": {"owner": [str(exc)]}}
+            )
+            raise JobImportError(
+                "JOB_IMPORT_NATIVE_DRAFT_VALIDATION_FAILED",
+                "The native job service rejected the confirmed import values.",
+                details=details,
+            ) from exc
+        except (
+            JobAuthRequiredError,
+            JobVerificationRequiredError,
+            JobNotFoundError,
+        ) as exc:
+            await self.repository.session.rollback()
+            raise JobImportError(
+                "JOB_IMPORT_NATIVE_DRAFT_CREATION_FAILED",
+                "The native job draft could not be created.",
+                status_code=409,
+            ) from exc
+        except Exception:
+            await self.repository.session.rollback()
+            raise
 
     @staticmethod
     def _authority_state(field: JobImportField) -> str:

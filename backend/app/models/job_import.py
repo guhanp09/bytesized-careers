@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -181,10 +182,10 @@ class JobImportDraft(Base):
         server_default="unreviewed",
     )
     can_apply_to_native_draft: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )
     can_publish_directly: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+        Boolean, nullable=False, default=False, server_default=sa.false()
     )
     provider_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     model_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -213,6 +214,13 @@ class JobImportDraft(Base):
         ForeignKey("jobs.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    # Internal, transaction-scoped compare-and-set token. It is never serialized.
+    # A committed row must normally contain NULL: successful mutations clear it in
+    # the same transaction, while failed/crashed transactions roll it back.
+    mutation_claim_token: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
     )
     client_request_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(
@@ -292,7 +300,7 @@ class JobImportField(Base):
     edited_value: Mapped[object | None] = mapped_column(json_type, nullable=True)
     missing_requirement: Mapped[str] = mapped_column(String(28), nullable=False)
     requires_confirmation: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default="true"
+        Boolean, nullable=False, default=True, server_default=sa.true()
     )
     validation_errors: Mapped[list[str]] = mapped_column(
         json_type, nullable=False, default=list

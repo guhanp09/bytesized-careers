@@ -314,6 +314,10 @@ async def test_targeted_restore_is_confirmed_idempotent_and_preserves_ordinary_u
                 email_verified_at=datetime.now(UTC),
             )
         )
+        # These fixtures intentionally use raw foreign-key IDs rather than ORM
+        # relationships, so materialize the parent before FK enforcement checks
+        # the interaction inserts.
+        await session.flush()
         session.add(
             JobApplication(
                 id=ordinary_application_id,
@@ -573,6 +577,7 @@ async def test_full_baseline_restore_is_repeatable_and_keeps_audit_history(clien
                 email_verified_at=datetime.now(UTC),
             )
         )
+        await session.flush()
         session.add(
             JobApplication(
                 id=ordinary_application_id,

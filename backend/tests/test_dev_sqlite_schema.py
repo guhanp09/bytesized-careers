@@ -226,10 +226,36 @@ async def test_dev_sqlite_schema_sync_creates_private_job_import_tables(
         table_names = await conn.run_sync(
             lambda sync_conn: set(inspect(sync_conn).get_table_names())
         )
+        draft_columns = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]: column
+                for column in inspect(sync_conn).get_columns("job_import_drafts")
+            }
+        )
+        field_columns = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]: column
+                for column in inspect(sync_conn).get_columns("job_import_fields")
+            }
+        )
+        foreign_keys_enabled = (
+            await conn.execute(text("PRAGMA foreign_keys"))
+        ).scalar_one()
 
     assert {
         "job_import_sources",
         "job_import_drafts",
         "job_import_fields",
     } <= table_names
+    assert "mutation_claim_token" in draft_columns
+    assert str(draft_columns["can_apply_to_native_draft"]["default"]).strip(
+        "'\"() "
+    ).lower() in {"0", "false"}
+    assert str(draft_columns["can_publish_directly"]["default"]).strip(
+        "'\"() "
+    ).lower() in {"0", "false"}
+    assert str(field_columns["requires_confirmation"]["default"]).strip(
+        "'\"() "
+    ).lower() in {"1", "true"}
+    assert foreign_keys_enabled == 1
     await engine.dispose()

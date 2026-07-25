@@ -400,7 +400,17 @@ async def test_required_language_filter_preserves_null_versus_empty_legacy_seman
     assert await language_ids("ENGLISH") == all_ids
     assert await language_ids("hindi") == all_ids
     assert await language_ids("english,hindi") == all_ids
-    # The stored language data is preserved on the records themselves.
+    # Historical language data remains stored but is absent from the public
+    # representation and cannot be inferred through free-text search.
     detail = await client.get(f"/api/v1/jobs/{expected['required']}")
     assert detail.status_code == 200
-    assert detail.json()["language_requirements"][0]["priority"] == "required"
+    assert detail.json()["languages"] == []
+    assert detail.json()["language_requirements"] is None
+    hidden_by_search = await client.get(
+        "/api/v1/jobs",
+        params={"q": "Tamil", "limit": 100},
+    )
+    assert hidden_by_search.status_code == 200
+    assert expected["required"] not in {
+        item["id"] for item in hidden_by_search.json()["items"]
+    }

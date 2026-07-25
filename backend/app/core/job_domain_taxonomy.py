@@ -3,6 +3,29 @@ from __future__ import annotations
 from typing import Final, Literal
 
 
+CREATOR_JOB_PLATFORMS: Final[tuple[str, ...]] = (
+    "youtube",
+    "instagram",
+)
+
+CREATOR_JOB_FORMATS: Final[tuple[str, ...]] = (
+    "Long-form video",
+    "Shorts/Reels",
+    "Thumbnails",
+    "Scripts",
+    "Hooks",
+    "Voice-over",
+    "Motion graphics",
+    "Captions",
+    "Repurposed clips",
+    "Channel research",
+    "Content strategy",
+    "Podcast editing",
+    "Social posts",
+    "YouTube packaging",
+    "Ad creatives",
+)
+
 DELIVERABLE_TYPES: Final[tuple[str, ...]] = (
     "long_form_video",
     "short",

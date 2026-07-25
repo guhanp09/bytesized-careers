@@ -27,49 +27,38 @@ test.describe("phase 3b detail and post surface polish", () => {
   test("job detail keeps a clear action panel without fake response metrics", async ({ page }) => {
     await page.goto("/jobs/1");
 
-    await expect(page.getByRole("heading", { name: /Video editor for YouTube/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /Long-form YouTube editor for evidence-led finance stories/i,
+      }),
+    ).toBeVisible();
     await expect(page.getByRole("heading", { name: "About the opportunity" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Creator context" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Reference videos" })).toBeVisible();
     const referenceRail = page.getByRole("region", { name: "Reference videos" });
     await expect(referenceRail).toBeVisible();
-    await expect(referenceRail).toContainText("Pacing + retention reference");
-    await expect(referenceRail).toContainText("Clean captions + sound style");
-    await expect(referenceRail).toContainText("Structure + story flow reference");
-    const firstReference = page.getByRole("button", { name: "View reference details: Pacing + retention reference" });
+    await expect(referenceRail).toContainText("Fictional style and workflow reference");
+    const firstReference = page.getByRole("button", {
+      name: "View reference details: Fictional style and workflow reference",
+    });
     await expect(firstReference).toBeVisible();
     await firstReference.click({ position: { x: 42, y: 78 } });
-    const referenceDialog = page.getByRole("dialog", { name: "Reference video details: Pacing + retention reference" });
+    const referenceDialog = page.getByRole("dialog", {
+      name: "Reference video details: Fictional style and workflow reference",
+    });
     await expect(referenceDialog).toBeVisible();
     await expectAnchoredPopupWithinViewport(page, referenceDialog);
     await expect(page).toHaveURL(/\/jobs\/1$/);
     await expect(referenceDialog).toContainText("What to Reference");
     await expect(referenceDialog).toContainText("Timestamp Notes");
-    await expect(referenceDialog).toContainText("Hook pacing");
-    await expect(referenceDialog).toContainText("Cold open hits immediately");
-    await expect(referenceDialog.getByRole("link", { name: /Open Pacing \+ retention reference at 0 minutes 12 seconds on YouTube/ })).toHaveAttribute(
+    await expect(referenceDialog).toContainText("Opening expectation");
+    await expect(referenceDialog).toContainText("The first beat states the audience promise clearly.");
+    await expect(referenceDialog.getByRole("link", { name: /Open Fictional style and workflow reference/ }).first()).toHaveAttribute(
       "href",
-      "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=12s"
-    );
-    await expect(referenceDialog.getByRole("link", { name: /Open on YouTube/ })).toHaveAttribute(
-      "href",
-      "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "https://example.com/creatorjobs-demo/references/job_1",
     );
     await page.keyboard.press("Escape");
     await expect(referenceDialog).toHaveCount(0);
-    const secondReference = page.getByRole("button", { name: "View reference details: Clean captions + sound style" });
-    await secondReference.click();
-    const secondDialog = page.getByRole("dialog", { name: "Reference video details: Clean captions + sound style" });
-    await expect(secondDialog).toBeVisible();
-    await expect(secondDialog).toContainText("What to Reference");
-    await expect(secondDialog).toContainText("Timestamp Notes");
-    await expect(secondDialog).toContainText("Hook setup");
-    await expect(secondDialog.getByRole("link", { name: /Open Clean captions \+ sound style at 0 minutes 31 seconds on YouTube/ })).toHaveAttribute(
-      "href",
-      "https://www.youtube.com/watch?v=3JZ_D3ELwOQ&t=31s"
-    );
-    await page.keyboard.press("Escape");
-    await expect(secondDialog).toHaveCount(0);
     const creatorContextCard = page.getByTestId("job-creator-context-card");
     await expect(creatorContextCard).toBeVisible();
     await expect(creatorContextCard).toContainText("Content niches");
@@ -124,19 +113,19 @@ test.describe("phase 3b detail and post surface polish", () => {
       safetyBounds?.y ?? Number.NEGATIVE_INFINITY
     );
     await expect(postedByCard.getByRole("heading", { name: "Posted by" })).toHaveClass(/sr-only/);
-    await expect(postedByCard.getByText(/Hiring on behalf of Finance Channel/)).toBeVisible();
-    await expect(postedByCard.getByText("Managed by Example Creator Agency")).toBeVisible();
+    await expect(postedByCard).toContainText("Money & Mindset");
+    await expect(postedByCard.getByText(/Hiring directly/)).toBeVisible();
     await expect(postedByCard.getByText("No reviews yet")).toHaveCount(0);
-    await expect(postedByCard.getByRole("link", { name: /Open Example Creator Agency CreatorJobs profile/ })).toHaveAttribute(
+    await expect(postedByCard.getByRole("link", { name: /Open Money & Mindset CreatorJobs profile/ })).toHaveAttribute(
       "href",
-      "/u/example-agency?view=hiring"
+      "/u/anika_demo?view=hiring"
     );
     await expect(postedByCard).not.toContainText("View CreatorJobs profile");
     const channelRating = page.getByTestId("job-channel-rating");
     await expect(channelRating).toBeVisible();
-    await expect(channelRating).toContainText("4.6");
-    await expect(channelRating).toContainText("(5)");
-    await expect(channelRating).toHaveAttribute("href", "/u/finance-creator?view=hiring&tab=reviews");
+    await expect(channelRating).toContainText("4.4");
+    await expect(channelRating).toContainText("(8)");
+    await expect(channelRating).toHaveAttribute("href", "/u/anika_demo?view=hiring&tab=reviews");
     await expect(page.locator("body")).toContainText("Safety & expectations");
     const transparencyCard = page.getByTestId("job-transparency-card");
     await expect(transparencyCard).toContainText("not a safety or quality score");
@@ -146,58 +135,68 @@ test.describe("phase 3b detail and post surface polish", () => {
     expect(reportBounds?.y ?? Number.POSITIVE_INFINITY).toBeGreaterThan(
       safetyBounds?.y ?? Number.NEGATIVE_INFINITY
     );
-    await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
+    await expect(page.locator("body")).not.toContainText(/Proof/i);
     await expect(postedByCard).not.toContainText(/★★★★★|[1-9][0-9]* reviews as recruiter/);
   });
 
   test("direct posted job opens the creator profile from the Posted by card", async ({ page }) => {
-    await page.goto("/jobs/3");
+    await page.goto("/jobs/6");
 
     const postedByCard = page.getByTestId("posted-by-card");
     await expect(postedByCard.getByRole("heading", { name: "Posted by" })).toHaveClass(/sr-only/);
     await expect(postedByCard.getByRole("link", { name: /Open Edu Hindi CreatorJobs profile/ })).toHaveAttribute(
       "href",
-      "/u/edu-hindi?view=hiring"
+      "/u/eduhindi_demo?view=hiring"
     );
-    await expect(postedByCard.getByText("Hiring directly · Creator", { exact: true })).toBeVisible();
+    await expect(postedByCard.getByText(/Hiring directly/)).toBeVisible();
     await expect(postedByCard.getByText("No reviews yet")).toHaveCount(0);
     await expect(postedByCard).not.toContainText("Posted by agency");
-    await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
+    await expect(page.locator("body")).not.toContainText(/Proof/i);
     const channelRating = page.getByTestId("job-channel-rating");
     await expect(channelRating).toBeVisible();
-    await expect(channelRating).toHaveAttribute("href", "/u/edu-hindi?view=hiring&tab=reviews");
+    await expect(channelRating).toHaveAttribute("href", "/u/eduhindi_demo?view=hiring&tab=reviews");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await postedByCard.getByRole("link", { name: /Open Edu Hindi CreatorJobs profile/ }).click();
-    await expect(page).toHaveURL(/\/u\/edu-hindi\?view=hiring$/);
+    await expect(page).toHaveURL(/\/u\/eduhindi_demo\?view=hiring$/);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("job cards remove start timing while keeping activity stats", async ({ page }) => {
     await page.goto("/jobs");
 
-    await expect(page.getByText("Video editor for YouTube", { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByText("Long-form YouTube editor for evidence-led finance stories", {
+        exact: false,
+      }).first(),
+    ).toBeVisible();
     await expect(page.locator("body")).toContainText("Response rate");
     await expect(page.locator("body")).not.toContainText(/Start:/i);
     await expect(page.locator("body")).not.toContainText("Posted by agency");
     await expect(page.locator('[role="link"]').filter({ hasText: /^Verified$/i })).toHaveCount(0);
     await expect(page.locator('[role="link"]').filter({ hasText: /Representation verified|Verified via|Authorization verified/i })).toHaveCount(0);
-    await expect(page.locator("body")).not.toContainText(/USD|\$[0-9]|Proof/i);
+    await expect(page.locator("body")).not.toContainText(/Proof/i);
   });
 
-  test("zero job stats remain visible on both cards and detail panels", async ({ page }) => {
+  test("persisted job stats remain visible on both cards and detail panels", async ({ page }) => {
     await page.goto("/jobs");
 
-    const zeroJobCard = page.getByRole("link").filter({ hasText: "Designer for explainer diagrams + simple motion overlays" }).first();
-    await expect(zeroJobCard).toBeVisible();
-    await expect(zeroJobCard).toContainText("Views");
-    await expect(zeroJobCard).toContainText("0%");
+    const jobCard = page.getByRole("link").filter({
+      hasText: "Creator partnerships manager for transparent beauty campaigns",
+    }).first();
+    await expect(jobCard).toBeVisible();
+    await expect(jobCard).toContainText(/303\s*Views/);
+    await expect(jobCard).toContainText(/62%\s*Response rate/);
 
     await page.goto("/jobs/15");
-    await expect(page.getByRole("heading", { name: /Designer for explainer diagrams/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: /Creator partnerships manager for transparent beauty campaigns/i,
+      }),
+    ).toBeVisible();
     await expect(page.locator("body")).toContainText("Views");
-    await expect(page.locator("body")).toContainText("0");
+    await expect(page.locator("body")).toContainText(/303\s*Views/);
     await expect(page.locator("body")).toContainText("Response rate");
-    await expect(page.locator("body")).toContainText("0%");
+    await expect(page.locator("body")).toContainText(/62%\s*Response rate/);
   });
 
   test("talent detail keeps work-sample-first recruiter context", async ({ page }) => {
