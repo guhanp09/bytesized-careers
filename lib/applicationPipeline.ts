@@ -589,12 +589,19 @@ export type WorkSignals = {
    * only ever supplied to the side that manages the arrangement.
    */
   interviewFollowUpDue?: boolean;
+  /**
+   * An interview has been proposed and *this viewer* is the one who has not
+   * agreed to the time yet. Supplied only to the invited participant — the
+   * organiser is waiting, not acting.
+   */
+  interviewAwaitingMyConfirmation?: boolean;
 };
 
 export type WorkStateKey =
   | "needs_review"
   | "decision_not_shared"
   | "start_confirmation_pending"
+  | "interview_confirmation"
   | "interview_follow_up"
   | "needs_reply"
   | "review_latest";
@@ -667,6 +674,12 @@ export function deriveWorkState(
   // communicated — that is still unfinished business for the manager.
   if (CLOSED_BACKEND_STATUSES.has(stage) && !hasUnsharedDecision(item)) return null;
 
+  // Someone proposed a time and this viewer has not answered. Authoritative:
+  // the invitation exists, and the confirmation is recorded or it is not.
+  if (signals.interviewAwaitingMyConfirmation) {
+    return { key: "interview_confirmation", label: "Confirm the time", highConfidence: true };
+  }
+
   // An interview that has already happened. The date was agreed by both sides
   // and it is now in the past, which is as authoritative as this system gets.
   if (signals.interviewFollowUpDue) {
@@ -699,6 +712,7 @@ export function deriveWorkState(
 
 export type NextActionKey =
   | "resolve-legacy-stage"
+  | "confirm-interview"
   | "confirm-start"
   | "share-decision"
   | "record-decision"
@@ -742,20 +756,26 @@ export function nextBestActionFor(
   const unread = signals.unreadCount ?? (item.unread ? 1 : 0);
   const name = firstName(item.counterpartyName);
 
-  // 1. An agreed engagement is waiting on a start confirmation.
+  // 1. A proposed time this viewer has not agreed to. Ahead of everything else
+  //    because the other person is holding a slot open waiting for the answer.
+  if (signals.interviewAwaitingMyConfirmation) {
+    return { key: "confirm-interview", label: "Confirm this time", highConfidence: true };
+  }
+
+  // 2. An agreed engagement is waiting on a start confirmation.
   if (signals.engagementUnconfirmed && (stage === "hired" || stage === "accepted")) {
     return { key: "confirm-start", label: "Confirm start", highConfidence: true };
   }
 
-  // 2. A decision was saved privately and never communicated.
+  // 3. A decision was saved privately and never communicated.
   if (hasUnsharedDecision(item)) {
     return { key: "share-decision", label: `Tell ${name}`, highConfidence: true };
   }
 
-  // 3. A closed conversation has nothing outstanding.
+  // 4. A closed conversation has nothing outstanding.
   if (CLOSED_BACKEND_STATUSES.has(stage)) return null;
 
-  // 4. Agreed outcomes owe no stage decision, but the thread stays open while
+  // 5. Agreed outcomes owe no stage decision, but the thread stays open while
   //    the work happens, so an unread message there still deserves a reply.
   if (AGREED_BACKEND_STATUSES.has(stage)) {
     return unread > 0
@@ -764,23 +784,23 @@ export function nextBestActionFor(
   }
 
   if (item.direction === "received") {
-    // 5. An interview is arranged and still ahead. The next event is the meeting
+    // 6. An interview is arranged and still ahead. The next event is the meeting
     //    itself, so no decision is owed — but an unread message still is.
     if (stage === "interviewing" && signals.interviewScheduled && !signals.interviewFollowUpDue) {
       return unread > 0
         ? { key: "reply", label: `Reply to ${name}`, highConfidence: true }
         : null;
     }
-    // 6. The interview has happened, or none was ever arranged. Either way the
+    // 7. The interview has happened, or none was ever arranged. Either way the
     //    outstanding thing is the decision.
     if (stage === "interviewing") {
       return { key: "record-decision", label: "Record decision", highConfidence: true };
     }
-    // 7. They wrote and it is unread — reading and replying comes first.
+    // 8. They wrote and it is unread — reading and replying comes first.
     if (unread > 0) {
       return { key: "reply", label: `Reply to ${name}`, highConfidence: true };
     }
-    // 8. New or under review with no stronger signal. Do not guess an outcome.
+    // 9. New or under review with no stronger signal. Do not guess an outcome.
     if (stage === "new" || stage === "reviewing") {
       return { key: "choose-next-step", label: "Choose next step", highConfidence: false };
     }

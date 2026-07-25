@@ -4,6 +4,9 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icons";
 import { InterviewCard, InterviewScheduler, type InterviewSubmission } from "./InterviewPanel";
+import { consolidatedReminder, type ReminderSignals } from "../../lib/workReminders";
+import { jobWorkloadSummaries, shouldShowJobSummaries } from "../../lib/jobWorkloadSummary";
+import { caughtUpLine, emptyStateFor } from "../../lib/workspaceEmptyStates";
 import {
   interviewFollowUpDue,
   interviewIsUpcoming,
@@ -54,6 +57,7 @@ import {
   confirmInterview,
   listConversations,
   listInterviews,
+  listLiveEngagements,
   proposeInterview,
   listTalentInterestPrivateNotes,
   markConversationRead,
@@ -1677,6 +1681,12 @@ export default function ApplicationsWorkspace({
    * cannot depend on a record having been opened first.
    */
   const [conversationIdByThread, setConversationIdByThread] = useState<Record<string, string>>({});
+  /**
+   * Interaction id → epoch ms of the last message. The only real timestamp the
+   * list has: `OwnerInteraction` carries humanised labels ("2 days ago"), which
+   * cannot be compared against a threshold.
+   */
+  const [lastActivityByThread, setLastActivityByThread] = useState<Record<string, number>>({});
   const [typingByConversation, setTypingByConversation] = useState<
     Record<string, { senderUserId: string; expiresAt: number }>
   >({});
@@ -1969,6 +1979,17 @@ export default function ApplicationsWorkspace({
           setConversationIdByThread(
             Object.fromEntries(
               conversations.map((conversation) => [conversation.thread_id, conversation.id])
+            )
+          );
+          setLastActivityByThread(
+            Object.fromEntries(
+              conversations
+                .filter((conversation) => conversation.last_message_at)
+                .map((conversation) => [
+                  conversation.thread_id,
+                  Date.parse(conversation.last_message_at as string),
+                ])
+                .filter(([, at]) => Number.isFinite(at))
             )
           );
         }
@@ -3040,6 +3061,45 @@ export default function ApplicationsWorkspace({
     };
   }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
 
+  /**
+   * Every live engagement, keyed by the record it came from.
+   *
+   * Phase A could only see the engagement of the *open* record, which left the
+   * start-confirmation queue — the highest-priority one — permanently empty for
+   * anything the user had not already clicked into. This is the list-wide read
+   * that makes it real.
+   */
+  const [engagementsByRecord, setEngagementsByRecord] = useState<
+    Record<string, BackendEngagementSummary>
+  >({});
+
+  useEffect(() => {
+    if (!liveMode || !backendAccessToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listLiveEngagements(backendAccessToken);
+        if (cancelled) return;
+        setEngagementsByRecord(
+          Object.fromEntries(rows.map((row) => [row.source_record_id, row]))
+        );
+      } catch {
+        // The engagement row on the open record still works; only the list-wide
+        // queue count degrades, and it recovers on the next load.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce]);
+
+  /** The engagement for an interaction, preferring the freshest source. */
+  const engagementOf = useCallback(
+    (item: OwnerInteraction): BackendEngagementSummary | null =>
+      liveThreads[item.id]?.engagement ?? engagementsByRecord[item.id] ?? null,
+    [liveThreads, engagementsByRecord]
+  );
+
   /** The arrangement for an interaction, wherever its conversation id came from. */
   const interviewOf = useCallback(
     (item: OwnerInteraction): BackendInterview | null => {
@@ -3257,7 +3317,7 @@ export default function ApplicationsWorkspace({
         return lastInbound ? Boolean(lastInbound.response_expected) : undefined;
       })(),
       engagementUnconfirmed: (() => {
-        const status = liveMode ? liveThreads[item.id]?.engagement?.status : undefined;
+        const status = liveMode ? engagementOf(item)?.status : undefined;
         return status ? ["ready_to_start", "start_pending"].includes(status) : undefined;
       })(),
       /**
@@ -3277,8 +3337,21 @@ export default function ApplicationsWorkspace({
         if (!interview?.can_manage) return undefined;
         return interviewFollowUpDue(toInterview(interview));
       })(),
+      /**
+       * A proposed time this viewer has not answered. Only the *invited* side
+       * sees it: the organiser is waiting for an answer, not owing one, and
+       * telling both people to confirm would make the queue meaningless.
+       */
+      interviewAwaitingMyConfirmation: (() => {
+        if (!liveMode) return undefined;
+        const interview = interviewOf(item);
+        if (!interview || interview.can_manage) return undefined;
+        return (
+          interview.status === "proposed" && interviewIsUpcoming(toInterview(interview))
+        );
+      })(),
     }),
-    [liveMode, unreadByThread, liveThreads, interviewOf]
+    [liveMode, unreadByThread, liveThreads, interviewOf, engagementOf]
   );
 
   /** Signals for queue derivation — the same evidence the row labels use. */
@@ -3306,6 +3379,72 @@ export default function ApplicationsWorkspace({
   const allCaughtUp = useMemo(
     () => WORK_QUEUE_ORDER.every((queue) => (queueCounts.get(queue.key) ?? 0) === 0),
     [queueCounts]
+  );
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  /** Queue evidence plus the two ages only reminders care about. */
+  const reminderSignalsFor = useCallback(
+    (item: OwnerInteraction): ReminderSignals => {
+      const lastActivity = lastActivityByThread[item.id];
+      const starredAt = (() => {
+        const conversationId = conversationIdOf(item);
+        const at = conversationId ? preferences[conversationId]?.starred_at : null;
+        return at ? Date.parse(at) : Number.NaN;
+      })();
+      return {
+        ...queueSignalsFor(item),
+        ageDays: lastActivity ? Math.floor((Date.now() - lastActivity) / DAY_MS) : undefined,
+        starredDays: Number.isFinite(starredAt)
+          ? Math.floor((Date.now() - starredAt) / DAY_MS)
+          : undefined,
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queueSignalsFor, lastActivityByThread, conversationIdOf, preferences]
+  );
+
+  /**
+   * One quiet line, or nothing. Derived from the same queues the list uses, so
+   * it can never mention work the list cannot show — and it disappears the
+   * moment the work does, which is why it never needs to be dismissed.
+   */
+  const reminder = useMemo(
+    () =>
+      liveMode && flags.workState
+        ? consolidatedReminder(modeItems, reminderSignalsFor, queuePreferences, isStarred)
+        : null,
+    [liveMode, flags.workState, modeItems, reminderSignalsFor, queuePreferences, isStarred]
+  );
+
+  /** Per-job workload, for someone hiring for more than one role at a time. */
+  const jobSummaries = useMemo(
+    () =>
+      liveMode
+        ? jobWorkloadSummaries(modeItems, queueSignalsFor, {
+            preferences: queuePreferences,
+            isStarred,
+          })
+        : [],
+    [liveMode, modeItems, queueSignalsFor, queuePreferences, isStarred]
+  );
+
+  /** How many conversations are genuinely waiting on the other participant. */
+  const waitingOnOthersCount = useMemo(
+    () =>
+      modeItems.filter(
+        (item) => deriveWorkQueue(item, queueSignalsFor(item), queuePreferences) === "waiting_for_them"
+      ).length,
+    [modeItems, queueSignalsFor, queuePreferences]
+  );
+
+  const snoozedCount = useMemo(
+    () =>
+      modeItems.filter((item) => {
+        const until = queuePreferences.snoozedUntil(item.id);
+        return until !== null && until > Date.now();
+      }).length,
+    [modeItems, queuePreferences]
   );
 
   /**
@@ -3552,6 +3691,15 @@ export default function ApplicationsWorkspace({
         case "share-decision": {
           const share = headerActionsFor(item, liveMode).find((entry) => entry.flow === "notify");
           if (share) dispatchHeaderAction(item, share);
+          return;
+        }
+        case "confirm-interview": {
+          // The arrangement card owns the confirmation; bring it into view and
+          // focus its control rather than duplicating a consequential action.
+          document
+            .querySelector("[data-testid='interview-card']")
+            ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          document.querySelector<HTMLButtonElement>("[data-testid='interview-confirm']")?.focus();
           return;
         }
         case "confirm-start":
@@ -3889,6 +4037,36 @@ export default function ApplicationsWorkspace({
     );
   })();
 
+  /**
+   * Why the list is empty, when it is. Plain derivations: they sit below the
+   * loading early returns and are a handful of comparisons.
+   */
+  const emptyState =
+    listItems.length === 0
+      ? emptyStateFor({
+          mode,
+          totalInMode: modeItems.length,
+          filteredCount: visibleItems.length,
+          visibleCount: listItems.length,
+          filter,
+          // The Inbox list has no search field of its own — the Pipeline owns
+          // search — so this branch is structurally unreachable here. Passed
+          // explicitly rather than omitted, so adding a search box later gets
+          // the right empty state for free.
+          searchTerm: "",
+          activeQueue,
+          allCaughtUp,
+          snoozedCount,
+        })
+      : null;
+
+  const caughtUp = caughtUpLine({
+    mode,
+    allCaughtUp,
+    totalInMode: modeItems.length,
+    waitingOnOthers: waitingOnOthersCount,
+  });
+
   const notifyPromptItems = notifyPrompt
     ? notifyPrompt.itemIds
         .map((id) => items.find((item) => item.id === id))
@@ -3971,6 +4149,64 @@ export default function ApplicationsWorkspace({
               {actionFeedback}
             </p>
           ) : null}
+          {/*
+            Workload by job. The Pipeline is the surveying lens in this product,
+            and a per-job breakdown is a survey — putting it above the Inbox list
+            stacked a fourth bar over the conversations people came to read.
+            Shown only when there is more than one job; with a single role it is
+            the board with a heading on it.
+          */}
+            {shouldShowJobSummaries(jobSummaries) ? (
+              <div
+                data-testid="job-summaries"
+                className="flex shrink-0 gap-2 overflow-x-auto border-b border-white/[0.06] px-4 py-2.5"
+                role="group"
+                aria-label="Workload by job"
+              >
+                {jobSummaries.map((summary) => (
+                  <div
+                    key={summary.jobKey}
+                    data-testid="job-summary"
+                    className="min-w-[168px] shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2"
+                  >
+                    <p className="truncate text-[11.5px] font-semibold text-white/80" title={summary.title}>
+                      {summary.title}
+                    </p>
+                    <p className="mt-0.5 text-[10.5px] text-white/40">
+                      {summary.activeCount} active
+                      {summary.outstandingCount > 0 ? ` · ${summary.outstandingCount} need you` : ""}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {summary.counts.map((entry) => (
+                        <button
+                          key={entry.key}
+                          type="button"
+                          data-testid={`job-summary-count-${entry.key}`}
+                          onClick={() => {
+                            if (entry.target.kind === "queue") {
+                              setActiveQueue(entry.target.queue as typeof activeQueue);
+                            } else if (entry.target.kind === "starred") {
+                              setActiveQueue("starred");
+                            } else {
+                              // A stage is a Pipeline question; take the user there
+                              // with the stage focused rather than approximating it
+                              // with an inbox filter that means something else.
+                              setActiveQueue(null);
+                              onPipelineStageChange?.(entry.target.stage);
+                              setView("pipeline");
+                            }
+                          }}
+                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 text-[10.5px] font-medium text-white/60 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white/90"
+                        >
+                          {entry.label}
+                          <span className="text-white/40">{entry.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           <div className="min-h-0 flex-1">
             <PipelineBoard
               key={`${mode}-${pipelineDirection}`}
@@ -4036,6 +4272,25 @@ export default function ApplicationsWorkspace({
             worse than no queue at all. Horizontally scrollable so a narrow
             screen never wraps into a wall of tabs.
           */}
+          {/*
+            One reminder at a time, and only when something has genuinely been
+            sitting. It is a route, not a nag: activating it filters the list to
+            exactly what it counted. There is no dismiss — the line disappears
+            when the work does, which is the only honest way to close it.
+          */}
+          {reminder ? (
+            <button
+              type="button"
+              data-testid="work-reminder"
+              data-reminder-key={reminder.key}
+              onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
+              className="flex shrink-0 cursor-pointer items-center gap-2 border-b border-white/[0.06] px-4 py-2 text-left text-[11.5px] text-white/60 transition-colors hover:bg-white/[0.03] hover:text-white/85"
+            >
+              <Icon name="clock" className="h-3.5 w-3.5 shrink-0 text-white/35" aria-hidden="true" />
+              <span className="min-w-0 flex-1">{reminder.text}</span>
+              <span className="shrink-0 text-white/35">Show</span>
+            </button>
+          ) : null}
           {flags.workState && queueChips.length > 0 ? (
             <div
               className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/[0.06] px-4 py-2"
@@ -4066,12 +4321,12 @@ export default function ApplicationsWorkspace({
               })}
             </div>
           ) : null}
-          {flags.workState && allCaughtUp && queueChips.length === 0 && listItems.length > 0 ? (
+          {flags.workState && queueChips.length === 0 && listItems.length > 0 && caughtUp ? (
             <p
               data-testid="all-caught-up"
               className="shrink-0 border-b border-white/[0.06] px-4 py-2 text-[11.5px] text-white/45"
             >
-              All caught up — nothing needs you right now.
+              {caughtUp}
             </p>
           ) : null}
           {totalUnreadCount > 0 ? (
@@ -4085,13 +4340,47 @@ export default function ApplicationsWorkspace({
           ) : null}
 
           <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            {visibleItems.length === 0 ? (
-              <div className="px-4 py-12 text-center text-xs text-white/45">
-                {modeItems.length === 0
-                  ? mode === "talent"
-                    ? "No Talent-side conversations yet."
-                    : "No Recruiter-side conversations yet."
-                  : "Nothing in this section yet."}
+            {listItems.length === 0 ? (
+              <div
+                data-testid="inbox-empty-state"
+                data-empty-reason={emptyState?.reason ?? "unknown"}
+                className="px-6 py-12 text-center"
+              >
+                <p className="text-[13px] font-medium text-white/70">
+                  {emptyState?.title ?? "Nothing in this section yet."}
+                </p>
+                {emptyState?.body ? (
+                  <p className="mx-auto mt-1.5 max-w-[320px] text-xs leading-relaxed text-white/45">
+                    {emptyState.body}
+                  </p>
+                ) : null}
+                {emptyState?.action ? (
+                  emptyState.action.kind === "browse" ? (
+                    <Link
+                      href="/jobs"
+                      data-testid="inbox-empty-action"
+                      className="mt-4 inline-flex h-8 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+                    >
+                      {emptyState.action.label}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="inbox-empty-action"
+                      onClick={() => {
+                        const kind = emptyState.action?.kind;
+                        if (kind === "clear-queue") setActiveQueue(null);
+                        else {
+                          setActiveQueue(null);
+                          selectFilter("all");
+                        }
+                      }}
+                      className="mt-4 inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+                    >
+                      {emptyState.action.label}
+                    </button>
+                  )
+                ) : null}
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05]">
@@ -4649,7 +4938,15 @@ export default function ApplicationsWorkspace({
                               ))}
                             </div>
                           ) : null}
-                          {composerIntents.length > 0 && !decisionSurfaceOpen ? (
+                          {/*
+                            One chip row at a time. The decision surface and the
+                            scheduling surface each already offer their own
+                            choices; a third row underneath would read as three
+                            competing menus for the same conversation.
+                          */}
+                          {composerIntents.length > 0 &&
+                          !decisionSurfaceOpen &&
+                          schedulingFor !== selected.id ? (
                             <div className="mb-2 flex flex-wrap gap-1.5" data-testid="composer-intents">
                               {composerIntents.map((intent) => {
                                 const active = pendingIntent === intent.key;

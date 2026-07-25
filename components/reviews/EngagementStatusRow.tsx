@@ -21,6 +21,22 @@ const STATUS_COPY: Record<BackendEngagementSummary["status"], { title: string; d
   cancelled_before_start: { title: "Cancelled before start", detail: "No review eligibility was created.", icon: "close" },
 };
 
+/** "Fri 14 Mar" in the reader's own locale, or null when there is no date. */
+function shortDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(when);
+  } catch {
+    return null;
+  }
+}
+
 export default function EngagementStatusRow({
   engagement,
   accessToken,
@@ -40,9 +56,17 @@ export default function EngagementStatusRow({
   const actions = new Set(engagement.available_actions);
   const detail = (() => {
     if (engagement.status === "start_pending") {
+      // The deadline is stated because it is real: an unanswered start request
+      // resolves itself when it expires, and nobody should discover that later.
+      const by = shortDate(engagement.response_due_at);
       return actions.has("confirm_start")
-        ? "Your confirmation is needed before work begins."
-        : "Waiting for the other side to confirm."
+        ? `Your confirmation is needed before work begins${by ? ` — by ${by}` : ""}.`
+        : `Waiting for the other side to confirm${by ? ` — by ${by}` : ""}.`
+    }
+    if (engagement.status === "active" && engagement.started_at) {
+      // One start date, and it is the one both people agreed to. There is no
+      // second "planned" date that could quietly disagree with it.
+      return `Started ${shortDate(engagement.started_at)}.`;
     }
     if (engagement.status === "completion_pending") {
       return actions.has("confirm_completion")

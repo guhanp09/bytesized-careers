@@ -120,11 +120,19 @@ test("workspace controls switch real views, retain an empty mode, and open statu
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(moreActions).toBeFocused();
 
+  // A failing transition must surface the reason and leave the visible stage
+  // exactly where it was. Driven through Hire because "Invite to interview" now
+  // opens the scheduling surface first — an invitation needs a time before it
+  // is worth sending, so it is no longer a one-click stage move.
   await page.route("**/api/v1/applications/*/transition", (route) =>
     route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Temporary outage"}' })
   );
   await moreActions.press("Enter");
-  await page.getByRole("menuitem", { name: "Move to Interviewing" }).click();
+  await page.getByRole("menuitem", { name: "Hire", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Hire this candidate?" })
+    .getByRole("button", { name: "Confirm hire" })
+    .click();
   await expect(page.getByTestId("applications-detail")).toContainText("Temporary outage");
   await expect(page.getByTestId("applications-detail-header")).toContainText("Viewed");
   await page.unroute("**/api/v1/applications/*/transition");

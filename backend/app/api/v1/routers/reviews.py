@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -86,6 +86,47 @@ async def request_interest_start(
         return await _summary_and_commit(session, engagement, current_user.id)
     except review_service.ReviewDomainError as error:
         _raise_domain(error)
+
+
+#: Engagements where something is still being arranged or worked on. Finished
+#: ones are the review workspace's business, not the inbox's.
+LIVE_ENGAGEMENT_STATUSES = ("ready_to_start", "start_pending", "active", "completion_pending")
+
+
+@router.get("/engagements", response_model=list[EngagementSummary])
+async def list_my_engagements(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[EngagementSummary]:
+    """Every live engagement the caller takes part in, in one request.
+
+    The workspace needs these list-wide: "whose start is still unconfirmed?" is
+    a question about the whole inbox, and answering it by opening each thread in
+    turn would make the highest-priority queue unreachable in practice.
+
+    Scoped by participation, so there is no parameter through which someone
+    could read an engagement they are not part of.
+    """
+    engagements = (
+        await session.execute(
+            select(Engagement)
+            .where(
+                or_(
+                    Engagement.recruiter_user_id == current_user.id,
+                    Engagement.talent_user_id == current_user.id,
+                ),
+                Engagement.status.in_(LIVE_ENGAGEMENT_STATUSES),
+            )
+            .order_by(Engagement.updated_at.desc())
+        )
+    ).scalars().all()
+    summaries = [
+        await review_service.engagement_summary(session, engagement, current_user.id)
+        for engagement in engagements
+    ]
+    # `engagement_summary` can finalize expired windows as a side effect.
+    await session.commit()
+    return summaries
 
 
 @router.get("/engagements/{engagement_id}", response_model=EngagementSummary)

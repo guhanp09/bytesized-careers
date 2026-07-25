@@ -15,6 +15,7 @@ import type { OwnerInteraction } from "./ownerInteractions.ts";
 
 export type WorkQueueKey =
   | "start_confirmation_pending"
+  | "interview_confirmation"
   | "interview_follow_up"
   | "needs_your_reply"
   | "decision_needed"
@@ -36,12 +37,13 @@ export type WorkQueue = {
  */
 export const WORK_QUEUE_ORDER: WorkQueue[] = [
   { key: "start_confirmation_pending", label: "Start confirmation pending", order: 0 },
-  { key: "interview_follow_up", label: "Interview follow-up", order: 1 },
-  { key: "needs_your_reply", label: "Needs your reply", order: 2 },
-  { key: "decision_needed", label: "Decision needed", order: 3 },
-  { key: "new_to_review", label: "New to review", order: 4 },
-  { key: "waiting_for_them", label: "Waiting for them", order: 5 },
-  { key: "stale", label: "Stale", order: 6 },
+  { key: "interview_confirmation", label: "Interview to confirm", order: 1 },
+  { key: "interview_follow_up", label: "Interview follow-up", order: 2 },
+  { key: "needs_your_reply", label: "Needs your reply", order: 3 },
+  { key: "decision_needed", label: "Decision needed", order: 4 },
+  { key: "new_to_review", label: "New to review", order: 5 },
+  { key: "waiting_for_them", label: "Waiting for them", order: 6 },
+  { key: "stale", label: "Stale", order: 7 },
 ];
 
 export function workQueueByKey(key: WorkQueueKey): WorkQueue {
@@ -111,6 +113,8 @@ export function deriveWorkQueue(
   switch (state.key) {
     case "start_confirmation_pending":
       return "start_confirmation_pending";
+    case "interview_confirmation":
+      return "interview_confirmation";
     case "interview_follow_up":
       return "interview_follow_up";
     case "needs_reply":

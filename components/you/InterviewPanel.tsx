@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Icon } from "../Icons";
 import {
@@ -25,6 +25,24 @@ const PRIMARY =
   "inline-flex h-8 cursor-pointer items-center justify-center rounded-lg bg-white px-3 text-[11.5px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50";
 const FIELD =
   "h-9 w-full rounded-lg border border-white/12 bg-white/[0.04] px-2.5 text-[12.5px] text-white/90 outline-none transition-colors focus:border-white/30 focus-visible:ring-2 focus-visible:ring-white/40";
+
+const noopSubscribe = () => () => {};
+
+/**
+ * False while rendering on the server, true once the client owns the tree.
+ *
+ * Time-zone- and locale-dependent text cannot be produced on the server: the
+ * server's zone is not the reader's, and a mismatch here would leave someone
+ * looking at a confident, wrong time. Expressed as an external store rather than
+ * an effect so the first client render already knows the answer.
+ */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false
+  );
+}
 
 /** Status dot colour. Never the only signal — every state also carries a word. */
 const STATUS_DOT: Record<Interview["status"], string> = {
@@ -67,8 +85,11 @@ export function InterviewCard({
   onComplete: () => void;
   onCancel: () => void;
 }) {
-  const local = formatInterviewLocal(interview.scheduledAt);
-  const showZone = needsZoneQualifier(interview);
+  // The organiser's pre-rendered label is correct everywhere, so it holds the
+  // space until the client can render the reader's own clock.
+  const hydrated = useHydrated();
+  const local = hydrated ? formatInterviewLocal(interview.scheduledAt) : null;
+  const showZone = hydrated && needsZoneQualifier(interview);
   const inactive = interview.status === "cancelled" || interview.status === "completed";
 
   return (
@@ -76,7 +97,15 @@ export function InterviewCard({
       data-testid="interview-card"
       data-interview-status={interview.status}
       aria-label={`Interview with ${counterpartyName}`}
-      className={`ui-crossfade mb-6 rounded-xl ${SURFACE} p-4`}
+      /*
+        Sticky, because the conversation scrolls to its newest message the
+        moment it opens — which would leave the one thing with a deadline on it
+        off-screen. Fully opaque rather than translucent: messages passing
+        underneath a see-through panel produced unreadable overlap, and a
+        scheduling detail is exactly the wrong text to render ambiguously. The
+        shadow, not transparency, is what says "this floats".
+      */
+      className="ui-crossfade sticky top-0 z-10 mb-6 rounded-xl border border-white/[0.1] bg-[#0f0f12] p-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.9)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -222,6 +251,8 @@ export function InterviewScheduler({
   );
   const [draft, setDraft] = useState<ScheduleDraft>(() => initialScheduleDraft(interview));
   const [localError, setLocalError] = useState<string | null>(null);
+  // Resolved on the client for the same reason the card defers its local time.
+  const zoneLabel = useHydrated() ? viewerTimeZone() : null;
   const headingId = useId();
   const dateRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLElement | null>(null);
@@ -321,7 +352,8 @@ export function InterviewScheduler({
         well-known way to pick the wrong one by accident.
       */}
       <p className="mt-1.5 text-[11px] text-white/40">
-        Your time zone ({viewerTimeZone() ?? "UTC"}). {counterpartyName} sees this in theirs.
+        {zoneLabel ? `Your time zone (${zoneLabel}). ` : ""}
+        {counterpartyName} sees this in theirs.
       </p>
 
       <fieldset className="mt-3.5">

@@ -490,3 +490,38 @@ async def test_a_hiring_request_interview_changes_no_stage(
     ).scalar_one()
     assert record.status == "new"
     assert record.participant_status == "new"
+
+
+async def test_the_arranged_time_survives_a_round_trip_with_its_offset(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A stored instant must come back as an unambiguous instant.
+
+    SQLite has no time-zone type, so a stored value is handed back naive. Left
+    alone, `isoformat` emits it without an offset and a browser parses it as its
+    *own* local time — showing someone a confident, wrong interview time. This is
+    the regression that guards the round trip.
+    """
+    fixture = await _application(client)
+    # 09:00 in Kolkata is 03:30 UTC — a half-hour offset, so a zone that was
+    # dropped or misapplied cannot coincidentally produce the right answer.
+    when = (datetime.now(UTC) + timedelta(days=4)).replace(
+        hour=3, minute=30, second=0, microsecond=0
+    )
+    created = await _propose(
+        client, fixture, scheduled_at=when.isoformat(), timezone="Asia/Kolkata"
+    )
+    assert created.status_code == 200, created.text
+    assert "9:00 AM (Asia/Kolkata)" in created.json()["schedule_label"]
+
+    # Re-read from storage rather than reusing the in-memory row.
+    db_session.expire_all()
+    reloaded = await client.get(
+        f"/api/v1/me/applications/{fixture.application_id}/conversation",
+        headers=_h(fixture.owner),
+    )
+    interview = reloaded.json()["interview"]
+    parsed = datetime.fromisoformat(interview["scheduled_at"])
+    assert parsed.tzinfo is not None, "a serialised instant must carry its offset"
+    assert parsed.astimezone(UTC) == when
+    assert "9:00 AM (Asia/Kolkata)" in interview["schedule_label"]

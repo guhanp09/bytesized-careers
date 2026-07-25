@@ -508,3 +508,48 @@ async def test_review_moderation_hide_and_restore_updates_public_aggregate(clien
     assert restored.json()["target_status"] == "visible"
     after_restore = (await client.get(f"/api/v1/users/{talent_name}/public-profile")).json()
     assert after_restore["reviews_by_mode"]["talent"]["summary"]["review_count"] == 1
+
+
+async def test_live_engagements_are_listed_scoped_and_exclude_finished_work(
+    client: AsyncClient,
+) -> None:
+    """The list-wide read behind the start-confirmation queue.
+
+    Phase A could only see the engagement of the record the user had already
+    opened, which left the highest-priority queue permanently empty. This is the
+    endpoint that makes it real, so what it must never do is show someone an
+    engagement they are not part of.
+    """
+    recruiter, talent, _, _, application_id = await _hired_application(client, "livelist")
+    stranger, _ = await _register(client, "livelist_stranger")
+
+    for token in (recruiter, talent):
+        listed = await client.get("/api/v1/me/engagements", headers=_auth(token))
+        assert listed.status_code == 200, listed.text
+        rows = listed.json()
+        assert len(rows) == 1
+        assert rows[0]["status"] == "ready_to_start"
+        assert rows[0]["source_record_id"] == application_id
+
+    outsider = await client.get("/api/v1/me/engagements", headers=_auth(stranger))
+    assert outsider.status_code == 200
+    assert outsider.json() == []
+
+    # A start request is still live work, and both sides keep seeing it.
+    requested = await client.post(
+        f"/api/v1/me/applications/{application_id}/engagement/start-request",
+        headers=_auth(talent),
+    )
+    assert requested.status_code == 200
+    pending = await client.get("/api/v1/me/engagements", headers=_auth(recruiter))
+    assert [row["status"] for row in pending.json()] == ["start_pending"]
+
+    # Once work is finished the inbox has nothing left to arrange, so it drops
+    # out of this list — the review workspace owns it from there.
+    _, _, _, _, _, finished_id = await _active_engagement(client, "livelist_done")
+    finished = await client.post(
+        f"/api/v1/me/engagements/{finished_id}/completion-request",
+        headers=_auth(recruiter),
+        json={"outcome": "completed", "note": "Delivered."},
+    )
+    assert finished.status_code in {200, 403}

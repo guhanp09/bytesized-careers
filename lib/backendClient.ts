@@ -2919,6 +2919,19 @@ export async function getInterestConversation(
   );
 }
 
+/**
+ * Every live engagement the caller takes part in.
+ *
+ * List-wide because "whose start is still unconfirmed?" is a question about the
+ * whole inbox — answering it by opening each thread in turn would make the
+ * highest-priority queue unreachable in practice.
+ */
+export async function listLiveEngagements(
+  accessToken: string
+): Promise<BackendEngagementSummary[]> {
+  return requestJson<BackendEngagementSummary[]>("/me/engagements", { accessToken });
+}
+
 export async function requestEngagementStart(
   accessToken: string,
   sourceType: BackendEngagementSummary["source_type"],

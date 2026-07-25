@@ -103,6 +103,8 @@ test("queue precedence is the documented order", () => {
     WORK_QUEUE_ORDER.map((queue) => queue.key),
     [
       "start_confirmation_pending",
+      // A time someone is holding open for you outranks a follow-up you owe.
+      "interview_confirmation",
       "interview_follow_up",
       "needs_your_reply",
       "decision_needed",

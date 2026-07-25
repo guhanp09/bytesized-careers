@@ -112,6 +112,21 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Read a stored timestamp back as an explicit UTC instant.
+
+    Not cosmetic. Postgres returns `timestamptz` values already aware, but
+    SQLite has no time-zone type and hands back a naive datetime — which
+    `astimezone` would then interpret as the *server's* local zone, and which
+    `isoformat` would emit without an offset for a browser to misread as its
+    own local time. Either mistake shows someone a confident, wrong interview
+    time, so every read of a stored instant goes through here.
+    """
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 def _log(event: str, **fields: object) -> None:
     logger.info(event, extra={"interview": fields})
 
@@ -163,11 +178,12 @@ def describe_schedule(interview: InteractionInterview) -> str:
     the instant in the reader's own zone; this string is what goes into the
     message body, which has no client to help it.
     """
+    scheduled = _as_utc(interview.scheduled_at) or _now()
     try:
-        local = interview.scheduled_at.astimezone(ZoneInfo(interview.timezone))
+        local = scheduled.astimezone(ZoneInfo(interview.timezone))
         zone = interview.timezone
     except (ZoneInfoNotFoundError, ValueError, KeyError):
-        local = interview.scheduled_at.astimezone(UTC)
+        local = scheduled.astimezone(UTC)
         zone = "UTC"
     stamp = local.strftime("%a %-d %b, %-I:%M %p")
     parts = [f"{stamp} ({zone})", METHOD_LABELS.get(interview.meeting_method, "Details in the message")]
@@ -225,9 +241,9 @@ def follow_up_due(interview: InteractionInterview | None, *, now: datetime | Non
     if interview.status not in {"proposed", "confirmed"}:
         return False
     reference = now or _now()
-    scheduled = interview.scheduled_at
-    if scheduled.tzinfo is None:
-        scheduled = scheduled.replace(tzinfo=UTC)
+    scheduled = _as_utc(interview.scheduled_at)
+    if scheduled is None:
+        return False
     return (reference - scheduled).total_seconds() > FOLLOW_UP_GRACE_MINUTES * 60
 
 
@@ -768,25 +784,27 @@ def serialize_interview(
     """
     if interview is None:
         return None
+    def stamp(value: datetime | None) -> str | None:
+        aware = _as_utc(value)
+        return aware.isoformat() if aware else None
+
     return {
         "id": str(interview.id),
         "conversation_id": str(interview.conversation_id),
         "status": interview.status,
-        "scheduled_at": interview.scheduled_at.isoformat() if interview.scheduled_at else None,
+        "scheduled_at": stamp(interview.scheduled_at),
         "timezone": interview.timezone,
         "duration_minutes": interview.duration_minutes,
         "meeting_method": interview.meeting_method,
         "meeting_detail": interview.meeting_detail,
         "schedule_label": describe_schedule(interview),
-        "previous_scheduled_at": (
-            interview.previous_scheduled_at.isoformat() if interview.previous_scheduled_at else None
-        ),
+        "previous_scheduled_at": stamp(interview.previous_scheduled_at),
         "reschedule_count": interview.reschedule_count,
         "round_number": interview.round_number,
-        "confirmed_at": interview.confirmed_at.isoformat() if interview.confirmed_at else None,
+        "confirmed_at": stamp(interview.confirmed_at),
         "confirmed_by_me": interview.confirmed_by_user_id == viewer_id,
-        "completed_at": interview.completed_at.isoformat() if interview.completed_at else None,
-        "cancelled_at": interview.cancelled_at.isoformat() if interview.cancelled_at else None,
+        "completed_at": stamp(interview.completed_at),
+        "cancelled_at": stamp(interview.cancelled_at),
         "version": interview.version,
         "can_manage": organiser_id(conversation) == viewer_id,
         "follow_up_due": follow_up_due(interview),
