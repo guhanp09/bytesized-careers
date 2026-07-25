@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../Icons";
+import { InteractionTime } from "./InteractionTime";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -919,7 +920,9 @@ export default function PipelineBoard({
                                       data-testid="pipeline-work-state"
                                       data-work-state={workState.key}
                                       className={[
-                                        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
+                                        // No border, no hover, full-round: a
+                                        // label, not something to press.
+                                        "inline-flex items-center gap-1 rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
                                         workState.highConfidence
                                           ? "bg-wash-strong text-default"
                                           : "text-muted",
@@ -1009,7 +1012,7 @@ export default function PipelineBoard({
                             ) : null}
 
                             <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-2">
-                              <span className="shrink-0 text-[11px] text-subtle">{item.updatedAtLabel}</span>
+                              <InteractionTime value={item.updatedAt} className="shrink-0 text-[11px] text-subtle" />
                               <div className="flex items-center gap-1.5" data-no-drag>
                                 {(() => {
                                   // Messaging is the frequent action, so it's the card's

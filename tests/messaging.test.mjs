@@ -18,33 +18,29 @@ import {
   talentInterestRelationshipPresentation,
 } from "../lib/applicationRelationship.ts";
 
-const fixedTime = () => "just now";
 
 test("my own message renders on the 'You' side", () => {
   const mapped = mapBackendMessage(
     { id: "m1", from_me: true, sender_name: "Priya Nair", body: "Hi", created_at: null },
-    "Finance Simplified",
-    fixedTime
+    "Finance Simplified"
   );
   assert.equal(mapped.fromMe, true);
   assert.equal(mapped.senderName, "You");
   assert.equal(mapped.body, "Hi");
-  assert.equal(mapped.atLabel, "just now");
+  assert.equal(mapped.createdAt, null);
 });
 
 test("the other participant's message uses their name (or the counterparty fallback)", () => {
   const named = mapBackendMessage(
     { id: "m2", from_me: false, sender_name: "Finance Simplified", body: "Welcome", created_at: null },
-    "Fallback Name",
-    fixedTime
+    "Fallback Name"
   );
   assert.equal(named.fromMe, false);
   assert.equal(named.senderName, "Finance Simplified");
 
   const unnamed = mapBackendMessage(
     { id: "m3", from_me: false, sender_name: null, body: "Hello", created_at: null },
-    "Fallback Name",
-    fixedTime
+    "Fallback Name"
   );
   assert.equal(unnamed.senderName, "Fallback Name");
 });
@@ -58,8 +54,7 @@ test("the backend read receipt maps only from authoritative recipient progress",
       created_at: "2026-07-12T09:00:00Z",
       read_by_recipient: false,
     },
-    "Finance Simplified",
-    fixedTime
+    "Finance Simplified"
   );
   const seen = mapBackendMessage(
     {
@@ -69,8 +64,7 @@ test("the backend read receipt maps only from authoritative recipient progress",
       created_at: "2026-07-12T09:01:00Z",
       read_by_recipient: true,
     },
-    "Finance Simplified",
-    fixedTime
+    "Finance Simplified"
   );
   assert.equal(unread.readByRecipient, false);
   assert.equal(seen.readByRecipient, true);
@@ -124,8 +118,7 @@ test("receipt recovery polling runs only while the latest ordinary outgoing mess
 test("engagement lifecycle messages render as trusted centered status events", () => {
   const mapped = mapBackendMessage(
     { id: "event-1", from_me: false, body: "Work started.", kind: "engagement_update" },
-    "Collaborator",
-    fixedTime
+    "Collaborator"
   );
   assert.equal(mapped.kind, "status");
 });

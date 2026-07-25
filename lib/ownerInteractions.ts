@@ -6,6 +6,8 @@ import type {
 } from "./backendClient";
 import type { FirstMessageAnswers } from "./firstMessageRequirements";
 import { formatTalentListingExperience, formatTalentRate } from "./talentListing.ts";
+import { displayPersonName, timelineEventLabel } from "./interactionLabels.ts";
+import { formatInteractionTime } from "./interactionTime.ts";
 import type { Job } from "./types";
 
 export type InteractionMode = "talent" | "hiring";
@@ -27,13 +29,20 @@ export type InteractionStatus =
 export type InteractionTimelineEvent = {
   id: string;
   label: string;
-  at: string;
+  /** ISO instant. Formatted where it is drawn, never stored preformatted. */
+  occurredAt: string;
+  /**
+   * A private decision that a later shared outcome contradicts. Kept in the
+   * record — it happened — but rendered struck rather than as current truth.
+   */
+  superseded?: boolean;
 };
 
 export type InteractionThreadMessage = {
   from: string;
   body: string;
-  atLabel: string;
+  /** ISO instant. Formatted where it is drawn, never stored preformatted. */
+  sentAt: string;
   /** "status" marks a platform-generated stage update rendered apart from bubbles. */
   kind?: "status";
 };
@@ -122,8 +131,18 @@ export type OwnerInteraction = {
   /** Real backend account id for participant-only actions such as blocking. */
   counterpartyUserId?: string | null;
   counterpartyAvatarUrl?: string | null;
-  createdAtLabel: string;
-  updatedAtLabel: string;
+  /**
+   * Authoritative instants, ISO-8601.
+   *
+   * These were `createdAtLabel` / `updatedAtLabel` and held display strings —
+   * hand-typed in the fixture, and produced by calling the formatter at *map*
+   * time on the backend path, which froze the label and discarded the instant.
+   * `createdAtLabel` held a display string and had zero readers; it is replaced
+   * by `createdAt`, which the conversation builder genuinely needs to date the
+   * opening message.
+   */
+  createdAt: string;
+  updatedAt: string;
     unread?: boolean;
   message: string;
   /**
@@ -188,24 +207,15 @@ export function interactionKindLabel(item: Pick<OwnerInteraction, "direction" | 
 // the Applications workspace renders, using only fields the backend actually
 // returns — no fabricated names, timestamps, or read states.
 
+/**
+ * Deprecated in favour of `formatInteractionTime`.
+ *
+ * Retained because Drafts still calls it directly, but delegating means there is
+ * exactly one rule: the old body stopped at `Nw ago` and always printed the
+ * year, neither of which matches the product's date rule.
+ */
 export function relativeTimeLabel(iso?: string | null): string {
-  if (!iso) return "";
-  // Backend timestamps are UTC but may arrive without a timezone designator;
-  // parsing those as local time would shift every label by the UTC offset.
-  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso);
-  const time = Date.parse(hasTimezone ? iso : `${iso}Z`);
-  if (!Number.isFinite(time)) return "";
-  const diffMs = Math.max(0, Date.now() - time);
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return new Date(time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return formatInteractionTime(iso);
 }
 
 function applicationStatusToInteraction(
@@ -282,35 +292,71 @@ function liveTimeline(
   }> = []
 ): InteractionTimelineEvent[] {
   const events: InteractionTimelineEvent[] = [
-    { id: `${id}-created`, label: createdLabel, at: relativeTimeLabel(createdAt) },
+    { id: `${id}-created`, label: createdLabel, occurredAt: createdAt },
   ];
+  /*
+    One normalized projection.
+
+    Two things went wrong before. Events were pushed in array order, so a
+    timeline could read `Interviewing → Not selected saved privately → Hired`
+    for the same person — three states presented as equally current truth. And
+    the stage name came from an inline map with a `?? event.new_status`
+    fallback, which is how raw enums reached the UI.
+
+    Now: labels come from the shared projection, entries are sorted by their
+    authoritative instant, and a *private* decision that a later shared outcome
+    contradicts is marked superseded rather than deleted. Deleting it would lose
+    real history a manager may need; presenting it as current would be a lie.
+  */
   const persisted = history
     .filter((event) => event.event_kind !== "integrity_issue")
-    .map((event) => {
-      const display = ({
-        reviewing: "Reviewing",
-        shortlisted: "Shortlisted",
-        interviewing: "Interviewing",
-        hired: "Hired",
-        rejected: "Not selected",
-        accepted: "Accepted",
-        declined: "Declined",
-        withdrawn: "Withdrawn",
-        archived: "Archived",
-      } as Record<string, string>)[event.new_status] ?? event.new_status;
-      const suffix = event.event_kind === "communicated"
-        ? " shared"
-        : event.audience === "manager_only"
-          ? " saved privately"
-          : "";
-      return { id: event.id, label: `${display}${suffix}`, at: relativeTimeLabel(event.created_at) };
-    });
-  events.push(...persisted);
+    .map((event) => ({
+      id: event.id,
+      label: timelineEventLabel({
+        status: event.new_status,
+        communicated: event.event_kind === "communicated",
+        managerOnly: event.audience === "manager_only",
+      }),
+      occurredAt: event.created_at,
+      status: event.new_status,
+      shared: event.event_kind === "communicated" || event.audience !== "manager_only",
+    }));
+  events.push(...persisted.map(({ status, shared, ...entry }) => ({
+    ...entry,
+    superseded: isSupersededDecision({ status, shared, at: entry.occurredAt }, persisted, status),
+  })));
   const settledStatuses: InteractionStatus[] = ["new", "pending"];
   if (persisted.length === 0 && !settledStatuses.includes(status) && updatedAt && updatedAt !== createdAt) {
-    events.push({ id: `${id}-status`, label: interactionStatusLabel(status), at: relativeTimeLabel(updatedAt) });
+    events.push({ id: `${id}-status`, label: interactionStatusLabel(status), occurredAt: updatedAt });
   }
-  return events;
+  return events.sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+}
+
+
+/** Outcomes that settle a relationship. A later one supersedes an earlier. */
+const TERMINAL_STAGES = new Set(["hired", "rejected", "accepted", "declined", "withdrawn"]);
+
+/**
+ * Is this entry a private decision that a later, shared outcome contradicts?
+ *
+ * Only private ones can be superseded this way: a decision the other side was
+ * actually told is part of the record regardless of what followed, and striking
+ * it would misrepresent what they were sent.
+ */
+function isSupersededDecision(
+  entry: { status: string; shared: boolean; at: string },
+  all: Array<{ status: string; shared: boolean; occurredAt: string }>,
+  status: string
+): boolean {
+  if (entry.shared) return false;
+  if (!TERMINAL_STAGES.has(status)) return false;
+  const at = Date.parse(entry.at);
+  return all.some(
+    (other) =>
+      other.status !== status &&
+      TERMINAL_STAGES.has(other.status) &&
+      Date.parse(other.occurredAt) > at
+  );
 }
 
 function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
@@ -400,8 +446,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         counterpartyName: job?.channel?.name || "Recruiter",
         counterpartyUserId: application.job_owner_user_id || null,
         counterpartyAvatarUrl: job?.channel?.logoUrl || null,
-        createdAtLabel: relativeTimeLabel(application.created_at),
-        updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
+        createdAt: application.created_at,
+        updatedAt: application.updated_at || application.created_at,
         message: application.cover_note || "",
         firstMessageAnswers: coerceAnswers(application.first_message_answers),
         job: job ? jobSnapshotFromJob(job) : null,
@@ -419,8 +465,12 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
 
   for (const application of summary.receivedApplications) {
     const snapshot = application.applicant_snapshot || {};
-    const applicantName =
-      asSnapshotString(snapshot["display_name"]) || asSnapshotString(snapshot["username"]) || "Applicant";
+    const applicantName = displayPersonName({
+      displayName: asSnapshotString(snapshot["display_name"]),
+      username: asSnapshotString(snapshot["username"]),
+      identity: asSnapshotString(snapshot["user_id"]) || application.applicant_user_id || application.id,
+      role: "applicant",
+    });
     const username = asSnapshotString(snapshot["username"]);
     const job = myJobsById.get(String(application.job_id)) || null;
     const status = applicationStatusToInteraction(application.status, "received");
@@ -442,8 +492,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         title: applicantName,
         counterpartyName: applicantName,
         counterpartyUserId: application.applicant_user_id,
-        createdAtLabel: relativeTimeLabel(application.created_at),
-        updatedAtLabel: relativeTimeLabel(application.updated_at || application.created_at),
+        createdAt: application.created_at,
+        updatedAt: application.updated_at || application.created_at,
         message: application.cover_note || "",
         firstMessageAnswers: coerceAnswers(application.first_message_answers),
         job: job ? { ...jobSnapshotFromJob(job), channelName: null, channelLogoUrl: null } : null,
@@ -495,8 +545,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         counterpartyName: talentName,
         counterpartyUserId: interest.owner_user_id,
         counterpartyAvatarUrl: listing?.owner_avatar_url || null,
-        createdAtLabel: relativeTimeLabel(interest.created_at),
-        updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
+        createdAt: interest.created_at,
+        updatedAt: interest.updated_at || interest.created_at,
         message: interest.note || "",
         firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         talent: listing ? talentSnapshotFromListing(listing) : null,
@@ -540,8 +590,8 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         counterpartyName: recruiterName,
         counterpartyUserId: interest.recruiter_user_id,
         counterpartyAvatarUrl: interest.recruiter_avatar_url || relatedJob?.channel?.logoUrl || null,
-        createdAtLabel: relativeTimeLabel(interest.created_at),
-        updatedAtLabel: relativeTimeLabel(interest.updated_at || interest.created_at),
+        createdAt: interest.created_at,
+        updatedAt: interest.updated_at || interest.created_at,
         message: interest.note || "",
         firstMessageAnswers: coerceAnswers(interest.first_message_answers),
         recruiter: relatedJob || interest.recruiter_username

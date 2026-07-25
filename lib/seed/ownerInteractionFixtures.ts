@@ -21,6 +21,23 @@ import type {
 } from "../ownerInteractions";
 
 /**
+ * Seed-time anchor for this transitional fixture.
+ *
+ * Every record's age is expressed as an offset from one instant rather than as
+ * a hand-typed label, which is what let the same column show `6 Jan 2026`,
+ * `6d ago` and `1m ago` at once. Anchored at module load so the demo data never
+ * goes stale, and so the ages a reviewer sees match the ages that were written.
+ *
+ * The canonical generator replaces this file; until then it must still be right.
+ */
+const SEED_ANCHOR = Date.now();
+
+/** An ISO instant `seconds` before the anchor. */
+const ago = (seconds: number): string =>
+  new Date(SEED_ANCHOR - seconds * 1000).toISOString();
+
+
+/**
  * The viewer's own talent listing, shown as the context card for every received
  * hiring request (a recruiter is interested in this listing). One listing is
  * reused across the demo requests, matching their shared sourceListingTitle.
@@ -51,8 +68,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Video editor for YouTube (long-form, retention-focused)",
     counterpartyName: "Finance Channel",
     counterpartyAvatarUrl: "https://picsum.photos/seed/finance/96/96",
-    createdAtLabel: "2h ago",
-    updatedAtLabel: "2h ago",
+    createdAt: ago(7200),
+    updatedAt: ago(7200),
     message:
       "Hi — I edit long-form finance and education videos with a focus on retention pacing. I rebuilt the structure for two explainer channels last quarter and can match your captions and sound style from the references. Happy to do a paid test edit on one of your recent uploads.",
     firstMessageAnswers: {
@@ -135,7 +152,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       tags: ["Premiere", "Story pace", "SFX", "Captions"],
       listingStatus: "Open",
     },
-    timeline: [{ id: "t-app-sent-1-applied", label: "Application sent", at: "2h ago" }],
+    timeline: [{ id: "t-app-sent-1-applied", label: "Application sent", occurredAt: ago(7200) }],
   },
   {
     id: "t-app-sent-2",
@@ -146,8 +163,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Shorts editor for daily YouTube Shorts (fast paced, captions)",
     counterpartyName: "Motivation Shorts",
     counterpartyAvatarUrl: "https://picsum.photos/seed/motivation/96/96",
-    createdAtLabel: "3d ago",
-    updatedAtLabel: "5h ago",
+    createdAt: ago(259200),
+    updatedAt: ago(18000),
     unread: true,
     message:
       "I can run a daily shorts pipeline and keep your caption style consistent across editors.",
@@ -164,18 +181,18 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Motivation Shorts",
       body: "Your pacing reel is close to what we want. Can you start with a one-week trial batch of 5 shorts using next week's scripts?",
-      atLabel: "5h ago",
+      sentAt: ago(18000),
     },
     replies: [
       {
         from: "You",
         body: "Happy to. I can pull next week's scripts from the shared drive and deliver the first batch of 5 within three days, captions in your house style.",
-        atLabel: "4h ago",
+        sentAt: ago(14400),
       },
       {
         from: "Motivation Shorts",
         body: "Perfect. What's your availability for a 15-minute kickoff call this week to walk through the caption presets?",
-        atLabel: "3h ago",
+        sentAt: ago(10800),
       },
     ],
     job: {
@@ -192,9 +209,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       listingStatus: "Open",
     },
     timeline: [
-      { id: "t-app-sent-2-applied", label: "Application sent", at: "3d ago" },
-      { id: "t-app-sent-2-viewed", label: "Viewed by Motivation Shorts", at: "2d ago" },
-      { id: "t-app-sent-2-responded", label: "Response received", at: "5h ago" },
+      { id: "t-app-sent-2-applied", label: "Application sent", occurredAt: ago(259200) },
+      { id: "t-app-sent-2-viewed", label: "Viewed by Motivation Shorts", occurredAt: ago(172800) },
+      { id: "t-app-sent-2-responded", label: "Response received", occurredAt: ago(18000) },
     ],
   },
   {
@@ -207,15 +224,15 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Thumbnail designer (CTR-focused, 2–3 concepts)",
     counterpartyName: "Tech Channel",
     counterpartyAvatarUrl: "https://picsum.photos/seed/tech/96/96",
-    createdAtLabel: "1w ago",
-    updatedAtLabel: "4d ago",
+    createdAt: ago(604800),
+    updatedAt: ago(345600),
     message:
       "I design high-contrast thumbnail concepts with fast iteration — usually 3 directions within 24 hours. Sharing a packaging set I did for a hardware review channel in a similar niche.",
     proposedTerms: "₹900 per month · 8 thumbnails",
     response: {
       from: "Tech Channel",
       body: "Thanks for the samples — your work is strong. We went with someone who had more long-form documentary packaging experience for this batch. We'll keep your profile for the next round.",
-      atLabel: "4d ago",
+      sentAt: ago(345600),
     },
     job: {
       jobId: "2",
@@ -231,9 +248,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       listingStatus: "Open",
     },
     timeline: [
-      { id: "t-app-sent-3-applied", label: "Application sent", at: "1w ago" },
-      { id: "t-app-sent-3-viewed", label: "Viewed by Tech Channel", at: "6d ago" },
-      { id: "t-app-sent-3-declined", label: "Declined by Tech Channel", at: "4d ago" },
+      { id: "t-app-sent-3-applied", label: "Application sent", occurredAt: ago(604800) },
+      { id: "t-app-sent-3-viewed", label: "Viewed by Tech Channel", occurredAt: ago(518400) },
+      { id: "t-app-sent-3-declined", label: "Declined by Tech Channel", occurredAt: ago(345600) },
     ],
   },
   {
@@ -245,8 +262,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Script writer for Hindi explainers (8–10 mins)",
     counterpartyName: "Gyaan Express",
     counterpartyAvatarUrl: "https://picsum.photos/seed/gyaan/96/96",
-    createdAtLabel: "2d ago",
-    updatedAtLabel: "1d ago",
+    createdAt: ago(172800),
+    updatedAt: ago(86400),
     message:
       "I write Hindi explainer scripts with a clear hook, simple analogies, and a tight 8–10 minute structure. I can match your conversational tone and include on-screen cue notes for the editor.",
     firstMessageAnswers: {
@@ -273,8 +290,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       listingStatus: "Open",
     },
     timeline: [
-      { id: "t-app-sent-4-applied", label: "Application sent", at: "2d ago" },
-      { id: "t-app-sent-4-viewed", label: "Viewed by Gyaan Express", at: "1d ago" },
+      { id: "t-app-sent-4-applied", label: "Application sent", occurredAt: ago(172800) },
+      { id: "t-app-sent-4-viewed", label: "Viewed by Gyaan Express", occurredAt: ago(86400) },
     ],
   },
   {
@@ -286,8 +303,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Long-form editor for documentary-style finance deep dives",
     counterpartyName: "Moneywise India",
     counterpartyAvatarUrl: "https://picsum.photos/seed/moneywise/96/96",
-    createdAtLabel: "6d ago",
-    updatedAtLabel: "1d ago",
+    createdAt: ago(518400),
+    updatedAt: ago(86400),
     unread: true,
     message:
       "I edit documentary-style finance videos — narrative pacing, archival overlays, and clean sound design. I've linked two deep dives I cut end to end and can adapt to your reference style.",
@@ -328,7 +345,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Moneywise India",
       body: "We liked your explainers work and shortlisted you. Can you share two more samples with heavier archival/B-roll use?",
-      atLabel: "1d ago",
+      sentAt: ago(86400),
     },
     job: {
       jobId: "6",
@@ -344,9 +361,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       listingStatus: "Open",
     },
     timeline: [
-      { id: "t-app-sent-5-applied", label: "Application sent", at: "6d ago" },
-      { id: "t-app-sent-5-viewed", label: "Viewed by Moneywise India", at: "3d ago" },
-      { id: "t-app-sent-5-shortlisted", label: "Shortlisted by Moneywise India", at: "1d ago" },
+      { id: "t-app-sent-5-applied", label: "Application sent", occurredAt: ago(518400) },
+      { id: "t-app-sent-5-viewed", label: "Viewed by Moneywise India", occurredAt: ago(259200) },
+      { id: "t-app-sent-5-shortlisted", label: "Shortlisted by Moneywise India", occurredAt: ago(86400) },
     ],
   },
 
@@ -361,8 +378,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Shorts editing package — 15 shorts per month",
     counterpartyName: "Motivation Shorts",
     counterpartyAvatarUrl: "https://picsum.photos/seed/motivation/96/96",
-    createdAtLabel: "1d ago",
-    updatedAtLabel: "1d ago",
+    createdAt: ago(86400),
+    updatedAt: ago(86400),
     unread: true,
     message:
       "Hi, I came across your listing and would like to discuss a monthly Shorts package.",
@@ -413,7 +430,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
     talent: OWN_TALENT_LISTING_SNAPSHOT,
-    timeline: [{ id: "t-req-recv-1-sent", label: "Request received", at: "1d ago" }],
+    timeline: [{ id: "t-req-recv-1-sent", label: "Request received", occurredAt: ago(86400) }],
   },
   {
     id: "t-req-recv-2",
@@ -424,8 +441,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Monthly retainer — 4 long-form edits",
     counterpartyName: "Finance Channel",
     counterpartyAvatarUrl: "https://picsum.photos/seed/finance/96/96",
-    createdAtLabel: "3d ago",
-    updatedAtLabel: "2d ago",
+    createdAt: ago(259200),
+    updatedAt: ago(172800),
     message:
       "We publish one long-form explainer a week and want a single editor who owns pacing, captions, and sound. Your listing matches the brief — open to a monthly retainer starting next cycle.",
     firstMessageAnswers: {
@@ -440,7 +457,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Finance Channel",
       body: "Great to have you on board. I'll share the first month's scripts and our brand kit on Monday so you can plan the batch.",
-      atLabel: "2d ago",
+      sentAt: ago(172800),
     },
     recruiter: {
       profileSlug: "finance-creator",
@@ -454,8 +471,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     sourceListingTitle: "Retention-focused long-form and shorts editing",
     talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [
-      { id: "t-req-recv-2-sent", label: "Request received", at: "3d ago" },
-      { id: "t-req-recv-2-accepted", label: "Accepted by you", at: "2d ago" },
+      { id: "t-req-recv-2-sent", label: "Request received", occurredAt: ago(259200) },
+      { id: "t-req-recv-2-accepted", label: "Accepted by you", occurredAt: ago(172800) },
     ],
   },
   {
@@ -467,8 +484,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Documentary research + assembly edit",
     counterpartyName: "History Deep Dives",
     counterpartyAvatarUrl: "https://picsum.photos/seed/history/96/96",
-    createdAtLabel: "1w ago",
-    updatedAtLabel: "6d ago",
+    createdAt: ago(604800),
+    updatedAt: ago(518400),
     message:
       "Looking for one person to handle source pulls and a first assembly cut for a 25-minute documentary. Timeline is six weeks with weekly check-ins.",
     firstMessageAnswers: {
@@ -506,8 +523,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     sourceListingTitle: "Retention-focused long-form and shorts editing",
     talent: OWN_TALENT_LISTING_SNAPSHOT,
     timeline: [
-      { id: "t-req-recv-3-sent", label: "Request received", at: "1w ago" },
-      { id: "t-req-recv-3-declined", label: "Declined by you", at: "6d ago" },
+      { id: "t-req-recv-3-sent", label: "Request received", occurredAt: ago(604800) },
+      { id: "t-req-recv-3-declined", label: "Declined by you", occurredAt: ago(518400) },
     ],
   },
   {
@@ -519,8 +536,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Thumbnail + packaging help for gaming channel",
     counterpartyName: "Pixel Rush",
     counterpartyAvatarUrl: "https://picsum.photos/seed/pixelrush/96/96",
-    createdAtLabel: "10h ago",
-    updatedAtLabel: "10h ago",
+    createdAt: ago(36000),
+    updatedAt: ago(36000),
     unread: true,
     message: "",
     firstMessageAnswers: {
@@ -541,7 +558,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     },
     sourceListingTitle: "Retention-focused long-form and shorts editing",
     talent: OWN_TALENT_LISTING_SNAPSHOT,
-    timeline: [{ id: "t-req-recv-4-sent", label: "Request received", at: "10h ago" }],
+    timeline: [{ id: "t-req-recv-4-sent", label: "Request received", occurredAt: ago(36000) }],
   },
 
   // ---- Recruiter mode: applications received on this user's job listings ----
@@ -553,8 +570,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     status: "new",
     title: "Aarav Mehta",
     counterpartyName: "Aarav Mehta",
-    createdAtLabel: "4h ago",
-    updatedAtLabel: "4h ago",
+    createdAt: ago(14400),
+    updatedAt: ago(14400),
     unread: true,
     message:
       "Hi, I came across the listing and would love to be considered for the long-form editor role.",
@@ -649,7 +666,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         createdAt: "2 days ago",
       },
     ],
-    timeline: [{ id: "r-app-recv-1-applied", label: "Application received", at: "4h ago" }],
+    timeline: [{ id: "r-app-recv-1-applied", label: "Application received", occurredAt: ago(14400) }],
   },
   {
     id: "r-app-recv-2",
@@ -660,8 +677,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     managerNote: "Strong packaging systems — ask for the finance A/B board before an interview.",
     title: "Mira Shah",
     counterpartyName: "Mira Shah",
-    createdAtLabel: "1d ago",
-    updatedAtLabel: "8h ago",
+    createdAt: ago(86400),
+    updatedAt: ago(28800),
     message:
       "I design CTR-focused thumbnails for tech and finance channels — 3 concepts per video with mobile-size legibility checks. I can slot into your weekly publish schedule and keep a shared concept board for fast approvals.",
     firstMessageAnswers: {
@@ -721,9 +738,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-app-recv-2-applied", label: "Application received", at: "1d ago" },
-      { id: "r-app-recv-2-viewed", label: "Viewed by you", at: "1d ago" },
-      { id: "r-app-recv-2-shortlisted", label: "Shortlisted by you", at: "8h ago" },
+      { id: "r-app-recv-2-applied", label: "Application received", occurredAt: ago(86400) },
+      { id: "r-app-recv-2-viewed", label: "Viewed by you", occurredAt: ago(86400) },
+      { id: "r-app-recv-2-shortlisted", label: "Shortlisted by you", occurredAt: ago(28800) },
     ],
   },
   {
@@ -734,8 +751,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     status: "declined",
     title: "Dev Patel",
     counterpartyName: "Dev Patel",
-    createdAtLabel: "5d ago",
-    updatedAtLabel: "3d ago",
+    createdAt: ago(432000),
+    updatedAt: ago(259200),
     message:
       "I manage uploads, analytics reviews, and a content calendar for two channels. I can take over your publishing ops end to end, including QA before every upload and a weekly metrics summary.",
     proposedTerms: "₹2,400 per month · part-time",
@@ -764,9 +781,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-app-recv-3-applied", label: "Application received", at: "5d ago" },
-      { id: "r-app-recv-3-viewed", label: "Viewed by you", at: "4d ago" },
-      { id: "r-app-recv-3-declined", label: "Declined by you", at: "3d ago" },
+      { id: "r-app-recv-3-applied", label: "Application received", occurredAt: ago(432000) },
+      { id: "r-app-recv-3-viewed", label: "Viewed by you", occurredAt: ago(345600) },
+      { id: "r-app-recv-3-declined", label: "Declined by you", occurredAt: ago(259200) },
     ],
   },
   {
@@ -777,8 +794,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     status: "responded",
     title: "Rhea Kapoor",
     counterpartyName: "Rhea Kapoor",
-    createdAtLabel: "2d ago",
-    updatedAtLabel: "6h ago",
+    createdAt: ago(172800),
+    updatedAt: ago(21600),
     unread: true,
     message:
       "I edit shorts and long-form for education channels and can own your weekly batch. I've attached a before/after where I lifted average view duration by reworking the first 30 seconds.",
@@ -820,13 +837,13 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "You",
       body: "Thanks Rhea — the before/after is strong. Can you share two shorts examples with the before/after edits?",
-      atLabel: "1d ago",
+      sentAt: ago(86400),
     },
     replies: [
       {
         from: "Rhea Kapoor",
         body: "Sent — here are two shorts with the raw and final side by side. I'm available from next Monday and can take 3 videos per week.",
-        atLabel: "6h ago",
+        sentAt: ago(21600),
       },
     ],
     talent: {
@@ -844,10 +861,10 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-app-recv-4-applied", label: "Application received", at: "2d ago" },
-      { id: "r-app-recv-4-viewed", label: "Viewed by you", at: "2d ago" },
-      { id: "r-app-recv-4-responded", label: "Reply sent", at: "1d ago" },
-      { id: "r-app-recv-4-candidate", label: "Candidate responded", at: "6h ago" },
+      { id: "r-app-recv-4-applied", label: "Application received", occurredAt: ago(172800) },
+      { id: "r-app-recv-4-viewed", label: "Viewed by you", occurredAt: ago(172800) },
+      { id: "r-app-recv-4-responded", label: "Reply sent", occurredAt: ago(86400) },
+      { id: "r-app-recv-4-candidate", label: "Candidate responded", occurredAt: ago(21600) },
     ],
   },
   {
@@ -858,8 +875,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     status: "new",
     title: "Ishaan Verma",
     counterpartyName: "Ishaan Verma",
-    createdAtLabel: "8h ago",
-    updatedAtLabel: "8h ago",
+    createdAt: ago(28800),
+    updatedAt: ago(28800),
     unread: true,
     message:
       "I've spent three years on creator-led finance and tech channels doing long-form edits, motion callouts, and thumbnail packaging. I work hook-first, keep a shared review board, and can deliver a paid test edit on a recent upload before you commit to anything.",
@@ -917,7 +934,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         { title: "Packaging refresh — finance series", detail: "Channel-wide thumbnail system" },
       ],
     },
-    timeline: [{ id: "r-app-recv-5-applied", label: "Application received", at: "8h ago" }],
+    timeline: [{ id: "r-app-recv-5-applied", label: "Application received", occurredAt: ago(28800) }],
   },
   {
     id: "r-app-recv-6",
@@ -928,8 +945,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     archivedAt: "2026-05-22T09:00:00.000Z",
     title: "Sana Khan",
     counterpartyName: "Sana Khan",
-    createdAtLabel: "1mo ago",
-    updatedAtLabel: "3w ago",
+    createdAt: ago(2592000),
+    updatedAt: ago(1814400),
     message: "",
     job: {
       jobId: null,
@@ -954,8 +971,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       portfolioHighlights: [],
     },
     timeline: [
-      { id: "r-app-recv-6-applied", label: "Application received", at: "1mo ago" },
-      { id: "r-app-recv-6-archived", label: "Archived", at: "3w ago" },
+      { id: "r-app-recv-6-applied", label: "Application received", occurredAt: ago(2592000) },
+      { id: "r-app-recv-6-archived", label: "Archived", occurredAt: ago(1814400) },
     ],
   },
 
@@ -969,8 +986,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Anika Rao",
     contextLabel: "Shorts editing package — 15 shorts per month",
     counterpartyName: "Anika Rao",
-    createdAtLabel: "1d ago",
-    updatedAtLabel: "1d ago",
+    createdAt: ago(86400),
+    updatedAt: ago(86400),
     message:
       "Your shorts work fits our daily channel. We need 15 shorts a month in a consistent caption style — raw clips and scripts arrive every Monday. Are you open to a trial month?",
     firstMessageAnswers: {
@@ -1014,7 +1031,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
         { title: "Daily shorts system — fitness channel", detail: "Hook-first cuts · caption templates" },
       ],
     },
-    timeline: [{ id: "r-req-sent-1-sent", label: "Request sent", at: "1d ago" }],
+    timeline: [{ id: "r-req-sent-1-sent", label: "Request sent", occurredAt: ago(86400) }],
   },
   {
     id: "r-req-sent-2",
@@ -1025,8 +1042,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Kabir Sen",
     contextLabel: "Scriptwriting — 6-part explainer series",
     counterpartyName: "Kabir Sen",
-    createdAtLabel: "2d ago",
-    updatedAtLabel: "9h ago",
+    createdAt: ago(172800),
+    updatedAt: ago(32400),
     unread: true,
     message:
       "We're planning a 6-part explainer series and need outlines plus full scripts with sourced claims. Two scripts a month, research notes included. Would this fit your current load?",
@@ -1058,18 +1075,18 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Kabir Sen",
       body: "This fits my schedule from next month. I can send a sample outline for your first topic this week so you can check structure and sourcing style.",
-      atLabel: "9h ago",
+      sentAt: ago(32400),
     },
     replies: [
       {
         from: "You",
         body: "That works. Let's start with the AI-regulation explainer — I'll drop the brief and reference links in a shared doc today.",
-        atLabel: "7h ago",
+        sentAt: ago(25200),
       },
       {
         from: "Kabir Sen",
         body: "Got the brief, thanks. I'll have the outline and sourced notes back to you within two days.",
-        atLabel: "5h ago",
+        sentAt: ago(18000),
       },
     ],
     talent: {
@@ -1088,9 +1105,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-req-sent-2-sent", label: "Request sent", at: "2d ago" },
-      { id: "r-req-sent-2-viewed", label: "Viewed by Kabir Sen", at: "1d ago" },
-      { id: "r-req-sent-2-responded", label: "Response received", at: "9h ago" },
+      { id: "r-req-sent-2-sent", label: "Request sent", occurredAt: ago(172800) },
+      { id: "r-req-sent-2-viewed", label: "Viewed by Kabir Sen", occurredAt: ago(86400) },
+      { id: "r-req-sent-2-responded", label: "Response received", occurredAt: ago(32400) },
     ],
   },
   {
@@ -1102,8 +1119,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Nora Chen",
     contextLabel: "Motion graphics — callouts + kinetic text",
     counterpartyName: "Nora Chen",
-    createdAtLabel: "1w ago",
-    updatedAtLabel: "5d ago",
+    createdAt: ago(604800),
+    updatedAt: ago(432000),
     message:
       "We want animated callouts and kinetic text for two videos a month — your lower-thirds style matches our brand. Open to a per-video arrangement?",
     firstMessageAnswers: {
@@ -1125,7 +1142,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Nora Chen",
       body: "Thanks for thinking of me — your channel looks great. I'm fully booked through next quarter, but I'd be glad to revisit after that.",
-      atLabel: "5d ago",
+      sentAt: ago(432000),
     },
     talent: {
       profileSlug: "nora-chen",
@@ -1143,9 +1160,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-req-sent-3-sent", label: "Request sent", at: "1w ago" },
-      { id: "r-req-sent-3-viewed", label: "Viewed by Nora Chen", at: "6d ago" },
-      { id: "r-req-sent-3-declined", label: "Declined by Nora Chen", at: "5d ago" },
+      { id: "r-req-sent-3-sent", label: "Request sent", occurredAt: ago(604800) },
+      { id: "r-req-sent-3-viewed", label: "Viewed by Nora Chen", occurredAt: ago(518400) },
+      { id: "r-req-sent-3-declined", label: "Declined by Nora Chen", occurredAt: ago(432000) },
     ],
   },
   {
@@ -1157,8 +1174,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Tara Iyer",
     contextLabel: "Thumbnail packaging — weekly retainer",
     counterpartyName: "Tara Iyer",
-    createdAtLabel: "4d ago",
-    updatedAtLabel: "2d ago",
+    createdAt: ago(345600),
+    updatedAt: ago(172800),
     message:
       "Your packaging board for tech channels is exactly our style. We publish twice a week and want 8 thumbnails a month with a shared concept board for fast approvals. Open to a retainer?",
     firstMessageAnswers: {
@@ -1173,7 +1190,7 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     response: {
       from: "Tara Iyer",
       body: "Yes, I'd love to. I can start this week — I'll set up a shared board and send the first two concepts for your next upload.",
-      atLabel: "2d ago",
+      sentAt: ago(172800),
     },
     talent: {
       profileSlug: "tara-iyer",
@@ -1191,9 +1208,9 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       ],
     },
     timeline: [
-      { id: "r-req-sent-4-sent", label: "Request sent", at: "4d ago" },
-      { id: "r-req-sent-4-viewed", label: "Viewed by Tara Iyer", at: "3d ago" },
-      { id: "r-req-sent-4-accepted", label: "Accepted by Tara Iyer", at: "2d ago" },
+      { id: "r-req-sent-4-sent", label: "Request sent", occurredAt: ago(345600) },
+      { id: "r-req-sent-4-viewed", label: "Viewed by Tara Iyer", occurredAt: ago(259200) },
+      { id: "r-req-sent-4-accepted", label: "Accepted by Tara Iyer", occurredAt: ago(172800) },
     ],
   },
   {
@@ -1205,8 +1222,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
     title: "Arjun Nair",
     contextLabel: "Voice over — horror stories narration",
     counterpartyName: "Arjun Nair",
-    createdAtLabel: "3w ago",
-    updatedAtLabel: "2w ago",
+    createdAt: ago(1814400),
+    updatedAt: ago(1209600),
     message:
       "We're starting a horror-stories channel and need a deep, measured narration voice for weekly 10-minute episodes. Your demo fits the mood — would you be open to a per-episode rate?",
     firstMessageAnswers: {
@@ -1229,8 +1246,8 @@ export const MOCK_OWNER_INTERACTIONS: OwnerInteraction[] = [
       portfolioHighlights: [],
     },
     timeline: [
-      { id: "r-req-sent-5-sent", label: "Request sent", at: "3w ago" },
-      { id: "r-req-sent-5-withdrawn", label: "Request withdrawn by you", at: "2w ago" },
+      { id: "r-req-sent-5-sent", label: "Request sent", occurredAt: ago(1814400) },
+      { id: "r-req-sent-5-withdrawn", label: "Request withdrawn by you", occurredAt: ago(1209600) },
     ],
   },
 ];

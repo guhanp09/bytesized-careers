@@ -297,9 +297,12 @@ export default function PrivateNotesPanel({
               <Icon name="check" className="h-3 w-3" />
               Saved
             </p>
-          ) : !hasNotes ? (
-            <p className="text-[11px] text-subtle">Add a private note for follow-ups, rates, or things to confirm.</p>
           ) : (
+            /*
+              The placeholder in the field above already says what to write
+              here. A second sentence restating it read as an instruction the
+              user had somehow failed to follow.
+            */
             <span />
           )}
           <button

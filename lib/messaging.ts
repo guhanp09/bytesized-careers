@@ -14,7 +14,6 @@ export type ChatThreadMessage = {
   fromMe: boolean;
   senderName: string;
   body: string;
-  atLabel: string;
   createdAt?: string | null;
   readByRecipient?: boolean;
   /**
@@ -55,8 +54,7 @@ type BackendMessageLike = {
  */
 export function mapBackendMessage(
   message: BackendMessageLike,
-  counterpartyName: string,
-  formatTime: (iso?: string | null) => string
+  counterpartyName: string
 ): ChatThreadMessage {
   const isScreening = message.message_kind === "screening_questions";
   return {
@@ -64,7 +62,6 @@ export function mapBackendMessage(
     fromMe: message.from_me,
     senderName: message.from_me ? "You" : message.sender_name || counterpartyName,
     body: message.body,
-    atLabel: formatTime(message.created_at),
     createdAt: message.created_at,
     readByRecipient: Boolean(message.read_by_recipient),
     responseExpected: Boolean(message.response_expected),

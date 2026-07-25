@@ -95,7 +95,6 @@ import {
   interactionStatusLabel,
   isArchivedInteraction,
   mapActivityToOwnerInteractions,
-  relativeTimeLabel,
   type InteractionKind,
   type InteractionStatus,
   type InteractionJobSnapshot,
@@ -119,6 +118,7 @@ import {
 } from "../../lib/applicationPipeline";
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
+import { InteractionTime } from "./InteractionTime";
 import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
@@ -954,7 +954,7 @@ function InteractionTimeline({ item }: { item: OwnerInteraction }) {
       <h3 className={SECTION_LABEL_CLASSES}>Timeline</h3>
       <ol className="mt-2.5">
         {item.timeline.map((event, index) => {
-          const isLatest = index === item.timeline.length - 1;
+          const isLatest = index === item.timeline.length - 1 && !event.superseded;
           return (
             <li key={event.id} className="relative pb-3 pl-5 last:pb-0">
               <span
@@ -966,8 +966,31 @@ function InteractionTimeline({ item }: { item: OwnerInteraction }) {
               {!isLatest ? (
                 <span className="absolute bottom-0 left-[2.5px] top-3.5 w-px bg-overlay" />
               ) : null}
-              <p className={`text-xs ${isLatest ? "text-white/82" : "text-white/62"}`}>{event.label}</p>
-              <p className="mt-0.5 text-[11px] text-subtle">{event.at}</p>
+              {/*
+                A superseded private decision is struck rather than removed: it
+                genuinely happened, and a manager may need to know it did, but
+                presenting it level with the outcome that replaced it is how the
+                timeline came to read "Interviewing → Not selected → Hired" as
+                three simultaneous truths.
+              */}
+              <p
+                className={[
+                  "text-xs",
+                  event.superseded
+                    ? "text-subtle line-through decoration-white/25"
+                    : isLatest
+                      ? "text-default"
+                      : "text-muted",
+                ].join(" ")}
+              >
+                {event.label}
+                {event.superseded ? (
+                  <span className="ml-1.5 align-middle text-[10.5px] no-underline text-subtle">
+                    superseded
+                  </span>
+                ) : null}
+              </p>
+              <InteractionTime value={event.occurredAt} className="mt-0.5 block text-[11px] text-subtle" />
             </li>
           );
         })}
@@ -1055,7 +1078,7 @@ export type ChatMessage = {
   fromMe: boolean;
   senderName: string;
   body: string;
-  atLabel: string;
+  /** ISO instant. Formatted by <InteractionTime> at the point it is drawn. */
   createdAt?: string | null;
   readByRecipient?: boolean;
   /**
@@ -1105,7 +1128,7 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
     fromMe: false,
     senderName: "CreatorJobs",
     body: openingEventLine(item),
-    atLabel: item.createdAtLabel,
+    createdAt: item.createdAt,
     kind: "status",
   });
 
@@ -1121,7 +1144,7 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       fromMe: openingFromMe,
       senderName: openingFromMe ? "You" : item.counterpartyName,
       body: openingBody,
-      atLabel: item.createdAtLabel,
+      createdAt: item.createdAt,
       rate,
       attachments: visibleAttachments.length ? visibleAttachments : undefined,
       firstMessageAnswers: answers,
@@ -1134,7 +1157,7 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       fromMe: item.response.from === "You",
       senderName: item.response.from,
       body: item.response.body,
-      atLabel: item.response.atLabel,
+      createdAt: item.response.sentAt,
     });
   }
   (item.replies || []).forEach((reply, index) => {
@@ -1143,7 +1166,7 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       fromMe: reply.from === "You",
       senderName: reply.from,
       body: reply.body,
-      atLabel: reply.atLabel,
+      createdAt: reply.sentAt,
       kind: reply.kind,
     });
   });
@@ -1206,7 +1229,8 @@ function WorkStateChip({ state }: { state: WorkState }) {
       data-testid="work-state-chip"
       data-work-state={state.key}
       className={[
-        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium",
+        // Fully rounded and borderless, so a state never reads as a control.
+        "inline-flex shrink-0 items-center gap-1 rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
         state.highConfidence ? `bg-wash-strong ${style.tone}` : "bg-transparent text-muted",
       ].join(" ")}
     >
@@ -1311,13 +1335,13 @@ function decisionActionLabel(item: OwnerInteraction, stageKey: string, fallback:
   return labels[stageKey] ?? fallback;
 }
 
-export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "atLabel"> }) {
+export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "createdAt"> }) {
   return (
     <div data-testid="chat-status-update" className="flex justify-center px-2">
       <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60">
         <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" />
         <span className="min-w-0">{message.body}</span>
-        <span className="shrink-0 text-subtle">· {message.atLabel}</span>
+        <InteractionTime value={message.createdAt} prefix="· " className="shrink-0 text-subtle" />
       </span>
     </div>
   );
@@ -1626,7 +1650,7 @@ export function MessageBubble({
       )}
       <div className={["flex max-w-[82%] min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}>
         <p className="px-1 text-[11px] font-medium text-subtle">
-          {message.senderName} · {message.atLabel}
+          {message.senderName} <InteractionTime value={message.createdAt} prefix="· " />
         </p>
         {message.kind === "screening" ? (
           <ScreeningQuestionsCard message={message} />
@@ -2439,7 +2463,7 @@ export default function ApplicationsWorkspace({
                 (item.legacyArchiveResolutionRequired && !archiveMove
                   ? false
                   : item.legacyArchiveResolutionRequired),
-              updatedAtLabel: "Just now",
+              updatedAt: new Date().toISOString(),
               unread: false,
               timeline: [
                 ...item.timeline,
@@ -2450,7 +2474,7 @@ export default function ApplicationsWorkspace({
                       ? "Archived by you"
                       : "Unarchived by you"
                     : `Moved to ${stageLabel} by you`,
-                  at: "Just now",
+                  occurredAt: new Date().toISOString(),
                 },
               ],
             }
@@ -2498,7 +2522,7 @@ export default function ApplicationsWorkspace({
                     {
                       from: "You",
                       body: notifyPolicy.notice({ contextLabel: pipelineContextLabelOf(item) }),
-                      atLabel: "Just now",
+                      sentAt: new Date().toISOString(),
                       kind: "status" as const,
                     },
                   ],
@@ -2589,14 +2613,14 @@ export default function ApplicationsWorkspace({
               ...item,
               replies: [
                 ...(item.replies || []),
-                { from: "You", body: notice, atLabel: "Just now", kind: "status" as const },
+                { from: "You", body: notice, sentAt: new Date().toISOString(), kind: "status" as const },
               ],
               timeline: [
                 ...item.timeline,
                 {
                   id: `${item.id}-notice-${item.timeline.length}`,
                   label: `Status update sent to ${firstNameOf(item.counterpartyName)}`,
-                  at: "Just now",
+                  occurredAt: new Date().toISOString(),
                 },
               ],
             };
@@ -2702,17 +2726,17 @@ export default function ApplicationsWorkspace({
               legacyArchiveResolutionRequired:
                 authoritative?.legacyArchiveResolutionRequired ??
                 (target.legacyArchiveResolutionRequired ? false : item.legacyArchiveResolutionRequired),
-              updatedAtLabel: "Just now",
+              updatedAt: new Date().toISOString(),
               unread: false,
               replies: trimmedNote
-                ? [...(item.replies || []), { from: "You", body: trimmedNote, atLabel: "Just now" }]
+                ? [...(item.replies || []), { from: "You", body: trimmedNote, sentAt: new Date().toISOString() }]
                 : item.replies,
               timeline: [
                 ...item.timeline,
                 {
                   id: `${item.id}-${action.key}-${item.timeline.length}`,
                   label: action.eventLabel as string,
-                  at: "Just now",
+                  occurredAt: new Date().toISOString(),
                 },
               ],
             }
@@ -2950,11 +2974,11 @@ export default function ApplicationsWorkspace({
         item.id === id
           ? {
               ...item,
-              updatedAtLabel: "Just now",
-              replies: [...(item.replies || []), { from: "You", body, atLabel: "Just now" }],
+              updatedAt: new Date().toISOString(),
+              replies: [...(item.replies || []), { from: "You", body, sentAt: new Date().toISOString() }],
               timeline: [
                 ...item.timeline,
-                { id: `${item.id}-reply-${item.timeline.length}`, label: "Reply sent", at: "Just now" },
+                { id: `${item.id}-reply-${item.timeline.length}`, label: "Reply sent", occurredAt: new Date().toISOString() },
               ],
             }
           : item
@@ -3890,7 +3914,7 @@ export default function ApplicationsWorkspace({
   const liveMessages: ChatMessage[] =
     selected && liveMode && liveThread
       ? liveThread.messages.map((message) =>
-          mapBackendMessage(message, selected.counterpartyName, relativeTimeLabel)
+          mapBackendMessage(message, selected.counterpartyName)
         )
       : [];
   const conversation = selected ? [...buildConversation(selected), ...liveMessages] : [];
@@ -4589,7 +4613,7 @@ export default function ApplicationsWorkspace({
                               </span>
                             ) : null}
                             {/* One fixed home for the timestamp, always last. */}
-                            <span className="text-[11px] tabular-nums text-subtle">{item.updatedAtLabel}</span>
+                            <InteractionTime value={item.updatedAt} className="text-[11px] tabular-nums text-subtle" />
                           </span>
                         </div>
                         <p className="mt-0.5 truncate text-[12px] leading-4 text-muted">{rowSubtitle(item)}</p>

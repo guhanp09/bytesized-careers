@@ -55,7 +55,14 @@ export default function VisualThemeToggle() {
       title={`Toggle enhanced visual theme (${enhanced ? "Enhanced" : "Current"})`}
       data-testid="visual-theme-toggle"
       className={[
-        "fixed bottom-4 left-3 z-[90] inline-flex h-10 cursor-pointer items-center gap-2 rounded-full pl-2.5 pr-3.5",
+        /*
+          The dev and QA pills sit at `left-24` on wide screens but collapse to
+          `max-sm:left-3` — landing exactly here, at a higher z-index, which
+          clipped this control to "HEME". Lifting to its own row below `sm`
+          keeps both fully visible at every width instead of stacking them.
+        */
+        "fixed bottom-4 left-3 z-[90] max-sm:bottom-[4.25rem]",
+        "inline-flex h-10 max-w-[calc(100vw-1.5rem)] cursor-pointer items-center gap-2 rounded-full pl-2.5 pr-3.5",
         "border border-[var(--vt-line-strong,rgba(255,255,255,0.14))] bg-[var(--vt-panel,rgba(16,16,20,0.92))]",
         "text-[var(--vt-text-secondary,rgba(255,255,255,0.85))] backdrop-blur",
         "shadow-[0_14px_36px_-18px_rgba(0,0,0,0.95)] transition-colors",
@@ -74,7 +81,7 @@ export default function VisualThemeToggle() {
           opacity={enhanced ? 0.95 : 0.5}
         />
       </svg>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.08em]">Theme</span>
+      <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.08em]">Theme</span>
       {enhanced ? (
         <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--vt-accent,#ffffff)]" />
       ) : null}

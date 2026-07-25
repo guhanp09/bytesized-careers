@@ -667,7 +667,13 @@ export function deriveWorkState(
 
   // A hire or acceptance still owes a start confirmation. Authoritative.
   if (signals.engagementUnconfirmed && (stage === "hired" || stage === "accepted")) {
-    return { key: "start_confirmation_pending", label: "Confirm start", highConfidence: true };
+    /*
+      A *state*, phrased statively. The recommended action for this same record
+      is "Confirm start" — an imperative — and when both read identically the
+      pill beside the button looked like a second button. A status describes;
+      an action instructs.
+    */
+    return { key: "start_confirmation_pending", label: "Awaiting start confirmation", highConfidence: true };
   }
 
   // A closed conversation owes nothing, unless a private decision was never

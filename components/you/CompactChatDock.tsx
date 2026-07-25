@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icons";
+import { InteractionTime } from "./InteractionTime";
 import {
   buildConversation,
   InteractionAvatar,
@@ -30,7 +31,6 @@ import {
 import {
   interactionKindLabel,
   isArchivedInteraction,
-  relativeTimeLabel,
   type OwnerInteraction,
 } from "../../lib/ownerInteractions";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
@@ -446,7 +446,7 @@ export default function CompactChatDock({
     const liveMessages =
       liveMode && liveThreads[thread.id]
         ? liveThreads[thread.id].messages.map((message) =>
-            mapBackendMessage(message, thread.counterpartyName, relativeTimeLabel)
+            mapBackendMessage(message, thread.counterpartyName)
           )
         : [];
     return [...buildConversation(thread), ...liveMessages];
@@ -809,7 +809,7 @@ export default function CompactChatDock({
                           {formatBadgeCount(messageUnread)}
                         </span>
                       ) : null}
-                      <span className="shrink-0 text-[10.5px] text-subtle">{item.updatedAtLabel}</span>
+                      <InteractionTime value={item.updatedAt} className="shrink-0 text-[10.5px] text-subtle" />
                     </button>
                   );
                 })}
