@@ -3095,6 +3095,28 @@ export async function setConversationDecisionPromptDismissed(
   );
 }
 
+export type BackendReviewStarted = {
+  changed: boolean;
+  current_status: string;
+  status_version: number;
+};
+
+/**
+ * Record a deliberate open. Private and owner-only: it never messages or
+ * notifies the other participant.
+ */
+export async function markInteractionReviewStarted(
+  accessToken: string,
+  kind: "application" | "hiring_request",
+  interactionId: string
+): Promise<BackendReviewStarted> {
+  const base = kind === "application" ? "applications" : "talent-interests";
+  return requestJson<BackendReviewStarted>(
+    `/${base}/${encodeURIComponent(interactionId)}/review-started`,
+    { method: "POST", accessToken }
+  );
+}
+
 export async function markConversationRead(
   accessToken: string,
   conversationId: string

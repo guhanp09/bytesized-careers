@@ -69,6 +69,19 @@ class JobApplication(Base):
     participant_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="new", server_default="new", index=True
     )
+    #: When the managing side first *deliberately* reviewed this record.
+    #: Durable and never cleared: a short Undo may restore the visible workflow
+    #: stage after an accidental trigger, but it must not fabricate a
+    #: "never opened" history, or the New queue stops meaning anything.
+    #:
+    #: Deliberately record-level rather than per-user. Each interaction has
+    #: exactly one managing side, so this answers "has this been looked at?" —
+    #: which is the question the New queue asks. If teams later need to know
+    #: *which member* looked first, that is a per-user fact and belongs in
+    #: interaction_user_preferences, which is already keyed per user; this
+    #: column does not become wrong, it simply keeps answering the team-level
+    #: question.
+    review_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
@@ -190,6 +203,19 @@ class TalentInterest(Base):
     participant_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="new", server_default="new", index=True
     )
+    #: When the managing side first *deliberately* reviewed this record.
+    #: Durable and never cleared: a short Undo may restore the visible workflow
+    #: stage after an accidental trigger, but it must not fabricate a
+    #: "never opened" history, or the New queue stops meaning anything.
+    #:
+    #: Deliberately record-level rather than per-user. Each interaction has
+    #: exactly one managing side, so this answers "has this been looked at?" —
+    #: which is the question the New queue asks. If teams later need to know
+    #: *which member* looked first, that is a per-user fact and belongs in
+    #: interaction_user_preferences, which is already keyed per user; this
+    #: column does not become wrong, it simply keeps answering the team-level
+    #: question.
+    review_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )

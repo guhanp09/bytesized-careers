@@ -34,7 +34,13 @@ export type WorkspaceEventName =
   /** An interaction was opened and closed with no meaningful action. */
   | "workspace.interaction.abandoned"
   /** An ordinary message was sent. */
-  | "workspace.message.sent";
+  | "workspace.message.sent"
+  /** A deliberate open met every condition and fired Auto-Reviewing. */
+  | "workspace.auto_reviewing.fired"
+  /** The private transition failed; reading and messaging continued regardless. */
+  | "workspace.auto_reviewing.failed"
+  /** The manager moved a record back after Auto-Reviewing — the reversal guardrail. */
+  | "workspace.auto_reviewing.reversed";
 
 export type WorkspaceSurface = "inbox" | "pipeline" | "dock";
 export type WorkspaceViewport = "desktop" | "mobile";

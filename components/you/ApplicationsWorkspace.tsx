@@ -47,6 +47,7 @@ import {
   markConversationRead,
   blockUser,
   listInteractionPreferences,
+  markInteractionReviewStarted,
   sendConversationMessage,
   setConversationQueueDismissed,
   setConversationStarred,
@@ -2968,6 +2969,100 @@ export default function ApplicationsWorkspace({
 
   const flags = useMemo(() => workspaceFlagsFromEnv(), []);
   const cohort = useMemo(() => flagCohortLabel(flags), [flags]);
+
+  /* ---------------- B2: deliberate-open instrumentation and Auto-Reviewing ---------------- */
+
+  /** Records which interactions this session has already triggered for. */
+  const autoReviewedRef = useRef<Set<string>>(new Set());
+  /** Mirrors the selection so the dwell timer can re-check it when it fires. */
+  const selectedItemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedItemIdRef.current = selectedItemId;
+  }, [selectedItemId]);
+
+  /**
+   * Reading an application *is* reviewing it, so a deliberate open records that
+   * privately instead of asking the manager to state the obvious.
+   *
+   * Every condition here exists to keep "New" meaning *genuinely not looked at*:
+   * the viewer must manage the record, it must still be authoritatively New, the
+   * detail must have actually loaded, the document must be visible, and the same
+   * interaction must still be selected once the dwell threshold elapses. A
+   * prefetch, a hover, a background tab, or a keyboard pass-through never
+   * satisfies all of them.
+   *
+   * Failure is deliberately silent: this is a convenience, and it must never
+   * stand between someone and reading or answering their messages.
+   */
+  useEffect(() => {
+    if (!flags.autoReviewing || !liveMode || !backendAccessToken) return;
+    if (!selected || selected.direction !== "received") return;
+    if (isArchivedInteraction(selected)) return;
+    if (backendStatusOf(selected) !== "new") return;
+    if (autoReviewedRef.current.has(selected.id)) return;
+    // The detail must genuinely be loaded — an in-flight open is not a read.
+    if (!liveThreads[selected.id]) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+    const interactionId = selected.id;
+    const kind = selected.kind;
+    const timer = window.setTimeout(() => {
+      // Re-check at fire time: the user may have moved on, or hidden the tab,
+      // during the dwell window.
+      if (document.visibilityState !== "visible") return;
+      if (selectedItemIdRef.current !== interactionId) return;
+      if (autoReviewedRef.current.has(interactionId)) return;
+      autoReviewedRef.current.add(interactionId);
+      trackWorkspaceEvent("workspace.auto_reviewing.fired", {
+        interactionKind: kind,
+        direction: "received",
+        stage: "new",
+        durationMs: flags.autoReviewingDwellMs,
+        flagCohort: cohort,
+      });
+      void (async () => {
+        try {
+          const result = await markInteractionReviewStarted(
+            backendAccessToken,
+            kind === "application" ? "application" : "hiring_request",
+            interactionId
+          );
+          if (!result.changed) return;
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === interactionId
+                ? {
+                    ...item,
+                    status: interactionStatusFromBackend(item.kind, item.direction, result.current_status),
+                    backendStatus: result.current_status,
+                    statusVersion: result.status_version,
+                  }
+                : item
+            )
+          );
+        } catch {
+          // Quiet by design. Allow a later attempt rather than burning the
+          // one-shot guard on a transient failure.
+          autoReviewedRef.current.delete(interactionId);
+          trackWorkspaceEvent("workspace.auto_reviewing.failed", {
+            interactionKind: kind,
+            flagCohort: cohort,
+          });
+        }
+      })();
+    }, flags.autoReviewingDwellMs);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    flags.autoReviewing,
+    flags.autoReviewingDwellMs,
+    liveMode,
+    backendAccessToken,
+    selected,
+    liveThreads,
+    cohort,
+  ]);
+
 
   /**
    * Live evidence for the rule functions. `responseExpected` is intentionally

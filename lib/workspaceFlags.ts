@@ -20,6 +20,10 @@ export type WorkspaceFlagEnv = {
   NEXT_PUBLIC_ENABLE_DECISION_STRIP?: string;
   /** Derived work-state indicator on rows and cards. */
   NEXT_PUBLIC_ENABLE_WORK_STATE?: string;
+  /** Private New -> Reviewing on a deliberate open. */
+  NEXT_PUBLIC_ENABLE_AUTO_REVIEWING?: string;
+  /** Visible-dwell threshold in ms before a deliberate open counts. */
+  NEXT_PUBLIC_AUTO_REVIEWING_DWELL_MS?: string;
 };
 
 const truthy = (value?: string) =>
@@ -48,10 +52,29 @@ export function isWorkStateEnabled(env: WorkspaceFlagEnv): boolean {
   return resolve(env.NEXT_PUBLIC_ENABLE_WORK_STATE, env);
 }
 
+export function isAutoReviewingEnabled(env: WorkspaceFlagEnv): boolean {
+  return resolve(env.NEXT_PUBLIC_ENABLE_AUTO_REVIEWING, env);
+}
+
+/**
+ * How long the detail must stay visibly open before an open counts as
+ * deliberate. An instrumented experiment value, not settled product truth —
+ * configurable without a deploy-time code change so it can be tuned from the
+ * measured reversal rate.
+ */
+export const DEFAULT_AUTO_REVIEWING_DWELL_MS = 800;
+
+export function autoReviewingDwellMs(env: WorkspaceFlagEnv): number {
+  const raw = Number.parseInt(env.NEXT_PUBLIC_AUTO_REVIEWING_DWELL_MS ?? "", 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_AUTO_REVIEWING_DWELL_MS;
+}
+
 export type WorkspaceFlags = {
   nextAction: boolean;
   decisionStrip: boolean;
   workState: boolean;
+  autoReviewing: boolean;
+  autoReviewingDwellMs: number;
 };
 
 /**
@@ -65,10 +88,14 @@ export function workspaceFlagsFromEnv(): WorkspaceFlags {
     NEXT_PUBLIC_ENABLE_NEXT_ACTION: process.env.NEXT_PUBLIC_ENABLE_NEXT_ACTION,
     NEXT_PUBLIC_ENABLE_DECISION_STRIP: process.env.NEXT_PUBLIC_ENABLE_DECISION_STRIP,
     NEXT_PUBLIC_ENABLE_WORK_STATE: process.env.NEXT_PUBLIC_ENABLE_WORK_STATE,
+    NEXT_PUBLIC_ENABLE_AUTO_REVIEWING: process.env.NEXT_PUBLIC_ENABLE_AUTO_REVIEWING,
+    NEXT_PUBLIC_AUTO_REVIEWING_DWELL_MS: process.env.NEXT_PUBLIC_AUTO_REVIEWING_DWELL_MS,
   };
   return {
     nextAction: isNextActionEnabled(env),
     decisionStrip: isDecisionStripEnabled(env),
     workState: isWorkStateEnabled(env),
+    autoReviewing: isAutoReviewingEnabled(env),
+    autoReviewingDwellMs: autoReviewingDwellMs(env),
   };
 }

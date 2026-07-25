@@ -44,6 +44,8 @@ from app.services import (
     review_service,
 )
 from app.schemas.job import JobRead
+from pydantic import BaseModel
+
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
     ApplicationTransitionResponse,
@@ -1022,6 +1024,57 @@ async def list_received_applications(
     result = [await _application_read(session, row, current_user.id, sender_view=False) for row in rows]
     await session.commit()
     return result
+
+
+class ReviewStartedResponse(BaseModel):
+    changed: bool
+    current_status: str
+    status_version: int
+
+
+@router.post("/applications/{application_id}/review-started", response_model=ReviewStartedResponse)
+async def mark_application_review_started(
+    application_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> ReviewStartedResponse:
+    """Record a deliberate open. Private, owner-only, idempotent.
+
+    Never messages or notifies the applicant, and never touches
+    ``participant_status`` — from their side nothing has happened.
+    """
+    try:
+        changed, status_value, version = await transitions.mark_review_started(
+            session,
+            interaction_type="application",
+            interaction_id=application_id,
+            actor=current_user,
+        )
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        raise _transition_http_error(exc) from exc
+    return ReviewStartedResponse(changed=changed, current_status=status_value, status_version=version)
+
+
+@router.post("/talent-interests/{interest_id}/review-started", response_model=ReviewStartedResponse)
+async def mark_interest_review_started(
+    interest_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> ReviewStartedResponse:
+    try:
+        changed, status_value, version = await transitions.mark_review_started(
+            session,
+            interaction_type="hiring_request",
+            interaction_id=interest_id,
+            actor=current_user,
+        )
+        await session.commit()
+    except transitions.TransitionError as exc:
+        await session.rollback()
+        raise _transition_http_error(exc) from exc
+    return ReviewStartedResponse(changed=changed, current_status=status_value, status_version=version)
 
 
 @router.post("/applications/{application_id}/transition", response_model=ApplicationTransitionResponse)

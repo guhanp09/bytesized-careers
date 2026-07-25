@@ -846,3 +846,71 @@ async def share_application_status(
         final_outcome="transitioned",
     )
     return TransitionResult("transitioned", "application", application, None, event, conversation, message.id, True, note_message_id)
+
+
+async def mark_review_started(
+    session: AsyncSession,
+    *,
+    interaction_type: InteractionType,
+    interaction_id: uuid.UUID,
+    actor: User,
+) -> tuple[bool, str, int]:
+    """Record a deliberate open, and privately move ``new`` to ``reviewing``.
+
+    Returns ``(changed, current_status, status_version)``.
+
+    This is the one automatic transition in the system, and it is deliberately
+    the least consequential one: it is private, it tells the applicant nothing,
+    and it only ever fires from ``new``. Reading an application *is* reviewing
+    it, so recording that costs the manager nothing and makes the New queue mean
+    something.
+
+    Guarantees:
+      * owner-only — the applicant opening their own application changes nothing;
+      * only from an authoritative ``new``; any later or terminal state is left
+        exactly as it is;
+      * idempotent — ``review_started_at`` is written once and never moved, so a
+        second open (or a re-open after Undo) is a no-op;
+      * no message, no notification, no trusted event, no participant-visible
+        change. ``participant_status`` is untouched, so the applicant still sees
+        "Application received".
+
+    ``review_started_at`` is written even when the stage is not moved, because
+    the durable fact being recorded is "this was deliberately looked at" — which
+    a later Undo of the visible stage must not erase.
+    """
+    if interaction_type == "application":
+        record = (
+            await session.execute(
+                select(JobApplication).where(JobApplication.id == interaction_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        owner_id = record.job_owner_user_id if record else None
+    else:
+        record = (
+            await session.execute(
+                select(TalentInterest).where(TalentInterest.id == interaction_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        owner_id = record.owner_user_id if record else None
+
+    if record is None:
+        raise InvalidTransition("Interaction not found.")
+    if owner_id != actor.id:
+        raise TransitionForbidden("Only the managing participant may start a review.")
+
+    changed = False
+    if record.review_started_at is None:
+        record.review_started_at = datetime.now(UTC)
+        changed = True
+
+    # Only a genuinely untouched record advances; anything further along keeps
+    # the stage its manager already chose.
+    if record.status == "new":
+        record.status = "reviewing"
+        record.status_version = (record.status_version or 1) + 1
+        changed = True
+
+    if changed:
+        await session.flush()
+    return changed, record.status, record.status_version

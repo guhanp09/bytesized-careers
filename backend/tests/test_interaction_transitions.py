@@ -1048,3 +1048,104 @@ async def test_note_is_rolled_back_when_a_required_side_effect_fails(
         InteractionStatusEvent,
         InteractionStatusEvent.interaction_id == uuid.UUID(interest_id),
     ) == 0
+
+
+async def test_deliberate_open_privately_starts_review(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Reading is reviewing — privately, and only for the manager."""
+    owner, talent, application_id = await _application(client)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    talent_h = {"Authorization": f"Bearer {talent}"}
+
+    conversation_id_before = await _application_conversation_id(db_session, application_id)
+    messages_before = await _count(
+        db_session, Message, Message.conversation_id == conversation_id_before
+    )
+
+    first = await client.post(
+        f"/api/v1/applications/{application_id}/review-started", headers=owner_h
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["changed"] is True
+    assert first.json()["current_status"] == "reviewing"
+
+    # The applicant is told nothing: no participant change, and no message or
+    # notification beyond whatever their own application already created.
+    applicant_view = await client.get("/api/v1/me/applications/sent", headers=talent_h)
+    assert applicant_view.json()[0]["status"] == "new"
+    conversation_id = await _application_conversation_id(db_session, application_id)
+    messages_after = await _count(
+        db_session, Message, Message.conversation_id == conversation_id
+    )
+    assert messages_after == messages_before, "review-started must not post a message"
+    assert await _count(
+        db_session,
+        Notification,
+        Notification.resource_id == application_id,
+        Notification.type == "application_status_changed",
+    ) == 0
+
+    # Idempotent: a second open changes nothing.
+    second = await client.post(
+        f"/api/v1/applications/{application_id}/review-started", headers=owner_h
+    )
+    assert second.status_code == 200
+    assert second.json()["changed"] is False
+    assert second.json()["status_version"] == first.json()["status_version"]
+
+
+async def test_only_the_manager_can_start_a_review(client: AsyncClient) -> None:
+    _, talent, application_id = await _application(client)
+    denied = await client.post(
+        f"/api/v1/applications/{application_id}/review-started",
+        headers={"Authorization": f"Bearer {talent}"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_review_start_never_overwrites_a_later_stage(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A record already moved on keeps the stage its manager chose."""
+    owner, _, application_id = await _application(client)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    await client.post(
+        f"/api/v1/applications/{application_id}/transition",
+        headers=owner_h,
+        json={"status": "interviewing", "expected_version": 1, "idempotency_key": str(uuid.uuid4())},
+    )
+
+    response = await client.post(
+        f"/api/v1/applications/{application_id}/review-started", headers=owner_h
+    )
+    assert response.status_code == 200
+    assert response.json()["current_status"] == "interviewing"
+
+    # The durable "was opened" fact is still recorded even though the stage held.
+    application = await db_session.get(JobApplication, uuid.UUID(application_id))
+    await db_session.refresh(application)
+    assert application.review_started_at is not None
+
+
+async def test_review_history_survives_a_stage_revert(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Undo may restore the visible stage, but not a 'never opened' history."""
+    owner, _, application_id = await _application(client)
+    owner_h = {"Authorization": f"Bearer {owner}"}
+    await client.post(f"/api/v1/applications/{application_id}/review-started", headers=owner_h)
+
+    application = await db_session.get(JobApplication, uuid.UUID(application_id))
+    await db_session.refresh(application)
+    opened_at = application.review_started_at
+    assert opened_at is not None
+
+    # Simulate an Undo returning the visible stage to its prior value.
+    application.status = "new"
+    await db_session.commit()
+
+    # Re-opening does not move the durable timestamp.
+    await client.post(f"/api/v1/applications/{application_id}/review-started", headers=owner_h)
+    await db_session.refresh(application)
+    assert application.review_started_at == opened_at
