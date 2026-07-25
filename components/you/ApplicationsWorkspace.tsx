@@ -242,7 +242,7 @@ function FilterBar({
   onSelect: (key: WorkspaceFilter) => void;
 }) {
   return (
-    <div className="border-b border-white/[0.06] px-4">
+    <div className="border-b border-line px-4">
       <div className="flex items-end gap-5 overflow-x-auto">
         {filterOptionsFor(mode).map((option) => {
           const isActive = filter === option.key;
@@ -300,12 +300,12 @@ function WorkspaceControls({
 }) {
   return (
     <div
-      className="shrink-0 border-b border-white/[0.06] px-4 py-3"
+      className="shrink-0 border-b border-line px-4 py-3"
       data-testid="applications-workspace-controls"
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <div
-          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.1] bg-white/[0.03] p-1"
+          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-line bg-wash p-1"
           role="group"
           aria-label="Applications view"
         >
@@ -331,7 +331,7 @@ function WorkspaceControls({
 
         {/* Inbox = conversation-first; Pipeline = stage-first management board. */}
         <div
-          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.1] bg-white/[0.03] p-1"
+          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-line bg-wash p-1"
           role="group"
           aria-label="Workspace layout"
         >
@@ -381,7 +381,7 @@ function SampleDataChip({ demoMode, onToggleDemo }: { demoMode?: boolean; onTogg
         "hidden h-8 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-[11px] font-semibold shadow-[0_14px_40px_-20px_rgba(0,0,0,0.9)] backdrop-blur transition-colors lg:inline-flex",
         demoMode
           ? "border-amber-200/30 bg-amber-200/[0.12] text-amber-100/90"
-          : "border-white/[0.1] bg-[#131419]/90 text-muted hover:text-white/80",
+          : "border-line bg-[#131419]/90 text-muted hover:text-white/80",
       ].join(" ")}
     >
       <span
@@ -425,7 +425,7 @@ function EmptyModeState({
         {showOtherModeHint ? (
           <div
             data-testid="inbox-other-mode-hint"
-            className="mx-auto mt-5 flex flex-col items-center gap-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] px-4 py-3.5"
+            className="mx-auto mt-5 flex flex-col items-center gap-2.5 rounded-2xl border border-line bg-raised px-4 py-3.5"
           >
             <p className="text-sm text-white/75">
               {otherModeUnread > 0 ? (
@@ -470,7 +470,7 @@ function EmptyModeState({
 // global top bar, so the inbox owns the full remaining vertical canvas.
 const WORKSPACE_HEIGHT_CLASSES = "h-full min-h-0";
 const SECTION_LABEL_CLASSES = "text-[11px] font-semibold text-subtle";
-const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
+const SURFACE = "border border-line bg-raised";
 /** localStorage key for the last-open inbox conversation (restored on return). */
 const SELECTED_STORAGE_KEY = "cj.applications.selected";
 /** Per-user record of decision-surface dismissals. */
@@ -482,17 +482,17 @@ const DECISION_STRIP_DISMISS_KEY = "cj.applications.decisionDismissed";
  */
 const DECISION_STRIP_TRIGGER_VERSION = 1;
 const GHOST_BUTTON_CLASSES =
-  "inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/[0.08]";
+  "inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised px-3.5 text-xs font-semibold text-white/80 transition-colors hover:bg-overlay";
 const PRIMARY_BUTTON_CLASSES =
   "inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-white px-3.5 text-xs font-semibold text-black transition-colors hover:bg-white/90";
 
 function statusPillClasses(status: InteractionStatus): string {
   switch (status) {
     case "new":
-      return "border-white/25 bg-white/[0.1] text-white/92";
+      return "border-line-strong bg-overlay text-white/92";
     case "pending":
     case "viewed":
-      return "border-white/[0.12] bg-white/[0.045] text-white/62";
+      return "border-line-mid bg-raised text-white/62";
     case "responded":
     case "shortlisted":
     case "accepted":
@@ -502,7 +502,7 @@ function statusPillClasses(status: InteractionStatus): string {
     case "declined":
     case "withdrawn":
     case "closed":
-      return "border-white/[0.08] bg-transparent text-subtle";
+      return "border-line bg-transparent text-subtle";
   }
 }
 
@@ -545,7 +545,7 @@ export function InteractionAvatar({
   // Initials stay painted underneath so a failed image load degrades cleanly.
   return (
     <span
-      className={`${sizeClasses} ${radius} relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/15 bg-white/[0.06] text-[11px] font-semibold text-white/75`}
+      className={`${sizeClasses} ${radius} relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-line-mid bg-elevated text-[11px] font-semibold text-white/75`}
     >
       {avatarInitials(name)}
       {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
@@ -794,14 +794,14 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="group/action relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.04] text-white/75 transition-colors hover:bg-white/[0.09] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+        className="group/action relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised text-white/75 transition-colors hover:bg-overlay hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
       >
         <Icon name="menu" className="h-4 w-4" />
       </button>
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+8px)] z-30 min-w-48 rounded-2xl border border-white/12 bg-[#111216] p-1.5 shadow-[0_24px_70px_-34px_rgba(0,0,0,1)]"
+          className="absolute right-0 top-[calc(100%+8px)] z-30 min-w-48 rounded-2xl border border-line-mid bg-[#111216] p-1.5 shadow-[0_24px_70px_-34px_rgba(0,0,0,1)]"
         >
           {items.length ? (
             items.map((item, index) => {
@@ -828,10 +828,10 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
                       item.disabled
                         ? "cursor-not-allowed text-disabled"
                         : item.primary
-                        ? "text-white hover:bg-white/[0.09]"
+                        ? "text-white hover:bg-overlay"
                         : item.destructive
                           ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
-                          : "text-white/72 hover:bg-white/[0.07] hover:text-white",
+                          : "text-white/72 hover:bg-elevated hover:text-white",
                     ].join(" ")}
                   >
                     <Icon name={item.icon} className="h-3.5 w-3.5" />
@@ -885,11 +885,11 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
       </div>
     </div>
   );
-  const cls = "block rounded-2xl border border-white/10 bg-white/[0.06] p-4";
+  const cls = "block rounded-2xl border border-line bg-elevated p-4";
   return href ? (
     <Link
       href={href}
-      className={`group ${cls} cursor-pointer transition-colors hover:border-white/20 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
+      className={`group ${cls} cursor-pointer transition-colors hover:border-line-strong hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
     >
       {body}
     </Link>
@@ -935,11 +935,11 @@ function CompactTalentCard({ talent }: { talent: InteractionTalentSnapshot }) {
       </div>
     </div>
   );
-  const cls = "block rounded-2xl border border-white/10 bg-white/[0.06] p-4";
+  const cls = "block rounded-2xl border border-line bg-elevated p-4";
   return href ? (
     <Link
       href={href}
-      className={`group ${cls} cursor-pointer transition-colors hover:border-white/20 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
+      className={`group ${cls} cursor-pointer transition-colors hover:border-line-strong hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20`}
     >
       {body}
     </Link>
@@ -964,7 +964,7 @@ function InteractionTimeline({ item }: { item: OwnerInteraction }) {
                 ].join(" ")}
               />
               {!isLatest ? (
-                <span className="absolute bottom-0 left-[2.5px] top-3.5 w-px bg-white/[0.09]" />
+                <span className="absolute bottom-0 left-[2.5px] top-3.5 w-px bg-overlay" />
               ) : null}
               <p className={`text-xs ${isLatest ? "text-white/82" : "text-white/62"}`}>{event.label}</p>
               <p className="mt-0.5 text-[11px] text-subtle">{event.at}</p>
@@ -1250,7 +1250,7 @@ function DecisionStrip({
     <section
       data-testid="decision-strip"
       aria-label={`Next step for ${item.counterpartyName}`}
-      className="ui-crossfade surface-elevated mb-2.5 rounded-2xl border border-line-mid px-3.5 py-3 elev-3"
+      className="ui-rise surface-elevated mb-2.5 rounded-2xl border border-line-mid px-3.5 py-3 elev-3"
     >
       <div className="flex items-start justify-between gap-3">
         <p className="flex items-center gap-2 text-[12.5px] font-semibold text-ink">
@@ -1262,7 +1262,7 @@ function DecisionStrip({
           data-testid="decision-strip-dismiss"
           onClick={onDismiss}
           aria-label="Dismiss next-step suggestions"
-          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-elevated hover:text-white"
         >
           <Icon name="x" className="h-3 w-3" />
         </button>
@@ -1314,7 +1314,7 @@ function decisionActionLabel(item: OwnerInteraction, stageKey: string, fallback:
 export function StatusUpdateLine({ message }: { message: Pick<ChatMessage, "body" | "atLabel"> }) {
   return (
     <div data-testid="chat-status-update" className="flex justify-center px-2">
-      <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60">
+      <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60">
         <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" />
         <span className="min-w-0">{message.body}</span>
         <span className="shrink-0 text-subtle">· {message.atLabel}</span>
@@ -1385,7 +1385,7 @@ function StageNotifyPrompt({
           data-testid="stage-notify-close"
           onClick={onDismiss}
           aria-label="Dismiss without notifying"
-          className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-white"
         >
           <Icon name="x" className="h-3.5 w-3.5" />
         </button>
@@ -1412,7 +1412,7 @@ function StageNotifyPrompt({
               type="button"
               data-testid="stage-notify-done"
               onClick={onDismiss}
-              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-overlay"
             >
               Done
             </button>
@@ -1423,7 +1423,7 @@ function StageNotifyPrompt({
           {/* The exact line the other side would see — no surprises. */}
           <p
             data-testid="stage-notify-preview"
-            className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 text-[11.5px] text-white/60"
+            className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-wash px-3 py-1.5 text-[11.5px] text-white/60"
           >
             <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" />
             <span className="min-w-0">{preview}</span>
@@ -1442,7 +1442,7 @@ function StageNotifyPrompt({
               rows={2}
               maxLength={2000}
               placeholder={`Add a note for ${single ? firstNameOf(single.counterpartyName) : "them"} (optional)`}
-              className="mt-2.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-subtle focus:border-white/25 focus:bg-white/[0.06] disabled:opacity-50"
+              className="mt-2.5 w-full resize-none rounded-xl border border-line bg-raised px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-subtle focus:border-line-strong focus:bg-elevated disabled:opacity-50"
             />
           ) : null}
           {phase === "error" ? (
@@ -1468,7 +1468,7 @@ function StageNotifyPrompt({
               type="button"
               data-testid="stage-notify-skip"
               onClick={onDismiss}
-              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-semibold text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white"
+              className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-3 text-[11px] font-semibold text-white/70 transition-colors hover:bg-overlay hover:text-white"
             >
               Skip
             </button>
@@ -1514,7 +1514,7 @@ function AttachmentChip({
     "inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors";
   const tone = onMe
     ? "bg-black/20 text-white/80 hover:bg-black/30"
-    : "border border-white/[0.1] bg-white/[0.03] text-white/70 hover:bg-white/[0.06]";
+    : "border border-line bg-wash text-white/70 hover:bg-elevated";
   const inner = (
     <>
       <Icon name="file" className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -1546,7 +1546,7 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
   return (
     <div
       className={[
-        "min-w-0 rounded-2xl rounded-bl-md border border-white/[0.09] bg-white/[0.04] px-3.5 py-3",
+        "min-w-0 rounded-2xl rounded-bl-md border border-line bg-raised px-3.5 py-3",
         "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
       ].join(" ")}
     >
@@ -1636,7 +1636,7 @@ export function MessageBubble({
               "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
               me
                 ? "rounded-2xl rounded-br-md bg-white/[0.13] text-white/92"
-                : "rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] text-white/82",
+                : "rounded-2xl rounded-bl-md border border-line bg-raised text-white/82",
             ].join(" ")}
           >
             {message.body ? <p className="whitespace-pre-line break-words">{message.body}</p> : null}
@@ -1645,7 +1645,7 @@ export function MessageBubble({
                 className={[
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs",
                   message.body ? "mt-2.5" : "",
-                  me ? "bg-black/20 text-white/82" : "border border-white/[0.09] bg-white/[0.03] text-white/72",
+                  me ? "bg-black/20 text-white/82" : "border border-line bg-wash text-white/72",
                 ].join(" ")}
               >
                 <Icon name="cash" className="h-3.5 w-3.5 opacity-70" />
@@ -4142,7 +4142,7 @@ export default function ApplicationsWorkspace({
             onViewChange={setView}
             ready={controlsReady}
           />
-          <div className="shrink-0 border-b border-white/[0.06] px-4 sm:px-6">
+          <div className="shrink-0 border-b border-line px-4 sm:px-6">
             <div className="flex items-end gap-5">
               {(
                 [
@@ -4195,7 +4195,7 @@ export default function ApplicationsWorkspace({
             </p>
           ) : null}
           {actionPending ? (
-            <p aria-live="polite" className="mx-4 mt-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs text-white/65 sm:mx-6">
+            <p aria-live="polite" className="mx-4 mt-3 rounded-xl border border-line bg-raised px-4 py-2.5 text-xs text-white/65 sm:mx-6">
               Updating…
             </p>
           ) : null}
@@ -4437,7 +4437,7 @@ export default function ApplicationsWorkspace({
           {flags.workState && queueChips.length === 0 && listItems.length > 0 && caughtUp ? (
             <p
               data-testid="all-caught-up"
-              className="shrink-0 border-b border-white/[0.06] px-4 py-2 text-[11.5px] text-white/65"
+              className="shrink-0 border-b border-line px-4 py-2 text-[11.5px] text-white/65"
             >
               {caughtUp}
             </p>
@@ -4472,7 +4472,7 @@ export default function ApplicationsWorkspace({
                     <Link
                       href="/jobs"
                       data-testid="inbox-empty-action"
-                      className="mt-4 inline-flex h-8 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+                      className="mt-4 inline-flex h-8 items-center rounded-lg border border-line-mid bg-raised px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-overlay"
                     >
                       {emptyState.action.label}
                     </Link>
@@ -4488,7 +4488,7 @@ export default function ApplicationsWorkspace({
                           selectFilter("all");
                         }
                       }}
-                      className="mt-4 inline-flex h-8 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08]"
+                      className="mt-4 inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-overlay"
                     >
                       {emptyState.action.label}
                     </button>
@@ -4628,7 +4628,7 @@ export default function ApplicationsWorkspace({
                             handleSelect(item.id);
                             runNextAction(item, rowAction);
                           }}
-                          className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-white/15 bg-white/[0.05] px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-white/[0.1]"
+                          className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-overlay"
                         >
                           {rowAction.label}
                         </button>
@@ -4670,7 +4670,7 @@ export default function ApplicationsWorkspace({
                       type="button"
                       onClick={() => setMobileDetailOpen(false)}
                       aria-label="Back to applications"
-                      className="-ml-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-lg text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white lg:hidden"
+                      className="-ml-1 inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-lg text-white/65 transition-colors hover:bg-elevated hover:text-white lg:hidden"
                     >
                       <span aria-hidden="true">←</span>
                     </button>
@@ -4817,7 +4817,7 @@ export default function ApplicationsWorkspace({
                         </p>
                       ) : null}
                       {actionPending ? (
-                        <p aria-live="polite" className="mb-5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs text-white/65">
+                        <p aria-live="polite" className="mb-5 rounded-xl border border-line bg-raised px-4 py-3 text-xs text-white/65">
                           Updating…
                         </p>
                       ) : null}
@@ -4971,7 +4971,7 @@ export default function ApplicationsWorkspace({
                           )}
                         </div>
                       ) : (
-                        <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-12 text-center">
+                        <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-white/[0.012] px-6 py-12 text-center">
                           <p className="text-sm font-medium text-white/55">No messages yet.</p>
                           <p className="mx-auto mt-1 max-w-xs text-xs text-subtle">
                             {selectedActive
@@ -4989,7 +4989,7 @@ export default function ApplicationsWorkspace({
                   </div>
 
                   {/* Composer / resolution — pinned to the foot of the conversation */}
-                  <div className="shrink-0 border-t border-white/[0.06] px-4 py-3 sm:px-6">
+                  <div className="shrink-0 border-t border-line px-4 py-3 sm:px-6">
                     <div className="mx-auto w-full max-w-[860px]">
                       {/*
                         The decision surface sits in normal flow directly above
@@ -5099,7 +5099,7 @@ export default function ApplicationsWorkspace({
                                     );
                                     composerRef.current?.focus();
                                   }}
-                                  className="inline-flex h-7 cursor-pointer items-center rounded-full border border-white/[0.08] bg-transparent px-2.5 text-[11px] font-medium text-white/55 transition-colors hover:bg-white/[0.05] hover:text-white/85"
+                                  className="inline-flex h-7 cursor-pointer items-center rounded-full border border-line bg-transparent px-2.5 text-[11px] font-medium text-white/55 transition-colors hover:bg-raised hover:text-white/85"
                                 >
                                   {template.label}
                                 </button>
@@ -5151,8 +5151,8 @@ export default function ApplicationsWorkspace({
                                     className={[
                                       "inline-flex h-7 cursor-pointer items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors",
                                       active
-                                        ? "border-white/30 bg-white/[0.1] text-white"
-                                        : "border-white/[0.08] bg-transparent text-white/70 hover:bg-white/[0.05] hover:text-white",
+                                        ? "border-line-strong bg-overlay text-white"
+                                        : "border-line bg-transparent text-white/70 hover:bg-raised hover:text-white",
                                     ].join(" ")}
                                   >
                                     {intent.label}
@@ -5186,7 +5186,7 @@ export default function ApplicationsWorkspace({
                               className={
                                 replyDraft.trim() && !sending
                                   ? "inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white text-black transition-colors hover:bg-white/90"
-                                  : "inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] text-subtle"
+                                  : "inline-flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-line bg-wash text-subtle"
                               }
                             >
                               <Icon name="send" className="h-4 w-4" />
@@ -5224,7 +5224,7 @@ export default function ApplicationsWorkspace({
                 </div>
 
               {/* Context + timeline rail. The context object is its own click target. */}
-              <aside className="border-t border-white/[0.06] lg:min-h-0 lg:overflow-y-auto lg:border-t-0">
+              <aside className="border-t border-line lg:min-h-0 lg:overflow-y-auto lg:border-t-0">
                   <div className="space-y-3 px-4 py-6 sm:px-6 lg:px-5">
                     {contextCard}
                     {showProposalInRail && selected.proposedTerms ? (
@@ -5366,7 +5366,7 @@ export default function ApplicationsWorkspace({
               maxLength={2000}
               data-testid="stage-confirm-note"
               placeholder={`Optional message to ${firstNameOf(selected.counterpartyName)}…`}
-              className="mt-2 w-full resize-none rounded-lg border border-white/[0.1] bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle focus:border-white/25 focus:outline-none"
+              className="mt-2 w-full resize-none rounded-lg border border-line bg-black/20 px-3 py-2.5 text-[13px] leading-relaxed text-white/85 placeholder:text-subtle focus:border-line-strong focus:outline-none"
             />
           ) : pendingAction?.backendStatus === "hired" ? (
             <p>This shares the decision and creates the work engagement.</p>

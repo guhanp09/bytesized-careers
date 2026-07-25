@@ -18,18 +18,18 @@ import {
   type ScheduleDraft,
 } from "../../lib/interviewScheduling";
 
-const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
+const SURFACE = "border border-line surface-raised elev-2";
 /*
   44px tall on a phone, the compact 32px from a pointer device upward. These are
   the controls someone taps while walking to a meeting; a 32px target is the
   kind of thing that reads as fine on a desktop and misses on a bus.
 */
 const GHOST =
-  "inline-flex h-11 cursor-pointer items-center justify-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
+  "inline-flex h-11 cursor-pointer items-center justify-center rounded-lg border border-line-mid bg-overlay px-3 text-[11.5px] font-semibold text-default transition-colors elev-1 hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
 const PRIMARY =
-  "inline-flex h-11 cursor-pointer items-center justify-center rounded-lg bg-white px-3 text-[11.5px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
+  "surface-primary inline-flex h-11 cursor-pointer items-center justify-center rounded-lg px-3 text-[11.5px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
 const FIELD =
-  "h-9 w-full rounded-lg border border-white/12 bg-white/[0.04] px-2.5 text-[12.5px] text-white/90 outline-none transition-colors focus:border-white/30 focus-visible:ring-2 focus-visible:ring-white/40";
+  "surface-inset h-9 w-full rounded-lg border border-line px-2.5 text-[12.5px] text-ink outline-none transition-colors focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus";
 
 const noopSubscribe = () => () => {};
 
@@ -110,7 +110,7 @@ export function InterviewCard({
         scheduling detail is exactly the wrong text to render ambiguously. The
         shadow, not transparency, is what says "this floats".
       */
-      className="ui-crossfade sticky top-0 z-10 mb-6 rounded-xl border border-white/[0.1] bg-[#0f0f12] p-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.9)]"
+      className="ui-rise surface-elevated sticky top-0 z-10 mb-6 rounded-xl border border-line-mid p-4 elev-3"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -144,7 +144,7 @@ export function InterviewCard({
         </div>
         <p
           data-testid="interview-status-line"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white/85"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-raised px-2 py-1 text-[11px] font-medium text-white/85"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[interview.status]}`} aria-hidden="true" />
           {interviewStatusLine(interview)}
@@ -196,7 +196,7 @@ export function InterviewCard({
               data-testid="interview-cancel"
               disabled={busy}
               onClick={onCancel}
-              className="inline-flex h-11 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8"
+              className="inline-flex h-11 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/65 transition-colors hover:bg-elevated hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8"
             >
               Call it off
             </button>
@@ -310,7 +310,7 @@ export function InterviewScheduler({
       ref={containerRef}
       data-testid="interview-scheduler"
       aria-labelledby={headingId}
-      className={`ui-crossfade mb-6 rounded-xl ${SURFACE} p-4`}
+      className={`ui-rise mb-6 rounded-xl ${SURFACE} p-4`}
     >
       <div className="flex items-start justify-between gap-3">
         <p id={headingId} className="text-[12.5px] font-semibold text-white/85">
@@ -321,7 +321,7 @@ export function InterviewScheduler({
           data-testid="interview-scheduler-close"
           onClick={onClose}
           aria-label="Close interview scheduling"
-          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-elevated hover:text-white"
         >
           <Icon name="x" className="h-3 w-3" />
         </button>
@@ -374,8 +374,8 @@ export function InterviewScheduler({
               className={[
                 "inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-[11.5px] font-semibold transition-colors",
                 draft.method === entry.key
-                  ? "border-white/35 bg-white/[0.12] text-white"
-                  : "border-white/[0.12] bg-white/[0.04] text-white/80 hover:bg-white/[0.08]",
+                  ? "border-line-strong bg-overlay text-white"
+                  : "border-line-mid bg-raised text-white/80 hover:bg-overlay",
               ].join(" ")}
             >
               {entry.label}
@@ -416,8 +416,8 @@ export function InterviewScheduler({
               className={[
                 "inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-[11.5px] font-semibold transition-colors",
                 draft.durationMinutes === minutes
-                  ? "border-white/35 bg-white/[0.12] text-white"
-                  : "border-white/[0.12] bg-white/[0.04] text-white/80 hover:bg-white/[0.08]",
+                  ? "border-line-strong bg-overlay text-white"
+                  : "border-line-mid bg-raised text-white/80 hover:bg-overlay",
               ].join(" ")}
             >
               {minutes} min
@@ -436,7 +436,7 @@ export function InterviewScheduler({
           rows={2}
           placeholder={`Anything ${counterpartyName} should know beforehand?`}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
-          className="w-full resize-none rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2 text-[12.5px] leading-relaxed text-white/90 outline-none transition-colors focus:border-white/30 focus-visible:ring-2 focus-visible:ring-white/40"
+          className="surface-inset w-full resize-none rounded-lg border border-line px-2.5 py-2 text-[12.5px] leading-relaxed text-ink outline-none transition-colors focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus"
         />
       </label>
 

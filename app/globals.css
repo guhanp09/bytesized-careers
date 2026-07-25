@@ -304,6 +304,68 @@ html {
   animation: ui-fade-in 220ms var(--ease-out) both;
 }
 
+/* ==========================================================================
+   Workspace motion
+   --------------------------------------------------------------------------
+   Motion is only permitted here to explain a change: which row opened, that a
+   card regrouped, that something was saved. Nothing loops, nothing bounces,
+   nothing delays an interaction, and nothing moves focus. Every animation below
+   is disabled outright under `prefers-reduced-motion` — shortened is not
+   reduced, and a fast animation is still motion to someone it makes ill.
+   ========================================================================== */
+
+@keyframes ui-lift-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A surface that appeared because the user asked for it — the decision strip,
+   the scheduling form, an arrangement card. Rises rather than fades, so the eye
+   is told where it came from. */
+.ui-rise {
+  animation: ui-lift-in 200ms var(--ease-emphasized) both;
+}
+
+/* A quiet acknowledgement for a private, reversible act (Star, Snooze). One
+   pulse of the element's own colour — never a colour it does not otherwise use. */
+@keyframes ui-ack {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.ui-ack {
+  animation: ui-ack 260ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-rise,
+  .ui-ack,
+  .ui-crossfade,
+  .ui-modal-panel,
+  .ui-modal-backdrop,
+  .ui-skeleton::after {
+    animation: none !important;
+  }
+  /* Transitions are motion too. Collapse them rather than trimming them. */
+  .ui-press,
+  [data-testid="interaction-row"],
+  [data-testid="pipeline-row"] {
+    transition: none !important;
+  }
+}
+
 /* Tactile press for interactive surfaces that opt in. */
 .ui-press {
   transition: transform var(--dur-fast) var(--ease-out);

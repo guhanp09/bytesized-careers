@@ -547,7 +547,7 @@ export default function CompactChatDock({
         data-testid="chat-dock-launcher"
         onClick={() => setOpen(true)}
         aria-label="Open messages"
-        className="hidden h-10 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-white/[0.12] bg-[#131419]/95 px-3.5 text-xs font-semibold text-white/75 shadow-[0_14px_40px_-18px_rgba(0,0,0,0.95)] backdrop-blur transition-colors hover:border-white/25 hover:text-white sm:inline-flex"
+        className="hidden h-10 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-line-mid bg-[#131419]/95 px-3.5 text-xs font-semibold text-white/75 shadow-[0_14px_40px_-18px_rgba(0,0,0,0.95)] backdrop-blur transition-colors hover:border-line-strong hover:text-white sm:inline-flex"
       >
         <Icon name="message-square-text" className="h-4 w-4" />
         Messages
@@ -567,11 +567,11 @@ export default function CompactChatDock({
   return (
     <div
       data-testid="chat-dock-panel"
-      className="hidden w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#101014]/[0.99] shadow-[0_32px_90px_-30px_rgba(0,0,0,1)] backdrop-blur-xl sm:flex"
+      className="hidden w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line-mid bg-[#101014]/[0.99] shadow-[0_32px_90px_-30px_rgba(0,0,0,1)] backdrop-blur-xl sm:flex"
       style={{ height: "min(460px, 70vh)" }}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.07] px-3 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5">
         {thread ? (
           <>
             <button
@@ -579,7 +579,7 @@ export default function CompactChatDock({
               data-testid="chat-dock-back"
               onClick={() => setThreadId(null)}
               aria-label="Back to messages"
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-elevated hover:text-white"
             >
               <span aria-hidden>←</span>
             </button>
@@ -624,7 +624,7 @@ export default function CompactChatDock({
               }}
               aria-label="Open in Inbox"
               title="Open in Inbox"
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/[0.07] hover:text-white"
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-white"
             >
               <Icon name="external-link" className="h-3.5 w-3.5" />
             </button>
@@ -637,7 +637,7 @@ export default function CompactChatDock({
           data-testid="chat-dock-minimize"
           onClick={() => setOpen(false)}
           aria-label="Minimize chat"
-          className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-elevated hover:text-white"
         >
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M6 9l6 6 6-6" />
@@ -675,7 +675,7 @@ export default function CompactChatDock({
             ) : null}
           </div>
           {/* Composer */}
-          <div className="shrink-0 border-t border-white/[0.07] px-2.5 py-2">
+          <div className="shrink-0 border-t border-line px-2.5 py-2">
             {threadInteractionBlocked ? (
               <p className="px-1.5 py-1 text-[11px] text-subtle">
                 {threadBlockedByMe
@@ -686,7 +686,7 @@ export default function CompactChatDock({
               <p className="px-1.5 py-1 text-[11px] text-subtle">This thread is closed to new messages.</p>
             ) : (
               <>
-                <div className="flex items-end gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-1.5 transition-colors focus-within:border-white/25">
+                <div className="flex items-end gap-1.5 rounded-xl border border-line bg-wash p-1.5 transition-colors focus-within:border-line-strong">
                   <textarea
                     ref={composerRef}
                     value={draft}
@@ -713,7 +713,7 @@ export default function CompactChatDock({
                     className={
                       draft.trim() && !sending && composerReady
                         ? "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-white text-black transition-colors hover:bg-white/90"
-                        : "inline-flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.02] text-subtle"
+                        : "inline-flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-lg border border-line bg-wash text-subtle"
                     }
                   >
                     <Icon name="send" className="h-3.5 w-3.5" />
@@ -735,7 +735,7 @@ export default function CompactChatDock({
       ) : (
         <>
           {/* Thread list — the Inbox's filters + rows, compact */}
-          <div className="flex shrink-0 items-end gap-4 overflow-x-auto border-b border-white/[0.07] px-3">
+          <div className="flex shrink-0 items-end gap-4 overflow-x-auto border-b border-line px-3">
             {dockFiltersFor(mode).map((option) => {
               const isActive = filter === option.key;
               return (
@@ -779,7 +779,7 @@ export default function CompactChatDock({
                         setDraft("");
                         setSendError(null);
                       }}
-                      className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04]"
+                      className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-raised"
                     >
                       <InteractionAvatar
                         name={item.counterpartyName}

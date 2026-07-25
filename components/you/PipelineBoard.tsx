@@ -131,7 +131,7 @@ function avatarInitials(name: string): string {
 
 function RowAvatar({ name, src }: { name: string; src?: string | null }) {
   return (
-    <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white/[0.06] text-[11px] font-semibold text-white/75">
+    <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line-mid bg-elevated text-[11px] font-semibold text-white/75">
       {avatarInitials(name)}
       {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
     </span>
@@ -201,7 +201,7 @@ function StageMenu({
           event.stopPropagation();
           setOpen((value) => !value);
         }}
-        className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.03] px-2.5 text-[11px] font-semibold text-white/70 transition-colors hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-wash px-2.5 text-[11px] font-semibold text-white/70 transition-colors hover:border-line-strong hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
       >
         {triggerLabel}
         <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -212,7 +212,7 @@ function StageMenu({
         <div
           role="menu"
           className={[
-            "absolute z-40 min-w-44 rounded-xl border border-white/12 bg-[#111216] p-1.5 shadow-[0_24px_70px_-34px_rgba(0,0,0,1)]",
+            "absolute z-40 min-w-44 rounded-xl border border-line-mid bg-[#111216] p-1.5 shadow-[0_24px_70px_-34px_rgba(0,0,0,1)]",
             drop === "up" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
             align === "right" ? "right-0" : "left-0",
           ].join(" ")}
@@ -254,7 +254,7 @@ function StageMenu({
                       ? "cursor-default text-subtle"
                       : stage.key === "rejected" || stage.key === "declined"
                         ? "text-rose-200/80 hover:bg-rose-300/10 hover:text-rose-100"
-                        : "text-white/75 hover:bg-white/[0.07] hover:text-white",
+                        : "text-white/75 hover:bg-elevated hover:text-white",
                   ].join(" ")}
                 >
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stage.dot}`} aria-hidden />
@@ -387,7 +387,7 @@ function FirstMessagePreview({
               id={previewId}
               role="tooltip"
               data-testid="pipeline-snippet-preview"
-              className="pointer-events-none fixed z-[9999] rounded-lg border border-white/12 bg-[#12131a]/95 px-2.5 py-2 text-[11px] leading-snug text-white/90 shadow-[0_14px_30px_-14px_rgba(0,0,0,0.95)] backdrop-blur-sm"
+              className="pointer-events-none fixed z-[9999] rounded-lg border border-line-mid bg-[#12131a]/95 px-2.5 py-2 text-[11px] leading-snug text-white/90 shadow-[0_14px_30px_-14px_rgba(0,0,0,0.95)] backdrop-blur-sm"
               style={{ left: preview.left, top: preview.top, width: preview.width }}
             >
               <p className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-subtle">First message</p>
@@ -395,7 +395,7 @@ function FirstMessagePreview({
                 <p className="mt-1 line-clamp-2 italic text-secondary">“{message}”</p>
               ) : null}
               {lines.length ? (
-                <div className={`space-y-1 ${message ? "mt-2 border-t border-white/[0.08] pt-2" : "mt-1.5"}`}>
+                <div className={`space-y-1 ${message ? "mt-2 border-t border-line pt-2" : "mt-1.5"}`}>
                   {lines.map((line) => (
                     <div key={`${line.label}-${line.value}`} className="flex items-start gap-1.5">
                       <Icon name={line.icon} className="mt-[1px] h-3 w-3 shrink-0 text-subtle" />
@@ -626,7 +626,7 @@ export default function PipelineBoard({
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="pipeline-board">
       {/* Toolbar: funnel strip (stage chips w/ counts, also drop targets) + search + context filter */}
-      <div className="shrink-0 border-b border-white/[0.06] px-4 py-3 sm:px-6">
+      <div className="shrink-0 border-b border-line px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Pipeline stages">
             {stages.map((stage, index) => {
@@ -640,7 +640,7 @@ export default function PipelineBoard({
               return (
                 <span key={stage.key} className="inline-flex items-center gap-1.5">
                   {startsTerminal ? (
-                    <span className="mx-1 h-4 w-px shrink-0 bg-white/[0.09]" aria-hidden />
+                    <span className="mx-1 h-4 w-px shrink-0 bg-overlay" aria-hidden />
                   ) : null}
                   <button
                     type="button"
@@ -654,14 +654,14 @@ export default function PipelineBoard({
                       dragHover
                         ? "scale-105 border-white/60 bg-white/[0.14] text-white"
                         : dragValid
-                          ? "border-white/25 bg-white/[0.05] text-white/85"
+                          ? "border-line-strong bg-raised text-white/85"
                           : isActive
-                            ? "border-white/30 bg-white/[0.09] text-white"
+                            ? "border-line-strong bg-overlay text-white"
                             : count > 0
                               ? stage.terminal
-                                ? "border-white/[0.07] bg-transparent text-subtle hover:border-white/15 hover:text-white/70"
-                                : "border-white/[0.09] bg-transparent text-white/60 hover:border-white/20 hover:text-white/90"
-                              : "border-white/[0.06] bg-transparent text-subtle hover:text-muted",
+                                ? "border-line bg-transparent text-subtle hover:border-line-mid hover:text-white/70"
+                                : "border-line bg-transparent text-white/60 hover:border-line-strong hover:text-white/90"
+                              : "border-line bg-transparent text-subtle hover:text-muted",
                     ].join(" ")}
                   >
                     <span
@@ -683,7 +683,7 @@ export default function PipelineBoard({
                 onChange={(event) => setSearch(event.target.value)}
                 data-testid="pipeline-search"
                 placeholder={kind === "application" && direction === "received" ? "Search applicants or jobs…" : "Search…"}
-                className="h-8 w-full rounded-lg border border-white/[0.1] bg-white/[0.03] pl-8 pr-3 text-xs text-white/85 placeholder:text-subtle transition-colors focus:border-white/25 focus:outline-none"
+                className="h-8 w-full rounded-lg border border-line bg-wash pl-8 pr-3 text-xs text-white/85 placeholder:text-subtle transition-colors focus:border-line-strong focus:outline-none"
               />
             </div>
             {contextOptions.length > 1 ? (
@@ -692,7 +692,7 @@ export default function PipelineBoard({
                 onChange={(event) => setContextFilter(event.target.value)}
                 data-testid="pipeline-context-filter"
                 aria-label={kind === "application" ? "Filter by job" : "Filter by listing"}
-                className="h-8 max-w-[200px] cursor-pointer truncate rounded-lg border border-white/[0.1] bg-white/[0.03] px-2.5 text-xs font-medium text-white/70 transition-colors focus:border-white/25 focus:outline-none [&>option]:bg-[#111216]"
+                className="h-8 max-w-[200px] cursor-pointer truncate rounded-lg border border-line bg-wash px-2.5 text-xs font-medium text-white/70 transition-colors focus:border-line-strong focus:outline-none [&>option]:bg-[#111216]"
               >
                 <option value="all">{kind === "application" && direction === "received" ? "All jobs" : "All contexts"}</option>
                 {contextOptions.map((option) => (
@@ -710,7 +710,7 @@ export default function PipelineBoard({
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 px-4 py-5 pb-24 sm:px-6">
           {filteredItems.length === 0 ? (
-            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.1] bg-white/[0.012] px-6 py-10 text-center">
+            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-white/[0.012] px-6 py-10 text-center">
               <p className="text-sm font-medium text-white/55">Nothing matches here.</p>
               <p className="mx-auto mt-1 max-w-xs text-xs text-subtle">
                 {search || contextFilter !== "all"
@@ -737,7 +737,7 @@ export default function PipelineBoard({
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
                       Closed
                     </span>
-                    <span className="h-px flex-1 bg-white/[0.05]" aria-hidden />
+                    <span className="h-px flex-1 bg-raised" aria-hidden />
                   </div>
                 ) : null}
                 <section
