@@ -1216,7 +1216,7 @@ function DecisionStrip({
           data-testid="decision-strip-dismiss"
           onClick={onDismiss}
           aria-label="Dismiss next-step suggestions"
-          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
         >
           <Icon name="x" className="h-3 w-3" />
         </button>
@@ -1239,7 +1239,7 @@ function DecisionStrip({
           type="button"
           data-testid="decision-strip-ask"
           onClick={onAskQuestion}
-          className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85"
+          className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/75 transition-colors hover:bg-white/[0.06] hover:text-white"
         >
           Ask a question
         </button>
@@ -1880,7 +1880,16 @@ export default function ApplicationsWorkspace({
       const saved = window.localStorage.getItem(selectedStorageKey);
       if (saved) {
         setSelectedId(saved);
-        setMobileDetailOpen(true);
+        /*
+          On a phone the list and the conversation are separate screens, so
+          restoring a selection *and* opening it means tapping "Inbox" drops you
+          into whichever conversation you last read — with no list, and Back as
+          the only way out. The selection is still restored (returning to the
+          desktop layout, or tapping the row, lands where you were); only the
+          automatic descent into it is withheld. A ?thread deep-link is a
+          deliberate request and still opens.
+        */
+        if (window.innerWidth >= 1024) setMobileDetailOpen(true);
       }
     } catch {
       // storage unavailable; nothing to restore
@@ -4169,10 +4178,10 @@ export default function ApplicationsWorkspace({
                     data-testid="job-summary"
                     className="min-w-[168px] shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-2"
                   >
-                    <p className="truncate text-[11.5px] font-semibold text-white/80" title={summary.title}>
+                    <p className="truncate text-[11.5px] font-semibold text-white/90" title={summary.title}>
                       {summary.title}
                     </p>
-                    <p className="mt-0.5 text-[10.5px] text-white/40">
+                    <p className="mt-0.5 text-[10.5px] text-white/60">
                       {summary.activeCount} active
                       {summary.outstandingCount > 0 ? ` · ${summary.outstandingCount} need you` : ""}
                     </p>
@@ -4196,10 +4205,10 @@ export default function ApplicationsWorkspace({
                               setView("pipeline");
                             }
                           }}
-                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 text-[10.5px] font-medium text-white/60 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white/90"
+                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 text-[10.5px] font-medium text-white/75 transition-colors hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                         >
                           {entry.label}
-                          <span className="text-white/40">{entry.count}</span>
+                          <span className="text-white/60">{entry.count}</span>
                         </button>
                       ))}
                     </div>
@@ -4284,11 +4293,11 @@ export default function ApplicationsWorkspace({
               data-testid="work-reminder"
               data-reminder-key={reminder.key}
               onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
-              className="flex shrink-0 cursor-pointer items-center gap-2 border-b border-white/[0.06] px-4 py-2 text-left text-[11.5px] text-white/60 transition-colors hover:bg-white/[0.03] hover:text-white/85"
+              className="flex shrink-0 cursor-pointer items-center gap-2 border-b border-white/[0.06] px-4 py-2 text-left text-[11.5px] text-white/75 transition-colors hover:bg-white/[0.03] hover:text-white"
             >
-              <Icon name="clock" className="h-3.5 w-3.5 shrink-0 text-white/35" aria-hidden="true" />
+              <Icon name="clock" className="h-3.5 w-3.5 shrink-0 text-white/55" aria-hidden="true" />
               <span className="min-w-0 flex-1">{reminder.text}</span>
-              <span className="shrink-0 text-white/35">Show</span>
+              <span className="shrink-0 text-white/60">Show</span>
             </button>
           ) : null}
           {flags.workState && queueChips.length > 0 ? (
@@ -4311,11 +4320,11 @@ export default function ApplicationsWorkspace({
                       "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium transition-colors",
                       isActive
                         ? "border-white/30 bg-white/[0.1] text-white"
-                        : "border-white/[0.08] bg-transparent text-white/55 hover:bg-white/[0.05] hover:text-white/85",
+                        : "border-white/[0.08] bg-transparent text-white/70 hover:bg-white/[0.05] hover:text-white",
                     ].join(" ")}
                   >
                     {chip.label}
-                    <span className={isActive ? "text-white/60" : "text-white/35"}>{chip.count}</span>
+                    <span className={isActive ? "text-white/70" : "text-white/60"}>{chip.count}</span>
                   </button>
                 );
               })}
@@ -4324,7 +4333,7 @@ export default function ApplicationsWorkspace({
           {flags.workState && queueChips.length === 0 && listItems.length > 0 && caughtUp ? (
             <p
               data-testid="all-caught-up"
-              className="shrink-0 border-b border-white/[0.06] px-4 py-2 text-[11.5px] text-white/45"
+              className="shrink-0 border-b border-white/[0.06] px-4 py-2 text-[11.5px] text-white/65"
             >
               {caughtUp}
             </p>
@@ -4346,11 +4355,11 @@ export default function ApplicationsWorkspace({
                 data-empty-reason={emptyState?.reason ?? "unknown"}
                 className="px-6 py-12 text-center"
               >
-                <p className="text-[13px] font-medium text-white/70">
+                <p className="text-[13px] font-medium text-white/85">
                   {emptyState?.title ?? "Nothing in this section yet."}
                 </p>
                 {emptyState?.body ? (
-                  <p className="mx-auto mt-1.5 max-w-[320px] text-xs leading-relaxed text-white/45">
+                  <p className="mx-auto mt-1.5 max-w-[320px] text-xs leading-relaxed text-white/60">
                     {emptyState.body}
                   </p>
                 ) : null}
@@ -4984,7 +4993,7 @@ export default function ApplicationsWorkspace({
                                       "inline-flex h-7 cursor-pointer items-center rounded-full border px-2.5 text-[11px] font-medium transition-colors",
                                       active
                                         ? "border-white/30 bg-white/[0.1] text-white"
-                                        : "border-white/[0.08] bg-transparent text-white/55 hover:bg-white/[0.05] hover:text-white/85",
+                                        : "border-white/[0.08] bg-transparent text-white/70 hover:bg-white/[0.05] hover:text-white",
                                     ].join(" ")}
                                   >
                                     {intent.label}

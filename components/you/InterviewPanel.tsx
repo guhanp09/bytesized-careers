@@ -19,10 +19,15 @@ import {
 } from "../../lib/interviewScheduling";
 
 const SURFACE = "border border-white/[0.08] bg-white/[0.035]";
+/*
+  44px tall on a phone, the compact 32px from a pointer device upward. These are
+  the controls someone taps while walking to a meeting; a 32px target is the
+  kind of thing that reads as fine on a desktop and misses on a bus.
+*/
 const GHOST =
-  "inline-flex h-8 cursor-pointer items-center justify-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-11 cursor-pointer items-center justify-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11.5px] font-semibold text-white/80 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
 const PRIMARY =
-  "inline-flex h-8 cursor-pointer items-center justify-center rounded-lg bg-white px-3 text-[11.5px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-11 cursor-pointer items-center justify-center rounded-lg bg-white px-3 text-[11.5px] font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8";
 const FIELD =
   "h-9 w-full rounded-lg border border-white/12 bg-white/[0.04] px-2.5 text-[12.5px] text-white/90 outline-none transition-colors focus:border-white/30 focus-visible:ring-2 focus-visible:ring-white/40";
 
@@ -109,7 +114,7 @@ export function InterviewCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[11px] font-semibold text-white/45">
+          <p className="flex items-center gap-2 text-[11px] font-semibold text-white/60">
             <Icon name="calendar-clock" className="h-3.5 w-3.5" aria-hidden="true" />
             {interview.roundNumber > 1 ? `Interview · round ${interview.roundNumber}` : "Interview"}
           </p>
@@ -127,19 +132,19 @@ export function InterviewCard({
             repeating an identical zone would be noise, omitting a different one
             would be a missed interview.
           */}
-          <p className="mt-1 text-[11.5px] leading-relaxed text-white/55">
+          <p className="mt-1 text-[11.5px] leading-relaxed text-white/65">
             {showZone ? `${interview.scheduleLabel} · their time` : meetingMethodLabel(interview.meetingMethod)}
             {interview.durationMinutes && !showZone ? ` · ${interview.durationMinutes} min` : ""}
           </p>
           {interview.meetingDetail ? (
-            <p className="mt-1.5 break-words text-[11.5px] text-white/65" data-testid="interview-detail">
+            <p className="mt-1.5 break-words text-[11.5px] text-white/75" data-testid="interview-detail">
               {interview.meetingDetail}
             </p>
           ) : null}
         </div>
         <p
           data-testid="interview-status-line"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white/70"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white/85"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[interview.status]}`} aria-hidden="true" />
           {interviewStatusLine(interview)}
@@ -147,7 +152,7 @@ export function InterviewCard({
       </div>
 
       {interview.rescheduleCount > 0 && !inactive ? (
-        <p className="mt-2 text-[11px] text-white/40">
+        <p className="mt-2 text-[11px] text-white/60">
           Moved {interview.rescheduleCount === 1 ? "once" : `${interview.rescheduleCount} times`}.
         </p>
       ) : null}
@@ -191,7 +196,7 @@ export function InterviewCard({
               data-testid="interview-cancel"
               disabled={busy}
               onClick={onCancel}
-              className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 cursor-pointer items-center rounded-lg px-2.5 text-[11.5px] font-medium text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8"
             >
               Call it off
             </button>
@@ -316,7 +321,7 @@ export function InterviewScheduler({
           data-testid="interview-scheduler-close"
           onClick={onClose}
           aria-label="Close interview scheduling"
-          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/[0.07] hover:text-white"
         >
           <Icon name="x" className="h-3 w-3" />
         </button>
@@ -324,7 +329,7 @@ export function InterviewScheduler({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold text-white/45">Date</span>
+          <span className="mb-1 block text-[11px] font-semibold text-white/60">Date</span>
           <input
             ref={dateRef}
             type="date"
@@ -335,7 +340,7 @@ export function InterviewScheduler({
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold text-white/45">Time</span>
+          <span className="mb-1 block text-[11px] font-semibold text-white/60">Time</span>
           <input
             type="time"
             data-testid="interview-time"
@@ -351,13 +356,13 @@ export function InterviewScheduler({
         always scheduling in their own zone, and a zone dropdown is a
         well-known way to pick the wrong one by accident.
       */}
-      <p className="mt-1.5 text-[11px] text-white/40">
+      <p className="mt-1.5 text-[11px] text-white/60">
         {zoneLabel ? `Your time zone (${zoneLabel}). ` : ""}
         {counterpartyName} sees this in theirs.
       </p>
 
       <fieldset className="mt-3.5">
-        <legend className="mb-1.5 text-[11px] font-semibold text-white/45">How you&rsquo;ll meet</legend>
+        <legend className="mb-1.5 text-[11px] font-semibold text-white/60">How you&rsquo;ll meet</legend>
         <div className="flex flex-wrap gap-1.5">
           {MEETING_METHODS.map((entry) => (
             <button
@@ -370,7 +375,7 @@ export function InterviewScheduler({
                 "inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-[11.5px] font-semibold transition-colors",
                 draft.method === entry.key
                   ? "border-white/35 bg-white/[0.12] text-white"
-                  : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]",
+                  : "border-white/[0.12] bg-white/[0.04] text-white/80 hover:bg-white/[0.08]",
               ].join(" ")}
             >
               {entry.label}
@@ -380,8 +385,8 @@ export function InterviewScheduler({
       </fieldset>
 
       <label className="mt-3.5 block">
-        <span className="mb-1 block text-[11px] font-semibold text-white/45">
-          {method.detailLabel} <span className="font-normal text-white/30">— optional</span>
+        <span className="mb-1 block text-[11px] font-semibold text-white/60">
+          {method.detailLabel} <span className="font-normal text-white/60">— optional</span>
         </span>
         <input
           type="text"
@@ -394,7 +399,7 @@ export function InterviewScheduler({
       </label>
 
       <fieldset className="mt-3.5">
-        <legend className="mb-1.5 text-[11px] font-semibold text-white/45">How long</legend>
+        <legend className="mb-1.5 text-[11px] font-semibold text-white/60">How long</legend>
         <div className="flex flex-wrap gap-1.5">
           {DURATION_CHOICES.map((minutes) => (
             <button
@@ -412,7 +417,7 @@ export function InterviewScheduler({
                 "inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-[11.5px] font-semibold transition-colors",
                 draft.durationMinutes === minutes
                   ? "border-white/35 bg-white/[0.12] text-white"
-                  : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]",
+                  : "border-white/[0.12] bg-white/[0.04] text-white/80 hover:bg-white/[0.08]",
               ].join(" ")}
             >
               {minutes} min
@@ -422,8 +427,8 @@ export function InterviewScheduler({
       </fieldset>
 
       <label className="mt-3.5 block">
-        <span className="mb-1 block text-[11px] font-semibold text-white/45">
-          Message <span className="font-normal text-white/30">— optional, sent with the invitation</span>
+        <span className="mb-1 block text-[11px] font-semibold text-white/60">
+          Message <span className="font-normal text-white/60">— optional, sent with the invitation</span>
         </span>
         <textarea
           data-testid="interview-note"
@@ -458,7 +463,7 @@ export function InterviewScheduler({
         <button type="button" onClick={onClose} disabled={busy} className={GHOST}>
           Not now
         </button>
-        <p className="text-[11px] text-white/40">
+        <p className="text-[11px] text-white/60">
           {rescheduling
             ? `${counterpartyName} is told what changed.`
             : `${counterpartyName} sees this invitation and the stage moves to Interviewing.`}
