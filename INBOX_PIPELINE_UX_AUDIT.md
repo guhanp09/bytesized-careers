@@ -1228,8 +1228,29 @@ This is a limitation, stated rather than discovered.
 
 ## Final external-failure ledger
 
+Counts from the closing run. The *set* of failures shifts between runs — a spec
+that fails once and passes in isolation is load-sensitive, not broken — so what
+is stable here is the classification, not the arithmetic.
+
 | Suite | Result | Classification |
 | --- | --- | --- |
-| `npm run test:e2e` | 295 passed, 16 failed | None in the three workspace specs; none in a spec importing anything changed here. `settings`, `drafts`, `candidate-job-experience`, `talent-browse`, `admin-panel` pass in isolation → parallel-load flakes. `adaptive-profile-overview`, `beta-review-safety`, `smoke`, `import-job`, `mobile-overflow`, `phase3a-polish` fail in isolation too → pre-existing, unrelated workstreams |
-| `npm run test:e2e:qa` | 89 passed, 2 failed | Both settled: the import-job-publish QA failure, and the duplicate `job-apply-button` test id (a strict-mode violation, same signature as documented) |
-| `node --test tests/*.test.mjs` | 875 passed | The import-parser wall-clock benchmark passes or fails with load; its design flaw is recorded above |
+| `npx tsc --noEmit` | clean | — |
+| `npm run lint` | 0 errors, 31 warnings | Pre-existing `<img>` and unused-var warnings |
+| `node --test tests/*.test.mjs` | 875 passed | The import-parser wall-clock benchmark passes or fails with machine load; its design flaw is recorded above |
+| `npm run build` | clean | — |
+| `npm run test:e2e` | **302 passed, 18 failed** | **None in any spec touched by this work**, and none in a spec importing anything changed. `settings`, `candidate-job-experience`, `visual-theme`, `dev-data-source`, `talent-browse`, `admin-panel`, `drafts` pass in isolation → parallel-load flakes. `adaptive-profile-overview`, `beta-review-safety`, `smoke`, `import-job`, `mobile-overflow`, `phase3a-polish` fail in isolation too → pre-existing, other workstreams |
+| `npm run test:e2e:qa` | **88 passed, 3 failed** | Two settled: the import-job-publish QA failure and the duplicate `job-apply-button` test id. The third (`a fresh hiring request appears for both sides`) passes in isolation → order-sensitive; the QA suite shares one database across tests |
+| `pytest` (backend) | **455 passed, 10 skipped** | — |
+| `alembic heads` | `0049_engagement_payment_state` | — |
+| `test_interaction_status_postgres.sh` | pass | Migration round-trip through 0049 on real PostgreSQL |
+| Manifest regeneration | byte-identical | `--check` on all six |
+| `SCENARIOS.md` regeneration | current | `--check` |
+| Backend/Mock parity | 15 tests, green | Five scenarios, both directions |
+| Scenario index / doc / Mock-source guards | 51 tests, green | — |
+| Production-bundle exclusion | 4 tests, green | Asserted against real build output |
+
+`dev-data-source` deserves a note: it asserts the marketplace job title
+`"Video editor for YouTube"`, which is the same string the already-classified
+`smoke loads /jobs/1` failure looks for. They share one root cause in the
+marketplace mock data, which belongs to the job-import workstream, not to this
+one.
