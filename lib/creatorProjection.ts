@@ -755,3 +755,78 @@ export function portfolioFacets(items: readonly CreatorPortfolioItem[]): {
     niches: dedupe(items.map((item) => item.niche)),
   };
 }
+
+/* --- filtering and sorting ------------------------------------------------ */
+
+export type CreatorFilterKey = "platform" | "format" | "niche" | "turnaround" | "structure";
+
+export type CreatorFilters = Partial<Record<CreatorFilterKey, string>>;
+
+/**
+ * What a record can be filtered by.
+ *
+ * Read from the record itself — its portfolio evidence and its job facts — so a
+ * filter can only ever offer values that some record actually has. An option
+ * list built from a static vocabulary would offer "Twitch" on a board with no
+ * Twitch work and return an empty list, which teaches people not to trust the
+ * control.
+ */
+export function creatorFacetsOf(input: {
+  portfolio?: readonly PortfolioInput[] | null;
+  firstMessageAnswers?: Record<string, unknown> | null;
+  job?: Parameters<typeof creatorViewOf>[0]["job"];
+}): Record<CreatorFilterKey, string[]> {
+  const portfolio = portfolioForInteraction(input);
+  const fromWork = portfolioFacets(portfolio);
+  const view = creatorViewOf({ job: input.job });
+  return {
+    platform: dedupe([...fromWork.platforms, ...view.platforms]),
+    format: dedupe([...fromWork.formats, ...view.formats]),
+    niche: dedupe([...fromWork.niches, ...view.niches]),
+    turnaround: view.turnaround.bucket === "unspecified" ? [] : [view.turnaround.bucket],
+    structure: view.terms.structure === "unspecified" ? [] : [view.terms.structure],
+  };
+}
+
+/** True when a record satisfies every active filter. Absent filters never exclude. */
+export function matchesCreatorFilters(
+  facets: Record<CreatorFilterKey, string[]>,
+  filters: CreatorFilters
+): boolean {
+  for (const [key, wanted] of Object.entries(filters) as Array<[CreatorFilterKey, string]>) {
+    if (!wanted) continue;
+    // A record that simply does not carry the attribute is excluded rather than
+    // waved through: "show me YouTube work" must not return records whose
+    // platform is unknown, or the filter is decorative.
+    if (!facets[key].includes(wanted)) return false;
+  }
+  return true;
+}
+
+export type CreatorSort = "default" | "turnaround";
+
+/**
+ * Comparable turnaround for sorting. Unspecified sorts last rather than first —
+ * an unknown turnaround is not a fast one.
+ */
+export function turnaroundRank(input: {
+  job?: Parameters<typeof creatorViewOf>[0]["job"];
+}): number {
+  const { turnaround } = creatorViewOf({ job: input.job });
+  return turnaround.hours ?? Number.POSITIVE_INFINITY;
+}
+
+/** Human label for a facet value, so filter chips read as prose. */
+export function creatorFacetLabel(key: CreatorFilterKey, value: string): string {
+  if (key === "turnaround") return TURNAROUND_BUCKET_LABELS[value as TurnaroundBucket] ?? value;
+  if (key === "structure") return COMMERCIAL_STRUCTURE_LABELS[value as CommercialStructure] ?? value;
+  return value;
+}
+
+export const CREATOR_FILTER_LABELS: Record<CreatorFilterKey, string> = {
+  platform: "Platform",
+  format: "Format",
+  niche: "Niche",
+  turnaround: "Turnaround",
+  structure: "Pay structure",
+};

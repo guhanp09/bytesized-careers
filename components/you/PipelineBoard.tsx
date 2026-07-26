@@ -16,7 +16,16 @@ import { Icon } from "../Icons";
 import { InteractionTime } from "./InteractionTime";
 import { PortfolioStrip } from "./PortfolioPreview";
 import { CreatorFitSummary } from "./CreatorContext";
-import { portfolioFacets, portfolioForInteraction } from "../../lib/creatorProjection";
+import {
+  creatorFacetsOf,
+  matchesCreatorFilters,
+  portfolioFacets,
+  portfolioForInteraction,
+  turnaroundRank,
+  type CreatorFilterKey,
+  type CreatorFilters,
+} from "../../lib/creatorProjection";
+import { CreatorAttributeFilters } from "./CreatorAttributeFilters";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -451,6 +460,9 @@ export default function PipelineBoard({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
   const [contextFilter, setContextFilter] = useState<string>("all");
+  const [creatorFilters, setCreatorFilters] = useState<CreatorFilters>({});
+  /** Fastest first when asked; unspecified turnaround always sorts last. */
+  const [sortByTurnaround, setSortByTurnaround] = useState(false);
   const stages = useMemo(() => pipelineStagesFor(kind, direction), [kind, direction]);
   // Focused stage from the funnel strip (null = all stages). A deep-linked
   // stage applies only when it exists in this board's vocabulary.
@@ -479,15 +491,53 @@ export default function PipelineBoard({
 
   const contextOptions = useMemo(() => pipelineContextOptions(items), [items]);
 
-  const filteredItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          pipelineSearchMatch(item, search) &&
-          (contextFilter === "all" || pipelineContextLabelOf(item) === contextFilter)
-      ),
-    [items, search, contextFilter]
-  );
+  /**
+   * Creator attributes per record, and the union of values actually present.
+   * Derived from the records on screen so the control can only ever offer a
+   * value some record has.
+   */
+  const creatorFacets = useMemo(() => {
+    const byId = new Map<string, Record<CreatorFilterKey, string[]>>();
+    for (const item of items) byId.set(item.id, creatorFacetsOf(item));
+    return byId;
+  }, [items]);
+
+  const availableCreatorFacets = useMemo(() => {
+    const keys: CreatorFilterKey[] = ["platform", "format", "niche", "turnaround", "structure"];
+    const out = {} as Record<CreatorFilterKey, string[]>;
+    for (const key of keys) {
+      const seen = new Set<string>();
+      for (const facets of creatorFacets.values()) {
+        for (const value of facets[key]) seen.add(value);
+      }
+      out[key] = [...seen];
+    }
+    return out;
+  }, [creatorFacets]);
+
+  const filteredItems = useMemo(() => {
+    const matched = items.filter(
+      (item) =>
+        pipelineSearchMatch(item, search) &&
+        (contextFilter === "all" || pipelineContextLabelOf(item) === contextFilter) &&
+        matchesCreatorFilters(
+          creatorFacets.get(item.id) ?? {
+            platform: [],
+            format: [],
+            niche: [],
+            turnaround: [],
+            structure: [],
+          },
+          creatorFilters
+        )
+    );
+    if (!sortByTurnaround) return matched;
+    // Stable: equal ranks keep the board's own order rather than shuffling.
+    return matched
+      .map((item, index) => ({ item, index, rank: turnaroundRank(item) }))
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map((entry) => entry.item);
+  }, [items, search, contextFilter, creatorFacets, creatorFilters, sortByTurnaround]);
 
   const grouped = useMemo(() => groupByStage(filteredItems, stages), [filteredItems, stages]);
 
@@ -726,6 +776,29 @@ export default function PipelineBoard({
               </button>
             ) : null}
           </div>
+          <CreatorAttributeFilters
+            available={availableCreatorFacets}
+            filters={creatorFilters}
+            onChange={setCreatorFilters}
+          />
+          {availableCreatorFacets.turnaround.length > 1 ? (
+            <button
+              type="button"
+              data-testid="pipeline-sort-turnaround"
+              aria-pressed={sortByTurnaround}
+              onClick={() => setSortByTurnaround((value) => !value)}
+              className={[
+                "inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-[11.5px] font-semibold transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                sortByTurnaround
+                  ? "border-line-strong bg-elevated text-ink elev-1"
+                  : "border-line bg-wash text-muted hover:border-line-mid hover:text-default",
+              ].join(" ")}
+            >
+              <Icon name="timer-reset" className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">Fastest</span>
+            </button>
+          ) : null}
           <div className="ml-auto flex min-w-0 items-center gap-2">
             <div className="relative w-32 sm:w-44 md:w-52">
               <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />

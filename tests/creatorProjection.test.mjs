@@ -15,6 +15,10 @@ import {
   normalizeTurnaround,
   toCreatorPortfolio,
   toCreatorPortfolioItem,
+  creatorFacetsOf,
+  matchesCreatorFilters,
+  turnaroundRank,
+  creatorFacetLabel,
 } from "../lib/creatorProjection.ts";
 
 /* --- portfolio normalisation --------------------------------------------- */
@@ -281,4 +285,69 @@ test("the context summary skips what is missing instead of padding it", () => {
 test("an empty context produces no lines at all", () => {
   const lines = clientContextLines(describeClientContext({}), null);
   assert.deepEqual(lines, []);
+});
+
+/* --- filtering and sorting ------------------------------------------------ */
+
+test("facets are read from the record, so a filter only offers what exists", () => {
+  // A static vocabulary would offer Twitch on a board with no Twitch work and
+  // return nothing, which teaches people the control is broken.
+  const facets = creatorFacetsOf({
+    firstMessageAnswers: {
+      relevant_portfolio: [{ id: "p1", title: "A", platform: "YouTube", type: "Retention edit" }],
+    },
+    job: {
+      creator: {
+        platforms: ["youtube"],
+        niches: ["finance"],
+        turnaround: { value: 3, unit: "calendar_days" },
+        compensation: { mode: "fixed", minimum: 3000, currency: "INR", unit: "per video" },
+      },
+    },
+  });
+  assert.deepEqual(facets.platform, ["YouTube"]);
+  assert.deepEqual(facets.niche, ["Finance"]);
+  assert.deepEqual(facets.turnaround, ["2_3_days"]);
+  assert.deepEqual(facets.structure, ["per_video"]);
+});
+
+test("an unspecified attribute is offered as nothing, not as a value", () => {
+  const facets = creatorFacetsOf({ job: null });
+  assert.deepEqual(facets.turnaround, []);
+  assert.deepEqual(facets.structure, []);
+  assert.deepEqual(facets.platform, []);
+});
+
+test("no filters means nothing is excluded", () => {
+  const facets = { platform: [], format: [], niche: [], turnaround: [], structure: [] };
+  assert.equal(matchesCreatorFilters(facets, {}), true);
+});
+
+test("a record missing the attribute is excluded, not waved through", () => {
+  // "Show me YouTube work" must not return records whose platform is unknown,
+  // or the filter is decorative.
+  const known = { platform: ["YouTube"], format: [], niche: [], turnaround: [], structure: [] };
+  const unknown = { platform: [], format: [], niche: [], turnaround: [], structure: [] };
+  assert.equal(matchesCreatorFilters(known, { platform: "YouTube" }), true);
+  assert.equal(matchesCreatorFilters(unknown, { platform: "YouTube" }), false);
+});
+
+test("several filters compose as AND", () => {
+  const facets = { platform: ["YouTube"], format: ["Thumbnails"], niche: ["Finance"], turnaround: [], structure: [] };
+  assert.equal(matchesCreatorFilters(facets, { platform: "YouTube", niche: "Finance" }), true);
+  assert.equal(matchesCreatorFilters(facets, { platform: "YouTube", niche: "Gaming" }), false);
+});
+
+test("sorting by turnaround puts unknown last, never first", () => {
+  const fast = turnaroundRank({ job: { creator: { turnaround: { value: 6, unit: "hours" } } } });
+  const slow = turnaroundRank({ job: { creator: { turnaround: { value: 2, unit: "weeks" } } } });
+  const unknown = turnaroundRank({ job: null });
+  assert.ok(fast < slow, "faster should rank ahead");
+  assert.ok(slow < unknown, "an unknown turnaround is not a fast one");
+});
+
+test("facet labels read as prose, not as storage keys", () => {
+  assert.equal(creatorFacetLabel("turnaround", "2_3_days"), "2–3 days");
+  assert.equal(creatorFacetLabel("structure", "revenue_share"), "Revenue share");
+  assert.equal(creatorFacetLabel("platform", "YouTube"), "YouTube");
 });
