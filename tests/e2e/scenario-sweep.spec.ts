@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { encode } from "next-auth/jwt";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ import { anchor, manifest, openWorkspace, row, SCENARIOS, type ScenarioName } fr
 
 const SESSION_SECRET = "e2e-secret";
 
-async function signIn(context: Parameters<typeof test>[0] extends never ? never : any) {
+async function signIn(context: BrowserContext) {
   const sessionToken = await encode({
     token: {
       name: "Demo Owner",
