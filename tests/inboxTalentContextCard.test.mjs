@@ -158,7 +158,17 @@ test("job card is unchanged: pay → experience → location, no availability", 
   assert.ok(payIdx >= 0 && expIdx >= 0 && locIdx >= 0, "job card keeps its three rows");
   assert.ok(payIdx < expIdx && expIdx < locIdx, "job card order is unchanged");
   assert.doesNotMatch(jobCard, /icon="clock"/);
-  assert.match(jobCard, /text=\{job\.budget\}/);
+  /*
+    The pay row's *source* changed in Phase 3 and its position did not.
+
+    It used to render `job.budget`, a preformatted display string. It now
+    renders the projection's headline, which carries the unit — ₹3,000 per video
+    rather than ₹3,000 — because an amount without its unit means nothing. This
+    asserts the card still has exactly one pay row in the same place, without
+    pinning the expression that fills it.
+  */
+  assert.match(jobCard, /<MetaRow icon=\{payIcon\} text=\{terms\.headline\} \/>/);
+  assert.equal((jobCard.match(/icon=\{payIcon\}/g) || []).length, 1, "exactly one pay row");
 });
 
 // ── Snapshot wiring + mock data ──────────────────────────────────────────────

@@ -95,7 +95,9 @@ test("every palette stop is dark enough to carry white overlay text", () => {
 
 test("each media kind has an icon that exists in the repo's set", () => {
   // Rendering a missing icon name silently draws nothing.
-  const available = new Set(["circle-play", "image", "podcast", "external-link"]);
+  // `video` deliberately, not `circle-play`: the tile opens a new tab and
+  // plays nothing in place, so a play triangle would promise playback.
+  const available = new Set(["video", "image", "podcast", "external-link"]);
   for (const [kind, icon] of Object.entries(MEDIA_ICONS)) {
     assert.ok(available.has(icon), `${kind} points at unknown icon ${icon}`);
   }

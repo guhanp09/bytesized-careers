@@ -686,7 +686,7 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
   // already owned the one rate line on this screen; making it the projection's
   // headline means the rate carries its unit without a second copy appearing
   // somewhere else.
-  const { terms, turnaround } = creatorViewOf({ job });
+  const { terms } = creatorViewOf({ job });
   const payIcon = terms.structure === "retainer" ? "briefcase" : "cash-stack";
   const displayTitle = formatListingTitle(job.title);
   const body = (
@@ -710,9 +710,15 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
       </div>
       <h3 className="mt-2.5 text-sm font-semibold leading-snug text-white">{displayTitle}</h3>
       <div className="mt-2.5 space-y-1.5">
+        {/*
+          Pay, then experience, then location — the card's documented anatomy,
+          asserted by inboxTalentContextCard. Phase 3 replaced the raw budget
+          string with the structured headline so the rate carries its unit; it
+          also briefly added turnaround and trial rows here, which was scope
+          creep against a deliberate design and is not reinstated. Turnaround
+          already appears on the rows and cards via CreatorFitSummary.
+        */}
         <MetaRow icon={payIcon} text={terms.headline} />
-        {terms.trial ? <MetaRow icon="cash" text={terms.trial.label} /> : null}
-        {turnaround.hours !== null ? <MetaRow icon="clock" text={turnaround.label} /> : null}
         {job.experience ? <MetaRow icon="cap" text={job.experience} /> : null}
         {job.location ? <MetaRow icon="pin" text={job.location} /> : null}
       </div>

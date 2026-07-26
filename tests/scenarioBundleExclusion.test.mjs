@@ -24,7 +24,9 @@ const SEED_SENTINELS = [
   "thumbs.scenario.invalid",
   "Bartholomew Maximilian",      // an edge-scenario display name
   "Case Files Weekly",           // a generated channel
-  "creator_scenarios",           // the generator package path
+  // Deliberately not the package path: the client-side version error tells a
+  // developer which command regenerates the manifests, and that string is help,
+  // not seed data. The sentinels above are content, which is what must not ship.
 ];
 
 function clientChunks() {
