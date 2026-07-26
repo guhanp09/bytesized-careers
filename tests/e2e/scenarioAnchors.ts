@@ -244,7 +244,12 @@ export async function openWorkspace(
   if (options.thread) params.set("thread", options.thread);
   for (const [key, value] of Object.entries(options.extraParams ?? {})) params.set(key, value);
   await page.goto(`/applications?${params.toString()}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
+  // Scoped to `main`: a navigation can briefly leave the server-rendered markup
+  // beside the hydrated tree, so an unscoped match resolves twice and fails
+  // strict mode on a page that is behaving correctly.
+  await expect(page.getByRole("main").getByTestId("applications-workspace")).toBeVisible({
+    timeout: 20_000,
+  });
   // The manifest is fetched after mount, so the workspace can be visible while
   // still empty. `empty` legitimately stays empty, so it waits on the loader
   // settling rather than on rows appearing.
