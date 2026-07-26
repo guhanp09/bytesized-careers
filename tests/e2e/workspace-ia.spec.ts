@@ -290,3 +290,52 @@ test.describe("mobile", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+/* --- card anatomy --------------------------------------------------------- */
+
+test.describe("narrow pipeline cards", () => {
+  for (const width of [390, 320]) {
+    test(`no pipeline card overflows its column at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 780 });
+      await openWorkspace(page, "?demo=1&view=pipeline&mode=recruiter");
+      await expect(page.getByTestId("pipeline-row").first()).toBeVisible({ timeout: 15_000 });
+
+      // Polled: on a cold start the board can be measured after the rows exist
+      // but before layout settles, which reports a phantom overflow.
+      await expect
+        .poll(async () =>
+          page.evaluate(
+            () =>
+              [...document.querySelectorAll("[data-testid='pipeline-row']")].filter(
+                (row) => row.scrollWidth > row.clientWidth + 1
+              ).length
+          )
+        )
+        .toBe(0);
+
+      const measured = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll("[data-testid='pipeline-row']")];
+        return {
+          total: rows.length,
+          // Both anatomies must be present, or this proves nothing: the defect
+          // this guards was on a card with *no* portfolio, and only the footer
+          // of a card carrying a dispatchable action ever overflowed.
+          withPortfolio: rows.filter((row) => row.querySelector("[data-testid='portfolio-strip']")).length,
+          overflowing: rows
+            .filter((row) => row.scrollWidth > row.clientWidth + 1)
+            .map((row) => `${row.scrollWidth}/${row.clientWidth} ${(row.textContent ?? "").trim().slice(0, 40)}`),
+        };
+      });
+
+      expect(measured.total).toBeGreaterThan(0);
+      expect(measured.withPortfolio).toBeGreaterThan(0);
+      expect(measured.total - measured.withPortfolio).toBeGreaterThan(0);
+      expect(measured.overflowing, measured.overflowing.join(" | ")).toEqual([]);
+
+      const pageOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(pageOverflow).toBeLessThanOrEqual(0);
+    });
+  }
+});

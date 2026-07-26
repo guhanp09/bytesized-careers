@@ -1162,9 +1162,27 @@ export default function PipelineBoard({
                               presented two control regions and the eye had to
                               search for the one that mattered.
                             */}
-                            <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-2">
+                            {/*
+                              The footer wraps rather than spills. The action
+                              group used to carry `min-w-0`, which let it shrink
+                              below its own min-content — but Message and the
+                              stage menu are `shrink-0` and cannot follow, so at
+                              390px the content overflowed the card by ~10px
+                              instead of reflowing. Without `min-w-0` the group
+                              keeps its min-content width, and `flex-wrap` moves
+                              it to its own line when the timestamp leaves it too
+                              little room. Below sm it takes that line outright
+                              and wraps internally, so three buttons that cannot
+                              share 234px stack instead of truncating — every
+                              label survives. Placement is unchanged: still the
+                              footer, still trailing.
+                            */}
+                            <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-line pt-2">
                               <InteractionTime value={item.updatedAt} className="shrink-0 text-[11px] text-subtle" />
-                              <div className="flex min-w-0 items-center gap-1.5" data-no-drag>
+                              <div
+                                className="flex min-w-0 basis-full flex-wrap items-center justify-end gap-1.5 sm:basis-auto sm:flex-nowrap"
+                                data-no-drag
+                              >
                                 {dispatchable && dispatchable.key !== "reply" ? (
                                   <button
                                     type="button"
