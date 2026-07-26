@@ -81,9 +81,12 @@ class Builder:
         if actor_id not in self.actors:
             self.actors[actor_id] = Actor(
                 id=actor_id,
-                username=f"{handle}",
+                # Scenario-scoped: usernames and emails are globally unique in
+                # the database, so two scenarios restored into one disposable DB
+                # must not collide.
+                username=f"{self.scenario[:3]}-{handle}",
                 display_name=name,
-                email=f"{handle}@scenario.invalid",
+                email=f"{self.scenario}-{handle}@scenario.invalid",
                 sides=["recruiter"],
                 employer_kind=kind,
                 channel_handle=handle,
@@ -103,9 +106,9 @@ class Builder:
             location, _ = pools.LOCATIONS[slot % len(pools.LOCATIONS)]
             self.actors[actor_id] = Actor(
                 id=actor_id,
-                username=f"talent{slot:03d}",
+                username=f"{self.scenario[:3]}-t{slot:05d}",
                 display_name=display,
-                email=f"talent{slot:03d}@scenario.invalid",
+                email=f"{self.scenario}-talent{slot:05d}@scenario.invalid",
                 sides=["talent"],
                 headline=f"{role} for creator-led channels",
                 location=location,

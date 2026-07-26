@@ -3,20 +3,20 @@
     {
       "deactivated": false,
       "display_name": "Aarav Mehta",
-      "email": "talent000@scenario.invalid",
+      "email": "empty-talent00000@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "4f647a92-2dbb-5d5b-b7c1-6e384485dba9",
       "location": "Remote",
       "sides": [
         "talent"
       ],
-      "username": "talent000"
+      "username": "emp-t00000"
     },
     {
       "channel_handle": "financesimplified",
       "deactivated": false,
       "display_name": "Finance Simplified",
-      "email": "financesimplified@scenario.invalid",
+      "email": "empty-financesimplified@scenario.invalid",
       "employer_kind": "creator",
       "id": "98d1c336-356f-5aa8-b2b2-30394c34bf99",
       "location": "Remote",
@@ -25,7 +25,7 @@
       ],
       "subscribers": 412000,
       "upload_cadence": "2 videos/week",
-      "username": "financesimplified"
+      "username": "emp-financesimplified"
     }
   ],
   "description": "Authenticated, with genuinely nothing in the workspace.",

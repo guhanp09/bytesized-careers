@@ -4,147 +4,147 @@
       "avatar_url": "https://avatars.scenario.invalid/80002.jpg",
       "deactivated": false,
       "display_name": "Varun Shah",
-      "email": "talent80002@scenario.invalid",
+      "email": "recruiter-talent80002@scenario.invalid",
       "headline": "UGC creator for creator-led channels",
       "id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
       "location": "Kochi, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80002"
+      "username": "rec-t80002"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/209.jpg",
       "deactivated": false,
       "display_name": "Maya Das",
-      "email": "talent209@scenario.invalid",
+      "email": "recruiter-talent00209@scenario.invalid",
       "headline": "Podcast producer for creator-led channels",
       "id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
       "location": "Adelaide, Australia",
       "sides": [
         "talent"
       ],
-      "username": "talent209"
+      "username": "rec-t00209"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80055.jpg",
       "deactivated": false,
       "display_name": "Riya Iyer",
-      "email": "talent80055@scenario.invalid",
+      "email": "recruiter-talent80055@scenario.invalid",
       "headline": "Channel manager for creator-led channels",
       "id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444",
       "location": "Delhi NCR, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80055"
+      "username": "rec-t80055"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/215.jpg",
       "deactivated": false,
       "display_name": "Meera Sharma",
-      "email": "talent215@scenario.invalid",
+      "email": "recruiter-talent00215@scenario.invalid",
       "headline": "Brand-deal manager for creator-led channels",
       "id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40",
       "location": "Indore, India",
       "sides": [
         "talent"
       ],
-      "username": "talent215"
+      "username": "rec-t00215"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/90011.jpg",
       "deactivated": false,
       "display_name": "Nisha Rao",
-      "email": "talent90011@scenario.invalid",
+      "email": "recruiter-talent90011@scenario.invalid",
       "headline": "Brand-deal manager for creator-led channels",
       "id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b",
       "location": "Indore, India",
       "sides": [
         "talent"
       ],
-      "username": "talent90011"
+      "username": "rec-t90011"
     },
     {
       "deactivated": false,
       "display_name": "Karan Iyer",
-      "email": "talent216@scenario.invalid",
+      "email": "recruiter-talent00216@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "374f1d2f-6336-509e-90d8-7b081513d634",
       "location": "Kochi, India",
       "sides": [
         "talent"
       ],
-      "username": "talent216"
+      "username": "rec-t00216"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80001.jpg",
       "deactivated": false,
       "display_name": "Anjali Reddy",
-      "email": "talent80001@scenario.invalid",
+      "email": "recruiter-talent80001@scenario.invalid",
       "headline": "Community manager for creator-led channels",
       "id": "378c6ec8-1107-57c8-81bb-1b25063aa65c",
       "location": "Indore, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80001"
+      "username": "rec-t80001"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/206.jpg",
       "deactivated": false,
       "display_name": "Joseph Menon",
-      "email": "talent206@scenario.invalid",
+      "email": "recruiter-talent00206@scenario.invalid",
       "headline": "Thumbnail designer for creator-led channels",
       "id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
       "location": "Berlin, Germany",
       "sides": [
         "talent"
       ],
-      "username": "talent206"
+      "username": "rec-t00206"
     },
     {
       "deactivated": false,
       "display_name": "Aditya Bose",
-      "email": "talent80056@scenario.invalid",
+      "email": "recruiter-talent80056@scenario.invalid",
       "headline": "Scriptwriter for creator-led channels",
       "id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
       "location": "Hyderabad, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80056"
+      "username": "rec-t80056"
     },
     {
       "deactivated": false,
       "display_name": "Aarav Khan",
-      "email": "talent80100@scenario.invalid",
+      "email": "recruiter-talent80100@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "56355d95-f71d-5fa2-8394-da12fdb80a45",
       "location": "Kochi, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80100"
+      "username": "rec-t80100"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/214.jpg",
       "deactivated": false,
       "display_name": "Vikram Nair",
-      "email": "talent214@scenario.invalid",
+      "email": "recruiter-talent00214@scenario.invalid",
       "headline": "UGC creator for creator-led channels",
       "id": "5813641c-a341-502c-aa28-d4042abda702",
       "location": "Hyderabad, India",
       "sides": [
         "talent"
       ],
-      "username": "talent214"
+      "username": "rec-t00214"
     },
     {
       "channel_handle": "dailyfit",
       "deactivated": false,
       "display_name": "Daily Fit",
-      "email": "dailyfit@scenario.invalid",
+      "email": "recruiter-dailyfit@scenario.invalid",
       "employer_kind": "creator",
       "id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
       "location": "Mumbai, India",
@@ -153,178 +153,178 @@
       ],
       "subscribers": 96000,
       "upload_cadence": "5 shorts/week",
-      "username": "dailyfit"
+      "username": "rec-dailyfit"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/213.jpg",
       "deactivated": false,
       "display_name": "Ananya Mehta",
-      "email": "talent213@scenario.invalid",
+      "email": "recruiter-talent00213@scenario.invalid",
       "headline": "Community manager for creator-led channels",
       "id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
       "location": "Delhi NCR, India",
       "sides": [
         "talent"
       ],
-      "username": "talent213"
+      "username": "rec-t00213"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80003.jpg",
       "deactivated": false,
       "display_name": "Leela Patel",
-      "email": "talent80003@scenario.invalid",
+      "email": "recruiter-talent80003@scenario.invalid",
       "headline": "Brand-deal manager for creator-led channels",
       "id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
       "location": "Guwahati, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80003"
+      "username": "rec-t80003"
     },
     {
       "deactivated": false,
       "display_name": "Imran Khan",
-      "email": "talent204@scenario.invalid",
+      "email": "recruiter-talent00204@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
       "location": "Kathmandu, Nepal",
       "sides": [
         "talent"
       ],
-      "username": "talent204"
+      "username": "rec-t00204"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/201.jpg",
       "deactivated": false,
       "display_name": "Anjali Reddy",
-      "email": "talent201@scenario.invalid",
+      "email": "recruiter-talent00201@scenario.invalid",
       "headline": "Community manager for creator-led channels",
       "id": "761f8286-b4b4-5230-8a83-40ec22a0a26f",
       "location": "Indore, India",
       "sides": [
         "talent"
       ],
-      "username": "talent201"
+      "username": "rec-t00201"
     },
     {
       "deactivated": false,
       "display_name": "Sameer Verma",
-      "email": "talent80000@scenario.invalid",
+      "email": "recruiter-talent80000@scenario.invalid",
       "headline": "Subtitler / translator for creator-led channels",
       "id": "773b694c-a817-5c39-b761-9efeb118bf0b",
       "location": "Hyderabad, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80000"
+      "username": "rec-t80000"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/210.jpg",
       "deactivated": false,
       "display_name": "Aarav Joshi",
-      "email": "talent210@scenario.invalid",
+      "email": "recruiter-talent00210@scenario.invalid",
       "headline": "Motion-graphics artist for creator-led channels",
       "id": "7e1d7d65-9226-5d5a-a79f-6ed733cf2848",
       "location": "Remote",
       "sides": [
         "talent"
       ],
-      "username": "talent210"
+      "username": "rec-t00210"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80006.jpg",
       "deactivated": false,
       "display_name": "Joseph Menon",
-      "email": "talent80006@scenario.invalid",
+      "email": "recruiter-talent80006@scenario.invalid",
       "headline": "Thumbnail designer for creator-led channels",
       "id": "8620f6e6-7df2-5678-8bc7-122a35116287",
       "location": "Berlin, Germany",
       "sides": [
         "talent"
       ],
-      "username": "talent80006"
+      "username": "rec-t80006"
     },
     {
       "deactivated": false,
       "display_name": "Aarav Mehta",
-      "email": "talent90000@scenario.invalid",
+      "email": "recruiter-talent90000@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "88a6091a-8667-52fa-ad33-0a48bd545921",
       "location": "Kathmandu, Nepal",
       "sides": [
         "talent"
       ],
-      "username": "talent90000"
+      "username": "rec-t90000"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/90010.jpg",
       "deactivated": false,
       "display_name": "Ishaan Khan",
-      "email": "talent90010@scenario.invalid",
+      "email": "recruiter-talent90010@scenario.invalid",
       "headline": "UGC creator for creator-led channels",
       "id": "915261b2-7f0c-542c-9f4a-c491ee578cd6",
       "location": "Hyderabad, India",
       "sides": [
         "talent"
       ],
-      "username": "talent90010"
+      "username": "rec-t90010"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80054.jpg",
       "deactivated": false,
       "display_name": "Dev Sharma",
-      "email": "talent80054@scenario.invalid",
+      "email": "recruiter-talent80054@scenario.invalid",
       "headline": "Thumbnail designer for creator-led channels",
       "id": "917fdc4b-d1d2-558c-9132-f8d9aca2c57a",
       "location": "Bengaluru, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80054"
+      "username": "rec-t80054"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/203.jpg",
       "deactivated": false,
       "display_name": "Leela Patel",
-      "email": "talent203@scenario.invalid",
+      "email": "recruiter-talent00203@scenario.invalid",
       "headline": "Brand-deal manager for creator-led channels",
       "id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
       "location": "Guwahati, India",
       "sides": [
         "talent"
       ],
-      "username": "talent203"
+      "username": "rec-t00203"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80105.jpg",
       "deactivated": false,
       "display_name": "Meera Das",
-      "email": "talent80105@scenario.invalid",
+      "email": "recruiter-talent80105@scenario.invalid",
       "headline": "Podcast producer for creator-led channels",
       "id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63",
       "location": "Austin, USA",
       "sides": [
         "talent"
       ],
-      "username": "talent80105"
+      "username": "rec-t80105"
     },
     {
       "deactivated": false,
       "display_name": "Vikram Chopra",
-      "email": "talent80104@scenario.invalid",
+      "email": "recruiter-talent80104@scenario.invalid",
       "headline": "Scriptwriter for creator-led channels",
       "id": "a00b9cc1-56a8-5472-863d-c34eba3cd5d3",
       "location": "Berlin, Germany",
       "sides": [
         "talent"
       ],
-      "username": "talent80104"
+      "username": "rec-t80104"
     },
     {
       "channel_handle": "financesimplified",
       "deactivated": false,
       "display_name": "Finance Simplified",
-      "email": "financesimplified@scenario.invalid",
+      "email": "recruiter-financesimplified@scenario.invalid",
       "employer_kind": "creator",
       "id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "location": "Remote",
@@ -333,236 +333,236 @@
       ],
       "subscribers": 412000,
       "upload_cadence": "2 videos/week",
-      "username": "financesimplified"
+      "username": "rec-financesimplified"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80102.jpg",
       "deactivated": false,
       "display_name": "Rohan Menon",
-      "email": "talent80102@scenario.invalid",
+      "email": "recruiter-talent80102@scenario.invalid",
       "headline": "Thumbnail designer for creator-led channels",
       "id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
       "location": "Kathmandu, Nepal",
       "sides": [
         "talent"
       ],
-      "username": "talent80102"
+      "username": "rec-t80102"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/211.jpg",
       "deactivated": false,
       "display_name": "Priya Pillai",
-      "email": "talent211@scenario.invalid",
+      "email": "recruiter-talent00211@scenario.invalid",
       "headline": "Colorist for creator-led channels",
       "id": "af727978-6d4f-57f3-9d97-650629a1c912",
       "location": "Mumbai, India",
       "sides": [
         "talent"
       ],
-      "username": "talent211"
+      "username": "rec-t00211"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80101.jpg",
       "deactivated": false,
       "display_name": "Priya Rao",
-      "email": "talent80101@scenario.invalid",
+      "email": "recruiter-talent80101@scenario.invalid",
       "headline": "Long-form editor for creator-led channels",
       "id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9",
       "location": "Guwahati, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80101"
+      "username": "rec-t80101"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80050.jpg",
       "deactivated": false,
       "display_name": "Ishaan Pillai",
-      "email": "talent80050@scenario.invalid",
+      "email": "recruiter-talent80050@scenario.invalid",
       "headline": "UGC creator for creator-led channels",
       "id": "b447b600-bd13-5cbf-b94b-e6d5c51bcf56",
       "location": "Toronto, Canada",
       "sides": [
         "talent"
       ],
-      "username": "talent80050"
+      "username": "rec-t80050"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/202.jpg",
       "deactivated": false,
       "display_name": "Varun Shah",
-      "email": "talent202@scenario.invalid",
+      "email": "recruiter-talent00202@scenario.invalid",
       "headline": "UGC creator for creator-led channels",
       "id": "b5da228b-87aa-5f1c-bd70-6ec0f490302b",
       "location": "Kochi, India",
       "sides": [
         "talent"
       ],
-      "username": "talent202"
+      "username": "rec-t00202"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/207.jpg",
       "deactivated": false,
       "display_name": "Grace Gupta",
-      "email": "talent207@scenario.invalid",
+      "email": "recruiter-talent00207@scenario.invalid",
       "headline": "Channel manager for creator-led channels",
       "id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
       "location": "Austin, USA",
       "sides": [
         "talent"
       ],
-      "username": "talent207"
+      "username": "rec-t00207"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/90001.jpg",
       "deactivated": false,
       "display_name": "Priya Nair",
-      "email": "talent90001@scenario.invalid",
+      "email": "recruiter-talent90001@scenario.invalid",
       "headline": "Long-form editor for creator-led channels",
       "id": "c784bfa0-4460-51d4-8605-dbaa14b7642d",
       "location": "London, UK",
       "sides": [
         "talent"
       ],
-      "username": "talent90001"
+      "username": "rec-t90001"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80005.jpg",
       "deactivated": false,
       "display_name": "Fatima Rao",
-      "email": "talent80005@scenario.invalid",
+      "email": "recruiter-talent80005@scenario.invalid",
       "headline": "Long-form editor for creator-led channels",
       "id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85",
       "location": "London, UK",
       "sides": [
         "talent"
       ],
-      "username": "talent80005"
+      "username": "rec-t80005"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80051.jpg",
       "deactivated": false,
       "display_name": "Nisha Sinha",
-      "email": "talent80051@scenario.invalid",
+      "email": "recruiter-talent80051@scenario.invalid",
       "headline": "Brand-deal manager for creator-led channels",
       "id": "cb00df86-6ed4-527e-b675-bf717dc9e35c",
       "location": "Adelaide, Australia",
       "sides": [
         "talent"
       ],
-      "username": "talent80051"
+      "username": "rec-t80051"
     },
     {
       "deactivated": false,
       "display_name": "Imran Khan",
-      "email": "talent80004@scenario.invalid",
+      "email": "recruiter-talent80004@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "ce8705b4-1ad5-5904-baf8-2e6849b1400e",
       "location": "Kathmandu, Nepal",
       "sides": [
         "talent"
       ],
-      "username": "talent80004"
+      "username": "rec-t80004"
     },
     {
       "deactivated": false,
       "display_name": "Rohan Sinha",
-      "email": "talent212@scenario.invalid",
+      "email": "recruiter-talent00212@scenario.invalid",
       "headline": "Subtitler / translator for creator-led channels",
       "id": "d111b2b9-20ee-5954-958a-a0e8b85320fd",
       "location": "Bengaluru, India",
       "sides": [
         "talent"
       ],
-      "username": "talent212"
+      "username": "rec-t00212"
     },
     {
       "deactivated": false,
       "display_name": "Daniel Chopra",
-      "email": "talent208@scenario.invalid",
+      "email": "recruiter-talent00208@scenario.invalid",
       "headline": "Scriptwriter for creator-led channels",
       "id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
       "location": "Toronto, Canada",
       "sides": [
         "talent"
       ],
-      "username": "talent208"
+      "username": "rec-t00208"
     },
     {
       "deactivated": false,
       "display_name": "Rahul Mehta",
-      "email": "talent80052@scenario.invalid",
+      "email": "recruiter-talent80052@scenario.invalid",
       "headline": "Shorts editor for creator-led channels",
       "id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
       "location": "Remote",
       "sides": [
         "talent"
       ],
-      "username": "talent80052"
+      "username": "rec-t80052"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/205.jpg",
       "deactivated": false,
       "display_name": "Fatima Rao",
-      "email": "talent205@scenario.invalid",
+      "email": "recruiter-talent00205@scenario.invalid",
       "headline": "Long-form editor for creator-led channels",
       "id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
       "location": "London, UK",
       "sides": [
         "talent"
       ],
-      "username": "talent205"
+      "username": "rec-t00205"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80103.jpg",
       "deactivated": false,
       "display_name": "Ananya Gupta",
-      "email": "talent80103@scenario.invalid",
+      "email": "recruiter-talent80103@scenario.invalid",
       "headline": "Channel manager for creator-led channels",
       "id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
       "location": "London, UK",
       "sides": [
         "talent"
       ],
-      "username": "talent80103"
+      "username": "rec-t80103"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80053.jpg",
       "deactivated": false,
       "display_name": "Kavya Nair",
-      "email": "talent80053@scenario.invalid",
+      "email": "recruiter-talent80053@scenario.invalid",
       "headline": "Long-form editor for creator-led channels",
       "id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
       "location": "Mumbai, India",
       "sides": [
         "talent"
       ],
-      "username": "talent80053"
+      "username": "rec-t80053"
     },
     {
       "deactivated": false,
       "display_name": "Sameer Verma",
-      "email": "talent200@scenario.invalid",
+      "email": "recruiter-talent00200@scenario.invalid",
       "headline": "Subtitler / translator for creator-led channels",
       "id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
       "location": "Hyderabad, India",
       "sides": [
         "talent"
       ],
-      "username": "talent200"
+      "username": "rec-t00200"
     },
     {
       "avatar_url": "https://avatars.scenario.invalid/80106.jpg",
       "deactivated": false,
       "display_name": "Karan Bhatt",
-      "email": "talent80106@scenario.invalid",
+      "email": "recruiter-talent80106@scenario.invalid",
       "headline": "Motion-graphics artist for creator-led channels",
       "id": "f1b00eb6-8867-5680-8784-13f9ea796312",
       "location": "Toronto, Canada",
       "sides": [
         "talent"
       ],
-      "username": "talent80106"
+      "username": "rec-t80106"
     }
   ],
   "description": "The Recruiter side, with every management state on one board.",

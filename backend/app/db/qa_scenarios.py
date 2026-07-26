@@ -33,6 +33,9 @@ from app.models import (
 )
 
 
+from app.db.creator_scenarios.restore import restore_manifest as _restore_manifest
+from app.db.creator_scenarios.schema import SCENARIO_NAMES as _CREATOR_SCENARIO_NAMES
+
 SCENARIOS: tuple[dict[str, object], ...] = (
     {
         "key": "profiles-empty",
@@ -98,6 +101,22 @@ SCENARIOS: tuple[dict[str, object], ...] = (
         "startRoute": "/admin/reports",
         "confirmation": "RESTORE MODERATION",
     },
+    # --- generated creator scenarios ---------------------------------------
+    #
+    # Content comes entirely from the committed manifests, which frontend Mock
+    # mode reads too. Restoring is still confirmation-gated and still refused
+    # outside staging/test — this adds a data source, not a new way in.
+    *(
+        {
+            "key": f"creator-{name}",
+            "title": f"Creator scenario: {name}",
+            "purpose": f"Restores the generated {name!r} manifest (one canonical generator, two consumers).",
+            "personas": ["recruiter-active", "talent-complete"],
+            "startRoute": f"/applications?seed={name}",
+            "confirmation": f"RESTORE {name.upper()}",
+        }
+        for name in _CREATOR_SCENARIO_NAMES
+    ),
     {
         "key": "full-baseline",
         "title": "Full QA baseline",
@@ -541,6 +560,13 @@ async def restore_scenario(session: AsyncSession, key: str) -> dict[str, object]
     _ensure_safe_environment()
     if key == "full-baseline":
         return await _restore_full_baseline(session)
+    # Generated scenarios go through the same gate as every other restore; only
+    # the source of the content differs.
+    if key.startswith("creator-"):
+        name = key.removeprefix("creator-")
+        if name not in _CREATOR_SCENARIO_NAMES:
+            raise KeyError(key)
+        return await _restore_manifest(session, name)
     restorer = RESTORERS.get(key)
     if restorer is None:
         raise KeyError(key)
