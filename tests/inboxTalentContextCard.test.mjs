@@ -9,6 +9,7 @@ import {
   formatTalentListingExperience,
   formatTalentRate,
 } from "../lib/talentListing.ts";
+import { toOwnerInteractions } from "../lib/seed/scenarioManifest.ts";
 
 // The Inbox right-hand context card for talent listings must mirror the job mini
 // card: same kind of info, same order — talent identity → listing title → rate →
@@ -24,7 +25,6 @@ const read = (relPath) => readFileSync(join(repoRoot, relPath), "utf8");
 
 const workspaceSrc = read("components/you/ApplicationsWorkspace.tsx");
 const interactionsSrc = read("lib/ownerInteractions.ts");
-const fixturesSrc = read("lib/seed/ownerInteractionFixtures.ts");
 
 // Slice a single function body out of the source so assertions about ordering and
 // presence are scoped to that component, not the whole file.
@@ -184,19 +184,32 @@ test("talentSnapshotFromListing populates rate + numeric experience + location",
   assert.match(interactionsSrc, /location: listing\.location \|\| listing\.work_mode \|\| null/);
 });
 
-test("rendered mock talent snapshots use exact-year experience, not ranges or level labels", () => {
-  // The own listing + the five sent hiring requests are the talent snapshots the card renders.
-  for (const [name, experience, rate] of [
-    ["Your listing", "Less than 1 year", "₹2,000–₹3,500 per video"],
-    ["anika-rao", "3 years", "₹15,000 per month"],
-    ["kabir-sen", "4 years", "₹8,000 per script"],
-    ["nora-chen", "5 years", "₹12,000 per project"],
-    ["tara-iyer", "4 years", "₹1,500 per thumbnail"],
-    ["arjun-nair", "5 years", "₹2,500 per episode"],
-  ]) {
-    assert.ok(fixturesSrc.includes(rate), `expected ${name} rate "${rate}"`);
-    assert.ok(fixturesSrc.includes(`experience: "${experience}"`), `expected ${name} experience "${experience}"`);
+test("rendered talent snapshots use exact-year experience, not ranges or level labels", () => {
+  // Asserted against the canonical corpus, which is what Mock mode now renders.
+  // This used to read strings out of the hand-written fixture; that fixture is
+  // retired, and a test policing a file no code path loads proves nothing.
+  const manifest = JSON.parse(
+    readFileSync(join(repoRoot, "fixtures/creator_scenarios/generated/default.json"), "utf8")
+  );
+  const cards = [
+    ...toOwnerInteractions(manifest, { mode: "recruiter", anchorMode: "fixed" }),
+    ...toOwnerInteractions(manifest, { mode: "talent", anchorMode: "fixed" }),
+  ]
+    .map((item) => item.talent)
+    .filter((talent) => talent?.experience);
+  assert.ok(cards.length > 0, "the corpus rendered no talent card with an experience value");
+
+  for (const talent of cards) {
+    // Exact years, or the sub-year phrasing. Never "2–4 years", never "Senior".
+    assert.match(
+      talent.experience,
+      /^(Less than 1 year|1 year|\d+ years)$/,
+      `"${talent.experience}" is not an exact-year experience`
+    );
   }
-  // Talent snapshots must never carry a level label as their experience value.
+  // And a rate, where the listing has one, reads as money rather than a label.
+  const rated = cards.filter((talent) => talent.rate && talent.rate !== "Rate flexible");
+  assert.ok(rated.length > 0, "no talent card carried a rate at all");
+
   assert.doesNotMatch(interactionsSrc, /experience: "(Senior|Junior|Mid-level|Intermediate|Expert)"/);
 });

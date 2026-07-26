@@ -123,7 +123,6 @@ import { ClientContextSummary } from "./CreatorContext";
 import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupThreadEntries } from "../../lib/systemEventGrouping";
-import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   NO_QUEUE_PREFERENCES,
@@ -1615,7 +1614,13 @@ export default function ApplicationsWorkspace({
   // The explicit sample-data control remains the only way to opt into demo rows.
   const liveMode = shouldUseLiveApplicationsData(backendAccessToken, forceMock);
   const [items, setItems] = useState<OwnerInteraction[]>(() =>
-    liveMode ? [] : interactions ?? MOCK_OWNER_INTERACTIONS
+    // Sample rows arrive as a prop, from the canonical scenario manifests. The
+    // workspace holds no dataset of its own: it used to fall back to a
+    // hand-written fixture, which is precisely the second corpus that drifted
+    // out of step with the backend and that Phase 4 exists to remove. An empty
+    // list here means the manifest has not arrived yet, and the caller remounts
+    // on arrival.
+    liveMode ? [] : interactions ?? []
   );
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "auth">(liveMode ? "loading" : "ready");
   const [reloadNonce, setReloadNonce] = useState(0);

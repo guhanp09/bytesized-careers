@@ -15,10 +15,17 @@
 
 import {
   interactionStatusFromBackend,
+  talentSnapshotFromListing,
   type InteractionCreatorFacts,
+  type InteractionTalentSnapshot,
   type OwnerInteraction,
 } from "../ownerInteractions.ts";
-import { MANIFEST_VERSION, type ScenarioManifest, type ManifestRelationship } from "./manifestTypes.ts";
+import {
+  MANIFEST_VERSION,
+  type ManifestActor,
+  type ScenarioManifest,
+  type ManifestRelationship,
+} from "./manifestTypes.ts";
 
 export class ManifestVersionError extends Error {}
 
@@ -83,6 +90,69 @@ export function checkManifestVersion(version: number): void {
   phase exists to remove, so the adapter calls the same function the live
   backend path calls.
 */
+
+/**
+ * The talent context card, built by the production function.
+ *
+ * The adapter's job is to assemble a listing-shaped record from the actor; the
+ * card's rate string and experience string are then produced by exactly the
+ * code the live backend path runs. Writing "₹15,000 per month" here instead
+ * would be a second rate formatter, and a second one is how the retired
+ * hand-written fixture ended up disagreeing with the product.
+ */
+function talentSnapshotFor(actor: ManifestActor): InteractionTalentSnapshot {
+  return talentSnapshotFromListing({
+    id: `listing-${actor.id}`,
+    owner_user_id: actor.id,
+    owner_display_name: actor.display_name,
+    owner_username: actor.username,
+    owner_avatar_url: actor.avatar_url ?? null,
+    title: actor.headline || `${actor.display_name} — available for work`,
+    primary_role: actor.headline ?? null,
+    experience_years: actor.experience_years ?? null,
+    roles: [],
+    formats: [],
+    platforms: [],
+    tools: [],
+    location: actor.location ?? null,
+    availability_status:
+      (actor.availability as "available" | "selective" | "unavailable") ?? "available",
+    rate_min: actor.rate_min ?? null,
+    rate_max: actor.rate_max ?? null,
+    rate_currency: actor.rate_currency ?? "INR",
+    status: "published",
+    created_at: "",
+    updated_at: "",
+    portfolio_item_ids: [],
+    is_featured: false,
+    views: 0,
+    saves: 0,
+  });
+}
+
+/**
+ * The applicant, as a received application knows them.
+ *
+ * Deliberately thinner than {@link talentSnapshotFor}: an application stores a
+ * snapshot of who applied, not a live listing, so there is no rate and no
+ * experience to show. Matching that exactly is the point — a Mock card richer
+ * than the real one would send someone hunting for a backend bug that is
+ * actually a fixture being generous.
+ */
+function applicantSnapshotFor(actor: ManifestActor): InteractionTalentSnapshot {
+  return {
+    profileSlug: actor.username,
+    name: actor.display_name,
+    headline: actor.headline || "",
+    location: actor.location ?? null,
+    availability: null,
+    bio: null,
+    tools: [],
+    niches: [],
+    experienceNote: null,
+    portfolioHighlights: [],
+  };
+}
 
 /**
  * What the sender is told, for the one stage whose stored name is not its
@@ -258,7 +328,48 @@ export function toOwnerInteraction(
         }
       : null,
     portfolio,
-    firstMessageAnswers: portfolio.length ? { relevant_portfolio: portfolio } : null,
+    /*
+      Context cards, matching what each backend branch builds.
+
+      A received application snapshots the applicant at the moment they applied,
+      so it carries identity but no listing facts — the backend reads
+      `applicant_snapshot`, not a listing, and inventing a rate here would make
+      Mock mode show a number Backend mode does not have. A hiring request does
+      involve a listing, so it gets the full card, and the recipient's own
+      listing is marked as their own.
+    */
+    talent:
+      rel.kind === "application"
+        ? direction === "received"
+          ? applicantSnapshotFor(counterparty)
+          : null
+        : direction === "sent"
+          ? talentSnapshotFor(counterparty)
+          : { ...talentSnapshotFor(talent), isOwnListing: true },
+    recruiter:
+      rel.kind === "hiring_request" && direction === "received"
+        ? {
+            profileSlug: recruiter.username,
+            name: recruiter.display_name,
+            avatarUrl: recruiter.avatar_url ?? null,
+            channelName: recruiter.display_name,
+            audienceLabel: null,
+            platform: null,
+            hiringFor: job?.title ?? null,
+          }
+        : null,
+    sourceListingTitle:
+      rel.kind === "hiring_request" && direction === "received"
+        ? talent.headline || `${talent.display_name} — available for work`
+        : null,
+    // Everything the requester submitted. The portfolio is derived from the
+    // attached ids rather than stored twice, and merges in beside the rest —
+    // the same single field the backend restore writes.
+    firstMessageAnswers: (() => {
+      const answers: Record<string, unknown> = { ...(rel.answers ?? {}) };
+      if (portfolio.length) answers.relevant_portfolio = portfolio;
+      return Object.keys(answers).length ? answers : null;
+    })(),
     thread: messages.map((message) => ({
       id: message.id,
       body: message.body,

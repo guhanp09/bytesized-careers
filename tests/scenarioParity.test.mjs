@@ -173,6 +173,21 @@ function semantics(item) {
     compensationMaximum: compensation?.maximum ?? null,
     compensationCurrency: compensation?.currency ?? null,
     compensationUnit: compensation?.unit ?? null,
+    // The context card beside the conversation. Retiring the hand-written
+    // fixture removed the only source these ever had in Mock mode, so they are
+    // compared explicitly rather than assumed.
+    talentName: item.talent?.name ?? null,
+    talentHeadline: item.talent?.headline ?? null,
+    talentRate: item.talent?.rate ?? null,
+    talentExperience: item.talent?.experience ?? null,
+    talentLocation: item.talent?.location ?? null,
+    talentIsOwnListing: Boolean(item.talent?.isOwnListing),
+    recruiterName: item.recruiter?.name ?? null,
+    // The structured answers drive the opening message the recipient reads.
+    // Keys rather than values: `relevant_portfolio` is compared above in the
+    // form the components consume, and the rest are plain scalars the two
+    // paths copy verbatim.
+    answerKeys: Object.keys(item.firstMessageAnswers ?? {}).sort(),
   };
 }
 

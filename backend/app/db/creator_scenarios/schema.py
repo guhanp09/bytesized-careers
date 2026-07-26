@@ -132,6 +132,21 @@ class Actor:
     channel_handle: str | None = None
     subscribers: int | None = None
     upload_cadence: str | None = None
+    #: What this person charges, as a talent listing states it. The inbox's
+    #: talent context card renders rate and experience beside the name, so a
+    #: corpus without them leaves that card half-empty — which is what the
+    #: retired hand-written fixture used to fill in.
+    #: No unit field: `TalentListing` has no rate_unit column, and inventing one
+    #: in the manifest would mean each consumer formatting a rate its own way —
+    #: the duplication this phase removes. Both sides run `formatTalentRate`
+    #: over exactly these three values.
+    rate_min: float | None = None
+    rate_max: float | None = None
+    rate_currency: str | None = None
+    #: Whole years, never a range or a level label: the product's talent
+    #: experience is an exact number and the card must not show "Senior".
+    experience_years: int | None = None
+    availability: str | None = None
 
 
 @dataclass(slots=True)

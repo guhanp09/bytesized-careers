@@ -185,15 +185,15 @@ export default function ApplicationsPageClient({
     // real data, and quietly replacing it with seed rows would be worse than
     // ignoring the parameter.
     /*
-      Only when a scenario is explicitly named.
+      No `seedParam` condition any more: Mock mode *is* the canonical corpus.
 
-      Without this, `?demo=1` alone would swap the generated manifest in for the
-      existing Mock fixture — which is exactly what happened, and it broke every
-      test written against that fixture. Retiring the hand-written fixture is a
-      deliberate step that comes after parity is proven, not a side effect of
-      adding a loader.
+      This gate existed while the hand-written fixture was still the default,
+      so that adding the loader could not disturb it. Parity across every
+      scenario and both directions is now green, so `default` is simply what
+      Mock mode loads, and `?seed=` picks a different one. An unknown name is
+      still an error rather than a silent fallback.
     */
-    if (!seedParam || !allowDemo || !demoMode || resolvedScenario.error) {
+    if (!allowDemo || !demoMode || resolvedScenario.error) {
       setScenarioInteractions(null);
       return;
     }
@@ -222,7 +222,7 @@ export default function ApplicationsPageClient({
     return () => {
       cancelled = true;
     };
-  }, [seedParam, allowDemo, demoMode, resolvedScenario.scenario, resolvedScenario.error]);
+  }, [allowDemo, demoMode, resolvedScenario.scenario, resolvedScenario.error]);
 
   const toggleDemo = () => {
     const next = !demoMode;

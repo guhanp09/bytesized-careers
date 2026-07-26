@@ -243,8 +243,15 @@ async def restore_manifest(
                 platforms=[],
                 tools=[],
                 languages=[],
-                availability_status="available",
-                rate_currency="INR",
+                # The talent context card reads rate, experience and
+                # availability off the listing. Leaving them at defaults gave
+                # Backend mode a card with a name and nothing else.
+                availability_status=actor.get("availability") or "available",
+                experience_years=actor.get("experience_years"),
+                rate_min=actor.get("rate_min"),
+                rate_max=actor.get("rate_max"),
+                rate_currency=actor.get("rate_currency") or "INR",
+                location=actor.get("location"),
                 portfolio_item_ids=[],
                 first_message_requirements=[],
                 status="published",
@@ -259,6 +266,29 @@ async def restore_manifest(
     # surface reads the answer, so storing ids alone left the backend path
     # showing an empty portfolio while Mock mode showed a full one.
     portfolio_by_id = {item["id"]: item for item in payload.get("portfolio", [])}
+
+    def _first_message_answers(rel: dict[str, Any]) -> dict[str, Any]:
+        """Everything the requester submitted, in one field.
+
+        `relevant_portfolio` is derived from the attached ids rather than stored
+        twice; the rest come straight from the manifest. Both live in the same
+        column because that is where the product reads them from.
+        """
+
+        answers = dict(rel.get("answers") or {})
+        if rel.get("portfolio_ids"):
+            answers["relevant_portfolio"] = _portfolio_answer(rel)
+        return answers
+
+    def _applicant_snapshot(talent_id: str) -> dict[str, Any]:
+        actor = actor_by_id.get(talent_id, {})
+        return {
+            "display_name": actor.get("display_name"),
+            "username": actor.get("username"),
+            "user_id": talent_id,
+            "headline": actor.get("headline"),
+            "location": actor.get("location"),
+        }
 
     def _portfolio_answer(rel: dict[str, Any]) -> list[dict[str, Any]]:
         entries = []
@@ -303,14 +333,11 @@ async def restore_manifest(
                     job_owner_user_id=UUID(rel["recruiter_id"]),
                     cover_note=rel.get("cover_note"),
                     portfolio_item_ids=rel.get("portfolio_ids", []),
-                    first_message_answers={"relevant_portfolio": _portfolio_answer(rel)}
-                    if rel.get("portfolio_ids")
-                    else {},
-                    applicant_snapshot={
-                        "display_name": next(
-                            (a["display_name"] for a in actors if a["id"] == rel["talent_id"]), None
-                        )
-                    },
+                    first_message_answers=_first_message_answers(rel),
+                    # What the product records about the applicant at the moment
+                    # they applied. A name alone left the recruiter's context
+                    # card with a heading and nothing under it.
+                    applicant_snapshot=_applicant_snapshot(rel["talent_id"]),
                     # Direct: see DIRECT_INSERTIONS["application.status"].
                     status=rel["stage"],
                     participant_status=rel.get("participant_stage") or rel["stage"],
@@ -328,6 +355,7 @@ async def restore_manifest(
                     recruiter_user_id=UUID(rel["recruiter_id"]),
                     owner_user_id=UUID(rel["talent_id"]),
                     note=rel.get("cover_note"),
+                    first_message_answers=_first_message_answers(rel),
                     status=rel["stage"],
                     participant_status=rel.get("participant_stage") or rel["stage"],
                     created_at=created,

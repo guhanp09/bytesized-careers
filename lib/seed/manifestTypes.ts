@@ -25,6 +25,18 @@ export type ManifestActor = {
   channel_handle?: string | null;
   subscribers?: number | null;
   upload_cadence?: string | null;
+  /**
+   * What this person charges and how long they have been doing it — the two
+   * facts the talent context card shows beside the name. No rate *unit*: the
+   * listing table has no column for one, and both consumers format these three
+   * values with the same `formatTalentRate`.
+   */
+  rate_min?: number | null;
+  rate_max?: number | null;
+  rate_currency?: string | null;
+  /** Exact whole years. Never a range, never a level label. */
+  experience_years?: number | null;
+  availability?: string | null;
 };
 
 export type ManifestPortfolioItem = {

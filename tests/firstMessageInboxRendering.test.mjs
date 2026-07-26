@@ -12,6 +12,7 @@ import {
   summarizeAnswers,
   validateAnswers,
 } from "../lib/firstMessageRequirements.ts";
+import { toOwnerInteractions } from "../lib/seed/scenarioManifest.ts";
 
 // These tests cover the post-success Apply / Hire behaviour:
 //   • how the inbox opening message renders completed first-message requirements
@@ -189,30 +190,53 @@ test("empty / missing answers summarise to nothing (legacy messages render uncha
   assert.deepEqual(summarizeAnswers(["expected_rate"], "job", { expected_rate: { amount: "", unit: "per video" } }), []);
 });
 
-test("mock interactions keep structured requirements out of duplicate proposed terms", () => {
-  const source = read("lib/seed/ownerInteractionFixtures.ts");
-  for (const id of ["t-req-recv-1", "r-app-recv-1"]) {
-    const snippet = source.match(new RegExp(`id: "${id}"[\\s\\S]*?firstMessageAnswers:`));
-    assert.ok(snippet, `expected ${id} to carry structured first-message answers`);
+/*
+  These two used to read the hand-written fixture's source text. That fixture is
+  retired, so they now assert the same properties about the canonical corpus —
+  which is what Mock mode actually renders. The claim is unchanged: sample data
+  must exercise every structured answer both contexts offer, and must not also
+  restate them as free-text proposed terms.
+*/
+const sampleInteractions = (() => {
+  const manifest = JSON.parse(
+    readFileSync(join(repoRoot, "fixtures/creator_scenarios/generated/default.json"), "utf8")
+  );
+  return [
+    ...toOwnerInteractions(manifest, { mode: "recruiter", anchorMode: "fixed" }),
+    ...toOwnerInteractions(manifest, { mode: "talent", anchorMode: "fixed" }),
+  ];
+})();
+
+test("sample interactions keep structured requirements out of duplicate proposed terms", () => {
+  const answered = sampleInteractions.filter(
+    (item) => item.firstMessageAnswers && Object.keys(item.firstMessageAnswers).length > 0
+  );
+  assert.ok(answered.length > 0, "no sample interaction carried structured answers");
+  for (const item of answered) {
     assert.ok(
-      !snippet[0].includes("proposedTerms:"),
-      `${id} should rely on firstMessageAnswers, not duplicate proposedTerms`
+      !item.proposedTerms,
+      `${item.id} should rely on firstMessageAnswers, not duplicate proposedTerms`
     );
   }
 });
 
-test("mock inbox conversations include full structured-answer examples for both contexts", () => {
-  const source = read("lib/seed/ownerInteractionFixtures.ts");
-  const jobSnippet = source.match(/id: "t-app-sent-1"[\s\S]*?job: \{/);
-  const talentSnippet = source.match(/id: "t-req-recv-1"[\s\S]*?recruiter: \{/);
-  assert.ok(jobSnippet, "expected a full job-application structured-answer mock thread");
-  assert.ok(talentSnippet, "expected a full hiring-request structured-answer mock thread");
+test("sample conversations include full structured-answer examples for both contexts", () => {
+  const keysFor = (kind) => {
+    const seen = new Set();
+    for (const item of sampleInteractions) {
+      if (item.kind !== kind) continue;
+      for (const key of Object.keys(item.firstMessageAnswers ?? {})) seen.add(key);
+    }
+    return seen;
+  };
 
+  const jobKeys = keysFor("application");
+  const talentKeys = keysFor("hiring_request");
   for (const key of JOB_CONTEXT_KEYS) {
-    assert.match(jobSnippet[0], new RegExp(`${key}:`), `missing job-context mock answer: ${key}`);
+    assert.ok(jobKeys.has(key), `missing job-context sample answer: ${key}`);
   }
   for (const key of TALENT_CONTEXT_KEYS) {
-    assert.match(talentSnippet[0], new RegExp(`${key}:`), `missing talent-context mock answer: ${key}`);
+    assert.ok(talentKeys.has(key), `missing talent-context sample answer: ${key}`);
   }
 });
 

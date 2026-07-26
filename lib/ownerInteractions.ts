@@ -481,7 +481,13 @@ const AVAILABILITY_LABELS: Record<BackendTalentListing["availability_status"], s
   unavailable: "Unavailable",
 };
 
-function talentSnapshotFromListing(listing: BackendTalentListing): InteractionTalentSnapshot {
+/**
+ * Exported so the scenario adapter can build its talent context card with this
+ * function rather than a second one. The card's rate and experience come from
+ * `formatTalentRate` / `formatTalentListingExperience`; a Mock-only copy would
+ * be free to format them differently, which is the drift this phase removes.
+ */
+export function talentSnapshotFromListing(listing: BackendTalentListing): InteractionTalentSnapshot {
   return {
     profileSlug: listing.owner_username || null,
     name: displayPersonName({

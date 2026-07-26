@@ -1,12 +1,17 @@
 {
   "actors": [
     {
+      "availability": "available",
       "deactivated": false,
       "display_name": "Aarav Mehta",
       "email": "empty-talent00000@scenario.invalid",
+      "experience_years": 0,
       "headline": "Shorts editor for creator-led channels",
       "id": "4f647a92-2dbb-5d5b-b7c1-6e384485dba9",
       "location": "Remote",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],

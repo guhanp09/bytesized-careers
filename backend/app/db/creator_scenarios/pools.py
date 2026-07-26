@@ -244,6 +244,54 @@ RECRUITER_OPENERS: tuple[str, ...] = (
     "We have a backlog of raw footage and need help getting it upload-ready.",
 )
 
+# --- structured first-message answers ---------------------------------------
+#
+# What the requester actually filled in, in the shape the requirement registry
+# stores. Every key each context offers is represented, because these drive the
+# opening message the recipient reads — a corpus that only answered "portfolio"
+# would leave the rest of that surface untested once the hand-written fixture is
+# gone. Values are content, not display strings: the product formats them.
+
+JOB_ANSWER_SETS: tuple[dict[str, object], ...] = (
+    {
+        "expected_rate": {"amount": "2,500", "unit": "per video"},
+        "turnaround": {"value": "4", "unit": "days"},
+        "working_hours": "Evenings IST",
+        "relevant_experience": "Finance and education channels, mostly long-form",
+        "tools_workflow": "Premiere Pro, After Effects, Frame.io for review",
+        "start_availability": "Next week",
+        "fit_note": "Your last three uploads drop at the same point — that is a hook problem I have fixed before.",
+        "custom_instruction": "Yes, I can work to a Monday-to-Thursday cycle.",
+    },
+    {
+        "expected_rate": {"amount": "18,000", "unit": "per month"},
+        "turnaround": {"value": "2", "unit": "days"},
+        "working_hours": "Mornings, overlapping with EU",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "start_availability": "Immediately",
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "custom_instruction": "Happy to start with one paid test edit.",
+    },
+)
+
+TALENT_ANSWER_SETS: tuple[dict[str, object], ...] = (
+    {
+        "project_budget": {"amount": "25,000", "unit": "per month"},
+        "project_brief": "15 Shorts a month, retention-focused, from existing long-form",
+        "turnaround": {"value": "1", "unit": "weeks"},
+        "working_hours": "Flexible, IST preferred",
+        "channel_or_brand_link": "https://youtube.scenario.invalid/@casefiles",
+        "reference_links": [
+            "https://youtube.scenario.invalid/@one",
+            "https://youtube.scenario.invalid/@two",
+        ],
+        "start_availability": "Start of next month",
+        "fit_note": "Your cutting style is the closest to what we are moving towards.",
+        "custom_instruction": "We can share raw files the same day.",
+    },
+)
+
 RECRUITER_FOLLOWUPS: tuple[str, ...] = (
     "Could you share one example where you rebuilt the structure rather than just trimming?",
     "What does your turnaround look like if we send files on a Monday?",

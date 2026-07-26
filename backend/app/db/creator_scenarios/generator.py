@@ -54,6 +54,24 @@ SCENARIO_SEEDS: dict[str, int] = {
 RETIRED_JOB_KEYS: tuple[str, ...] = ("job_25", "job_26")
 
 
+def _answer_set(kind: str, rel_id: str) -> dict[str, Any]:
+    """Structured first-message answers for a record, or none.
+
+    Roughly a third of records carry a full set — enough that every scenario has
+    several to inspect, while the rest keep the plain no-answers shape that most
+    real applications have. Chosen by hashing the record id rather than by
+    counter, so adding a relationship does not shuffle the answers of the ones
+    already generated.
+    """
+
+    bucket = int(rel_id.replace("-", "")[:8], 16)
+    if bucket % 3:
+        return {}
+    if kind == "application":
+        return dict(pools.JOB_ANSWER_SETS[bucket % len(pools.JOB_ANSWER_SETS)])
+    return dict(pools.TALENT_ANSWER_SETS[bucket % len(pools.TALENT_ANSWER_SETS)])
+
+
 class Builder:
     """Accumulates one scenario. Not reused across scenarios."""
 
@@ -104,6 +122,9 @@ class Builder:
             display = name or f"{first} {last}"
             role = pools.ROLES[slot % len(pools.ROLES)]
             location, _ = pools.LOCATIONS[slot % len(pools.LOCATIONS)]
+            _unit, rate_currency, rate_min, rate_max = pools.COMMERCIAL_STRUCTURES[
+                slot % len(pools.COMMERCIAL_STRUCTURES)
+            ]
             self.actors[actor_id] = Actor(
                 id=actor_id,
                 username=f"{self.scenario[:3]}-t{slot:05d}",
@@ -116,6 +137,17 @@ class Builder:
                 # exercised routinely rather than only in the edge scenario.
                 avatar_url=None if slot % 4 == 0 else f"https://avatars.scenario.invalid/{slot:03d}.jpg",
                 deactivated=deactivated,
+                # Drawn from the same commercial pool the jobs use, so a rate a
+                # talent asks and a rate a job offers are the same shapes of
+                # money — including the currencies nothing ever converts.
+                rate_currency=rate_currency,
+                # The revenue-share row has no meaningful floor as a personal
+                # rate; that structure belongs to a job, not to a person.
+                rate_min=rate_min or None,
+                rate_max=rate_max,
+                # Exact whole years. Spans 0 so "Less than 1 year" is exercised.
+                experience_years=slot % 9,
+                availability=("available", "selective", "unavailable")[slot % 3],
             )
         return self.actors[actor_id]
 
@@ -248,6 +280,14 @@ class Builder:
             conversation_id=conversation_id,
             messages=built,
             portfolio_ids=portfolio_ids or [],
+            # What the requester filled in, in the shape the requirement
+            # registry stores. Keyed off the record id so it is stable across
+            # regeneration and independent of the order scenarios are built in.
+            # An explicit `answers=` in `extra` still wins, for the records that
+            # deliberately have none.
+            answers=extra.pop("answers", None)
+            if "answers" in extra
+            else _answer_set(kind, rel_id),
             **extra,
         )
         self.relationships.append(rel)

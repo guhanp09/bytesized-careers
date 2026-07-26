@@ -1,38 +1,51 @@
 {
   "actors": [
     {
+      "availability": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/209.jpg",
       "deactivated": false,
       "display_name": "Maya Das",
       "email": "talent-talent00209@scenario.invalid",
+      "experience_years": 2,
       "headline": "Podcast producer for creator-led channels",
       "id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "location": "Adelaide, Australia",
+      "rate_currency": "INR",
       "sides": [
         "talent"
       ],
       "username": "tal-t00209"
     },
     {
+      "availability": "selective",
       "deactivated": false,
       "display_name": "Priya Nair",
       "email": "talent-talent70000@scenario.invalid",
+      "experience_years": 7,
       "headline": "Scriptwriter for creator-led channels",
       "id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "location": "Remote",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],
       "username": "tal-t70000"
     },
     {
+      "availability": "available",
       "avatar_url": "https://avatars.scenario.invalid/207.jpg",
       "deactivated": false,
       "display_name": "Grace Gupta",
       "email": "talent-talent00207@scenario.invalid",
+      "experience_years": 0,
       "headline": "Channel manager for creator-led channels",
       "id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "location": "Austin, USA",
+      "rate_currency": "INR",
+      "rate_max": 1200,
+      "rate_min": 700,
       "sides": [
         "talent"
       ],
@@ -54,25 +67,33 @@
       "username": "tal-financesimplified"
     },
     {
+      "availability": "available",
       "avatar_url": "https://avatars.scenario.invalid/213.jpg",
       "deactivated": false,
       "display_name": "Ananya Mehta",
       "email": "talent-talent00213@scenario.invalid",
+      "experience_years": 6,
       "headline": "Community manager for creator-led channels",
       "id": "1ac04abf-fd84-5325-aa85-fbf6b1db9fc1",
       "location": "Delhi NCR, India",
+      "rate_currency": "EUR",
+      "rate_min": 800,
       "sides": [
         "talent"
       ],
       "username": "tal-t00213"
     },
     {
+      "availability": "selective",
       "deactivated": false,
       "display_name": "Daniel Chopra",
       "email": "talent-talent00208@scenario.invalid",
+      "experience_years": 1,
       "headline": "Scriptwriter for creator-led channels",
       "id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
       "location": "Toronto, Canada",
+      "rate_currency": "INR",
+      "rate_min": 900,
       "sides": [
         "talent"
       ],
@@ -94,65 +115,88 @@
       "username": "tal-plateandpan"
     },
     {
+      "availability": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/203.jpg",
       "deactivated": false,
       "display_name": "Leela Patel",
       "email": "talent-talent00203@scenario.invalid",
+      "experience_years": 5,
       "headline": "Brand-deal manager for creator-led channels",
       "id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
       "location": "Guwahati, India",
+      "rate_currency": "EUR",
+      "rate_min": 800,
       "sides": [
         "talent"
       ],
       "username": "tal-t00203"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/90010.jpg",
       "deactivated": false,
       "display_name": "Ishaan Khan",
       "email": "talent-talent90010@scenario.invalid",
+      "experience_years": 1,
       "headline": "UGC creator for creator-led channels",
       "id": "322c9506-435f-5dae-9f88-f0ed6ee1208f",
       "location": "Hyderabad, India",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],
       "username": "tal-t90010"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/214.jpg",
       "deactivated": false,
       "display_name": "Vikram Nair",
       "email": "talent-talent00214@scenario.invalid",
+      "experience_years": 7,
       "headline": "UGC creator for creator-led channels",
       "id": "42020ab6-a543-5848-8362-f083e2365d98",
       "location": "Hyderabad, India",
+      "rate_currency": "INR",
+      "rate_max": 60000,
+      "rate_min": 35000,
       "sides": [
         "talent"
       ],
       "username": "tal-t00214"
     },
     {
+      "availability": "available",
       "avatar_url": "https://avatars.scenario.invalid/210.jpg",
       "deactivated": false,
       "display_name": "Aarav Joshi",
       "email": "talent-talent00210@scenario.invalid",
+      "experience_years": 3,
       "headline": "Motion-graphics artist for creator-led channels",
       "id": "4b0a51fd-e03f-5a52-ace4-2f973210d087",
       "location": "Remote",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],
       "username": "tal-t00210"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/211.jpg",
       "deactivated": false,
       "display_name": "Priya Pillai",
       "email": "talent-talent00211@scenario.invalid",
+      "experience_years": 4,
       "headline": "Colorist for creator-led channels",
       "id": "4ea6558e-0dcf-5000-8934-536d0c02b152",
       "location": "Mumbai, India",
+      "rate_currency": "INR",
+      "rate_min": 2500,
       "sides": [
         "talent"
       ],
@@ -189,63 +233,85 @@
       "username": "tal-dailyfit"
     },
     {
+      "availability": "available",
       "deactivated": false,
       "display_name": "Imran Khan",
       "email": "talent-talent00204@scenario.invalid",
+      "experience_years": 6,
       "headline": "Shorts editor for creator-led channels",
       "id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "location": "Kathmandu, Nepal",
+      "rate_currency": "INR",
+      "rate_max": 60000,
+      "rate_min": 35000,
       "sides": [
         "talent"
       ],
       "username": "tal-t00204"
     },
     {
+      "availability": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/90011.jpg",
       "deactivated": false,
       "display_name": "Nisha Rao",
       "email": "talent-talent90011@scenario.invalid",
+      "experience_years": 2,
       "headline": "Brand-deal manager for creator-led channels",
       "id": "75996898-ea4f-5a80-897e-5b4d6896ad36",
       "location": "Indore, India",
+      "rate_currency": "INR",
+      "rate_min": 2500,
       "sides": [
         "talent"
       ],
       "username": "tal-t90011"
     },
     {
+      "availability": "available",
       "deactivated": false,
       "display_name": "Aarav Mehta",
       "email": "talent-talent90000@scenario.invalid",
+      "experience_years": 0,
       "headline": "Shorts editor for creator-led channels",
       "id": "76e02269-eb5a-5afa-8584-4f4aabde8236",
       "location": "Kathmandu, Nepal",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],
       "username": "tal-t90000"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/90001.jpg",
       "deactivated": false,
       "display_name": "Priya Nair",
       "email": "talent-talent90001@scenario.invalid",
+      "experience_years": 1,
       "headline": "Long-form editor for creator-led channels",
       "id": "7d616b57-3522-54c8-a9f4-733b72827e08",
       "location": "London, UK",
+      "rate_currency": "INR",
+      "rate_min": 2500,
       "sides": [
         "talent"
       ],
       "username": "tal-t90001"
     },
     {
+      "availability": "available",
       "avatar_url": "https://avatars.scenario.invalid/201.jpg",
       "deactivated": false,
       "display_name": "Anjali Reddy",
       "email": "talent-talent00201@scenario.invalid",
+      "experience_years": 3,
       "headline": "Community manager for creator-led channels",
       "id": "94219c99-66d7-5d2b-b53f-63b39f32d73f",
       "location": "Indore, India",
+      "rate_currency": "INR",
+      "rate_min": 2500,
       "sides": [
         "talent"
       ],
@@ -267,51 +333,70 @@
       "username": "tal-gyaanexpress"
     },
     {
+      "availability": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/215.jpg",
       "deactivated": false,
       "display_name": "Meera Sharma",
       "email": "talent-talent00215@scenario.invalid",
+      "experience_years": 8,
       "headline": "Brand-deal manager for creator-led channels",
       "id": "a7d3e6cc-87f4-5187-85a5-2774f793eab4",
       "location": "Indore, India",
+      "rate_currency": "USD",
+      "rate_min": 900,
       "sides": [
         "talent"
       ],
       "username": "tal-t00215"
     },
     {
+      "availability": "available",
       "deactivated": false,
       "display_name": "Karan Iyer",
       "email": "talent-talent00216@scenario.invalid",
+      "experience_years": 0,
       "headline": "Shorts editor for creator-led channels",
       "id": "b75754b4-6c23-5a83-8e4b-6be74e5bf006",
       "location": "Kochi, India",
+      "rate_currency": "USD",
+      "rate_max": 45,
+      "rate_min": 25,
       "sides": [
         "talent"
       ],
       "username": "tal-t00216"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/202.jpg",
       "deactivated": false,
       "display_name": "Varun Shah",
       "email": "talent-talent00202@scenario.invalid",
+      "experience_years": 4,
       "headline": "UGC creator for creator-led channels",
       "id": "bf1debaa-df1b-53f3-8b78-2a3db204d10d",
       "location": "Kochi, India",
+      "rate_currency": "INR",
+      "rate_max": 25000,
+      "rate_min": 8000,
       "sides": [
         "talent"
       ],
       "username": "tal-t00202"
     },
     {
+      "availability": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/206.jpg",
       "deactivated": false,
       "display_name": "Joseph Menon",
       "email": "talent-talent00206@scenario.invalid",
+      "experience_years": 8,
       "headline": "Thumbnail designer for creator-led channels",
       "id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "location": "Berlin, Germany",
+      "rate_currency": "USD",
+      "rate_max": 45,
+      "rate_min": 25,
       "sides": [
         "talent"
       ],
@@ -332,13 +417,17 @@
       "username": "tal-brightbrand"
     },
     {
+      "availability": "selective",
       "avatar_url": "https://avatars.scenario.invalid/205.jpg",
       "deactivated": false,
       "display_name": "Fatima Rao",
       "email": "talent-talent00205@scenario.invalid",
+      "experience_years": 7,
       "headline": "Long-form editor for creator-led channels",
       "id": "d3239b9b-0cb4-5249-8e8c-5c1c3ef83d5e",
       "location": "London, UK",
+      "rate_currency": "USD",
+      "rate_min": 900,
       "sides": [
         "talent"
       ],
@@ -374,24 +463,34 @@
       "username": "tal-routeunknown"
     },
     {
+      "availability": "unavailable",
       "deactivated": false,
       "display_name": "Sameer Verma",
       "email": "talent-talent00200@scenario.invalid",
+      "experience_years": 2,
       "headline": "Subtitler / translator for creator-led channels",
       "id": "e04ffd0a-e6fe-5f4e-86e0-90a468ece4bf",
       "location": "Hyderabad, India",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
       "sides": [
         "talent"
       ],
       "username": "tal-t00200"
     },
     {
+      "availability": "unavailable",
       "deactivated": false,
       "display_name": "Rohan Sinha",
       "email": "talent-talent00212@scenario.invalid",
+      "experience_years": 5,
       "headline": "Subtitler / translator for creator-led channels",
       "id": "ec15d498-a79b-541d-a4ae-d28cba4f7f92",
       "location": "Bengaluru, India",
+      "rate_currency": "INR",
+      "rate_max": 25000,
+      "rate_min": 8000,
       "sides": [
         "talent"
       ],
@@ -2219,6 +2318,22 @@
       "updated_offset": -777600
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "2b781060-8311-573f-b9c4-31027ba947d9",
       "created_offset": -8726400,
@@ -2250,6 +2365,22 @@
       "updated_offset": -8726400
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "e3f16fbe-067d-5949-b27d-e0f00343096f",
       "cover_note": "Hi — I already edit weekly finance explainers for two creator-led channels, so I can match your pacing from the first video rather than spending a month learning it.",
@@ -2282,6 +2413,22 @@
       "updated_offset": -14400
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "0663b7c6-f901-5cf6-9f11-4d22b1a365d5",
       "created_offset": -7862400,
@@ -2382,6 +2529,22 @@
       "updated_offset": -777600
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "02cbd24d-9339-5f71-bcfd-48fe49afc63d",
       "created_offset": -3888000,
@@ -2445,6 +2608,26 @@
       "updated_offset": -432000
     },
     {
+      "answers": {
+        "channel_or_brand_link": "https://youtube.scenario.invalid/@casefiles",
+        "custom_instruction": "We can share raw files the same day.",
+        "fit_note": "Your cutting style is the closest to what we are moving towards.",
+        "project_brief": "15 Shorts a month, retention-focused, from existing long-form",
+        "project_budget": {
+          "amount": "25,000",
+          "unit": "per month"
+        },
+        "reference_links": [
+          "https://youtube.scenario.invalid/@one",
+          "https://youtube.scenario.invalid/@two"
+        ],
+        "start_availability": "Start of next month",
+        "turnaround": {
+          "unit": "weeks",
+          "value": "1"
+        },
+        "working_hours": "Flexible, IST preferred"
+      },
       "archived": false,
       "conversation_id": "cfadf685-b7d5-5f4f-ba95-fa5178f03739",
       "created_offset": -950400,
@@ -2529,6 +2712,26 @@
       "updated_offset": -1036800
     },
     {
+      "answers": {
+        "channel_or_brand_link": "https://youtube.scenario.invalid/@casefiles",
+        "custom_instruction": "We can share raw files the same day.",
+        "fit_note": "Your cutting style is the closest to what we are moving towards.",
+        "project_brief": "15 Shorts a month, retention-focused, from existing long-form",
+        "project_budget": {
+          "amount": "25,000",
+          "unit": "per month"
+        },
+        "reference_links": [
+          "https://youtube.scenario.invalid/@one",
+          "https://youtube.scenario.invalid/@two"
+        ],
+        "start_availability": "Start of next month",
+        "turnaround": {
+          "unit": "weeks",
+          "value": "1"
+        },
+        "working_hours": "Flexible, IST preferred"
+      },
       "archived": true,
       "conversation_id": "ab5b9dcb-9df3-51ac-910d-fac106163c01",
       "created_offset": -1555200,
@@ -2706,6 +2909,22 @@
       "updated_offset": -518400
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "7fd88c1c-5632-5097-9874-d10252aacd4d",
       "created_offset": -345600,
@@ -2796,6 +3015,22 @@
       "updated_offset": -259200
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "004ec8c5-4218-53c0-9a05-24ec5d30ae51",
       "created_offset": -1555200,
@@ -2854,6 +3089,22 @@
       "updated_offset": -252000
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "4b856d90-153e-586e-92b3-db7a15d28b1a",
       "created_offset": -6912000,
@@ -2924,6 +3175,22 @@
       "updated_offset": -1641600
     },
     {
+      "answers": {
+        "custom_instruction": "Yes, I can work to a Monday-to-Thursday cycle.",
+        "expected_rate": {
+          "amount": "2,500",
+          "unit": "per video"
+        },
+        "fit_note": "Your last three uploads drop at the same point — that is a hook problem I have fixed before.",
+        "relevant_experience": "Finance and education channels, mostly long-form",
+        "start_availability": "Next week",
+        "tools_workflow": "Premiere Pro, After Effects, Frame.io for review",
+        "turnaround": {
+          "unit": "days",
+          "value": "4"
+        },
+        "working_hours": "Evenings IST"
+      },
       "archived": false,
       "conversation_id": "c384484e-b42c-5ece-a521-58dcb5122254",
       "created_offset": -259200,
@@ -2963,6 +3230,22 @@
       "updated_offset": -172800
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "1b389c06-6551-5797-9019-ae6da967b5d2",
       "created_offset": -777600,
@@ -3228,6 +3511,22 @@
       "updated_offset": -172800
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
       "archived": false,
       "conversation_id": "5f91eef7-118b-55db-b16c-940a4a20160d",
       "created_offset": -432000,
