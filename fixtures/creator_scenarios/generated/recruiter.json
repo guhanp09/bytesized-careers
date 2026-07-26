@@ -753,6 +753,23 @@
         "talent"
       ],
       "username": "rec-t80106"
+    },
+    {
+      "availability": "unavailable",
+      "deactivated": false,
+      "display_name": "Sameer Bhatt",
+      "email": "recruiter-talent80900@scenario.invalid",
+      "experience_years": 8,
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "fc21aedb-c728-58c0-8874-bffc43979dde",
+      "location": "Kathmandu, Nepal",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
+      "sides": [
+        "talent"
+      ],
+      "username": "rec-t80900"
     }
   ],
   "description": "The Recruiter side, with every management state on one board.",
@@ -1005,6 +1022,17 @@
       "persona": "recruiter",
       "relationship_id": "e315183e-638e-5adc-96eb-a7854cea2b30",
       "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Hover the affordance and confirm the answered requirements appear.",
+      "conversation_id": "8e1bc4b5-5bb1-5e12-8642-4e6847424d37",
+      "expected_condition": "Answers only · no typed note · card shows the First message affordance",
+      "expected_stage": "reviewing",
+      "job_id": "db68c966-c3f1-5170-9395-c0224d7d9ab5",
+      "persona": "recruiter",
+      "relationship_id": "e37f4113-2902-5786-ab74-76921e895bc4",
+      "route": "/applications?view=pipeline&mode=recruiter",
       "scenario": "recruiter"
     },
     {
@@ -1575,6 +1603,38 @@
     },
     {
       "compensation_currency": "INR",
+      "compensation_max": 4000.0,
+      "compensation_min": 1500.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per video",
+      "experience": "2–4 years",
+      "formats": [
+        "Shorts/Reels",
+        "Social posts"
+      ],
+      "id": "db68c966-c3f1-5170-9395-c0224d7d9ab5",
+      "location": "Berlin, Germany",
+      "niches": [
+        "Gaming"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "instagram_reels"
+      ],
+      "posted_offset": -950400,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Gaming"
+      ],
+      "title": "Scriptwriter for gaming channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
       "compensation_min": 2500.0,
       "compensation_mode": "fixed",
       "compensation_unit": "per video",
@@ -1769,17 +1829,18 @@
       "url": "https://work.scenario.invalid/138de8b5"
     },
     {
+      "duration_seconds": 3584,
       "format": "Shorts/Reels",
-      "id": "15d80914-9afd-51ae-af20-9abf13b5b18d",
-      "media": "image",
-      "niche": "Gaming",
-      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
-      "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "id": "14c76eab-a04d-535e-8f7e-3406c05abd35",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "fc21aedb-c728-58c0-8874-bffc43979dde",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
       "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/15d80914.jpg",
-      "title": "Cold open reshoot — fitness channel",
-      "url": "https://work.scenario.invalid/15d80914"
+      "thumbnail_url": "https://thumbs.scenario.invalid/14c76eab.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/14c76eab"
     },
     {
       "duration_seconds": 328,
@@ -2199,6 +2260,19 @@
       "url": "https://work.scenario.invalid/53271057"
     },
     {
+      "format": "Long-form video",
+      "id": "5342de22-3454-595b-946b-832244bff8fb",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "fc21aedb-c728-58c0-8874-bffc43979dde",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/5342de22.jpg",
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/5342de22"
+    },
+    {
       "duration_seconds": 328,
       "format": "Repurposed clips",
       "id": "58c3160e-e240-556b-b33f-d142dadd834f",
@@ -2211,19 +2285,6 @@
       "thumbnail_url": "https://thumbs.scenario.invalid/58c3160e.jpg",
       "title": "Hook pass — 12 shorts",
       "url": "https://work.scenario.invalid/58c3160e"
-    },
-    {
-      "format": "Shorts/Reels",
-      "id": "5969e078-b2b7-56ea-8587-21e69b99cc94",
-      "media": "image",
-      "niche": "Gaming",
-      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
-      "platform": "tiktok",
-      "role": "Motion graphics, template system",
-      "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/5969e078.jpg",
-      "title": "Cold open reshoot — fitness channel",
-      "url": "https://work.scenario.invalid/5969e078"
     },
     {
       "format": "Content strategy",
@@ -2278,20 +2339,6 @@
       "url": "https://work.scenario.invalid/68178f18"
     },
     {
-      "duration_seconds": 328,
-      "format": "Repurposed clips",
-      "id": "6904b202-b00c-54bc-b8ef-48e5106065e4",
-      "media": "video",
-      "niche": "Technology",
-      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
-      "platform": "twitch",
-      "role": "Thumbnail concepting and design",
-      "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/6904b202.jpg",
-      "title": "Hook pass — 12 shorts",
-      "url": "https://work.scenario.invalid/6904b202"
-    },
-    {
       "duration_seconds": 772,
       "format": "Shorts/Reels",
       "id": "6fee8a5d-ea77-5861-889c-a5c0834069e9",
@@ -2330,18 +2377,6 @@
       "thumbnail_url": "https://thumbs.scenario.invalid/7674c14e.jpg",
       "title": "Cold open reshoot — fitness channel",
       "url": "https://work.scenario.invalid/7674c14e"
-    },
-    {
-      "format": "Shorts/Reels",
-      "id": "76bc5516-31dd-53dd-9e55-d785b7634364",
-      "media": "link",
-      "niche": "Beauty",
-      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
-      "platform": "instagram_reels",
-      "role": "Colour and sound",
-      "thumbnail_broken": false,
-      "title": "Thumbnail A/B set — finance",
-      "url": "https://work.scenario.invalid/76bc5516"
     },
     {
       "duration_seconds": 2437,
@@ -2449,20 +2484,6 @@
       "url": "https://work.scenario.invalid/989abaed"
     },
     {
-      "duration_seconds": 328,
-      "format": "Repurposed clips",
-      "id": "98cbe23b-48e5-5bfc-abc2-e0fab9509f0c",
-      "media": "video",
-      "niche": "Technology",
-      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
-      "platform": "twitch",
-      "role": "Thumbnail concepting and design",
-      "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/98cbe23b.jpg",
-      "title": "Hook pass — 12 shorts",
-      "url": "https://work.scenario.invalid/98cbe23b"
-    },
-    {
       "duration_seconds": 217,
       "format": "Shorts/Reels",
       "id": "9d956e5c-68c7-5010-b501-f8f1c16fedde",
@@ -2554,18 +2575,6 @@
       "thumbnail_url": "https://thumbs.scenario.invalid/ae050c80.jpg",
       "title": "Documentary-style deep dive",
       "url": "https://work.scenario.invalid/ae050c80"
-    },
-    {
-      "format": "Shorts/Reels",
-      "id": "aeb13aa1-5df7-5aef-836a-7b7b5056df50",
-      "media": "link",
-      "niche": "Beauty",
-      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
-      "platform": "instagram_reels",
-      "role": "Colour and sound",
-      "thumbnail_broken": false,
-      "title": "Thumbnail A/B set — finance",
-      "url": "https://work.scenario.invalid/aeb13aa1"
     },
     {
       "duration_seconds": 476,
@@ -2890,19 +2899,6 @@
       "url": "https://work.scenario.invalid/eaf5b697"
     },
     {
-      "format": "Shorts/Reels",
-      "id": "ee222b57-2f92-5d9e-9678-dcf66ba23190",
-      "media": "image",
-      "niche": "Gaming",
-      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
-      "platform": "tiktok",
-      "role": "Motion graphics, template system",
-      "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/ee222b57.jpg",
-      "title": "Cold open reshoot — fitness channel",
-      "url": "https://work.scenario.invalid/ee222b57"
-    },
-    {
       "format": "Content strategy",
       "id": "f08b1c7c-d197-52ee-8f9d-e64a3d8b7ef7",
       "media": "image",
@@ -2913,18 +2909,6 @@
       "thumbnail_broken": false,
       "title": "Sponsor integration cutdown",
       "url": "https://work.scenario.invalid/f08b1c7c"
-    },
-    {
-      "format": "Shorts/Reels",
-      "id": "f3de8b74-e0c3-5626-bfd2-bbb673b68446",
-      "media": "link",
-      "niche": "Beauty",
-      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
-      "platform": "instagram_reels",
-      "role": "Colour and sound",
-      "thumbnail_broken": false,
-      "title": "Thumbnail A/B set — finance",
-      "url": "https://work.scenario.invalid/f3de8b74"
     },
     {
       "format": "Long-form video",
@@ -2965,20 +2949,6 @@
       "thumbnail_url": "https://thumbs.scenario.invalid/f86a6ce3.jpg",
       "title": "Hook pass — 12 shorts",
       "url": "https://work.scenario.invalid/f86a6ce3"
-    },
-    {
-      "duration_seconds": 328,
-      "format": "Repurposed clips",
-      "id": "fa5974da-4031-5bae-b264-5485c200caf3",
-      "media": "video",
-      "niche": "Technology",
-      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
-      "platform": "twitch",
-      "role": "Thumbnail concepting and design",
-      "thumbnail_broken": false,
-      "thumbnail_url": "https://thumbs.scenario.invalid/fa5974da.jpg",
-      "title": "Hook pass — 12 shorts",
-      "url": "https://work.scenario.invalid/fa5974da"
     },
     {
       "format": "Long-form video",
@@ -3326,11 +3296,6 @@
         }
       ],
       "participant_stage": "interviewing",
-      "portfolio_ids": [
-        "15d80914-9afd-51ae-af20-9abf13b5b18d",
-        "aeb13aa1-5df7-5aef-836a-7b7b5056df50",
-        "98cbe23b-48e5-5bfc-abc2-e0fab9509f0c"
-      ],
       "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "snoozed_offset": 259200,
       "stage": "interviewing",
@@ -3792,11 +3757,6 @@
         }
       ],
       "participant_stage": "interviewing",
-      "portfolio_ids": [
-        "5969e078-b2b7-56ea-8587-21e69b99cc94",
-        "f3de8b74-e0c3-5626-bfd2-bbb673b68446",
-        "fa5974da-4031-5bae-b264-5485c200caf3"
-      ],
       "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "snoozed_offset": 259200,
       "stage": "interviewing",
@@ -3967,11 +3927,6 @@
         }
       ],
       "participant_stage": "interviewing",
-      "portfolio_ids": [
-        "ee222b57-2f92-5d9e-9678-dcf66ba23190",
-        "76bc5516-31dd-53dd-9e55-d785b7634364",
-        "6904b202-b00c-54bc-b8ef-48e5106065e4"
-      ],
       "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "snoozed_offset": 259200,
       "stage": "interviewing",
@@ -4649,6 +4604,40 @@
       "updated_offset": -432000
     },
     {
+      "answers": {
+        "custom_instruction": "Yes, I can work to a Monday-to-Thursday cycle.",
+        "expected_rate": {
+          "amount": "2,500",
+          "unit": "per video"
+        },
+        "relevant_experience": "Finance and education channels, mostly long-form",
+        "start_availability": "Next week",
+        "tools_workflow": "Premiere Pro, After Effects, Frame.io for review",
+        "turnaround": {
+          "unit": "days",
+          "value": "4"
+        },
+        "working_hours": "Evenings IST"
+      },
+      "archived": false,
+      "conversation_id": "8e1bc4b5-5bb1-5e12-8642-4e6847424d37",
+      "created_offset": -345600,
+      "id": "e37f4113-2902-5786-ab74-76921e895bc4",
+      "job_id": "db68c966-c3f1-5170-9395-c0224d7d9ab5",
+      "kind": "application",
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "5342de22-3454-595b-946b-832244bff8fb",
+        "14c76eab-a04d-535e-8f7e-3406c05abd35"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "fc21aedb-c728-58c0-8874-bffc43979dde",
+      "unread": 0,
+      "updated_offset": -345600
+    },
+    {
       "archived": false,
       "conversation_id": "c3a8b143-9a7a-5f6a-b545-f0368f724c2c",
       "created_offset": -1036800,
@@ -4877,14 +4866,14 @@
   "scenario": "recruiter",
   "seed": 6000,
   "stats": {
-    "actors": 44,
-    "applications": 39,
+    "actors": 45,
+    "applications": 40,
     "client_state": 0,
-    "conversations": 42,
+    "conversations": 43,
     "engagements": 7,
     "hiring_requests": 3,
     "interviews": 3,
-    "jobs": 19,
+    "jobs": 20,
     "messages": 61,
     "payment_states": {
       "disputed": 1,
@@ -4893,8 +4882,8 @@
       "released": 1,
       "setup_pending": 2
     },
-    "portfolio_items": 107,
-    "relationships": 42,
+    "portfolio_items": 100,
+    "relationships": 43,
     "stages": {
       "accepted": 1,
       "archived": 3,
@@ -4903,7 +4892,7 @@
       "interviewing": 6,
       "new": 5,
       "rejected": 7,
-      "reviewing": 6,
+      "reviewing": 7,
       "shortlisted": 2,
       "withdrawn": 4
     }

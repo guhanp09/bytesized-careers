@@ -602,6 +602,33 @@ def _default(builder: Builder) -> None:
                 action="Reply and confirm the request leaves the needs-you queue.",
             )
 
+    # A request with structured answers and *no typed message at all*.
+    #
+    # Every other record here carries an opener, so without this one the corpus
+    # never exercises the rule that an answers-only request still renders a real
+    # opening bubble rather than an empty thread. That rule exists because the
+    # product used to show a blank conversation, which reads as broken.
+    answers_only = builder.relationship(
+        key="default:request:answers-only",
+        kind="hiring_request",
+        job=None,
+        recruiter=builder.recruiter(1),
+        talent=builder.talent(5_900),
+        stage="new",
+        participant_stage="new",
+        created=-2 * DAY,
+        messages=[],
+        answers=dict(pools.TALENT_ANSWER_SETS[0]),
+        unread=1,
+    )
+    builder.add_index(
+        answers_only,
+        persona="talent",
+        route="/applications?view=inbox&mode=talent",
+        condition="Answers only · no typed message · must not render a blank thread",
+        action="Confirm one opening bubble is generated from the answers, with the budget shown.",
+    )
+
     _retired_jobs(builder)
 
 
@@ -908,7 +935,12 @@ def _recruiter(builder: Builder) -> None:
                 participant_stage="reviewing" if stage == "rejected" and index % 2 == 0 else stage,
                 created=created,
                 messages=[("talent", created, pools.APPLICANT_OPENERS[index % len(pools.APPLICANT_OPENERS)])],
-                portfolio_ids=builder.portfolio_for(talent, (index % 4) + 1, slot=index),
+                # Not everyone attaches work. A board where every single card
+                # carries a portfolio strip is both unrealistic and untestable:
+                # the card anatomy *without* one stops being rendered anywhere,
+                # and that is the layout the narrow-column overflow defect was
+                # found on.
+                portfolio_ids=[] if index == 2 else builder.portfolio_for(talent, (index % 4) + 1, slot=index),
                 starred=index == 1,
                 snoozed_offset=3 * DAY if index == 2 else None,
                 unread=1 if index in {0, 3} else 0,
@@ -928,6 +960,32 @@ def _recruiter(builder: Builder) -> None:
                                   route="/applications?view=pipeline&mode=recruiter",
                                   condition=f"stage {stage}",
                                   action="Move the record and confirm the transition is offered honestly.")
+
+    # An application that answered the structured requirements and wrote no
+    # note. The board shows a "First message" affordance instead of a teaser
+    # line for exactly this case, and without a record in it that affordance is
+    # never rendered by any scenario.
+    quiet_job = builder.job(recruiter, 640)
+    quiet_talent = builder.talent(80_900)
+    quiet = builder.relationship(
+        key="recruiter:answers-only",
+        kind="application", job=quiet_job, recruiter=recruiter, talent=quiet_talent,
+        stage="reviewing", participant_stage="reviewing", created=-4 * DAY,
+        messages=[],
+        # No `fit_note` either: the fit note becomes the opening body, so a
+        # record carrying one still has a teaser line to show. The affordance
+        # this exists to exercise appears only when there is nothing to tease.
+        answers={
+            key: value
+            for key, value in pools.JOB_ANSWER_SETS[0].items()
+            if key != "fit_note"
+        },
+        portfolio_ids=builder.portfolio_for(quiet_talent, 2, slot=91),
+    )
+    builder.add_index(quiet, persona="recruiter",
+                      route="/applications?view=pipeline&mode=recruiter",
+                      condition="Answers only · no typed note · card shows the First message affordance",
+                      action="Hover the affordance and confirm the answered requirements appear.")
     _retired_jobs(builder)
 
 

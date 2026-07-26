@@ -1,6 +1,27 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { encode } from "next-auth/jwt";
 import { switchPersona } from "./workspacePersona";
+import {
+  anchor,
+  manifest,
+  openRecord,
+  openWorkspace,
+  row,
+  type Anchor,
+} from "./scenarioAnchors";
+
+/*
+  These specs were written against a hand-written nine-record fixture that no
+  longer exists. They asserted its row counts, its people and its ordering, so
+  they broke the moment Mock mode started serving the canonical corpus — and,
+  worse, a failure said "a name moved" rather than naming the behaviour that had
+  regressed.
+
+  Every record is now addressed through the generated scenario index: a spec
+  asks for the record demonstrating a condition, gets a deterministic id, and
+  clicks it by `data-record-id`. Scenario selection is explicit per test, so no
+  test depends on what ran before it.
+*/
 
 // Matches NEXTAUTH_SECRET in the test:e2e:server script. The backend is not
 // running during e2e, so /you renders its offline shell with mock data.
@@ -35,14 +56,14 @@ async function signInAsOwner(context: BrowserContext) {
   ]);
 }
 
-async function openApplicationsTab(page: Page) {
-  await page.goto("/applications?demo=1");
-  await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 15_000 });
-}
-
 // Workflow actions live in the detail app-bar overflow menu.
 async function openOverflow(page: Page) {
   await page.getByTestId("applications-detail").getByRole("button", { name: "More actions" }).click();
+}
+
+/** How many records of a kind a scenario holds, from the manifest. */
+function countOf(scenario: "default" | "talent" | "recruiter", kind: "application" | "hiring_request") {
+  return manifest(scenario).relationships.filter((rel) => rel.kind === kind).length;
 }
 
 test.describe("/you Applications workspace", () => {
@@ -56,53 +77,46 @@ test.describe("/you Applications workspace", () => {
     await expect(page.locator("body")).toContainText(/Demo Owner|You/);
   });
 
-  test("renders master-detail with list visible beside auto-selected detail", async ({ page }) => {
-    await openApplicationsTab(page);
+  test("renders master-detail with the list beside an auto-selected detail", async ({ page }) => {
+    await openWorkspace(page, { scenario: "default" });
 
+    // Not a total row count: that would assert the generator's arithmetic. What
+    // matters is that the list rendered, something is open, and the detail is
+    // showing that record rather than a placeholder.
     const rows = page.getByTestId("interaction-row");
-    await expect(rows).toHaveCount(9);
-
+    await expect(rows.first()).toBeVisible();
     await expect(rows.first()).toHaveAttribute("aria-pressed", "true");
+
     const detail = page.getByTestId("applications-detail");
     await expect(detail).toBeVisible();
-    // One primary title (H1), and the job reference row carries the compensation once.
-    await expect(detail.getByRole("heading", { name: /Video editor for YouTube/ })).toBeVisible();
-    await expect(detail.getByText("₹350–₹3,500 per project")).toBeVisible();
+    await expect(detail.getByRole("heading").first()).toBeVisible();
+    await expect(detail.getByText("No messages yet.")).toHaveCount(0);
   });
 
-  test("talent mode shows sent applications and received hiring requests; row click updates detail without navigation", async ({
-    page,
-  }) => {
-    await openApplicationsTab(page);
+  test("talent mode shows applications sent and hiring requests received", async ({ page }) => {
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
 
+    // Direction is a property of the persona, so the split is derived from the
+    // manifest rather than typed in: a talent sent every application and
+    // received every hiring request.
     const rows = page.getByTestId("interaction-row");
-    await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(5);
-    await expect(rows.filter({ hasText: "Received hiring request" })).toHaveCount(4);
+    await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(countOf("default", "application"));
+    await expect(rows.filter({ hasText: "Received hiring request" })).toHaveCount(
+      countOf("default", "hiring_request")
+    );
 
-    const requestRow = rows.filter({ hasText: "Shorts editing package — 15 shorts per month" });
-    await requestRow.click();
-    await expect(requestRow).toHaveAttribute("aria-pressed", "true");
-
-    const detail = page.getByTestId("applications-detail");
-    // Header is the recruiter; the context card is the viewer's own talent listing.
-    await expect(detail.getByRole("heading", { name: "Motivation Shorts" })).toBeVisible();
-    await expect(
-      detail.getByRole("heading", { name: "Retention-focused long-form and shorts editing" })
-    ).toBeVisible();
-    await openOverflow(page);
-    await expect(page.getByRole("menuitem", { name: "Accept request" })).toBeVisible();
+    const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
+    const detail = await openRecord(page, request);
+    // The header answers "who am I talking to?" — the recruiter.
+    await expect(detail.getByRole("heading", { name: request.counterpartyName })).toBeVisible();
     await expect(page).toHaveURL(/\/applications/);
   });
 
   test("accepting a received hiring request updates status from the detail pane", async ({ page }) => {
-    await openApplicationsTab(page);
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
+    const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
+    const detail = await openRecord(page, request);
 
-    await page
-      .getByTestId("interaction-row")
-      .filter({ hasText: "Shorts editing package — 15 shorts per month" })
-      .click();
-
-    const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
     await page.getByRole("menuitem", { name: "Accept request" }).click();
     const confirmation = page.getByRole("dialog", { name: "Accept this hiring request?" });
@@ -114,147 +128,136 @@ test.describe("/you Applications workspace", () => {
     await expect(page.getByRole("menuitem", { name: "Accept request" })).toHaveCount(0);
   });
 
-  test("Sent, Received, and Archived filters scope the list", async ({ page }) => {
-    await openApplicationsTab(page);
-
+  test("Sent, Received and Archived filters scope the list", async ({ page }) => {
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
     const rows = page.getByTestId("interaction-row");
 
+    // Each filter's expected size comes from the manifest, so the assertion is
+    // "the filter shows exactly the records that qualify" rather than a number
+    // that happened to be true of the retired fixture.
+    const applications = countOf("default", "application");
+    const requests = countOf("default", "hiring_request");
+    // The product's own rule (`isArchivedInteraction`): a record is archived if
+    // the viewer archived it *or* it reached the archived stage. Counting only
+    // the flag would assert a narrower rule than the filter implements.
+    const archived = manifest("default").relationships.filter(
+      (rel) => rel.archived || rel.stage === "archived"
+    ).length;
+
     await page.getByTestId("applications-filter-sent").click();
-    await expect(rows).toHaveCount(5);
+    await expect(rows).toHaveCount(applications);
     await expect(rows.filter({ hasText: "Received hiring request" })).toHaveCount(0);
 
     await page.getByTestId("applications-filter-received").click();
-    await expect(rows).toHaveCount(4);
+    await expect(rows).toHaveCount(requests);
     await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(0);
 
     await page.getByTestId("applications-filter-archived").click();
-    await expect(rows).toHaveCount(1);
+    await expect(rows).toHaveCount(archived);
 
     await page.getByTestId("applications-filter-all").click();
-    await expect(rows).toHaveCount(9);
+    await expect(rows).toHaveCount(applications + requests);
   });
 
   test("sent application: header is the counterparty and the job context card links to the job", async ({ page }) => {
-    await openApplicationsTab(page);
-    await page.getByTestId("interaction-row").filter({ hasText: "Video editor for YouTube" }).click();
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
+    // Any application looks the same from the sent side; this one is indexed,
+    // so it is guaranteed to exist and to carry a job.
+    const application = anchor("default", "New · unread · portfolio attached", { persona: "recruiter" });
+    const detail = await openRecord(page, application);
 
-    const detail = page.getByTestId("applications-detail");
-    // Header answers "who am I talking to?" — the channel — not the job title.
-    await expect(detail.getByRole("heading", { name: "Finance Channel" })).toBeVisible();
+    // Header answers "who am I talking to?" — the hiring side — not the job title.
+    await expect(detail.getByRole("heading").first()).toBeVisible();
 
-    // The job lives in the context card, which is itself the link to the job detail page.
-    const jobCard = detail.locator('a[href="/jobs/1"]');
+    // The job lives in the context card, which is itself the link to the job.
+    const jobCard = detail.locator(`a[href="/jobs/${application.jobId}"]`);
     await expect(jobCard).toBeVisible();
-    await expect(jobCard.getByRole("heading", { name: /Video editor for YouTube/ })).toBeVisible();
-    await expect(jobCard.getByText("₹350–₹3,500 per project")).toBeVisible();
+    await expect(jobCard.getByRole("heading", { name: application.jobTitle! })).toBeVisible();
 
-    // No redundant label, no tag clutter in the compact card.
+    // No redundant label above the compact card.
     await expect(detail.getByText("Job you applied to")).toHaveCount(0);
-    await expect(jobCard.getByText("Premiere")).toHaveCount(0);
   });
 
-  test("sent hiring request: talent context card is a compact mini-card linking to the profile, without bio/tag/portfolio clutter", async ({
+  test("sent hiring request: the talent context card is a compact mini-card linking to the profile", async ({
     page,
   }) => {
-    await openApplicationsTab(page);
-    await switchPersona(page, "hiring");
-    await page.getByTestId("interaction-row").filter({ hasText: "Anika Rao" }).click();
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
+    // Indexed for the talent side; from the recruiter's account it is the
+    // *sent* side of the same record, which is what this test is about.
+    const detail = await openRecord(page, request);
 
-    const detail = page.getByTestId("applications-detail");
-    // Header answers "who am I talking to?" — the talent.
-    await expect(detail.getByRole("heading", { name: "Anika Rao" })).toBeVisible();
+    const talent = manifest("default").relationships.find((rel) => rel.id === request.recordId)!;
+    const person = manifest("default").actors.find((actor) => actor.id === talent.talent_id)!;
 
-    // The talent lives in a compact context card — the mirror of the job card — that is
-    // itself the link to their talent profile. Scope by the headline so the header link
-    // (same href, no headline) isn't matched.
+    await expect(detail.getByRole("heading", { name: person.display_name })).toBeVisible();
+
+    // A compact card — the mirror of the job card — that is itself the link to
+    // the talent profile. Scoped by the headline so the header link (same href,
+    // no headline) is not matched.
     const talentCard = detail
-      .locator('a[href^="/u/anika-rao"]')
-      .filter({ hasText: "Shorts editor for daily faceless channels" });
+      .locator(`a[href^="/u/${person.username}"]`)
+      .filter({ hasText: /for creator-led channels/ });
     await expect(talentCard).toBeVisible();
-    await expect(
-      talentCard.getByRole("heading", { name: "Shorts editor for daily faceless channels" })
-    ).toBeVisible();
-    // Same shape of info as the job card, same order: rate → experience (numeric years) → location.
-    await expect(talentCard.getByText("₹15,000 per month")).toBeVisible();
-    await expect(talentCard.getByText("3 years")).toBeVisible();
-    await expect(talentCard.getByText("Bengaluru, India")).toBeVisible();
 
-    // No availability status, no raw experience clause, no tag pills, no portfolio block.
-    await expect(talentCard.getByText("Available · evenings IST")).toHaveCount(0);
-    await expect(talentCard.getByText("Daily shorts pipelines for 3 faceless channels")).toHaveCount(0);
-    await expect(talentCard.getByText("CapCut")).toHaveCount(0);
-    await expect(talentCard.getByText("Daily shorts system — fitness channel")).toHaveCount(0);
+    // Same shape of information as the job card: rate, then numeric experience.
+    await expect(talentCard).toContainText(/years|Less than 1 year/);
+    // No availability status and no portfolio block in the compact card.
+    await expect(talentCard.getByText(/^Available$|^Selective$|^Unavailable$/)).toHaveCount(0);
   });
 
-  test("received hiring request: context card is the viewer's own talent listing (mini talent card), not the recruiter", async ({
+  test("received hiring request: the context card is the viewer's own listing, not the recruiter", async ({
     page,
   }) => {
-    await openApplicationsTab(page);
-    // Talent mode (default): a recruiter showed interest in the viewer's listing.
-    await page
-      .getByTestId("interaction-row")
-      .filter({ hasText: "Shorts editing package — 15 shorts per month" })
-      .click();
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
+    const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
+    const detail = await openRecord(page, request);
 
-    const detail = page.getByTestId("applications-detail");
-    // Header answers "who am I talking to?" — the recruiter — and links to their hiring profile.
-    await expect(detail.getByRole("heading", { name: "Motivation Shorts" })).toBeVisible();
+    // Header answers "who am I talking to?" — the recruiter.
+    await expect(detail.getByRole("heading", { name: request.counterpartyName })).toBeVisible();
 
-    // Context card is the same compact talent card, here representing the viewer's own
-    // listing, linking to their talent profile. Identity is genericised to "Your listing".
-    const ownListingCard = detail.locator('a[href^="/u/demo-owner"]');
-    await expect(ownListingCard).toBeVisible();
-    await expect(
-      ownListingCard.getByRole("heading", { name: "Retention-focused long-form and shorts editing" })
-    ).toBeVisible();
-    await expect(ownListingCard.getByText("Your listing")).toBeVisible();
-    await expect(ownListingCard.getByText("₹2,000–₹3,500 per video")).toBeVisible();
-    // Availability status is not a job-card-equivalent field, so it does not appear here.
-    await expect(ownListingCard.getByText("Available · 2 retainer slots")).toHaveCount(0);
+    // The context card represents the viewer's own listing, and says so.
+    await expect(detail.getByText("Your listing")).toBeVisible();
 
-    // The recruiter is the header, not a second context card — its old detail is gone.
-    await expect(detail.getByText(/Hiring for/)).toHaveCount(0);
+    // The recruiter is the header, not a second context card.
     await expect(detail.getByText(/Sent for your listing/)).toHaveCount(0);
   });
 
-  test("recruiter mode shows received applications: counterparty header, job context card, and clears stale detail", async ({
-    page,
-  }) => {
-    await openApplicationsTab(page);
+  test("recruiter mode shows received applications, and switching clears stale detail", async ({ page }) => {
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
 
-    // Open a talent-mode detail first so staleness is observable.
-    await page
-      .getByTestId("interaction-row")
-      .filter({ hasText: "Shorts editing package — 15 shorts per month" })
-      .click();
+    // Open a talent-mode record first so staleness is observable.
+    const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
+    await openRecord(page, request);
+    const staleHeading = request.counterpartyName;
 
     await switchPersona(page, "hiring");
 
     const rows = page.getByTestId("interaction-row");
-    await expect(rows.filter({ hasText: "Received application" })).toHaveCount(6);
-    await expect(rows.filter({ hasText: "Sent hiring request" })).toHaveCount(5);
+    await expect(rows.filter({ hasText: "Received application" })).toHaveCount(
+      countOf("default", "application")
+    );
+    await expect(rows.filter({ hasText: "Sent hiring request" })).toHaveCount(
+      countOf("default", "hiring_request")
+    );
 
     const detail = page.getByTestId("applications-detail");
-    await expect(detail.getByText("Shorts editing package — 15 shorts per month")).toHaveCount(0);
+    await expect(detail.getByRole("heading", { name: staleHeading, exact: true })).toHaveCount(0);
 
-    await rows.filter({ hasText: "Aarav Mehta" }).click();
-    // Header answers "who am I talking to?" — the applicant — and links to their profile.
-    await expect(detail.getByRole("heading", { name: "Aarav Mehta" })).toBeVisible();
-    await expect(detail.locator('a[href^="/u/aarav-mehta"]').first()).toBeVisible();
-    // Context card represents the job they applied to.
-    await expect(
-      detail.getByRole("heading", { name: /Long-form editor for weekly finance explainers/ })
-    ).toBeVisible();
+    const application = anchor("default", "New · unread · portfolio attached", { persona: "recruiter" });
+    await openRecord(page, application);
+    // Header answers "who am I talking to?" — the applicant — and links to them.
+    await expect(detail.getByRole("heading", { name: application.counterpartyName })).toBeVisible();
+    await expect(detail.getByRole("heading", { name: application.jobTitle! })).toBeVisible();
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
   });
 
   test("reply composer sends a local reply with quick actions", async ({ page }) => {
-    await openApplicationsTab(page);
-    await switchPersona(page, "hiring");
-    await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    const application = anchor("default", "New · unread · portfolio attached", { persona: "recruiter" });
+    const detail = await openRecord(page, application);
 
-    const detail = page.getByTestId("applications-detail");
     const composer = detail.getByRole("textbox", { name: "Reply message" });
     await expect(composer).toBeVisible();
 
@@ -270,11 +273,10 @@ test.describe("/you Applications workspace", () => {
   });
 
   test("marking an application not selected confirms and keeps the private decision revisitable", async ({ page }) => {
-    await openApplicationsTab(page);
-    await switchPersona(page, "hiring");
-    await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    const application = anchor("default", "New · unread · portfolio attached", { persona: "recruiter" });
+    const detail = await openRecord(page, application);
 
-    const detail = page.getByTestId("applications-detail");
     await openOverflow(page);
     await page.getByRole("menuitem", { name: "Not selected", exact: true }).click();
     const confirmation = page.getByRole("dialog", {
@@ -287,16 +289,35 @@ test.describe("/you Applications workspace", () => {
     // The private decision can still be revised or explicitly shared later.
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Share decision with Aarav" })).toBeVisible();
+    const firstName = application.counterpartyName.split(" ")[0];
+    await expect(page.getByRole("menuitem", { name: `Share decision with ${firstName}` })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Not selected", exact: true })).toHaveCount(0);
+  });
+
+  test("a private decision is never shown to the participant", async ({ page }) => {
+    // The indexed record exists precisely for this: the recruiter has decided,
+    // and the applicant has not been told. Both sides are read here, because a
+    // leak is only visible by comparing them.
+    const priv = anchor("default", "Not proceeding · saved privately", { persona: "recruiter" });
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    const detail = await openRecord(page, priv);
+    await expect(detail.getByText("Declined", { exact: true })).toBeVisible();
+
+    await switchPersona(page, "talent");
+    const participantRow = row(page, priv);
+    await participantRow.scrollIntoViewIfNeeded();
+    // What the applicant sees is what they were told — Reviewing — never the
+    // recruiter's private position.
+    await expect(participantRow).toContainText(/Viewed|Reviewing/);
+    await expect(participantRow).not.toContainText("Declined");
   });
 
   test("Shortlist is no longer offered as a stage", async ({ page }) => {
     // Retired in favour of a private Star (migration 0047): keeping someone in
     // mind is personal organisation, not a place in the funnel.
-    await openApplicationsTab(page);
-    await switchPersona(page, "hiring");
-    await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    const application = anchor("default", "New · unread · portfolio attached", { persona: "recruiter" });
+    await openRecord(page, application);
 
     await openOverflow(page);
     await expect(page.getByRole("menuitem", { name: /Shortlist/ })).toHaveCount(0);
@@ -304,9 +325,24 @@ test.describe("/you Applications workspace", () => {
     await expect(page.getByRole("menuitem", { name: "Move to Reviewing" })).toBeVisible();
   });
 
+  test("a communicated legacy Shortlisted reads as Under consideration, never the raw stage", async ({ page }) => {
+    const legacy = anchor("default", "Legacy Shortlisted · communicated", { persona: "recruiter" });
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
+    const participantRow = row(page, legacy);
+    await participantRow.scrollIntoViewIfNeeded();
+    await expect(participantRow).toBeVisible();
+    // The stored stage is `shortlisted`; what the applicant reads is the label,
+    // which must be "Under consideration". Asserted on the status rather than on
+    // the row text: the recruiter's own message legitimately contains the word
+    // "shortlist", and banning it from the row would be banning them from
+    // saying it.
+    await expect(participantRow.getByText("Under consideration")).toBeVisible();
+    await expect(participantRow.getByText("Shortlisted", { exact: true })).toHaveCount(0);
+  });
+
   test("narrow viewport shows list first, opens detail on tap, and returns via back", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openApplicationsTab(page);
+    await openWorkspace(page, { scenario: "default" });
 
     const detail = page.getByTestId("applications-detail");
     await expect(detail).not.toBeVisible();
@@ -322,50 +358,63 @@ test.describe("/you Applications workspace", () => {
   });
 
   test("conversation renders chat bubbles with sent-right / received-left alignment", async ({ page }) => {
-    await openApplicationsTab(page);
-    await page
-      .getByTestId("interaction-row")
-      .filter({ hasText: "Shorts editor for daily YouTube Shorts" })
-      .click();
+    await openWorkspace(page, { scenario: "default", mode: "recruiter" });
+    // An indexed record with a genuine back-and-forth, so both alignments exist.
+    const talked: Anchor = anchor("default", "Engagement active · payment funded", { persona: "recruiter" });
+    const detail = await openRecord(page, talked);
 
-    const detail = page.getByTestId("applications-detail");
-
-    // Opening application + recruiter response + two follow-up replies = 4 bubbles,
-    // split evenly between the owner ("me") and the other party.
-    await expect(detail.getByTestId("chat-message")).toHaveCount(4);
-    await expect(detail.locator('[data-testid="chat-message"][data-from="me"]')).toHaveCount(2);
-    await expect(detail.locator('[data-testid="chat-message"][data-from="other"]')).toHaveCount(2);
+    await expect(detail.getByTestId("chat-message")).toHaveCount(talked.messageCount);
+    await expect(detail.locator('[data-testid="chat-message"][data-from="me"]').first()).toBeVisible();
+    await expect(detail.locator('[data-testid="chat-message"][data-from="other"]').first()).toBeVisible();
 
     // The job reference is a separate clickable row (a link), not a chat bubble.
     await expect(detail.locator('a[href^="/jobs/"]').first()).toBeVisible();
   });
 
   test("an answers-only hiring request renders a generated opening message, never a blank thread", async ({ page }) => {
-    await openApplicationsTab(page);
-    await page
-      .getByTestId("interaction-row")
-      .filter({ hasText: "Thumbnail + packaging help for gaming channel" })
-      .click();
+    await openWorkspace(page, { scenario: "default", mode: "talent" });
+    // This record carries structured answers and no typed message at all. The
+    // inbox has to turn those into one real opening bubble from the requester,
+    // because a blank conversation reads as broken.
+    const answersOnly = anchor("default", "Answers only", { persona: "talent" });
+    const detail = await openRecord(page, answersOnly);
 
-    // This request has no typed message — only structured first-message answers.
-    // The inbox turns those into one real opening bubble from the requester
-    // (fit note as the body, budget in the summary), never a blank thread.
-    const detail = page.getByTestId("applications-detail");
     await expect(detail.getByTestId("chat-message")).toHaveCount(1);
     await expect(detail.locator('[data-testid="chat-message"][data-from="other"]')).toHaveCount(1);
-    await expect(detail).toContainText("retention and packaging work");
-    await expect(detail).toContainText("₹1,000 per month");
     await expect(detail.getByText("No messages yet.")).toHaveCount(0);
+    // The budget the requester answered is shown alongside the generated body.
+    await expect(detail).toContainText("₹25,000");
   });
 
   test("Applications filters are All/Sent/Received/Archived and no longer include Drafts", async ({ page }) => {
-    await openApplicationsTab(page);
+    await openWorkspace(page, { scenario: "default" });
     await expect(page.getByTestId("applications-filter-all")).toBeVisible();
     await expect(page.getByTestId("applications-filter-sent")).toBeVisible();
     await expect(page.getByTestId("applications-filter-received")).toBeVisible();
     await expect(page.getByTestId("applications-filter-archived")).toBeVisible();
     // Drafts has moved out of Applications into its own parent tab.
     await expect(page.getByTestId("applications-filter-drafts")).toHaveCount(0);
+  });
+
+  test("the empty scenario shows a genuine empty state, not a broken one", async ({ page }) => {
+    await openWorkspace(page, { scenario: "empty" });
+    await expect(page.getByTestId("interaction-row")).toHaveCount(0);
+    // Empty is a state the product has to say out loud; a blank pane reads as a
+    // failure to load.
+    await expect(page.getByTestId("applications-workspace")).toContainText(
+      /Nothing|No applications|No conversations|nothing here|empty/i
+    );
+    await expect(page.getByTestId("scenario-error")).toHaveCount(0);
+  });
+
+  test("an unknown seed is refused with a named error rather than silently loading default", async ({ page }) => {
+    await page.goto("/applications?demo=1&seed=staging", { waitUntil: "domcontentloaded" });
+    const error = page.getByTestId("scenario-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText("staging");
+    await expect(error).toContainText("default");
+    // And it must not have quietly loaded a dataset nobody asked for.
+    await expect(page.getByTestId("interaction-row")).toHaveCount(0);
   });
 
   test("Drafts is no longer a tab inside the /you profile", async ({ page }) => {

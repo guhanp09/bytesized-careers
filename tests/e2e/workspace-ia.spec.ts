@@ -44,9 +44,31 @@ async function signInAsOwner(context: BrowserContext) {
   ]);
 }
 
+/**
+ * The scenario these IA tests run against.
+ *
+ * `recruiter` rather than `default`: this file is about navigation layers,
+ * scope controls and context preservation, none of which needs volume. `default`
+ * is ten times the records for the same coverage, and a slower test that can
+ * time out under parallel load is a worse test.
+ */
+const IA_SCENARIO = "recruiter";
+
 async function openWorkspace(page: Page, query = "?demo=1") {
-  await page.goto(`/applications${query}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 15_000 });
+  // The seed is always explicit, so no test inherits whichever scenario the
+  // previous one happened to leave behind.
+  const separator = query.includes("?") ? "&" : "?";
+  await page.goto(`/applications${query}${separator}seed=${IA_SCENARIO}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
+  // The manifest arrives after mount, so wait for content rather than for the
+  // shell. Which content depends on the view the URL asked for — the Pipeline
+  // renders cards, not list rows.
+  const target = query.includes("view=pipeline")
+    ? page.getByTestId("pipeline-row").first()
+    : page.getByTestId("interaction-row").first();
+  await expect(target).toBeVisible({ timeout: 20_000 });
 }
 
 test.beforeEach(async ({ context }) => {
@@ -218,15 +240,19 @@ test("a queue narrows the ownership scope rather than replacing it", async ({ pa
 
 test("Inbox and Pipeline switch both ways and survive a reload", async ({ page }) => {
   await openWorkspace(page, "?demo=1&mode=recruiter");
+  // Scoped to `main` throughout: a reload can briefly leave the server-rendered
+  // markup beside the hydrated tree, so an unscoped `pipeline-board` matches
+  // twice and fails strict mode on a page that is behaving correctly.
+  const main = page.getByRole("main");
   await page.getByTestId("applications-view-pipeline").click();
-  await expect(page.getByTestId("pipeline-board")).toBeVisible();
+  await expect(main.getByTestId("pipeline-board")).toBeVisible();
   await expect(page).toHaveURL(/view=pipeline/);
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("pipeline-board")).toBeVisible({ timeout: 15_000 });
+  await expect(main.getByTestId("pipeline-board")).toBeVisible({ timeout: 15_000 });
 
-  await page.getByTestId("applications-view-inbox").click();
-  await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+  await main.getByTestId("applications-view-inbox").click();
+  await expect(main.getByTestId("interaction-row").first()).toBeVisible();
   await expect(page).toHaveURL(/view=inbox/);
 });
 
@@ -300,32 +326,37 @@ test.describe("narrow pipeline cards", () => {
       await openWorkspace(page, "?demo=1&view=pipeline&mode=recruiter");
       await expect(page.getByTestId("pipeline-row").first()).toBeVisible({ timeout: 15_000 });
 
-      // Polled: on a cold start the board can be measured after the rows exist
-      // but before layout settles, which reports a phantom overflow.
-      await expect
-        .poll(async () =>
-          page.evaluate(
-            () =>
-              [...document.querySelectorAll("[data-testid='pipeline-row']")].filter(
-                (row) => row.scrollWidth > row.clientWidth + 1
-              ).length
-          )
-        )
-        .toBe(0);
+      /*
+        One atomic measurement, polled until the board is populated.
 
-      const measured = await page.evaluate(() => {
-        const rows = [...document.querySelectorAll("[data-testid='pipeline-row']")];
-        return {
-          total: rows.length,
-          // Both anatomies must be present, or this proves nothing: the defect
-          // this guards was on a card with *no* portfolio, and only the footer
-          // of a card carrying a dispatchable action ever overflowed.
-          withPortfolio: rows.filter((row) => row.querySelector("[data-testid='portfolio-strip']")).length,
-          overflowing: rows
-            .filter((row) => row.scrollWidth > row.clientWidth + 1)
-            .map((row) => `${row.scrollWidth}/${row.clientWidth} ${(row.textContent ?? "").trim().slice(0, 40)}`),
-        };
-      });
+        Mock mode fetches its manifest after mount and the workspace remounts
+        when it arrives, so measuring in two separate `evaluate` calls could see
+        cards in the first and an empty board in the second — which reported
+        "no overflow" having looked at nothing. Taking every number in one pass
+        removes the gap the remount was slipping through.
+      */
+      let measured!: { total: number; withPortfolio: number; overflowing: string[] };
+      await expect
+        .poll(
+          async () => {
+            measured = await page.evaluate(() => {
+              const rows = [...document.querySelectorAll("[data-testid='pipeline-row']")];
+              return {
+                total: rows.length,
+                // Both anatomies must be present, or this proves nothing: the
+                // defect it guards was on a card with *no* portfolio, and only
+                // the footer of a card carrying a dispatchable action overflowed.
+                withPortfolio: rows.filter((r) => r.querySelector("[data-testid='portfolio-strip']")).length,
+                overflowing: rows
+                  .filter((r) => r.scrollWidth > r.clientWidth + 1)
+                  .map((r) => `${r.scrollWidth}/${r.clientWidth} ${(r.textContent ?? "").trim().slice(0, 40)}`),
+              };
+            });
+            return measured.total > 0 && measured.withPortfolio > 0;
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(true);
 
       expect(measured.total).toBeGreaterThan(0);
       expect(measured.withPortfolio).toBeGreaterThan(0);

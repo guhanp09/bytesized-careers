@@ -4440,6 +4440,10 @@ export default function ApplicationsWorkspace({
                     <button
                       type="button"
                       data-testid="interaction-row"
+                      // The record's own identifier. Lets a spec address one
+                      // row by meaning — via the scenario index — instead of by
+                      // a display name or a position, both of which move.
+                      data-record-id={item.id}
                       aria-pressed={isSelected}
                       onClick={() => handleSelect(item.id)}
                       className={[

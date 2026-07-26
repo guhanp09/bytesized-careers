@@ -267,7 +267,18 @@ export function toOwnerInteraction(
 
   const job = creatorFactsFor(manifest, rel.job_id ?? undefined);
   const messages = [...(rel.messages ?? [])].sort((a, b) => a.offset_seconds - b.offset_seconds);
-  const last = messages[messages.length - 1];
+  // The opening is rendered from `message` + the structured answers; everything
+  // after it is the back-and-forth.
+  const rest = messages.slice(1);
+  const asThreadMessage = (message: (typeof messages)[number]) => {
+    const fromMe = asRecruiter ? message.sender_id === recruiter.id : message.sender_id === talent.id;
+    return {
+      from: fromMe ? "You" : counterparty.display_name,
+      body: message.body,
+      sentAt: iso(anchor, message.offset_seconds),
+      ...(message.kind === "status" ? { kind: "status" as const } : {}),
+    };
+  };
 
   const portfolio = (rel.portfolio_ids ?? [])
     .map((id) => (manifest.portfolio ?? []).find((item) => item.id === id))
@@ -310,7 +321,11 @@ export function toOwnerInteraction(
     createdAt: iso(anchor, rel.created_offset),
     updatedAt: iso(anchor, rel.updated_offset),
     unread: (rel.unread ?? 0) > 0,
-    message: last?.body ?? rel.cover_note ?? "",
+    // The *opening*, not the latest. `buildConversation` renders this as the
+    // first bubble, and the list row already prefers the newest reply for its
+    // snippet — so using the last message here put the end of the conversation
+    // at the top of it.
+    message: messages[0]?.body ?? rel.cover_note ?? "",
     job: job
       ? {
           jobId: rel.job_id ?? null,
@@ -370,13 +385,21 @@ export function toOwnerInteraction(
       if (portfolio.length) answers.relevant_portfolio = portfolio;
       return Object.keys(answers).length ? answers : null;
     })(),
-    thread: messages.map((message) => ({
-      id: message.id,
-      body: message.body,
-      sentAt: iso(anchor, message.offset_seconds),
-      fromMe: asRecruiter ? message.sender_id === recruiter.id : message.sender_id === talent.id,
-      kind: message.kind === "status" ? "status" : "text",
-    })),
+    /*
+      The conversation, in the shape `buildConversation` actually reads.
+
+      This used to emit a `thread` array. `OwnerInteraction` has no such field —
+      the object was cast, so nothing complained — and `buildConversation` reads
+      `message`, `response` and `replies`. The result was that every generated
+      conversation, however long, rendered as a single opening bubble. The parity
+      suite could not catch it, because the activity summary carries no messages
+      at all and message content is a documented parity exclusion.
+
+      The first message is the opening (already carried by `message` above); the
+      next is the counterparty's response, and the rest are follow-ups.
+    */
+    response: rest[0] ? asThreadMessage(rest[0]) : null,
+    replies: rest.slice(1).map(asThreadMessage),
     timeline: [
       {
         id: `${rel.id}-created`,

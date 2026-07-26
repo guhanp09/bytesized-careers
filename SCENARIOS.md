@@ -43,11 +43,11 @@ Use disposable local databases only.
 | Seed | Best for | Volume | Personas | Important coverage |
 | --- | --- | --- | --- | --- |
 | `empty` | First-run and empty states | 0 records / 0 jobs | — | — |
-| `default` | Ordinary design and workflow QA | 189 records / 32 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 411 portfolio items |
+| `default` | Ordinary design and workflow QA | 190 records / 32 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 411 portfolio items |
 | `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 969 portfolio items |
 | `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 64 portfolio items |
 | `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 64 portfolio items |
-| `recruiter` | The Recruiter side end to end | 42 records / 19 jobs | Recruiter, Talent | 3 interviews, 7 engagements, 5 payment states, 107 portfolio items |
+| `recruiter` | The Recruiter side end to end | 43 records / 20 jobs | Recruiter, Talent | 3 interviews, 7 engagements, 5 payment states, 100 portfolio items |
 
 ## Exact records
 
@@ -63,6 +63,7 @@ is in the manifest's `index`.
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `5d23feb5` | `4906122a` | Not proceeding · saved privately (counterparty still sees Reviewing) | Verify the applicant is never shown the private decision. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `492b9f6d` | Needs your reply (talent side) | Reply from the Talent inbox and watch the state change on both sides. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `8ffbc415` | `4d559846` | Snoozed — hidden from the queue until it returns | Confirm snoozing changes no status and the record comes back. |
+| `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `4dbcceb2` | Answers only · no typed message · must not render a blank thread | Confirm one opening bubble is generated from the answers, with the budget shown. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `3ad13549` | `5eaa4448` | Legacy Shortlisted · private · maps to Reviewing plus a private Star | Confirm the private legacy state reads as Reviewing and carries a Star. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `8e0ed828` | Accepted (talent side) | Check the accepted request reads as an agreement, not as a pending action. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `80ccf00e` | `92257c6d` | Waiting on them · no reply needed from you | Confirm the card does not ask you to act while you are the one waiting. |
@@ -172,6 +173,7 @@ is in the manifest's `index`.
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `78fd7b64` | `d56b6158` | stage rejected | Move the record and confirm the transition is offered honestly. |
 | `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `1237a5df` | `e08841dd` | Completion confirmed · release requested | Confirm the work status and the payment status are reported separately. |
 | `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `6ae4cd96` | `e315183e` | Payment disputed · engagement unaffected | Confirm the dispute changes no application or engagement state, and blocks no action. |
+| `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `db68c966` | `e37f4113` | Answers only · no typed note · card shows the First message affordance | Hover the affordance and confirm the answered requirements appear. |
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `5f21357d` | `eeb27edd` | pending applicant on retired job job_26 | Confirm no action is offered that would reopen a closed job. |
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `71e32b6b` | `fb451f36` | pending applicant on retired job job_25 | Confirm no action is offered that would reopen a closed job. |
 | `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `94542894` | `fda5b448` | Legacy Shortlisted · private · maps to Reviewing plus a private Star | Confirm the private legacy state reads as Reviewing and carries a Star. |
@@ -217,11 +219,11 @@ is in the manifest's `index`.
 
 | Dimension | Coverage across all six manifests |
 | --- | --- |
-| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 145 · rejected 83 · reviewing 156 · shortlisted 7 · withdrawn 28 |
+| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 146 · rejected 83 · reviewing 157 · shortlisted 7 · withdrawn 28 |
 | Payment state | disputed 8 · expired 6 · funded 12 · funding_pending 8 · not_applicable 10 · refunded 7 · release_requested 8 · released 9 · setup_pending 10 · work_in_progress 8 |
-| Relationship kind | application 581 · hiring_request 40 |
-| Indexed persona | Recruiter 101 · Talent 18 |
-| Portfolio volume | 127 records with none · 1 with 20+ |
+| Relationship kind | application 582 · hiring_request 41 |
+| Indexed persona | Recruiter 102 · Talent 19 |
+| Portfolio volume | 131 records with none · 1 with 20+ |
 
 ## Known limitations
 

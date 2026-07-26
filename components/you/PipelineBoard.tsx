@@ -980,6 +980,15 @@ export default function PipelineBoard({
                             key={item.id}
                             data-testid="pipeline-row"
                             /*
+                              The record's own identifier, so a test can address
+                              one card rather than "the third one" or "the one
+                              called Aarav". Scenario records are deterministic
+                              UUID5s keyed by meaning, so an id written into a
+                              spec stays valid across regeneration in a way a
+                              display name and a row position do not.
+                            */
+                            data-record-id={item.id}
+                            /*
                               Not `role="button"`. The card contains a profile
                               link, a checkbox, a stage menu and a Message
                               button, and a button containing buttons is both an

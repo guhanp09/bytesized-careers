@@ -1388,6 +1388,23 @@
       "username": "def-t00200"
     },
     {
+      "availability": "unavailable",
+      "deactivated": false,
+      "display_name": "Sameer Bhatt",
+      "email": "default-talent05900@scenario.invalid",
+      "experience_years": 5,
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "723afb4e-6ea4-57ef-af61-abcb71f1465a",
+      "location": "Kochi, India",
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
+      "sides": [
+        "talent"
+      ],
+      "username": "def-t05900"
+    },
+    {
       "availability": "available",
       "deactivated": false,
       "display_name": "Aarav Bose",
@@ -3390,6 +3407,16 @@
       "persona": "recruiter",
       "relationship_id": "4d559846-8e21-53a0-aa16-98995ff38629",
       "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Confirm one opening bubble is generated from the answers, with the budget shown.",
+      "conversation_id": "84e34b7d-e3f0-5a45-b5b0-23877ef11a4a",
+      "expected_condition": "Answers only · no typed message · must not render a blank thread",
+      "expected_stage": "new",
+      "persona": "talent",
+      "relationship_id": "4dbcceb2-a9b8-58f6-92c5-2307ea89fde0",
+      "route": "/applications?view=inbox&mode=talent",
       "scenario": "default"
     },
     {
@@ -12400,6 +12427,40 @@
       "updated_offset": -54000
     },
     {
+      "answers": {
+        "channel_or_brand_link": "https://youtube.scenario.invalid/@casefiles",
+        "custom_instruction": "We can share raw files the same day.",
+        "fit_note": "Your cutting style is the closest to what we are moving towards.",
+        "project_brief": "15 Shorts a month, retention-focused, from existing long-form",
+        "project_budget": {
+          "amount": "25,000",
+          "unit": "per month"
+        },
+        "reference_links": [
+          "https://youtube.scenario.invalid/@one",
+          "https://youtube.scenario.invalid/@two"
+        ],
+        "start_availability": "Start of next month",
+        "turnaround": {
+          "unit": "weeks",
+          "value": "1"
+        },
+        "working_hours": "Flexible, IST preferred"
+      },
+      "archived": false,
+      "conversation_id": "84e34b7d-e3f0-5a45-b5b0-23877ef11a4a",
+      "created_offset": -172800,
+      "id": "4dbcceb2-a9b8-58f6-92c5-2307ea89fde0",
+      "kind": "hiring_request",
+      "participant_stage": "new",
+      "recruiter_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "723afb4e-6ea4-57ef-af61-abcb71f1465a",
+      "unread": 1,
+      "updated_offset": -172800
+    },
+    {
       "archived": false,
       "conversation_id": "98f8ed52-7910-5cad-90dd-4b3dd7a02296",
       "created_offset": -86400,
@@ -17589,12 +17650,12 @@
   "scenario": "default",
   "seed": 2000,
   "stats": {
-    "actors": 193,
+    "actors": 194,
     "applications": 162,
     "client_state": 0,
-    "conversations": 189,
+    "conversations": 190,
     "engagements": 20,
-    "hiring_requests": 27,
+    "hiring_requests": 28,
     "interviews": 19,
     "jobs": 32,
     "messages": 288,
@@ -17609,14 +17670,14 @@
       "work_in_progress": 3
     },
     "portfolio_items": 411,
-    "relationships": 189,
+    "relationships": 190,
     "stages": {
       "accepted": 5,
       "archived": 20,
       "declined": 5,
       "hired": 20,
       "interviewing": 19,
-      "new": 38,
+      "new": 39,
       "rejected": 20,
       "reviewing": 39,
       "shortlisted": 2,
