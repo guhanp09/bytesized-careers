@@ -150,7 +150,9 @@ test("switching scenarios leaks nothing, refresh keeps the choice, unknown seeds
   expect((await idsOf()).every((id) => talentIds.includes(id)), "a refresh changed the scenario").toBe(true);
 
   await page.goto("/applications?demo=1&seed=nope", { waitUntil: "domcontentloaded" });
-  const error = page.getByTestId("scenario-error");
+  // Scoped, like every other assertion here: a navigation can leave the
+  // server-rendered alert beside the hydrated one.
+  const error = main.getByTestId("scenario-error");
   await expect(error).toBeVisible();
   await expect(error).toContainText("nope");
   // And it must not have quietly loaded a dataset nobody asked for.
@@ -177,7 +179,7 @@ test("every route SCENARIOS.md documents actually resolves", async ({ page }) =>
       continue;
     }
     await expect(main.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
-    if ((await page.getByTestId("scenario-error").count()) > 0) {
+    if ((await main.getByTestId("scenario-error").count()) > 0) {
       broken.push(`${route} → scenario error`);
       continue;
     }
