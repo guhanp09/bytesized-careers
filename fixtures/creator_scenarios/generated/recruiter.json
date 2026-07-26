@@ -1,0 +1,4443 @@
+{
+  "actors": [
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80002.jpg",
+      "deactivated": false,
+      "display_name": "Varun Shah",
+      "email": "talent80002@scenario.invalid",
+      "headline": "UGC creator for creator-led channels",
+      "id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
+      "location": "Kochi, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80002"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/209.jpg",
+      "deactivated": false,
+      "display_name": "Maya Das",
+      "email": "talent209@scenario.invalid",
+      "headline": "Podcast producer for creator-led channels",
+      "id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "location": "Adelaide, Australia",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent209"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80055.jpg",
+      "deactivated": false,
+      "display_name": "Riya Iyer",
+      "email": "talent80055@scenario.invalid",
+      "headline": "Channel manager for creator-led channels",
+      "id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444",
+      "location": "Delhi NCR, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80055"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/215.jpg",
+      "deactivated": false,
+      "display_name": "Meera Sharma",
+      "email": "talent215@scenario.invalid",
+      "headline": "Brand-deal manager for creator-led channels",
+      "id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40",
+      "location": "Indore, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent215"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/90011.jpg",
+      "deactivated": false,
+      "display_name": "Nisha Rao",
+      "email": "talent90011@scenario.invalid",
+      "headline": "Brand-deal manager for creator-led channels",
+      "id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b",
+      "location": "Indore, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent90011"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Karan Iyer",
+      "email": "talent216@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "374f1d2f-6336-509e-90d8-7b081513d634",
+      "location": "Kochi, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent216"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80001.jpg",
+      "deactivated": false,
+      "display_name": "Anjali Reddy",
+      "email": "talent80001@scenario.invalid",
+      "headline": "Community manager for creator-led channels",
+      "id": "378c6ec8-1107-57c8-81bb-1b25063aa65c",
+      "location": "Indore, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80001"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/206.jpg",
+      "deactivated": false,
+      "display_name": "Joseph Menon",
+      "email": "talent206@scenario.invalid",
+      "headline": "Thumbnail designer for creator-led channels",
+      "id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "location": "Berlin, Germany",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent206"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Aditya Bose",
+      "email": "talent80056@scenario.invalid",
+      "headline": "Scriptwriter for creator-led channels",
+      "id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
+      "location": "Hyderabad, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80056"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Aarav Khan",
+      "email": "talent80100@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "56355d95-f71d-5fa2-8394-da12fdb80a45",
+      "location": "Kochi, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80100"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/214.jpg",
+      "deactivated": false,
+      "display_name": "Vikram Nair",
+      "email": "talent214@scenario.invalid",
+      "headline": "UGC creator for creator-led channels",
+      "id": "5813641c-a341-502c-aa28-d4042abda702",
+      "location": "Hyderabad, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent214"
+    },
+    {
+      "channel_handle": "dailyfit",
+      "deactivated": false,
+      "display_name": "Daily Fit",
+      "email": "dailyfit@scenario.invalid",
+      "employer_kind": "creator",
+      "id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "location": "Mumbai, India",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 96000,
+      "upload_cadence": "5 shorts/week",
+      "username": "dailyfit"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/213.jpg",
+      "deactivated": false,
+      "display_name": "Ananya Mehta",
+      "email": "talent213@scenario.invalid",
+      "headline": "Community manager for creator-led channels",
+      "id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
+      "location": "Delhi NCR, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent213"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80003.jpg",
+      "deactivated": false,
+      "display_name": "Leela Patel",
+      "email": "talent80003@scenario.invalid",
+      "headline": "Brand-deal manager for creator-led channels",
+      "id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "location": "Guwahati, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80003"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Imran Khan",
+      "email": "talent204@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "location": "Kathmandu, Nepal",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent204"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/201.jpg",
+      "deactivated": false,
+      "display_name": "Anjali Reddy",
+      "email": "talent201@scenario.invalid",
+      "headline": "Community manager for creator-led channels",
+      "id": "761f8286-b4b4-5230-8a83-40ec22a0a26f",
+      "location": "Indore, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent201"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Sameer Verma",
+      "email": "talent80000@scenario.invalid",
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "773b694c-a817-5c39-b761-9efeb118bf0b",
+      "location": "Hyderabad, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80000"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/210.jpg",
+      "deactivated": false,
+      "display_name": "Aarav Joshi",
+      "email": "talent210@scenario.invalid",
+      "headline": "Motion-graphics artist for creator-led channels",
+      "id": "7e1d7d65-9226-5d5a-a79f-6ed733cf2848",
+      "location": "Remote",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent210"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80006.jpg",
+      "deactivated": false,
+      "display_name": "Joseph Menon",
+      "email": "talent80006@scenario.invalid",
+      "headline": "Thumbnail designer for creator-led channels",
+      "id": "8620f6e6-7df2-5678-8bc7-122a35116287",
+      "location": "Berlin, Germany",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80006"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Aarav Mehta",
+      "email": "talent90000@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "88a6091a-8667-52fa-ad33-0a48bd545921",
+      "location": "Kathmandu, Nepal",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent90000"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/90010.jpg",
+      "deactivated": false,
+      "display_name": "Ishaan Khan",
+      "email": "talent90010@scenario.invalid",
+      "headline": "UGC creator for creator-led channels",
+      "id": "915261b2-7f0c-542c-9f4a-c491ee578cd6",
+      "location": "Hyderabad, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent90010"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80054.jpg",
+      "deactivated": false,
+      "display_name": "Dev Sharma",
+      "email": "talent80054@scenario.invalid",
+      "headline": "Thumbnail designer for creator-led channels",
+      "id": "917fdc4b-d1d2-558c-9132-f8d9aca2c57a",
+      "location": "Bengaluru, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80054"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/203.jpg",
+      "deactivated": false,
+      "display_name": "Leela Patel",
+      "email": "talent203@scenario.invalid",
+      "headline": "Brand-deal manager for creator-led channels",
+      "id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "location": "Guwahati, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent203"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80105.jpg",
+      "deactivated": false,
+      "display_name": "Meera Das",
+      "email": "talent80105@scenario.invalid",
+      "headline": "Podcast producer for creator-led channels",
+      "id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63",
+      "location": "Austin, USA",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80105"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Vikram Chopra",
+      "email": "talent80104@scenario.invalid",
+      "headline": "Scriptwriter for creator-led channels",
+      "id": "a00b9cc1-56a8-5472-863d-c34eba3cd5d3",
+      "location": "Berlin, Germany",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80104"
+    },
+    {
+      "channel_handle": "financesimplified",
+      "deactivated": false,
+      "display_name": "Finance Simplified",
+      "email": "financesimplified@scenario.invalid",
+      "employer_kind": "creator",
+      "id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "location": "Remote",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 412000,
+      "upload_cadence": "2 videos/week",
+      "username": "financesimplified"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80102.jpg",
+      "deactivated": false,
+      "display_name": "Rohan Menon",
+      "email": "talent80102@scenario.invalid",
+      "headline": "Thumbnail designer for creator-led channels",
+      "id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
+      "location": "Kathmandu, Nepal",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80102"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/211.jpg",
+      "deactivated": false,
+      "display_name": "Priya Pillai",
+      "email": "talent211@scenario.invalid",
+      "headline": "Colorist for creator-led channels",
+      "id": "af727978-6d4f-57f3-9d97-650629a1c912",
+      "location": "Mumbai, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent211"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80101.jpg",
+      "deactivated": false,
+      "display_name": "Priya Rao",
+      "email": "talent80101@scenario.invalid",
+      "headline": "Long-form editor for creator-led channels",
+      "id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9",
+      "location": "Guwahati, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80101"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80050.jpg",
+      "deactivated": false,
+      "display_name": "Ishaan Pillai",
+      "email": "talent80050@scenario.invalid",
+      "headline": "UGC creator for creator-led channels",
+      "id": "b447b600-bd13-5cbf-b94b-e6d5c51bcf56",
+      "location": "Toronto, Canada",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80050"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/202.jpg",
+      "deactivated": false,
+      "display_name": "Varun Shah",
+      "email": "talent202@scenario.invalid",
+      "headline": "UGC creator for creator-led channels",
+      "id": "b5da228b-87aa-5f1c-bd70-6ec0f490302b",
+      "location": "Kochi, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent202"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/207.jpg",
+      "deactivated": false,
+      "display_name": "Grace Gupta",
+      "email": "talent207@scenario.invalid",
+      "headline": "Channel manager for creator-led channels",
+      "id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "location": "Austin, USA",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent207"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/90001.jpg",
+      "deactivated": false,
+      "display_name": "Priya Nair",
+      "email": "talent90001@scenario.invalid",
+      "headline": "Long-form editor for creator-led channels",
+      "id": "c784bfa0-4460-51d4-8605-dbaa14b7642d",
+      "location": "London, UK",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent90001"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80005.jpg",
+      "deactivated": false,
+      "display_name": "Fatima Rao",
+      "email": "talent80005@scenario.invalid",
+      "headline": "Long-form editor for creator-led channels",
+      "id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85",
+      "location": "London, UK",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80005"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80051.jpg",
+      "deactivated": false,
+      "display_name": "Nisha Sinha",
+      "email": "talent80051@scenario.invalid",
+      "headline": "Brand-deal manager for creator-led channels",
+      "id": "cb00df86-6ed4-527e-b675-bf717dc9e35c",
+      "location": "Adelaide, Australia",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80051"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Imran Khan",
+      "email": "talent80004@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "ce8705b4-1ad5-5904-baf8-2e6849b1400e",
+      "location": "Kathmandu, Nepal",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80004"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Rohan Sinha",
+      "email": "talent212@scenario.invalid",
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "d111b2b9-20ee-5954-958a-a0e8b85320fd",
+      "location": "Bengaluru, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent212"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Daniel Chopra",
+      "email": "talent208@scenario.invalid",
+      "headline": "Scriptwriter for creator-led channels",
+      "id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "location": "Toronto, Canada",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent208"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Rahul Mehta",
+      "email": "talent80052@scenario.invalid",
+      "headline": "Shorts editor for creator-led channels",
+      "id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
+      "location": "Remote",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80052"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/205.jpg",
+      "deactivated": false,
+      "display_name": "Fatima Rao",
+      "email": "talent205@scenario.invalid",
+      "headline": "Long-form editor for creator-led channels",
+      "id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
+      "location": "London, UK",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent205"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80103.jpg",
+      "deactivated": false,
+      "display_name": "Ananya Gupta",
+      "email": "talent80103@scenario.invalid",
+      "headline": "Channel manager for creator-led channels",
+      "id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "location": "London, UK",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80103"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80053.jpg",
+      "deactivated": false,
+      "display_name": "Kavya Nair",
+      "email": "talent80053@scenario.invalid",
+      "headline": "Long-form editor for creator-led channels",
+      "id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "location": "Mumbai, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80053"
+    },
+    {
+      "deactivated": false,
+      "display_name": "Sameer Verma",
+      "email": "talent200@scenario.invalid",
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
+      "location": "Hyderabad, India",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent200"
+    },
+    {
+      "avatar_url": "https://avatars.scenario.invalid/80106.jpg",
+      "deactivated": false,
+      "display_name": "Karan Bhatt",
+      "email": "talent80106@scenario.invalid",
+      "headline": "Motion-graphics artist for creator-led channels",
+      "id": "f1b00eb6-8867-5680-8784-13f9ea796312",
+      "location": "Toronto, Canada",
+      "sides": [
+        "talent"
+      ],
+      "username": "talent80106"
+    }
+  ],
+  "description": "The Recruiter side, with every management state on one board.",
+  "index": [
+    {
+      "action_to_test": "Confirm the decline is shown as final and the reason survives.",
+      "conversation_id": "6b62b306-2a84-5ace-a119-c473112bf97e",
+      "expected_condition": "Declined with an explanation",
+      "expected_stage": "declined",
+      "persona": "talent",
+      "relationship_id": "148da4b3-8047-53da-87a4-500bb39a609c",
+      "route": "/applications?view=inbox&mode=talent",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the applicant sees Under consideration and no new transition offers Shortlisted.",
+      "conversation_id": "80e9b116-9a34-5d2c-a751-183c9401087b",
+      "expected_condition": "Legacy Shortlisted · communicated · reads as Under consideration",
+      "expected_stage": "shortlisted",
+      "job_id": "3074fb51-7cd8-54bb-95b5-9411924b2ffd",
+      "persona": "recruiter",
+      "relationship_id": "292317c8-f3ab-5016-ad37-1693e81e1468",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "6742d68a-5c2f-526d-ad28-ee975b232086",
+      "expected_condition": "stage interviewing",
+      "expected_stage": "interviewing",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "54d8fa59-3aea-56c3-8525-bab0abf48392",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Check the accepted request reads as an agreement, not as a pending action.",
+      "conversation_id": "14fa7f3e-1fec-5d8e-a6dc-32129d9390e1",
+      "expected_condition": "Accepted (talent side)",
+      "expected_stage": "accepted",
+      "persona": "talent",
+      "relationship_id": "67529889-0f66-53fd-a2bc-bc26b05a170c",
+      "route": "/applications?view=inbox&mode=talent",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the card does not ask you to act while you are the one waiting.",
+      "conversation_id": "b20980f9-bc81-505c-8435-bc563cbd54f8",
+      "expected_condition": "Waiting on them · no reply needed from you",
+      "expected_stage": "reviewing",
+      "job_id": "6d64355c-d5d3-5f02-8278-34fc1bd3eb1e",
+      "persona": "recruiter",
+      "relationship_id": "707d76c3-7625-5045-b66b-1dd0165bb215",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "a82ece67-d638-59d3-acfe-330a91b8252b",
+      "expected_condition": "stage hired",
+      "expected_stage": "hired",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "8224b9e6-8c3a-520e-aba7-6859f8b98877",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Open it and record a first decision.",
+      "conversation_id": "e661b6f7-2a28-5322-bcd1-0a22e145c577",
+      "expected_condition": "New · unread · portfolio attached",
+      "expected_stage": "new",
+      "job_id": "2bf3be4f-456f-5647-b350-28f249764a74",
+      "persona": "recruiter",
+      "relationship_id": "8648647e-9195-5029-943f-fbcaf93f45ba",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "b81bc2c8-6768-5909-967f-162f2414dcdd",
+      "expected_condition": "stage reviewing",
+      "expected_stage": "reviewing",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "87a81e60-aa93-5c4f-98f1-8c581adb012f",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Verify the applicant is never shown the private decision.",
+      "conversation_id": "cfa65b68-aa6e-5ec8-8eef-be3fd4c119ca",
+      "expected_condition": "Not proceeding · saved privately (counterparty still sees Reviewing)",
+      "expected_stage": "rejected",
+      "job_id": "943887c0-6b62-5d9a-ac9d-56880a8e22e2",
+      "persona": "recruiter",
+      "relationship_id": "91f9161b-8c1a-5ac8-af05-f580ceb40d7a",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm both sides read the same outcome.",
+      "conversation_id": "826bcf3e-8ddc-59e0-b45b-b745016ca3f2",
+      "expected_condition": "Not proceeding · shared with them",
+      "expected_stage": "rejected",
+      "job_id": "734a98ad-c12e-5611-a43d-7a5161a16c3b",
+      "persona": "recruiter",
+      "relationship_id": "94e7b4c9-7def-568b-998e-ee7b3cc338ea",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Record a decision and choose whether to share it.",
+      "conversation_id": "838f7767-44be-59de-91a8-f2201b6cf0cf",
+      "expected_condition": "Decision needed · interview completed",
+      "expected_stage": "interviewing",
+      "job_id": "6e85f917-bdc9-5553-a207-da7de2f2e22c",
+      "persona": "recruiter",
+      "relationship_id": "9e4bce7e-ca74-5bce-ad3b-e8d3191263c5",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "eed8afa7-7a07-58c3-8bcc-e8edb8af3dfe",
+      "expected_condition": "stage withdrawn",
+      "expected_stage": "withdrawn",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "a3a04163-2e21-524b-934d-aa6a83e4e11a",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Reply from the Talent inbox and watch the state change on both sides.",
+      "conversation_id": "69e73359-4d82-59fa-9f2f-4d89fbc63ed6",
+      "expected_condition": "Needs your reply (talent side)",
+      "expected_stage": "new",
+      "persona": "talent",
+      "relationship_id": "b75c957b-3153-5e24-be3c-2173600ee90d",
+      "route": "/applications?view=inbox&mode=talent",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "ddfcf3ab-bc32-5a74-adb2-b7b9492515c9",
+      "expected_condition": "stage archived",
+      "expected_stage": "archived",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "c2d23f30-4998-51ac-836d-b283ab4fa4bc",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "8e2cb514-04a7-5fa4-a1cb-f2da34aac903",
+      "expected_condition": "stage new",
+      "expected_stage": "new",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "c324f564-1306-5b1a-9d8b-85bb62d672f3",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Check the arranged time reads as upcoming and the applicant has no organiser controls.",
+      "conversation_id": "3ca9d6b9-51ea-5fdc-a8b9-4fb6cdce611b",
+      "expected_condition": "Interview proposed · future time · unconfirmed",
+      "expected_stage": "interviewing",
+      "job_id": "6c003948-cb4a-5cbf-820f-51cac15d2fab",
+      "persona": "recruiter",
+      "relationship_id": "c455962e-854a-5ba2-88c7-4d0a3998207b",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the start and watch the engagement move without touching payment.",
+      "conversation_id": "8fa6295d-fdae-58c0-b29f-bca8e4c1f239",
+      "expected_condition": "Start confirmation pending",
+      "expected_stage": "hired",
+      "job_id": "09c11df7-c3a6-597f-a300-63f1c64323e6",
+      "persona": "recruiter",
+      "relationship_id": "c5db6adc-c92a-546f-9573-4713540b25fa",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the timeline shows the move without contradicting itself.",
+      "conversation_id": "786f92d9-f5dc-5d4e-9470-562abca43d1a",
+      "expected_condition": "Interview confirmed after a reschedule",
+      "expected_stage": "interviewing",
+      "job_id": "f8ac09ce-5489-5665-82f3-58c67289e501",
+      "persona": "recruiter",
+      "relationship_id": "c992a9bd-71a3-5199-9299-02ddba7b2d0b",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Check the payment card says funded without claiming funds are held.",
+      "conversation_id": "525b1c59-dd8f-58ee-bc3b-12ab1add7c0f",
+      "expected_condition": "Engagement active · payment funded",
+      "expected_stage": "hired",
+      "job_id": "2a7c4265-f8df-51e7-8645-2c83492402c9",
+      "persona": "recruiter",
+      "relationship_id": "cacb3c0c-9383-5077-9ad2-0e0ea40de206",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Check no action is offered that would move a withdrawn record.",
+      "conversation_id": "b9f0ac41-9872-5df7-a88f-685e3e35ae7a",
+      "expected_condition": "Withdrawn by the applicant",
+      "expected_stage": "withdrawn",
+      "job_id": "b13367c4-e284-5785-afa5-4b91b94ccc73",
+      "persona": "recruiter",
+      "relationship_id": "d03c0a01-2621-5d6a-8fd6-bf21edc5a4c5",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Move the record and confirm the transition is offered honestly.",
+      "conversation_id": "1777cbe1-3b48-5a42-8087-89415cf54401",
+      "expected_condition": "stage rejected",
+      "expected_stage": "rejected",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "persona": "recruiter",
+      "relationship_id": "d56b6158-5224-5045-acd8-e80fb36cfccc",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the work status and the payment status are reported separately.",
+      "conversation_id": "059dfee1-8790-5b74-b670-867314a7f4dd",
+      "expected_condition": "Completion confirmed · release requested",
+      "expected_stage": "hired",
+      "job_id": "1237a5df-90ce-5ad7-8e20-ba23e566ab6d",
+      "persona": "recruiter",
+      "relationship_id": "e08841dd-48c8-53df-895f-7cd37e8f55cb",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the dispute changes no application or engagement state, and blocks no action.",
+      "conversation_id": "8c6ae4fe-170f-562f-b1fb-7ea9e154106a",
+      "expected_condition": "Payment disputed · engagement unaffected",
+      "expected_stage": "hired",
+      "job_id": "6ae4cd96-5ee1-5ab4-96c9-490864056106",
+      "persona": "recruiter",
+      "relationship_id": "e315183e-638e-5adc-96eb-a7854cea2b30",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm no action is offered that would reopen a closed job.",
+      "conversation_id": "3e256659-2a99-5e84-8441-ede1e0936a41",
+      "expected_condition": "pending applicant on retired job job_26",
+      "expected_stage": "reviewing",
+      "job_id": "5f21357d-88a3-5bd2-a044-0ae875214295",
+      "persona": "recruiter",
+      "relationship_id": "eeb27edd-0460-506a-bc4d-2a58f4cfae49",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm no action is offered that would reopen a closed job.",
+      "conversation_id": "e23e9e80-22d8-5e8c-98a0-04c016d8c343",
+      "expected_condition": "pending applicant on retired job job_25",
+      "expected_stage": "reviewing",
+      "job_id": "71e32b6b-6970-534f-9164-09f2c2504b40",
+      "persona": "recruiter",
+      "relationship_id": "fb451f36-ab86-5014-a9c0-baec979f2ef9",
+      "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "recruiter"
+    },
+    {
+      "action_to_test": "Confirm the private legacy state reads as Reviewing and carries a Star.",
+      "conversation_id": "fa461053-4652-5b3e-9ffa-1c21d1111845",
+      "expected_condition": "Legacy Shortlisted · private · maps to Reviewing plus a private Star",
+      "expected_stage": "shortlisted",
+      "job_id": "94542894-b428-51af-a920-f0c5e6a0d0c7",
+      "persona": "recruiter",
+      "relationship_id": "fda5b448-d551-5170-9acf-3e7549855b2e",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "recruiter"
+    }
+  ],
+  "jobs": [
+    {
+      "compensation_currency": "USD",
+      "compensation_max": 45.0,
+      "compensation_min": 25.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per hour",
+      "experience": "1–3 years",
+      "formats": [
+        "Content strategy",
+        "Channel research"
+      ],
+      "id": "09c11df7-c3a6-597f-a300-63f1c64323e6",
+      "location": "Kochi, India",
+      "niches": [
+        "Travel"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "multi_platform"
+      ],
+      "posted_offset": -604800,
+      "status": "published",
+      "tags": [
+        "Content strategy",
+        "Travel"
+      ],
+      "title": "Motion-graphics artist for travel channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 2,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_min": 900.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per thumbnail",
+      "experience": "3–5 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "1237a5df-90ce-5ad7-8e20-ba23e566ab6d",
+      "location": "Kathmandu, Nepal",
+      "niches": [
+        "Comedy"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "posted_offset": -777600,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Comedy"
+      ],
+      "title": "Subtitler / translator for comedy channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "On-site"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 1200.0,
+      "compensation_min": 700.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per short",
+      "experience": "2–4 years",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "id": "2a7c4265-f8df-51e7-8645-2c83492402c9",
+      "location": "Guwahati, India",
+      "niches": [
+        "Education"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube"
+      ],
+      "posted_offset": -691200,
+      "status": "published",
+      "tags": [
+        "Long-form video",
+        "Education"
+      ],
+      "title": "Colorist for education channel",
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 4000.0,
+      "compensation_min": 1500.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per video",
+      "experience": "1–3 years",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "id": "2bf3be4f-456f-5647-b350-28f249764a74",
+      "location": "Remote",
+      "niches": [
+        "Fitness"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube"
+      ],
+      "posted_offset": -86400,
+      "status": "published",
+      "tags": [
+        "Long-form video",
+        "Fitness"
+      ],
+      "title": "Shorts editor for fitness channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "USD",
+      "compensation_min": 900.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per month",
+      "experience": "1–3 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "3074fb51-7cd8-54bb-95b5-9411924b2ffd",
+      "location": "Mumbai, India",
+      "niches": [
+        "Technology"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "posted_offset": -1382400,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Technology"
+      ],
+      "title": "Channel manager for technology channel",
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_min": 2500.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per video",
+      "experience": "2–4 years",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "id": "5f21357d-88a3-5bd2-a044-0ae875214295",
+      "legacy_key": "job_26",
+      "location": "Indore, India",
+      "niches": [
+        "Kids"
+      ],
+      "owner_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "platforms": [
+        "podcast"
+      ],
+      "posted_offset": -172800,
+      "status": "closed",
+      "tags": [
+        "Podcast editing",
+        "Kids"
+      ],
+      "title": "Long-form editor for kids channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 1,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_min": 0.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "commission",
+      "experience": "1–3 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "6ae4cd96-5ee1-5ab4-96c9-490864056106",
+      "location": "London, UK",
+      "niches": [
+        "True crime"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "tiktok"
+      ],
+      "posted_offset": -864000,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "True crime"
+      ],
+      "title": "Community manager for true crime channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 24,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "EUR",
+      "compensation_min": 800.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per project",
+      "experience": "1–3 years",
+      "formats": [
+        "Shorts/Reels",
+        "Social posts"
+      ],
+      "id": "6c003948-cb4a-5cbf-820f-51cac15d2fab",
+      "location": "Delhi NCR, India",
+      "niches": [
+        "Beauty"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "instagram_reels"
+      ],
+      "posted_offset": -345600,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Beauty"
+      ],
+      "title": "Channel manager for beauty channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "business_days",
+      "turnaround_value": 3,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_min": 2500.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per video",
+      "experience": "2–4 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "6d64355c-d5d3-5f02-8278-34fc1bd3eb1e",
+      "location": "Mumbai, India",
+      "niches": [
+        "Finance"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "posted_offset": -172800,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Finance"
+      ],
+      "title": "Long-form editor for finance channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 24,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "USD",
+      "compensation_min": 900.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per month",
+      "experience": "3–5 years",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "id": "6e85f917-bdc9-5553-a207-da7de2f2e22c",
+      "location": "Indore, India",
+      "niches": [
+        "Food"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "podcast"
+      ],
+      "posted_offset": -518400,
+      "status": "published",
+      "tags": [
+        "Podcast editing",
+        "Food"
+      ],
+      "title": "Podcast producer for food channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 1,
+      "work_mode": "On-site"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 4000.0,
+      "compensation_min": 1500.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per video",
+      "experience": "1–3 years",
+      "formats": [
+        "Repurposed clips",
+        "Channel research"
+      ],
+      "id": "71e32b6b-6970-534f-9164-09f2c2504b40",
+      "legacy_key": "job_25",
+      "location": "Hyderabad, India",
+      "niches": [
+        "True crime"
+      ],
+      "owner_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "platforms": [
+        "twitch"
+      ],
+      "posted_offset": -86400,
+      "status": "closed",
+      "tags": [
+        "Repurposed clips",
+        "True crime"
+      ],
+      "title": "Shorts editor for true crime channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "calendar_days",
+      "turnaround_value": 5,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "EUR",
+      "compensation_min": 800.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per project",
+      "experience": "2–4 years",
+      "formats": [
+        "Content strategy",
+        "Channel research"
+      ],
+      "id": "734a98ad-c12e-5611-a43d-7a5161a16c3b",
+      "location": "Adelaide, Australia",
+      "niches": [
+        "Gaming"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "multi_platform"
+      ],
+      "posted_offset": -1209600,
+      "status": "published",
+      "tags": [
+        "Content strategy",
+        "Gaming"
+      ],
+      "title": "Long-form editor for gaming channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 1,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 4000.0,
+      "compensation_min": 1500.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per video",
+      "experience": "1–3 years",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "location": "Toronto, Canada",
+      "niches": [
+        "Travel"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "podcast"
+      ],
+      "posted_offset": -86400,
+      "status": "published",
+      "tags": [
+        "Podcast editing",
+        "Travel"
+      ],
+      "title": "Shorts editor for travel channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 25000.0,
+      "compensation_min": 8000.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per project",
+      "experience": "3–5 years",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "location": "Remote",
+      "niches": [
+        "Comedy"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube"
+      ],
+      "posted_offset": -259200,
+      "status": "published",
+      "tags": [
+        "Long-form video",
+        "Comedy"
+      ],
+      "title": "Thumbnail designer for comedy channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "calendar_days",
+      "turnaround_value": 2,
+      "work_mode": "On-site"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 25000.0,
+      "compensation_min": 8000.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per project",
+      "experience": "1–3 years",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "id": "943887c0-6b62-5d9a-ac9d-56880a8e22e2",
+      "location": "Toronto, Canada",
+      "niches": [
+        "Finance"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "podcast"
+      ],
+      "posted_offset": -1123200,
+      "status": "published",
+      "tags": [
+        "Podcast editing",
+        "Finance"
+      ],
+      "title": "Shorts editor for finance channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "calendar_days",
+      "turnaround_value": 5,
+      "work_mode": "Remote"
+    },
+    {
+      "compensation_currency": "USD",
+      "compensation_max": 45.0,
+      "compensation_min": 25.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per hour",
+      "experience": "2–4 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "94542894-b428-51af-a920-f0c5e6a0d0c7",
+      "location": "Bengaluru, India",
+      "niches": [
+        "Food"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "tiktok"
+      ],
+      "posted_offset": -1468800,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Food"
+      ],
+      "title": "Scriptwriter for food channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 60000.0,
+      "compensation_min": 35000.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per month",
+      "experience": "3–5 years",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "id": "b13367c4-e284-5785-afa5-4b91b94ccc73",
+      "location": "Remote",
+      "niches": [
+        "Beauty"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "youtube"
+      ],
+      "posted_offset": -1296000,
+      "status": "published",
+      "tags": [
+        "Long-form video",
+        "Beauty"
+      ],
+      "title": "Thumbnail designer for beauty channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 2,
+      "work_mode": "On-site"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_min": 2500.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per video",
+      "experience": "2–4 years",
+      "formats": [
+        "Content strategy",
+        "Channel research"
+      ],
+      "id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "location": "Adelaide, Australia",
+      "niches": [
+        "Education"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "multi_platform"
+      ],
+      "posted_offset": -172800,
+      "status": "published",
+      "tags": [
+        "Content strategy",
+        "Education"
+      ],
+      "title": "Long-form editor for education channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 24,
+      "work_mode": "Hybrid"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 60000.0,
+      "compensation_min": 35000.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per month",
+      "experience": "2–4 years",
+      "formats": [
+        "Repurposed clips",
+        "Channel research"
+      ],
+      "id": "f8ac09ce-5489-5665-82f3-58c67289e501",
+      "location": "Hyderabad, India",
+      "niches": [
+        "Technology"
+      ],
+      "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "platforms": [
+        "twitch"
+      ],
+      "posted_offset": -432000,
+      "status": "published",
+      "tags": [
+        "Repurposed clips",
+        "Technology"
+      ],
+      "title": "Scriptwriter for technology channel",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "calendar_days",
+      "turnaround_value": 5,
+      "work_mode": "Hybrid"
+    }
+  ],
+  "portfolio": [
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "013bda08-9d84-525e-b111-af56d7f10d94",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "8620f6e6-7df2-5678-8bc7-122a35116287",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/013bda08.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/013bda08"
+    },
+    {
+      "duration_seconds": 513,
+      "format": "Shorts/Reels",
+      "id": "022485c8-782c-51d3-b919-a21fbc13aaf2",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "title": "Caption + sound design pass",
+      "url": "https://work.scenario.invalid/022485c8"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "086ea8ce-7152-56d5-bedc-6797368397a2",
+      "media": "image",
+      "niche": "Kids",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/086ea8ce.jpg",
+      "title": "Channel trailer",
+      "url": "https://work.scenario.invalid/086ea8ce"
+    },
+    {
+      "format": "Content strategy",
+      "id": "0a081be1-24a4-5a9f-8935-242bf906a4e3",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/0a081be1"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "0efc870b-53ff-5644-9830-11f1859b5749",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/0efc870b.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/0efc870b"
+    },
+    {
+      "format": "Content strategy",
+      "id": "1010e377-94a5-5970-a771-e7d3f308a842",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/1010e377"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "1115c070-6281-566e-9b4a-4d1b0c3d325b",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/1115c070.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/1115c070"
+    },
+    {
+      "format": "Long-form video",
+      "id": "1195930a-02b8-59b4-a5c0-e864058bff7a",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/1195930a.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/1195930a"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "135bf887-ca96-58fe-96be-ecd43617b0ee",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "378c6ec8-1107-57c8-81bb-1b25063aa65c",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/135bf887.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/135bf887"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "138de8b5-e92b-50bd-b5fe-9ec4a6830735",
+      "media": "link",
+      "niche": "Technology",
+      "owner_id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "title": "Brand spot — 30s cutdown",
+      "url": "https://work.scenario.invalid/138de8b5"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "15d80914-9afd-51ae-af20-9abf13b5b18d",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/15d80914.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/15d80914"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "17c52530-e582-51a2-a443-08c93f280350",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/17c52530.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/17c52530"
+    },
+    {
+      "format": "Long-form video",
+      "id": "17cca2f9-f98f-51a0-ba6a-5b0912d2f88a",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/17cca2f9.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/17cca2f9"
+    },
+    {
+      "duration_seconds": 217,
+      "format": "Shorts/Reels",
+      "id": "1d7478a9-e892-5d30-930a-6fb57b20f453",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/1d7478a9.jpg",
+      "title": "Series packaging — education channel",
+      "url": "https://work.scenario.invalid/1d7478a9"
+    },
+    {
+      "duration_seconds": 661,
+      "format": "Content strategy",
+      "id": "1db25e83-0926-5111-af56-86bb23f29049",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/1db25e83.jpg",
+      "title": "Recipe short — vertical",
+      "url": "https://work.scenario.invalid/1db25e83"
+    },
+    {
+      "duration_seconds": 2400,
+      "format": "Repurposed clips",
+      "id": "1e6a8be7-c06a-5cbf-9104-0e52ec2d9690",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "915261b2-7f0c-542c-9f4a-c491ee578cd6",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "title": "Explainer with data callouts",
+      "url": "https://work.scenario.invalid/1e6a8be7"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "22ea904b-f472-53b5-904b-40cfd20320d4",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/22ea904b.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/22ea904b"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "23fd92c7-558b-5540-8c7e-911e73c02b1d",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "917fdc4b-d1d2-558c-9132-f8d9aca2c57a",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/23fd92c7.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/23fd92c7"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "247be20d-77b4-5055-bef2-493edac25489",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/247be20d.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/247be20d"
+    },
+    {
+      "format": "Content strategy",
+      "id": "252a51bf-e994-5cd7-8988-781865860da7",
+      "media": "image",
+      "niche": "Education",
+      "owner_id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/252a51bf.jpg",
+      "title": "Shorts batch — 15 clips",
+      "url": "https://work.scenario.invalid/252a51bf"
+    },
+    {
+      "format": "Long-form video",
+      "id": "257da7e4-0bae-513f-b7eb-117d6d76ba79",
+      "media": "image",
+      "niche": "Beauty",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/257da7e4.jpg",
+      "title": "Travel vlog restructure",
+      "url": "https://work.scenario.invalid/257da7e4"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "29cafee8-417a-51f3-8c76-405d60207f1a",
+      "media": "image",
+      "niche": "Kids",
+      "owner_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/29cafee8.jpg",
+      "title": "Channel trailer",
+      "url": "https://work.scenario.invalid/29cafee8"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "2a04397a-8dc0-5d3d-9b45-bd8c38747f74",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/2a04397a"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "2db59d86-3b06-5c34-8604-db34cf9015c8",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/2db59d86.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/2db59d86"
+    },
+    {
+      "duration_seconds": 217,
+      "format": "Shorts/Reels",
+      "id": "2e3a14df-f3f8-50ed-95c7-a50e158b809c",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "761f8286-b4b4-5230-8a83-40ec22a0a26f",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/2e3a14df.jpg",
+      "title": "Series packaging — education channel",
+      "url": "https://work.scenario.invalid/2e3a14df"
+    },
+    {
+      "format": "Content strategy",
+      "id": "3098f708-9de0-5cff-845e-069873933bc0",
+      "media": "image",
+      "niche": "Education",
+      "owner_id": "c784bfa0-4460-51d4-8605-dbaa14b7642d",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/3098f708.jpg",
+      "title": "Shorts batch — 15 clips",
+      "url": "https://work.scenario.invalid/3098f708"
+    },
+    {
+      "format": "Repurposed clips",
+      "id": "39935f12-613e-50a1-a1c1-706a52ce4c44",
+      "media": "link",
+      "niche": "Fitness",
+      "owner_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/39935f12.jpg",
+      "title": "Weekly recap format",
+      "url": "https://work.scenario.invalid/39935f12"
+    },
+    {
+      "format": "Long-form video",
+      "id": "40763695-e26e-54cb-b484-5be96b3e4f13",
+      "media": "image",
+      "niche": "Beauty",
+      "owner_id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/40763695.jpg",
+      "title": "Travel vlog restructure",
+      "url": "https://work.scenario.invalid/40763695"
+    },
+    {
+      "duration_seconds": 661,
+      "format": "Content strategy",
+      "id": "409fee7e-bbb2-5a0c-94d2-0c378933d5bf",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/409fee7e.jpg",
+      "title": "Recipe short — vertical",
+      "url": "https://work.scenario.invalid/409fee7e"
+    },
+    {
+      "format": "Long-form video",
+      "id": "40db0fd7-8cef-5832-ac32-bcaff433abb5",
+      "media": "image",
+      "niche": "Beauty",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/40db0fd7.jpg",
+      "title": "Travel vlog restructure",
+      "url": "https://work.scenario.invalid/40db0fd7"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "41f82708-29ae-5fb8-b6bb-f4679f232f5f",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/41f82708.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/41f82708"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "469ca1c9-5a12-5e06-a009-5d608f4cfded",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/469ca1c9"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "481c541b-5753-589f-a080-0b6334161d45",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/481c541b.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/481c541b"
+    },
+    {
+      "format": "Repurposed clips",
+      "id": "4a6533b3-492c-5ace-aa08-e49da39f305c",
+      "media": "link",
+      "niche": "Fitness",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/4a6533b3.jpg",
+      "title": "Weekly recap format",
+      "url": "https://work.scenario.invalid/4a6533b3"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "4a68e7e5-2482-58e9-9bc9-93e03ab82034",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "a00b9cc1-56a8-5472-863d-c34eba3cd5d3",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/4a68e7e5.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/4a68e7e5"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "4af6d2b7-50a3-50ec-81fa-e51824b0e527",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "f1b00eb6-8867-5680-8784-13f9ea796312",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/4af6d2b7.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/4af6d2b7"
+    },
+    {
+      "duration_seconds": 661,
+      "format": "Content strategy",
+      "id": "4c117d98-137e-5e88-a772-23eb00689375",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "d111b2b9-20ee-5954-958a-a0e8b85320fd",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/4c117d98.jpg",
+      "title": "Recipe short — vertical",
+      "url": "https://work.scenario.invalid/4c117d98"
+    },
+    {
+      "duration_seconds": 2437,
+      "format": "Podcast editing",
+      "id": "504d4c55-b9b4-5748-b96f-acdd2884a697",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "88a6091a-8667-52fa-ad33-0a48bd545921",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/504d4c55.jpg",
+      "title": "Interview multicam edit",
+      "url": "https://work.scenario.invalid/504d4c55"
+    },
+    {
+      "duration_seconds": 661,
+      "format": "Content strategy",
+      "id": "50f86373-449c-5d08-b0b2-bf0d7f133238",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/50f86373.jpg",
+      "title": "Recipe short — vertical",
+      "url": "https://work.scenario.invalid/50f86373"
+    },
+    {
+      "duration_seconds": 217,
+      "format": "Shorts/Reels",
+      "id": "52179f31-97cf-570d-971f-63c9aae7a2a2",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "378c6ec8-1107-57c8-81bb-1b25063aa65c",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/52179f31.jpg",
+      "title": "Series packaging — education channel",
+      "url": "https://work.scenario.invalid/52179f31"
+    },
+    {
+      "duration_seconds": 513,
+      "format": "Shorts/Reels",
+      "id": "53147fce-8e69-5367-9c20-3092a074e388",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "title": "Caption + sound design pass",
+      "url": "https://work.scenario.invalid/53147fce"
+    },
+    {
+      "format": "Long-form video",
+      "id": "53271057-2d97-55f1-9d05-ba71348c34c6",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "f1b00eb6-8867-5680-8784-13f9ea796312",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/53271057.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/53271057"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "58c3160e-e240-556b-b33f-d142dadd834f",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "ce8705b4-1ad5-5904-baf8-2e6849b1400e",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/58c3160e.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/58c3160e"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "5969e078-b2b7-56ea-8587-21e69b99cc94",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/5969e078.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/5969e078"
+    },
+    {
+      "format": "Content strategy",
+      "id": "5fd8220f-9db5-5aa8-bedd-0067cab1908d",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "f1b00eb6-8867-5680-8784-13f9ea796312",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/5fd8220f"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "632245d9-b3ed-5c3e-9b64-b7a462292a3f",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/632245d9.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/632245d9"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "64419b37-80f1-5d33-a331-8d7eac061f95",
+      "media": "link",
+      "niche": "Technology",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "title": "Brand spot — 30s cutdown",
+      "url": "https://work.scenario.invalid/64419b37"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "68178f18-edeb-595a-88dd-38d8fcd9debe",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/68178f18.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/68178f18"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "6904b202-b00c-54bc-b8ef-48e5106065e4",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/6904b202.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/6904b202"
+    },
+    {
+      "duration_seconds": 772,
+      "format": "Shorts/Reels",
+      "id": "6fee8a5d-ea77-5861-889c-a5c0834069e9",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/6fee8a5d.jpg",
+      "title": "Explainer with data callouts",
+      "url": "https://work.scenario.invalid/6fee8a5d"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "709261e3-9ec9-570d-857f-b76e49f4c73b",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/709261e3.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/709261e3"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "7674c14e-be7e-5011-a265-b5ebe71997da",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "cb00df86-6ed4-527e-b675-bf717dc9e35c",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/7674c14e.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/7674c14e"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "76bc5516-31dd-53dd-9e55-d785b7634364",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/76bc5516"
+    },
+    {
+      "duration_seconds": 2437,
+      "format": "Podcast editing",
+      "id": "76bfe52e-82ee-5b11-b0f1-dbbd39092100",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "915261b2-7f0c-542c-9f4a-c491ee578cd6",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/76bfe52e.jpg",
+      "title": "Interview multicam edit",
+      "url": "https://work.scenario.invalid/76bfe52e"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "85ab7735-980c-5daf-83d6-c6b072de806a",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/85ab7735.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/85ab7735"
+    },
+    {
+      "duration_seconds": 2400,
+      "format": "Repurposed clips",
+      "id": "8e97c78d-86f6-582f-98e8-1572f06db8d9",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "88a6091a-8667-52fa-ad33-0a48bd545921",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "title": "Explainer with data callouts",
+      "url": "https://work.scenario.invalid/8e97c78d"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "94c60288-5668-5279-b237-7ed7932aea35",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/94c60288.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/94c60288"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "96a2684b-32d2-5264-a751-2c1aa15bd09c",
+      "media": "image",
+      "niche": "Kids",
+      "owner_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/96a2684b.jpg",
+      "title": "Channel trailer",
+      "url": "https://work.scenario.invalid/96a2684b"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "971ddb11-b824-5499-8f65-e78a0b23277d",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/971ddb11"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "976b5c22-42ee-506a-b452-ab1e7b74e2e0",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "761f8286-b4b4-5230-8a83-40ec22a0a26f",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/976b5c22.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/976b5c22"
+    },
+    {
+      "format": "Content strategy",
+      "id": "989abaed-7c11-55f4-bed7-427d2b8d90ce",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/989abaed"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "98cbe23b-48e5-5bfc-abc2-e0fab9509f0c",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/98cbe23b.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/98cbe23b"
+    },
+    {
+      "duration_seconds": 217,
+      "format": "Shorts/Reels",
+      "id": "9d956e5c-68c7-5010-b501-f8f1c16fedde",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/9d956e5c.jpg",
+      "title": "Series packaging — education channel",
+      "url": "https://work.scenario.invalid/9d956e5c"
+    },
+    {
+      "duration_seconds": 624,
+      "format": "Podcast editing",
+      "id": "9ea80822-a903-588f-a95c-21e78a597e3b",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "d111b2b9-20ee-5954-958a-a0e8b85320fd",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "title": "Gaming montage — 8 minute",
+      "url": "https://work.scenario.invalid/9ea80822"
+    },
+    {
+      "format": "Long-form video",
+      "id": "a0ae891d-36a7-508f-93d6-344f3b595b41",
+      "media": "image",
+      "niche": "Beauty",
+      "owner_id": "5813641c-a341-502c-aa28-d4042abda702",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/a0ae891d.jpg",
+      "title": "Travel vlog restructure",
+      "url": "https://work.scenario.invalid/a0ae891d"
+    },
+    {
+      "format": "Content strategy",
+      "id": "a19e52f2-83ac-53b6-b984-ee9749889054",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/a19e52f2"
+    },
+    {
+      "duration_seconds": 513,
+      "format": "Shorts/Reels",
+      "id": "acc39eb6-b4a4-5db1-847a-33010f7149dd",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "title": "Caption + sound design pass",
+      "url": "https://work.scenario.invalid/acc39eb6"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "acee6ce4-c5ad-5279-b170-77b64a664101",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/acee6ce4.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/acee6ce4"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "ae050c80-083a-583e-866d-2873bc38ed4b",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/ae050c80.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/ae050c80"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "aeb13aa1-5df7-5aef-836a-7b7b5056df50",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/aeb13aa1"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "af1673cb-7519-5ac4-8575-ac3dc0d5f3ad",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/af1673cb.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/af1673cb"
+    },
+    {
+      "format": "Content strategy",
+      "id": "b3482a7c-9cb4-56df-af60-97e4d61ccb01",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/b3482a7c"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "b479e9fc-e66b-51e1-b001-b8c34144ca49",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/b479e9fc.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/b479e9fc"
+    },
+    {
+      "duration_seconds": 180,
+      "format": "Long-form video",
+      "id": "b5ba8f1f-5955-5b0b-9d79-89c7531784dd",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "title": "Retention rebuild — market explainer",
+      "url": "https://work.scenario.invalid/b5ba8f1f"
+    },
+    {
+      "duration_seconds": 476,
+      "format": "Shorts/Reels",
+      "id": "b8646b22-2e7d-59fc-9832-87c779cacb26",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/b8646b22.jpg",
+      "title": "Motion titles system",
+      "url": "https://work.scenario.invalid/b8646b22"
+    },
+    {
+      "format": "Content strategy",
+      "id": "ba1cf113-f73f-5234-90d5-a0cbb78c713f",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/ba1cf113"
+    },
+    {
+      "duration_seconds": 180,
+      "format": "Long-form video",
+      "id": "ba3afe75-1cf9-572e-808c-534ea78c69f9",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "773b694c-a817-5c39-b761-9efeb118bf0b",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "title": "Retention rebuild — market explainer",
+      "url": "https://work.scenario.invalid/ba3afe75"
+    },
+    {
+      "duration_seconds": 2437,
+      "format": "Podcast editing",
+      "id": "bf447e6d-6567-5650-88e8-c5b938ef6425",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "c784bfa0-4460-51d4-8605-dbaa14b7642d",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/bf447e6d.jpg",
+      "title": "Interview multicam edit",
+      "url": "https://work.scenario.invalid/bf447e6d"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "bff363b0-fecf-52b4-b70d-010bd398bb17",
+      "media": "image",
+      "niche": "Kids",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/bff363b0.jpg",
+      "title": "Channel trailer",
+      "url": "https://work.scenario.invalid/bff363b0"
+    },
+    {
+      "format": "Repurposed clips",
+      "id": "c15c8c64-c674-5d5f-9140-448a372e0a5b",
+      "media": "link",
+      "niche": "Fitness",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/c15c8c64.jpg",
+      "title": "Weekly recap format"
+    },
+    {
+      "duration_seconds": 180,
+      "format": "Long-form video",
+      "id": "c5c08bb6-f9d0-58a3-93b1-569b4115c9f6",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "56355d95-f71d-5fa2-8394-da12fdb80a45",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "title": "Retention rebuild — market explainer",
+      "url": "https://work.scenario.invalid/c5c08bb6"
+    },
+    {
+      "format": "Content strategy",
+      "id": "c8c4fdc9-4658-5fdf-9939-95cb6b33d340",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/c8c4fdc9"
+    },
+    {
+      "format": "Content strategy",
+      "id": "c91c1463-aa28-51a1-90ac-c64197524ac7",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/c91c1463"
+    },
+    {
+      "format": "Content strategy",
+      "id": "cc147528-8e04-518c-8a6e-1f4bea8cd8f4",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/cc147528"
+    },
+    {
+      "duration_seconds": 513,
+      "format": "Shorts/Reels",
+      "id": "cc5f31fa-6163-563c-be09-df5a6951d4ca",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "title": "Caption + sound design pass",
+      "url": "https://work.scenario.invalid/cc5f31fa"
+    },
+    {
+      "duration_seconds": 2437,
+      "format": "Podcast editing",
+      "id": "ccd00537-37f2-5b0f-9ae8-653263a94a79",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/ccd00537.jpg",
+      "title": "Interview multicam edit",
+      "url": "https://work.scenario.invalid/ccd00537"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "d3267cc4-19ec-521e-8455-ed32069e81fc",
+      "media": "link",
+      "niche": "Technology",
+      "owner_id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "title": "Brand spot — 30s cutdown",
+      "url": "https://work.scenario.invalid/d3267cc4"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "d3f0c01f-e15c-5cd4-9944-4c1c977104f2",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/d3f0c01f.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/d3f0c01f"
+    },
+    {
+      "duration_seconds": 513,
+      "format": "Shorts/Reels",
+      "id": "d409ac84-5fd4-536c-9090-f5cc9be858e3",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "title": "Caption + sound design pass",
+      "url": "https://work.scenario.invalid/d409ac84"
+    },
+    {
+      "format": "Content strategy",
+      "id": "d935a685-0823-5c24-89d8-6b6161a9a6a5",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/d935a685"
+    },
+    {
+      "duration_seconds": 624,
+      "format": "Podcast editing",
+      "id": "dc32425a-e3d6-5213-b196-a0ec9c45eddd",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "title": "Gaming montage — 8 minute",
+      "url": "https://work.scenario.invalid/dc32425a"
+    },
+    {
+      "format": "Long-form video",
+      "id": "e2d6182a-c517-52e3-b25a-64423cb5ab47",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "8620f6e6-7df2-5678-8bc7-122a35116287",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/e2d6182a.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/e2d6182a"
+    },
+    {
+      "format": "Content strategy",
+      "id": "e84572e6-bb36-58cc-8c67-27ead0ea91c5",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/e84572e6"
+    },
+    {
+      "duration_seconds": 365,
+      "format": "Podcast editing",
+      "id": "e879947c-934c-547b-8bda-c13ba52eb8f2",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/e879947c.jpg",
+      "title": "Documentary-style deep dive",
+      "url": "https://work.scenario.invalid/e879947c"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "eaf5b697-2620-598d-8c03-a4e795c9d78c",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/eaf5b697"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "ee222b57-2f92-5d9e-9678-dcf66ba23190",
+      "media": "image",
+      "niche": "Gaming",
+      "owner_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/ee222b57.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "url": "https://work.scenario.invalid/ee222b57"
+    },
+    {
+      "format": "Content strategy",
+      "id": "f08b1c7c-d197-52ee-8f9d-e64a3d8b7ef7",
+      "media": "image",
+      "niche": "Travel",
+      "owner_id": "8620f6e6-7df2-5678-8bc7-122a35116287",
+      "platform": "multi_platform",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "url": "https://work.scenario.invalid/f08b1c7c"
+    },
+    {
+      "format": "Shorts/Reels",
+      "id": "f3de8b74-e0c3-5626-bfd2-bbb673b68446",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
+      "platform": "instagram_reels",
+      "role": "Colour and sound",
+      "thumbnail_broken": false,
+      "title": "Thumbnail A/B set — finance",
+      "url": "https://work.scenario.invalid/f3de8b74"
+    },
+    {
+      "format": "Long-form video",
+      "id": "f5392ce7-560f-52fa-ba71-31be38a53d52",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/f5392ce7.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/f5392ce7"
+    },
+    {
+      "format": "Long-form video",
+      "id": "f5494071-fdea-555f-b304-54f04827e0e1",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/f5494071.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/f5494071"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "f86a6ce3-e002-52e1-a25b-d5a197171c2e",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/f86a6ce3.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/f86a6ce3"
+    },
+    {
+      "duration_seconds": 328,
+      "format": "Repurposed clips",
+      "id": "fa5974da-4031-5bae-b264-5485c200caf3",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
+      "platform": "twitch",
+      "role": "Thumbnail concepting and design",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/fa5974da.jpg",
+      "title": "Hook pass — 12 shorts",
+      "url": "https://work.scenario.invalid/fa5974da"
+    },
+    {
+      "format": "Long-form video",
+      "id": "fb6af144-cad5-58a4-9a27-28d776691357",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/fb6af144.jpg",
+      "title": "Podcast highlight reel",
+      "url": "https://work.scenario.invalid/fb6af144"
+    },
+    {
+      "duration_seconds": 180,
+      "format": "Long-form video",
+      "id": "fcdf917b-9586-5107-ad47-44e991e5fb8b",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "b447b600-bd13-5cbf-b94b-e6d5c51bcf56",
+      "platform": "youtube",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "title": "Retention rebuild — market explainer",
+      "url": "https://work.scenario.invalid/fcdf917b"
+    },
+    {
+      "duration_seconds": 217,
+      "format": "Shorts/Reels",
+      "id": "fd2337b9-9208-5f79-8dcb-f1a3b359fb7e",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "cb00df86-6ed4-527e-b675-bf717dc9e35c",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/fd2337b9.jpg",
+      "title": "Series packaging — education channel",
+      "url": "https://work.scenario.invalid/fd2337b9"
+    },
+    {
+      "duration_seconds": 624,
+      "format": "Podcast editing",
+      "id": "fd4385cb-8d87-51b7-99e5-77418db48183",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "platform": "podcast",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "title": "Gaming montage — 8 minute",
+      "url": "https://work.scenario.invalid/fd4385cb"
+    },
+    {
+      "duration_seconds": 772,
+      "format": "Shorts/Reels",
+      "id": "fd4a6dbf-f7fe-59fa-a255-ca9f32c18038",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "374f1d2f-6336-509e-90d8-7b081513d634",
+      "platform": "tiktok",
+      "role": "Motion graphics, template system",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/fd4a6dbf.jpg",
+      "title": "Explainer with data callouts",
+      "url": "https://work.scenario.invalid/fd4a6dbf"
+    }
+  ],
+  "relationships": [
+    {
+      "archived": false,
+      "conversation_id": "6b62b306-2a84-5ace-a119-c473112bf97e",
+      "created_offset": -1814400,
+      "id": "148da4b3-8047-53da-87a4-500bb39a609c",
+      "kind": "hiring_request",
+      "messages": [
+        {
+          "body": "Would you take on a weekly gaming montage edit?",
+          "conversation_id": "6b62b306-2a84-5ace-a119-c473112bf97e",
+          "id": "070c110f-3739-57e2-9aae-87fc0231b366",
+          "kind": "text",
+          "offset_seconds": -1814400,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "Thanks for asking — I'm booked through the quarter on two retainers. Happy to revisit in January if you still need someone.",
+          "conversation_id": "6b62b306-2a84-5ace-a119-c473112bf97e",
+          "id": "1e9a6e6d-f582-5d06-a41a-04910689870a",
+          "kind": "text",
+          "offset_seconds": -1728000,
+          "read": true,
+          "sender_id": "af727978-6d4f-57f3-9d97-650629a1c912"
+        }
+      ],
+      "participant_stage": "declined",
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "declined",
+      "starred": false,
+      "talent_id": "af727978-6d4f-57f3-9d97-650629a1c912",
+      "unread": 0,
+      "updated_offset": -1728000
+    },
+    {
+      "archived": false,
+      "conversation_id": "71a559f7-49b5-5159-aec8-08f31b31ef81",
+      "created_offset": -864000,
+      "id": "248cb79d-1387-5e4a-9a5d-35512c0d0ba5",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Your retention drop-off looks like a hook problem more than a pacing one — I'd start there.",
+          "conversation_id": "71a559f7-49b5-5159-aec8-08f31b31ef81",
+          "id": "59274025-a21c-5fc9-b57e-ce2b2a094314",
+          "kind": "text",
+          "offset_seconds": -864000,
+          "read": true,
+          "sender_id": "917fdc4b-d1d2-558c-9132-f8d9aca2c57a"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "23fd92c7-558b-5540-8c7e-911e73c02b1d"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "917fdc4b-d1d2-558c-9132-f8d9aca2c57a",
+      "unread": 0,
+      "updated_offset": -864000
+    },
+    {
+      "archived": false,
+      "conversation_id": "80e9b116-9a34-5d2c-a751-183c9401087b",
+      "created_offset": -6480000,
+      "historical": "Shortlisted was retired as a target in migration 0047. This row predates it and the applicant was genuinely told, so the label must stay honest.",
+      "id": "292317c8-f3ab-5016-ad37-1693e81e1468",
+      "job_id": "3074fb51-7cd8-54bb-95b5-9411924b2ffd",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the brand-deal manager role.",
+          "conversation_id": "80e9b116-9a34-5d2c-a751-183c9401087b",
+          "id": "ed9bc1ea-787e-5a50-847a-d44954c0abee",
+          "kind": "text",
+          "offset_seconds": -6480000,
+          "read": true,
+          "sender_id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40"
+        },
+        {
+          "body": "You're on our shortlist — we'll come back once the quarter's budget lands.",
+          "conversation_id": "80e9b116-9a34-5d2c-a751-183c9401087b",
+          "id": "043d5cfd-3ee1-54a7-af89-0c32c1e390d5",
+          "kind": "text",
+          "offset_seconds": -6048000,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "shortlisted",
+      "portfolio_ids": [
+        "138de8b5-e92b-50bd-b5fe-9ec4a6830735",
+        "6fee8a5d-ea77-5861-889c-a5c0834069e9"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "shortlisted",
+      "starred": false,
+      "talent_id": "1a35b061-dccd-5e8e-ab36-fedf77db4c40",
+      "unread": 0,
+      "updated_offset": -6048000
+    },
+    {
+      "archived": false,
+      "conversation_id": "c7292a42-fcf8-5b87-864c-406ddcae48f1",
+      "created_offset": -8726400,
+      "historical": "Applicant left pending on retired job job_26.",
+      "id": "3b5eada6-4093-5f0b-ae5e-cb0935b72fc1",
+      "job_id": "5f21357d-88a3-5bd2-a044-0ae875214295",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying while this was still open.",
+          "conversation_id": "c7292a42-fcf8-5b87-864c-406ddcae48f1",
+          "id": "43e9b119-da6b-5cde-89a0-5fe2cf691187",
+          "kind": "text",
+          "offset_seconds": -8726400,
+          "read": true,
+          "sender_id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b"
+        }
+      ],
+      "participant_stage": "rejected",
+      "portfolio_ids": [
+        "ccd00537-37f2-5b0f-9ae8-653263a94a79",
+        "252a51bf-e994-5cd7-8988-781865860da7"
+      ],
+      "recruiter_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "33a0a7d7-5458-5dbc-b883-cd05e666d23b",
+      "unread": 0,
+      "updated_offset": -8726400
+    },
+    {
+      "archived": false,
+      "conversation_id": "df6dad07-75ce-52c7-b267-813605dd9e37",
+      "created_offset": -691200,
+      "engagement": {
+        "id": "5708ab99-b10b-5b13-addd-aefd82120c39",
+        "payment_offset": -172800,
+        "payment_state": "released",
+        "relationship_id": "4e63f474-082e-5259-8190-7bee1dbc612f",
+        "started_offset": -604800,
+        "state": "completed"
+      },
+      "id": "4e63f474-082e-5259-8190-7bee1dbc612f",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I work with two other creator-led channels on a weekly cadence, so the turnaround is realistic for me.",
+          "conversation_id": "df6dad07-75ce-52c7-b267-813605dd9e37",
+          "id": "e3b5e7e1-e229-5ff6-8d9b-8b0c2117e6f9",
+          "kind": "text",
+          "offset_seconds": -691200,
+          "read": true,
+          "sender_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "2a04397a-8dc0-5d3d-9b45-bd8c38747f74",
+        "17c52530-e582-51a2-a443-08c93f280350",
+        "ae050c80-083a-583e-866d-2873bc38ed4b",
+        "1010e377-94a5-5970-a771-e7d3f308a842"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "e8cf4eca-a441-58f1-8bb8-b5364ef19729",
+      "unread": 1,
+      "updated_offset": -691200
+    },
+    {
+      "archived": false,
+      "conversation_id": "6742d68a-5c2f-526d-ad28-ee975b232086",
+      "created_offset": -518400,
+      "id": "54d8fa59-3aea-56c3-8525-bab0abf48392",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Happy to start with a paid test edit on last week's upload if that's easier to judge.",
+          "conversation_id": "6742d68a-5c2f-526d-ad28-ee975b232086",
+          "id": "ac6f1102-1274-5c88-836d-581fc11e247f",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "15d80914-9afd-51ae-af20-9abf13b5b18d",
+        "aeb13aa1-5df7-5aef-836a-7b7b5056df50",
+        "98cbe23b-48e5-5bfc-abc2-e0fab9509f0c"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "snoozed_offset": 259200,
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "113f3f64-6b2a-56a7-a312-0f0c5abba71d",
+      "unread": 0,
+      "updated_offset": -518400
+    },
+    {
+      "archived": false,
+      "conversation_id": "74b35608-5392-5bb5-9274-eb8779ffb0b6",
+      "created_offset": -345600,
+      "id": "56a356ab-25db-52e4-80f2-2e411c62a855",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "manager_note": "Strong on pacing, unproven on motion.",
+      "messages": [
+        {
+          "body": "I've attached two recent edits that are closest to what you're describing.",
+          "conversation_id": "74b35608-5392-5bb5-9274-eb8779ffb0b6",
+          "id": "5175386f-8bc7-5e15-9776-883bc43a99f6",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "9d956e5c-68c7-5010-b501-f8f1c16fedde",
+        "41f82708-29ae-5fb8-b6bb-f4679f232f5f"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "reviewing",
+      "starred": true,
+      "talent_id": "b41a3f8b-a2d7-515f-b66c-68a81fcdf8b9",
+      "unread": 0,
+      "updated_offset": -345600
+    },
+    {
+      "archived": false,
+      "conversation_id": "cec417ac-bfcf-5540-b9c2-ae8970360e58",
+      "created_offset": -1036800,
+      "id": "5c001489-b4d6-5ed3-b3a6-94225e2c079e",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I can take the whole workflow from raw files to upload-ready, including captions and thumbnails.",
+          "conversation_id": "cec417ac-bfcf-5540-b9c2-ae8970360e58",
+          "id": "618aeafa-95dd-548d-9af9-4fe7375da618",
+          "kind": "text",
+          "offset_seconds": -1036800,
+          "read": true,
+          "sender_id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444"
+        }
+      ],
+      "participant_stage": "withdrawn",
+      "portfolio_ids": [
+        "22ea904b-f472-53b5-904b-40cfd20320d4",
+        "c8c4fdc9-4658-5fdf-9939-95cb6b33d340"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "withdrawn",
+      "starred": false,
+      "talent_id": "18d3fc31-4bf5-5b6b-9b73-051c10edb444",
+      "unread": 0,
+      "updated_offset": -1036800
+    },
+    {
+      "archived": false,
+      "conversation_id": "14fa7f3e-1fec-5d8e-a6dc-32129d9390e1",
+      "created_offset": -950400,
+      "id": "67529889-0f66-53fd-a2bc-bc26b05a170c",
+      "kind": "hiring_request",
+      "messages": [
+        {
+          "body": "We're looking for someone on captions and localisation for a Hindi series.",
+          "conversation_id": "14fa7f3e-1fec-5d8e-a6dc-32129d9390e1",
+          "id": "b3bc2e91-0ae3-5c5c-b25f-08d8f4639945",
+          "kind": "text",
+          "offset_seconds": -950400,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "Yes, I'd like to. I do Hindi and Marathi, and I can start next week.",
+          "conversation_id": "14fa7f3e-1fec-5d8e-a6dc-32129d9390e1",
+          "id": "5cf8eab4-e7e5-5b8f-8ef4-14a0669bb138",
+          "kind": "text",
+          "offset_seconds": -864000,
+          "read": true,
+          "sender_id": "7e1d7d65-9226-5d5a-a79f-6ed733cf2848"
+        }
+      ],
+      "participant_stage": "accepted",
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "accepted",
+      "starred": false,
+      "talent_id": "7e1d7d65-9226-5d5a-a79f-6ed733cf2848",
+      "unread": 0,
+      "updated_offset": -864000
+    },
+    {
+      "archived": false,
+      "conversation_id": "c3a689d4-7faa-5dcf-8d53-e6a02aa71663",
+      "created_offset": -172800,
+      "id": "68f6d680-70ac-5226-acaa-61e27d8edb0f",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "c3a689d4-7faa-5dcf-8d53-e6a02aa71663",
+          "id": "467e9d0f-0365-5aa3-9b74-2d6eb53857d6",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "b447b600-bd13-5cbf-b94b-e6d5c51bcf56"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "fcdf917b-9586-5107-ad47-44e991e5fb8b"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "b447b600-bd13-5cbf-b94b-e6d5c51bcf56",
+      "unread": 1,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "b20980f9-bc81-505c-8435-bc563cbd54f8",
+      "created_offset": -259200,
+      "id": "707d76c3-7625-5045-b66b-1dd0165bb215",
+      "job_id": "6d64355c-d5d3-5f02-8278-34fc1bd3eb1e",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — sending over three recent long-form edits for the channel.",
+          "conversation_id": "b20980f9-bc81-505c-8435-bc563cbd54f8",
+          "id": "c4f959c0-ab54-5f1f-a98c-3ff7257a7f4e",
+          "kind": "text",
+          "offset_seconds": -259200,
+          "read": true,
+          "sender_id": "761f8286-b4b4-5230-8a83-40ec22a0a26f"
+        },
+        {
+          "body": "Thanks. Could you share one where you rebuilt the structure rather than just tightening it? That's closer to what we need.",
+          "conversation_id": "b20980f9-bc81-505c-8435-bc563cbd54f8",
+          "id": "ef635823-41af-5f47-a399-f13e99e21f17",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "2e3a14df-f3f8-50ed-95c7-a50e158b809c",
+        "976b5c22-42ee-506a-b452-ab1e7b74e2e0"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "761f8286-b4b4-5230-8a83-40ec22a0a26f",
+      "unread": 0,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "00925cc7-f36d-56ed-9518-a33044dc0323",
+      "created_offset": -172800,
+      "id": "7e90ec75-1cd6-5932-a8c8-288f61c878d8",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "00925cc7-f36d-56ed-9518-a33044dc0323",
+          "id": "07d70729-5e2f-58c4-b9d9-6a8b08db8821",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "56355d95-f71d-5fa2-8394-da12fdb80a45"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "c5c08bb6-f9d0-58a3-93b1-569b4115c9f6"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "56355d95-f71d-5fa2-8394-da12fdb80a45",
+      "unread": 1,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "a82ece67-d638-59d3-acfe-330a91b8252b",
+      "created_offset": -691200,
+      "engagement": {
+        "id": "69a344e2-61c5-577a-b3fc-5c92bfd151a1",
+        "payment_offset": -172800,
+        "payment_state": "setup_pending",
+        "relationship_id": "8224b9e6-8c3a-520e-aba7-6859f8b98877",
+        "started_offset": -604800,
+        "state": "start_pending"
+      },
+      "id": "8224b9e6-8c3a-520e-aba7-6859f8b98877",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I work with two other creator-led channels on a weekly cadence, so the turnaround is realistic for me.",
+          "conversation_id": "a82ece67-d638-59d3-acfe-330a91b8252b",
+          "id": "6506d98e-c46e-5531-a262-79ce13c72c3a",
+          "kind": "text",
+          "offset_seconds": -691200,
+          "read": true,
+          "sender_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "eaf5b697-2620-598d-8c03-a4e795c9d78c",
+        "2db59d86-3b06-5c34-8604-db34cf9015c8",
+        "d3f0c01f-e15c-5cd4-9944-4c1c977104f2",
+        "a19e52f2-83ac-53b6-b984-ee9749889054"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "6f0a5f09-1222-5b0a-a48a-d56715f20c68",
+      "unread": 1,
+      "updated_offset": -691200
+    },
+    {
+      "archived": false,
+      "conversation_id": "e661b6f7-2a28-5322-bcd1-0a22e145c577",
+      "cover_note": "Hi — I already edit weekly finance explainers for two creator-led channels, so I can match your pacing from the first video rather than spending a month learning it.",
+      "created_offset": -14400,
+      "id": "8648647e-9195-5029-943f-fbcaf93f45ba",
+      "job_id": "2bf3be4f-456f-5647-b350-28f249764a74",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I already edit weekly finance explainers for two creator-led channels, so I can match your pacing from the first video. I've attached the retention rebuild I mentioned; the original was losing people at 0:40 and we moved the payoff forward.",
+          "conversation_id": "e661b6f7-2a28-5322-bcd1-0a22e145c577",
+          "id": "a63a5f9d-1add-5161-974c-22034d52fcec",
+          "kind": "text",
+          "offset_seconds": -14400,
+          "read": true,
+          "sender_id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "b5ba8f1f-5955-5b0b-9d79-89c7531784dd",
+        "1d7478a9-e892-5d30-930a-6fb57b20f453",
+        "709261e3-9ec9-570d-857f-b76e49f4c73b"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "e977f682-f3d5-5a52-9bf2-3b1242cd0c40",
+      "unread": 1,
+      "updated_offset": -14400
+    },
+    {
+      "archived": false,
+      "conversation_id": "b81bc2c8-6768-5909-967f-162f2414dcdd",
+      "created_offset": -345600,
+      "id": "87a81e60-aa93-5c4f-98f1-8c581adb012f",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "manager_note": "Strong on pacing, unproven on motion.",
+      "messages": [
+        {
+          "body": "I've attached two recent edits that are closest to what you're describing.",
+          "conversation_id": "b81bc2c8-6768-5909-967f-162f2414dcdd",
+          "id": "94ea5d72-e023-56f4-8fc7-d0f82904bf6c",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "378c6ec8-1107-57c8-81bb-1b25063aa65c"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "52179f31-97cf-570d-971f-63c9aae7a2a2",
+        "135bf887-ca96-58fe-96be-ecd43617b0ee"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "reviewing",
+      "starred": true,
+      "talent_id": "378c6ec8-1107-57c8-81bb-1b25063aa65c",
+      "unread": 0,
+      "updated_offset": -345600
+    },
+    {
+      "archived": false,
+      "conversation_id": "cfa65b68-aa6e-5ec8-8eef-be3fd4c119ca",
+      "created_offset": -691200,
+      "id": "91f9161b-8c1a-5ac8-af05-f580ceb40d7a",
+      "job_id": "943887c0-6b62-5d9a-ac9d-56880a8e22e2",
+      "kind": "application",
+      "manager_note": "Portfolio is fine but the rate is well over budget. Keeping warm, not telling them yet.",
+      "messages": [
+        {
+          "body": "Applying for the channel manager role — I run ops for two channels already.",
+          "conversation_id": "cfa65b68-aa6e-5ec8-8eef-be3fd4c119ca",
+          "id": "f2d99e9b-5d17-5d57-9d2d-4b28acbbb321",
+          "kind": "text",
+          "offset_seconds": -691200,
+          "read": true,
+          "sender_id": "d111b2b9-20ee-5954-958a-a0e8b85320fd"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "9ea80822-a903-588f-a95c-21e78a597e3b",
+        "4c117d98-137e-5e88-a772-23eb00689375"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "d111b2b9-20ee-5954-958a-a0e8b85320fd",
+      "unread": 0,
+      "updated_offset": -691200
+    },
+    {
+      "archived": false,
+      "conversation_id": "826bcf3e-8ddc-59e0-b45b-b745016ca3f2",
+      "created_offset": -2160000,
+      "id": "94e7b4c9-7def-568b-998e-ee7b3cc338ea",
+      "job_id": "734a98ad-c12e-5611-a43d-7a5161a16c3b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the colorist role.",
+          "conversation_id": "826bcf3e-8ddc-59e0-b45b-b745016ca3f2",
+          "id": "4a41752d-d875-5477-ab6e-2d0aae51a157",
+          "kind": "text",
+          "offset_seconds": -2160000,
+          "read": true,
+          "sender_id": "6b9410d7-4b72-5939-a219-e715c0a1cb30"
+        },
+        {
+          "body": "We've gone with someone who works in DaVinci natively. Thanks for the time you put in.",
+          "conversation_id": "826bcf3e-8ddc-59e0-b45b-b745016ca3f2",
+          "id": "901a923c-7d44-5dce-9d19-3912c1847722",
+          "kind": "text",
+          "offset_seconds": -1641600,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "rejected",
+      "portfolio_ids": [
+        "50f86373-449c-5d08-b0b2-bf0d7f133238",
+        "40763695-e26e-54cb-b484-5be96b3e4f13",
+        "d3267cc4-19ec-521e-8455-ed32069e81fc"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "6b9410d7-4b72-5939-a219-e715c0a1cb30",
+      "unread": 0,
+      "updated_offset": -1641600
+    },
+    {
+      "archived": false,
+      "conversation_id": "a78f2525-7fc2-56b4-97ae-bbfc912ed2fa",
+      "created_offset": -518400,
+      "id": "99686fba-6326-56a7-85ae-369b14532deb",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Happy to start with a paid test edit on last week's upload if that's easier to judge.",
+          "conversation_id": "a78f2525-7fc2-56b4-97ae-bbfc912ed2fa",
+          "id": "52ddca3e-0e84-5a5e-835c-b590f0397a88",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "5969e078-b2b7-56ea-8587-21e69b99cc94",
+        "f3de8b74-e0c3-5626-bfd2-bbb673b68446",
+        "fa5974da-4031-5bae-b264-5485c200caf3"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "snoozed_offset": 259200,
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "a1c82cfd-6866-5fdf-bce7-16e2dd71e6d7",
+      "unread": 0,
+      "updated_offset": -518400
+    },
+    {
+      "archived": false,
+      "conversation_id": "838f7767-44be-59de-91a8-f2201b6cf0cf",
+      "created_offset": -1209600,
+      "id": "9e4bce7e-ca74-5bce-ad3b-e8d3191263c5",
+      "interview": {
+        "detail": "https://meet.example.com/qa-scripts",
+        "id": "f632db24-84e2-55c8-ae75-427b922ec3f6",
+        "method": "video_call",
+        "relationship_id": "9e4bce7e-ca74-5bce-ad3b-e8d3191263c5",
+        "scheduled_offset": -432000,
+        "state": "completed"
+      },
+      "job_id": "6e85f917-bdc9-5553-a207-da7de2f2e22c",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the scriptwriter role — three Hindi explainer scripts attached.",
+          "conversation_id": "838f7767-44be-59de-91a8-f2201b6cf0cf",
+          "id": "a50ba006-d1e3-51a4-b639-6aae00c497f9",
+          "kind": "text",
+          "offset_seconds": -1209600,
+          "read": true,
+          "sender_id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7"
+        },
+        {
+          "body": "Good call yesterday. I'll come back to you this week.",
+          "conversation_id": "838f7767-44be-59de-91a8-f2201b6cf0cf",
+          "id": "4d17169d-4c68-510c-8d64-f1799aec8d0f",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "0efc870b-53ff-5644-9830-11f1859b5749",
+        "b3482a7c-9cb4-56df-af60-97e4d61ccb01",
+        "fb6af144-cad5-58a4-9a27-28d776691357"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "dd5247fa-336c-57a6-ac5b-a2d23df378e7",
+      "unread": 0,
+      "updated_offset": -518400
+    },
+    {
+      "archived": false,
+      "conversation_id": "7719d822-4ae3-55b6-9aae-eef0db8b94bb",
+      "created_offset": -7862400,
+      "historical": "Applicant left pending on retired job job_25.",
+      "id": "a26c065b-5fc3-5170-a07f-7e949a03dbe6",
+      "job_id": "71e32b6b-6970-534f-9164-09f2c2504b40",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying while this was still open.",
+          "conversation_id": "7719d822-4ae3-55b6-9aae-eef0db8b94bb",
+          "id": "6192eba0-723c-5712-876b-636b3f4981ad",
+          "kind": "text",
+          "offset_seconds": -7862400,
+          "read": true,
+          "sender_id": "c784bfa0-4460-51d4-8605-dbaa14b7642d"
+        }
+      ],
+      "participant_stage": "rejected",
+      "portfolio_ids": [
+        "bf447e6d-6567-5650-88e8-c5b938ef6425",
+        "3098f708-9de0-5cff-845e-069873933bc0"
+      ],
+      "recruiter_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "c784bfa0-4460-51d4-8605-dbaa14b7642d",
+      "unread": 0,
+      "updated_offset": -7862400
+    },
+    {
+      "archived": false,
+      "conversation_id": "eed8afa7-7a07-58c3-8bcc-e8edb8af3dfe",
+      "created_offset": -1036800,
+      "id": "a3a04163-2e21-524b-934d-aa6a83e4e11a",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I can take the whole workflow from raw files to upload-ready, including captions and thumbnails.",
+          "conversation_id": "eed8afa7-7a07-58c3-8bcc-e8edb8af3dfe",
+          "id": "39004aad-be3f-5759-ab53-2d4c10fdb83f",
+          "kind": "text",
+          "offset_seconds": -1036800,
+          "read": true,
+          "sender_id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85"
+        }
+      ],
+      "participant_stage": "withdrawn",
+      "portfolio_ids": [
+        "247be20d-77b4-5055-bef2-493edac25489",
+        "ba1cf113-f73f-5234-90d5-a0cbb78c713f"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "withdrawn",
+      "starred": false,
+      "talent_id": "ca167ca4-6aaa-5739-8ab8-c14bff968a85",
+      "unread": 0,
+      "updated_offset": -1036800
+    },
+    {
+      "archived": false,
+      "conversation_id": "69e73359-4d82-59fa-9f2f-4d89fbc63ed6",
+      "created_offset": -72000,
+      "id": "b75c957b-3153-5e24-be3c-2173600ee90d",
+      "kind": "hiring_request",
+      "messages": [
+        {
+          "body": "Hi — we're moving to two uploads a week and need someone reliable on the edit. Roughly ₹3,000 per video to start, with a paid test on last week's upload first.",
+          "conversation_id": "69e73359-4d82-59fa-9f2f-4d89fbc63ed6",
+          "id": "59d22835-5164-5008-be0a-041028157cf9",
+          "kind": "text",
+          "offset_seconds": -72000,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "Files land every Monday and we'd need a first draft by Thursday. Does that work?",
+          "conversation_id": "69e73359-4d82-59fa-9f2f-4d89fbc63ed6",
+          "id": "691fda42-1a64-5c28-b021-80c8adc3cf67",
+          "kind": "text",
+          "offset_seconds": -68400,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "new",
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "b5da228b-87aa-5f1c-bd70-6ec0f490302b",
+      "unread": 2,
+      "updated_offset": -68400
+    },
+    {
+      "archived": false,
+      "conversation_id": "6e3ba346-0cc2-57ff-b5f5-f1e51fa7cef7",
+      "created_offset": -518400,
+      "id": "bcba9906-7400-58c4-a837-ddd575381c60",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Happy to start with a paid test edit on last week's upload if that's easier to judge.",
+          "conversation_id": "6e3ba346-0cc2-57ff-b5f5-f1e51fa7cef7",
+          "id": "f4e12bec-b95d-535d-adda-3a99ceefc4eb",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "d43673dd-231b-5108-9d88-efd27fae2bc7"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "ee222b57-2f92-5d9e-9678-dcf66ba23190",
+        "76bc5516-31dd-53dd-9e55-d785b7634364",
+        "6904b202-b00c-54bc-b8ef-48e5106065e4"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "snoozed_offset": 259200,
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "d43673dd-231b-5108-9d88-efd27fae2bc7",
+      "unread": 0,
+      "updated_offset": -518400
+    },
+    {
+      "archived": false,
+      "conversation_id": "767753a3-c9a7-556b-9b23-357f6cc16f7e",
+      "created_offset": -864000,
+      "id": "c1d7f3f8-95ae-59a2-80d2-4a6a6c3fa437",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Your retention drop-off looks like a hook problem more than a pacing one — I'd start there.",
+          "conversation_id": "767753a3-c9a7-556b-9b23-357f6cc16f7e",
+          "id": "e8d7c20d-f018-5c11-8005-d3327db3c50d",
+          "kind": "text",
+          "offset_seconds": -864000,
+          "read": true,
+          "sender_id": "a00b9cc1-56a8-5472-863d-c34eba3cd5d3"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "4a68e7e5-2482-58e9-9bc9-93e03ab82034"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "a00b9cc1-56a8-5472-863d-c34eba3cd5d3",
+      "unread": 0,
+      "updated_offset": -864000
+    },
+    {
+      "archived": true,
+      "conversation_id": "ddfcf3ab-bc32-5a74-adb2-b7b9492515c9",
+      "created_offset": -1209600,
+      "id": "c2d23f30-4998-51ac-836d-b283ab4fa4bc",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "ddfcf3ab-bc32-5a74-adb2-b7b9492515c9",
+          "id": "fc2afc8a-ce47-558c-8e9c-10f500cf1565",
+          "kind": "text",
+          "offset_seconds": -1209600,
+          "read": true,
+          "sender_id": "8620f6e6-7df2-5678-8bc7-122a35116287"
+        }
+      ],
+      "participant_stage": "archived",
+      "portfolio_ids": [
+        "f08b1c7c-d197-52ee-8f9d-e64a3d8b7ef7",
+        "e2d6182a-c517-52e3-b25a-64423cb5ab47",
+        "013bda08-9d84-525e-b111-af56d7f10d94"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "archived",
+      "starred": false,
+      "talent_id": "8620f6e6-7df2-5678-8bc7-122a35116287",
+      "unread": 0,
+      "updated_offset": -1209600
+    },
+    {
+      "archived": false,
+      "conversation_id": "8e2cb514-04a7-5fa4-a1cb-f2da34aac903",
+      "created_offset": -172800,
+      "id": "c324f564-1306-5b1a-9d8b-85bb62d672f3",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "8e2cb514-04a7-5fa4-a1cb-f2da34aac903",
+          "id": "32ff31a0-a728-5b6a-9def-9a9b1d38d611",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "773b694c-a817-5c39-b761-9efeb118bf0b"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "ba3afe75-1cf9-572e-808c-534ea78c69f9"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "773b694c-a817-5c39-b761-9efeb118bf0b",
+      "unread": 1,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "3ca9d6b9-51ea-5fdc-a8b9-4fb6cdce611b",
+      "created_offset": -518400,
+      "id": "c455962e-854a-5ba2-88c7-4d0a3998207b",
+      "interview": {
+        "detail": "https://meet.example.com/qa-shorts",
+        "id": "6575dea5-7444-5f3d-bf66-4167db38627b",
+        "method": "video_call",
+        "relationship_id": "c455962e-854a-5ba2-88c7-4d0a3998207b",
+        "scheduled_offset": 259200,
+        "state": "proposed"
+      },
+      "job_id": "6c003948-cb4a-5cbf-820f-51cac15d2fab",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I'd love to help with the shorts workflow. Two recent batches attached.",
+          "conversation_id": "3ca9d6b9-51ea-5fdc-a8b9-4fb6cdce611b",
+          "id": "effc94fe-1f2c-5d5b-93d2-f4ddbd584a99",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "9414edbf-3907-5b45-9b46-53a88b6bb361"
+        },
+        {
+          "body": "These look good. Can we talk Thursday?",
+          "conversation_id": "3ca9d6b9-51ea-5fdc-a8b9-4fb6cdce611b",
+          "id": "4730a870-a33f-5edc-87be-14aa0a9eb781",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "469ca1c9-5a12-5e06-a009-5d608f4cfded",
+        "94c60288-5668-5279-b237-7ed7932aea35",
+        "85ab7735-980c-5daf-83d6-c6b072de806a",
+        "c91c1463-aa28-51a1-90ac-c64197524ac7"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "9414edbf-3907-5b45-9b46-53a88b6bb361",
+      "unread": 0,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "8fa6295d-fdae-58c0-b29f-bca8e4c1f239",
+      "created_offset": -1555200,
+      "engagement": {
+        "id": "eb245821-87bb-5c3a-8f48-179723be4846",
+        "payment_offset": -172800,
+        "payment_state": "setup_pending",
+        "relationship_id": "c5db6adc-c92a-546f-9573-4713540b25fa",
+        "state": "start_pending"
+      },
+      "id": "c5db6adc-c92a-546f-9573-4713540b25fa",
+      "job_id": "09c11df7-c3a6-597f-a300-63f1c64323e6",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the long-form role. Two documentary-style edits attached.",
+          "conversation_id": "8fa6295d-fdae-58c0-b29f-bca8e4c1f239",
+          "id": "1cf9cc09-e23b-5ee8-b4b9-4eba5dca21f2",
+          "kind": "text",
+          "offset_seconds": -1555200,
+          "read": true,
+          "sender_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c"
+        },
+        {
+          "body": "We'd like to go ahead. Can you start on Monday?",
+          "conversation_id": "8fa6295d-fdae-58c0-b29f-bca8e4c1f239",
+          "id": "89846609-715a-57a7-a8fd-fc2c42a34035",
+          "kind": "text",
+          "offset_seconds": -259200,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "Yes — Monday works. I'll send a first cut by Thursday.",
+          "conversation_id": "8fa6295d-fdae-58c0-b29f-bca8e4c1f239",
+          "id": "a361ca13-6c1e-5a9e-98be-e867b1d907da",
+          "kind": "text",
+          "offset_seconds": -252000,
+          "read": true,
+          "sender_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "0a081be1-24a4-5a9f-8935-242bf906a4e3",
+        "f5494071-fdea-555f-b304-54f04827e0e1",
+        "b8646b22-2e7d-59fc-9832-87c779cacb26",
+        "022485c8-782c-51d3-b919-a21fbc13aaf2",
+        "96a2684b-32d2-5264-a751-2c1aa15bd09c"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "3e3398c3-c56f-5d21-83ac-206e5ce9c38c",
+      "unread": 0,
+      "updated_offset": -252000
+    },
+    {
+      "archived": false,
+      "conversation_id": "786f92d9-f5dc-5d4e-9470-562abca43d1a",
+      "created_offset": -777600,
+      "id": "c992a9bd-71a3-5199-9299-02ddba7b2d0b",
+      "interview": {
+        "detail": "https://meet.example.com/qa-thumbnails",
+        "id": "a8a2d632-86f0-5665-928f-9d5e4dcaad43",
+        "method": "video_call",
+        "note": "Moved from Wednesday at the recruiter's request.",
+        "relationship_id": "c992a9bd-71a3-5199-9299-02ddba7b2d0b",
+        "scheduled_offset": 172800,
+        "state": "confirmed"
+      },
+      "job_id": "f8ac09ce-5489-5665-82f3-58c67289e501",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the thumbnail role — A/B sets from the last two months attached.",
+          "conversation_id": "786f92d9-f5dc-5d4e-9470-562abca43d1a",
+          "id": "4310462c-0355-55e0-8646-9c0c0b54163a",
+          "kind": "text",
+          "offset_seconds": -777600,
+          "read": true,
+          "sender_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a"
+        },
+        {
+          "body": "Can we move Wednesday to Friday? Something came up on our side.",
+          "conversation_id": "786f92d9-f5dc-5d4e-9470-562abca43d1a",
+          "id": "2c33abfc-563f-5296-be60-c83d2d5515e1",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "Friday works, same time.",
+          "conversation_id": "786f92d9-f5dc-5d4e-9470-562abca43d1a",
+          "id": "5bac7b40-ef7c-5f51-bad0-724f26df73df",
+          "kind": "text",
+          "offset_seconds": -342000,
+          "read": true,
+          "sender_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a"
+        }
+      ],
+      "participant_stage": "interviewing",
+      "portfolio_ids": [
+        "f86a6ce3-e002-52e1-a25b-d5a197171c2e",
+        "e879947c-934c-547b-8bda-c13ba52eb8f2",
+        "d935a685-0823-5c24-89d8-6b6161a9a6a5",
+        "f5392ce7-560f-52fa-ba71-31be38a53d52",
+        "acee6ce4-c5ad-5279-b170-77b64a664101",
+        "d409ac84-5fd4-536c-9090-f5cc9be858e3"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "interviewing",
+      "starred": false,
+      "talent_id": "734df6db-dcc5-5750-8ff3-9acc8140d49a",
+      "unread": 0,
+      "updated_offset": -342000
+    },
+    {
+      "archived": false,
+      "conversation_id": "525b1c59-dd8f-58ee-bc3b-12ab1add7c0f",
+      "created_offset": -2592000,
+      "engagement": {
+        "id": "54f7d01f-3b6a-5d6e-b81d-81fa47ea4d64",
+        "payment_note": "Payer reported the first month as funded.",
+        "payment_offset": -172800,
+        "payment_state": "funded",
+        "relationship_id": "cacb3c0c-9383-5077-9ad2-0e0ea40de206",
+        "started_offset": -1036800,
+        "state": "active"
+      },
+      "id": "cacb3c0c-9383-5077-9ad2-0e0ea40de206",
+      "job_id": "2a7c4265-f8df-51e7-8645-2c83492402c9",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the weekly editing retainer.",
+          "conversation_id": "525b1c59-dd8f-58ee-bc3b-12ab1add7c0f",
+          "id": "ac67ab52-48e0-5da2-aa64-2219f375d50b",
+          "kind": "text",
+          "offset_seconds": -2592000,
+          "read": true,
+          "sender_id": "b6084699-c914-5163-a0c0-5ab48904ed7b"
+        },
+        {
+          "body": "Welcome aboard. First batch is in the drive.",
+          "conversation_id": "525b1c59-dd8f-58ee-bc3b-12ab1add7c0f",
+          "id": "6de634b6-f5b2-5e04-a02f-f55e3d0f73fe",
+          "kind": "text",
+          "offset_seconds": -1036800,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        },
+        {
+          "body": "First two are done, third is rendering.",
+          "conversation_id": "525b1c59-dd8f-58ee-bc3b-12ab1add7c0f",
+          "id": "14d2317d-d9e5-5ad3-bed8-8174340c98dd",
+          "kind": "text",
+          "offset_seconds": -172800,
+          "read": true,
+          "sender_id": "b6084699-c914-5163-a0c0-5ab48904ed7b"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "17cca2f9-f98f-51a0-ba6a-5b0912d2f88a",
+        "68178f18-edeb-595a-88dd-38d8fcd9debe",
+        "53147fce-8e69-5367-9c20-3092a074e388",
+        "bff363b0-fecf-52b4-b70d-010bd398bb17",
+        "c15c8c64-c674-5d5f-9140-448a372e0a5b",
+        "dc32425a-e3d6-5213-b196-a0ec9c45eddd",
+        "1db25e83-0926-5111-af56-86bb23f29049",
+        "257da7e4-0bae-513f-b7eb-117d6d76ba79"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "b6084699-c914-5163-a0c0-5ab48904ed7b",
+      "unread": 0,
+      "updated_offset": -172800
+    },
+    {
+      "archived": false,
+      "conversation_id": "b9f0ac41-9872-5df7-a88f-685e3e35ae7a",
+      "created_offset": -1382400,
+      "id": "d03c0a01-2621-5d6a-8fd6-bf21edc5a4c5",
+      "job_id": "b13367c4-e284-5785-afa5-4b91b94ccc73",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the UGC creator role.",
+          "conversation_id": "b9f0ac41-9872-5df7-a88f-685e3e35ae7a",
+          "id": "0ec779fe-eb64-5e80-b9b6-182471416b40",
+          "kind": "text",
+          "offset_seconds": -1382400,
+          "read": true,
+          "sender_id": "5813641c-a341-502c-aa28-d4042abda702"
+        },
+        {
+          "body": "I've taken a full-time role — withdrawing this, sorry for the back and forth.",
+          "conversation_id": "b9f0ac41-9872-5df7-a88f-685e3e35ae7a",
+          "id": "e656832d-4fe7-5205-9dc5-24c7242ca9cc",
+          "kind": "text",
+          "offset_seconds": -777600,
+          "read": true,
+          "sender_id": "5813641c-a341-502c-aa28-d4042abda702"
+        }
+      ],
+      "participant_stage": "withdrawn",
+      "portfolio_ids": [
+        "a0ae891d-36a7-508f-93d6-344f3b595b41"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "withdrawn",
+      "starred": false,
+      "talent_id": "5813641c-a341-502c-aa28-d4042abda702",
+      "unread": 0,
+      "updated_offset": -777600
+    },
+    {
+      "archived": false,
+      "conversation_id": "1777cbe1-3b48-5a42-8087-89415cf54401",
+      "created_offset": -864000,
+      "id": "d56b6158-5224-5045-acd8-e80fb36cfccc",
+      "job_id": "78fd7b64-3885-5f35-8d40-a8b75b8b497d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Your retention drop-off looks like a hook problem more than a pacing one — I'd start there.",
+          "conversation_id": "1777cbe1-3b48-5a42-8087-89415cf54401",
+          "id": "770e56ff-fc50-5500-bd41-6a315cd5a552",
+          "kind": "text",
+          "offset_seconds": -864000,
+          "read": true,
+          "sender_id": "ce8705b4-1ad5-5904-baf8-2e6849b1400e"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "58c3160e-e240-556b-b33f-d142dadd834f"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "rejected",
+      "starred": false,
+      "talent_id": "ce8705b4-1ad5-5904-baf8-2e6849b1400e",
+      "unread": 0,
+      "updated_offset": -864000
+    },
+    {
+      "archived": true,
+      "conversation_id": "03d8188c-43ba-5235-8f7b-1b1db2efe777",
+      "created_offset": -1209600,
+      "id": "de13c308-7628-5d3a-b129-b71ec1b44df1",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "03d8188c-43ba-5235-8f7b-1b1db2efe777",
+          "id": "b69e5c61-d2a6-5d7f-b273-e805d49e0db5",
+          "kind": "text",
+          "offset_seconds": -1209600,
+          "read": true,
+          "sender_id": "f1b00eb6-8867-5680-8784-13f9ea796312"
+        }
+      ],
+      "participant_stage": "archived",
+      "portfolio_ids": [
+        "5fd8220f-9db5-5aa8-bedd-0067cab1908d",
+        "53271057-2d97-55f1-9d05-ba71348c34c6",
+        "4af6d2b7-50a3-50ec-81fa-e51824b0e527"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "archived",
+      "starred": false,
+      "talent_id": "f1b00eb6-8867-5680-8784-13f9ea796312",
+      "unread": 0,
+      "updated_offset": -1209600
+    },
+    {
+      "archived": false,
+      "conversation_id": "582a92f1-3534-57e2-9580-0001769e7646",
+      "created_offset": -345600,
+      "id": "de206f38-c7c0-5b83-a58b-275d35d521d7",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "manager_note": "Strong on pacing, unproven on motion.",
+      "messages": [
+        {
+          "body": "I've attached two recent edits that are closest to what you're describing.",
+          "conversation_id": "582a92f1-3534-57e2-9580-0001769e7646",
+          "id": "f84ce489-7dac-56aa-833e-7e9dd895f059",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "cb00df86-6ed4-527e-b675-bf717dc9e35c"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "fd2337b9-9208-5f79-8dcb-f1a3b359fb7e",
+        "7674c14e-be7e-5011-a265-b5ebe71997da"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "reviewing",
+      "starred": true,
+      "talent_id": "cb00df86-6ed4-527e-b675-bf717dc9e35c",
+      "unread": 0,
+      "updated_offset": -345600
+    },
+    {
+      "archived": false,
+      "conversation_id": "059dfee1-8790-5b74-b670-867314a7f4dd",
+      "created_offset": -5184000,
+      "engagement": {
+        "completed_offset": -259200,
+        "id": "00715c73-d8a0-569b-aa3e-4d1b5a0bd1eb",
+        "payment_note": "Release requested; awaiting the payer's confirmation.",
+        "payment_offset": -172800,
+        "payment_state": "release_requested",
+        "relationship_id": "e08841dd-48c8-53df-895f-7cd37e8f55cb",
+        "started_offset": -4320000,
+        "state": "completed"
+      },
+      "id": "e08841dd-48c8-53df-895f-7cd37e8f55cb",
+      "job_id": "1237a5df-90ce-5ad7-8e20-ba23e566ab6d",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the podcast editing role.",
+          "conversation_id": "059dfee1-8790-5b74-b670-867314a7f4dd",
+          "id": "5e6beb53-b41b-5e15-903b-8ef219c3b3c4",
+          "kind": "text",
+          "offset_seconds": -5184000,
+          "read": true,
+          "sender_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64"
+        },
+        {
+          "body": "All twelve episodes are delivered and the show notes are in the sheet.",
+          "conversation_id": "059dfee1-8790-5b74-b670-867314a7f4dd",
+          "id": "6d89d2a6-bd59-54b0-a1b8-406ad9e6f207",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64"
+        },
+        {
+          "body": "Confirmed on my side — thank you, this was clean work.",
+          "conversation_id": "059dfee1-8790-5b74-b670-867314a7f4dd",
+          "id": "ddf5a09e-9ebb-508c-8c21-4dfba3865b28",
+          "kind": "text",
+          "offset_seconds": -259200,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "481c541b-5753-589f-a080-0b6334161d45",
+        "acc39eb6-b4a4-5db1-847a-33010f7149dd",
+        "29cafee8-417a-51f3-8c76-405d60207f1a",
+        "39935f12-613e-50a1-a1c1-706a52ce4c44"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "d20ee1da-9f53-5244-95f8-ba437c0e4a64",
+      "unread": 0,
+      "updated_offset": -259200
+    },
+    {
+      "archived": false,
+      "conversation_id": "8c6ae4fe-170f-562f-b1fb-7ea9e154106a",
+      "created_offset": -3888000,
+      "engagement": {
+        "completed_offset": -518400,
+        "id": "4ee65bdd-d73e-5c90-b103-8683deee3fbc",
+        "payment_note": "Raised by the payer's finance team. The delivered work is not in question.",
+        "payment_offset": -172800,
+        "payment_state": "disputed",
+        "relationship_id": "e315183e-638e-5adc-96eb-a7854cea2b30",
+        "started_offset": -3456000,
+        "state": "completed"
+      },
+      "id": "e315183e-638e-5adc-96eb-a7854cea2b30",
+      "job_id": "6ae4cd96-5ee1-5ab4-96c9-490864056106",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the motion graphics role.",
+          "conversation_id": "8c6ae4fe-170f-562f-b1fb-7ea9e154106a",
+          "id": "fd05448b-a866-5515-bad5-bafdae332312",
+          "kind": "text",
+          "offset_seconds": -3888000,
+          "read": true,
+          "sender_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf"
+        },
+        {
+          "body": "The full title system is delivered — six templates plus the end card.",
+          "conversation_id": "8c6ae4fe-170f-562f-b1fb-7ea9e154106a",
+          "id": "3f266abc-c798-533d-82fc-0a8bf51c2949",
+          "kind": "text",
+          "offset_seconds": -518400,
+          "read": true,
+          "sender_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf"
+        },
+        {
+          "body": "Work's fine, this is a billing problem on our side, not yours. Finance is sorting it.",
+          "conversation_id": "8c6ae4fe-170f-562f-b1fb-7ea9e154106a",
+          "id": "e4df6902-cdd4-50cb-bab7-72141b7e421e",
+          "kind": "text",
+          "offset_seconds": -432000,
+          "read": true,
+          "sender_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "cc5f31fa-6163-563c-be09-df5a6951d4ca",
+        "086ea8ce-7152-56d5-bedc-6797368397a2",
+        "4a6533b3-492c-5ace-aa08-e49da39f305c",
+        "fd4385cb-8d87-51b7-99e5-77418db48183",
+        "409fee7e-bbb2-5a0c-94d2-0c378933d5bf",
+        "40db0fd7-8cef-5832-ac32-bcaff433abb5",
+        "64419b37-80f1-5d33-a331-8d7eac061f95"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "11bc061d-c4ba-5633-99e0-54f4ba3fb9cf",
+      "unread": 0,
+      "updated_offset": -432000
+    },
+    {
+      "archived": false,
+      "conversation_id": "c3a8b143-9a7a-5f6a-b545-f0368f724c2c",
+      "created_offset": -1036800,
+      "id": "e5dc77ae-e3db-5a58-a604-b5180582dd75",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I can take the whole workflow from raw files to upload-ready, including captions and thumbnails.",
+          "conversation_id": "c3a8b143-9a7a-5f6a-b545-f0368f724c2c",
+          "id": "ed364d24-2cd9-5055-bf88-717aeee33cc1",
+          "kind": "text",
+          "offset_seconds": -1036800,
+          "read": true,
+          "sender_id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63"
+        }
+      ],
+      "participant_stage": "withdrawn",
+      "portfolio_ids": [
+        "632245d9-b3ed-5c3e-9b64-b7a462292a3f",
+        "989abaed-7c11-55f4-bed7-427d2b8d90ce"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "withdrawn",
+      "starred": false,
+      "talent_id": "9f562fb4-9e62-5aa7-80c3-d5b84e6b4b63",
+      "unread": 0,
+      "updated_offset": -1036800
+    },
+    {
+      "archived": false,
+      "conversation_id": "3e256659-2a99-5e84-8441-ede1e0936a41",
+      "created_offset": -8640000,
+      "historical": "Applicant left pending on retired job job_26.",
+      "id": "eeb27edd-0460-506a-bc4d-2a58f4cfae49",
+      "job_id": "5f21357d-88a3-5bd2-a044-0ae875214295",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying while this was still open.",
+          "conversation_id": "3e256659-2a99-5e84-8441-ede1e0936a41",
+          "id": "2dae8b2d-ea1e-5dd7-98d1-a274c2bd28d5",
+          "kind": "text",
+          "offset_seconds": -8640000,
+          "read": true,
+          "sender_id": "915261b2-7f0c-542c-9f4a-c491ee578cd6"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "1e6a8be7-c06a-5cbf-9104-0e52ec2d9690",
+        "76bfe52e-82ee-5b11-b0f1-dbbd39092100"
+      ],
+      "recruiter_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "915261b2-7f0c-542c-9f4a-c491ee578cd6",
+      "unread": 0,
+      "updated_offset": -8640000
+    },
+    {
+      "archived": false,
+      "conversation_id": "e6df3aef-0c32-5aa7-9041-8bb7f5157eb1",
+      "created_offset": -691200,
+      "engagement": {
+        "id": "82819026-9559-50af-bd96-a3882c756181",
+        "payment_offset": -172800,
+        "payment_state": "funded",
+        "relationship_id": "ef6fa14b-5e53-5bd4-9238-e970a8d05258",
+        "started_offset": -604800,
+        "state": "completed"
+      },
+      "id": "ef6fa14b-5e53-5bd4-9238-e970a8d05258",
+      "job_id": "7beb1f09-7270-5d90-be86-ce4b5c56c0bc",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I work with two other creator-led channels on a weekly cadence, so the turnaround is realistic for me.",
+          "conversation_id": "e6df3aef-0c32-5aa7-9041-8bb7f5157eb1",
+          "id": "438e6fe2-96a5-5479-83b6-b7fd13db8076",
+          "kind": "text",
+          "offset_seconds": -691200,
+          "read": true,
+          "sender_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536"
+        }
+      ],
+      "participant_stage": "hired",
+      "portfolio_ids": [
+        "971ddb11-b824-5499-8f65-e78a0b23277d",
+        "b479e9fc-e66b-51e1-b001-b8c34144ca49",
+        "1115c070-6281-566e-9b4a-4d1b0c3d325b",
+        "cc147528-8e04-518c-8a6e-1f4bea8cd8f4"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "hired",
+      "starred": false,
+      "talent_id": "e823385f-6f8d-54fe-a7e5-e6d188a3a536",
+      "unread": 1,
+      "updated_offset": -691200
+    },
+    {
+      "archived": true,
+      "conversation_id": "6d2a53b3-4603-5506-a480-e96b4a36fa1b",
+      "created_offset": -1209600,
+      "id": "f5f24bfb-a6aa-518c-851f-f4f9d8c1a0ef",
+      "job_id": "dea8e10d-d224-5433-9439-f59ecab69a1b",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Hi — I edit in this niche already, so I can match your pacing from the first video.",
+          "conversation_id": "6d2a53b3-4603-5506-a480-e96b4a36fa1b",
+          "id": "045fd729-8ce2-58ae-a930-4e36771227bf",
+          "kind": "text",
+          "offset_seconds": -1209600,
+          "read": true,
+          "sender_id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679"
+        }
+      ],
+      "participant_stage": "archived",
+      "portfolio_ids": [
+        "e84572e6-bb36-58cc-8c67-27ead0ea91c5",
+        "1195930a-02b8-59b4-a5c0-e864058bff7a",
+        "af1673cb-7519-5ac4-8575-ac3dc0d5f3ad"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "archived",
+      "starred": false,
+      "talent_id": "4a17cb40-a6ba-5bd0-93a8-f83d835b7679",
+      "unread": 0,
+      "updated_offset": -1209600
+    },
+    {
+      "archived": false,
+      "conversation_id": "e23e9e80-22d8-5e8c-98a0-04c016d8c343",
+      "created_offset": -7776000,
+      "historical": "Applicant left pending on retired job job_25.",
+      "id": "fb451f36-ab86-5014-a9c0-baec979f2ef9",
+      "job_id": "71e32b6b-6970-534f-9164-09f2c2504b40",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying while this was still open.",
+          "conversation_id": "e23e9e80-22d8-5e8c-98a0-04c016d8c343",
+          "id": "bfe1a9be-3f94-5516-9fa2-3b3c996ddc6a",
+          "kind": "text",
+          "offset_seconds": -7776000,
+          "read": true,
+          "sender_id": "88a6091a-8667-52fa-ad33-0a48bd545921"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "8e97c78d-86f6-582f-98e8-1572f06db8d9",
+        "504d4c55-b9b4-5748-b96f-acdd2884a697"
+      ],
+      "recruiter_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "88a6091a-8667-52fa-ad33-0a48bd545921",
+      "unread": 0,
+      "updated_offset": -7776000
+    },
+    {
+      "archived": false,
+      "conversation_id": "fa461053-4652-5b3e-9ffa-1c21d1111845",
+      "created_offset": -6912000,
+      "historical": "Private legacy Shortlisted. Nothing was communicated, so it maps forward to Reviewing with the manager's private Star rather than to a shared label.",
+      "id": "fda5b448-d551-5170-9acf-3e7549855b2e",
+      "job_id": "94542894-b428-51af-a920-f0c5e6a0d0c7",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the community manager role.",
+          "conversation_id": "fa461053-4652-5b3e-9ffa-1c21d1111845",
+          "id": "0f70f600-c243-5599-9129-326ae58b0e21",
+          "kind": "text",
+          "offset_seconds": -6912000,
+          "read": true,
+          "sender_id": "374f1d2f-6336-509e-90d8-7b081513d634"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "fd4a6dbf-f7fe-59fa-a255-ca9f32c18038"
+      ],
+      "recruiter_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
+      "stage": "shortlisted",
+      "starred": true,
+      "talent_id": "374f1d2f-6336-509e-90d8-7b081513d634",
+      "unread": 0,
+      "updated_offset": -6912000
+    }
+  ],
+  "scenario": "recruiter",
+  "seed": 6000,
+  "stats": {
+    "actors": 44,
+    "applications": 39,
+    "client_state": 0,
+    "conversations": 42,
+    "engagements": 7,
+    "hiring_requests": 3,
+    "interviews": 3,
+    "jobs": 19,
+    "messages": 61,
+    "payment_states": {
+      "disputed": 1,
+      "funded": 2,
+      "release_requested": 1,
+      "released": 1,
+      "setup_pending": 2
+    },
+    "portfolio_items": 107,
+    "relationships": 42,
+    "stages": {
+      "accepted": 1,
+      "archived": 3,
+      "declined": 1,
+      "hired": 7,
+      "interviewing": 6,
+      "new": 5,
+      "rejected": 7,
+      "reviewing": 6,
+      "shortlisted": 2,
+      "withdrawn": 4
+    }
+  },
+  "version": 1
+}
