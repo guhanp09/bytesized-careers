@@ -119,7 +119,7 @@ import {
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
 import { AbsoluteTimeOnFocus, InteractionTime } from "./InteractionTime";
-import { ClientContextSummary, CommercialTerms } from "./CreatorContext";
+import { ClientContextSummary } from "./CreatorContext";
 import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupThreadEntries } from "../../lib/systemEventGrouping";
@@ -682,7 +682,12 @@ function OverflowMenu({ items }: { items: OverflowMenuItem[] }) {
  */
 function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
   const href = job.jobId ? `/jobs/${encodeURIComponent(job.jobId)}` : null;
-  const payIcon = job.budget.toLowerCase().includes("per month") ? "briefcase" : "cash-stack";
+  // The structured terms replace the raw budget string in place. The card
+  // already owned the one rate line on this screen; making it the projection's
+  // headline means the rate carries its unit without a second copy appearing
+  // somewhere else.
+  const { terms, turnaround } = creatorViewOf({ job });
+  const payIcon = terms.structure === "retainer" ? "briefcase" : "cash-stack";
   const displayTitle = formatListingTitle(job.title);
   const body = (
     <div className="relative">
@@ -705,7 +710,9 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
       </div>
       <h3 className="mt-2.5 text-sm font-semibold leading-snug text-white">{displayTitle}</h3>
       <div className="mt-2.5 space-y-1.5">
-        <MetaRow icon={payIcon} text={job.budget} />
+        <MetaRow icon={payIcon} text={terms.headline} />
+        {terms.trial ? <MetaRow icon="cash" text={terms.trial.label} /> : null}
+        {turnaround.hours !== null ? <MetaRow icon="clock" text={turnaround.label} /> : null}
         {job.experience ? <MetaRow icon="cap" text={job.experience} /> : null}
         {job.location ? <MetaRow icon="pin" text={job.location} /> : null}
       </div>
@@ -5176,15 +5183,17 @@ export default function ApplicationsWorkspace({
                       updatedAt={selectedEngagement?.payment_state_updated_at}
                       note={selectedEngagement?.payment_note}
                     />
-                    {creatorView && (creatorView.terms.disclosed || creatorView.context.audience) ? (
+                    {/*
+                      Who is hiring — not what it pays. The context card above
+                      already carries the one rate line on this screen, and
+                      repeating it here is how the same number ends up on screen
+                      twice with two different treatments.
+                    */}
+                    {creatorView && creatorView.context.handle ? (
                       <section className={`rounded-2xl ${SURFACE} p-4`} data-testid="creator-commercial">
-                        <p className={SECTION_LABEL_CLASSES}>The arrangement</p>
-                        <div className="mt-2 space-y-2.5">
-                          <CommercialTerms terms={creatorView.terms} size="md" />
-                          <ClientContextSummary
-                            context={creatorView.context}
-                            turnaround={creatorView.turnaround}
-                          />
+                        <p className={SECTION_LABEL_CLASSES}>Who you would work with</p>
+                        <div className="mt-2">
+                          <ClientContextSummary context={creatorView.context} />
                         </div>
                       </section>
                     ) : null}

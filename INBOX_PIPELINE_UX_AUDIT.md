@@ -686,3 +686,155 @@ requirement against the control that now serves it.
   confusion without the cost.
 - **Colour-only differentiation of persona vs search scope.** Would not survive
   a restyle and would fail anyone not perceiving the hue difference.
+
+---
+
+# Phase 3 — making the workspace creator-specific
+
+## What was already there
+
+The inventory came first, and it changed the shape of the phase. CreatorJobs
+*already* stores nearly everything a creator-specific inbox needs:
+
+| Attribute | Canonical source | Reached the inbox? |
+|---|---|---|
+| platform | `jobs.platforms`, `portfolio.platforms` | no |
+| format | `jobs.formats_hired_for`, `portfolio.formats` | no |
+| niche | `jobs.content_niches` | no |
+| turnaround | `jobs.turnaround_value/unit/basis` | no |
+| compensation | `budget_amount/max/currency/unit`, `compensation_mode` | flattened to `budget: string` |
+| paid trial | full `trial_*` model | no |
+| revenue share | `budget_unit = "commission"` | no |
+| audience | `jobs.channel_subscribers` | no |
+| portfolio media | `thumbnail_url`, `duration`, `source_type`, `role` | link label only |
+| upload cadence | — | absent everywhere |
+| payment state | — | absent everywhere |
+
+So almost nothing needed new backend schema. The gap was the *projection*:
+`InteractionJobSnapshot` reduced a structured commercial model to a display
+string and dropped the rest, which is why the workspace could only ever render
+a generic job. Two things genuinely did not exist — upload cadence, which is
+carried as an optional free-text field and shown only where a record has one
+rather than being invented, and payment state, which is the only new schema.
+
+`lib/creatorProjection.ts` is therefore a projection, not a second source of
+truth. Compensation and turnaround are formatted by the same
+`lib/jobPresentation.ts` functions the public job pages use.
+
+## Portfolio-first
+
+Cards lead with evidence: one item large enough to judge, up to two supporting
+tiles, then a fit line **derived from the items themselves** — three finance
+explainers is evidence of a finance editor, where a niche list is an assertion.
+Identity and the primary action stay ahead of it.
+
+Posters are generated locally from each item's id. The alternative to a grey
+rectangle is not fetching the real thumbnail: oEmbed means a network request per
+card, third-party calls from a hiring inbox, and a layout that breaks when the
+request fails — for a decorative image. Posters vary along colour, pattern and
+rotation (six palettes × four patterns × rotation), every palette stop clears
+4.5:1 against white overlay text, and the pattern is an inline data URI. A real
+thumbnail is preferred; a broken one falls back to the poster rather than
+leaving the browser's broken-image glyph.
+
+**There is no play button.** The media cue is a neutral film glyph, not
+`circle-play`: the tile opens the work in a new tab and does not play anything
+in place, so a play triangle would promise playback that never arrives.
+
+## The two distinctions the model refuses to blur
+
+**An amount never appears without its unit.** ₹3,000 per video is ordinary;
+₹3,000 as a monthly retainer is close to unpaid. The unit is what makes the
+number mean anything, so the headline always carries it.
+
+**Undisclosed is not unpaid.** Silence is reported as undisclosed. "Unpaid
+collaboration" is asserted only where a record says so, is rendered in words
+with no currency glyph or tabular figures, and is never styled like a rate. A
+trial sits *beside* the ongoing rate and never replaces it — an audition fee
+and an ongoing rate are different commitments.
+
+Currency is preserved and never converted.
+
+## Turnaround carries both forms
+
+A recruiter wants to filter to "within a week" *and* read "3 business days to
+first draft". One normalised value cannot do both, so `CreatorTurnaround`
+carries the formatter's wording, a comparable magnitude, and a bucket.
+Unspecified sorts last: an unknown turnaround is not a fast one.
+
+## Audience is banded
+
+`250K–500K subscribers`, never `487,213`. A precise figure moves daily, implies
+a verification the platform does not perform, and tells a reader nothing more.
+
+## Filters
+
+Options are derived from the records on screen, so the control can only offer a
+value some record actually has — a vocabulary-driven menu would offer Twitch on
+a board with no Twitch work and return nothing. A record that does not carry
+the attribute is excluded rather than waved through, or the filter is
+decorative. Kept structurally apart from the work queues: queues are
+recommendations about what needs you, these are facts about what the work is.
+
+## Payment state — a separate plane
+
+Recorded on the **engagement**, not the application, because it is a property of
+the work rather than of the hiring decision. That placement *is* the separation:
+the application lifecycle has no field to read.
+
+Migration `0049` adds `payment_state`, `payment_state_updated_at` and
+`payment_note` — all nullable, no default, so every existing engagement keeps
+meaning what it meant before. NULL passes the vocabulary constraint, so nothing
+needed backfilling. Verified on local PostgreSQL: upgrade to head, downgrade
+back through `0049` to `0038`, reload fixtures, upgrade again.
+
+Sixteen tests pin the separation rather than the feature — most importantly
+that a **disputed** payment does not block start or completion, which is the
+case a naive implementation gets wrong.
+
+There is no payment processing behind this: no checkout, wallet, escrow, payout
+or invoice. The copy is written so a reader cannot conclude otherwise —
+"Funded" says the payer reported funding and deliberately does not say funds
+are held, secured or protected. The card renders nothing when no state is set,
+sits in the rail beside the arrangement rather than in the status column, and
+says plainly that payments are arranged outside CreatorJobs. It is not a status
+pill: a payment badge beside a stage badge is how a reader concludes one drives
+the other.
+
+## Defects found in the browser and fixed
+
+1. **Portfolio rendered twice.** A rail review section was built, then removed —
+   it put the same evidence on screen twice. The honest fix was to give the
+   application's existing portfolio list the artwork rather than add a
+   competing surface.
+2. **`circle-play` on every video tile** read as an inert play button.
+3. **Titles truncated to "Retention reb…"** — a 132px poster on a 280px card
+   left ~120px for the title. Card artwork is now sized so titles are legible.
+4. **A hydration mismatch (React #418)** from Phase 1's `AbsoluteTimeOnFocus`,
+   which renders a timezone-formatted date without `suppressHydrationWarning`.
+   Pre-existing; fixed because it fires on the surface this phase changes.
+
+## Known limitations
+
+- **Upload cadence has no canonical backend field.** It is carried as optional
+  free text on the snapshot and populated in the fixture; a real listing shows
+  it only if something supplies it. Fabricating a cadence from posting history
+  was rejected — it would be a guess presented as a fact about someone's channel.
+- **One pipeline card overflows its column by ~10px at 390px.** It carries no
+  portfolio, so this is the Phase 1 card template rather than anything added
+  here; the board scrolls horizontally by design at that width.
+- **Payment state is read-only and has no writer.** No endpoint sets it; the
+  tests write it directly. That is deliberate for this phase.
+- Niche and platform values are normalised for display but not reconciled
+  against a controlled vocabulary, so two spellings of one niche would show as
+  two filter options.
+
+## Rejected
+
+- **oEmbed / thumbnail scraping** — a network request per card and a broken
+  layout on failure, for decoration.
+- **A dense filter builder** — a hiring inbox is not an ATS query surface.
+- **Payment state in the application status enum** — it would make a payment
+  provider's report part of the hiring lifecycle, and every transition rule
+  would eventually consult it.
+- **Exact subscriber counts** — precision the platform cannot stand behind.

@@ -725,7 +725,7 @@ export default function PipelineBoard({
             and the workload disclosure opens a panel that a scroll container
             would clip.
           */}
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] md:overflow-visible [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] md:flex-wrap md:overflow-visible [&::-webkit-scrollbar]:hidden">
           {/*
             One compact scope control, replacing a row that repeated every
             stage name and count immediately above the section headings that

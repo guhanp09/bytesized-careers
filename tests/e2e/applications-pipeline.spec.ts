@@ -288,7 +288,12 @@ test.describe("applications pipeline view", () => {
     // Structured rate + turnaround + portfolio count read straight off the card.
     await expect(aarav.getByTestId("pipeline-fact").first()).toContainText("₹2,500 per video");
     await expect(aarav.getByTestId("pipeline-fact").nth(1)).toContainText("4-day turnaround");
-    await expect(aarav).toContainText("2 portfolio");
+    // The card used to say "2 portfolio". It now shows the work itself, so the
+    // count is carried by the strip rather than by a sentence about it — and
+    // the remainder becomes a "+N more" control only when items are held back.
+    const strip = aarav.getByTestId("portfolio-strip");
+    await expect(strip).toHaveAttribute("data-portfolio-count", "2");
+    await expect(strip.getByTestId("portfolio-lead")).toContainText("Retention rebuild");
     // The teaser is the applicant's fit note (a structured requirement), not the
     // optional free-text message — consistent with the newer first-message model.
     await expect(aarav).toContainText("I already edit in your niche");
