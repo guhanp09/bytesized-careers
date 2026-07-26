@@ -184,7 +184,16 @@ export default function ApplicationsPageClient({
     // Only Mock mode reads a manifest. With a backend token the workspace shows
     // real data, and quietly replacing it with seed rows would be worse than
     // ignoring the parameter.
-    if (!allowDemo || !demoMode || resolvedScenario.error) {
+    /*
+      Only when a scenario is explicitly named.
+
+      Without this, `?demo=1` alone would swap the generated manifest in for the
+      existing Mock fixture — which is exactly what happened, and it broke every
+      test written against that fixture. Retiring the hand-written fixture is a
+      deliberate step that comes after parity is proven, not a side effect of
+      adding a loader.
+    */
+    if (!seedParam || !allowDemo || !demoMode || resolvedScenario.error) {
       setScenarioInteractions(null);
       return;
     }
@@ -213,7 +222,7 @@ export default function ApplicationsPageClient({
     return () => {
       cancelled = true;
     };
-  }, [allowDemo, demoMode, resolvedScenario.scenario, resolvedScenario.error]);
+  }, [seedParam, allowDemo, demoMode, resolvedScenario.scenario, resolvedScenario.error]);
 
   const toggleDemo = () => {
     const next = !demoMode;
