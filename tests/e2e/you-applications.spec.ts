@@ -1,5 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { encode } from "next-auth/jwt";
+import { switchPersona } from "./workspacePersona";
 
 // Matches NEXTAUTH_SECRET in the test:e2e:server script. The backend is not
 // running during e2e, so /you renders its offline shell with mock data.
@@ -156,7 +157,7 @@ test.describe("/you Applications workspace", () => {
     page,
   }) => {
     await openApplicationsTab(page);
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     await page.getByTestId("interaction-row").filter({ hasText: "Anika Rao" }).click();
 
     const detail = page.getByTestId("applications-detail");
@@ -227,7 +228,7 @@ test.describe("/you Applications workspace", () => {
       .filter({ hasText: "Shorts editing package — 15 shorts per month" })
       .click();
 
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
 
     const rows = page.getByTestId("interaction-row");
     await expect(rows.filter({ hasText: "Received application" })).toHaveCount(6);
@@ -250,7 +251,7 @@ test.describe("/you Applications workspace", () => {
 
   test("reply composer sends a local reply with quick actions", async ({ page }) => {
     await openApplicationsTab(page);
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
 
     const detail = page.getByTestId("applications-detail");
@@ -270,7 +271,7 @@ test.describe("/you Applications workspace", () => {
 
   test("marking an application not selected confirms and keeps the private decision revisitable", async ({ page }) => {
     await openApplicationsTab(page);
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
 
     const detail = page.getByTestId("applications-detail");
@@ -294,7 +295,7 @@ test.describe("/you Applications workspace", () => {
     // Retired in favour of a private Star (migration 0047): keeping someone in
     // mind is personal organisation, not a place in the funnel.
     await openApplicationsTab(page);
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
 
     await openOverflow(page);

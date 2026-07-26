@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+// Aliased: this file already owns a `switchPersona` for QA *accounts*, which
+// is a different concept from the workspace's Talent/Recruiter identity.
+import { switchPersona as switchWorkspacePersona } from "../workspacePersona";
 
 const CONTROLLER_EMAIL = "qa-controller@example.com";
 const CONTROLLER_PASSWORD = "LocalQaController123!";
@@ -100,15 +103,12 @@ test("workspace controls switch real views, retain an empty mode, and open statu
   await expect(page.getByTestId("applications-detail")).toBeVisible();
   await expect(page).toHaveURL(/view=inbox/);
 
-  await controls.getByRole("button", { name: "Talent", exact: true }).click();
+  await switchWorkspacePersona(page, "talent");
   await expect(page).toHaveURL(/mode=talent/);
   await expect(page.getByText("No applications yet.", { exact: true })).toBeVisible();
   await expect(page.getByTestId("applications-workspace-controls")).toBeVisible();
 
-  await page
-    .getByTestId("applications-workspace-controls")
-    .getByRole("button", { name: "Recruiter", exact: true })
-    .click();
+  await switchWorkspacePersona(page, "hiring");
   await expect(page).toHaveURL(/mode=recruiter/);
   await expect(page.getByTestId("applications-detail")).toBeVisible();
 

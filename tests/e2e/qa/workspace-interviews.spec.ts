@@ -228,14 +228,25 @@ test("an emptied queue explains itself and offers the way back", async ({ page }
   await openRecruiterInbox(page);
   await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
 
-  // "Saved" is the one chip that is reliably empty on a fresh scenario.
+  // "Saved" is the one queue that is reliably empty on a fresh scenario, so
+  // starring a record is what brings it into existence.
   await page.getByTestId("interaction-row").first().click();
   await page.getByTestId("star-toggle").click();
+
+  await page.getByTestId("queue-selector-trigger").click({ timeout: 20_000 });
   await expect(page.getByTestId("queue-chip-starred")).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId("queue-chip-starred").click();
+  await expect(page.getByTestId("queue-selector-trigger")).toContainText("Saved");
+
+  // Empty the queue from under the user, while they are standing in it.
   await page.getByTestId("star-toggle").click();
 
-  // With the star removed the chip goes, and the list is whole again — a queue
-  // never strands the user in an empty view they cannot leave.
-  await expect(page.getByTestId("queue-chip-starred")).toHaveCount(0, { timeout: 20_000 });
+  // The control must not vanish with its contents: a queue that disappears
+  // while it is the active filter leaves the user in an empty list with no
+  // visible way out. It stays, and the way back is one click.
+  const clear = page.getByTestId("queue-clear");
+  await expect(clear).toBeVisible({ timeout: 20_000 });
+  await clear.click();
   await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+  await expect(page.getByTestId("queue-clear")).toHaveCount(0);
 });

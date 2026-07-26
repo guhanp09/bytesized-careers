@@ -1,5 +1,6 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { encode } from "next-auth/jwt";
+import { switchPersona } from "./workspacePersona";
 
 /**
  * Applicant pipeline management (backlog #17 + #21) in the /applications
@@ -45,9 +46,7 @@ async function openWorkspace(page: import("@playwright/test").Page) {
 async function openRecruiterPipeline(page: import("@playwright/test").Page) {
   await openWorkspace(page);
   const main = page.getByRole("main");
-  const recruiterMode = main.getByRole("button", { name: "Recruiter", exact: true });
-  await recruiterMode.click();
-  await expect(recruiterMode).toHaveAttribute("aria-pressed", "true");
+  await switchPersona(page, "hiring");
   await main.getByTestId("applications-view-pipeline").click();
   await expect(main.getByTestId("pipeline-board")).toBeVisible();
 }
@@ -146,7 +145,7 @@ test.describe("applications pipeline view", () => {
     expect(Math.abs((pipelineBox?.x ?? 0) - (inboxBox?.x ?? 0))).toBeLessThan(2);
     expect(Math.abs((pipelineBox?.y ?? 0) - (inboxBox?.y ?? 0))).toBeLessThan(2);
     // The mode switch stays put too.
-    await expect(main.getByRole("button", { name: "Recruiter", exact: true })).toBeVisible();
+    await expect(main.getByTestId("workspace-persona")).toBeVisible();
   });
 
   test("neither view introduces horizontal overflow", async ({ page }) => {
@@ -260,7 +259,7 @@ test.describe("applications pipeline view", () => {
 
   test("private notes save from the inbox detail rail and surface in the pipeline", async ({ page }) => {
     await openWorkspace(page);
-    await page.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
 
     // Open the received application from Aarav (no note yet).
     await page.getByTestId("interaction-row").filter({ hasText: "Aarav Mehta" }).click();
@@ -508,7 +507,7 @@ test.describe("applications pipeline view", () => {
 
     // Recruiter mode renames both directions — and the Pipeline view survives
     // the mode switch instead of falling back to the Inbox.
-    await main.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     await expect(main.getByTestId("pipeline-board")).toBeVisible();
     await expect(main.getByTestId("pipeline-direction-received")).toContainText("Applicants");
     await expect(main.getByTestId("pipeline-direction-sent")).toContainText("Outreach");
@@ -535,7 +534,7 @@ test.describe("applications pipeline view", () => {
     await expect(page.getByTestId("stage-notify-prompt")).toHaveCount(0);
 
     // Talent mode reads its own workflow.
-    await page.getByRole("button", { name: "Talent", exact: true }).click();
+    await switchPersona(page, "talent");
     await expect(page.getByTestId("pipeline-summary")).toHaveText("4 hiring requests · 2 new · 1 accepted");
   });
 
@@ -599,7 +598,7 @@ test.describe("applications pipeline view", () => {
   test("leaving and returning restores the open inbox conversation", async ({ page }) => {
     await openWorkspace(page);
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Recruiter", exact: true }).click();
+    await switchPersona(page, "hiring");
     // Select a non-first thread so restoring it is distinguishable from the default.
     await main.getByTestId("interaction-row").filter({ hasText: "Rhea Kapoor" }).first().click();
     await expect(main.getByTestId("applications-detail-header")).toContainText("Rhea Kapoor");

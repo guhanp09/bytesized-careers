@@ -120,15 +120,51 @@ test("the primary action is a lifted surface, not a flat rectangle", async ({ pa
 test("a confident recommendation is visually filled where a neutral one is not", async ({ page }) => {
   await openRecruiterInbox(page);
 
-  // A row with unread mail yields "Reply to …", which is high confidence.
-  const unread = page.getByTestId("interaction-row").filter({ has: page.getByTestId("inbox-unread-badge") });
-  test.skip((await unread.count()) === 0, "no unread conversation in this scenario");
+  /*
+    An unread message on a *live* record yields "Reply to …", which is high
+    confidence. The terminal ones are excluded deliberately: a hired or rejected
+    record has nothing left to recommend, so it renders no primary action at all
+    — and this test previously took whichever unread row happened to be first,
+    which made it pass or fail on the fixture's ordering rather than on the
+    styling it exists to check.
+  */
+  const unread = page
+    .getByTestId("interaction-row")
+    .filter({ has: page.getByTestId("inbox-unread-badge") })
+    .filter({ hasNotText: /Hired|Not selected|Withdrawn|Declined|Accepted/ });
+  test.skip((await unread.count()) === 0, "no unread live conversation in this scenario");
   await unread.first().click();
 
   const primary = page.getByTestId("next-action-primary");
   await expect(primary).toBeVisible();
-  const image = await primary.evaluate((node) => getComputedStyle(node).backgroundImage);
-  expect(image).toContain("gradient");
+
+  /*
+    Settle before measuring. Opening a conversation resolves over several
+    renders — unread clears, the thread and its engagement arrive — and React
+    replaces the action button when the recommendation it carries changes. A
+    style read from a handle captured before that lands resolves against a
+    detached node and comes back as "", which reads as "the gradient is
+    missing" when the gradient is simply on a newer element.
+  */
+  await expect(primary).toHaveAttribute("data-action-key", "reply");
+
+  /*
+    Resolved and measured in one tick, deliberately. Opening a conversation
+    settles over several renders — unread clears, the thread and its engagement
+    arrive — and React replaces this button each time the recommendation it
+    carries is recomputed. A handle captured by the test and measured a moment
+    later resolves against a node React has already discarded, and
+    getComputedStyle on a detached node returns an empty declaration, which
+    reads as "the gradient is missing" when the gradient is on a newer element.
+  */
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const node = document.querySelector("[data-testid='next-action-primary']");
+        return node ? getComputedStyle(node).backgroundImage : "";
+      })
+    )
+    .toContain("gradient");
 });
 
 test("text over every gradient surface stays readable", async ({ page }) => {
@@ -235,14 +271,25 @@ test("the row leads with the person, not with backend vocabulary", async ({ page
   expect(text).toMatch(/(Received|Sent) (application|hiring request)/);
 });
 
-test("the queue rail keeps a visible way back to everything", async ({ page }) => {
+test("the queue control keeps a one-click way back to everything", async ({ page }) => {
   await openRecruiterInbox(page);
-  const all = page.getByTestId("queue-chip-all");
-  await expect(all).toBeVisible();
+  const trigger = page.getByTestId("queue-selector-trigger");
+  if ((await trigger.count()) === 0) test.skip(true, "no queue holds work in this fixture");
 
-  // Pressed by default and visually raised, so "no filter" is a state you can
-  // see rather than the absence of one.
-  await expect(all).toHaveAttribute("aria-pressed", "true");
-  const raised = await all.evaluate((node) => getComputedStyle(node).boxShadow);
-  expect(raised).not.toBe("none");
+  // Idle it is an offer, so there is nothing to escape from and no clear shown.
+  await expect(page.getByTestId("queue-clear")).toHaveCount(0);
+
+  await trigger.click();
+  const first = page.getByTestId("queue-selector-menu").getByRole("menuitemradio").nth(1);
+  const label = ((await first.textContent()) ?? "").trim();
+  await first.click();
+
+  // Standing inside a queue, the trigger says which one — and the way out is a
+  // button beside it, not an item you have to reopen the menu to find. The rail
+  // this replaced made you hunt for "All" among chips that scrolled.
+  await expect(trigger).toContainText(label.replace(/\d+$/, "").trim().slice(0, 12));
+  const clear = page.getByTestId("queue-clear");
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(page.getByTestId("queue-clear")).toHaveCount(0);
 });

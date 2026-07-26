@@ -88,13 +88,17 @@ test("the inbox reaches meaningful content and switches views without stalling",
   });
   expect(toInbox).toBeLessThan(BUDGET.viewSwitch);
 
-  const queue = page.getByTestId("queue-chip-decision_needed");
-  if (await queue.isVisible().catch(() => false)) {
-    const queueSwitch = await timed("queue filter", async () => {
-      await queue.click();
-      await expect(page.getByTestId("interaction-row").first()).toBeVisible();
-    });
-    expect(queueSwitch).toBeLessThan(BUDGET.queueSwitch);
+  const queueTrigger = page.getByTestId("queue-selector-trigger");
+  if (await queueTrigger.isVisible().catch(() => false)) {
+    await queueTrigger.click();
+    const queue = page.getByTestId("queue-chip-decision_needed");
+    if (await queue.isVisible().catch(() => false)) {
+      const queueSwitch = await timed("queue filter", async () => {
+        await queue.click();
+        await expect(page.getByTestId("interaction-row").first()).toBeVisible();
+      });
+      expect(queueSwitch).toBeLessThan(BUDGET.queueSwitch);
+    }
   }
 });
 
@@ -196,10 +200,15 @@ test("a queue filter never strands the open conversation", async ({ page }) => {
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
   const before = await page.getByTestId("applications-detail-header").textContent();
 
-  const chips = page.getByTestId("queue-selector").getByRole("button");
-  const chipCount = await chips.count();
+  const trigger = page.getByTestId("queue-selector-trigger");
+  if ((await trigger.count()) === 0) test.skip(true, "no queue holds work in this fixture");
+
+  await trigger.click();
+  const chipCount = await page.getByTestId("queue-selector-menu").getByRole("menuitemradio").count();
   for (let index = 0; index < chipCount; index += 1) {
-    await chips.nth(index).click();
+    // The menu closes on each choice, so it is reopened per queue.
+    if (index > 0) await page.getByTestId("queue-selector-trigger").click();
+    await page.getByTestId("queue-selector-menu").getByRole("menuitemradio").nth(index).click();
     // Whatever the filter does to the list, the thing being read stays open.
     await expect(page.getByTestId("applications-detail-header")).toHaveText(before ?? "");
   }

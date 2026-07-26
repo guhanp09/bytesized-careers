@@ -137,11 +137,10 @@ import {
 } from "../../lib/workspaceAnalytics";
 import CompactChatDock from "./CompactChatDock";
 import {
+  ApplicationsWorkspaceNavigation,
   DEFAULT_MODE_OPTIONS,
-  FilterBar,
+  InteractionScopeControl,
   SampleDataChip,
-  WorkQueueSelector,
-  WorkspaceControls,
   type WorkspaceFilter,
   type WorkspaceMode,
   type WorkspaceModeOption,
@@ -3967,15 +3966,27 @@ export default function ApplicationsWorkspace({
   /** Queues worth offering: those with work, plus the personal views. */
   const queueChips = ((): Array<{ key: string; label: string; count: number }> => {
     const chips: Array<{ key: string; label: string; count: number }> = [];
+    const labels = new Map<string, string>();
     for (const queue of WORK_QUEUE_ORDER) {
+      labels.set(queue.key, queue.label);
       const count = queueCounts.get(queue.key) ?? 0;
       if (count > 0) chips.push({ key: queue.key, label: queue.label, count });
     }
     for (const personal of ["starred", "snoozed"] as const) {
+      const label = personal === "starred" ? "Saved" : "Snoozed";
+      labels.set(personal, label);
       const count = queueCounts.get(personal) ?? 0;
-      if (count > 0) {
-        chips.push({ key: personal, label: personal === "starred" ? "Saved" : "Snoozed", count });
-      }
+      if (count > 0) chips.push({ key: personal, label, count });
+    }
+    /*
+      One exception to "only offer queues that hold work": the queue the user is
+      standing in. It can empty underneath them — unstar the last saved record
+      and "Saved" has nothing left — and dropping it here would take the filter's
+      name and its clear control off screen while the filter was still applied,
+      leaving an empty list with no visible way out.
+    */
+    if (activeQueue && !chips.some((chip) => chip.key === activeQueue)) {
+      chips.push({ key: activeQueue, label: labels.get(activeQueue) ?? "Queue", count: 0 });
     }
     return chips;
   })();
@@ -4030,13 +4041,163 @@ export default function ApplicationsWorkspace({
         .filter((item): item is OwnerInteraction => Boolean(item))
     : [];
 
+  /**
+   * The Pipeline's layer 3, handed to the board so it renders inside the
+   * board's own scope row rather than above it.
+   *
+   * Direction, stage focus, search and per-job filtering are one question —
+   * "which records am I looking at" — and were split across three stacked bars.
+   * The board already owned the last three; giving it the first collapses the
+   * Pipeline to the same two bars the Inbox has.
+   */
+  const pipelineScopeLeading = (
+    <>
+      <div className="flex shrink-0 items-center gap-3" role="group" aria-label="Scope">
+        {(
+          [
+            { key: "received", label: directionLabels.received, count: filterCounts.received },
+            { key: "sent", label: directionLabels.sent, count: filterCounts.sent },
+          ] as const
+        ).map((option) => {
+          const isActive = pipelineDirection === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              data-testid={`pipeline-direction-${option.key}`}
+              aria-pressed={isActive}
+              onClick={() => setPipelineDirection(option.key)}
+              className={[
+                "group/direction relative h-8 shrink-0 cursor-pointer whitespace-nowrap px-0.5 text-[13px] font-semibold transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                isActive ? "text-ink" : "text-muted hover:text-default",
+              ].join(" ")}
+            >
+              {option.label}
+              {option.count > 0 ? (
+                <span
+                  className={[
+                    "ml-1.5 text-[11px] font-medium tabular-nums",
+                    isActive ? "text-secondary" : "text-subtle",
+                  ].join(" ")}
+                >
+                  {option.count}
+                </span>
+              ) : null}
+              <span
+                className={[
+                  "absolute inset-x-0 bottom-0 h-[2px] rounded-full transition-colors",
+                  isActive ? "bg-white" : "bg-white/0 group-hover/direction:bg-white/20",
+                ].join(" ")}
+              />
+            </button>
+          );
+        })}
+      </div>
+      {/*
+        Workload by job: a survey, and the Pipeline is the surveying lens — but
+        a permanent row of cards pushed the board itself below the fold before
+        anyone had asked the question. It keeps every capability, including the
+        counts that route into a queue or a focused stage, behind one control
+        that says how many jobs are in play.
+      */}
+      {shouldShowJobSummaries(jobSummaries) ? (
+        <details className="group/workload relative shrink-0">
+          <summary
+            data-testid="job-summaries-toggle"
+            className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-line bg-raised px-2 text-[11.5px] font-semibold text-muted transition-colors hover:border-line-mid hover:text-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus [&::-webkit-details-marker]:hidden"
+          >
+            <Icon name="briefcase" className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">Workload by job</span>
+            <span className="tabular-nums text-subtle">{jobSummaries.length}</span>
+            <Icon
+              name="chevron-right"
+              className="h-3 w-3 shrink-0 transition-transform group-open/workload:rotate-90"
+              aria-hidden="true"
+            />
+          </summary>
+          <div
+            data-testid="job-summaries"
+            className="absolute left-0 top-[calc(100%+8px)] z-30 flex max-w-[min(92vw,760px)] gap-2.5 overflow-x-auto rounded-2xl border border-line-mid bg-overlay p-2.5 elev-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            role="group"
+            aria-label="Workload by job"
+          >
+            {jobSummaries.map((summary) => (
+              <div
+                key={summary.jobKey}
+                data-testid="job-summary"
+                className="surface-raised min-w-[196px] shrink-0 rounded-xl border border-line px-3 py-2.5 elev-2"
+              >
+                <p className="truncate text-[12px] font-semibold text-ink" title={summary.title}>
+                  {summary.title}
+                </p>
+                {/*
+                  Two facts, ranked: how much is here, and how much of it is
+                  yours. "Needs you" is the actionable half, so it carries the
+                  weight and the attention hue; the total stays quiet.
+                */}
+                <p className="mt-1 flex items-baseline gap-1.5 text-[11px]">
+                  <span className="tabular-nums text-muted">{summary.activeCount} active</span>
+                  {summary.outstandingCount > 0 ? (
+                    <>
+                      <span aria-hidden="true" className="text-disabled">·</span>
+                      <span className="font-semibold tabular-nums text-state-interview">
+                        {summary.outstandingCount} need you
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {summary.counts.map((entry) => (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      data-testid={`job-summary-count-${entry.key}`}
+                      onClick={() => {
+                        if (entry.target.kind === "queue") {
+                          setActiveQueue(entry.target.queue as typeof activeQueue);
+                        } else if (entry.target.kind === "starred") {
+                          setActiveQueue("starred");
+                        } else {
+                          // A stage is a Pipeline question; take the user there
+                          // with the stage focused rather than approximating it
+                          // with an inbox filter that means something else.
+                          setActiveQueue(null);
+                          onPipelineStageChange?.(entry.target.stage);
+                          setView("pipeline");
+                        }
+                      }}
+                      className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-wash px-1.5 text-[10.5px] font-medium text-secondary transition-colors hover:bg-wash-strong hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                    >
+                      {entry.label}
+                      <span className="tabular-nums text-subtle">{entry.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+      {/* At-a-glance board readout: total · new arrivals · furthest active stage. */}
+      {pipelineSummary ? (
+        <p
+          data-testid="pipeline-summary"
+          className="hidden min-w-0 shrink truncate text-[11px] font-medium text-subtle lg:block"
+        >
+          {pipelineSummary}
+        </p>
+      ) : null}
+    </>
+  );
+
   return (
     // One stable shell for both views: the controls stay in the same top-left
     // location, and the Inbox conversation header aligns with that workspace row.
     <div className={`relative flex w-full flex-col ${WORKSPACE_HEIGHT_CLASSES}`} data-testid="applications-workspace">
       {view === "pipeline" ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <WorkspaceControls
+          <ApplicationsWorkspaceNavigation
             mode={mode}
             modeOptions={modeOptions}
             onModeChange={onModeChange}
@@ -4044,53 +4205,6 @@ export default function ApplicationsWorkspace({
             onViewChange={setView}
             ready={controlsReady}
           />
-          <div className="shrink-0 border-b border-line px-4 sm:px-6">
-            <div className="flex items-end gap-5">
-              {(
-                [
-                  { key: "received", label: directionLabels.received, count: filterCounts.received },
-                  { key: "sent", label: directionLabels.sent, count: filterCounts.sent },
-                ] as const
-              ).map((option) => {
-                const isActive = pipelineDirection === option.key;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    data-testid={`pipeline-direction-${option.key}`}
-                    aria-pressed={isActive}
-                    onClick={() => setPipelineDirection(option.key)}
-                    className={[
-                      "group/direction relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-0.5 text-[13px] font-semibold transition-colors",
-                      isActive ? "text-white" : "text-muted hover:text-white/80",
-                    ].join(" ")}
-                  >
-                    {option.label}
-                    {option.count > 0 ? (
-                      <span className={`ml-1.5 text-[11px] font-medium ${isActive ? "text-white/55" : "text-subtle"}`}>
-                        {option.count}
-                      </span>
-                    ) : null}
-                    <span
-                      className={[
-                        "absolute inset-x-0 bottom-0 h-[2px] rounded-full transition-colors",
-                        isActive ? "bg-white" : "bg-white/0 group-hover/direction:bg-white/20",
-                      ].join(" ")}
-                    />
-                  </button>
-                );
-              })}
-              {/* At-a-glance board readout: total · new arrivals · furthest active stage. */}
-              {pipelineSummary ? (
-                <p
-                  data-testid="pipeline-summary"
-                  className="ml-auto hidden min-w-0 self-center truncate pl-3 text-[11px] font-medium text-subtle md:block"
-                >
-                  {pipelineSummary}
-                </p>
-              ) : null}
-            </div>
-          </div>
           {actionError ? (
             <p className="mx-4 mt-3 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2.5 text-xs text-amber-100 sm:mx-6">
               {actionError}
@@ -4106,82 +4220,13 @@ export default function ApplicationsWorkspace({
               {actionFeedback}
             </p>
           ) : null}
-          {/*
-            Workload by job. The Pipeline is the surveying lens in this product,
-            and a per-job breakdown is a survey — putting it above the Inbox list
-            stacked a fourth bar over the conversations people came to read.
-            Shown only when there is more than one job; with a single role it is
-            the board with a heading on it.
-          */}
-            {shouldShowJobSummaries(jobSummaries) ? (
-              <div
-                data-testid="job-summaries"
-                className="bg-shell flex shrink-0 gap-2.5 overflow-x-auto border-b border-line px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                role="group"
-                aria-label="Workload by job"
-              >
-                {jobSummaries.map((summary) => (
-                  <div
-                    key={summary.jobKey}
-                    data-testid="job-summary"
-                    className="surface-raised min-w-[196px] shrink-0 rounded-xl border border-line px-3 py-2.5 elev-2"
-                  >
-                    <p className="truncate text-[12px] font-semibold text-ink" title={summary.title}>
-                      {summary.title}
-                    </p>
-                    {/*
-                      Two facts, ranked: how much is here, and how much of it is
-                      yours. "Needs you" is the actionable half, so it carries
-                      the weight and the attention hue; the total stays quiet.
-                    */}
-                    <p className="mt-1 flex items-baseline gap-1.5 text-[11px]">
-                      <span className="tabular-nums text-muted">{summary.activeCount} active</span>
-                      {summary.outstandingCount > 0 ? (
-                        <>
-                          <span aria-hidden="true" className="text-disabled">·</span>
-                          <span className="font-semibold tabular-nums text-state-interview">
-                            {summary.outstandingCount} need you
-                          </span>
-                        </>
-                      ) : null}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {summary.counts.map((entry) => (
-                        <button
-                          key={entry.key}
-                          type="button"
-                          data-testid={`job-summary-count-${entry.key}`}
-                          onClick={() => {
-                            if (entry.target.kind === "queue") {
-                              setActiveQueue(entry.target.queue as typeof activeQueue);
-                            } else if (entry.target.kind === "starred") {
-                              setActiveQueue("starred");
-                            } else {
-                              // A stage is a Pipeline question; take the user there
-                              // with the stage focused rather than approximating it
-                              // with an inbox filter that means something else.
-                              setActiveQueue(null);
-                              onPipelineStageChange?.(entry.target.stage);
-                              setView("pipeline");
-                            }
-                          }}
-                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-wash px-1.5 text-[10.5px] font-medium text-secondary transition-colors hover:bg-wash-strong hover:text-ink"
-                        >
-                          {entry.label}
-                          <span className="tabular-nums text-subtle">{entry.count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           <div className="min-h-0 flex-1">
             <PipelineBoard
               key={`${mode}-${pipelineDirection}`}
               items={pipelineItems}
               kind={pipelineKind}
               direction={pipelineDirection}
+              scopeLeading={pipelineScopeLeading}
               unreadByThread={unreadByThread}
               initialStage={pipelineStage}
               onStageFocusChange={onPipelineStageChange}
@@ -4231,7 +4276,7 @@ export default function ApplicationsWorkspace({
             mobileDetailOpen ? "hidden lg:flex" : "block",
           ].join(" ")}
         >
-          <WorkspaceControls
+          <ApplicationsWorkspaceNavigation
             mode={mode}
             modeOptions={modeOptions}
             onModeChange={onModeChange}
@@ -4239,65 +4284,72 @@ export default function ApplicationsWorkspace({
             onViewChange={setView}
             ready={controlsReady}
           />
-          <FilterBar mode={mode} filter={filter} counts={filterCounts} onSelect={selectFilter} />
           {/*
-            Queues are recommendations, so they sit *under* the ownership
-            filters rather than replacing them, and only appear when they
-            actually contain work — an empty queue advertising nothing would be
-            worse than no queue at all. Horizontally scrollable so a narrow
-            screen never wraps into a wall of tabs.
+            Layer 3. Ownership tabs and the queue disclosure share this row;
+            when there is no queue to offer, the row's trailing slot carries a
+            readout instead — the unread total, or the caught-up line. Both used
+            to be bars of their own, which spent two navigation levels on text
+            nobody can click.
           */}
-          {/*
-            One reminder at a time, and only when something has genuinely been
-            sitting. It is a route, not a nag: activating it filters the list to
-            exactly what it counted. There is no dismiss — the line disappears
-            when the work does, which is the only honest way to close it.
-          */}
-          {reminder ? (
-            <button
-              type="button"
-              data-testid="work-reminder"
-              data-reminder-key={reminder.key}
-              onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
-              className="group mx-3 mt-2.5 flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
-            >
-              <Icon
-                name="clock"
-                className="h-3.5 w-3.5 shrink-0 text-state-interview"
-                aria-hidden="true"
-              />
-              <span className="min-w-0 flex-1 leading-snug">{reminder.text}</span>
-              <span className="shrink-0 text-[11px] font-semibold text-muted transition-colors group-hover:text-ink">
-                Show
-              </span>
-            </button>
-          ) : null}
-          {flags.workState && queueChips.length > 0 ? (
-            <WorkQueueSelector
-              chips={queueChips}
-              activeQueue={activeQueue}
-              onSelect={(key) => setActiveQueue(key as typeof activeQueue)}
-            />
-          ) : null}
-          {flags.workState && queueChips.length === 0 && listItems.length > 0 && caughtUp ? (
-            <p
-              data-testid="all-caught-up"
-              className="shrink-0 border-b border-line px-4 py-2 text-[11.5px] text-white/65"
-            >
-              {caughtUp}
-            </p>
-          ) : null}
-          {totalUnreadCount > 0 ? (
-            <div
-              data-testid="inbox-unread-total"
-              className="flex items-center gap-1.5 px-4 pb-1.5 pt-0.5 text-[11px] text-muted"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-white/80" aria-hidden="true" />
-              {totalUnreadCount} unread message{totalUnreadCount === 1 ? "" : "s"}
-            </div>
-          ) : null}
+          <InteractionScopeControl
+            mode={mode}
+            filter={filter}
+            counts={filterCounts}
+            onSelect={selectFilter}
+            queueChips={flags.workState ? queueChips : []}
+            activeQueue={flags.workState ? activeQueue : null}
+            onQueueSelect={
+              flags.workState ? (key) => setActiveQueue(key as typeof activeQueue) : undefined
+            }
+            trailing={
+              totalUnreadCount > 0 ? (
+                <p
+                  data-testid="inbox-unread-total"
+                  className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-white/80" aria-hidden="true" />
+                  {totalUnreadCount} unread
+                </p>
+              ) : flags.workState && listItems.length > 0 && caughtUp ? (
+                <p data-testid="all-caught-up" className="shrink-0 truncate text-[11px] text-muted">
+                  {caughtUp}
+                </p>
+              ) : null
+            }
+          />
 
           <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {/*
+              One reminder at a time, and only when something has genuinely been
+              sitting. It is a route, not a nag: activating it filters the list
+              to exactly what it counted. There is no dismiss — the line
+              disappears when the work does, which is the only honest way to
+              close it.
+
+              It rides at the top of the list rather than in a bar above it: a
+              conditional nudge that shifts three navigation rows down whenever
+              it appears is a worse cost than one that scrolls with the work it
+              is pointing at.
+            */}
+            {reminder ? (
+              <button
+                type="button"
+                data-testid="work-reminder"
+                data-reminder-key={reminder.key}
+                onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
+                className="group mx-3 mt-2.5 flex w-[calc(100%-1.5rem)] shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
+              >
+                <Icon
+                  name="clock"
+                  className="h-3.5 w-3.5 shrink-0 text-state-interview"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1 leading-snug">{reminder.text}</span>
+                <span className="shrink-0 text-[11px] font-semibold text-muted transition-colors group-hover:text-ink">
+                  Show
+                </span>
+              </button>
+            ) : null}
             {listItems.length === 0 ? (
               <div
                 data-testid="inbox-empty-state"

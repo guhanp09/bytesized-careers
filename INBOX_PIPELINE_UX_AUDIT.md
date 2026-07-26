@@ -455,3 +455,234 @@ the previous block covered only animations, and shortening is not reducing.
 A Pipeline stage holding one card still leaves horizontal space in its band.
 That is a property of the vertical stage-section layout, not a styling defect;
 closing it would mean changing the view's architecture.
+
+---
+
+# Phase 2 — workspace navigation extraction and IA collapse
+
+## The problem
+
+Reaching a conversation meant descending five stacked control layers, four of
+which were permanent chrome:
+
+| # | Control | Concept | Where it lived |
+|---|---|---|---|
+| 0 | Global header + left rail | application navigation | `Header.tsx`, `Sidebar.tsx` |
+| 1 | `Talent | Recruiter` segmented | workspace identity | `WorkspaceControls` |
+| 2 | `Inbox | Pipeline` segmented | workspace view | `WorkspaceControls`, same bar |
+| 3 | `All / Applicants / Outreach / Archived` | ownership scope | `FilterBar` |
+| 4 | work reminder | route into a queue | inline |
+| 5 | queue chip rail | attention scope | inline |
+| — | caught-up line, unread total | readouts, not choices | inline |
+
+Two more sat on the Pipeline: an `Applicants | Outreach` bar, and a per-job
+workload strip, above the board's own scope row.
+
+Measured on the running product at 1440×900, recruiter Inbox: **94px of chrome
+across up to seven stacked rows** before the first conversation, and on mobile
+Pipeline at 390px, **252px across five rows**.
+
+Two separate problems compounded it.
+
+**Layers 1 and 2 were styled identically to the global search scope.** The
+header's `Jobs | Talent` control and the workspace's `Talent | Recruiter`
+control were both two-option segmented groups with the same inverted
+`bg-white text-black` active pill, sitting on screen at the same time. One
+narrows a search; the other changes which side of the marketplace you are
+operating as. Controls that look and behave the same teach the user they mean
+the same kind of thing.
+
+**Readouts were occupying navigation levels.** The caught-up line and the
+unread total were full-width bars the user cannot act on.
+
+## The final model
+
+Three layers, two bars.
+
+| Layer | Question | Control |
+|---|---|---|
+| 1 — identity | who am I acting as | `WorkspacePersonaControl` — a menu |
+| 2 — view | how am I looking at this | `WorkspaceViewSwitcher` — segmented |
+| 3 — scope | which subset is on screen | `InteractionScopeControl` |
+
+Layers 1 and 2 share the first bar. They are different questions, but both are
+answered once and rarely revisited, so a bar each spent permanent vertical
+space on decisions nobody makes twice in a session.
+
+Measured after: recruiter Inbox **94px across 2 bars**; mobile Pipeline
+**172px across 2 bars** (from 252px across 5).
+
+## Persona switching, made structurally different
+
+The persona control is now a **disclosure**, not a toggle:
+
+- reads `Working as Recruiter` with a chevron, so the current identity is
+  stated rather than inferred from which half is highlighted;
+- `aria-haspopup="menu"`, no `aria-pressed` — a disclosure has no pressed
+  state, which is what makes it not a filter;
+- each option carries a sentence naming what it contains ("People who applied
+  to your jobs, and talent you contacted"), which two bare words could not;
+- `role="menuitemradio"` with `aria-checked`, Escape closes and returns focus
+  to the trigger, Enter and Space both open it;
+- collapses to a plain label when the account has only one persona, rather than
+  rendering a disclosure that opens onto a single already-active option.
+
+The difference from search scope is structural, not chromatic — it survives a
+restyle. The view switcher also dropped the inverted white pill for a raised
+surface, so nothing in the workspace now mimics the search control.
+
+Search scope was left exactly where it was: inside the search field, as a
+search-domain choice. Persona and search scope remain independent state.
+
+## Scope: two axes, one row
+
+Ownership (All / Applicants / Outreach / Archived) and attention (work queues)
+**compose** — a queue narrows whichever ownership scope is selected. Collapsing
+them into a single list of options would have deleted a real capability, so
+they share a row instead: tabs on the left, queues as a trailing disclosure.
+
+The queue control is idle by default and shows only its icon and count; naming
+the offer cost 90px of a 390px rail and pushed `Archived` off the end of the
+tabs. Once a queue is on it names itself and grows a paired clear button, so
+returning to everything is one click and needs no menu — the rail it replaces
+made you find `All` among chips that scrolled.
+
+The Pipeline's direction and workload controls moved *into* the board's own
+scope row through a typed `scopeLeading` slot: the board decides where they
+sit, the workspace decides what they do.
+
+## What moved rather than went
+
+Nothing was deleted. Every capability is still reachable:
+
+| Was | Now |
+|---|---|
+| queue chip rail | trailing disclosure on the scope row, `queue-chip-*` ids intact |
+| work reminder bar | first item in the list, scrolling with the work it points at |
+| caught-up line | trailing readout on the scope row |
+| unread total bar | trailing readout on the scope row |
+| pipeline direction bar | leading control in the board's scope row |
+| per-job workload strip | `Workload by job` disclosure, counts still route to queues and stages |
+
+The reminder moved into the list on purpose: a conditional nudge that shifted
+three navigation rows down whenever it appeared cost more than one that scrolls.
+
+## Extracted components
+
+`components/you/WorkspaceNavigation.tsx` (622 lines) now owns the surface:
+`WorkspacePersonaControl`, `WorkspaceViewSwitcher`,
+`ApplicationsWorkspaceNavigation`, `WorkQueueSelector`,
+`InteractionScopeControl`, `SampleDataChip`, `filterOptionsFor`, and the four
+workspace types. `ApplicationsWorkspace.tsx` went **5,495 → 5,301 lines** and
+remains the coordinator: all state stays there, everything extracted is
+presentational.
+
+The extraction landed as its own commit with markup, class strings, test ids
+and ARIA identical, verified by diffing each moved block against its source.
+
+## Context preservation
+
+Verified in the browser and held by tests:
+
+- selecting a different ownership scope keeps the open conversation open;
+- switching queues keeps it open, across every queue in turn;
+- Inbox ↔ Pipeline round-trips and survives a reload;
+- `?view=`, `?mode=`, `?direction=`, `?stage=` and `?thread=` all still steer
+  the workspace, and a focused stage stays shareable in the URL;
+- persona switching still remounts the workspace deliberately — the two sides
+  carry different status vocabularies, so leaking a stage focus across them
+  would hide records.
+
+## Mobile
+
+The list stays the landing screen and the conversation opens as a deliberate
+detail with its own back control. Persona and view stay visible in the first
+bar; chrome is under 140px, tested.
+
+Below `md` the Pipeline's own three scope controls become one horizontally
+scrollable strip rather than wrapping into a stack — four independent controls
+cannot share a 297px row. The workspace-supplied controls stay outside that
+strip: they are what a mobile user reaches for first, and the workload
+disclosure opens a panel a scroll container would clip.
+
+## Known limitations
+
+- **Talent-mode scope tabs still truncate in the 390px list rail.**
+  "All / Hiring requests / Applications / Archived" needs ~410px; the rail
+  offers ~330px. The strip scrolls and now carries a fade so a clipped tab
+  reads as "more this way", and every tab remains clickable and keyboard
+  reachable — but `Archived` can start clipped. This is pre-existing (the old
+  `FilterBar` had the same `overflow-x-auto` with *larger* gaps and no fade)
+  and is improved rather than introduced here. Moving `Archived` out of the
+  tabs was rejected: it would change what `applications-filter-archived` is,
+  and archived is an ownership scope, not an attention refinement.
+- The persona menu has no roving arrow-key navigation between items; it relies
+  on Tab, which is correct but not the richest menu behaviour.
+
+## Defects the QA pass found and fixed
+
+Three, all caught in the browser or by tests rather than by reading the diff:
+
+1. **`Archived` was pushed off the end of the scope tabs.** The idle queue
+   control was spending 90px naming an offer. It now shows icon and count only
+   until a queue is on.
+2. **The view switcher teleported 763px when used.** Right-aligning it looked
+   tidier, but it pinned to its container's right edge — the 390px list rail in
+   the Inbox, the full workspace in the Pipeline — so the control moved the
+   moment you pressed it. Both controls are now left-aligned. An existing test
+   (`workspace controls stay fixed in place across Inbox and Pipeline`) caught
+   this, which is exactly what it was written for.
+3. **Mobile Pipeline stacked its scope controls three deep.** 252px of a 780px
+   viewport. Below `md` the board's own controls became one scrollable strip:
+   172px, two bars.
+
+## Test churn, and why
+
+Thirteen call sites drove the persona through
+`getByRole("button", { name: "Recruiter", exact: true })` — the old segmented
+control. That accessible name no longer exists, because the control is no
+longer a segmented button. Rather than patch each site, specs now go through
+`tests/e2e/workspacePersona.ts`, so the next change to this control costs one
+edit. `qa-personas.spec.ts` imports it aliased: that file already owns a
+`switchPersona` for QA *accounts*, which is a different concept from the
+workspace's Talent/Recruiter identity — a collision worth noticing, since the
+word is overloaded across this codebase.
+
+A fourth spec, `a confident recommendation is visually filled where a neutral
+one is not`, started failing when its file ran in order while passing alone.
+Phase 2 did not change the button it measures — the classes it renders with are
+`surface-primary text-black elev-2`, exactly right — but it changed render
+timing enough to expose two latent faults in the test:
+
+- it took whichever unread row came first, and the fixture's first unread row is
+  a **Hired** record. A terminal record has nothing left to recommend, so it
+  renders no primary action at all — the test was passing on ordering luck. It
+  now excludes terminal records explicitly, which is what its own comment always
+  claimed it was doing.
+- it captured a locator, then measured `getComputedStyle` a moment later. React
+  replaces that button whenever the recommendation is recomputed, and
+  `getComputedStyle` on a discarded node returns an empty declaration — which
+  reads as "the gradient is missing" when the gradient is on a newer element.
+  It now resolves and measures in a single `page.evaluate`.
+
+Worth recording because the failure mode is deceptive: an empty string from
+`getComputedStyle` looks like a styling regression and is actually a stale
+handle.
+
+The queue specs moved from asserting a chip rail to asserting a disclosure, and
+`the queue rail keeps a visible way back to everything` became
+`the queue control keeps a one-click way back to everything` — the same
+requirement against the control that now serves it.
+
+## Rejected alternatives
+
+- **One combined scope control.** Ownership and attention compose; a single
+  select would have made them mutually exclusive and removed a capability.
+- **Ownership scope as a `<select>` to free the row for queue chips.** Would
+  have added a click to the most frequent action in the workspace.
+- **Moving persona into the account menu.** Correct in principle, but this is a
+  dual-mode product where switching is frequent; burying it behind the avatar
+  would have made the common case slower. Naming it in place solves the
+  confusion without the cost.
+- **Colour-only differentiation of persona vs search scope.** Would not survive
+  a restyle and would fail anyone not perceiving the hue difference.

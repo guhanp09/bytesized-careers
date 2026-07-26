@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../Icons";
 import { InteractionTime } from "./InteractionTime";
@@ -101,6 +110,14 @@ type PipelineBoardProps = {
   initialStage?: string | null;
   /** Reports funnel focus changes so the page can keep the URL shareable. */
   onStageFocusChange?: (stage: string | null) => void;
+  /**
+   * Scope controls the workspace owns but that belong in this row — the
+   * Applicants/Outreach direction, and the per-job workload disclosure. The
+   * board decides where they sit; the workspace decides what they do. Without
+   * this they were a separate bar stacked above the board's own scope row,
+   * which is one navigation layer spent on adjacency.
+   */
+  scopeLeading?: ReactNode;
   /** Open the compact chat dock on this thread (also the card's primary click). */
   onMessage: (item: OwnerInteraction) => void;
   /** Move one or many items to a backend stage. Resolves when committed. */
@@ -421,6 +438,7 @@ export default function PipelineBoard({
   unreadByThread,
   initialStage = null,
   onStageFocusChange,
+  scopeLeading,
   onMessage,
   onMoveStage,
   workStateFor,
@@ -634,9 +652,27 @@ export default function PipelineBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="pipeline-board">
-      {/* Toolbar: funnel strip (stage chips w/ counts, also drop targets) + search + context filter */}
-      <div className="shrink-0 border-b border-line px-4 py-3 sm:px-6">
+      {/*
+        Layer 3 for the Pipeline, and the only control row above the board:
+        direction and workload (supplied by the workspace), then stage focus,
+        search, and per-job filtering. Every one of these answers "which records
+        am I looking at", so they belong on one row rather than three.
+      */}
+      <div className="shrink-0 border-b border-line px-4 py-2.5 sm:px-6" data-testid="pipeline-scope-row">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {scopeLeading}
+          {scopeLeading ? (
+            <span aria-hidden="true" className="hidden h-5 w-px shrink-0 bg-line md:block" />
+          ) : null}
+          {/*
+            Four independent scope controls cannot share a 297px row, so below
+            md the board's own three become one horizontally scrollable strip
+            rather than wrapping into a stack. The workspace-supplied controls
+            stay outside it: they are the ones a mobile user reaches for first,
+            and the workload disclosure opens a panel that a scroll container
+            would clip.
+          */}
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] md:overflow-visible [&::-webkit-scrollbar]:hidden">
           {/*
             One compact scope control, replacing a row that repeated every
             stage name and count immediately above the section headings that
@@ -651,9 +687,14 @@ export default function PipelineBoard({
             renders as a platform picker on mobile for free.
           */}
           <div className="flex min-w-0 items-center gap-2">
+            {/*
+              sr-only rather than hidden below sm: the select's accessible name
+              comes from this label, so removing it from the tree to save 60px
+              would leave the control announced as nothing at all.
+            */}
             <label
               htmlFor="pipeline-scope"
-              className="shrink-0 text-[11px] font-semibold text-muted"
+              className="shrink-0 text-[11px] font-semibold text-muted sr-only sm:not-sr-only"
             >
               Showing
             </label>
@@ -662,7 +703,7 @@ export default function PipelineBoard({
               data-testid="pipeline-scope"
               value={stageFilter ?? ""}
               onChange={(event) => setStageFilter(event.target.value || null)}
-              className="h-8 max-w-[200px] cursor-pointer rounded-lg border border-line bg-wash px-2 text-xs font-semibold text-default transition-colors focus:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              className="h-8 max-w-[148px] cursor-pointer rounded-lg border border-line bg-wash px-2 text-xs font-semibold text-default transition-colors focus:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:max-w-[200px]"
             >
               <option value="">All stages ({items.length})</option>
               {stages.map((stage) => (
@@ -683,7 +724,7 @@ export default function PipelineBoard({
             ) : null}
           </div>
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            <div className="relative w-40 sm:w-52">
+            <div className="relative w-32 sm:w-44 md:w-52">
               <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
               <input
                 value={search}
@@ -699,7 +740,7 @@ export default function PipelineBoard({
                 onChange={(event) => setContextFilter(event.target.value)}
                 data-testid="pipeline-context-filter"
                 aria-label={kind === "application" ? "Filter by job" : "Filter by listing"}
-                className="h-8 max-w-[200px] cursor-pointer truncate rounded-lg border border-line bg-wash px-2.5 text-xs font-medium text-white/70 transition-colors focus:border-line-strong focus:outline-none [&>option]:bg-[#111216]"
+                className="h-8 max-w-[132px] cursor-pointer truncate rounded-lg border border-line bg-wash px-2.5 text-xs font-medium text-white/70 transition-colors focus:border-line-strong focus:outline-none sm:max-w-[200px] [&>option]:bg-[#111216]"
               >
                 <option value="all">{kind === "application" && direction === "received" ? "All jobs" : "All contexts"}</option>
                 {contextOptions.map((option) => (
@@ -709,6 +750,7 @@ export default function PipelineBoard({
                 ))}
               </select>
             ) : null}
+          </div>
           </div>
         </div>
       </div>
