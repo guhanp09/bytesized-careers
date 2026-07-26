@@ -5,6 +5,7 @@ import type {
   BackendTalentListing,
 } from "./backendClient";
 import type { FirstMessageAnswers } from "./firstMessageRequirements";
+import type { PortfolioInput } from "./creatorProjection";
 import { formatTalentListingExperience, formatTalentRate } from "./talentListing.ts";
 import { displayPersonName, timelineEventLabel } from "./interactionLabels.ts";
 import { formatInteractionTime } from "./interactionTime.ts";
@@ -60,6 +61,45 @@ export type InteractionJobSnapshot = {
   experience?: string | null;
   tags: string[];
   listingStatus?: string | null;
+  /**
+   * Creator-specific facts, carried structurally rather than flattened.
+   *
+   * `budget` above is a display string, which is why the workspace could only
+   * ever render a generic job: an amount with no unit, no platform, no format,
+   * no niche and no turnaround. The canonical `Job` has all of it, so the
+   * snapshot now carries it through in the shape the projection expects.
+   *
+   * Every field is optional. A fixture or a manifest that supplies none of it
+   * renders exactly as it did before.
+   */
+  creator?: InteractionCreatorFacts | null;
+};
+
+/** Raw creator facts. Normalised for display by `lib/creatorProjection.ts`. */
+export type InteractionCreatorFacts = {
+  platforms?: string[] | null;
+  formats?: string[] | null;
+  niches?: string[] | null;
+  turnaround?: { value?: number | null; unit?: string | null; basis?: string | null } | null;
+  /** The structured commercial model, not a rendered string. */
+  compensation?: {
+    mode?: string | null;
+    minimum?: number | string | null;
+    maximum?: number | string | null;
+    currency?: string | null;
+    unit?: string | null;
+    customUnit?: string | null;
+    note?: string | null;
+    trialStatus?: string | null;
+    trialAmount?: number | string | null;
+    trialCurrency?: string | null;
+    trialBasis?: string | null;
+  } | null;
+  channelHandle?: string | null;
+  employerKind?: string | null;
+  subscribers?: number | null;
+  /** Free-form, e.g. "2 videos/week". Shown only when a record carries it. */
+  cadence?: string | null;
 };
 
 export type InteractionTalentSnapshot = {
@@ -152,6 +192,16 @@ export type OwnerInteraction = {
    * Absent/empty for legacy interactions, so the inbox stays backward compatible.
    */
   firstMessageAnswers?: FirstMessageAnswers | null;
+  /**
+   * Portfolio evidence shared with this interaction.
+   *
+   * Loose by design: an application's `relevant_portfolio` answer carries only
+   * `{ id, title, url }`, which is what a recruiter actually receives, while a
+   * profile item carries far more. Both normalise through
+   * `toCreatorPortfolio`, so the thin shape renders rather than showing an
+   * empty portfolio for every real application.
+   */
+  portfolio?: PortfolioInput[] | null;
   proposedTerms?: string | null;
   attachments?: Array<{ label: string; url?: string | null }>;
   response?: InteractionThreadMessage | null;
@@ -372,6 +422,35 @@ function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
     experience: job.experience || null,
     tags: job.tags || [],
     listingStatus: null,
+    // Carried through structurally. These are the canonical fields the job
+    // already has; nothing here is derived, defaulted or invented.
+    creator: {
+      platforms: job.platforms?.length ? job.platforms : job.platform ? [job.platform] : null,
+      formats: job.formatsHiredFor?.length ? job.formatsHiredFor : null,
+      niches: job.contentNiches?.length ? job.contentNiches : null,
+      turnaround: job.turnaroundValue
+        ? { value: job.turnaroundValue, unit: job.turnaroundUnit, basis: job.turnaroundBasis }
+        : null,
+      compensation: {
+        mode: job.compensationMode,
+        minimum: job.budgetAmount,
+        maximum: job.budgetMax,
+        currency: job.budgetCurrency,
+        unit: job.budgetUnit,
+        customUnit: job.budgetUnitCustom,
+        note: job.budgetNote,
+        // The legacy display string stays the fallback, so a job posted before
+        // the structured model still shows its rate.
+        trialStatus: job.trialStatus,
+        trialAmount: job.trialCompensationAmount,
+        trialCurrency: job.trialCompensationCurrency,
+        trialBasis: job.trialCompensationBasis,
+      },
+      channelHandle: job.channelProfileSlug || null,
+      employerKind: job.employerContextType || null,
+      subscribers: job.channel?.subscribers ?? null,
+      cadence: null,
+    },
   };
 }
 

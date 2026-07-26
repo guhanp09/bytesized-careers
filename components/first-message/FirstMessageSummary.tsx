@@ -10,6 +10,8 @@ import {
   summarizeAnswers,
 } from "../../lib/firstMessageRequirements";
 import type { BackendPortfolioItem } from "../../lib/backendClient";
+import { toCreatorPortfolioItem, type PortfolioInput } from "../../lib/creatorProjection";
+import { PortfolioPoster } from "../you/PortfolioPreview";
 import { SCREENING_ANSWERS_KEY } from "../../lib/jobApplication";
 import { applicationRequirementLabel } from "../../lib/jobPresentation";
 import { Icon } from "../Icons";
@@ -34,6 +36,18 @@ function youTubeId(url?: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A summary link as portfolio evidence.
+ *
+ * The generic icon square this replaces said "there is a link here". A poster
+ * says what the work is — and for a creator marketplace that is the difference
+ * between a list of URLs and a portfolio. Reuses the same converter the detail
+ * popover uses, so both read the item identically.
+ */
+function creatorItemFromSummaryLink(link: SummaryLink) {
+  return toCreatorPortfolioItem(portfolioItemFromSummaryLink(link) as PortfolioInput);
 }
 
 function portfolioItemFromSummaryLink(link: SummaryLink): BackendPortfolioItem {
@@ -102,12 +116,15 @@ function LinkCardSection({
   icon,
   noun,
   links,
+  showPosters = false,
   onOpen,
 }: {
   heading: string;
   icon: RequirementIcon;
   noun: string;
   links: SummaryLink[];
+  /** Portfolio evidence renders its artwork; other link kinds keep the icon. */
+  showPosters?: boolean;
   onOpen: (link: SummaryLink, target: HTMLElement, point: { x: number; y: number }) => void;
 }) {
   return (
@@ -129,9 +146,13 @@ function LinkCardSection({
           const tags = (link.tags ?? []).slice(0, 3);
           const inner = (
             <>
-              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-muted">
-                <Icon name={icon} className="h-4 w-4" />
-              </span>
+              {showPosters ? (
+                <PortfolioPoster item={creatorItemFromSummaryLink(link)} size="sm" className="mt-0.5" />
+              ) : (
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-muted">
+                  <Icon name={icon} className="h-4 w-4" />
+                </span>
+              )}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold text-white/90">{link.label}</span>
                 {subtitle ? <span className="block truncate text-[11px] text-subtle">{subtitle}</span> : null}
@@ -344,6 +365,7 @@ export default function FirstMessageSummary({
           icon="images"
           noun="item"
           links={portfolio.links}
+          showPosters
           onOpen={openLinkPopup}
         />
       ),

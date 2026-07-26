@@ -14,6 +14,9 @@ import {
 import { createPortal } from "react-dom";
 import { Icon } from "../Icons";
 import { InteractionTime } from "./InteractionTime";
+import { PortfolioStrip } from "./PortfolioPreview";
+import { CreatorFitSummary } from "./CreatorContext";
+import { portfolioFacets, portfolioForInteraction } from "../../lib/creatorProjection";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -878,6 +881,12 @@ export default function PipelineBoard({
                         const currentKey = backendStatusOf(item);
                         const profileHref = pipelineProfileHrefOf(item);
                         const facts = pipelineCardFacts(item);
+                        // Portfolio evidence, and what that body of work covers.
+                        // Derived from the items themselves rather than a profile
+                        // claim: three finance explainers is evidence, a niche
+                        // list is an assertion.
+                        const portfolio = portfolioForInteraction(item);
+                        const facets = portfolioFacets(portfolio);
                         const portfolioCount = pipelinePortfolioCountOf(item);
                         const snippet = pipelineSnippetOf(item);
                         const firstMessageLines = pipelineFirstMessageLines(item);
@@ -1002,7 +1011,24 @@ export default function PipelineBoard({
                               ) : null}
                             </div>
 
-                            {facts.length > 0 || portfolioCount > 0 ? (
+                            {/*
+                              Portfolio first: on a creator role this is the
+                              strongest qualification on the card, and it used
+                              to be a number. Capped at two so the person and
+                              the action stay ahead of it.
+                            */}
+                            {portfolio.length > 0 ? (
+                              <PortfolioStrip items={portfolio} max={3} compact />
+                            ) : null}
+                            {portfolio.length > 0 ? (
+                              <CreatorFitSummary
+                                platforms={facets.platforms}
+                                formats={facets.formats}
+                                niches={facets.niches}
+                              />
+                            ) : null}
+
+                            {facts.length > 0 || (portfolioCount > 0 && portfolio.length === 0) ? (
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted">
                                 {facts.map((fact, factIndex) => (
                                   <span
@@ -1021,7 +1047,7 @@ export default function PipelineBoard({
                                     <span className="truncate">{fact.text}</span>
                                   </span>
                                 ))}
-                                {portfolioCount > 0 ? (
+                                {portfolioCount > 0 && portfolio.length === 0 ? (
                                   <span className="inline-flex items-center gap-1">
                                     {facts.length > 0 ? (
                                       <span aria-hidden="true" className="mr-1 text-disabled">·</span>

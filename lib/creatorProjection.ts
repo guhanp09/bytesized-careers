@@ -67,6 +67,8 @@ export type PortfolioInput = {
   platform?: string | null;
   formats?: string[] | null;
   format?: string | null;
+  /** What the first-message answer calls a format, e.g. "Retention edit". */
+  type?: string | null;
   content_niches?: string[] | null;
   contentNiches?: string[] | null;
   niche?: string | null;
@@ -171,7 +173,7 @@ export function toCreatorPortfolioItem(input: PortfolioInput, index = 0): Creato
     url,
     duration: media === "video" || media === "audio" ? formatPortfolioDuration(input.duration) : null,
     platform: normalizePlatform(first(input.platform, firstOf(input.platforms))),
-    format: normalizeFormat(first(input.format, firstOf(input.formats))),
+    format: normalizeFormat(first(input.format, firstOf(input.formats), input.type)),
     niche: normalizeNiche(first(input.niche, firstOf(input.content_niches), firstOf(input.contentNiches))),
     role: first(input.role, input.role_name, input.user_role_in_project, input.subtitle),
   };
@@ -620,4 +622,136 @@ export function clientContextLines(context: CreatorClientContext, turnaround?: C
     .filter(Boolean)
     .join(" · ");
   return [first, second].filter((line) => line.length > 0);
+}
+
+/* --- one view for a whole interaction ------------------------------------- */
+
+export type CreatorView = {
+  portfolio: CreatorPortfolioItem[];
+  platforms: string[];
+  formats: string[];
+  niches: string[];
+  turnaround: CreatorTurnaround;
+  terms: CreatorCommercialTerms;
+  context: CreatorClientContext;
+  /** True when there is anything creator-specific worth rendering at all. */
+  hasEvidence: boolean;
+};
+
+/**
+ * Everything a creator-hiring surface needs, from one interaction.
+ *
+ * Takes a structural argument rather than `OwnerInteraction` so this module
+ * stays free of the workspace's types — Phase 4's manifests will call it with
+ * the same shape, and a component that renders a `CreatorView` never has to
+ * know which side produced it.
+ */
+export function creatorViewOf(input: {
+  portfolio?: readonly PortfolioInput[] | null;
+  job?: {
+    budget?: string | null;
+    channelName?: string | null;
+    creator?: {
+      platforms?: string[] | null;
+      formats?: string[] | null;
+      niches?: string[] | null;
+      turnaround?: { value?: number | null; unit?: string | null; basis?: string | null } | null;
+      compensation?: {
+        mode?: string | null;
+        minimum?: number | string | null;
+        maximum?: number | string | null;
+        currency?: string | null;
+        unit?: string | null;
+        customUnit?: string | null;
+        note?: string | null;
+        trialStatus?: string | null;
+        trialAmount?: number | string | null;
+        trialCurrency?: string | null;
+        trialBasis?: string | null;
+      } | null;
+      channelHandle?: string | null;
+      employerKind?: string | null;
+      subscribers?: number | null;
+      cadence?: string | null;
+    } | null;
+  } | null;
+}): CreatorView {
+  const facts = input.job?.creator ?? null;
+  const portfolio = toCreatorPortfolio(input.portfolio ?? null);
+  const platforms = normalizePlatforms(facts?.platforms);
+  const formats = normalizeFormats(facts?.formats);
+  const niches = normalizeNiches(facts?.niches);
+  const turnaround = normalizeTurnaround(facts?.turnaround ?? {});
+  const terms = describeCommercialTerms({
+    ...(facts?.compensation ?? {}),
+    // The pre-structured display string remains the fallback, so a job posted
+    // before the structured model still shows its rate rather than nothing.
+    legacyDisplay: input.job?.budget ?? null,
+  });
+  const context = describeClientContext({
+    handle: facts?.channelHandle ?? null,
+    channelName: input.job?.channelName ?? null,
+    employerKind: facts?.employerKind ?? null,
+    subscribers: facts?.subscribers ?? null,
+    cadence: facts?.cadence ?? null,
+    platforms,
+    formats,
+    niches,
+  });
+
+  return {
+    portfolio,
+    platforms,
+    formats,
+    niches,
+    turnaround,
+    terms,
+    context,
+    hasEvidence:
+      portfolio.length > 0 ||
+      platforms.length > 0 ||
+      formats.length > 0 ||
+      niches.length > 0 ||
+      turnaround.hours !== null,
+  };
+}
+
+/**
+ * Portfolio evidence for an interaction, from wherever it actually lives.
+ *
+ * A received application carries its portfolio inside the applicant's answers
+ * (`relevant_portfolio`) rather than on the record — that is the shape both the
+ * live backend and the fixture produce, because it is what the applicant
+ * literally submitted. An explicit `portfolio` field wins when present so a
+ * future richer source can supersede it without changing any call site.
+ */
+export function portfolioForInteraction(input: {
+  portfolio?: readonly PortfolioInput[] | null;
+  firstMessageAnswers?: Record<string, unknown> | null;
+}): CreatorPortfolioItem[] {
+  if (Array.isArray(input.portfolio) && input.portfolio.length > 0) {
+    return toCreatorPortfolio(input.portfolio);
+  }
+  const answered = input.firstMessageAnswers?.["relevant_portfolio"];
+  if (Array.isArray(answered)) return toCreatorPortfolio(answered as PortfolioInput[]);
+  return [];
+}
+
+/**
+ * What a body of work actually covers.
+ *
+ * Derived from the items themselves rather than from a profile claim: a
+ * recruiter looking at three finance explainers has evidence of a finance
+ * editor, which is a stronger statement than a self-declared niche list.
+ */
+export function portfolioFacets(items: readonly CreatorPortfolioItem[]): {
+  platforms: string[];
+  formats: string[];
+  niches: string[];
+} {
+  return {
+    platforms: dedupe(items.map((item) => item.platform)),
+    formats: dedupe(items.map((item) => item.format)),
+    niches: dedupe(items.map((item) => item.niche)),
+  };
 }

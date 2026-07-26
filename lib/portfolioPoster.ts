@@ -148,10 +148,17 @@ export function posterGradient(poster: PortfolioPoster): string {
   return `linear-gradient(135deg, ${poster.palette.from} 0%, ${poster.palette.to} 100%)`;
 }
 
-/** Icon name for the media cue, from the repo's own icon set. */
-export const MEDIA_ICONS: Record<CreatorMediaKind, string> = {
-  video: "circle-play",
+/**
+ * Icon name for the media cue, from the repo's own icon set.
+ *
+ * Literal types rather than `string`, so a typo is a compile error at the call
+ * site instead of an icon that silently renders nothing.
+ */
+export const MEDIA_ICONS = {
+  // Not `circle-play`. The tile opens the work in a new tab; it does not play
+  // anything in place, and a play triangle promises playback that never comes.
+  video: "video",
   image: "image",
   audio: "podcast",
   link: "external-link",
-};
+} as const satisfies Record<CreatorMediaKind, string>;

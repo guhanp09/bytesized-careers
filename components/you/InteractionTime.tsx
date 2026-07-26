@@ -160,6 +160,12 @@ export function AbsoluteTimeOnFocus({ value }: { value: TimeInput }) {
     <span
       aria-hidden="true"
       data-testid="absolute-time-on-focus"
+      // The absolute form is rendered in the reader's timezone, so the server's
+      // string and the browser's genuinely differ — which React reports as a
+      // hydration text mismatch (#418). Same reason `<InteractionTime>` above
+      // suppresses it: the client value is the correct one, and the one frame
+      // where they disagree is not a defect.
+      suppressHydrationWarning
       className="pointer-events-none absolute right-3 top-full z-20 mt-0.5 hidden whitespace-nowrap rounded-lg border border-line-mid bg-overlay px-2 py-1 text-[11px] text-default elev-2 group-focus-visible/time-owner:block"
     >
       {absolute}

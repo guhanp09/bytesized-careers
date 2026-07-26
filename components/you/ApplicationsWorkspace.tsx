@@ -119,6 +119,8 @@ import {
 import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
 import { AbsoluteTimeOnFocus, InteractionTime } from "./InteractionTime";
+import { ClientContextSummary, CommercialTerms } from "./CreatorContext";
+import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupThreadEntries } from "../../lib/systemEventGrouping";
 import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
@@ -3927,6 +3929,12 @@ export default function ApplicationsWorkspace({
     ? Boolean(selected.message) || (selected.attachments?.length ?? 0) > 0
     : false;
   const contextCard = selected ? contextCardFor(selected) : null;
+  /**
+   * The creator view of the open record: its portfolio evidence, and the
+   * structured commercial and client facts the job snapshot now carries.
+   * Rendered only where there is something real to show.
+   */
+  const creatorView = selected ? creatorViewOf({ job: selected.job }) : null;
   const showProposalInRail = Boolean(selected?.proposedTerms) && !hasOpeningMessage;
   const totalUnreadCount = liveMode ? totalUnread(unreadByThread) : 0;
   const openEngagementReview = async (engagement: BackendEngagementSummary) => {
@@ -5149,6 +5157,25 @@ export default function ApplicationsWorkspace({
               <aside className="border-t border-line lg:min-h-0 lg:overflow-y-auto lg:border-t-0">
                   <div className="space-y-3 px-4 py-6 sm:px-6 lg:px-5">
                     {contextCard}
+                    {/*
+                      No portfolio section here. The application's own summary
+                      already lists the work the applicant submitted, and adding
+                      a second copy in the rail would have made the same
+                      evidence appear twice on one screen. That surface now
+                      renders the posters instead.
+                    */}
+                    {creatorView && (creatorView.terms.disclosed || creatorView.context.audience) ? (
+                      <section className={`rounded-2xl ${SURFACE} p-4`} data-testid="creator-commercial">
+                        <p className={SECTION_LABEL_CLASSES}>The arrangement</p>
+                        <div className="mt-2 space-y-2.5">
+                          <CommercialTerms terms={creatorView.terms} size="md" />
+                          <ClientContextSummary
+                            context={creatorView.context}
+                            turnaround={creatorView.turnaround}
+                          />
+                        </div>
+                      </section>
+                    ) : null}
                     {showProposalInRail && selected.proposedTerms ? (
                       <section className={`rounded-2xl ${SURFACE} p-4`}>
                         <p className={SECTION_LABEL_CLASSES}>
