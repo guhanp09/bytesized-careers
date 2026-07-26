@@ -785,12 +785,18 @@ def _talent(builder: Builder) -> None:
                               condition="several applications to one recruiter",
                               action="Confirm each application stays a distinct row.")
 
-    # Inbound requests in every talent-facing outcome.
+    # Inbound requests in every talent-facing outcome, each from a *different*
+    # recruiter. One recruiter cannot hold six standing offers to the same
+    # person: the product enforces a single interest per recruiter per listing
+    # (`talent_interests.talent_listing_id, recruiter_user_id` is unique), so
+    # six from one account was data the schema refuses. Restoring it failed
+    # outright, which is the fixture being wrong rather than the constraint.
     for index, stage in enumerate(("new", "reviewing", "accepted", "declined", "withdrawn", "archived")):
         created = -(index + 1) * 3 * DAY
+        requester = recruiter_b if index == 0 else builder.recruiter(4 + index)
         rel = builder.relationship(
             key=f"talent:request:{index}",
-            kind="hiring_request", job=None, recruiter=recruiter_b, talent=me,
+            kind="hiring_request", job=None, recruiter=requester, talent=me,
             stage=stage, participant_stage=stage, created=created,
             messages=[("recruiter", created, pools.RECRUITER_OPENERS[index % len(pools.RECRUITER_OPENERS)])],
             unread=1 if stage == "new" else 0,

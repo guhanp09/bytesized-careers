@@ -23,8 +23,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from uuid import UUID
+
 from app.core.security import create_access_token
-from app.db.creator_scenarios.restore import restore_manifest
+from app.db.creator_scenarios.restore import load_manifest, restore_manifest
 from app.models import User
 from conftest import TestSessionLocal
 
@@ -40,9 +42,11 @@ DUMP_DIR = Path(
 #: consumers materialise offsets against the same instant.
 PARITY_ANCHOR_ISO = "2026-01-15T09:00:00+00:00"
 
-#: Scenarios worth dumping. `default` carries every hero journey; `edge` carries
-#: the identity, portfolio and conflict cases.
-PARITY_SCENARIOS = ("default", "edge")
+#: Scenarios worth dumping — every one that carries relationships. `empty` is
+#: excluded because it has none by definition, and the Node suite asserts on the
+#: rest. Dumping only two was how an earlier run reported parity for `default`
+#: across zero received applications.
+PARITY_SCENARIOS = ("default", "edge", "busy", "talent", "recruiter")
 
 
 def _token(user_id) -> str:
@@ -68,16 +72,38 @@ async def test_dump_backend_activity_for_parity(client: AsyncClient, scenario: s
 
     # Dump from both sides of the marketplace: direction-dependent mapping can
     # only be checked if each persona's own view is captured.
+    #
+    # Chosen from the relationships themselves rather than by scanning accounts
+    # in whatever order the table returns them. Scanning is what an earlier
+    # version did, and for `default` the first forty accounts with any activity
+    # were all applicants — so the suite compared zero received applications and
+    # reported parity. Taking the two sides explicitly, and interleaving them,
+    # means a bounded dump still holds both directions.
+    manifest = load_manifest(scenario)
+    relationships = manifest.get("relationships", [])
+    managers = list(dict.fromkeys(rel["recruiter_id"] for rel in relationships))
+    participants = list(dict.fromkeys(rel["talent_id"] for rel in relationships))
+    ordered_ids: list[str] = []
+    for index in range(max(len(managers), len(participants))):
+        if index < len(managers):
+            ordered_ids.append(managers[index])
+        if index < len(participants):
+            ordered_ids.append(participants[index])
+
     payloads: dict[str, object] = {"scenario": scenario, "anchor": PARITY_ANCHOR_ISO, "views": {}}
     async with TestSessionLocal() as session:
-        recruiters = (
-            await session.scalars(
-                select(User).where(User.email.like(f"{scenario}-%@scenario.invalid")).limit(400)
-            )
-        ).all()
+        by_id = {
+            str(user.id): user
+            for user in (
+                await session.scalars(
+                    select(User).where(User.id.in_([UUID(value) for value in ordered_ids]))
+                )
+            ).all()
+        }
+    accounts = [by_id[value] for value in ordered_ids if value in by_id]
 
     seen = 0
-    for user in recruiters:
+    for user in accounts:
         token = _token(user.id)
         response = await client.get(
             "/api/v1/me/activity/summary", headers={"Authorization": f"Bearer {token}"}
@@ -105,10 +131,20 @@ async def test_dump_backend_activity_for_parity(client: AsyncClient, scenario: s
         seen += 1
         # Wide enough to reach the personas holding indexed hero records; the
         # parity assertions are only as good as the accounts captured.
-        if seen >= 40:
+        if seen >= 60:
             break
 
     assert seen > 0, f"no {scenario} account returned any activity to compare"
+
+    # A dump that captured one side of the marketplace would let the Node suite
+    # pass while comparing nothing in the other direction. Assert the coverage
+    # here, where the failure names the cause, rather than letting it surface as
+    # a silently narrow comparison.
+    views = payloads["views"].values()
+    inbound = sum(len(v.get("received_applications", [])) + len(v.get("received_interests", [])) for v in views)
+    outbound = sum(len(v.get("sent_applications", [])) + len(v.get("sent_interests", [])) for v in views)
+    assert inbound > 0, f"{scenario} dump captured no received records"
+    assert outbound > 0, f"{scenario} dump captured no sent records"
     DUMP_DIR.mkdir(parents=True, exist_ok=True)
     (DUMP_DIR / f"{scenario}.json").write_text(
         json.dumps(payloads, indent=2, sort_keys=True), encoding="utf-8"

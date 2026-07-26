@@ -278,6 +278,10 @@ function applicationStatusToInteraction(
     case "reviewing":
       return "viewed";
     case "shortlisted":
+    // What the applicant's own read returns for a legacy shortlisted record.
+    // Without this branch the switch fell through and the record arrived with
+    // `status: undefined` — a row in the applicant's inbox showing no state.
+    case "under_consideration":
       return "shortlisted";
     case "interviewing":
       return "responded";
@@ -409,6 +413,19 @@ function isSupersededDecision(
   );
 }
 
+/**
+ * Listing status as a person would say it, not as the column stores it.
+ *
+ * Only states with a distinct meaning to someone reading their inbox appear
+ * here; anything else stays null rather than leaking a raw enum into the UI.
+ */
+const LISTING_STATUS_LABELS: Record<string, string> = {
+  published: "Open",
+  closed: "Closed",
+  paused: "Paused",
+  draft: "Draft",
+};
+
 function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
   return {
     jobId: String(job.id),
@@ -421,7 +438,11 @@ function jobSnapshotFromJob(job: Job): InteractionJobSnapshot {
     location: job.location || null,
     experience: job.experience || null,
     tags: job.tags || [],
-    listingStatus: null,
+    // Carried, not hardcoded null. A closed listing with applications still in
+    // it is a real state the workspace is meant to show — "this job is no longer
+    // open, and these people are still waiting" — and Backend mode could not
+    // distinguish it from an open one.
+    listingStatus: LISTING_STATUS_LABELS[String(job.status ?? "")] ?? null,
     // Carried through structurally. These are the canonical fields the job
     // already has; nothing here is derived, defaulted or invented.
     creator: {
@@ -463,7 +484,12 @@ const AVAILABILITY_LABELS: Record<BackendTalentListing["availability_status"], s
 function talentSnapshotFromListing(listing: BackendTalentListing): InteractionTalentSnapshot {
   return {
     profileSlug: listing.owner_username || null,
-    name: listing.owner_display_name || listing.owner_username || "Talent",
+    name: displayPersonName({
+      displayName: listing.owner_display_name,
+      username: listing.owner_username,
+      identity: listing.owner_user_id || listing.id,
+      role: "applicant",
+    }),
     avatarUrl: listing.owner_avatar_url || null,
     headline: listing.primary_role || listing.title,
     // Mirror the job card's metadata: rate → numeric experience → location/work mode.
@@ -509,6 +535,16 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
   for (const application of summary.sentApplications) {
     const job = relatedJobsById.get(String(application.job_id)) || null;
     const status = applicationStatusToInteraction(application.status, "sent");
+    // The same rule the received side already uses. A bare `|| "Recruiter"`
+    // gave every recruiter in the list one shared name, so an applicant with
+    // six applications out saw six identical rows and could not tell which was
+    // which — the exact defect Phase 1 fixed for "Applicant", still alive here.
+    const recruiterName = displayPersonName({
+      displayName: job?.channel?.name,
+      username: job?.channelProfileSlug,
+      identity: application.job_owner_user_id || application.id,
+      role: "recruiter",
+    });
     entries.push({
       sortKey: sortKeyOf(application.updated_at || application.created_at),
       item: {
@@ -522,7 +558,7 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
         participantBackendStatus: application.participant_status,
         archivedAt: application.archived_at,
         title: job?.title || "Job application",
-        counterpartyName: job?.channel?.name || "Recruiter",
+        counterpartyName: recruiterName,
         counterpartyUserId: application.job_owner_user_id || null,
         counterpartyAvatarUrl: job?.channel?.logoUrl || null,
         createdAt: application.created_at,
@@ -605,7 +641,12 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
 
   for (const interest of summary.sentInterests) {
     const listing = relatedListingsById.get(interest.talent_listing_id) || null;
-    const talentName = listing?.owner_display_name || listing?.owner_username || "Talent";
+    const talentName = displayPersonName({
+      displayName: listing?.owner_display_name,
+      username: listing?.owner_username,
+      identity: interest.owner_user_id || interest.id,
+      role: "applicant",
+    });
     const status = interestStatusToInteraction(interest.status, "sent");
     entries.push({
       sortKey: sortKeyOf(interest.updated_at || interest.created_at),
@@ -644,11 +685,12 @@ export function mapActivityToOwnerInteractions(summary: ActivitySummary): OwnerI
   for (const interest of summary.receivedInterests) {
     const listing = myListingsById.get(interest.talent_listing_id) || null;
     const relatedJob = interest.job_id ? relatedJobsById.get(String(interest.job_id)) || null : null;
-    const recruiterName =
-      interest.recruiter_display_name ||
-      interest.recruiter_username ||
-      relatedJob?.channel?.name ||
-      "Recruiter";
+    const recruiterName = displayPersonName({
+      displayName: interest.recruiter_display_name || relatedJob?.channel?.name,
+      username: interest.recruiter_username,
+      identity: interest.recruiter_user_id || interest.id,
+      role: "recruiter",
+    });
     const status = interestStatusToInteraction(interest.status, "received");
     entries.push({
       sortKey: sortKeyOf(interest.updated_at || interest.created_at),

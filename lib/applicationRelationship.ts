@@ -1,7 +1,16 @@
+/**
+ * The status an applicant reads on their *own* application.
+ *
+ * `under_consideration` belongs here because this type describes a sender-facing
+ * read, and the backend renames the legacy stored `shortlisted` on the way out.
+ * Omitting it meant `STATUS_LABELS[status]` returned undefined and the job-detail
+ * CTA showed a blank status for anyone holding a legacy record.
+ */
 export type JobApplicationRelationshipStatus =
   | "new"
   | "reviewing"
   | "shortlisted"
+  | "under_consideration"
   | "interviewing"
   | "hired"
   | "rejected"
@@ -17,7 +26,10 @@ const CLOSED_APPLICATION_STATUSES = new Set<JobApplicationRelationshipStatus>([
 const STATUS_LABELS: Record<JobApplicationRelationshipStatus, string> = {
   new: "Application submitted",
   reviewing: "Application under review",
-  shortlisted: "Application shortlisted",
+  // Both spellings of the same historical state read the same way to the
+  // person it happened to. "Shortlisted" is never shown as such.
+  shortlisted: "Under consideration",
+  under_consideration: "Under consideration",
   interviewing: "Interviewing",
   hired: "Hired",
   rejected: "Application not selected",

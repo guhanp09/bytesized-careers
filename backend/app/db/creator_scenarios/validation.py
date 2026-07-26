@@ -152,6 +152,27 @@ def validate(manifest: Manifest) -> None:
         if rel.snoozed_offset is not None and rel.archived:
             problems.append(f"relationship {rel.id} is both archived and snoozed")
 
+    # --- database constraints the fixture must also respect -----------------
+    #
+    # A manifest that cannot be restored is not a manifest. The product allows a
+    # recruiter one standing interest per talent listing
+    # (`talent_interests.talent_listing_id, recruiter_user_id` is unique), and a
+    # scenario once carried six from one recruiter to one person — which passed
+    # every check here and then failed at the INSERT. Checking it at generation
+    # time turns a stack trace into a sentence.
+    standing_interest: dict[tuple[str, str], int] = {}
+    for rel in manifest.relationships:
+        if rel.kind == "application":
+            continue
+        pair = (rel.talent_id, rel.recruiter_id)
+        standing_interest[pair] = standing_interest.get(pair, 0) + 1
+    for (talent_id, recruiter_id), count in sorted(standing_interest.items()):
+        if count > 1:
+            problems.append(
+                f"recruiter {recruiter_id} holds {count} hiring requests to talent {talent_id}; "
+                "the product permits one per listing and the restore will fail"
+            )
+
     # --- transient state ----------------------------------------------------
     for entry in manifest.client_state:
         if entry.relationship_id not in relationship_ids:

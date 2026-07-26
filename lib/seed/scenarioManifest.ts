@@ -84,6 +84,20 @@ export function checkManifestVersion(version: number): void {
   backend path calls.
 */
 
+/**
+ * What the sender is told, for the one stage whose stored name is not its
+ * outward name.
+ *
+ * Mirrors `_participant_facing_status` in the backend router. "Shortlisted" is
+ * no longer a stage anyone can enter, but applicants were genuinely told it, so
+ * the record keeps an honest outward label instead of being regressed. The
+ * adapter has to perform the same rename or Mock mode shows the raw stored
+ * value — an internal enum, on the one screen it must never appear.
+ */
+function participantFacingStage(stage: string): string {
+  return stage === "shortlisted" ? "under_consideration" : stage;
+}
+
 function creatorFactsFor(manifest: ScenarioManifest, jobId: string | undefined): {
   facts: InteractionCreatorFacts | null;
   title: string;
@@ -167,6 +181,8 @@ export function toOwnerInteraction(
 
   /*
     Whoever received a record manages it; whoever sent it is the participant.
+    (See `participantFacingStage` for the one stored value that is renamed on
+    the way out.)
 
     So the *sent* view must be driven by `participant_stage` — what this person
     was actually told — not by `stage`, which is the manager's private position.
@@ -175,7 +191,9 @@ export function toOwnerInteraction(
     The parity suite caught it on the rejected-after-hired conflict fixture.
   */
   const viewerStage =
-    direction === "sent" ? rel.participant_stage ?? rel.stage : rel.stage;
+    direction === "sent"
+      ? participantFacingStage(rel.participant_stage ?? rel.stage)
+      : rel.stage;
 
   const job = creatorFactsFor(manifest, rel.job_id ?? undefined);
   const messages = [...(rel.messages ?? [])].sort((a, b) => a.offset_seconds - b.offset_seconds);

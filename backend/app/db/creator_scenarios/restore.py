@@ -182,12 +182,23 @@ async def restore_manifest(
     await session.flush()
 
     # --- jobs ---------------------------------------------------------------
+    #
+    # A job carries its hiring identity, because that is what the other side of
+    # the marketplace sees. Without it an applicant reviewing their own sent
+    # application had no one to look at: the workspace fell back to the literal
+    # word "Recruiter" for every recruiter at once. The name is the owner's own
+    # display name — the same derivation the Mock consumer uses, and the same
+    # person the applicant already messaged, so nothing new is disclosed.
+    actor_by_id = {actor["id"]: actor for actor in actors}
     for job in jobs:
+        owner = actor_by_id.get(job["owner_id"], {})
         session.add(
             Job(
                 id=UUID(job["id"]),
                 posted_by_user_id=UUID(job["owner_id"]),
                 title=job["title"],
+                channel_name=owner.get("display_name"),
+                channel_profile_slug=owner.get("username"),
                 platforms=job.get("platforms", []),
                 formats_hired_for=job.get("formats", []),
                 content_niches=job.get("niches", []),
@@ -201,6 +212,8 @@ async def restore_manifest(
                 budget_unit=job.get("compensation_unit"),
                 location=job.get("location"),
                 work_mode=job.get("work_mode"),
+                experience_level=job.get("experience"),
+                tags=job.get("tags", []),
                 status="published" if job.get("status") != "closed" else "closed",
                 created_at=_instant(at, job.get("posted_offset", -86_400)),
             )

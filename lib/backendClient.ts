@@ -1,5 +1,8 @@
-import { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
-import { normalizeReferenceVideo } from "./referenceVideos";
+// `import type` and the explicit `.ts` are the repo's ESM convention: without
+// them this module cannot be loaded by `node --test`, which the parity suite
+// needs in order to reuse the real normalisation rather than reimplement it.
+import type { Job, JobCategory, ReferenceVideo, StartTimeframe } from "./types";
+import { normalizeReferenceVideo } from "./referenceVideos.ts";
 
 const START_VALUES: StartTimeframe[] = ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"];
 
@@ -1014,9 +1017,20 @@ export type BackendJobApplication = {
   portfolio_item_ids: string[];
   first_message_answers?: Record<string, unknown>;
   applicant_snapshot: Record<string, unknown>;
-  status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
+  /**
+   * `under_consideration` appears only on a *sender-facing* read: the backend
+   * translates the legacy stored `shortlisted` into it before serialising to
+   * the applicant (`_participant_facing_status`). It was missing from this union,
+   * so the display mapping had no branch for it and legacy records reached the
+   * workspace with no status at all.
+   */
+  status:
+    | "new" | "reviewing" | "shortlisted" | "under_consideration" | "interviewing"
+    | "hired" | "rejected" | "archived" | "withdrawn";
   status_version: number;
-  participant_status: "new" | "reviewing" | "shortlisted" | "interviewing" | "hired" | "rejected" | "archived" | "withdrawn";
+  participant_status:
+    | "new" | "reviewing" | "shortlisted" | "under_consideration" | "interviewing"
+    | "hired" | "rejected" | "archived" | "withdrawn";
   legacy_archive_resolution_required?: boolean;
   archived_at?: string | null;
   /** Job owner's private pipeline note. The backend blanks it on sender-facing reads. */
@@ -1475,7 +1489,16 @@ const formatBudget = ({
   return `${symbol}${amount.toLocaleString("en-US")}${normalizedUnit ? ` ${normalizedUnit}` : ""}`;
 };
 
-const toFrontendJob = (job: BackendJob): Job => {
+/**
+ * Exported for the Backend/Mock parity suite.
+ *
+ * Every activity-summary reader goes through this — `getActivitySummary` maps
+ * both `my_jobs` and `related_jobs` through it before the workspace ever sees
+ * them. A parity test that fed the raw snake_case payload straight to the mapper
+ * would be testing a path no user has, and would report the client's own
+ * normalisation as missing backend fields. It did exactly that.
+ */
+export const toFrontendJob = (job: BackendJob): Job => {
   const budgetAmount =
     asNumber(job.budget_amount) ??
     asNumber(job.budget_min);

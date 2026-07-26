@@ -79,6 +79,21 @@
       "username": "tal-t00208"
     },
     {
+      "channel_handle": "plateandpan",
+      "deactivated": false,
+      "display_name": "Plate & Pan",
+      "email": "talent-plateandpan@scenario.invalid",
+      "employer_kind": "studio",
+      "id": "27226a6b-9544-574b-94c6-8f2de3497b5d",
+      "location": "Indore, India",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 780000,
+      "upload_cadence": "4 videos/week",
+      "username": "tal-plateandpan"
+    },
+    {
       "avatar_url": "https://avatars.scenario.invalid/203.jpg",
       "deactivated": false,
       "display_name": "Leela Patel",
@@ -142,6 +157,21 @@
         "talent"
       ],
       "username": "tal-t00211"
+    },
+    {
+      "channel_handle": "casefiles",
+      "deactivated": false,
+      "display_name": "Case Files Weekly",
+      "email": "talent-casefiles@scenario.invalid",
+      "employer_kind": "creator",
+      "id": "4f2ecfde-800d-58d9-82cc-e16ac0add169",
+      "location": "London, UK",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 615000,
+      "upload_cadence": "1 video/week",
+      "username": "tal-casefiles"
     },
     {
       "channel_handle": "dailyfit",
@@ -288,6 +318,20 @@
       "username": "tal-t00206"
     },
     {
+      "channel_handle": "brightbrand",
+      "deactivated": false,
+      "display_name": "Bright Brand Co",
+      "email": "talent-brightbrand@scenario.invalid",
+      "employer_kind": "brand",
+      "id": "d0bac7e6-f441-5181-a60d-d42e2266d640",
+      "location": "Kathmandu, Nepal",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 8900,
+      "username": "tal-brightbrand"
+    },
+    {
       "avatar_url": "https://avatars.scenario.invalid/205.jpg",
       "deactivated": false,
       "display_name": "Fatima Rao",
@@ -299,6 +343,35 @@
         "talent"
       ],
       "username": "tal-t00205"
+    },
+    {
+      "channel_handle": "pixelforge",
+      "deactivated": false,
+      "display_name": "Pixelforge Studio",
+      "email": "talent-pixelforge@scenario.invalid",
+      "employer_kind": "production_house",
+      "id": "dd9aac68-c92b-52d1-8ecb-780379a69dea",
+      "location": "Guwahati, India",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 2400000,
+      "upload_cadence": "daily",
+      "username": "tal-pixelforge"
+    },
+    {
+      "channel_handle": "routeunknown",
+      "deactivated": false,
+      "display_name": "Route Unknown",
+      "email": "talent-routeunknown@scenario.invalid",
+      "employer_kind": "creator",
+      "id": "ddcf0119-7a6d-555c-802b-b7af72b45d09",
+      "location": "Kochi, India",
+      "sides": [
+        "recruiter"
+      ],
+      "subscribers": 31000,
+      "username": "tal-routeunknown"
     },
     {
       "deactivated": false,
@@ -2134,11 +2207,11 @@
           "kind": "text",
           "offset_seconds": -777600,
           "read": true,
-          "sender_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36"
+          "sender_id": "ddcf0119-7a6d-555c-802b-b7af72b45d09"
         }
       ],
       "participant_stage": "accepted",
-      "recruiter_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
+      "recruiter_id": "ddcf0119-7a6d-555c-802b-b7af72b45d09",
       "stage": "accepted",
       "starred": false,
       "talent_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
@@ -2419,11 +2492,11 @@
           "kind": "text",
           "offset_seconds": -1296000,
           "read": true,
-          "sender_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36"
+          "sender_id": "d0bac7e6-f441-5181-a60d-d42e2266d640"
         }
       ],
       "participant_stage": "withdrawn",
-      "recruiter_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
+      "recruiter_id": "d0bac7e6-f441-5181-a60d-d42e2266d640",
       "stage": "withdrawn",
       "starred": false,
       "talent_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
@@ -2444,11 +2517,11 @@
           "kind": "text",
           "offset_seconds": -1036800,
           "read": true,
-          "sender_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36"
+          "sender_id": "dd9aac68-c92b-52d1-8ecb-780379a69dea"
         }
       ],
       "participant_stage": "declined",
-      "recruiter_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
+      "recruiter_id": "dd9aac68-c92b-52d1-8ecb-780379a69dea",
       "stage": "declined",
       "starred": false,
       "talent_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
@@ -2469,11 +2542,11 @@
           "kind": "text",
           "offset_seconds": -1555200,
           "read": true,
-          "sender_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36"
+          "sender_id": "4f2ecfde-800d-58d9-82cc-e16ac0add169"
         }
       ],
       "participant_stage": "archived",
-      "recruiter_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
+      "recruiter_id": "4f2ecfde-800d-58d9-82cc-e16ac0add169",
       "stage": "archived",
       "starred": false,
       "talent_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
@@ -3110,11 +3183,11 @@
           "kind": "text",
           "offset_seconds": -518400,
           "read": true,
-          "sender_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36"
+          "sender_id": "27226a6b-9544-574b-94c6-8f2de3497b5d"
         }
       ],
       "participant_stage": "reviewing",
-      "recruiter_id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
+      "recruiter_id": "27226a6b-9544-574b-94c6-8f2de3497b5d",
       "stage": "reviewing",
       "starred": false,
       "talent_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
@@ -3316,7 +3389,7 @@
   "scenario": "talent",
   "seed": 5000,
   "stats": {
-    "actors": 25,
+    "actors": 30,
     "applications": 23,
     "client_state": 0,
     "conversations": 32,
