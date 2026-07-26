@@ -1123,3 +1123,113 @@ It is a timing assertion pretending to be a correctness assertion.
 - **The workspace e2e specs are not yet ported to the canonical corpus.** They
   were written against the retired nine-record fixture and assert its counts and
   names; Mock mode now serves 189 records. See the closure notes below.
+
+# Phase 5 closure — the E2E migration and the browser sweep
+
+## What the retired fixture had left behind
+
+Three workspace specs still described the hand-written nine-record fixture: its
+row counts (`toHaveCount(9)`), its people (`"Aarav Mehta"`), its ordering, and
+its particular jobs. Those assertions had stopped meaning anything the moment
+Mock mode began serving the canonical corpus — and worse, a failure reported that
+a name had moved rather than which behaviour had regressed.
+
+**The anchor strategy.** Records are addressed through the generated index:
+
+```ts
+const SUBJECT = anchor("recruiter", "stage new", { persona: "recruiter" });
+await card(page, SUBJECT).getByTestId("pipeline-stage-menu").click();
+```
+
+`tests/e2e/scenarioAnchors.ts` resolves a semantic condition to a deterministic
+UUID5 plus everything a spec needs — counterparty name and handle, job id and
+title, stage, portfolio and message counts — and throws with the scenario's
+actual indexed conditions when a condition is missing, so a coverage gap reads as
+a coverage gap rather than as a timeout. A new `data-record-id` on the list row
+and the pipeline card is what makes an id clickable.
+
+**Counts.** Only where a count is part of a scenario's contract — the
+214-applicant job, the 47, the one, the zero — or derived from the manifest at
+test time. Asserting a workspace's *total* row count against a generated corpus
+tests the generator's arithmetic, not the product.
+
+**Scenario choice is explicit per test**, so none inherits what ran before it:
+`recruiter` for the board and the IA tests (every stage populated, 42 records
+rather than `default`'s 189 for the same coverage), `talent` where an empty
+application stage is the point, `edge` for identity and failure cases, `empty`
+for the empty state, `busy` only for volume.
+
+## Defects the migration found
+
+| Defect | Consequence |
+| --- | --- |
+| The adapter emitted a `thread` array; `OwnerInteraction` has no such field and `buildConversation` reads `message`/`response`/`replies` | **Every generated conversation rendered as a single bubble.** The 44-message thread showed one |
+| `message` carried the *last* message rather than the opening | The end of a conversation appeared at the top of it |
+| The selection normaliser ran against an empty list and wrote the cleared value to storage | **Returning to /applications destroyed the remembered conversation** rather than restoring it |
+| Every applicant in `recruiter` attached a portfolio | The card anatomy *without* one — the layout the narrow-column overflow defect was found on — was rendered by no scenario |
+| No record anywhere answered the structured requirements without also writing a note | The "First message" affordance and the generated-opening-message rule were both untested |
+
+The first is invisible to parity by construction: the activity summary carries no
+messages, so message content is a documented parity exclusion. The third only
+appeared under parallel load — the same test passed three times in isolation —
+which is how a race presents, and it is reachable by any user whose rows arrive
+after mount.
+
+## Scenario isolation
+
+Three findings, all fixed at the right layer rather than with waits:
+
+- **The remembered view.** A route naming no `view` gets whichever the workspace
+  remembers. Correct behaviour; the sweep now accepts either shape rather than
+  assuming the inbox.
+- **The remount on data arrival.** Mock mode fetches its manifest after mount, so
+  a measurement split across two `evaluate` calls could see cards in the first
+  and an empty board in the second — reporting "no overflow" having looked at
+  nothing. The narrow-card measurement is now one atomic pass.
+- **SSR beside hydration.** A navigation or reload can briefly leave the
+  server-rendered markup next to the hydrated tree, so an unscoped `getByTestId`
+  resolves twice and fails strict mode on a page behaving correctly. Helpers and
+  assertions scope to `main`.
+
+## Six-scenario browser sweep
+
+All six scenarios, both personas, at 1440 / 1280 / 390 / 320px, plus 200% zoom,
+keyboard-only and reduced motion. **No product defects found.** Verified: no
+horizontal overflow anywhere; genuine empty-state copy that offers a next action
+rather than a blank pane; no raw enum on any screen; no payment-custody wording;
+no shared generic counterparty name; every indexed edge case present, openable
+and non-blank; no scenario leakage on switch; refresh preserves the scenario; an
+unknown seed errors by name and loads nothing.
+
+Two sweep findings turned out to be correct behaviour on inspection:
+
+- **Uncapped counts.** `329` and `112` are filter and queue *totals*, where
+  capping would hide how much work there is. The unread badge uses
+  `formatBadgeCount(count, cap = 9)` and does cap.
+- **217 elements with long transitions under `prefers-reduced-motion`.** Zero
+  animations — every one is disabled. The transitions are `color`,
+  `background-color`, `border-color`; colour is not motion.
+
+## `busy` volume and performance
+
+| Measurement | Result |
+| --- | --- |
+| Inbox rows rendered | 329 of 329 — all of them |
+| First content | 446 ms |
+| Inbox DOM nodes / heap | 7,064 / 22 MB |
+| Board visible | 1,428 ms, 329 cards, 23,123 nodes |
+| Board search | 466 ms → 12 cards |
+| 44-message thread | all 44 bubbles rendered |
+| Named jobs | 214, 47, 1 and one zero-applicant job all present |
+
+**There is no pagination and no virtualisation**: the board renders every card.
+Measured and acceptable at this volume; windowing is the fix if volume grows.
+This is a limitation, stated rather than discovered.
+
+## Final external-failure ledger
+
+| Suite | Result | Classification |
+| --- | --- | --- |
+| `npm run test:e2e` | 295 passed, 16 failed | None in the three workspace specs; none in a spec importing anything changed here. `settings`, `drafts`, `candidate-job-experience`, `talent-browse`, `admin-panel` pass in isolation → parallel-load flakes. `adaptive-profile-overview`, `beta-review-safety`, `smoke`, `import-job`, `mobile-overflow`, `phase3a-polish` fail in isolation too → pre-existing, unrelated workstreams |
+| `npm run test:e2e:qa` | 89 passed, 2 failed | Both settled: the import-job-publish QA failure, and the duplicate `job-apply-button` test id (a strict-mode violation, same signature as documented) |
+| `node --test tests/*.test.mjs` | 875 passed | The import-parser wall-clock benchmark passes or fails with load; its design flaw is recorded above |
