@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ApplicationsWorkspace from "../you/ApplicationsWorkspace";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
+import { resolveScenario, type ScenarioName } from "../../lib/seed/scenarioNames";
+import { toOwnerInteractions } from "../../lib/seed/scenarioManifest";
+import type { OwnerInteraction } from "../../lib/ownerInteractions";
 
 type ApplicationsViewMode = "talent" | "hiring";
 type WorkspaceView = "inbox" | "pipeline";
@@ -157,6 +160,61 @@ export default function ApplicationsPageClient({
   const demoRequested = searchParams.get("demo") === "1" || searchParams.get("mock") === "1";
   const [demoMode, setDemoMode] = useState(allowDemo && demoRequested);
 
+  /*
+    Scenario selection.
+
+    `?seed=` names one of the six generated manifests. In Mock mode it selects
+    the dataset immediately, because nothing is persisted and switching costs
+    nothing. In Backend mode it deliberately does *not* restore anything: a URL
+    that silently rewrote the database would make every shared link a
+    destructive action. There, the parameter only preselects which scenario the
+    existing confirmation-gated restore should be pointed at.
+
+    An unknown name is surfaced as an error rather than falling back to
+    `default`, so nobody spends an afternoon testing a dataset they did not ask
+    for.
+  */
+  const seedParam = searchParams.get("seed");
+  const resolvedScenario = resolveScenario({ query: seedParam });
+  const [scenarioInteractions, setScenarioInteractions] = useState<OwnerInteraction[] | null>(null);
+  const [scenarioError, setScenarioError] = useState<string | null>(resolvedScenario.error);
+
+  useEffect(() => {
+    setScenarioError(resolvedScenario.error);
+    // Only Mock mode reads a manifest. With a backend token the workspace shows
+    // real data, and quietly replacing it with seed rows would be worse than
+    // ignoring the parameter.
+    if (!allowDemo || !demoMode || resolvedScenario.error) {
+      setScenarioInteractions(null);
+      return;
+    }
+    let cancelled = false;
+    const scenario: ScenarioName = resolvedScenario.scenario;
+    (async () => {
+      try {
+        const response = await fetch(`/api/dev/scenario/${scenario}`, { cache: "no-store" });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error || `Scenario "${scenario}" could not be loaded.`);
+        }
+        const manifest = await response.json();
+        if (cancelled) return;
+        setScenarioInteractions([
+          ...toOwnerInteractions(manifest, { mode: "recruiter", anchorMode: "now" }),
+          ...toOwnerInteractions(manifest, { mode: "talent", anchorMode: "now" }),
+        ]);
+      } catch (error) {
+        if (!cancelled) {
+          setScenarioInteractions(null);
+          setScenarioError(error instanceof Error ? error.message : String(error));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowDemo, demoMode, resolvedScenario.scenario, resolvedScenario.error]);
+
   const toggleDemo = () => {
     const next = !demoMode;
     setDemoMode(next);
@@ -175,8 +233,25 @@ export default function ApplicationsPageClient({
   return (
     <div className="h-full min-h-0 w-full">
       <h1 className="sr-only">Applications</h1>
+      {scenarioError ? (
+        <p
+          data-testid="scenario-error"
+          role="alert"
+          className="mx-3 mt-3 rounded-xl border border-amber-200/30 bg-amber-200/10 px-4 py-2.5 text-xs text-amber-100"
+        >
+          {scenarioError}
+        </p>
+      ) : null}
       <ApplicationsWorkspace
-        key={`applications-${mode}-${demoMode ? "demo" : "live"}`}
+        /*
+          The scenario is part of the key, and so is whether its data has
+          arrived. The workspace seeds its item state once on mount, so a
+          manifest that resolves a moment later would otherwise never be shown —
+          every scenario would quietly render the same rows.
+        */
+        key={`applications-${mode}-${demoMode ? "demo" : "live"}-${resolvedScenario.scenario}-${
+          scenarioInteractions ? "seeded" : "pending"
+        }`}
         mode={mode}
         modeOptions={MODES}
         onModeChange={(next) => {
@@ -191,6 +266,7 @@ export default function ApplicationsPageClient({
         backendAccessToken={backendAccessToken}
         backendUserId={backendUserId}
         forceMock={demoMode}
+        interactions={scenarioInteractions ?? undefined}
         initialSelectedId={threadParam}
         view={view}
         onViewChange={setView}
