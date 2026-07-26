@@ -600,6 +600,17 @@
       "scenario": "edge"
     },
     {
+      "action_to_test": "Confirm the draft survives leaving and returning, and is never sent silently.",
+      "conversation_id": "80381813-07fd-5417-9809-238b71ecb5f0",
+      "expected_condition": "Unsent composer draft (client-only)",
+      "expected_stage": "reviewing",
+      "job_id": "a23b92d3-2ec9-56e2-8f32-5e80b5b35fab",
+      "persona": "recruiter",
+      "relationship_id": "4f962aa2-44b9-53ab-aadf-e7d7889770d8",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "edge"
+    },
+    {
       "action_to_test": "Check the name renders without breaking the card.",
       "conversation_id": "80381813-07fd-5417-9809-238b71ecb5f0",
       "expected_condition": "single-word display name",
@@ -754,6 +765,17 @@
       "scenario": "edge"
     },
     {
+      "action_to_test": "Confirm the failure is stated with a retry, not swallowed.",
+      "conversation_id": "b6f0df29-6561-5ae5-af14-84561c80d73e",
+      "expected_condition": "Send failure — message failed to send (client-only)",
+      "expected_stage": "reviewing",
+      "job_id": "a23b92d3-2ec9-56e2-8f32-5e80b5b35fab",
+      "persona": "recruiter",
+      "relationship_id": "bf00666f-af9a-58a7-8c90-235fd4bb3293",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "edge"
+    },
+    {
       "action_to_test": "Check the name renders without breaking the card.",
       "conversation_id": "b6f0df29-6561-5ae5-af14-84561c80d73e",
       "expected_condition": "very long name, tests truncation everywhere it appears",
@@ -772,6 +794,17 @@
       "job_id": "a23b92d3-2ec9-56e2-8f32-5e80b5b35fab",
       "persona": "recruiter",
       "relationship_id": "bff152e6-877d-5ef7-ab1e-ffab13eda857",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "edge"
+    },
+    {
+      "action_to_test": "Confirm the tile falls back to a poster rather than a broken image.",
+      "conversation_id": "82cdf866-4701-50c2-bc21-10b7d6f90a6d",
+      "expected_condition": "Broken thumbnail — image chosen to fail loading",
+      "expected_stage": "reviewing",
+      "job_id": "a23b92d3-2ec9-56e2-8f32-5e80b5b35fab",
+      "persona": "recruiter",
+      "relationship_id": "c2173f08-dbcb-5cdf-b67c-f030cf9746de",
       "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "edge"
     },

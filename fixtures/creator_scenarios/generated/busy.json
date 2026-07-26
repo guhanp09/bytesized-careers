@@ -5743,6 +5743,17 @@
       "scenario": "busy"
     },
     {
+      "action_to_test": "Confirm the star is private and changes no lifecycle state.",
+      "conversation_id": "580325c8-2e21-5c6c-ac91-e2460b506bee",
+      "expected_condition": "Starred — personal organisation, never visible to the counterparty",
+      "expected_stage": "new",
+      "job_id": "c4b27f53-0b18-5270-8d4f-6be3c4a8732e",
+      "persona": "recruiter",
+      "relationship_id": "a1e10694-7871-50d8-847c-820583b4f20d",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "busy"
+    },
+    {
       "action_to_test": "Confirm the board loads incrementally rather than rendering every applicant.",
       "conversation_id": "4dac22e1-bd69-53c6-a461-1574330c3e1f",
       "expected_condition": "Job carrying 214 applicants",
@@ -5828,6 +5839,17 @@
       "persona": "recruiter",
       "relationship_id": "e83240de-b211-52ca-ac65-82ae6e597c5c",
       "route": "/applications?view=pipeline&mode=recruiter",
+      "scenario": "busy"
+    },
+    {
+      "action_to_test": "Confirm snoozing changes no status and the record comes back.",
+      "conversation_id": "6d5d5c9c-3c4e-5529-8d0f-1644091e0c46",
+      "expected_condition": "Snoozed — hidden from the queue until it returns",
+      "expected_stage": "reviewing",
+      "job_id": "c4b27f53-0b18-5270-8d4f-6be3c4a8732e",
+      "persona": "recruiter",
+      "relationship_id": "ed90d676-aecd-5c93-a97c-5e52e3933496",
+      "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "busy"
     }
   ],

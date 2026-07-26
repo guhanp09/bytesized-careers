@@ -3382,6 +3382,17 @@
       "scenario": "default"
     },
     {
+      "action_to_test": "Confirm snoozing changes no status and the record comes back.",
+      "conversation_id": "259fbd0b-a04d-5092-aeae-130d3d8250ae",
+      "expected_condition": "Snoozed — hidden from the queue until it returns",
+      "expected_stage": "new",
+      "job_id": "8ffbc415-38c2-5621-91ed-46477c6f60c5",
+      "persona": "recruiter",
+      "relationship_id": "4d559846-8e21-53a0-aa16-98995ff38629",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
       "action_to_test": "Confirm the private legacy state reads as Reviewing and carries a Star.",
       "conversation_id": "72212421-4936-5609-a1cb-a62868ab93e5",
       "expected_condition": "Legacy Shortlisted · private · maps to Reviewing plus a private Star",
@@ -3486,6 +3497,17 @@
       "persona": "talent",
       "relationship_id": "dd894f9f-8b12-5c56-a49d-290e8ed6e2a7",
       "route": "/applications?view=inbox&mode=talent",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Confirm the star is private and changes no lifecycle state.",
+      "conversation_id": "cb59378b-746b-5be1-83c9-d616a5b4ff32",
+      "expected_condition": "Starred — personal organisation, never visible to the counterparty",
+      "expected_stage": "new",
+      "job_id": "a9ff3afd-74db-5209-ada4-514c0d387ebb",
+      "persona": "recruiter",
+      "relationship_id": "dfdf28dc-74bc-5ee9-a274-3c1718022198",
+      "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "default"
     },
     {

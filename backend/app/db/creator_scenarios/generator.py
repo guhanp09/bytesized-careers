@@ -477,6 +477,33 @@ def _bulk(
             unread=1 if index % 7 == 0 else 0,
             archived=stage == "archived",
         )
+        # Personal organisation is easy to generate and hard to find again, so
+        # the first starred and the first snoozed record in a scenario are
+        # indexed rather than left to be discovered by scrolling.
+        indexed = {entry.relationship_id for entry in builder.index}
+        if (
+            rel.starred
+            and rel.id not in indexed
+            and not any("Starred" in entry.expected_condition for entry in builder.index)
+        ):
+            builder.add_index(
+                rel, persona="recruiter", route="/applications?view=inbox&mode=recruiter",
+                condition="Starred — personal organisation, never visible to the counterparty",
+                action="Confirm the star is private and changes no lifecycle state.",
+            )
+        # One entry per record: a record that is both starred and snoozed is
+        # listed once, under whichever condition it reached first. Two rows for
+        # one id would make the index look like two examples and it is one.
+        if (
+            rel.snoozed_offset
+            and rel.id not in {entry.relationship_id for entry in builder.index}
+            and not any("Snoozed" in entry.expected_condition for entry in builder.index)
+        ):
+            builder.add_index(
+                rel, persona="recruiter", route="/applications?view=inbox&mode=recruiter",
+                condition="Snoozed — hidden from the queue until it returns",
+                action="Confirm snoozing changes no status and the record comes back.",
+            )
         if stage == "hired":
             # Salted: "hired" lands at a fixed position in the stage cycle, so
             # without this every job would produce the same payment state and
@@ -980,6 +1007,10 @@ def _retired_jobs(builder: Builder) -> None:
 def _client_states(builder: Builder) -> None:
     """Conditions that live in the browser, never in a table."""
 
+    # These land on records that often already carry an indexed identity case,
+    # and that is fine: a row can genuinely be both "RTL display name" and "send
+    # failed". The index lists both conditions against the one record rather
+    # than pretending they are two records.
     targets = [rel for rel in builder.relationships if rel.kind == "application"][:3]
     specs = (
         ("draft", "I was halfway through writing this when", "an unsent composer draft"),
@@ -995,6 +1026,24 @@ def _client_states(builder: Builder) -> None:
                 body=body,
                 note=note,
             )
+        )
+        # Indexed too. A transient condition nobody can find is a condition
+        # nobody tests: these are exactly the states a reader goes looking for
+        # and cannot discover by scanning stages.
+        builder.add_index(
+            rel,
+            persona="recruiter",
+            route="/applications?view=inbox&mode=recruiter",
+            condition={
+                "draft": "Unsent composer draft (client-only)",
+                "send_failed": "Send failure — message failed to send (client-only)",
+                "broken_image": "Broken thumbnail — image chosen to fail loading",
+            }[kind],
+            action={
+                "draft": "Confirm the draft survives leaving and returning, and is never sent silently.",
+                "send_failed": "Confirm the failure is stated with a retry, not swallowed.",
+                "broken_image": "Confirm the tile falls back to a poster rather than a broken image.",
+            }[kind],
         )
 
 
