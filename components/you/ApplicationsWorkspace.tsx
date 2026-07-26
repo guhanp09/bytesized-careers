@@ -1995,6 +1995,18 @@ export default function ApplicationsWorkspace({
   // always refer to the same record.
   useEffect(() => {
     if (loadState !== "ready" || !selectionReady) return;
+    /*
+      Nothing to normalise *to* while the list is empty — and clearing the
+      selection here does not merely lose it for this render: the persist effect
+      writes the cleared value straight back to storage, so a remembered
+      conversation is destroyed rather than restored.
+
+      Reachable whenever rows arrive after mount, which is every Mock load (the
+      manifest is fetched) and any slow real one. It surfaced as "leaving and
+      returning restores the open conversation" failing only under parallel
+      load, which is how a race presents.
+    */
+    if (visibleItems.length === 0) return;
     if (selectedId && visibleItems.some((item) => item.id === selectedId)) return;
     const nextId = visibleItems[0]?.id ?? null;
     if (nextId !== selectedId) setSelectedId(nextId);
