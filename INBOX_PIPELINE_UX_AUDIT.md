@@ -838,3 +838,288 @@ the other.
   provider's report part of the hiring lifecycle, and every transition rule
   would eventually consult it.
 - **Exact subscriber counts** — precision the platform cannot stand behind.
+
+# Phase 4 — one canonical, deterministic scenario corpus
+
+## The problem
+
+Two datasets described the same product. `lib/seed/ownerInteractionFixtures.ts`
+held nine hand-written interactions for Mock mode; the backend QA scenarios held
+their own rows. Neither knew about the other, so every state added to one was a
+state the other silently lacked, and a defect visible in Mock mode could be
+invisible in Backend mode — or the reverse. The nine records also could not
+cover what the product had become: a handful of stages, no payment plane, no
+volume, no identity edge cases.
+
+The requirement was not "a bigger fixture". It was **one generator**, producing
+**language-neutral manifests**, consumed by **two thin consumers**.
+
+## The architecture
+
+```
+backend/app/db/creator_scenarios/     ← the only generator
+  schema.py      dataclasses, canonical vocabularies, scenario_id()
+  pools.py       names, channels, roles, rates, turnarounds, copy, answer sets
+  heroes.py      17 hand-authored journeys
+  generator.py   builders for the six scenarios
+  validation.py  what a manifest must satisfy to be one
+  restore.py     the backend consumer
+        │
+        ▼
+fixtures/creator_scenarios/generated/*.json    ← six manifests, committed
+        │
+        ├──► backend: restore_manifest()  → the real tables, via the existing
+        │                                    confirmation-gated QA registry
+        └──► frontend: toOwnerInteractions() → the workspace, in Mock mode
+```
+
+**Determinism is structural rather than careful.** Identifiers are UUID5 keyed
+by *meaning* — `scenario_id("relationship", scenario, "hero:disputed-payment")`
+— not by position, so adding a record does not renumber the ones already there.
+That is what makes an id safe to write into documentation. Collections are
+emitted sorted, and `random.Random(seed)` is drawn from in a fixed order.
+`python -m app.db.creator_scenarios --check` proves regeneration is
+byte-identical.
+
+**Time is offsets, not timestamps.** A manifest stores `created_offset: -7776000`,
+never a date and never a preformatted label. Each consumer materialises
+`anchor + offset`: a fixed anchor for deterministic comparison, `now` for
+browsing, so a developer sees "4h ago" rather than a date from whenever the file
+was generated. This is also the only reason the files can stay byte-identical in
+git.
+
+**The manifests carry no display strings.** No "₹15,000 per month", no "2 days
+ago", no "Under consideration". Every one of those is produced by the same
+product function both paths already call — `formatTalentRate`,
+`formatInteractionTime`, `interactionStatusFromBackend`. A second formatter in
+the adapter is precisely the drift this phase exists to remove, and the one
+place a rate *unit* was tempting, the adapter went without it because
+`TalentListing` has no column for one.
+
+## Consumer responsibilities
+
+| | Backend consumer | Frontend consumer |
+| --- | --- | --- |
+| Entry point | `restore_manifest()` | `toOwnerInteractions()` |
+| Gate | Existing QA registry, `RESTORE <NAME>` confirmation | Dev-only server route, `isProductionRuntime()` |
+| Writes | Real tables, repeat-safe | Nothing — pure adaptation |
+| Time | `anchor + offset` as aware UTC | `anchor + offset` as ISO |
+| Exceptions | `DIRECT_INSERTIONS`, each documented | none |
+
+The backend consumer inserts some state directly rather than through services —
+a historical status, a message with its own timestamp — because services stamp
+"now" and refuse transitions that really happened. Each exception is listed in
+`DIRECT_INSERTIONS` with the reason, and a test fails if one is added without one.
+
+## Production-bundle exclusion
+
+Hiding the Mock toggle would not have achieved this: the JSON would still be in
+the download. The boundary is that manifests are read from disk by a server-only
+route handler using `node:fs`, so no component import can bundle them.
+`tests/scenarioBundleExclusion.test.mjs` asserts that property against the
+**actual build output** — seed sentinels absent from every client chunk, no chunk
+large enough to be an inlined manifest, nothing under `public/`, and the loader
+still using `node:fs` rather than importing JSON.
+
+## Scenario selection
+
+`?seed=` names a scenario. In Mock mode it selects the dataset immediately. In
+Backend mode it deliberately restores **nothing** — a URL that rewrote the
+database would make every shared link destructive; the parameter only preselects
+which scenario the confirmation-gated restore should point at. An unknown name
+is a stated error naming the known list, never a silent fall back to `default`,
+because an afternoon spent testing the wrong dataset is worse than being told
+you mistyped.
+
+## Volume and performance
+
+`busy` carries 329 records with a 214-applicant job. Measured: 117 ms to first
+card, ~22k DOM nodes, ~32 MB heap, 468 ms for a search across the board. Usable,
+and honest about its limit: **the board has no virtualisation.** Every card
+renders. At 214 applicants that is acceptable; at several thousand it would not
+be, and the fix is windowing rather than a smaller fixture.
+
+# Phase 5 — parity, retirement, and what parity found
+
+## Parity design
+
+The suite compares **the two code paths**, not two readings of one file:
+
+```
+manifest ──► restore_manifest() ──► real tables ──► /me/activity/summary
+                                                          │
+                                                    toFrontendJob()
+                                                          │
+                                          mapActivityToOwnerInteractions()
+                                                          │
+                                                          ▼
+                                                   OwnerInteraction
+                                                          ▲
+manifest ──────────────────────────────────────► toOwnerInteractions()
+```
+
+Records are keyed by **id *and* direction**, because one relationship is a
+different interaction to each side — comparing a recruiter's received view
+against the applicant's sent view of the same row proves nothing.
+
+The comparison is an **explicit semantic projection**, not a snapshot with keys
+deleted until it passes. It covers identity, display name and pseudonymous
+fallback, direction, kind, job context and listing status, canonical stage,
+participant-visible stage, private manager note, portfolio, platform, format,
+niche, turnaround, commercial terms, the talent and recruiter context cards, the
+structured first-message answers, and both timestamps.
+
+The backend payload is **scratch output**, gitignored. A committed copy would be
+exactly the second dataset this phase exists to remove, and it would go stale in
+silence.
+
+### Permitted exclusions
+
+Only two kinds, each documented individually in `tests/scenarioParity.test.mjs`:
+
+- **No user-facing meaning** — row insertion timestamps, `status_version`
+  optimistic-concurrency bookkeeping, environment-specific avatar and logo URLs,
+  the legacy preformatted `budget` string (the structured model is compared
+  field by field instead).
+- **Not carried by this endpoint** — conversation messages, and engagement and
+  payment state, both of which reach the workspace through the per-conversation
+  thread endpoint rather than the activity summary. Star and Snooze are
+  client-only in this phase and exist on neither path.
+
+## The harness was wrong before the product was
+
+Parity first reported 5/6, with edge records missing portfolios. The portfolios
+were there. **The suite was not looking where the product looks**, in two ways:
+
+1. It read `item.portfolio` instead of `portfolioForInteraction()`, which every
+   call site uses and which reads the `relevant_portfolio` answer.
+2. It fed raw snake_case jobs to the mapper, skipping the `toFrontendJob`
+   normalisation `getActivitySummary` always applies — so the client's own
+   camelCase conversion looked like missing backend fields.
+
+Two of the three "backend path gaps" recorded in the previous phase therefore
+**did not exist**. `formats_hired_for` and `content_niches` are in the payload;
+`first_message_answers` is exposed on sent applications. Both entries are kept
+in `BACKEND_PATH_GAPS`, labelled `NOT A GAP` with the real reason, rather than
+deleted — a parity suite that silently rewrites its own history is worth nothing.
+
+A third harness defect hid everything else: the dump walked accounts in table
+order, and for `default` the first forty with any activity were all applicants,
+so the suite compared **zero received applications** and called it parity. It
+now selects both sides from the relationships themselves, covers all five
+scenarios that have records, and asserts the coverage in the dump *and* in Node.
+
+## Defects parity found, once it was measuring the real path
+
+| # | Defect | Consequence |
+| --- | --- | --- |
+| 1 | Mock adapter read `stage` for the sent view | An applicant saw the recruiter's **private** "not proceeding" as their own status |
+| 2 | Sent applications fell back to the literal `"Recruiter"` | Every recruiter in an applicant's list shared one name — the Phase 1 "Applicant" defect, alive on the sent side |
+| 3 | `under_consideration` missing from the status union | A legacy shortlisted record reached the workspace with **`status: undefined`** — a row showing no state — and blanked the job-detail CTA |
+| 4 | `jobSnapshotFromJob` hardcoded `listingStatus: null` | Backend mode could not tell a closed listing from an open one |
+| 5 | Restore wrote no `relevant_portfolio`, no archive state, no hiring identity, no experience level, and a name-only applicant snapshot | Backend mode showed empty portfolios, unarchived archives, nameless recruiters and half-empty context cards |
+| 6 | Generator emitted a `0` base rate for revenue share | `JobRead` correctly refused it |
+| 7 | `talent` scenario gave one recruiter six standing offers to one person | The product's unique constraint refuses it; the restore failed at the INSERT |
+
+(1) is the most serious: a privacy leak, caught on the rejected-after-hired
+conflict fixture. (3) is the most quietly damaging: it had two separate
+symptoms in two files and the type union was wrong in a way that made the
+missing `switch` branch invisible.
+
+(7) is now impossible to reintroduce silently — `validation.py` rejects the
+shape at generation time, so a manifest that cannot be restored fails with a
+sentence instead of a stack trace.
+
+The sent-side counterparty identity fix is the only one of the three original
+"gaps" that was real. It is fixed in **two layers**: the mapper now uses
+`displayPersonName` at all four sites where a generic name could appear, so the
+fallback is a stable per-person handle (`@channel_4f2a`) rather than a shared
+word; and the restore populates each job's hiring identity from its owner, so
+the fallback is reached only when a name genuinely does not exist. Emails and
+raw identifiers are never exposed.
+
+## Retiring the hand-written fixture
+
+Retiring it honestly meant first noticing what it was still carrying that the
+generated corpus was not. Three surfaces would have quietly emptied:
+
+- **The talent and recruiter context cards.** The adapter emitted no snapshot at
+  all, so every hiring request would have rendered a card with a name and
+  nothing under it. Actors now carry rate, exact experience years and
+  availability; the restore writes them onto the listing; and the adapter builds
+  the card by calling the product's own `talentSnapshotFromListing`. A received
+  application deliberately gets the **thinner** snapshot the backend actually
+  stores — a Mock card richer than the real one sends people hunting for a bug
+  that is a generous fixture.
+- **Structured first-message answers.** The corpus answered only
+  `relevant_portfolio`. `Relationship.answers` existed in the schema but was
+  never populated and never read — dead. It is now generated, restored and
+  adapted end to end, so every key both contexts offer is exercised.
+- **The applicant snapshot**, which held a display name and nothing else.
+
+The three tests that policed the fixture's *source text* now assert the same
+properties about the canonical corpus. A test reading a file no code path loads
+proves nothing.
+
+Precedence is tested rather than described: explicit `?seed=` beats a stored
+preference beats `default`; an unknown name errors with the known list; a
+retired stored name degrades cleanly; and no query parameter can reach a
+restore.
+
+## The scenario index, and SCENARIOS.md
+
+Every manifest carries an index: the records worth looking at, with the route,
+persona, expected stage, condition and the action to test. Fifteen tests make it
+trustworthy — every entry resolves, every route names a real view and seed, and
+**the stage an entry claims is the stage the record is in**. An index that
+misdescribes a record is worse than none: it sends someone to check a state that
+is not there and they file a bug against it.
+
+Validating it exposed indexing gaps: sixteen snoozed records and a starred
+record were findable only by scrolling, and the three transient client-only
+conditions — unsent draft, failed send, broken thumbnail — were generated and
+then never indexed. A transient state nobody can find is a state nobody tests.
+
+`SCENARIOS.md` is **generated** by `scripts/generate-scenarios-doc.mjs`, not
+written. A hand-maintained record map over several hundred generated records is
+stale the first time anyone regenerates. `--check` fails on drift, and a test
+runs it.
+
+Two of these checks failed first on their own reason for existing: they flagged
+QA instructions reading "confirm the card does not claim funds are held" as
+payment-custody claims. Both now assert on claims rather than on keywords.
+
+## Accepted disagreement — Pipeline defect 11
+
+Recorded rather than silently dropped: the recommendation to collapse the
+Pipeline's stage vocabulary into the Inbox's display vocabulary was **not**
+adopted. They are different questions. The Inbox asks "whose turn is it", which
+is direction-dependent; the Pipeline asks "where is this in the process", which
+is not. Merging them would make the board's columns change meaning depending on
+which side you were viewing from.
+
+## The import-parser benchmark
+
+Classified as an external failure with a design flaw, not a regression: it
+measures wall-clock parse time on a shared machine with no warm-up and no
+statistical treatment, so it fails under parallel load and passes in isolation.
+It is a timing assertion pretending to be a correctness assertion.
+
+## Limitations and deferred work
+
+- **The Pipeline board does not virtualise.** Measured and accepted at `busy`
+  volume; windowing is the fix if volume grows.
+- **Star, Snooze and "No reply needed" are client-only** in this phase, so they
+  are neither restored nor compared. The durable per-user model is Phase B.
+- **Engagement and payment parity is asserted against the database** by the
+  restore tests, not through the activity summary, which does not carry them.
+- **SQLite drops timezone offsets.** The columns are `DateTime(timezone=True)`
+  and the restore writes aware UTC instants, but the disposable test database
+  returns naive strings; the parity harness reads them as UTC, which is what
+  they are. Worth confirming against PostgreSQL before relying on it in a
+  dev environment that renders times.
+- **No real payment processing** anywhere: no checkout, wallet, escrow, payout
+  or invoice, and no scenario claims funds are held.
+- **The workspace e2e specs are not yet ported to the canonical corpus.** They
+  were written against the retired nine-record fixture and assert its counts and
+  names; Mock mode now serves 189 records. See the closure notes below.
