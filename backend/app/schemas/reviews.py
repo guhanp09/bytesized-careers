@@ -59,6 +59,22 @@ class ReviewsByMode(BaseModel):
     hiring: ProfileReviewCollection = Field(default_factory=ProfileReviewCollection)
 
 
+#: Payment lifecycle, wholly separate from EngagementStatus and from the
+#: application lifecycle. Nothing transitions because of a value here.
+PaymentState = Literal[
+    "not_applicable",
+    "setup_pending",
+    "funding_pending",
+    "funded",
+    "work_in_progress",
+    "release_requested",
+    "released",
+    "disputed",
+    "refunded",
+    "expired",
+]
+
+
 class EngagementSummary(BaseModel):
     id: uuid.UUID
     source_type: EngagementSourceType
@@ -72,6 +88,12 @@ class EngagementSummary(BaseModel):
     review_window_ends_at: datetime | None = None
     available_actions: list[EngagementAction] = Field(default_factory=list)
     review_state: ReviewState = "not_eligible"
+    # Payment, reported separately from the engagement's own status. None means
+    # nothing has been asserted — which is every engagement today — and is not
+    # the same claim as "not_applicable".
+    payment_state: PaymentState | None = None
+    payment_state_updated_at: datetime | None = None
+    payment_note: str | None = None
 
 
 class StartResponseRequest(BaseModel):

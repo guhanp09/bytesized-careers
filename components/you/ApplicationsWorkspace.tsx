@@ -120,6 +120,7 @@ import { workspaceFlagsFromEnv } from "../../lib/workspaceFlags";
 import { intentsFor } from "../../lib/messageIntents";
 import { AbsoluteTimeOnFocus, InteractionTime } from "./InteractionTime";
 import { ClientContextSummary, CommercialTerms } from "./CreatorContext";
+import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupThreadEntries } from "../../lib/systemEventGrouping";
 import { MOCK_OWNER_INTERACTIONS } from "../../lib/seed/ownerInteractionFixtures";
@@ -5164,6 +5165,17 @@ export default function ApplicationsWorkspace({
                       evidence appear twice on one screen. That surface now
                       renders the posters instead.
                     */}
+                    {/*
+                      Payment sits in the rail beside the arrangement, not in
+                      the status column. It is a separate plane: no application
+                      stage reads it, and it renders nothing at all unless a
+                      record actually asserts a state.
+                    */}
+                    <PaymentStateCard
+                      state={selectedEngagement?.payment_state}
+                      updatedAt={selectedEngagement?.payment_state_updated_at}
+                      note={selectedEngagement?.payment_note}
+                    />
                     {creatorView && (creatorView.terms.disclosed || creatorView.context.audience) ? (
                       <section className={`rounded-2xl ${SURFACE} p-4`} data-testid="creator-commercial">
                         <p className={SECTION_LABEL_CLASSES}>The arrangement</p>

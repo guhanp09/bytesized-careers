@@ -1205,7 +1205,28 @@ export type BackendEngagementSummary = {
   review_window_ends_at?: string | null;
   available_actions: BackendEngagementAction[];
   review_state: BackendReviewState;
+  /**
+   * Payment, reported separately from `status`. Absent or null means nothing
+   * has been asserted — which is not the same claim as "not_applicable" — and
+   * nothing in the application lifecycle reads this.
+   */
+  payment_state?: BackendPaymentState | null;
+  payment_state_updated_at?: string | null;
+  payment_note?: string | null;
 };
+
+/** Bounded payment vocabulary. Wholly separate from any lifecycle status. */
+export type BackendPaymentState =
+  | "not_applicable"
+  | "setup_pending"
+  | "funding_pending"
+  | "funded"
+  | "work_in_progress"
+  | "release_requested"
+  | "released"
+  | "disputed"
+  | "refunded"
+  | "expired";
 
 export type BackendMyReview = {
   id: string;

@@ -48,6 +48,16 @@ class Engagement(Base):
             "recruiter_user_id IS NULL OR talent_user_id IS NULL OR recruiter_user_id <> talent_user_id",
             name="ck_engagement_distinct_participants",
         ),
+        # Payment state is bounded, but NULL is always allowed: it is the state
+        # of every engagement that predates this column and of every engagement
+        # that never involves a platform payment at all.
+        CheckConstraint(
+            "payment_state IS NULL OR payment_state IN ("
+            "'not_applicable', 'setup_pending', 'funding_pending', 'funded', "
+            "'work_in_progress', 'release_requested', 'released', 'disputed', "
+            "'refunded', 'expired')",
+            name="ck_engagement_payment_state",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -103,6 +113,25 @@ class Engagement(Base):
 
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     review_window_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    # --- payment: a separate plane, deliberately ---------------------------
+    #
+    # Payment lives on the engagement rather than the application because it is
+    # a property of the *work*, not of the hiring decision. Nothing in the
+    # application lifecycle reads it, no transition rule consults it, and no
+    # stage becomes reachable or unreachable because of it. It records what a
+    # payment provider reported; it does not decide anything.
+    #
+    # Nullable with no default, so every existing row keeps meaning exactly what
+    # it meant before this column existed: nothing has been asserted about
+    # payment. There is no payment processing behind this — no checkout, no
+    # escrow, no payout — and the UI must never imply otherwise.
+    payment_state: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    payment_state_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: Free-text detail from the provider or an operator, shown to participants.
+    payment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

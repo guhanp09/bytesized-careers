@@ -662,6 +662,11 @@ async def engagement_summary(
     )
     return EngagementSummary(
         id=engagement.id,
+        # Payment is passed through untouched: it is read from the record, never
+        # derived from the engagement's status, and never used to decide one.
+        payment_state=engagement.payment_state,
+        payment_state_updated_at=engagement.payment_state_updated_at,
+        payment_note=engagement.payment_note,
         source_type=engagement.source_type,
         source_record_id=engagement.source_record_id,
         status=engagement.status,
