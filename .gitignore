@@ -51,3 +51,6 @@ backend/*.db-journal
 next-env.d.ts
 test-results/
 test_creatorjobs_backend.db
+
+# Scratch parity dumps — derived output, never committed.
+.parity-dumps/

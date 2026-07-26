@@ -140,7 +140,10 @@ class Builder:
             turnaround_unit=tunit,
             turnaround_basis=basis,
             compensation_mode="range" if high else "fixed",
-            compensation_min=float(low),
+            # A revenue share has no base amount, and the serializer rightly
+            # refuses a zero one. Emitting 0 was the generator claiming a rate
+            # of nothing rather than no rate at all.
+            compensation_min=float(low) if low else None,
             compensation_max=float(high) if high else None,
             compensation_currency=currency,
             compensation_unit=unit,

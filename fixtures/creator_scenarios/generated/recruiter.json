@@ -1038,7 +1038,6 @@
     },
     {
       "compensation_currency": "INR",
-      "compensation_min": 0.0,
       "compensation_mode": "fixed",
       "compensation_unit": "commission",
       "experience": "1–3 years",

@@ -241,6 +241,33 @@ async def restore_manifest(
         )
     await session.flush()
 
+    # Portfolio, indexed so a relationship can carry the *answer* the product
+    # reads — `relevant_portfolio` — and not only the ids. Phase 3's portfolio
+    # surface reads the answer, so storing ids alone left the backend path
+    # showing an empty portfolio while Mock mode showed a full one.
+    portfolio_by_id = {item["id"]: item for item in payload.get("portfolio", [])}
+
+    def _portfolio_answer(rel: dict[str, Any]) -> list[dict[str, Any]]:
+        entries = []
+        for item_id in rel.get("portfolio_ids", []):
+            item = portfolio_by_id.get(item_id)
+            if not item:
+                continue
+            entries.append(
+                {
+                    "id": item["id"],
+                    "title": item["title"],
+                    "url": item.get("url"),
+                    "thumbnail_url": item.get("thumbnail_url"),
+                    "duration": item.get("duration_seconds"),
+                    "platform": item.get("platform"),
+                    "format": item.get("format"),
+                    "niche": item.get("niche"),
+                    "role": item.get("role"),
+                }
+            )
+        return entries
+
     counts = {"actors": len(actors), "jobs": len(jobs), "applications": 0, "hiring_requests": 0,
               "conversations": 0, "messages": 0, "engagements": 0}
 
@@ -263,7 +290,14 @@ async def restore_manifest(
                     job_owner_user_id=UUID(rel["recruiter_id"]),
                     cover_note=rel.get("cover_note"),
                     portfolio_item_ids=rel.get("portfolio_ids", []),
-                    applicant_snapshot={},
+                    first_message_answers={"relevant_portfolio": _portfolio_answer(rel)}
+                    if rel.get("portfolio_ids")
+                    else {},
+                    applicant_snapshot={
+                        "display_name": next(
+                            (a["display_name"] for a in actors if a["id"] == rel["talent_id"]), None
+                        )
+                    },
                     # Direct: see DIRECT_INSERTIONS["application.status"].
                     status=rel["stage"],
                     participant_status=rel.get("participant_stage") or rel["stage"],
@@ -306,6 +340,11 @@ async def restore_manifest(
                     job_id=UUID(rel["job_id"]) if rel.get("job_id") else None,
                     participant_a_user_id=UUID(rel["recruiter_id"]),
                     participant_b_user_id=UUID(rel["talent_id"]),
+                    # Archive is per participant. Writing only the record and
+                    # not this left an archived scenario looking unarchived on
+                    # the backend path.
+                    participant_a_archived_at=updated if rel.get("archived") else None,
+                    participant_b_archived_at=updated if rel.get("archived") else None,
                     created_at=created,
                     updated_at=updated,
                 )

@@ -165,6 +165,18 @@ export function toOwnerInteraction(
     rel.kind === "application" ? (asRecruiter ? "received" : "sent") : asRecruiter ? "sent" : "received";
   const counterparty = asRecruiter ? talent : recruiter;
 
+  /*
+    Whoever received a record manages it; whoever sent it is the participant.
+
+    So the *sent* view must be driven by `participant_stage` — what this person
+    was actually told — not by `stage`, which is the manager's private position.
+    Reading `stage` here leaked a private "not proceeding" to the applicant as
+    their own status, which is exactly the privacy rule Phase 1 established.
+    The parity suite caught it on the rejected-after-hired conflict fixture.
+  */
+  const viewerStage =
+    direction === "sent" ? rel.participant_stage ?? rel.stage : rel.stage;
+
   const job = creatorFactsFor(manifest, rel.job_id ?? undefined);
   const messages = [...(rel.messages ?? [])].sort((a, b) => a.offset_seconds - b.offset_seconds);
   const last = messages[messages.length - 1];
@@ -195,9 +207,9 @@ export function toOwnerInteraction(
     status: interactionStatusFromBackend(
       rel.kind === "application" ? "application" : "hiring_request",
       direction,
-      rel.stage
+      viewerStage
     ),
-    backendStatus: rel.stage,
+    backendStatus: viewerStage,
     participantBackendStatus: rel.participant_stage ?? rel.stage,
     archivedAt: rel.archived ? iso(anchor, rel.updated_offset) : null,
     // The manager's private note is never visible from the other side.
