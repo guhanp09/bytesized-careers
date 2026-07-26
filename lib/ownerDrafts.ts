@@ -304,9 +304,12 @@ export function talentToDraft(listing: BackendTalentListing): DraftItem {
 
 // ---- Demo/mock drafts ----
 // Rendered only when the workspace is not in live mode (no backend token, or
-// local mocks enabled), exactly like MOCK_OWNER_INTERACTIONS. Lets every Drafts
-// state be inspected without seeding the backend, and never leaks to a real
-// authenticated session.
+// local mocks enabled). Lets every Drafts state be inspected without seeding the
+// backend, and never leaks to a real authenticated session.
+//
+// Drafts are not part of the canonical scenario corpus: a draft is unsent work
+// with no counterparty and no conversation, so it has nothing to be in parity
+// *with*. This list stays local for that reason, not by omission.
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
