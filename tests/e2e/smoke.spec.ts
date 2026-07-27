@@ -450,21 +450,25 @@ test("job apply modal blocks an empty submit with calm inline validation", async
   await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
 });
 
-test("legacy job instructions receive a preflight instead of an immediate blind submit", async ({ context, page }) => {
+test("external job instructions link to the declared application site without an internal preflight", async ({ context, page }) => {
   await signInAsCandidate(context);
   await stubNoExistingApplication(page, "15");
-  // Mock job "15" has no structured first-message requirements, but its legacy
-  // application instructions are visible before Apply and still trigger a calm
-  // preflight before any authenticated submission.
+  // Mock job "15" is the deterministic external-application listing. Its
+  // instructions remain visible, but CreatorJobs must not open the internal
+  // first-message flow for an external application.
   await page.goto("/jobs/15", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("job-apply-panel").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "How to apply" })).toBeVisible();
   await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
   const applyButton = page.getByTestId("job-apply-button").first();
-  await expect(applyButton).toHaveText("Apply");
-  await applyButton.click();
-  await expect(page.getByTestId("first-message-modal-job")).toBeVisible();
+  await expect(applyButton).toHaveText("Continue to application");
+  await expect(applyButton).toHaveAttribute(
+    "href",
+    "https://example.com/creatorjobs-demo/partnerships-application"
+  );
+  await expect(applyButton).toHaveAttribute("target", "_blank");
+  await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
 });
 
 test("talent hire opens the first-message requirements modal for recruiters", async ({ page }) => {
