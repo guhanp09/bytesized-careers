@@ -125,6 +125,14 @@ import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupThreadEntries } from "../../lib/systemEventGrouping";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
+  INBOX_PAGE_SIZE,
+  boundedPage,
+  loadMoreLabel,
+  loadedAnnouncement,
+  nextLimit,
+  showingLabel,
+} from "../../lib/workspacePaging";
+import {
   NO_QUEUE_PREFERENCES,
   WORK_QUEUE_ORDER,
   deriveWorkQueue,
@@ -1981,6 +1989,14 @@ export default function ApplicationsWorkspace({
     };
   }, [liveMode, backendAccessToken, reloadNonce, realtimeRefreshNonce, realtimeState]);
 
+  /*
+    How many conversations are rendered. Not which ones — that is derived — so
+    changing a filter cannot leave a stale offset pointing past the end of a
+    shorter list.
+  */
+  const [inboxLimit, setInboxLimit] = useState(INBOX_PAGE_SIZE);
+  const [pagingAnnouncement, setPagingAnnouncement] = useState("");
+
   const modeItems = useMemo(() => items.filter((item) => item.mode === mode), [items, mode]);
 
   const visibleItems = useMemo(() => {
@@ -2910,6 +2926,19 @@ export default function ApplicationsWorkspace({
 
   /** Null means "no queue filter" — the ordinary full list. */
   const [activeQueue, setActiveQueue] = useState<WorkQueueKey | "starred" | "snoozed" | null>(null);
+
+  /*
+    Narrowing the list starts its rendering window again.
+
+    Carrying an expanded window across a filter change would mean asking for
+    "Needs a reply", getting four records, and still having a control offering to
+    load more of nothing. Keyed on what changes the *set* rather than wired into
+    each setter, so the deep-link and empty-state paths get it too.
+  */
+  useEffect(() => {
+    setInboxLimit(INBOX_PAGE_SIZE);
+    setPagingAnnouncement("");
+  }, [mode, filter, activeQueue]);
 
   /* ---------------- B1: durable per-user interaction preferences ---------------- */
 
@@ -4030,6 +4059,13 @@ export default function ApplicationsWorkspace({
     return chips;
   })();
 
+  /**
+   * Every record that matches, before any rendering limit.
+   *
+   * Counts, queues, filters, search and selection all read from here, so a total
+   * is always the real total and never "the total of what happens to be on
+   * screen". Only `renderedItems` below is bounded.
+   */
   const listItems = ((): OwnerInteraction[] => {
     if (!activeQueue) return visibleItems;
     if (activeQueue === "starred") return visibleItems.filter((item) => isStarred(item));
@@ -4043,6 +4079,21 @@ export default function ApplicationsWorkspace({
       (item) => deriveWorkQueue(item, queueSignalsFor(item), queuePreferences) === activeQueue
     );
   })();
+
+  /*
+    The bounded slice that actually reaches the DOM.
+
+    `listItems` above stays whole, so nothing that counts, filters or searches
+    is affected by this. The selected record is kept rendered even when it sits
+    past the window — a notification deep link or a remembered conversation can
+    point anywhere in the list, and showing its conversation while hiding its row
+    reads as a bug.
+  */
+  const inboxPage = boundedPage(listItems, inboxLimit, {
+    mustInclude: selectedItemId ? (item) => item.id === selectedItemId : undefined,
+    pageSize: INBOX_PAGE_SIZE,
+  });
+  const renderedItems = inboxPage.rendered;
 
   /**
    * Why the list is empty, when it is. Plain derivations: they sit below the
@@ -4433,7 +4484,7 @@ export default function ApplicationsWorkspace({
               </div>
             ) : (
               <div className="divide-y divide-white/[0.05]">
-                {listItems.map((item) => {
+                {renderedItems.map((item) => {
                   const isSelected = item.id === selectedItemId;
                   // Real unread message count for this thread (live mode); demo data
                   // still drives the simple "new" dot via item.unread.
@@ -4579,9 +4630,59 @@ export default function ApplicationsWorkspace({
                     </div>
                   );
                 })}
+                {inboxPage.hasMore ? (
+                  /*
+                    An explicit control, not an invisible scroll sentinel.
+
+                    Auto-loading on scroll has no keyboard equivalent, no way to
+                    say how much is left, and no way to stop — and on a list
+                    someone is triaging, "the page grew while I was reading" is
+                    the wrong behaviour. The button states the cost of pressing
+                    it, and the line beside it keeps the two numbers apart.
+                  */
+                  <div className="flex flex-col items-center gap-1.5 px-4 py-4">
+                    <button
+                      type="button"
+                      data-testid="inbox-load-more"
+                      onClick={() => {
+                        const grown = nextLimit(inboxPage.limit, INBOX_PAGE_SIZE, inboxPage.total);
+                        setInboxLimit(grown);
+                        setPagingAnnouncement(
+                          loadedAnnouncement(
+                            Math.min(INBOX_PAGE_SIZE, inboxPage.remaining),
+                            Math.min(grown, inboxPage.total),
+                            inboxPage.total,
+                            "conversation"
+                          )
+                        );
+                      }}
+                      className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-3 text-[11.5px] font-semibold text-white/85 transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
+                    >
+                      {loadMoreLabel(inboxPage, INBOX_PAGE_SIZE, "conversation")}
+                    </button>
+                    <p data-testid="inbox-showing" className="text-[11px] text-subtle">
+                      {showingLabel(inboxPage, "conversation")}
+                    </p>
+                  </div>
+                ) : listItems.length > INBOX_PAGE_SIZE ? (
+                  /* Reaching the end is a state worth stating outright. */
+                  <p
+                    data-testid="inbox-list-end"
+                    className="px-4 py-4 text-center text-[11px] text-subtle"
+                  >
+                    {`All ${inboxPage.total} conversations shown`}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
+          {/*
+            Polite, and outside the list so growing the list never moves focus.
+            The button keeps focus; the reader is told what happened.
+          */}
+          <p aria-live="polite" className="sr-only" data-testid="inbox-paging-status">
+            {pagingAnnouncement}
+          </p>
         </aside>
 
         <section

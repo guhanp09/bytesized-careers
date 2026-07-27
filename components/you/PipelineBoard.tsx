@@ -26,6 +26,14 @@ import {
   type CreatorFilters,
 } from "../../lib/creatorProjection";
 import { CreatorAttributeFilters } from "./CreatorAttributeFilters";
+import {
+  PIPELINE_FOCUSED_PAGE_SIZE,
+  PIPELINE_STAGE_PAGE_SIZE,
+  boundedPage,
+  loadMoreLabel,
+  loadedAnnouncement,
+  nextLimit,
+} from "../../lib/workspacePaging";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -474,6 +482,30 @@ export default function PipelineBoard({
     if (next !== stageFilter) onStageFocusChange?.(next);
     setStageFilterState(next);
   };
+  /*
+    Rendering window per stage. Keyed by stage, because a board with one very
+    large stage and five small ones should not make the reader expand all six.
+
+    Only the *size* is stored, never which cards — so a card moving between
+    stages, or a filter shrinking a stage, cannot leave an offset pointing at
+    nothing.
+  */
+  const [stageLimits, setStageLimits] = useState<Record<string, number>>({});
+  /** Cards that must stay rendered wherever they land — the ones just moved. */
+  const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(() => new Set());
+  const [pagingAnnouncement, setPagingAnnouncement] = useState("");
+  const defaultStageLimit = stageFilter ? PIPELINE_FOCUSED_PAGE_SIZE : PIPELINE_STAGE_PAGE_SIZE;
+
+  /*
+    A new scope is a new board. Carrying an expanded window across a direction,
+    kind or focus change would leave a stage claiming to have more to show when
+    it is already whole.
+  */
+  useEffect(() => {
+    setStageLimits({});
+    setPagingAnnouncement("");
+  }, [kind, direction, stageFilter]);
+
   const [busy, setBusy] = useState(false);
   const [pendingMove, setPendingMove] = useState<{
     items: OwnerInteraction[];
@@ -626,10 +658,12 @@ export default function PipelineBoard({
     setBusy(true);
     try {
       await onMoveStage(moveItems, stageKey);
-      setSelectedIds((prev) => {
-        const moved = new Set(moveItems.map((item) => item.id));
-        return new Set([...prev].filter((id) => !moved.has(id)));
-      });
+      const moved = new Set(moveItems.map((item) => item.id));
+      setSelectedIds((prev) => new Set([...prev].filter((id) => !moved.has(id))));
+      // Follow the card. A move that lands past the destination stage's window
+      // would otherwise look like the card vanished, which is the one thing a
+      // board must never do.
+      setRecentlyMoved(moved);
       return true;
     } catch {
       // The parent surfaces the failure banner; keeping the selection lets the
@@ -705,6 +739,13 @@ export default function PipelineBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="pipeline-board">
+      {/*
+        Polite and out of the flow, so expanding a stage never moves focus. The
+        button the reader pressed keeps it; they are told what happened.
+      */}
+      <p aria-live="polite" className="sr-only" data-testid="pipeline-paging-status">
+        {pagingAnnouncement}
+      </p>
       {/*
         Layer 3 for the Pipeline, and the only control row above the board:
         direction and workload (supplied by the workspace), then stage focus,
@@ -847,6 +888,16 @@ export default function PipelineBoard({
             sectionStages.map((stage, index) => {
               const groupItems = grouped.get(stage.key) ?? [];
               const allSelected = groupItems.length > 0 && groupItems.every((item) => selectedIds.has(item.id));
+              /*
+                Only the cards rendered are bounded. `groupItems.length` remains
+                the stage's true total and is what the heading shows — a board
+                whose counts described its own DOM would be useless for deciding
+                where the work is.
+              */
+              const stagePage = boundedPage(groupItems, stageLimits[stage.key] ?? defaultStageLimit, {
+                mustInclude: (item) => selectedIds.has(item.id) || recentlyMoved.has(item.id),
+                pageSize: defaultStageLimit,
+              });
               const dragValid = dragId !== null && isValidDropStage(stage.key);
               const dragHover = dragValid && dropStage === stage.key;
               const isTerminal = Boolean(stage.terminal);
@@ -948,7 +999,7 @@ export default function PipelineBoard({
                     ) : null
                   ) : (
                     <div className="mt-3 grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-                      {groupItems.map((item) => {
+                      {stagePage.rendered.map((item) => {
                         const checked = selectedIds.has(item.id);
                         const context = pipelineContextLabelOf(item);
                         const currentKey = backendStatusOf(item);
@@ -1291,6 +1342,34 @@ export default function PipelineBoard({
                       })}
                     </div>
                   )}
+                  {stagePage.hasMore ? (
+                    /*
+                      Per stage, because the volume is per stage: a board with one
+                      214-applicant stage and five small ones should not make the
+                      reader expand all six to read the busy one.
+                    */
+                    <div className="mt-3 flex items-center justify-center">
+                      <button
+                        type="button"
+                        data-testid={`pipeline-show-more-${stage.key}`}
+                        onClick={() => {
+                          const grown = nextLimit(stagePage.limit, defaultStageLimit, stagePage.total);
+                          setStageLimits((prev) => ({ ...prev, [stage.key]: grown }));
+                          setPagingAnnouncement(
+                            loadedAnnouncement(
+                              Math.min(defaultStageLimit, stagePage.remaining),
+                              Math.min(grown, stagePage.total),
+                              stagePage.total,
+                              "card"
+                            )
+                          );
+                        }}
+                        className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
+                      >
+                        {loadMoreLabel(stagePage, defaultStageLimit, "card")}
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
                 </Fragment>
               );
