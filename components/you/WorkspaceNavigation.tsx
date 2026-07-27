@@ -524,8 +524,15 @@ export function InteractionScopeControl({
       className="relative flex shrink-0 items-center gap-2 border-b border-line pl-4 pr-3"
       data-testid="interaction-scope"
     >
+      {/*
+        `scope-scroller` fades the right edge.
+
+        The tabs scroll when they do not fit, with the scrollbar hidden — which
+        left the last one sliced mid-word against a hard edge, reading as a
+        clipped layout rather than as more to scroll. The fade says which it is.
+      */}
       <div
-        className="flex min-w-0 flex-1 items-end gap-3.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="scope-scroller flex min-w-0 flex-1 items-end gap-3.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="group"
         aria-label="Scope"
       >

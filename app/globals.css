@@ -689,6 +689,22 @@ html {
   mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
 }
 
+/*
+   A horizontal scroller whose overflow should read as "more", not as a clip.
+
+   Only the trailing edge fades: the first tab is a real starting point and
+   softening it would make the row look unanchored. `scroll-padding` keeps a
+   keyboard-focused tab clear of the fade when it is scrolled into view.
+
+   The mask applies to the container's own box, so when the tabs fit it lands on
+   empty space and nothing appears faded. No state, no measurement.
+   ========================================================================== */
+
+.scope-scroller {
+  mask-image: linear-gradient(90deg, black calc(100% - 28px), transparent 100%);
+  scroll-padding-inline-end: 28px;
+}
+
 .roles-marquee-track {
   display: flex;
   width: max-content;

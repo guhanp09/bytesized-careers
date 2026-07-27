@@ -168,10 +168,20 @@ function avatarInitials(name: string): string {
 }
 
 function RowAvatar({ name, src }: { name: string; src?: string | null }) {
+  // A dead avatar URL must fall back to the initials, not draw the browser's
+  // broken-image glyph over them.
+  const [broken, setBroken] = useState(false);
   return (
     <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line-mid bg-elevated text-[11px] font-semibold text-white/75">
       {avatarInitials(name)}
-      {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
+      {src && !broken ? (
+        <img
+          src={src}
+          alt=""
+          onError={() => setBroken(true)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
     </span>
   );
 }
@@ -998,7 +1008,16 @@ export default function PipelineBoard({
                       </p>
                     ) : null
                   ) : (
-                    <div className="mt-3 grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+                    /*
+                      `items-start` so a card is as tall as its own content.
+
+                      A grid stretches its items to the tallest in the row by
+                      default, and these cards vary a lot — one with a portfolio
+                      strip and full facts beside one with a name and a line of
+                      text. Stretching left the short ones as mostly-empty boxes
+                      with their footer stranded at the bottom.
+                    */
+                    <div className="mt-3 grid items-start gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
                       {stagePage.rendered.map((item) => {
                         const checked = selectedIds.has(item.id);
                         const context = pipelineContextLabelOf(item);

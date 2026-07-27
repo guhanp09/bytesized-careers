@@ -375,13 +375,26 @@ export function InteractionAvatar({
   sizeClasses?: string;
 }) {
   const radius = shape === "circle" ? "rounded-full" : "rounded-lg";
-  // Initials stay painted underneath so a failed image load degrades cleanly.
+  /*
+    Initials stay painted underneath so a failed image degrades cleanly — but
+    only if the failed image is removed. Left in place, the browser draws its own
+    broken-image glyph on top, so a dead avatar URL looked like a rendering bug
+    sitting over a perfectly good fallback.
+  */
+  const [broken, setBroken] = useState(false);
   return (
     <span
       className={`${sizeClasses} ${radius} relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-line-mid bg-elevated text-[11px] font-semibold text-white/75`}
     >
       {avatarInitials(name)}
-      {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
+      {src && !broken ? (
+        <img
+          src={src}
+          alt=""
+          onError={() => setBroken(true)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
     </span>
   );
 }
@@ -1198,10 +1211,19 @@ function SystemEventGroup({
   events: ChatMessage[];
 }) {
   return (
-    <details data-testid="system-event-group" className="group flex justify-center px-2">
+    /*
+      A column, not a row.
+
+      `flex` alone made the summary and the event list siblings *across* the
+      main axis, so opening the group put the pill on the left and the events
+      beside it — the pill stretched to the list's height and read as a large
+      empty oval. Stacking and centring is what the collapsed state already
+      looked like it was doing.
+    */
+    <details data-testid="system-event-group" className="group flex flex-col items-center px-2">
       <summary
         data-testid="system-event-summary"
-        className="mx-auto inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60 transition-colors hover:border-line-mid hover:text-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus [&::-webkit-details-marker]:hidden"
+        className="inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-line bg-wash px-3.5 py-1.5 text-[11.5px] leading-relaxed text-white/60 transition-colors hover:border-line-mid hover:text-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus [&::-webkit-details-marker]:hidden"
       >
         <Icon name="sparkles" className="h-3 w-3 shrink-0 text-subtle" aria-hidden="true" />
         <span className="min-w-0 truncate">{summary}</span>
@@ -1215,7 +1237,7 @@ function SystemEventGroup({
         The events themselves, in order. Not the whole Timeline — only this run,
         which is what the summary is standing in for.
       */}
-      <ol className="mx-auto mt-2 max-w-[440px] space-y-1.5 rounded-xl border border-line bg-wash px-3.5 py-2.5">
+      <ol className="mt-2 w-full max-w-[440px] space-y-1.5 rounded-xl border border-line bg-wash px-3.5 py-2.5">
         {events.map((event) => (
           <li key={event.id} className="flex items-baseline gap-2 text-[11.5px] text-muted">
             <span className="min-w-0 flex-1">{event.body}</span>
@@ -4444,7 +4466,13 @@ export default function ApplicationsWorkspace({
               <div
                 data-testid="inbox-empty-state"
                 data-empty-reason={emptyState?.reason ?? "unknown"}
-                className="px-6 py-12 text-center"
+                /*
+                  Optically balanced rather than parked under the tabs. The
+                  detail pane centres its own empty state, so a list message
+                  pinned to the top with a screen of nothing under it read as a
+                  half-loaded rail rather than a considered state.
+                */
+                className="px-6 pb-12 pt-24 text-center"
               >
                 <p className="text-[13px] font-medium text-white/85">
                   {emptyState?.title ?? "Nothing in this section yet."}
@@ -4612,7 +4640,18 @@ export default function ApplicationsWorkspace({
                       action lives in the opened conversation instead.
                     */}
                     {showRowAction && rowAction ? (
-                      <div className="hidden justify-end px-4 pb-2.5 sm:flex">
+                      /*
+                        Aligned to the row's text column, not to its right edge.
+
+                        Right-aligned it hung under the timestamp with nothing
+                        above it to line up against, which read as a stray
+                        control rather than this conversation's next step. At
+                        64px — the row's own padding plus the avatar and its gap
+                        — it starts exactly where the name and snippet start, so
+                        it reads as the last line of the row. Pulled up slightly
+                        because the row's own bottom padding already separates it.
+                      */
+                      <div className="hidden pb-3 pl-16 pr-4 -mt-1 sm:flex">
                         <button
                           type="button"
                           data-testid="row-next-action"
