@@ -47,6 +47,29 @@ function routeFor(entry, scenario) {
   return `${pathname}?${params.toString()}`;
 }
 
+
+const INBOX_PAGE = 40;
+const PIPELINE_PAGE = 12;
+const PIPELINE_FOCUSED = 40;
+
+const busyTotal = () => (manifests.busy.relationships ?? []).length;
+
+/** The jobs `busy` exists to carry, with the ids a tester can paste. */
+function volumeJobs() {
+  const data = manifests.busy;
+  const applicants = (jobId) => (data.relationships ?? []).filter((rel) => rel.job_id === jobId).length;
+  const rows = (data.jobs ?? [])
+    .map((job) => ({ job, count: applicants(job.id) }))
+    .sort((a, b) => b.count - a.count)
+    .map(
+      ({ job, count }) =>
+        `| ${count} | \`${job.id}\` | ${cell(job.title)} | ${
+          count === 0 ? "nobody applied" : count >= 200 ? "the high-volume case" : ""
+        } |`
+    );
+  return ["| Applicants | Job id | Title | Note |", "| --- | --- | --- | --- |", ...rows].join("\n");
+}
+
 const BEST_FOR = {
   empty: "First-run and empty states",
   default: "Ordinary design and workflow QA",
@@ -261,8 +284,50 @@ ${workflowIndex()}
 
 ${coverageMatrix()}
 
+## High volume: what renders, and how to reach the rest
+
+Both surfaces render a bounded page and offer an explicit control for more.
+Counts are never bounded — a stage heading, a scope chip and a per-job summary
+always describe every matching record, not the ones currently on screen.
+
+| Surface | Initially rendered | How to load more | Where the true total appears |
+| --- | --- | --- | --- |
+| Inbox | ${INBOX_PAGE} conversations | **Load N more conversations** below the list | The scope chips, and \`Showing X of Y conversations\` |
+| Pipeline stage | ${PIPELINE_PAGE} cards | **Load N more cards** inside the stage | The count beside the stage heading |
+| Focused stage | ${PIPELINE_FOCUSED} cards | Same control | The count beside the stage heading |
+
+Reaching the end is stated outright (\`All Y conversations shown\`), and a
+deep-linked or remembered conversation stays rendered in place even when it sits
+past the first page.
+
+### The \`busy\` volume jobs
+
+${volumeJobs()}
+
+### Testing it
+
+- Open \`/applications?demo=1&seed=busy\` and confirm the list renders
+  ${INBOX_PAGE} rows while the All chip reads ${busyTotal()}.
+- Press **Load more** and confirm the count grows by ${INBOX_PAGE} with no
+  repeated or reordered rows.
+- Keep pressing to reach all ${busyTotal()}, then confirm the end line appears.
+- Switch to a scope with few records and confirm the list is not empty — a stale
+  offset is the failure this guards.
+- Open the Pipeline and confirm each stage heading exceeds the cards under it.
+- Focus the busiest stage and confirm it renders more, but still not all of it.
+
 ## Known limitations
 
+- **Rendering is bounded; loading is not.** Both surfaces hold every matching
+  record in memory and render a page of it. That keeps counts honest and every
+  record reachable, but it is not server-side pagination:
+  \`/me/activity/summary\` returns the whole set today. The client seam is
+  shaped like the \`{ items, total, limit, offset }\` contract the rest of the
+  API uses, so a server page can replace it without the components changing.
+- **No virtualisation.** Loading every page of a very large scenario does put
+  every row in the DOM, by design — windowing a scroll container would cost
+  find-in-page, anchor links, printing and list semantics. The bound is on what
+  renders before you ask, not on what you can ask for.
 - **Star, Snooze and “No reply needed” are client-only in this phase.** They are
   personal organisation, held per viewer in the browser rather than in a table,
   so they are not restored by the backend consumer and not compared by the

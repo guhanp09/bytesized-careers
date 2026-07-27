@@ -1254,3 +1254,100 @@ is stable here is the classification, not the arithmetic.
 `smoke loads /jobs/1` failure looks for. They share one root cause in the
 marketplace mock data, which belongs to the job-import workstream, not to this
 one.
+
+# Scalability closure — bounded rendering for large scenarios
+
+One acceptance requirement from Phase 4 was still open: the 200+ applicant case
+had to exercise pagination or incremental loading rather than rendering every
+record at once. It did not. Both surfaces rendered everything they held.
+
+## What was already there, and what was not
+
+`/jobs` and `/talent-listings` paginate with `limit`/`offset` and answer
+`{ items, total, limit, offset }`. **`/me/activity/summary` does not.** It
+returns every application and every interest, to Backend and Mock mode alike, and
+the Pipeline receives the same complete collection the Inbox does. There was no
+server contract to reuse for this surface and no existing load-more component in
+the repository.
+
+So the model is the second of the three the brief ranks: **incremental client
+rendering over the complete result set, in the shape of the existing pagination
+contract.** The client holds everything and renders a page; the seam is shaped so
+a server-side page can replace it without the components changing. That is stated
+in `lib/workspacePaging.ts` and in SCENARIOS.md rather than left to be inferred.
+
+**Not virtualisation.** Windowing a scroll container buys smoother scrolling and
+costs find-in-page, anchor links, printing and most screen-reader list semantics
+— a bad trade for a hiring inbox read a page at a time. **Not an invisible scroll
+sentinel** either: auto-loading has no keyboard equivalent, no way to say how much
+is left, no way to stop, and "the list grew while I was reading" is wrong on a
+list being triaged.
+
+## The rule that makes it honest
+
+**Only rendering is bounded.** Counts, filters, queues, search, per-job summaries
+and selection all keep reading the complete set. A stage heading says 92 while
+showing 12; the scope chip says 329 while the list shows 40. Those are two
+different numbers and the UI says both — `Showing 40 of 329 conversations`, and
+`All 329 conversations shown` at the end.
+
+| Surface | Renders | Control |
+| --- | --- | --- |
+| Inbox | 40 conversations | **Load N more conversations** |
+| Pipeline stage | 12 cards | **Load N more cards**, per stage |
+| Focused stage | 40 cards | the same control |
+
+Selection survives the bound. A deep link or a remembered conversation can point
+anywhere, so the window grows to the page boundary containing it rather than
+pinning the row out of order — ordering is what makes a list scannable. The same
+rule keeps a bulk selection and any just-moved card rendered, so a card moved
+into a busy stage never appears to vanish. Narrowing restarts the window, keyed
+on what changes the set rather than wired into each setter, so a filter can never
+leave a stale offset pointing past the end of a shorter list.
+
+Accessibility: a real button, reachable and operable from the keyboard, naming
+what pressing it will add; a polite live region outside the list announcing
+`40 more conversations loaded. Showing 80 of 329.`; and focus staying on the
+button, because a list that grows must not steal it.
+
+## Before and after — `busy`
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| Initial Inbox rows | 329 | **40** |
+| Initial Inbox DOM nodes | 7,064 | **1,241** |
+| Initial Pipeline cards | 329 | **60** |
+| Initial Pipeline DOM nodes | 23,123 | **4,489** |
+| First Inbox content | 446 ms | 400 ms |
+| Pipeline visible | 1,428 ms | **445 ms** |
+| Pipeline search settled | 466 ms | 488 ms |
+| Heap | 22 MB | **13 MB** |
+
+Also measured: load-more latency 129 ms; all 329 conversations reachable in 8
+presses over 1,157 ms; filter switch 193 ms. The 214 / 47 / 1 / 0-applicant jobs
+and the 44-message thread are unchanged — the scenario's volume was not reduced
+to meet the requirement.
+
+Search is unaffected because it never operated on the rendered page: the board
+searches the full set and then the bound applies to the result.
+
+## What the change cost the existing tests
+
+Two assertions in `you-applications.spec.ts` counted rendered rows as a proxy for
+"the filter shows exactly what qualifies". That proxy stopped holding. They now
+assert the total on the scope chip *and* that rendering stays bounded — two
+guarantees where there was one. One had to be loosened from an exact page size,
+because the open conversation legitimately expands the window across a filter
+change; that is the selection guarantee, not a leak in the bound.
+
+`revealRecord` loads pages until a record appears, the same way a person would,
+so a spec that reaches a record is a spec whose record a user could reach.
+
+## Limitations
+
+- **This is not server-side pagination.** The client still receives every record;
+  only rendering is bounded. Fixing that means paginating
+  `/me/activity/summary`, which would change a contract the parity suite and the
+  restore both depend on — worth doing, deliberately out of scope here.
+- **Loading every page does put every row in the DOM**, by design. The bound is
+  on what renders before you ask, not on what you can ask for.

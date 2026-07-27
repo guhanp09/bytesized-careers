@@ -225,8 +225,60 @@ is in the manifest's `index`.
 | Indexed persona | Recruiter 102 · Talent 19 |
 | Portfolio volume | 131 records with none · 1 with 20+ |
 
+## High volume: what renders, and how to reach the rest
+
+Both surfaces render a bounded page and offer an explicit control for more.
+Counts are never bounded — a stage heading, a scope chip and a per-job summary
+always describe every matching record, not the ones currently on screen.
+
+| Surface | Initially rendered | How to load more | Where the true total appears |
+| --- | --- | --- | --- |
+| Inbox | 40 conversations | **Load N more conversations** below the list | The scope chips, and `Showing X of Y conversations` |
+| Pipeline stage | 12 cards | **Load N more cards** inside the stage | The count beside the stage heading |
+| Focused stage | 40 cards | Same control | The count beside the stage heading |
+
+Reaching the end is stated outright (`All Y conversations shown`), and a
+deep-linked or remembered conversation stays rendered in place even when it sits
+past the first page.
+
+### The `busy` volume jobs
+
+| Applicants | Job id | Title | Note |
+| --- | --- | --- | --- |
+| 214 | `c4b27f53-0b18-5270-8d4f-6be3c4a8732e` | Shorts editor for beauty channel | the high-volume case |
+| 50 | `30bea8bd-e6ef-50ec-8a2d-2ba430fcb0c4` | Thumbnail designer for true crime channel |  |
+| 47 | `f64a1f86-a1de-5cdf-a344-24d2286e8a3a` | Long-form editor for technology channel |  |
+| 12 | `38c1acfe-c8e0-526c-8ca6-f1dabefdd645` | Scriptwriter for education channel |  |
+| 2 | `72fcc3b4-dc39-5687-86b1-e7dd839e16be` | Long-form editor for kids channel |  |
+| 2 | `7e93115b-01a0-5974-91ae-7bf12174d118` | Shorts editor for true crime channel |  |
+| 1 | `4036dcfb-666c-5dfd-bdc3-c2b8160a13c8` | Thumbnail designer for food channel |  |
+| 1 | `a08dcb01-29a2-5742-839a-69679ec4ff14` | Podcast producer for comedy channel |  |
+| 0 | `5dc8ff81-4466-58e3-9764-219b34eec695` | Channel manager for travel channel | nobody applied |
+
+### Testing it
+
+- Open `/applications?demo=1&seed=busy` and confirm the list renders
+  40 rows while the All chip reads 329.
+- Press **Load more** and confirm the count grows by 40 with no
+  repeated or reordered rows.
+- Keep pressing to reach all 329, then confirm the end line appears.
+- Switch to a scope with few records and confirm the list is not empty — a stale
+  offset is the failure this guards.
+- Open the Pipeline and confirm each stage heading exceeds the cards under it.
+- Focus the busiest stage and confirm it renders more, but still not all of it.
+
 ## Known limitations
 
+- **Rendering is bounded; loading is not.** Both surfaces hold every matching
+  record in memory and render a page of it. That keeps counts honest and every
+  record reachable, but it is not server-side pagination:
+  `/me/activity/summary` returns the whole set today. The client seam is
+  shaped like the `{ items, total, limit, offset }` contract the rest of the
+  API uses, so a server page can replace it without the components changing.
+- **No virtualisation.** Loading every page of a very large scenario does put
+  every row in the DOM, by design — windowing a scroll container would cost
+  find-in-page, anchor links, printing and list semantics. The bound is on what
+  renders before you ask, not on what you can ask for.
 - **Star, Snooze and “No reply needed” are client-only in this phase.** They are
   personal organisation, held per viewer in the browser rather than in a table,
   so they are not restored by the backend consumer and not compared by the

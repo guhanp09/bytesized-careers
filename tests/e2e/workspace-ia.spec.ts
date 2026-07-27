@@ -61,13 +61,17 @@ async function openWorkspace(page: Page, query = "?demo=1") {
   await page.goto(`/applications${query}${separator}seed=${IA_SCENARIO}`, {
     waitUntil: "domcontentloaded",
   });
-  await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
+  // Scoped to `main`: a navigation can briefly leave the server-rendered markup
+  // beside the hydrated tree, so an unscoped match resolves twice and fails
+  // strict mode on a page that is behaving correctly.
+  const main = page.getByRole("main");
+  await expect(main.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
   // The manifest arrives after mount, so wait for content rather than for the
   // shell. Which content depends on the view the URL asked for — the Pipeline
   // renders cards, not list rows.
   const target = query.includes("view=pipeline")
-    ? page.getByTestId("pipeline-row").first()
-    : page.getByTestId("interaction-row").first();
+    ? main.getByTestId("pipeline-row").first()
+    : main.getByTestId("interaction-row").first();
   await expect(target).toBeVisible({ timeout: 20_000 });
 }
 
