@@ -251,10 +251,15 @@ export async function openWorkspace(
     timeout: 20_000,
   });
   // The manifest is fetched after mount, so the workspace can be visible while
-  // still empty. `empty` legitimately stays empty, so it waits on the loader
-  // settling rather than on rows appearing.
+  // still empty. Which content to wait for depends on the view the URL asked
+  // for — the Pipeline renders cards, not list rows — and `empty` legitimately
+  // stays empty either way.
   if (options.scenario !== "empty") {
-    await expect(page.getByTestId("interaction-row").first()).toBeVisible({ timeout: 20_000 });
+    const content =
+      options.view === "pipeline"
+        ? page.getByRole("main").getByTestId("pipeline-row")
+        : page.getByRole("main").getByTestId("interaction-row");
+    await expect(content.first()).toBeVisible({ timeout: 30_000 });
   }
 }
 
@@ -271,13 +276,33 @@ export function card(page: Page, anchorOrId: Anchor | string) {
 }
 
 /**
+ * Bring a record's row into the DOM.
+ *
+ * The inbox renders a bounded page, so a record can match every filter and still
+ * not be on screen yet — exactly as it is for a person, who presses "Load more".
+ * This does the same thing rather than reaching past the UI, so a spec that
+ * passes here is a spec whose record a user could also have reached.
+ */
+export async function revealRecord(page: Page, target: Anchor | string): Promise<void> {
+  const locator = row(page, target);
+  const loadMore = page.getByRole("main").getByTestId("inbox-load-more");
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if ((await locator.count()) > 0) return;
+    if ((await loadMore.count()) === 0) break;
+    await loadMore.click();
+  }
+  await expect(locator, "the record never appeared, even after loading every page").toHaveCount(1);
+}
+
+/**
  * Open a record in the inbox.
  *
- * Scrolls it into view first: `default` is a realistic corpus rather than a
- * nine-row fixture, so the record a spec wants is usually below the fold and a
- * bare click would fail on an element that is present and correct.
+ * Loads far enough to reach it, then scrolls: `default` is a realistic corpus
+ * rather than a nine-row fixture, so the record a spec wants is usually below
+ * the fold and often past the first rendered page.
  */
 export async function openRecord(page: Page, target: Anchor | string) {
+  await revealRecord(page, target);
   const locator = row(page, target);
   await locator.scrollIntoViewIfNeeded();
   await locator.click();

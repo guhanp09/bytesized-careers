@@ -6,9 +6,11 @@ import {
   manifest,
   openRecord,
   openWorkspace,
+  revealRecord,
   row,
   type Anchor,
 } from "./scenarioAnchors";
+import { INBOX_PAGE_SIZE } from "../../lib/workspacePaging";
 
 /*
   These specs were written against a hand-written nine-record fixture that no
@@ -96,13 +98,26 @@ test.describe("/you Applications workspace", () => {
   test("talent mode shows applications sent and hiring requests received", async ({ page }) => {
     await openWorkspace(page, { scenario: "default", mode: "talent" });
 
-    // Direction is a property of the persona, so the split is derived from the
-    // manifest rather than typed in: a talent sent every application and
-    // received every hiring request.
+    /*
+      Two different numbers, and both matter.
+
+      The *totals* live on the filter chips and are derived from the manifest —
+      a talent sent every application and received every hiring request. The
+      *rendered* rows are deliberately bounded, so the list is checked for being
+      a bounded prefix rather than for containing everything.
+    */
+    await expect(page.getByTestId("applications-filter-sent")).toContainText(
+      String(countOf("default", "application"))
+    );
+    await expect(page.getByTestId("applications-filter-received")).toContainText(
+      String(countOf("default", "hiring_request"))
+    );
     const rows = page.getByTestId("interaction-row");
-    await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(countOf("default", "application"));
-    await expect(rows.filter({ hasText: "Received hiring request" })).toHaveCount(
-      countOf("default", "hiring_request")
+    const rendered = await rows.count();
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered, "the inbox must not render the whole corpus").toBeLessThanOrEqual(INBOX_PAGE_SIZE);
+    await expect(page.getByTestId("inbox-showing")).toContainText(
+      `of ${countOf("default", "application") + countOf("default", "hiring_request")}`
     );
 
     const request = anchor("default", "Inbound hiring request awaiting a reply", { persona: "talent" });
@@ -144,19 +159,38 @@ test.describe("/you Applications workspace", () => {
       (rel) => rel.archived || rel.stage === "archived"
     ).length;
 
-    await page.getByTestId("applications-filter-sent").click();
-    await expect(rows).toHaveCount(applications);
+    /*
+      A filter changes the *total*, which the chip states, and restarts the
+      rendering window. Both are asserted: a filter that narrowed the totals but
+      left a stale window would show an empty list, and a filter that rendered
+      everything would undo the bound.
+    */
+    const scopeTo = async (key: string, total: number) => {
+      await page.getByTestId(`applications-filter-${key}`).click();
+      if (total > 0) await expect(page.getByTestId(`applications-filter-${key}`)).toContainText(String(total));
+      const shown = await rows.count();
+      // At least a page, never the whole set, and never nothing. It can exceed
+      // one page: the open conversation stays rendered across a filter change
+      // when it still qualifies, so the window grows to reach it. That is the
+      // selection guarantee, not a leak in the bound.
+      expect(shown, `${key} rendered nothing`).toBeGreaterThan(0);
+      expect(shown, `${key} rendered fewer than a page`).toBeGreaterThanOrEqual(
+        Math.min(total, INBOX_PAGE_SIZE)
+      );
+      if (total > INBOX_PAGE_SIZE) {
+        expect(shown, `${key} rendered the whole corpus`).toBeLessThan(total);
+        await expect(page.getByTestId("inbox-showing")).toContainText(`of ${total}`);
+      }
+    };
+
+    await scopeTo("sent", applications);
     await expect(rows.filter({ hasText: "Received hiring request" })).toHaveCount(0);
 
-    await page.getByTestId("applications-filter-received").click();
-    await expect(rows).toHaveCount(requests);
+    await scopeTo("received", requests);
     await expect(rows.filter({ hasText: "Sent application" })).toHaveCount(0);
 
-    await page.getByTestId("applications-filter-archived").click();
-    await expect(rows).toHaveCount(archived);
-
-    await page.getByTestId("applications-filter-all").click();
-    await expect(rows).toHaveCount(applications + requests);
+    await scopeTo("archived", archived);
+    await scopeTo("all", applications + requests);
   });
 
   test("sent application: header is the counterparty and the job context card links to the job", async ({ page }) => {
@@ -233,13 +267,15 @@ test.describe("/you Applications workspace", () => {
 
     await switchPersona(page, "hiring");
 
+    // Totals from the chips; the rendered list stays bounded.
+    await expect(page.getByTestId("applications-filter-received")).toContainText(
+      String(countOf("default", "application"))
+    );
+    await expect(page.getByTestId("applications-filter-sent")).toContainText(
+      String(countOf("default", "hiring_request"))
+    );
     const rows = page.getByTestId("interaction-row");
-    await expect(rows.filter({ hasText: "Received application" })).toHaveCount(
-      countOf("default", "application")
-    );
-    await expect(rows.filter({ hasText: "Sent hiring request" })).toHaveCount(
-      countOf("default", "hiring_request")
-    );
+    expect(await rows.count()).toBeLessThanOrEqual(INBOX_PAGE_SIZE);
 
     const detail = page.getByTestId("applications-detail");
     await expect(detail.getByRole("heading", { name: staleHeading, exact: true })).toHaveCount(0);
@@ -304,6 +340,7 @@ test.describe("/you Applications workspace", () => {
     await expect(detail.getByText("Declined", { exact: true })).toBeVisible();
 
     await switchPersona(page, "talent");
+    await revealRecord(page, priv);
     const participantRow = row(page, priv);
     await participantRow.scrollIntoViewIfNeeded();
     // What the applicant sees is what they were told — Reviewing — never the
@@ -328,6 +365,7 @@ test.describe("/you Applications workspace", () => {
   test("a communicated legacy Shortlisted reads as Under consideration, never the raw stage", async ({ page }) => {
     const legacy = anchor("default", "Legacy Shortlisted · communicated", { persona: "recruiter" });
     await openWorkspace(page, { scenario: "default", mode: "talent" });
+    await revealRecord(page, legacy);
     const participantRow = row(page, legacy);
     await participantRow.scrollIntoViewIfNeeded();
     await expect(participantRow).toBeVisible();
