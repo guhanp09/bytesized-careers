@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icons";
+import { groupThreadEntries } from "../../lib/systemEventGrouping";
 import { InteractionTime } from "./InteractionTime";
 import {
   buildConversation,
   InteractionAvatar,
   MessageBubble,
   StatusUpdateLine,
+  SystemEventGroup,
   type ChatMessage,
 } from "./ApplicationsWorkspace";
 import {
@@ -651,16 +653,29 @@ export default function CompactChatDock({
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             {conversation.length > 0 ? (
               <div className="space-y-4">
-                {conversation.map((message) =>
-                  message.kind === "status" ? (
-                    <StatusUpdateLine key={message.id} message={message} />
+                {/*
+                  The same grouping the full thread uses, from the same module.
+                  The dock used to print every status line separately, so a
+                  record with a run of updates read as six near-identical rows
+                  here and as one "6 updates" summary in the Inbox — the same
+                  history told two different ways depending on where you opened
+                  it.
+                */}
+                {groupThreadEntries(conversation).map((entry) =>
+                  entry.type === "system-group" ? (
+                    <SystemEventGroup key={entry.id} summary={entry.summary} events={entry.events} />
+                  ) : entry.message.kind === "status" ? (
+                    <StatusUpdateLine key={entry.message.id} message={entry.message} />
                   ) : (
                     <MessageBubble
-                      key={message.id}
-                      message={message}
+                      key={entry.message.id}
+                      message={entry.message}
                       counterpartyAvatarUrl={thread.counterpartyAvatarUrl}
                       counterpartyHref={pipelineProfileHrefOf(thread)}
-                      showSeen={message.id === latestOutgoingMessageId && Boolean(message.readByRecipient)}
+                      showSeen={
+                        entry.message.id === latestOutgoingMessageId &&
+                        Boolean(entry.message.readByRecipient)
+                      }
                     />
                   )
                 )}

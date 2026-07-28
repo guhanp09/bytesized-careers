@@ -1203,7 +1203,7 @@ function decisionActionLabel(item: OwnerInteraction, stageKey: string, fallback:
  * Space, carries expanded/collapsed semantics for free, and needs no state of
  * its own.
  */
-function SystemEventGroup({
+export function SystemEventGroup({
   summary,
   events,
 }: {
@@ -1307,6 +1307,18 @@ function StageNotifyPrompt({
   const single = items.length === 1 ? items[0] : null;
   const who = single ? single.counterpartyName : `${items.length} people`;
   const preview = policy.notice({ contextLabel: pipelineContextLabelOf(items[0]) });
+  /*
+    Whether this outcome ends the conversation.
+
+    "Not proceeding" and its siblings close the thread, so the personal message
+    has to travel *with* the decision — the backend persists it on the same
+    request, which is the only authorized way to say something into a thread
+    that is about to close. Offering it afterwards opened a dock whose composer
+    was already disabled, which is why the button looked like it did nothing.
+  */
+  const closesThread = isMessagingClosedStatus(
+    interactionStatusFromBackend(kind, "received", stageKey)
+  );
 
   return (
     <div
@@ -1335,8 +1347,19 @@ function StageNotifyPrompt({
             <Icon name="check" className="h-3.5 w-3.5" />
             Update posted to the {items.length === 1 ? "thread" : "threads"}.
           </p>
+          {closesThread ? (
+            /*
+              Nothing more can be sent here, so nothing offers to. Saying it
+              outright is better than a button that opens a disabled composer.
+            */
+            <p data-testid="stage-notify-closed" className="mt-1.5 text-[11px] text-subtle">
+              {`This conversation is now closed${
+                note?.trim() ? " — your message went with the decision." : "."
+              }`}
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {single ? (
+            {single && !closesThread ? (
               <button
                 type="button"
                 data-testid="stage-notify-followup"
@@ -1367,21 +1390,38 @@ function StageNotifyPrompt({
             <span className="min-w-0">{preview}</span>
           </p>
           {/*
-            Live mode only: the note is persisted by the same request that
-            shares the decision. In demo mode there is no such request, so
-            offering the field would promise a delivery that cannot happen.
+            The personal message, written before the decision goes out.
+
+            It is persisted by the same request that shares the outcome, so the
+            applicant cannot be told the result without the explanation that came
+            with it — and, for outcomes that close the thread, this is the only
+            moment it can be said at all. Demo mode appends it locally, the same
+            way it appends every other message.
           */}
-          {liveMode && onNoteChange ? (
-            <textarea
-              data-testid="stage-notify-note"
-              value={note ?? ""}
-              onChange={(event) => onNoteChange(event.target.value)}
-              disabled={phase === "sending"}
-              rows={2}
-              maxLength={2000}
-              placeholder={`Add a note for ${single ? firstNameOf(single.counterpartyName) : "them"} (optional)`}
-              className="mt-2.5 w-full resize-none rounded-xl border border-line bg-raised px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-subtle focus:border-line-strong focus:bg-elevated disabled:opacity-50"
-            />
+          {onNoteChange ? (
+            <>
+              <label className="sr-only" htmlFor="stage-notify-note">
+                {`Personal message for ${single ? single.counterpartyName : "everyone selected"} (optional)`}
+              </label>
+              <textarea
+                id="stage-notify-note"
+                data-testid="stage-notify-note"
+                value={note ?? ""}
+                onChange={(event) => onNoteChange(event.target.value)}
+                disabled={phase === "sending"}
+                rows={2}
+                maxLength={2000}
+                placeholder={`Add a personal message for ${
+                  single ? firstNameOf(single.counterpartyName) : "them"
+                } (optional)`}
+                className="mt-2.5 w-full resize-none rounded-xl border border-line bg-raised px-3 py-2 text-[12px] text-white outline-none transition-colors placeholder:text-subtle focus:border-line-strong focus:bg-elevated disabled:opacity-50"
+              />
+              {closesThread ? (
+                <p data-testid="stage-notify-note-hint" className="mt-1.5 text-[11px] text-subtle">
+                  This closes the conversation, so anything personal has to go with it.
+                </p>
+              ) : null}
+            </>
           ) : null}
           {phase === "error" ? (
             <p className="mt-2 text-[11px] text-rose-300/80" data-testid="stage-notify-error">
@@ -2549,11 +2589,20 @@ export default function ApplicationsWorkspace({
           prev.map((item) => {
             if (!targetIds.has(item.id)) return item;
             const notice = policy.notice({ contextLabel: pipelineContextLabelOf(item) });
+            const sentAt = new Date().toISOString();
+            const personal = note?.trim();
             return {
               ...item,
               replies: [
                 ...(item.replies || []),
-                { from: "You", body: notice, sentAt: new Date().toISOString(), kind: "status" as const },
+                { from: "You", body: notice, sentAt, kind: "status" as const },
+                /*
+                  The personal message lands right after the decision, as an
+                  ordinary message from you — which is where the live path puts
+                  it too. Without this the field accepted text in demo mode and
+                  silently dropped it.
+                */
+                ...(personal ? [{ from: "You", body: personal, sentAt }] : []),
               ],
               timeline: [
                 ...item.timeline,
@@ -2996,12 +3045,22 @@ export default function ApplicationsWorkspace({
     [liveThreads, conversationIdByThread]
   );
 
+  /*
+    The key personal organisation is stored under.
+
+    Falls back to the record id when no conversation has been opened yet — and
+    always in Mock mode, where there are no conversation rows to key against.
+    Without this, Star was silently unavailable on any record whose thread had
+    not been loaded, which is most of the list on first paint.
+  */
+  const preferenceKeyOf = useCallback(
+    (item: OwnerInteraction): string => conversationIdOf(item) ?? item.id,
+    [conversationIdOf]
+  );
+
   const isStarred = useCallback(
-    (item: OwnerInteraction): boolean => {
-      const conversationId = conversationIdOf(item);
-      return conversationId ? Boolean(preferences[conversationId]?.starred) : false;
-    },
-    [conversationIdOf, preferences]
+    (item: OwnerInteraction): boolean => Boolean(preferences[preferenceKeyOf(item)]?.starred),
+    [preferenceKeyOf, preferences]
   );
 
   /**
@@ -3011,8 +3070,7 @@ export default function ApplicationsWorkspace({
    */
   const toggleStar = useCallback(
     async (item: OwnerInteraction) => {
-      const conversationId = conversationIdOf(item);
-      if (!conversationId || !backendAccessToken) return;
+      const conversationId = preferenceKeyOf(item);
       const previous = preferences[conversationId];
       const next = !previous?.starred;
       setPreferences((current) => ({
@@ -3027,6 +3085,13 @@ export default function ApplicationsWorkspace({
           starred: next,
         },
       }));
+      /*
+        Nothing to persist without a session — Mock mode has no server to hold a
+        preference, and a star that refused to move there would be one more
+        control that looks live and is not. The optimistic state is the whole
+        state in that case.
+      */
+      if (!backendAccessToken || !conversationIdOf(item)) return;
       try {
         const saved = await setConversationStarred(backendAccessToken, conversationId, next);
         setPreferences((current) => ({ ...current, [conversationId]: saved }));
@@ -3040,7 +3105,7 @@ export default function ApplicationsWorkspace({
         setActionError("Couldn\u2019t save that. Try again.");
       }
     },
-    [conversationIdOf, backendAccessToken, preferences]
+    [preferenceKeyOf, conversationIdOf, backendAccessToken, preferences]
   );
 
   /**
@@ -4063,7 +4128,7 @@ export default function ApplicationsWorkspace({
       if (count > 0) chips.push({ key: queue.key, label: queue.label, count });
     }
     for (const personal of ["starred", "snoozed"] as const) {
-      const label = personal === "starred" ? "Saved" : "Snoozed";
+      const label = personal === "starred" ? "Starred" : "Snoozed";
       labels.set(personal, label);
       const count = queueCounts.get(personal) ?? 0;
       if (count > 0) chips.push({ key: personal, label, count });
@@ -4336,6 +4401,8 @@ export default function ApplicationsWorkspace({
             <PipelineBoard
               key={`${mode}-${pipelineDirection}`}
               items={pipelineItems}
+              isStarred={isStarred}
+              onToggleStar={(item) => void toggleStar(item)}
               kind={pipelineKind}
               direction={pipelineDirection}
               scopeLeading={pipelineScopeLeading}
@@ -4525,9 +4592,22 @@ export default function ApplicationsWorkspace({
                   // header already carries the action for that one, and showing
                   // both reads as duplication. Low-confidence suggestions never
                   // take row space at all; the work-state label is enough.
+                  /*
+                    A row earns a labelled button only for an action the row
+                    itself does not already perform.
+
+                    "Reply to Daily" was exactly what clicking the row does —
+                    open the conversation — so it spent a full-width control and
+                    a band of vertical space on every row to duplicate the row.
+                    It survives as a quiet icon revealed on hover and focus,
+                    because it does do one thing more: it lands with the composer
+                    focused. "Confirm start" or "Record decision" are different
+                    actions and keep their labels.
+                  */
                   const showRowAction = Boolean(rowAction?.highConfidence) && !isSelected;
+                  const rowActionIsReply = rowAction?.key === "reply";
                   return (
-                    <div key={item.id}>
+                    <div key={item.id} className="group/row relative">
                     <button
                       type="button"
                       data-testid="interaction-row"
@@ -4592,10 +4672,10 @@ export default function ApplicationsWorkspace({
                               <span
                                 data-testid="row-starred"
                                 aria-label="Saved"
-                                title="Saved"
+                                title="Starred — only you can see this"
                                 className="inline-flex shrink-0 text-state-interview"
                               >
-                                <Icon name="bookmark" className="h-3 w-3" />
+                                <Icon name="star-filled" className="h-3 w-3" />
                               </span>
                             ) : null}
                             {messageUnread > 0 ? (
@@ -4639,32 +4719,93 @@ export default function ApplicationsWorkspace({
                       never overlap the timestamp. Desktop only — on mobile the
                       action lives in the opened conversation instead.
                     */}
-                    {showRowAction && rowAction ? (
-                      /*
-                        Aligned to the row's text column, not to its right edge.
+                    {/*
+                      Personal organisation, on the row itself.
 
-                        Right-aligned it hung under the timestamp with nothing
-                        above it to line up against, which read as a stray
-                        control rather than this conversation's next step. At
-                        64px — the row's own padding plus the avatar and its gap
-                        — it starts exactly where the name and snippet start, so
-                        it reads as the last line of the row. Pulled up slightly
-                        because the row's own bottom padding already separates it.
+                      Starring used to be reachable only from an opened
+                      conversation, which is the wrong place for it: deciding to
+                      come back to someone is a scanning decision, made while
+                      reading the list. Always rendered once starred so the state
+                      is legible at rest, and revealed on hover or focus
+                      otherwise so an unstarred list stays calm.
+                    */}
+                    <button
+                      type="button"
+                      data-testid="row-star-toggle"
+                      aria-pressed={isStarred(item)}
+                      aria-label={
+                        isStarred(item)
+                          ? `Remove star from ${item.counterpartyName} — only you can see this`
+                          : `Star ${item.counterpartyName} for later — only you can see this`
+                      }
+                      title={
+                        isStarred(item)
+                          ? "Starred — only you can see this"
+                          : "Star for later — only you can see this"
+                      }
+                      onClick={() => void toggleStar(item)}
+                      /*
+                        Revealed, not resident. The starred state is already
+                        legible at rest from the small star in the meta line, so
+                        a second permanent star on the same row would be the same
+                        fact twice — and it would crowd the timestamp it sits
+                        beside. This is the control; that is the readout.
                       */
-                      <div className="hidden pb-3 pl-16 pr-4 -mt-1 sm:flex">
+                      className={[
+                        "absolute bottom-2.5 right-3 hidden h-7 w-7 cursor-pointer items-center justify-center rounded-lg opacity-0 transition-opacity sm:inline-flex",
+                        "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus group-hover/row:opacity-100",
+                        isStarred(item)
+                          ? "text-state-interview hover:bg-wash-strong"
+                          : "text-subtle hover:bg-wash-strong hover:text-default",
+                      ].join(" ")}
+                    >
+                      <Icon name={isStarred(item) ? "star-filled" : "star"} className="h-3.5 w-3.5" />
+                    </button>
+                    {showRowAction && rowAction ? (
+                      rowActionIsReply ? (
+                        /*
+                          Quiet, and it costs the row no height: absolutely
+                          placed at the right edge and revealed on hover or
+                          keyboard focus. The row still opens the conversation on
+                          its own; this lands there with the composer focused.
+                        */
                         <button
                           type="button"
                           data-testid="row-next-action"
                           data-action-key={rowAction.key}
+                          title={rowAction.label}
+                          aria-label={rowAction.label}
                           onClick={() => {
                             handleSelect(item.id);
                             runNextAction(item, rowAction);
                           }}
-                          className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-overlay"
+                          className="absolute bottom-2.5 right-12 hidden h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-line-mid bg-raised text-white/75 opacity-0 transition-opacity hover:bg-overlay hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus group-hover/row:opacity-100 sm:inline-flex"
                         >
-                          {rowAction.label}
+                          <Icon name="message-square-text" className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
-                      </div>
+                      ) : (
+                        /*
+                          Aligned to the row's text column, not to its right
+                          edge: right-aligned it hung under the timestamp with
+                          nothing above it to line up against. At 64px — the
+                          row's padding plus the avatar and its gap — it starts
+                          where the name and snippet start.
+                        */
+                        <div className="-mt-1 hidden pb-3 pl-16 pr-4 sm:flex">
+                          <button
+                            type="button"
+                            data-testid="row-next-action"
+                            data-action-key={rowAction.key}
+                            onClick={() => {
+                              handleSelect(item.id);
+                              runNextAction(item, rowAction);
+                            }}
+                            className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-raised px-2.5 text-[11px] font-semibold text-white/85 transition-colors hover:bg-overlay"
+                          >
+                            {rowAction.label}
+                          </button>
+                        </div>
+                      )
                     ) : null}
                     </div>
                   );
@@ -4817,13 +4958,21 @@ export default function ApplicationsWorkspace({
                       rather than a labelled button competing with the
                       recommended action. Never visible to the counterparty.
                     */}
-                    {liveMode && conversationIdOf(selected) ? (
+                    {selected ? (
                       <button
                         type="button"
                         data-testid="star-toggle"
                         aria-pressed={isStarred(selected)}
-                        aria-label={isStarred(selected) ? "Remove from saved" : "Save for later"}
-                        title={isStarred(selected) ? "Saved" : "Save for later"}
+                        aria-label={
+                          isStarred(selected)
+                            ? "Starred for later — only you can see this. Remove star."
+                            : "Star for later — only you can see this"
+                        }
+                        title={
+                          isStarred(selected)
+                            ? "Starred — only you can see this"
+                            : "Star for later — only you can see this"
+                        }
                         onClick={() => void toggleStar(selected)}
                         className={[
                           "inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors",
@@ -4832,7 +4981,10 @@ export default function ApplicationsWorkspace({
                             : "text-subtle hover:bg-wash-strong hover:text-default",
                         ].join(" ")}
                       >
-                        <Icon name={isStarred(selected) ? "bookmark" : "bookmark"} className="h-4 w-4" />
+                        <Icon
+                          name={isStarred(selected) ? "star-filled" : "star"}
+                          className="h-4 w-4"
+                        />
                       </button>
                     ) : null}
                     {/*
@@ -4867,19 +5019,24 @@ export default function ApplicationsWorkspace({
                       >
                         {interviewStep.label}
                       </button>
-                    ) : selectedNextAction ? (
+                    ) : selectedNextAction?.highConfidence ? (
+                      /*
+                        Only a well-evidenced action earns a primary button.
+
+                        The low-confidence fallback rendered "Choose next step",
+                        which opened the decision surface — and that surface is
+                        behind a flag, so with the flag off the button did
+                        nothing at all. A recommendation the system cannot make
+                        is better expressed by not making one: "More actions"
+                        already carries every move, so nothing is lost.
+                      */
                       <button
                         type="button"
                         data-testid="next-action-primary"
                         data-action-key={selectedNextAction.key}
                         disabled={Boolean(statusMutationKey)}
                         onClick={() => runNextAction(selected, selectedNextAction)}
-                        className={[
-                          "hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
-                          selectedNextAction.highConfidence
-                            ? "surface-primary text-black elev-2 hover:brightness-105"
-                            : "border border-line-mid bg-raised text-default elev-1 hover:bg-elevated hover:text-ink",
-                        ].join(" ")}
+                        className="surface-primary hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
                       >
                         {selectedNextAction.label}
                       </button>

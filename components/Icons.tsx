@@ -21,6 +21,8 @@ export function Icon({
     | "pin"
     | "share"
     | "bookmark"
+    | "star"
+    | "star-filled"
     | "tag"
     | "eye"
     | "image"
@@ -217,6 +219,31 @@ export function Icon({
             strokeLinecap="round"
             d="M7 4h10a1 1 0 0 1 1 1v16l-6-3-6 3V5a1 1 0 0 1 1-1Z"
           />
+        </svg>
+      );
+
+    /*
+       Save-for-later, as a star.
+
+       Two cases rather than one with a prop: a toggle has to read as on or off
+       at a glance, and an outline that merely changes colour does not. The
+       filled variant paints the same path so the shape does not shift when it
+       flips.
+    */
+    case "star":
+      return (
+        <svg viewBox="0 0 24 24" {...common}>
+          <path
+            strokeLinejoin="round"
+            d="m12 3.5 2.6 5.28 5.83.85-4.22 4.11.997 5.8L12 16.82l-5.21 2.74.997-5.8-4.22-4.11 5.83-.85L12 3.5Z"
+          />
+        </svg>
+      );
+
+    case "star-filled":
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="currentColor" stroke="none">
+          <path d="m12 3.5 2.6 5.28 5.83.85-4.22 4.11.997 5.8L12 16.82l-5.21 2.74.997-5.8-4.22-4.11 5.83-.85L12 3.5Z" />
         </svg>
       );
 

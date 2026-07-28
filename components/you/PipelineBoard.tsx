@@ -155,6 +155,12 @@ type PipelineBoardProps = {
    * the board never grows a second, competing decision surface.
    */
   onNextAction?: (item: OwnerInteraction, action: NextBestAction) => void;
+  /**
+   * Private "save for later", supplied by the workspace so the board and the
+   * Inbox read and write one preference rather than two.
+   */
+  isStarred?: (item: OwnerInteraction) => boolean;
+  onToggleStar?: (item: OwnerInteraction) => void;
 };
 
 /** Recommendations the board dispatches itself; the rest belong to the stage menu. */
@@ -474,6 +480,8 @@ export default function PipelineBoard({
   workStateFor,
   nextActionFor,
   onNextAction,
+  isStarred,
+  onToggleStar,
 }: PipelineBoardProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
@@ -1111,18 +1119,65 @@ export default function PipelineBoard({
                                   <p className="mt-0.5 truncate text-[11px] text-muted">{context}</p>
                                 ) : null}
                               </div>
-                              {manageable ? (
-                                <input
-                                  type="checkbox"
-                                  data-testid="pipeline-row-checkbox"
-                                  data-no-drag
-                                  aria-label={`Select ${item.counterpartyName}`}
-                                  checked={checked}
-                                  onClick={(event) => event.stopPropagation()}
-                                  onChange={() => toggleRow(item.id)}
-                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-white"
-                                />
-                              ) : null}
+                              {/*
+                                Two controls, deliberately unlike each other.
+
+                                The checkbox gathers cards for a bulk move; the
+                                star is a private note-to-self about one person.
+                                A square that ticks and a star that fills read as
+                                different kinds of thing at a glance, which is
+                                what keeps them from being confused — they sit
+                                together because the card header is where the
+                                eye already is, not because they are related.
+                              */}
+                              <span className="mt-0.5 flex shrink-0 items-center gap-1.5">
+                                {onToggleStar ? (
+                                  <button
+                                    type="button"
+                                    data-testid="pipeline-star-toggle"
+                                    data-no-drag
+                                    aria-pressed={Boolean(isStarred?.(item))}
+                                    aria-label={
+                                      isStarred?.(item)
+                                        ? `Remove star from ${item.counterpartyName} — only you can see this`
+                                        : `Star ${item.counterpartyName} for later — only you can see this`
+                                    }
+                                    title={
+                                      isStarred?.(item)
+                                        ? "Starred — only you can see this"
+                                        : "Star for later — only you can see this"
+                                    }
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onToggleStar(item);
+                                    }}
+                                    className={[
+                                      "inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded transition-colors",
+                                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                                      isStarred?.(item)
+                                        ? "text-state-interview hover:bg-wash-strong"
+                                        : "text-subtle hover:bg-wash-strong hover:text-default",
+                                    ].join(" ")}
+                                  >
+                                    <Icon
+                                      name={isStarred?.(item) ? "star-filled" : "star"}
+                                      className="h-3.5 w-3.5"
+                                    />
+                                  </button>
+                                ) : null}
+                                {manageable ? (
+                                  <input
+                                    type="checkbox"
+                                    data-testid="pipeline-row-checkbox"
+                                    data-no-drag
+                                    aria-label={`Select ${item.counterpartyName}`}
+                                    checked={checked}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={() => toggleRow(item.id)}
+                                    className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-white"
+                                  />
+                                ) : null}
+                              </span>
                             </div>
 
                             {/*

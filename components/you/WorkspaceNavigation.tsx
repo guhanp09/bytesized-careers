@@ -60,6 +60,20 @@ const PERSONA_DESCRIPTIONS: Record<WorkspaceMode, string> = {
 };
 
 /**
+ * One icon per persona, used in the trigger and in the menu.
+ *
+ * The two sides of this marketplace are the difference between "work I am
+ * looking for" and "people I am hiring", and two words in the same weight made
+ * that a reading task. A person for the creator's own side, a briefcase for the
+ * hiring side — supporting the label rather than replacing it, and the only
+ * icon on each row apart from the check.
+ */
+const PERSONA_ICONS: Record<WorkspaceMode, "user" | "briefcase"> = {
+  talent: "user",
+  hiring: "briefcase",
+};
+
+/**
  * Close on outside-pointer and Escape, returning focus to the trigger.
  *
  * Shared because both menus here must behave identically — a disclosure that
@@ -160,7 +174,7 @@ export function WorkspacePersonaControl({
             : "border-line bg-raised text-ink hover:border-line-mid hover:bg-elevated",
         ].join(" ")}
       >
-        <Icon name="user" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
+        <Icon name={PERSONA_ICONS[mode]} className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
         <span className="hidden text-[11px] font-medium text-muted sm:inline">Working as</span>
         {activeLabel}
         <Icon
@@ -205,6 +219,14 @@ export function WorkspacePersonaControl({
                   className={[
                     "mt-0.5 h-3.5 w-3.5 shrink-0",
                     isActive ? "text-ink" : "text-transparent",
+                  ].join(" ")}
+                  aria-hidden="true"
+                />
+                <Icon
+                  name={PERSONA_ICONS[option.key]}
+                  className={[
+                    "mt-0.5 h-3.5 w-3.5 shrink-0",
+                    isActive ? "text-ink" : "text-muted",
                   ].join(" ")}
                   aria-hidden="true"
                 />
