@@ -34,6 +34,7 @@ import {
   loadedAnnouncement,
   nextLimit,
 } from "../../lib/workspacePaging";
+import { startAutoscroll, type AutoscrollController } from "../../lib/dragAutoscroll";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -700,6 +701,16 @@ export default function PipelineBoard({
     void moveStage(moveItems, stageKey);
   };
 
+  /*
+    A held card can reach a stage that is off screen.
+
+    Without this the only droppable targets are the ones already in view, so on
+    a full funnel the card is pickable and has nowhere to go. The rules that keep
+    it from firing by accident — a bounded edge band, a dwell before the first
+    pixel, speed ramping with depth — live in `lib/dragAutoscroll.ts`.
+  */
+  const autoscrollRef = useRef<AutoscrollController | null>(null);
+
   const handleCardDragStart = (event: DragEvent<HTMLDivElement>, item: OwnerInteraction) => {
     // Interactive children (checkbox, links, menus, message) never start a drag.
     if ((event.target as HTMLElement).closest("[data-no-drag]")) {
@@ -709,12 +720,21 @@ export default function PipelineBoard({
     event.dataTransfer.setData("text/plain", item.id);
     event.dataTransfer.effectAllowed = "move";
     setDragId(item.id);
+    autoscrollRef.current?.stop();
+    autoscrollRef.current = startAutoscroll({});
   };
 
   const endDrag = () => {
     setDragId(null);
     setDropStage(null);
+    autoscrollRef.current?.stop();
+    autoscrollRef.current = null;
   };
+
+  // A drag can end anywhere — including outside the window, where no drop or
+  // dragend fires on the card. Releasing the loop on unmount stops a runaway
+  // scroll surviving the board itself.
+  useEffect(() => () => autoscrollRef.current?.stop(), []);
 
   const handleDropOn = (event: DragEvent, stageKey: string) => {
     event.preventDefault();
@@ -756,7 +776,17 @@ export default function PipelineBoard({
       stages;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="pipeline-board">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      data-testid="pipeline-board"
+      /*
+        The pointer is fed here rather than per stage: `dragover` bubbles, so
+        one listener sees every move — including the gaps between sections and
+        the board's own padding, where a per-stage handler sees nothing and the
+        scroll would stall mid-travel.
+      */
+      onDragOver={(event) => autoscrollRef.current?.update(event.clientX, event.clientY)}
+    >
       {/*
         Polite and out of the flow, so expanding a stage never moves focus. The
         button the reader pressed keeps it; they are told what happened.
@@ -1080,8 +1110,23 @@ export default function PipelineBoard({
                             onDragStart={(event) => handleCardDragStart(event, item)}
                             onDragEnd={endDrag}
                             onClick={() => onMessage(item)}
+                            /*
+                              One height for every card.
+
+                              Content varies enormously — a portfolio strip and
+                              full commercial terms beside a name and one line —
+                              and letting each card size itself made the board
+                              look unfinished, with footers landing at a
+                              different height in every column. A fixed frame
+                              with a scroll-safe body and the footer already
+                              pinned by `mt-auto` puts the time, the Message
+                              button and the stage menu on the same line across
+                              the whole row. Overflowing content is clamped, not
+                              lost: the card is a summary and the conversation
+                              is the record.
+                            */
                             className={[
-                              "group relative flex flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
+                              "group relative flex h-[248px] flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
                               "transition-[transform,box-shadow,background-color,border-color] duration-150",
                               manageable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               isDragging
@@ -1180,6 +1225,18 @@ export default function PipelineBoard({
                               </span>
                             </div>
 
+                            {/*
+                              The card's variable middle.
+
+                              Everything here — evidence, creator facts, the
+                              snippet, a private note — is a summary whose length
+                              depends entirely on the record. Given its own
+                              `min-h-0 flex-1` region it absorbs the difference
+                              between records instead of pushing the footer out
+                              of a fixed-height card, which is what clipped the
+                              Message button on three quarters of them.
+                            */}
+                            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                             {/*
                               Parity with the Inbox: the same derivation and the
                               same ladder. Decision-type recommendations are not
@@ -1311,6 +1368,7 @@ export default function PipelineBoard({
                               label survives. Placement is unchanged: still the
                               footer, still trailing.
                             */}
+                            </div>
                             <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-line pt-2">
                               <InteractionTime value={item.updatedAt} className="shrink-0 text-[11px] text-subtle" />
                               <div
