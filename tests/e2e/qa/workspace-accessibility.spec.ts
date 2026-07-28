@@ -244,8 +244,9 @@ test("the whole interview flow is reachable and operable by keyboard", async ({ 
   const stripHasFocus = await strip.evaluate((node) => node.contains(document.activeElement));
   expect(stripHasFocus, "the decision surface took focus on mount").toBeFalsy();
 
-  // And it is reachable from the keyboard once someone goes looking.
-  const firstChoice = strip.getByRole("button").first();
+  // And it is reachable from the keyboard once someone goes looking. A real
+  // choice, not the dismiss control that leads the strip.
+  const firstChoice = strip.locator('[data-testid^="decision-strip-option-"]').first();
   await firstChoice.focus();
   await expect(firstChoice).toBeFocused();
 

@@ -74,7 +74,7 @@ test("what to do next is reachable without ever opening the overflow menu", asyn
     await expect(primary).not.toHaveText("");
   } else {
     await expect(strip).toBeVisible();
-    await expect(strip.getByRole("button").first()).toBeVisible();
+    await expect(strip.locator('[data-testid^="decision-strip-option-"]').first()).toBeVisible();
   }
   // Nothing above required opening a menu.
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -295,7 +295,12 @@ test("the recommended action is operable by keyboard", async ({ page }) => {
   */
   const primary = page.getByTestId("next-action-primary");
   const control =
-    (await primary.count()) > 0 ? primary : page.getByTestId("decision-strip").getByRole("button").first();
+    (await primary.count()) > 0
+      ? primary
+      : // A decision *option*, not merely the first button in the strip — that
+        // one is the dismiss control, and dismissing is the one outcome this
+        // test cannot tell apart from a silent no-op.
+        page.getByTestId("decision-strip").locator('[data-testid^="decision-strip-option-"]').first();
   await expect(control).toBeVisible();
   await control.focus();
   await expect(control).toBeFocused();
@@ -493,14 +498,20 @@ test("queues filter the list and only advertise work that exists", async ({ page
     omission. So the filtering claim is made against the first category that
     actually has records.
   */
-  const queues = menu.getByRole("menuitemradio").filter({ hasNotText: /^Everything$/ });
+  /*
+    Addressed by key, not by excluding the text "Everything". That exclusion was
+    written when the Everything row was exactly that word; it since grew a
+    count — the denominator the categories add up to — and `/^Everything$/`
+    stopped matching "Everything190", so the row it was meant to skip became the
+    first "queue" the test picked and selected, which clears the filter instead
+    of applying one.
+  */
+  const queues = menu.locator('[data-queue-key]:not([data-queue-key="all"])');
   const count = await queues.count();
   expect(count, "the menu should offer categories").toBeGreaterThan(0);
 
-  const advertisedOf = async (index: number) => {
-    const label = await queues.nth(index).innerText();
-    return Number.parseInt((label.match(/(\d+)\s*$/) ?? ["", "0"])[1], 10);
-  };
+  const advertisedOf = async (index: number) =>
+    Number.parseInt((await queues.nth(index).getAttribute("data-queue-count")) ?? "0", 10);
   let index = 0;
   let advertised = await advertisedOf(index);
   while (advertised === 0 && index < count - 1) {
