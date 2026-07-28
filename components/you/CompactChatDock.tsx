@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../Icons";
-import { groupThreadEntries } from "../../lib/systemEventGrouping";
+import { groupConversation } from "../../lib/systemEventGrouping";
 import { InteractionTime } from "./InteractionTime";
 import {
   buildConversation,
   InteractionAvatar,
-  MessageBubble,
+  MessageGroup,
   StatusUpdateLine,
   SystemEventGroup,
   type ChatMessage,
@@ -479,9 +479,13 @@ export default function CompactChatDock({
       : isMessagingClosedStatus(thread.status) || threadInteractionBlocked
     : false;
   const composerReady = Boolean(thread) && !threadMessagingClosed && (!liveMode || Boolean(threadLive));
-  const latestOutgoingMessageId = [...conversation]
+  const latestOutgoing = [...conversation]
     .reverse()
-    .find((message) => message.fromMe && message.kind !== "status")?.id;
+    .find((message) => message.fromMe && message.kind !== "status");
+  const latestOutgoingMessageId = latestOutgoing?.id;
+  const latestOutgoingRead = Boolean(latestOutgoing?.readByRecipient);
+  // A dock thread is one-to-one by construction, so a name above every run
+  // would say only what the dock's own header already says.
   const typing = activeConversationId ? typingByConversation[activeConversationId] : null;
 
   const send = async () => {
@@ -661,21 +665,24 @@ export default function CompactChatDock({
                   history told two different ways depending on where you opened
                   it.
                 */}
-                {groupThreadEntries(conversation).map((entry) =>
+                {groupConversation(conversation).map((entry) =>
                   entry.type === "system-group" ? (
                     <SystemEventGroup key={entry.id} summary={entry.summary} events={entry.events} />
-                  ) : entry.message.kind === "status" ? (
+                  ) : entry.type === "status" ? (
                     <StatusUpdateLine key={entry.message.id} message={entry.message} />
                   ) : (
-                    <MessageBubble
-                      key={entry.message.id}
-                      message={entry.message}
+                    <MessageGroup
+                      key={entry.id}
+                      senderName={entry.senderName}
+                      fromMe={entry.fromMe}
+                      messages={entry.messages}
+                      latestAt={entry.latestAt}
                       counterpartyAvatarUrl={thread.counterpartyAvatarUrl}
                       counterpartyHref={pipelineProfileHrefOf(thread)}
-                      showSeen={
-                        entry.message.id === latestOutgoingMessageId &&
-                        Boolean(entry.message.readByRecipient)
+                      seenMessageId={
+                        latestOutgoingMessageId && latestOutgoingRead ? latestOutgoingMessageId : null
                       }
+                      density="compact"
                     />
                   )
                 )}

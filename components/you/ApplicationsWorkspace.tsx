@@ -122,7 +122,7 @@ import { AbsoluteTimeOnFocus, InteractionTime } from "./InteractionTime";
 import { ClientContextSummary } from "./CreatorContext";
 import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
-import { groupThreadEntries } from "../../lib/systemEventGrouping";
+import { groupConversation } from "../../lib/systemEventGrouping";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   INBOX_PAGE_SIZE,
@@ -417,6 +417,32 @@ function rowSnippet(item: OwnerInteraction): string {
   return (last || "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The one line of the conversation worth previewing, and whether a person wrote it.
+ *
+ * A structured application with no fit note, or a request nobody has answered,
+ * has no human message at all. Leaving the line empty gave the list two row
+ * heights depending on whether anybody happened to write a sentence, so a system
+ * line stands in — but it is marked as one, and it is deliberately terse.
+ *
+ * The obvious phrasing, "Ishaan Gupta applied for Shorts editor for beauty
+ * channel", repeats the name on line one and the job on line two: a third line
+ * that adds a verb. What it actually contributes is *that nothing was said*, so
+ * that is what it says.
+ */
+function rowPreview(item: OwnerInteraction): { text: string; fromSystem: boolean } {
+  const human = rowSnippet(item);
+  if (human) return { text: human, fromSystem: false };
+  const applied = item.kind === "application";
+  if (item.direction === "sent") {
+    return { text: applied ? "You applied — no message yet" : "You sent a hiring request — no message yet", fromSystem: true };
+  }
+  return {
+    text: applied ? "Applied — no message yet" : "Sent a hiring request — no message yet",
+    fromSystem: true,
+  };
+}
+
 /** The stage's dot, from the shared taxonomy rather than a local colour map. */
 function statusDotClass(item: OwnerInteraction): string {
   const current = backendStatusOf(item);
@@ -426,14 +452,65 @@ function statusDotClass(item: OwnerInteraction): string {
   return stage?.dot ?? "bg-white/40";
 }
 
-function rowSubtitle(item: OwnerInteraction): string {
-  if (item.kind === "application" && item.direction === "received") {
-    return item.job?.title || item.counterpartyName;
-  }
-  if (item.contextLabel && item.title === item.counterpartyName) {
-    return item.contextLabel;
-  }
+/**
+ * Who the row is with.
+ *
+ * `item.title` cannot answer this: it holds the applicant's name on a received
+ * application and the *job's* title on a sent one, so a list built from it led
+ * half its rows with "Subtitler / translator for food channel" — a job, in a
+ * list of conversations, above the name of the person having them. The
+ * counterparty is the counterparty in all four combinations, so this is the one
+ * field that means the same thing on every row.
+ */
+function rowIdentity(item: OwnerInteraction): string {
   return item.counterpartyName;
+}
+
+/**
+ * The job or request the conversation is about, in one subordinate line.
+ *
+ * Present on every row and never first. Assembled rather than picked, because
+ * the useful phrase differs by direction: a creator wants the role and whose
+ * channel it is; a recruiter wants the role this person applied for. Parts that
+ * repeat the identity above them are dropped — a row that says "Ishaan Reddy /
+ * Ishaan Reddy" has spent a line saying nothing.
+ */
+function rowContext(item: OwnerInteraction): string {
+  const parts: Array<string | null | undefined> = [];
+  if (item.kind === "application") {
+    parts.push(item.job?.title || (item.title !== item.counterpartyName ? item.title : null));
+    // Only on the sent side: a recruiter reading their own inbox knows the channel.
+    if (item.direction === "sent") parts.push(item.job?.channelName);
+  } else if (item.direction === "sent") {
+    // I approached this creator — the listing is the role I approached them for.
+    parts.push(item.contextLabel || item.talent?.headline);
+  } else {
+    parts.push(item.title !== item.counterpartyName ? item.title : null, item.contextLabel);
+    parts.push(item.recruiter?.channelName);
+  }
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const part of parts) {
+    const value = (part || "").replace(/\s+/g, " ").trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (key === item.counterpartyName.trim().toLowerCase() || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
+  }
+  /*
+    Never nothing: a record with no job attached still needs a second line, or
+    the row loses its rhythm and the list develops two heights. The kind alone is
+    a weaker answer than a job title but a truthful one — stated without its
+    direction, because the mark on the avatar already carries that and
+    "Received hiring request" over an inbound arrow is the same fact twice.
+  */
+  return unique.length > 0
+    ? unique.join(" · ")
+    : item.kind === "application"
+      ? "Job application"
+      : "Hiring request";
 }
 
 function headerActionsFor(item: OwnerInteraction, live: boolean): HeaderAction[] {
@@ -1562,17 +1639,37 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
   );
 }
 
+/** Where a bubble sits inside its sender's run. */
+export type BubblePosition = "single" | "first" | "middle" | "last";
+
+/**
+ * Corner geometry that says where in a run a bubble sits.
+ *
+ * The inner edge — left for an incoming bubble, right for an outgoing one — is
+ * the one that faces the sender. Its bottom corner is always tucked, which is
+ * the tail; its top corner tucks as well once there is a bubble above it from
+ * the same person, so a run reads as one stacked object rather than as separate
+ * remarks that happen to be adjacent.
+ */
+function bubbleCorners(fromMe: boolean, position: BubblePosition): string {
+  const continues = position === "middle" || position === "last";
+  if (fromMe) return continues ? "rounded-2xl rounded-tr-md rounded-br-md" : "rounded-2xl rounded-br-md";
+  return continues ? "rounded-2xl rounded-tl-md rounded-bl-md" : "rounded-2xl rounded-bl-md";
+}
+
+/**
+ * One message.
+ *
+ * Carries no identity of its own any more. The name, the avatar and the time
+ * belong to the run it is part of — see {@link MessageGroup} — because a bubble
+ * cannot know whether it is the place to say them.
+ */
 export function MessageBubble({
   message,
-  counterpartyAvatarUrl,
-  counterpartyHref,
-  showSeen = false,
+  position = "single",
 }: {
   message: ChatMessage;
-  counterpartyAvatarUrl?: string | null;
-  counterpartyHref?: string | null;
-  /** Only the latest outgoing bubble displays a restrained receipt. */
-  showSeen?: boolean;
+  position?: BubblePosition;
 }) {
   const me = message.fromMe;
   const portfolioPopup = usePortfolioDetailPopup(`applications-message-portfolio-${message.id}`);
@@ -1584,79 +1681,204 @@ export function MessageBubble({
   ) => {
     portfolioPopup.open(portfolioItemFromAttachment(label, url), target, point);
   };
-  const avatar = (
-    <InteractionAvatar
-      name={message.senderName}
-      src={me ? null : counterpartyAvatarUrl}
-      sizeClasses="h-7 w-7"
-    />
-  );
   return (
     <div
       data-testid="chat-message"
       data-from={me ? "me" : "other"}
-      className={["flex items-end gap-2", me ? "flex-row-reverse" : "flex-row"].join(" ")}
+      data-position={position}
+      className={["flex w-full min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}
     >
-      {!me && counterpartyHref ? (
-        <Link href={counterpartyHref} aria-label={`Open ${message.senderName}`} className="rounded-full focus:outline-none focus:ring-2 focus:ring-white/15">
-          {avatar}
-        </Link>
-      ) : (
-        avatar
-      )}
-      <div className={["flex max-w-[82%] min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}>
-        <p className="px-1 text-[11px] font-medium text-subtle">
-          {message.senderName} <InteractionTime value={message.createdAt} prefix="· " />
+      {message.kind === "screening" ? (
+        <ScreeningQuestionsCard message={message} />
+      ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
+        <div
+          className={[
+            "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
+            bubbleCorners(me, position),
+            me
+              ? "bg-white/[0.13] text-white/92"
+              : "border border-line bg-raised text-white/82",
+          ].join(" ")}
+        >
+          {message.body ? <p className="whitespace-pre-line break-words">{message.body}</p> : null}
+          {message.rate ? (
+            <p
+              className={[
+                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs",
+                message.body ? "mt-2.5" : "",
+                me ? "bg-black/20 text-white/82" : "border border-line bg-wash text-white/72",
+              ].join(" ")}
+            >
+              <Icon name="cash" className="h-3.5 w-3.5 opacity-70" />
+              {message.rate}
+            </p>
+          ) : null}
+          {message.attachments && message.attachments.length > 0 ? (
+            <div className={["flex flex-col items-start gap-1.5", message.body || message.rate ? "mt-2.5" : ""].join(" ")}>
+              {message.attachments.map((attachment) => (
+                <AttachmentChip
+                  key={`${message.id}-att-${attachment.label}`}
+                  label={attachment.label}
+                  url={attachment.url}
+                  onMe={me}
+                  onOpenPortfolio={openPortfolioAttachment}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {message.firstMessageAnswers && message.firstMessageContext ? (
+        <FirstMessageSummary
+          context={message.firstMessageContext}
+          answers={message.firstMessageAnswers}
+          className="w-full"
+        />
+      ) : null}
+      {portfolioPopup.popover}
+    </div>
+  );
+}
+
+/**
+ * A run of consecutive messages from one person.
+ *
+ * The thread used to print the sender's name and a timestamp above *every*
+ * bubble. In a conversation between two people, named at the top of the panel,
+ * that is the reader being told what they already know once per bubble — and it
+ * buried the one thing repetition should make obvious, which is where the other
+ * person started talking.
+ *
+ * So identity is stated once per run and placed at its edges: the name (only
+ * where more than one person can be speaking) at the head, the avatar and the
+ * time at the foot, next to the most recent thing said. Outgoing runs carry
+ * neither — the right-hand alignment already answers "whose?", and repeating
+ * your own name and face to yourself is the purest form of the same defect.
+ *
+ * Screen readers do not get the alignment, so the run is a labelled `group`:
+ * everything the visual grouping removes is restored in its accessible name.
+ */
+export function MessageGroup({
+  senderName,
+  fromMe,
+  messages,
+  latestAt,
+  counterpartyAvatarUrl,
+  counterpartyHref,
+  showSenderName = false,
+  seenMessageId = null,
+  density = "comfortable",
+}: {
+  senderName: string;
+  fromMe: boolean;
+  messages: ChatMessage[];
+  latestAt: string | null;
+  counterpartyAvatarUrl?: string | null;
+  counterpartyHref?: string | null;
+  /** Only where the thread can carry more than one incoming voice. */
+  showSenderName?: boolean;
+  /** The latest outgoing message known to have been read. */
+  seenMessageId?: string | null;
+  density?: "comfortable" | "compact";
+}) {
+  const compact = density === "compact";
+  const avatarSize = compact ? "h-6 w-6" : "h-7 w-7";
+  const railWidth = compact ? "w-6" : "w-7";
+  const showSeen = messages.some((message) => message.id === seenMessageId);
+  const position = (index: number): BubblePosition => {
+    if (messages.length === 1) return "single";
+    if (index === 0) return "first";
+    if (index === messages.length - 1) return "last";
+    return "middle";
+  };
+
+  const meta = (
+    <p
+      className={[
+        "flex items-center gap-1 px-1 font-medium text-subtle",
+        compact ? "text-[10px]" : "text-[10.5px]",
+      ].join(" ")}
+    >
+      <InteractionTime value={latestAt} />
+      {showSeen ? <span>· Seen</span> : null}
+    </p>
+  );
+
+  const bubbles = (
+    <div
+      className={[
+        "flex w-full min-w-0 flex-col",
+        // Tight inside a run, so the gap between runs does the separating.
+        compact ? "gap-[3px]" : "gap-1",
+        fromMe ? "items-end" : "items-start",
+      ].join(" ")}
+    >
+      {showSenderName && !fromMe ? (
+        <p className={["px-1 pb-0.5 font-semibold text-muted", compact ? "text-[10.5px]" : "text-[11px]"].join(" ")}>
+          {senderName}
         </p>
-        {message.kind === "screening" ? (
-          <ScreeningQuestionsCard message={message} />
-        ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
-          <div
-            className={[
-              "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
-              me
-                ? "rounded-2xl rounded-br-md bg-white/[0.13] text-white/92"
-                : "rounded-2xl rounded-bl-md border border-line bg-raised text-white/82",
-            ].join(" ")}
-          >
-            {message.body ? <p className="whitespace-pre-line break-words">{message.body}</p> : null}
-            {message.rate ? (
-              <p
-                className={[
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs",
-                  message.body ? "mt-2.5" : "",
-                  me ? "bg-black/20 text-white/82" : "border border-line bg-wash text-white/72",
-                ].join(" ")}
-              >
-                <Icon name="cash" className="h-3.5 w-3.5 opacity-70" />
-                {message.rate}
-              </p>
-            ) : null}
-            {message.attachments && message.attachments.length > 0 ? (
-              <div className={["flex flex-col items-start gap-1.5", message.body || message.rate ? "mt-2.5" : ""].join(" ")}>
-                {message.attachments.map((attachment) => (
-                  <AttachmentChip
-                    key={`${message.id}-att-${attachment.label}`}
-                    label={attachment.label}
-                    url={attachment.url}
-                    onMe={me}
-                    onOpenPortfolio={openPortfolioAttachment}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {message.firstMessageAnswers && message.firstMessageContext ? (
-          <FirstMessageSummary
-            context={message.firstMessageContext}
-            answers={message.firstMessageAnswers}
-            className="w-full"
-          />
-        ) : null}
-        {showSeen ? <p className="px-1 text-[10.5px] font-medium text-subtle">Seen</p> : null}
-        {portfolioPopup.popover}
+      ) : null}
+      {messages.map((message, index) => (
+        <MessageBubble key={message.id} message={message} position={position(index)} />
+      ))}
+      {meta}
+    </div>
+  );
+
+  /*
+    Just the sender. The instant is deliberately not folded in here: it would
+    have to be formatted during render, and a relative or timezone-local string
+    differs between the server pass and the first client pass, which React
+    reports as a hydration mismatch on the attribute. The `<InteractionTime>`
+    inside the group already carries the full instant in its own accessible
+    name, and a screen reader reads it as part of the group.
+  */
+  const groupLabel = `${fromMe ? "You" : senderName}${messages.length > 1 ? `, ${messages.length} messages` : ""}`;
+
+  if (fromMe) {
+    return (
+      <div
+        role="group"
+        aria-label={groupLabel}
+        data-testid="message-group"
+        data-from="me"
+        className="flex justify-end"
+      >
+        <div className="flex max-w-[82%] min-w-0 flex-col items-end">{bubbles}</div>
       </div>
+    );
+  }
+
+  const avatar = (
+    <InteractionAvatar name={senderName} src={counterpartyAvatarUrl} sizeClasses={avatarSize} />
+  );
+  return (
+    <div
+      role="group"
+      aria-label={groupLabel}
+      data-testid="message-group"
+      data-from="other"
+      className={["flex items-end", compact ? "gap-1.5" : "gap-2"].join(" ")}
+    >
+      {/*
+        A rail rather than a bare avatar: the width is reserved for the whole
+        run, so the bubbles above the avatar keep the same left edge as the one
+        beside it and the column never ragged-edges.
+      */}
+      <div className={`${railWidth} shrink-0 self-end`} data-testid="message-group-avatar">
+        {counterpartyHref ? (
+          <Link
+            href={counterpartyHref}
+            aria-label={`Open ${senderName}`}
+            className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          >
+            {avatar}
+          </Link>
+        ) : (
+          avatar
+        )}
+      </div>
+      <div className="flex max-w-[82%] min-w-0 flex-col items-start">{bubbles}</div>
     </div>
   );
 }
@@ -3954,9 +4176,26 @@ export default function ApplicationsWorkspace({
         )
       : [];
   const conversation = selected ? [...buildConversation(selected), ...liveMessages] : [];
-  const latestOutgoingMessageId = [...conversation]
+  const latestOutgoing = [...conversation]
     .reverse()
-    .find((message) => message.fromMe && message.kind !== "status")?.id;
+    .find((message) => message.fromMe && message.kind !== "status");
+  const latestOutgoingMessageId = latestOutgoing?.id;
+  const latestOutgoingRead = Boolean(latestOutgoing?.readByRecipient);
+  /*
+    Whether a name above a run tells the reader anything.
+
+    In a conversation with one other person — which is nearly all of them — the
+    panel header already names them and the left-hand alignment says the rest,
+    so printing the name over every incoming run is the old per-bubble defect at
+    a coarser grain. It earns its place only where the thread can carry more than
+    one incoming voice.
+  */
+  const threadHasSeveralVoices =
+    new Set(
+      conversation
+        .filter((message) => !message.fromMe && message.kind !== "status")
+        .map((message) => message.senderName)
+    ).size > 1;
   const typing = selectedConversationId ? typingByConversation[selectedConversationId] : null;
   const subtitle = selected ? subtitleFor(selected) : null;
   const forward = selected ? forwardLinkFor(selected) : null;
@@ -4638,6 +4877,7 @@ export default function ApplicationsWorkspace({
                     focused. "Confirm start" or "Record decision" are different
                     actions and keep their labels.
                   */
+                  const preview = rowPreview(item);
                   const showRowAction = Boolean(rowAction?.highConfidence) && !isSelected;
                   const rowActionIsReply = rowAction?.key === "reply";
                   return (
@@ -4671,8 +4911,22 @@ export default function ApplicationsWorkspace({
                           className="absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-ink"
                         />
                       ) : null}
+                      {/*
+                        44px. The avatar was 36px and lost the race with three
+                        lines of text beside it, which is what made the list
+                        scan as records rather than as people. Larger still —
+                        the 48–56px of a social messenger — would stand taller
+                        than the text column it labels, and costs about two rows
+                        a screen. 44px is also the WCAG 2.5.8 minimum target, so
+                        the avatar is a legitimate tap target on touch without
+                        padding invented for the purpose.
+                      */}
                       <span className="relative shrink-0">
-                        <InteractionAvatar name={item.counterpartyName} src={item.counterpartyAvatarUrl} />
+                        <InteractionAvatar
+                          name={item.counterpartyName}
+                          src={item.counterpartyAvatarUrl}
+                          sizeClasses="h-11 w-11"
+                        />
                         {/*
                           The direction of the relationship, as a mark on the
                           avatar rather than a line of backend vocabulary above
@@ -4680,88 +4934,127 @@ export default function ApplicationsWorkspace({
                           full phrase, so nothing is lost to a screen reader.
                         */}
                         <span
-                          className="absolute -bottom-0.5 -right-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-elevated text-subtle ring-2 ring-shell"
+                          className="absolute -bottom-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-elevated text-subtle ring-2 ring-shell"
                           title={interactionKindLabel(item)}
                         >
                           <span className="sr-only">{interactionKindLabel(item)}</span>
                           <Icon
                             name={item.direction === "received" ? "arrow-down-left" : "arrow-up-right"}
-                            className="h-2 w-2"
+                            className="h-2.5 w-2.5"
                           />
                         </span>
                       </span>
                       <div className="min-w-0 flex-1">
-                        {/* The person leads. Everything else is context for them. */}
+                        {/*
+                          The person leads, and nothing shares their line except
+                          the time. Personal marks and counts used to sit
+                          between the two and pushed the timestamp around as
+                          they came and went.
+                        */}
                         <div className="flex items-baseline justify-between gap-2">
                           <span
+                            data-testid="row-identity"
                             className={[
-                              "truncate text-[13.5px] leading-5",
+                              "truncate text-[14px] leading-5",
                               rowUnread ? "font-semibold text-ink" : "font-medium text-default",
                             ].join(" ")}
                           >
-                            {item.title}
+                            {rowIdentity(item)}
                           </span>
-                          <span className="flex shrink-0 items-center gap-1.5">
-                            {isStarred(item) ? (
-                              <span
-                                data-testid="row-starred"
-                                aria-label="Saved"
-                                title="Starred — only you can see this"
-                                className="inline-flex shrink-0 text-state-interview"
-                              >
-                                <Icon name="star-filled" className="h-3 w-3" />
-                              </span>
-                            ) : null}
-                            {messageUnread > 0 ? (
-                              <span
-                                data-testid="inbox-unread-badge"
-                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
-                                className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
-                              >
-                                {formatBadgeCount(messageUnread)}
-                              </span>
-                            ) : null}
-                            {/* One fixed home for the timestamp, always last. */}
-                            <InteractionTime value={item.updatedAt} className="text-[11px] tabular-nums text-subtle" />
+                          {/*
+                            One fixed home for the timestamp. `pr-5` is the
+                            permanent gutter the Star occupies at the row's
+                            right edge — reserved whether or not the Star is
+                            drawn, so hovering a row never nudges the time.
+                          */}
+                          <span className="flex shrink-0 items-center pr-5">
+                            <InteractionTime
+                              value={item.updatedAt}
+                              className={[
+                                "text-[11px] tabular-nums",
+                                rowUnread ? "font-semibold text-secondary" : "text-subtle",
+                              ].join(" ")}
+                            />
                             {/* Same information a pointer gets from the tooltip. */}
                             <AbsoluteTimeOnFocus value={item.updatedAt} />
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-[12px] leading-4 text-muted">{rowSubtitle(item)}</p>
-                        <div className="mt-1.5 flex items-center justify-between gap-2">
-                          <span className="truncate text-[12px] leading-4 text-subtle">
-                            {rowSnippet(item)}
-                          </span>
+                        {/*
+                          The job and the state share the second line — both are
+                          context for the person above them, and pairing them
+                          leaves the third line entirely to the message.
+
+                          The state used to sit beside the preview, where a
+                          hundred-pixel chip cut the last thing somebody said to
+                          about twenty-eight characters. A conversation list
+                          whose message previews are shorter than its labels has
+                          its priorities the wrong way round.
+                        */}
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                          <p
+                            data-testid="row-context"
+                            className="truncate text-[11.5px] leading-4 text-muted"
+                          >
+                            {rowContext(item)}
+                          </p>
                           {/*
-                            Exactly one state indicator. When a row has a work
-                            state, that is the more useful of the two — the
-                            lifecycle stage stays available in the detail header
-                            and on the Pipeline, so showing both here would just
-                            be a badge cluster.
+                            One slot, one indicator, in order of how much it
+                            asks of the reader: unread messages are a thing to
+                            do, a work state is a thing to know, and the
+                            lifecycle stage is the fallback. Stacking them was
+                            the badge cluster this replaces.
                           */}
-                          {rowWorkState ? (
-                            <WorkStateChip state={rowWorkState} />
-                          ) : (
-                            <StatusPill status={item.status} />
-                          )}
+                          <span className="flex shrink-0 items-center pr-5">
+                            {messageUnread > 0 ? (
+                              <span
+                                data-testid="inbox-unread-badge"
+                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
+                                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
+                              >
+                                {formatBadgeCount(messageUnread)}
+                              </span>
+                            ) : rowWorkState ? (
+                              <WorkStateChip state={rowWorkState} />
+                            ) : (
+                              <StatusPill status={item.status} />
+                            )}
+                          </span>
                         </div>
+                        {/* The last thing said, with the whole line to say it in. */}
+                        <p
+                          data-testid="row-preview"
+                          data-from-system={preview.fromSystem ? "true" : undefined}
+                          className={[
+                            // A floor, not a height: an empty preview would
+                            // otherwise collapse the row by a whole line.
+                            "mt-1 min-h-[18px] truncate pr-5 text-[12.5px] leading-[18px]",
+                            preview.fromSystem
+                              ? "italic text-disabled"
+                              : rowUnread
+                                ? "font-medium text-default"
+                                : "text-subtle",
+                          ].join(" ")}
+                        >
+                          {preview.text}
+                        </p>
                       </div>
                     </button>
                     {/*
-                      Sibling, not a child: a button may not nest inside the row
-                      button. Rendered in flow beneath the row content so it can
-                      never overlap the timestamp. Desktop only — on mobile the
-                      action lives in the opened conversation instead.
-                    */}
-                    {/*
                       Personal organisation, on the row itself.
 
-                      Starring used to be reachable only from an opened
-                      conversation, which is the wrong place for it: deciding to
-                      come back to someone is a scanning decision, made while
-                      reading the list. Always rendered once starred so the state
-                      is legible at rest, and revealed on hover or focus
-                      otherwise so an unstarred list stays calm.
+                      A sibling of the row button rather than a child, because a
+                      button may not nest inside one. Starring used to be
+                      reachable only from an opened conversation, which is the
+                      wrong place for it: deciding to come back to someone is a
+                      scanning decision, made while reading the list.
+
+                      One element does both jobs now. It used to be two — a small
+                      filled star beside the timestamp that showed the state, and
+                      a separate hover button that changed it — which meant a
+                      starred row drew the same fact twice and the control was
+                      somewhere other than the readout. Resident once starred so
+                      the state survives the pointer leaving; revealed on hover
+                      and focus otherwise, so an unstarred list stays calm.
                     */}
                     <button
                       type="button"
@@ -4778,30 +5071,39 @@ export default function ApplicationsWorkspace({
                           : "Star for later — only you can see this"
                       }
                       onClick={() => void toggleStar(item)}
-                      /*
-                        Revealed, not resident. The starred state is already
-                        legible at rest from the small star in the meta line, so
-                        a second permanent star on the same row would be the same
-                        fact twice — and it would crowd the timestamp it sits
-                        beside. This is the control; that is the readout.
-                      */
                       className={[
-                        "absolute bottom-2.5 right-3 hidden h-7 w-7 cursor-pointer items-center justify-center rounded-lg opacity-0 transition-opacity sm:inline-flex",
+                        // 24px: the WCAG 2.5.8 minimum, and the width the row's
+                        // top line permanently reserves for it.
+                        "absolute right-3 top-2.5 hidden h-6 w-6 cursor-pointer items-center justify-center rounded-lg transition-opacity sm:inline-flex",
                         "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus group-hover/row:opacity-100",
                         isStarred(item)
-                          ? "text-state-interview hover:bg-wash-strong"
-                          : "text-subtle hover:bg-wash-strong hover:text-default",
+                          ? "text-state-interview opacity-100 hover:bg-wash-strong"
+                          : "text-subtle opacity-0 hover:bg-wash-strong hover:text-default",
                       ].join(" ")}
                     >
-                      <Icon name={isStarred(item) ? "star-filled" : "star"} className="h-3.5 w-3.5" />
+                      {isStarred(item) ? (
+                        // The readout, on the control. Only present when starred,
+                        // so "nothing is starred" stays assertable.
+                        <span data-testid="row-starred" className="inline-flex">
+                          <Icon name="star-filled" className="h-3.5 w-3.5" />
+                        </span>
+                      ) : (
+                        <Icon name="star" className="h-3.5 w-3.5" />
+                      )}
                     </button>
                     {showRowAction && rowAction ? (
                       rowActionIsReply ? (
                         /*
-                          Quiet, and it costs the row no height: absolutely
-                          placed at the right edge and revealed on hover or
-                          keyboard focus. The row still opens the conversation on
-                          its own; this lands there with the composer focused.
+                          Quiet, and it costs the row no height: it sits in the
+                          gutter the bottom line already reserves, directly under
+                          the Star, and appears on hover or keyboard focus.
+
+                          It survives the redesign on one test — that it does
+                          something the row does not. Clicking the row opens the
+                          conversation; this opens it with the composer focused,
+                          which is one deliberate action instead of two. If it
+                          ever needed a label to be understood it would have
+                          failed that test and should go.
                         */
                         <button
                           type="button"
@@ -4813,7 +5115,7 @@ export default function ApplicationsWorkspace({
                             handleSelect(item.id);
                             runNextAction(item, rowAction);
                           }}
-                          className="absolute bottom-2.5 right-12 hidden h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-line-mid bg-raised text-white/75 opacity-0 transition-opacity hover:bg-overlay hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus group-hover/row:opacity-100 sm:inline-flex"
+                          className="absolute bottom-2.5 right-3 hidden h-6 w-6 cursor-pointer items-center justify-center rounded-lg border border-line-mid bg-raised text-white/75 opacity-0 transition-opacity hover:bg-overlay hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus group-hover/row:opacity-100 sm:inline-flex"
                         >
                           <Icon name="message-square-text" className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -4943,7 +5245,7 @@ export default function ApplicationsWorkspace({
                             {subtitle.lead}
                           </h1>
                           <span className="flex items-center gap-1.5 text-[11.5px] leading-4">
-                            <span className="truncate text-muted">{rowSubtitle(selected)}</span>
+                            <span className="truncate text-muted">{rowContext(selected)}</span>
                             <span aria-hidden="true" className="text-disabled">·</span>
                             <span className="inline-flex shrink-0 items-center gap-1 font-medium text-secondary">
                               <span
@@ -4967,7 +5269,7 @@ export default function ApplicationsWorkspace({
                             {subtitle?.lead ?? selected.counterpartyName}
                           </h1>
                           <span className="flex items-center gap-1.5 text-[11.5px] leading-4">
-                            <span className="truncate text-muted">{rowSubtitle(selected)}</span>
+                            <span className="truncate text-muted">{rowContext(selected)}</span>
                             <span aria-hidden="true" className="text-disabled">·</span>
                             <span className="inline-flex shrink-0 items-center gap-1 font-medium text-secondary">
                               <span
@@ -5228,25 +5530,36 @@ export default function ApplicationsWorkspace({
                         </section>
                       ) : null}
                       {conversation.length > 0 ? (
+                        /*
+                          The gap between runs is the separator. Inside a run the
+                          bubbles sit a few pixels apart, so this 20px is what
+                          makes a change of speaker visible before a single word
+                          is read.
+                        */
                         <div className="space-y-5">
-                          {groupThreadEntries(conversation).map((entry) =>
+                          {groupConversation(conversation).map((entry) =>
                             entry.type === "system-group" ? (
                               <SystemEventGroup
                                 key={entry.id}
                                 summary={entry.summary}
                                 events={entry.events}
                               />
-                            ) : entry.message.kind === "status" ? (
+                            ) : entry.type === "status" ? (
                               <StatusUpdateLine key={entry.message.id} message={entry.message} />
                             ) : (
-                              <MessageBubble
-                                key={entry.message.id}
-                                message={entry.message}
+                              <MessageGroup
+                                key={entry.id}
+                                senderName={entry.senderName}
+                                fromMe={entry.fromMe}
+                                messages={entry.messages}
+                                latestAt={entry.latestAt}
                                 counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
                                 counterpartyHref={subtitle?.href ?? null}
-                                showSeen={
-                                  entry.message.id === latestOutgoingMessageId &&
-                                  Boolean(entry.message.readByRecipient)
+                                showSenderName={threadHasSeveralVoices}
+                                seenMessageId={
+                                  latestOutgoingMessageId && latestOutgoingRead
+                                    ? latestOutgoingMessageId
+                                    : null
                                 }
                               />
                             )

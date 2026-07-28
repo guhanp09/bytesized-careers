@@ -131,3 +131,141 @@ export function groupThreadEntries<T extends GroupableMessage>(messages: T[]): T
   flush();
   return entries;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Sender grouping                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Consecutive messages from one person are one thing they said.
+ *
+ * The thread used to stamp a name and a timestamp above every bubble, which in a
+ * two-person conversation is the reader being told, ten times a screen, a fact
+ * they established on the first line. Every mature messenger folds these runs;
+ * the value of doing so is that the *boundaries* — where the other person
+ * started talking — become the thing the eye finds, instead of being one more
+ * repetition among many.
+ */
+export type SenderGroupable = GroupableMessage & {
+  fromMe?: boolean;
+  senderName?: string;
+};
+
+export type ConversationEntry<T extends SenderGroupable> =
+  | Extract<ThreadEntry<T>, { type: "system-group" }>
+  /** A single status line, which is system chrome and belongs to no sender. */
+  | { type: "status"; message: T }
+  | {
+      type: "message-group";
+      id: string;
+      /** Who said all of these. */
+      senderName: string;
+      fromMe: boolean;
+      messages: T[];
+      /** ISO instant of the last message in the run. */
+      latestAt: string | null;
+    };
+
+/**
+ * How long a silence has to be before it starts a new group.
+ *
+ * The conventional figure across chat products is five minutes. Hiring
+ * conversations are asynchronous and considered: two messages six minutes apart
+ * are one thought being finished, not two sessions, and a five-minute window
+ * splits them into a group of one — which costs a name, an avatar and a
+ * timestamp to say nothing. Ten minutes keeps those together and still breaks
+ * where a genuine gap makes the time worth restating.
+ */
+export const SENDER_GROUP_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Messages that must not be swallowed into a run.
+ *
+ * Screening answers and first-message summaries render as structured cards, not
+ * as bubbles. Folding a card into a group would put a sender's name above a
+ * block that is not a sentence they wrote, and would let the group's timestamp
+ * describe something the card already dates itself.
+ */
+function isStructured(message: SenderGroupable): boolean {
+  if (message.kind === "screening") return true;
+  const candidate = message as { firstMessageAnswers?: unknown; firstMessageContext?: unknown };
+  return Boolean(candidate.firstMessageAnswers && candidate.firstMessageContext);
+}
+
+function sameSender(a: SenderGroupable, b: SenderGroupable): boolean {
+  if (Boolean(a.fromMe) !== Boolean(b.fromMe)) return false;
+  return (a.senderName ?? "") === (b.senderName ?? "");
+}
+
+function withinWindow(previous: SenderGroupable, next: SenderGroupable): boolean {
+  if (!previous.createdAt || !next.createdAt) return true;
+  const from = Date.parse(previous.createdAt);
+  const to = Date.parse(next.createdAt);
+  if (Number.isNaN(from) || Number.isNaN(to)) return true;
+  return Math.abs(to - from) <= SENDER_GROUP_WINDOW_MS;
+}
+
+/**
+ * Fold a conversation into system-event groups and sender groups.
+ *
+ * Layered over {@link groupThreadEntries} rather than replacing it, so the rule
+ * that a human message breaks a run of system events keeps its single
+ * definition — and so a system event still breaks a run of human messages, which
+ * is the same rule read from the other side.
+ */
+export function groupConversation<T extends SenderGroupable>(messages: T[]): ConversationEntry<T>[] {
+  const entries: ConversationEntry<T>[] = [];
+  let run: T[] = [];
+
+  const flush = () => {
+    if (run.length === 0) return;
+    const first = run[0];
+    const latest = run.reduce<string | null>(
+      (newest, message) =>
+        message.createdAt && (!newest || Date.parse(message.createdAt) > Date.parse(newest))
+          ? message.createdAt
+          : newest,
+      null
+    );
+    entries.push({
+      type: "message-group",
+      id: `sender-group-${first.id}`,
+      senderName: first.senderName ?? "",
+      fromMe: Boolean(first.fromMe),
+      messages: [...run],
+      latestAt: latest,
+    });
+    run = [];
+  };
+
+  for (const entry of groupThreadEntries(messages)) {
+    if (entry.type === "system-group") {
+      flush();
+      entries.push(entry);
+      continue;
+    }
+    const message = entry.message;
+    // A lone status line arrives here as a plain message; it is system chrome and
+    // must never join a person's run.
+    if (message.kind === "status") {
+      flush();
+      entries.push({ type: "status", message });
+      continue;
+    }
+    const previous = run.at(-1);
+    if (
+      previous &&
+      sameSender(previous, message) &&
+      withinWindow(previous, message) &&
+      !isStructured(previous) &&
+      !isStructured(message)
+    ) {
+      run.push(message);
+      continue;
+    }
+    flush();
+    run.push(message);
+  }
+  flush();
+  return entries;
+}
