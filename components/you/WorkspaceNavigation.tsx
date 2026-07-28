@@ -345,7 +345,13 @@ export function ApplicationsWorkspaceNavigation({
   );
 }
 
-export type WorkQueueChip = { key: string; label: string; count: number };
+export type WorkQueueChip = {
+  key: string;
+  label: string;
+  count: number;
+  /** What the category means, shown under its name so the criteria are stated. */
+  description?: string;
+};
 
 /**
  * Layer 3, second axis — work queues.
@@ -437,7 +443,7 @@ export function WorkQueueSelector({
           role="menu"
           data-testid="queue-selector-menu"
           aria-label="What needs attention"
-          className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[216px] rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
+          className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-[70vh] w-[300px] overflow-y-auto rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
         >
           <button
             type="button"
@@ -465,7 +471,13 @@ export function WorkQueueSelector({
               ].join(" ")}
               aria-hidden="true"
             />
-            Everything
+            <span className="flex-1">Everything</span>
+            {/*
+              The denominator. Without it the rows below are numbers with
+              nothing to add up to, which is exactly how a menu can show two
+              categories covering a third of the list and look complete.
+            */}
+            <span className="shrink-0 text-[11px] tabular-nums text-subtle">{total}</span>
           </button>
           {chips.map((chip) => {
             const isActive = activeQueue === chip.key;
@@ -482,7 +494,7 @@ export function WorkQueueSelector({
                   onSelect(isActive ? null : chip.key);
                 }}
                 className={[
-                  "flex h-8 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[12px] transition-colors",
+                  "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
                   isActive
                     ? "bg-elevated font-semibold text-ink"
@@ -496,7 +508,19 @@ export function WorkQueueSelector({
                   )}
                   aria-hidden="true"
                 />
-                <span className="min-w-0 flex-1 truncate">{chip.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{chip.label}</span>
+                  {/*
+                    The criteria, not just the name. "Decision needed" in
+                    particular is a judgement the product is making on the
+                    reader's behalf, so it has to say on what basis.
+                  */}
+                  {chip.description ? (
+                    <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
+                      {chip.description}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{chip.count}</span>
               </button>
             );

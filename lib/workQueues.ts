@@ -160,3 +160,121 @@ export function isAllCaughtUp(
 ): boolean {
   return items.every((item) => deriveWorkQueue(item, signalsFor(item), preferences) === null);
 }
+
+/* ---- exhaustive accounting ------------------------------------------------
+ *
+ * `deriveWorkQueue` answers "what needs me?", so it returns null for everything
+ * that needs nothing — which is the right answer to that question and the wrong
+ * basis for a menu. A selector built on it showed "162 applicants" beside
+ * "Decision needed 24" and "New to review 32", leaving 106 records in no
+ * category at all. A reader cannot tell whether those are fine, hidden, or lost.
+ *
+ * The categories below extend the queues with the three reasons a record can be
+ * outside them, so every active record lands in exactly one and the counts add
+ * up to the total. The precedence is unchanged; this only names the tail.
+ */
+
+export type WorkCategoryKey = WorkQueueKey | "snoozed" | "no_reply_needed" | "up_to_date";
+
+export type WorkCategory = { key: WorkCategoryKey; label: string; description: string };
+
+/** Every category, in the order a person would want to work through them. */
+export const WORK_CATEGORY_ORDER: WorkCategory[] = [
+  {
+    key: "start_confirmation_pending",
+    label: "Start confirmation pending",
+    description: "Hired, and the work has not been confirmed as started.",
+  },
+  {
+    key: "interview_confirmation",
+    label: "Interview to confirm",
+    description: "A time was proposed and nobody has confirmed it.",
+  },
+  {
+    key: "interview_follow_up",
+    label: "Interview follow-up",
+    description: "The interview has happened and no outcome was recorded.",
+  },
+  {
+    key: "needs_your_reply",
+    label: "Needs your reply",
+    description: "They asked something that expects an answer from you.",
+  },
+  {
+    key: "decision_needed",
+    label: "Decision needed",
+    description:
+      "You have everything you need to move this forward or close it — including messages whose intent is unclear, where the next step is yours to choose.",
+  },
+  {
+    key: "new_to_review",
+    label: "New to review",
+    description: "Arrived and not yet opened.",
+  },
+  {
+    key: "waiting_for_them",
+    label: "Waiting on them",
+    description: "The next move belongs to the other side.",
+  },
+  {
+    key: "stale",
+    label: "Going quiet",
+    description: `Nothing has happened for ${STALE_AFTER_DAYS} days or more.`,
+  },
+  {
+    key: "snoozed",
+    label: "Snoozed",
+    description: "Hidden until you asked to see it again. Its status is unchanged.",
+  },
+  {
+    key: "no_reply_needed",
+    label: "No reply needed",
+    description: "You marked this as needing nothing from you.",
+  },
+  {
+    key: "up_to_date",
+    label: "Up to date",
+    description: "Nothing outstanding on either side.",
+  },
+];
+
+export function workCategoryByKey(key: WorkCategoryKey): WorkCategory {
+  return WORK_CATEGORY_ORDER.find((entry) => entry.key === key) ?? WORK_CATEGORY_ORDER[0];
+}
+
+/**
+ * The one category a record belongs to. Never null.
+ *
+ * Snooze and dismissal are checked first because they are the *reason* a record
+ * is not in an actionable queue: reporting such a record as "up to date" would
+ * hide the fact that the user hid it.
+ */
+export function deriveWorkCategory(
+  item: OwnerInteraction,
+  signals: QueueSignals = {},
+  preferences: WorkQueuePreferences = NO_QUEUE_PREFERENCES
+): WorkCategoryKey {
+  const snoozed = preferences.snoozedUntil(item.id);
+  if (snoozed !== null && snoozed > Date.now()) return "snoozed";
+  if (preferences.isDismissed(item.id)) return "no_reply_needed";
+  return deriveWorkQueue(item, signals, preferences) ?? "up_to_date";
+}
+
+/**
+ * Counts for every category, plus the total they must add up to.
+ *
+ * Returned together on purpose: the invariant is only checkable if the
+ * denominator travels with the parts.
+ */
+export function workCategoryCounts(
+  items: OwnerInteraction[],
+  signalsFor: (item: OwnerInteraction) => QueueSignals,
+  preferences: WorkQueuePreferences = NO_QUEUE_PREFERENCES
+): { total: number; counts: Map<WorkCategoryKey, number> } {
+  const counts = new Map<WorkCategoryKey, number>();
+  for (const item of items) {
+    const key = deriveWorkCategory(item, signalsFor(item), preferences);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return { total: items.length, counts };
+}

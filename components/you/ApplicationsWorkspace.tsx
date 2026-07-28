@@ -136,6 +136,8 @@ import {
   NO_QUEUE_PREFERENCES,
   WORK_QUEUE_ORDER,
   deriveWorkQueue,
+  deriveWorkCategory,
+  WORK_CATEGORY_ORDER,
   type QueueSignals,
   type WorkQueueKey,
   type WorkQueuePreferences,
@@ -3457,17 +3459,25 @@ export default function ApplicationsWorkspace({
     [signalsFor]
   );
 
-  /** Live counts, so a queue never advertises work that is not there. */
+  /*
+    Live counts, over an exhaustive partition.
+
+    Every record gets exactly one category, including the ones that need
+    nothing, so the parts add up to the whole. Built on `deriveWorkCategory`
+    rather than `deriveWorkQueue`: the latter answers "what needs me?" and
+    returns null for everything else, which left most of the list in no category
+    at all and the menu describing a third of its own population.
+
+    Starred is counted separately and on purpose — it is personal organisation
+    that cuts across the categories rather than another slice of them, so it is
+    never added into the total.
+  */
   const queueCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of modeItems) {
-      const key = deriveWorkQueue(item, queueSignalsFor(item), queuePreferences);
-      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+      const key = deriveWorkCategory(item, queueSignalsFor(item), queuePreferences);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
       if (isStarred(item)) counts.set("starred", (counts.get("starred") ?? 0) + 1);
-      const until = queuePreferences.snoozedUntil(item.id);
-      if (until !== null && until > Date.now()) {
-        counts.set("snoozed", (counts.get("snoozed") ?? 0) + 1);
-      }
     }
     return counts;
   }, [modeItems, queueSignalsFor, queuePreferences, isStarred]);
@@ -4119,19 +4129,43 @@ export default function ApplicationsWorkspace({
    * away the conversation you are reading.
    */
   /** Queues worth offering: those with work, plus the personal views. */
-  const queueChips = ((): Array<{ key: string; label: string; count: number }> => {
-    const chips: Array<{ key: string; label: string; count: number }> = [];
+  const queueChips = ((): Array<{
+    key: string;
+    label: string;
+    count: number;
+    description?: string;
+  }> => {
+    const chips: Array<{ key: string; label: string; count: number; description?: string }> = [];
     const labels = new Map<string, string>();
-    for (const queue of WORK_QUEUE_ORDER) {
-      labels.set(queue.key, queue.label);
-      const count = queueCounts.get(queue.key) ?? 0;
-      if (count > 0) chips.push({ key: queue.key, label: queue.label, count });
+    /*
+      Every category that has records, in working order — including the ones
+      that need nothing. A menu that lists only the urgent slices leaves the
+      reader to guess where the rest went, which is how 162 applicants came to
+      be described by two numbers adding to 56.
+    */
+    for (const category of WORK_CATEGORY_ORDER) {
+      labels.set(category.key, category.label);
+      const count = queueCounts.get(category.key) ?? 0;
+      if (count > 0) {
+        chips.push({
+          key: category.key,
+          label: category.label,
+          count,
+          description: category.description,
+        });
+      }
     }
-    for (const personal of ["starred", "snoozed"] as const) {
-      const label = personal === "starred" ? "Starred" : "Snoozed";
-      labels.set(personal, label);
-      const count = queueCounts.get(personal) ?? 0;
-      if (count > 0) chips.push({ key: personal, label, count });
+    // Starred cuts across the categories rather than being one of them, so it
+    // sits after the partition and is never part of its arithmetic.
+    labels.set("starred", "Starred");
+    const starred = queueCounts.get("starred") ?? 0;
+    if (starred > 0) {
+      chips.push({
+        key: "starred",
+        label: "Starred",
+        count: starred,
+        description: "Saved by you for a second look. Only you can see this.",
+      });
     }
     /*
       One exception to "only offer queues that hold work": the queue the user is
@@ -4163,7 +4197,7 @@ export default function ApplicationsWorkspace({
       });
     }
     return visibleItems.filter(
-      (item) => deriveWorkQueue(item, queueSignalsFor(item), queuePreferences) === activeQueue
+      (item) => deriveWorkCategory(item, queueSignalsFor(item), queuePreferences) === activeQueue
     );
   })();
 
