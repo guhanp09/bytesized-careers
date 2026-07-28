@@ -333,15 +333,27 @@ export default function FirstMessageSummary({
           value never floats a hundred pixels away from the word describing it.
           The previous fixed 112px column produced exactly that gap, and it grew
           worse the narrower the rail became.
+
+          Below about 256px there is no room for two columns at all, and the card
+          gets exactly that inside a mobile message thread. Left as a grid it
+          rendered "Mornings, overlapping with EU" one letter per line, and
+          shrinking the label track only made the label overlap the answer.
+
+          So it stacks — decided by the card's own width rather than the
+          viewport's, because this card also appears in narrow desktop rails
+          where a media query would say "wide" and be wrong.
         */
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2 px-4 py-3 text-[13px] leading-relaxed">
+        <div className="@container/answers px-4 py-3">
+        {/* The query element must be an ancestor: a container sizes its
+            descendants, never itself. */}
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-[13px] leading-relaxed @[16rem]/answers:grid-cols-[minmax(0,auto)_minmax(6rem,1fr)] @[16rem]/answers:items-baseline @[16rem]/answers:gap-y-2">
           {rows.map((item) => (
             <Fragment key={item.key}>
-              <dt className="flex items-center gap-2 text-subtle">
-                <Icon name={item.icon} className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="whitespace-nowrap">{item.label}</span>
+              <dt className="flex items-start gap-2 text-subtle">
+                <Icon name={item.icon} className="mt-[3px] h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">{item.label}</span>
               </dt>
-              <dd className="min-w-0 text-default">
+              <dd className="min-w-0 pb-1.5 text-default @[16rem]/answers:pb-0">
                 {item.text && !item.links?.length ? (
                   <p className="whitespace-pre-wrap break-words">{item.text}</p>
                 ) : null}
@@ -352,6 +364,7 @@ export default function FirstMessageSummary({
             </Fragment>
           ))}
         </dl>
+        </div>
       ),
     });
   }

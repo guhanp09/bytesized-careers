@@ -237,6 +237,33 @@ test("message bubbles never outgrow the thread at 390px", async ({ page }) => {
   expect(escaped, "a bubble ran past the thread canvas").toBe(0);
 });
 
+for (const width of [390, 320]) {
+  test(`structured answers stay readable at ${width}px`, async ({ page }) => {
+    /*
+      The first-message card lays label against value in two columns. Inside a
+      mobile thread the card gets about 180px, and an `auto` label column took
+      all of it — "Mornings, overlapping with EU" rendered one letter per line.
+      It stacks below its own width now, so this measures the answer's box
+      rather than trusting the breakpoint.
+    */
+    await page.setViewportSize({ width, height: 844 });
+    const target = anchor("default", "portfolio attached", { persona: "recruiter" });
+    await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
+    const detail = await openRecord(page, target);
+    await expect(detail.locator("dd").first()).toBeVisible();
+
+    const narrow = await detail.evaluate((node) =>
+      Array.from(node.querySelectorAll("dd"))
+        .map((value) => ({
+          text: (value.textContent ?? "").trim().slice(0, 24),
+          width: Math.round(value.getBoundingClientRect().width),
+        }))
+        .filter((value) => value.text.length > 0 && value.width < 90)
+    );
+    expect(narrow, `answers crushed to: ${narrow.map((v) => `${v.text} @${v.width}px`).join(", ")}`).toEqual([]);
+  });
+}
+
 /* ---- reduced motion ------------------------------------------------------ */
 
 test("reduced motion removes transitions rather than shortening them", async ({ page }) => {

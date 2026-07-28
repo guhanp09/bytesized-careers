@@ -1789,6 +1789,17 @@ export function MessageGroup({
   const compact = density === "compact";
   const avatarSize = compact ? "h-6 w-6" : "h-7 w-7";
   const railWidth = compact ? "w-6" : "w-7";
+  /*
+    Structured content is not a speech bubble and does not want a bubble's cap.
+    The 80% limit exists so a sentence never looks centred; a first-message
+    summary or a screening card is a labelled block whose ownership the avatar
+    rail and its own framing already carry. Capping it squeezed a two-column
+    answer list into 77px in a mobile thread, which is a legibility cost paid
+    for a signal that block never needed.
+  */
+  const structuredOnly = messages.every(
+    (message) => message.kind === "screening" || Boolean(message.firstMessageAnswers && message.firstMessageContext)
+  );
   const showSeen = messages.some((message) => message.id === seenMessageId);
   const position = (index: number): BubblePosition => {
     if (messages.length === 1) return "single";
@@ -1849,7 +1860,9 @@ export function MessageGroup({
         data-from="me"
         className="flex justify-end"
       >
-        <div className="flex min-w-0 max-w-[80%] flex-col items-end">{bubbles}</div>
+        <div className={["flex min-w-0 flex-col items-end", structuredOnly ? "w-full" : "max-w-[80%]"].join(" ")}>
+          {bubbles}
+        </div>
       </div>
     );
   }
@@ -1896,7 +1909,11 @@ export function MessageGroup({
       <div
         className={[
           "flex min-w-0 flex-col items-start",
-          compact ? "max-w-[calc(80%-1.875rem)]" : "max-w-[calc(80%-2.25rem)]",
+          structuredOnly
+            ? "flex-1"
+            : compact
+              ? "max-w-[calc(80%-1.875rem)]"
+              : "max-w-[calc(80%-2.25rem)]",
         ].join(" ")}
       >
         {bubbles}
