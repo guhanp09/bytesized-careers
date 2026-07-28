@@ -58,6 +58,25 @@ async function openCandidate(page: Page, name: string) {
 
 /* --- 1. Deliberate open records Reviewing, privately ---------------------- */
 
+/**
+ * Bring the decision surface up.
+ *
+ * It opens itself on the first deliberate open of a record that still needs a
+ * decision — that is the product model, and it is how a user meets it. The
+ * header's primary button used to be a second route via "Choose next step", a
+ * label that named an action it could not describe; it was removed, so this
+ * presses the primary only when the ladder is confident enough to have rendered
+ * one, and otherwise waits for the surface that is already on its way.
+ */
+async function openDecisionSurface(page: Page) {
+  const strip = page.getByTestId("decision-strip");
+  if (await strip.isVisible().catch(() => false)) return strip;
+  const primary = page.getByTestId("next-action-primary");
+  if ((await primary.count()) > 0) await primary.click();
+  await expect(strip).toBeVisible({ timeout: 20_000 });
+  return strip;
+}
+
 test("opening a new application records Reviewing without telling the applicant", async ({ page }) => {
   await asRecruiter(page);
   const target = page.getByTestId("interaction-row").filter({ hasText: "Needs review" }).first();
@@ -99,6 +118,8 @@ test("Star and private notes are invisible to the other participant", async ({ p
   await rows.first().click();
   // Neither the note nor any trace of the star appears on the counterparty side.
   await expect(page.getByText(note)).toHaveCount(0);
+  // The readout lives on the row's own Star control, which is only marked when
+  // the record is starred — so "nothing is starred" is still assertable.
   await expect(page.getByTestId("row-starred")).toHaveCount(0);
 });
 
@@ -131,7 +152,7 @@ test("the whole interview arc runs across both sides and never decides for anyon
   await asRecruiter(page);
   await openCandidate(page, "Priya Nair");
 
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   const when = new Date(Date.now() + 4 * 86_400_000);
   await page

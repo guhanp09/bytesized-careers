@@ -1816,7 +1816,14 @@ export function MessageGroup({
       ].join(" ")}
     >
       <InteractionTime value={latestAt} />
-      {showSeen ? <span>· Seen</span> : null}
+      {/* The separator is its own element so the receipt's text is exactly
+          "Seen" — a reader looking for that word should find it, not "· Seen". */}
+      {showSeen ? (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>Seen</span>
+        </>
+      ) : null}
     </p>
   );
 
@@ -5028,14 +5035,35 @@ export default function ApplicationsWorkspace({
                           they came and went.
                         */}
                         <div className="flex items-baseline justify-between gap-2">
-                          <span
-                            data-testid="row-identity"
-                            className={[
-                              "truncate text-[14px] leading-5",
-                              rowUnread ? "font-semibold text-ink" : "font-medium text-default",
-                            ].join(" ")}
-                          >
-                            {rowIdentity(item)}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              data-testid="row-identity"
+                              className={[
+                                "truncate text-[14px] leading-5",
+                                rowUnread ? "font-semibold text-ink" : "font-medium text-default",
+                              ].join(" ")}
+                            >
+                              {rowIdentity(item)}
+                            </span>
+                            {/*
+                              The count travels with the name, which is what it
+                              is about. It briefly replaced the work state at the
+                              row's foot instead — one slot, one indicator — but
+                              that made the Inbox and the Pipeline disagree about
+                              the same record: the list said "2 unread" where the
+                              board said "New to review". They read one
+                              derivation and must say one thing, so the count
+                              sits here and the state keeps its slot.
+                            */}
+                            {messageUnread > 0 ? (
+                              <span
+                                data-testid="inbox-unread-badge"
+                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
+                                className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
+                              >
+                                {formatBadgeCount(messageUnread)}
+                              </span>
+                            ) : null}
                           </span>
                           {/*
                             One fixed home for the timestamp. `pr-5` is the
@@ -5074,22 +5102,15 @@ export default function ApplicationsWorkspace({
                             {rowContext(item)}
                           </p>
                           {/*
-                            One slot, one indicator, in order of how much it
-                            asks of the reader: unread messages are a thing to
-                            do, a work state is a thing to know, and the
-                            lifecycle stage is the fallback. Stacking them was
-                            the badge cluster this replaces.
+                            One state slot, one indicator: the derived work
+                            state, or the lifecycle stage when there is none.
+                            Never both — that stacking was the badge cluster
+                            this replaces — and never anything else, so this row
+                            and the Pipeline card always say the same thing
+                            about the same record.
                           */}
                           <span className="flex shrink-0 items-center pr-5">
-                            {messageUnread > 0 ? (
-                              <span
-                                data-testid="inbox-unread-badge"
-                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
-                                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
-                              >
-                                {formatBadgeCount(messageUnread)}
-                              </span>
-                            ) : rowWorkState ? (
+                            {rowWorkState ? (
                               <WorkStateChip state={rowWorkState} />
                             ) : (
                               <StatusPill status={item.status} />

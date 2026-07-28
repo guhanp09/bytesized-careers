@@ -124,9 +124,28 @@ async function openRecruiterInbox(page: Page) {
   await expect(page.getByTestId("applications-workspace").first()).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * Bring the decision surface up.
+ *
+ * It opens itself on the first deliberate open of a record that still needs a
+ * decision — that is the product model, and it is how a user meets it. The
+ * header's primary button used to be a second route via "Choose next step", a
+ * label that named an action it could not describe; it was removed, so this
+ * presses the primary only when the ladder is confident enough to have rendered
+ * one, and otherwise waits for the surface that is already on its way.
+ */
+async function openDecisionSurface(page: Page) {
+  const strip = page.getByTestId("decision-strip");
+  if (await strip.isVisible().catch(() => false)) return strip;
+  const primary = page.getByTestId("next-action-primary");
+  if ((await primary.count()) > 0) await primary.click();
+  await expect(strip).toBeVisible({ timeout: 20_000 });
+  return strip;
+}
+
 async function arrangeInterview(page: Page) {
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   const when = new Date(Date.now() + 3 * 86_400_000);
   await page
@@ -151,8 +170,7 @@ test("the Inbox, Pipeline, and scheduling surfaces carry no serious barriers", a
   expect(await analyse(page, "conversation open")).toEqual([]);
 
   // The decision surface, in the state where it actually appears.
-  await page.getByTestId("next-action-primary").click();
-  await expect(page.getByTestId("decision-strip")).toBeVisible();
+  await openDecisionSurface(page);
   expect(await analyse(page, "decision surface")).toEqual([]);
 
   // The scheduling surface: the densest form in the workspace.
@@ -208,17 +226,28 @@ test("the whole interview flow is reachable and operable by keyboard", async ({ 
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
 
-  // Reach the recommendation by tabbing, not by clicking.
+  // Reach the surface by keyboard, not by clicking. Where the ladder is
+  // confident the header carries a button; where it is not, the surface itself
+  // is the first thing to focus.
   const primary = page.getByTestId("next-action-primary");
-  await expect(primary).toBeVisible();
-  await primary.focus();
-  await expect(primary).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("decision-strip")).toBeVisible();
+  if ((await primary.count()) > 0) {
+    await expect(primary).toBeVisible();
+    await primary.focus();
+    await expect(primary).toBeFocused();
+    await page.keyboard.press("Enter");
+  }
+  const strip = await openDecisionSurface(page);
 
   // The decision surface must not steal focus on mount — typing is never
-  // interrupted by a suggestion appearing.
-  await expect(primary).toBeFocused();
+  // interrupted by a suggestion appearing. Whatever had focus before the strip
+  // arrived still has it.
+  const stripHasFocus = await strip.evaluate((node) => node.contains(document.activeElement));
+  expect(stripHasFocus, "the decision surface took focus on mount").toBeFalsy();
+
+  // And it is reachable from the keyboard once someone goes looking.
+  const firstChoice = strip.getByRole("button").first();
+  await firstChoice.focus();
+  await expect(firstChoice).toBeFocused();
 
   const invite = page.getByTestId("decision-strip-option-interviewing");
   await invite.focus();
@@ -236,7 +265,7 @@ test("the whole interview flow is reachable and operable by keyboard", async ({ 
 test("the scheduling form is fully operable without a pointer", async ({ page }) => {
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
 
   const when = new Date(Date.now() + 5 * 86_400_000);
@@ -350,7 +379,7 @@ test("reduced motion removes animation rather than merely shortening it", async 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
 
   const durations = await page.evaluate(() =>
     Array.from(document.querySelectorAll(".ui-crossfade")).map((node) => {

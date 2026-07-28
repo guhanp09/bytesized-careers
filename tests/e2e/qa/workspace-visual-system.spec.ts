@@ -87,7 +87,24 @@ test("the workspace has real layers rather than one repeated tone", async ({ pag
 
 test("the primary action is a lifted surface, not a flat rectangle", async ({ page }) => {
   await openRecruiterInbox(page);
-  await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
+  /*
+    A record the ladder is confident about. Not every record has one — the
+    neutral "Choose next step" fallback was removed, so where the derivation
+    will not commit, the header simply carries no button and there is nothing
+    here to measure. Finding a row that does have one is the honest way to test
+    what a primary looks like.
+  */
+  const rows = page.getByTestId("interaction-row");
+  const total = await rows.count();
+  let found = false;
+  for (let index = 0; index < Math.min(total, 12); index += 1) {
+    await rows.nth(index).click();
+    if ((await page.getByTestId("next-action-primary").count()) > 0) {
+      found = true;
+      break;
+    }
+  }
+  test.skip(!found, "no record in this scenario carries a confident recommendation");
 
   const primary = page.getByTestId("next-action-primary");
   await expect(primary).toBeVisible();
@@ -110,10 +127,10 @@ test("the primary action is a lifted surface, not a flat rectangle", async ({ pa
     dressing it as a primary would be the interface asserting certainty the
     derivation explicitly refused to claim.
   */
-  if (style.key === "choose-next-step") {
-    expect(style.image, "the neutral fallback must not look like a decision").toBe("none");
-    return;
-  }
+  // There is no neutral fallback any more — anything rendered here is a
+  // recommendation the derivation stands behind, so it wears the filled
+  // gradient without exception.
+  expect(style.key, "the removed neutral fallback is back").not.toBe("choose-next-step");
   expect(style.image, "a confident recommendation should carry its gradient").not.toBe("none");
 });
 

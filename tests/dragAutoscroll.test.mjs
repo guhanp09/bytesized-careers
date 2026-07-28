@@ -90,7 +90,6 @@ function harness({ scrollHeight = 2000, clientHeight = 500, top = 0 } = {}) {
     }),
     /** Run one frame at the given timestamp. */
     tick(at) {
-      time = at;
       const next = frames.shift();
       if (next) next(at);
     },

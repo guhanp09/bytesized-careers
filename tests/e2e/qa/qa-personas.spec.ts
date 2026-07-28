@@ -1131,7 +1131,14 @@ test("a private rejection tells nobody until it is shared, and then shares once 
   const sharePrompt = page.getByTestId("stage-notify-prompt");
   await sharePrompt.getByTestId("stage-notify-note").fill("Your edit test was strong — the brief needed more motion work.");
   await sharePrompt.getByTestId("stage-notify-send").click();
-  await expect(sharePrompt.getByTestId("stage-notify-followup")).toBeVisible();
+  /*
+    Sharing a rejection closes the thread, so the prompt states that rather than
+    offering to continue the conversation. It used to offer a follow-up composer
+    here, which landed on a disabled field — the surface saying "say something
+    else" about a thread nobody can say anything else in.
+  */
+  await expect(sharePrompt.getByTestId("stage-notify-closed")).toBeVisible();
+  await expect(sharePrompt.getByTestId("stage-notify-followup")).toHaveCount(0);
 
   await returnToController(page);
   await switchPersona(page, "talent-complete", "Priya Nair");

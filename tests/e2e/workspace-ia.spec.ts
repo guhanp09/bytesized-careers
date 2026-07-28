@@ -97,8 +97,17 @@ async function controlBands(page: Page): Promise<number[]> {
       document.querySelector('[data-testid="pipeline-row"]') ||
       document.querySelector('[data-testid="inbox-empty-state"]');
     const contentTop = content ? content.getBoundingClientRect().top : Number.MAX_SAFE_INTEGER;
+    /*
+      The question is how many bars of chrome stand above the *list*, so the
+      opened conversation is not part of it. Scanning the whole workspace made
+      any control in the detail column that happened to sit above the first
+      row's top — a portfolio link, say — register as another bar between the
+      user and their work, which it plainly is not.
+    */
+    const detail = document.querySelector('[data-testid="applications-detail"]');
     const bands = new Set<number>();
     for (const el of workspace.querySelectorAll("button, select, summary")) {
+      if (detail?.contains(el)) continue;
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) continue;
       // Scrolled out of view is not a layer standing between anyone and their

@@ -195,6 +195,52 @@ test("hover-revealed controls do not exist on a touch-sized viewport", async ({ 
   await expect(record.getByTestId("row-star-toggle")).toBeHidden();
 });
 
+test("the row and the card never disagree about what a record needs", async ({ page }) => {
+  /*
+    Both surfaces read one derivation, so they cannot be allowed to report
+    different things — the list saying "2 unread" where the board says "New to
+    review" is the same record described two ways. The unread count travels with
+    the name; the state slot is the state's alone.
+  */
+  await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
+  const inbox = await page.evaluate(() => {
+    const out: Record<string, string> = {};
+    for (const entry of Array.from(document.querySelectorAll('[data-testid="interaction-row"]'))) {
+      const id = entry.getAttribute("data-record-id");
+      const chip = entry.querySelector('[data-testid="work-state-chip"]');
+      if (id) out[id] = chip?.getAttribute("data-work-state") ?? "none";
+    }
+    return out;
+  });
+  expect(Object.keys(inbox).length).toBeGreaterThan(5);
+
+  await openWorkspace(page, {
+    scenario: "busy",
+    mode: "recruiter",
+    view: "pipeline",
+    extraParams: { direction: "received" },
+  });
+  const board = await page.evaluate(() => {
+    const out: Record<string, string> = {};
+    for (const entry of Array.from(document.querySelectorAll('[data-testid="pipeline-row"]'))) {
+      const id = entry.getAttribute("data-record-id");
+      const chip = entry.querySelector('[data-testid="pipeline-work-state"]');
+      if (id) out[id] = chip?.getAttribute("data-work-state") ?? "none";
+    }
+    return out;
+  });
+
+  const disagreements: string[] = [];
+  let compared = 0;
+  for (const [id, state] of Object.entries(inbox)) {
+    if (!(id in board)) continue;
+    compared += 1;
+    if (board[id] !== state) disagreements.push(`${id}: row=${state} card=${board[id]}`);
+  }
+  expect(compared, "no record appeared in both views").toBeGreaterThan(3);
+  expect(disagreements, disagreements.join("; ")).toEqual([]);
+});
+
 /* ---- the thread ---------------------------------------------------------- */
 
 test("a two-person thread never repeats either name", async ({ page }) => {
