@@ -227,12 +227,14 @@ test.describe("/you Applications workspace", () => {
     await expect(detail.getByRole("heading", { name: person.display_name })).toBeVisible();
 
     // A compact card — the mirror of the job card — that is itself the link to
-    // the talent profile. Scoped by the headline so the header link (same href,
-    // no headline) is not matched.
+    // the talent profile. Addressed by its own test id: the header carries the
+    // same href and, since it began showing the listing as its context line,
+    // the same headline text, so filtering on either matches both.
     const talentCard = detail
       .locator(`a[href^="/u/${person.username}"]`)
-      .filter({ hasText: /for creator-led channels/ });
+      .filter({ has: page.getByTestId("inbox-talent-card") });
     await expect(talentCard).toBeVisible();
+    await expect(talentCard).toContainText(/for creator-led channels/);
 
     // Same shape of information as the job card: rate, then numeric experience.
     await expect(talentCard).toContainText(/years|Less than 1 year/);

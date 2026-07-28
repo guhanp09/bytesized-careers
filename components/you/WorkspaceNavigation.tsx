@@ -450,6 +450,13 @@ export function WorkQueueSelector({
             role="menuitemradio"
             aria-checked={activeQueue === null}
             data-testid="queue-chip-all"
+            /*
+              The reconciliation, in the DOM. The whole point of this menu is
+              that its parts add up to its total; a test that has to parse
+              rendered text to check that is testing the formatter.
+            */
+            data-queue-key="all"
+            data-queue-count={total}
             onClick={() => {
               setOpen(false);
               triggerRef.current?.focus();
@@ -488,6 +495,8 @@ export function WorkQueueSelector({
                 role="menuitemradio"
                 aria-checked={isActive}
                 data-testid={`queue-chip-${chip.key}`}
+                data-queue-key={chip.key}
+                data-queue-count={chip.count}
                 onClick={() => {
                   setOpen(false);
                   triggerRef.current?.focus();

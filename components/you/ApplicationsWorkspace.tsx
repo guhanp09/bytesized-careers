@@ -789,7 +789,7 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
   const payIcon = terms.structure === "retainer" ? "briefcase" : "cash-stack";
   const displayTitle = formatListingTitle(job.title);
   const body = (
-    <div className="relative">
+    <div className="relative" data-testid="inbox-talent-card">
       {href ? (
         <Icon
           name="external-link"
@@ -842,6 +842,10 @@ function CompactJobCard({ job }: { job: InteractionJobSnapshot }) {
  * rate / experience (numeric years) / location, with no bio, tags, portfolio block, or
  * availability status. The whole card opens the talent's listing/profile when a route exists.
  */
+/**
+ * The talent mini-card. Mirrors {@link CompactJobCard} so the two sides of the
+ * marketplace read the same way in the same slot.
+ */
 function CompactTalentCard({ talent }: { talent: InteractionTalentSnapshot }) {
   const href = talent.profileSlug ? `/u/${talent.profileSlug}?view=talent` : null;
   // Mirror the job card's pay row exactly: monthly retainers read better with the briefcase.
@@ -854,7 +858,7 @@ function CompactTalentCard({ talent }: { talent: InteractionTalentSnapshot }) {
   const identity = talent.isOwnListing ? "Your listing" : talent.name;
   const avatarSeed = talent.isOwnListing ? talent.headline : talent.name;
   const body = (
-    <div className="relative">
+    <div className="relative" data-testid="inbox-talent-card">
       {href ? (
         <Icon
           name="external-link"
