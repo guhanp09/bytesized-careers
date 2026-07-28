@@ -167,6 +167,45 @@ type PipelineBoardProps = {
 /** Recommendations the board dispatches itself; the rest belong to the stage menu. */
 const BOARD_DISPATCHABLE_ACTIONS = new Set(["reply", "share-decision", "confirm-start"]);
 
+/**
+ * Every card is exactly the same height, and this is why and how.
+ *
+ * The previous attempt used a height *floor*, on the reasoning that clamping a
+ * card's content would hide what an applicant had written. That reasoning was
+ * wrong, and it produced cards ranging 304–384px — a board that still looked
+ * unfinished, with the footer landing somewhere different in every column.
+ *
+ * A Pipeline card is a **summary**, not the record. The full message, the whole
+ * portfolio and every answer are one click away in the conversation, which is
+ * where a recruiter reads an application anyway. Clamping here hides nothing;
+ * it defers. Once that is accepted the apparent conflict between "equal
+ * dimensions" and "do not hide essential information" disappears, and the card
+ * can be what it should have been all along: a fixed frame with fixed zones.
+ *
+ * Six tracks, every one of them a fixed pixel height, so the sum cannot vary:
+ *
+ * | track | px | holds |
+ * |---|---|---|
+ * | identity | 40 | avatar, name, context, Star, checkbox |
+ * | attention | 18 | the derived work state, or nothing |
+ * | evidence | 100 | portfolio strip, or first-message answers, or a stated absence |
+ * | fit | 30 | format/niche/turnaround and the record's facts |
+ * | summary | 48 | the applicant's own words, or the private note |
+ * | footer | 40/64 | time, recommended action, Message, stage |
+ *
+ * The footer is the one responsive track. Its three controls cannot share a
+ * 260px card with the timestamp, so below `sm` they take a line of their own —
+ * deterministically, for every card, rather than only for the cards whose
+ * labels happen to be long. That is a different uniform height at a different
+ * breakpoint, which is exactly what the requirement allows.
+ *
+ * An empty zone still occupies its track. That is the point: a record with no
+ * portfolio produces neither a shorter card nor a taller one, and the Message
+ * button sits on the same line as every other Message button on the board.
+ */
+const PIPELINE_CARD_ROWS =
+  "[grid-template-rows:40px_18px_100px_30px_48px_64px] sm:[grid-template-rows:40px_18px_100px_30px_48px_40px]";
+
 function avatarInitials(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -333,16 +372,27 @@ function StageMenu({
  * message: the written note (if any) plus the listing owner's structured
  * requirements as the applicant answered them (rate, portfolio, turnaround…).
  */
+/** Enumerated so Tailwind sees every class it has to generate. */
+const TEASER_CLAMP: Record<number, string> = {
+  1: "line-clamp-1",
+  2: "line-clamp-2",
+  3: "line-clamp-3",
+  4: "line-clamp-4",
+};
+
 function FirstMessagePreview({
   itemId,
   teaser,
   message,
   lines,
+  clampLines = 2,
 }: {
   itemId: string;
   teaser: string | null;
   message: string | null;
   lines: PipelineFirstMessageLine[];
+  /** How many lines the teaser gets before the card's summary track runs out. */
+  clampLines?: 1 | 2 | 3 | 4;
 }) {
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const [preview, setPreview] = useState<{ left: number; top: number; width: number } | null>(null);
@@ -423,7 +473,7 @@ function FirstMessagePreview({
         onBlur={closePreview}
         className={
           teaser
-            ? "line-clamp-2 w-full text-[11.5px] leading-relaxed text-muted transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70"
+            ? `${TEASER_CLAMP[clampLines]} w-full text-[11.5px] leading-relaxed text-muted transition-colors hover:text-white/66 focus:outline-none focus-visible:text-white/70`
             : // Full-width, slightly taller target so hovering anywhere on the row
               // reveals the requirements — a bare w-fit label was too small to hit.
               "flex w-full items-center gap-1 py-0.5 text-[11px] font-medium text-subtle transition-colors hover:text-white/65 focus:outline-none focus-visible:text-white/70"
@@ -1047,13 +1097,9 @@ export default function PipelineBoard({
                     ) : null
                   ) : (
                     /*
-                      `items-start` so a card is as tall as its own content.
-
-                      A grid stretches its items to the tallest in the row by
-                      default, and these cards vary a lot — one with a portfolio
-                      strip and full facts beside one with a name and a line of
-                      text. Stretching left the short ones as mostly-empty boxes
-                      with their footer stranded at the bottom.
+                      `items-start` so the grid never stretches a card: every
+                      card decides its own height, and they all decide the same
+                      one — see PIPELINE_CARD_ROWS.
                     */
                     <div className="mt-3 grid items-start gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
                       {stagePage.rendered.map((item) => {
@@ -1083,6 +1129,11 @@ export default function PipelineBoard({
                         const dispatchable =
                           cardAction && BOARD_DISPATCHABLE_ACTIONS.has(cardAction.key) ? cardAction : null;
                         const name = direction === "received" ? item.counterpartyName : item.title;
+                        const factsDuplicateEvidence =
+                          portfolio.length === 0 &&
+                          firstMessageLines.length > 0 &&
+                          !item.proposedTerms?.trim();
+                        const hasFit = portfolio.length > 0 || (facts.length > 0 && !factsDuplicateEvidence);
                         return (
                           <div
                             key={item.id}
@@ -1111,22 +1162,12 @@ export default function PipelineBoard({
                             onDragEnd={endDrag}
                             onClick={() => onMessage(item)}
                             /*
-                              One height for every card.
-
-                              Content varies enormously — a portfolio strip and
-                              full commercial terms beside a name and one line —
-                              and letting each card size itself made the board
-                              look unfinished, with footers landing at a
-                              different height in every column. A fixed frame
-                              with a scroll-safe body and the footer already
-                              pinned by `mt-auto` puts the time, the Message
-                              button and the stage menu on the same line across
-                              the whole row. Overflowing content is clamped, not
-                              lost: the card is a summary and the conversation
-                              is the record.
+                              Exactly one height for every card — see
+                              PIPELINE_CARD_ROWS for the tracks and the reasoning.
                             */
                             className={[
-                              "group relative flex min-h-[304px] flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
+                              "group relative grid gap-1.5 overflow-hidden rounded-xl border p-3 text-left",
+                              PIPELINE_CARD_ROWS,
                               "transition-[transform,box-shadow,background-color,border-color] duration-150",
                               manageable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               isDragging
@@ -1136,7 +1177,8 @@ export default function PipelineBoard({
                                   : "border-line surface-raised elev-2 hover:-translate-y-0.5 hover:border-line-mid hover:elev-3",
                             ].join(" ")}
                           >
-                            <div className="flex items-start gap-2.5">
+                            {/* 1 — identity. One line for the name, one for the job. */}
+                            <div className="flex min-h-0 items-center gap-2.5 overflow-hidden">
                               <RowAvatar name={item.counterpartyName} src={item.counterpartyAvatarUrl} />
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
@@ -1175,7 +1217,7 @@ export default function PipelineBoard({
                                 together because the card header is where the
                                 eye already is, not because they are related.
                               */}
-                              <span className="mt-0.5 flex shrink-0 items-center gap-1.5">
+                              <span className="flex shrink-0 items-center gap-1.5 self-start">
                                 {onToggleStar ? (
                                   <button
                                     type="button"
@@ -1226,31 +1268,19 @@ export default function PipelineBoard({
                             </div>
 
                             {/*
-                              The card's variable middle.
+                              2 — attention. A reserved track, not a conditional
+                              block: it occupies its 18px whether or not there is
+                              a state to report, so evidence and everything under
+                              it never slide upward to fill a gap. That drift is
+                              what made two Hired cards with different data read
+                              as two different templates.
 
-                              Everything here — evidence, creator facts, the
-                              snippet, a private note — is a summary whose length
-                              depends entirely on the record. Given its own
-                              `min-h-0 flex-1` region it absorbs the difference
-                              between records instead of pushing the footer out
-                              of a fixed-height card, which is what clipped the
-                              Message button on three quarters of them.
-                            */}
-                            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-                            {/*
                               Parity with the Inbox: the same derivation and the
                               same ladder. Decision-type recommendations are not
                               rendered here — this card already carries a stage
                               menu, and two decision surfaces would compete.
                             */}
-                            {/*
-                              A reserved slot, not a conditional block. It
-                              renders even when there is nothing to say, so
-                              facts, snippet and footer never slide upward to
-                              fill a gap — that drift is what made two Hired
-                              cards with different data read as two templates.
-                            */}
-                            <div className="flex min-h-[20px] flex-wrap items-center gap-1.5">
+                            <div className="flex min-h-0 items-center gap-1.5 overflow-hidden">
                               {workState ? (
                                 <span
                                   data-testid="pipeline-work-state"
@@ -1258,7 +1288,7 @@ export default function PipelineBoard({
                                   className={[
                                     // No border, no hover, full-round: a label,
                                     // not something to press.
-                                    "inline-flex items-center gap-1 rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
+                                    "inline-flex max-w-full items-center gap-1 truncate rounded-full border-0 px-2 py-0.5 text-[10.5px] font-medium",
                                     workState.highConfidence
                                       ? "bg-wash-strong text-default"
                                       : "text-muted",
@@ -1276,117 +1306,193 @@ export default function PipelineBoard({
                             </div>
 
                             {/*
-                              Portfolio first: on a creator role this is the
-                              strongest qualification on the card, and it used
-                              to be a number. Capped at two so the person and
-                              the action stay ahead of it.
-                            */}
-                            {portfolio.length > 0 ? (
-                              /*
-                                A bounded evidence zone.
+                              3 — evidence. One fixed 100px zone with three
+                              possible tenants, in descending order of how much
+                              they settle:
 
-                                Portfolio is the strongest qualification on a
-                                creator card, and it is also the most variable
-                                thing on it — left uncapped inside a fixed frame
-                                it pushed the applicant's own words off the
-                                bottom on the very cards that had the most to
-                                say. Two rows of evidence, then the sentence
-                                they wrote; the rest of the portfolio is one
-                                click away in the conversation.
-                              */
-                              <div className="max-h-[104px] shrink-0 overflow-hidden">
+                              a portfolio, which is the strongest qualification a
+                              creator card can carry; failing that the structured
+                              answers they gave to the first-message questions,
+                              which are the next most concrete thing about them;
+                              failing both, a plain statement that no work was
+                              shared, next to whatever job context there is.
+
+                              The third is deliberately not a blank slab. A card
+                              that reserves a hundred pixels and then says nothing
+                              in them reads as data that failed to load.
+                            */}
+                            <div
+                              data-testid="pipeline-evidence"
+                              data-evidence={
+                                portfolio.length > 0
+                                  ? "portfolio"
+                                  : firstMessageLines.length > 0
+                                    ? "answers"
+                                    : "none"
+                              }
+                              className="min-h-0 overflow-hidden"
+                            >
+                              {portfolio.length > 0 ? (
                                 <PortfolioStrip items={portfolio} max={3} compact />
-                              </div>
-                            ) : null}
-                            {portfolio.length > 0 ? (
-                              <CreatorFitSummary
-                                platforms={facets.platforms}
-                                formats={facets.formats}
-                                niches={facets.niches}
-                              />
-                            ) : null}
-
-                            {facts.length > 0 || (portfolioCount > 0 && portfolio.length === 0) ? (
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted">
-                                {facts.map((fact, factIndex) => (
-                                  <span
-                                    key={fact.text}
-                                    data-testid="pipeline-fact"
-                                    className="inline-flex min-w-0 max-w-full items-center gap-1"
-                                  >
-                                    {factIndex > 0 ? (
-                                      <span aria-hidden="true" className="mr-1 text-disabled">·</span>
-                                    ) : null}
-                                    <Icon
-                                      name={fact.icon}
-                                      className="h-3 w-3 shrink-0 text-subtle"
-                                      aria-hidden="true"
-                                    />
-                                    <span className="truncate">{fact.text}</span>
-                                  </span>
-                                ))}
-                                {portfolioCount > 0 && portfolio.length === 0 ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    {facts.length > 0 ? (
-                                      <span aria-hidden="true" className="mr-1 text-disabled">·</span>
-                                    ) : null}
-                                    <Icon
-                                      name="images"
-                                      className="h-3 w-3 shrink-0 text-subtle"
-                                      aria-hidden="true"
-                                    />
-                                    {portfolioCount} portfolio
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : null}
-
-                            {snippet || firstMessageLines.length ? (
-                              <FirstMessagePreview
-                                itemId={item.id}
-                                teaser={snippet}
-                                message={legacyMessage}
-                                lines={firstMessageLines}
-                              />
-                            ) : null}
-
-                            {item.managerNote ? (
-                              <p
-                                data-testid="pipeline-note-indicator"
-                                title={item.managerNote}
-                                className="flex min-w-0 items-center gap-1.5 rounded-md bg-state-interview-fill px-1.5 py-1 text-[11px] text-state-interview"
-                              >
-                                <Icon name="notebook-text" className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                <span className="truncate">{item.managerNote}</span>
-                              </p>
-                            ) : null}
-
-                            {/*
-                              One action slot. The recommended action used to
-                              sit mid-card while Message sat here, so a card
-                              presented two control regions and the eye had to
-                              search for the one that mattered.
-                            */}
-                            {/*
-                              The footer wraps rather than spills. The action
-                              group used to carry `min-w-0`, which let it shrink
-                              below its own min-content — but Message and the
-                              stage menu are `shrink-0` and cannot follow, so at
-                              390px the content overflowed the card by ~10px
-                              instead of reflowing. Without `min-w-0` the group
-                              keeps its min-content width, and `flex-wrap` moves
-                              it to its own line when the timestamp leaves it too
-                              little room. Below sm it takes that line outright
-                              and wraps internally, so three buttons that cannot
-                              share 234px stack instead of truncating — every
-                              label survives. Placement is unchanged: still the
-                              footer, still trailing.
-                            */}
+                              ) : firstMessageLines.length > 0 ? (
+                                <ul className="space-y-1 text-[11px]">
+                                  {firstMessageLines.slice(0, 3).map((line) => (
+                                    <li
+                                      key={`${line.label}-${line.value}`}
+                                      data-testid="pipeline-answer-line"
+                                      className="flex items-start gap-1.5"
+                                    >
+                                      <Icon
+                                        name={line.icon}
+                                        className="mt-[2px] h-3 w-3 shrink-0 text-subtle"
+                                        aria-hidden="true"
+                                      />
+                                      <span className="shrink-0 text-subtle">{line.label}</span>
+                                      <span className="min-w-0 flex-1 truncate text-right font-medium text-secondary">
+                                        {line.value}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div
+                                  data-testid="pipeline-no-portfolio"
+                                  className="flex h-full flex-col justify-center gap-1 rounded-lg border border-dashed border-line px-2.5 py-2"
+                                >
+                                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted">
+                                    <Icon name="images" className="h-3 w-3 shrink-0 text-subtle" aria-hidden="true" />
+                                    {portfolioCount > 0
+                                      ? `${portfolioCount} portfolio item${portfolioCount === 1 ? "" : "s"} on their profile`
+                                      : "No work samples shared"}
+                                  </p>
+                                  {context ? (
+                                    <p className="truncate text-[10.5px] text-subtle">For {context}</p>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
-                            <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-line pt-2">
+
+                            {/*
+                              4 — fit. What the work is and what it covers,
+                              clamped to the track. Derived from the portfolio
+                              where there is one, because three finance explainers
+                              are evidence and a niche list is an assertion.
+                            */}
+                            <div
+                              className={
+                                hasFit
+                                  ? "flex min-h-0 flex-col gap-0.5 overflow-hidden"
+                                  : // Removed from the grid entirely rather than
+                                    // left empty, so the summary below can take
+                                    // the track instead of the card carrying a
+                                    // thirty-pixel hole.
+                                    "hidden"
+                              }
+                            >
+                              {portfolio.length > 0 ? (
+                                <CreatorFitSummary
+                                  platforms={facets.platforms}
+                                  formats={facets.formats}
+                                  niches={facets.niches}
+                                  className="flex-nowrap overflow-hidden"
+                                />
+                              ) : null}
+                              {/*
+                                `pipelineCardFacts` reads the same
+                                `firstMessageAnswers` the evidence zone renders,
+                                so when the answers are on the card the facts row
+                                is the rate and the turnaround said twice, four
+                                lines apart. Proposed terms are a different
+                                source and survive.
+                              */}
+                              {facts.length > 0 && !factsDuplicateEvidence ? (
+                                <div className="flex items-center gap-x-2 overflow-hidden text-[10.5px] text-muted">
+                                  {facts.map((fact, factIndex) => (
+                                    <span
+                                      key={fact.text}
+                                      data-testid="pipeline-fact"
+                                      className="inline-flex min-w-0 items-center gap-1"
+                                    >
+                                      {factIndex > 0 ? (
+                                        <span aria-hidden="true" className="mr-1 text-disabled">·</span>
+                                      ) : null}
+                                      <Icon
+                                        name={fact.icon}
+                                        className="h-3 w-3 shrink-0 text-subtle"
+                                        aria-hidden="true"
+                                      />
+                                      <span className="truncate">{fact.text}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {/*
+                              5 — summary. The applicant's own words, clamped;
+                              the private note beneath them when there is one.
+                              Both are reachable in full from the conversation,
+                              and the snippet is a real focusable disclosure, so
+                              the clamp costs a keyboard user nothing.
+                            */}
+                            <div
+                              className={[
+                                "flex min-h-0 flex-col gap-1 overflow-hidden",
+                                // Two tracks when there is no fit line, so the
+                                // total is unchanged and the words get the room
+                                // instead of the gap.
+                                hasFit ? "" : "row-span-2",
+                              ].join(" ")}
+                            >
+                              {snippet || firstMessageLines.length ? (
+                                <FirstMessagePreview
+                                  itemId={item.id}
+                                  teaser={snippet}
+                                  message={legacyMessage}
+                                  lines={firstMessageLines}
+                                  // The note shares this track, so the words give
+                                  // up a line rather than the note losing its
+                                  // bottom edge to the clip. With no fit line the
+                                  // zone is twice as tall and can afford more.
+                                  clampLines={item.managerNote ? (hasFit ? 1 : 2) : hasFit ? 2 : 4}
+                                />
+                              ) : null}
+                              {item.managerNote ? (
+                                <p
+                                  data-testid="pipeline-note-indicator"
+                                  title={item.managerNote}
+                                  className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-state-interview-fill px-1.5 py-1 text-[11px] text-state-interview"
+                                >
+                                  <Icon name="notebook-text" className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                  <span className="truncate">{item.managerNote}</span>
+                                </p>
+                              ) : null}
+                            </div>
+
+                            {/*
+                              6 — footer. One action region, always at the foot,
+                              always the same height: the recommended action, the
+                              Message button and the stage menu, with the time on
+                              the left.
+
+                              Below `sm` the controls take a line of their own
+                              rather than sharing one with the timestamp. That is
+                              a layout decision, not a consequence of how long a
+                              particular label is, so every card in the column
+                              wraps identically and the buttons stay on one
+                              horizontal line across the board.
+                            */}
+                            <div className="flex min-h-0 flex-col justify-end gap-1 overflow-hidden border-t border-line pt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                               <InteractionTime value={item.updatedAt} className="shrink-0 text-[11px] text-subtle" />
+                              {/*
+                                One line, never wrapping. The recommended action
+                                is the only label allowed to truncate, because it
+                                is the only one whose text varies — Message and
+                                the stage menu keep their full width so the two
+                                controls a card always has are never abbreviated.
+                              */}
                               <div
-                                className="flex min-w-0 basis-full flex-wrap items-center justify-end gap-1.5 sm:basis-auto sm:flex-nowrap"
+                                className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5"
                                 data-no-drag
                               >
                                 {dispatchable && dispatchable.key !== "reply" ? (
