@@ -1126,7 +1126,7 @@ export default function PipelineBoard({
                               is the record.
                             */
                             className={[
-                              "group relative flex h-[248px] flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
+                              "group relative flex min-h-[304px] flex-col gap-2 overflow-hidden rounded-xl border p-3 text-left",
                               "transition-[transform,box-shadow,background-color,border-color] duration-150",
                               manageable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               isDragging
@@ -1282,7 +1282,21 @@ export default function PipelineBoard({
                               the action stay ahead of it.
                             */}
                             {portfolio.length > 0 ? (
-                              <PortfolioStrip items={portfolio} max={3} compact />
+                              /*
+                                A bounded evidence zone.
+
+                                Portfolio is the strongest qualification on a
+                                creator card, and it is also the most variable
+                                thing on it — left uncapped inside a fixed frame
+                                it pushed the applicant's own words off the
+                                bottom on the very cards that had the most to
+                                say. Two rows of evidence, then the sentence
+                                they wrote; the rest of the portfolio is one
+                                click away in the conversation.
+                              */
+                              <div className="max-h-[104px] shrink-0 overflow-hidden">
+                                <PortfolioStrip items={portfolio} max={3} compact />
+                              </div>
                             ) : null}
                             {portfolio.length > 0 ? (
                               <CreatorFitSummary
