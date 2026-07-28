@@ -23,7 +23,6 @@ from app.core.job_import_policy import MissingRequirement, ReviewSection
 from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.schemas.job import JobRead
 
-
 CURRENT_EXTRACTION_SCHEMA_VERSION = 1
 MAX_IMPORT_SOURCE_TEXT_LENGTH = 100_000
 MAX_EVIDENCE_SNIPPET_LENGTH = 500
@@ -573,6 +572,12 @@ class JobImportApplyRequest(BaseModel):
     mode: Literal["create_new"] = "create_new"
 
 
+class JobImportProcessRequest(BaseModel):
+    """Strict empty body: provider, model, and metadata are server-owned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class JobImportFieldRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
@@ -634,3 +639,10 @@ class JobImportApplyResponse(BaseModel):
     draft: JobImportDraftRead
     job: JobRead
     created: bool
+
+
+class JobImportProcessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["processed", "already_processing", "already_processed"]
+    draft: JobImportDraftRead

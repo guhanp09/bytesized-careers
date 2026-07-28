@@ -56,6 +56,8 @@ from app.schemas.job_import import (
     JobImportExtractionRequest,
     JobImportExtractionResponse,
     JobImportFieldReviewRequest,
+    JobImportProcessRequest,
+    JobImportProcessResponse,
     JobImportSourceCreate,
     JobImportSourceRead,
 )
@@ -179,6 +181,8 @@ __all__ = [
     "JobImportExtractionRequest",
     "JobImportExtractionResponse",
     "JobImportFieldReviewRequest",
+    "JobImportProcessRequest",
+    "JobImportProcessResponse",
     "JobImportSourceCreate",
     "JobImportSourceRead",
     "LaunchCheckoutRequest",

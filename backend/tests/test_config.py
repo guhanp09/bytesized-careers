@@ -38,6 +38,29 @@ def test_cors_origins_accept_json_array() -> None:
     assert settings.cors_origins == ["https://creatorjobs.example", "https://www.creatorjobs.example"]
 
 
+def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
+    settings = config.Settings(
+        OPENAI_API_KEY="test-placeholder-not-a-real-key",
+        OPENAI_MODEL="gpt-5.6-luna",
+        OPENAI_REQUEST_TIMEOUT_SECONDS=30,
+        OPENAI_MAX_RETRIES=2,
+        JOB_IMPORT_PROMPT_VERSION="job-import-text-v1",
+    )
+
+    assert settings.openai_api_key is not None
+    assert str(settings.openai_api_key) == "**********"
+    assert (
+        settings.openai_api_key.get_secret_value()
+        == "test-placeholder-not-a-real-key"
+    )
+    assert settings.openai_model == "gpt-5.6-luna"
+
+    with pytest.raises(ValueError):
+        config.Settings(OPENAI_MAX_RETRIES=4)
+    with pytest.raises(ValueError):
+        config.Settings(OPENAI_REQUEST_TIMEOUT_SECONDS=121)
+
+
 def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     production_settings = config.Settings(
         APP_ENV="production",

@@ -20,6 +20,8 @@ test("job-import readiness client owns the private typed contract", () => {
     "JobImportSource",
     "JobImportField",
     "JobImportDraft",
+    "JobImportProcessOutcome",
+    "JobImportProcessResponse",
     "JobImportProvenance",
     "JobImportReviewStatus",
   ]) {
@@ -31,6 +33,7 @@ test("job-import readiness client owns the private typed contract", () => {
     "redactJobImportSource",
     "initializeJobImportDraft",
     "getJobImportDraft",
+    "processJobImportDraft",
     "reviewJobImportField",
     "resolveJobImportConflict",
     "discardJobImportDraft",
@@ -40,6 +43,7 @@ test("job-import readiness client owns the private typed contract", () => {
     assert.match(contract, new RegExp(`export async function ${operation}`));
   }
   assert.match(contract, /JSON\.stringify\(\{ mode: "create_new" \}\)/);
+  assert.match(contract, /JSON\.stringify\(\{\}\)/);
   const sourceWrite = contract.match(
     /export type JobImportSourceCreate = \{[\s\S]*?\n\};/
   );
@@ -89,13 +93,13 @@ test("no application or component links the readiness substrate into user-facing
   assert.doesNotMatch(userFacingSource, /Process with AI/);
 });
 
-test("repository dependencies contain no model-provider or embedding SDK", () => {
+test("repository dependencies contain only the approved OpenAI provider SDK", () => {
   const packageJson = read("package.json");
   const pyproject = read("backend/pyproject.toml");
   const dependencies = `${packageJson}\n${pyproject}`.toLowerCase();
 
+  assert.match(dependencies, /openai>=/);
   for (const forbidden of [
-    "\"openai\"",
     "\"anthropic\"",
     "langchain",
     "pinecone",

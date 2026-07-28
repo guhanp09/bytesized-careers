@@ -39,6 +39,18 @@ Key vars:
 - `LOG_LEVEL`
 - `JWT_SECRET`
 - `YOUTUBE_API_KEY` (server-side YouTube Data API v3 key for portfolio metadata import)
+- `OPENAI_API_KEY` (server-side only; required only for private text job-import processing)
+- `OPENAI_MODEL` (defaults to `gpt-5.6-luna`; clients cannot override it)
+- `OPENAI_REQUEST_TIMEOUT_SECONDS`
+- `OPENAI_MAX_RETRIES`
+- `JOB_IMPORT_PROMPT_VERSION`
+
+Private normalized-text import processing is available to an authenticated draft
+owner at `POST /api/v1/job-imports/drafts/{draft_id}/process`. The request body
+must be `{}`; provider, model, and audit metadata are server-owned. Processing
+supports pasted text, rough descriptions, and externally sourced listing text
+only. Successful extraction remains private and stops at recruiter review—it
+does not create or publish a native job.
 
 ## Local Development (uv)
 Install dependencies:

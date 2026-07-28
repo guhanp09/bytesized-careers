@@ -10,23 +10,30 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.account_types import isAdmin
-from app.core.security import TokenError, decode_access_token
+from app.core.config import settings
 from app.core.qa_personas import (
     is_qa_controller_email,
     parse_qa_token_claims,
     qa_persona_feature_enabled,
     qa_session_is_revoked,
 )
-from app.db.session import get_db_session
+from app.core.security import TokenError, decode_access_token
 from app.db import seed_data_personas as qa_personas
+from app.db.session import get_db_session
+from app.integrations.openai.job_import_adapter import (
+    OpenAIJobImportAdapter,
+    OpenAIJobImportConfig,
+)
 from app.models import Job, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
-from app.services.job_service import JobNotFoundError, JobService
+from app.services.job_import_processing_service import JobImportProcessingService
+from app.services.job_import_provider import JobImportExtractionProvider
 from app.services.job_import_service import JobImportService
+from app.services.job_service import JobNotFoundError, JobService
 from app.services.me_service import MeService
 from app.services.profile_service import ProfileService
 
@@ -49,6 +56,30 @@ async def get_job_import_service(
         JobImportRepository(session),
         JobService(JobRepository(session)),
     )
+
+
+def get_job_import_provider() -> JobImportExtractionProvider:
+    api_key = (
+        settings.openai_api_key.get_secret_value()
+        if settings.openai_api_key is not None
+        else None
+    )
+    return OpenAIJobImportAdapter(
+        OpenAIJobImportConfig(
+            api_key=api_key,
+            model=settings.openai_model,
+            request_timeout_seconds=settings.openai_request_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+            instruction_version=settings.job_import_prompt_version,
+        )
+    )
+
+
+async def get_job_import_processing_service(
+    service: JobImportService = Depends(get_job_import_service),
+    provider: JobImportExtractionProvider = Depends(get_job_import_provider),
+) -> JobImportProcessingService:
+    return JobImportProcessingService(service, provider)
 
 
 async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRepository:

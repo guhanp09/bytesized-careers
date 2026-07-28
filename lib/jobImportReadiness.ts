@@ -167,6 +167,16 @@ export type JobImportDraftInitialize = {
   idempotency_key?: string | null;
 };
 
+export type JobImportProcessOutcome =
+  | "processed"
+  | "already_processing"
+  | "already_processed";
+
+export type JobImportProcessResponse = {
+  outcome: JobImportProcessOutcome;
+  draft: JobImportDraft;
+};
+
 const requireRecord = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label} response.`);
@@ -273,6 +283,30 @@ export async function getJobImportDraft(
     { accessToken }
   );
   return decodeJobImportDraft(response);
+}
+
+export async function processJobImportDraft(
+  accessToken: string,
+  draftId: string
+): Promise<JobImportProcessResponse> {
+  const response = await requestJson<unknown>(
+    `/job-imports/drafts/${encodeURIComponent(draftId)}/process`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+      accessToken,
+    }
+  );
+  const result = requireRecord(response, "job-import process");
+  const outcome = requireKnownState(
+    result.outcome,
+    ["processed", "already_processing", "already_processed"] as const,
+    "job-import process"
+  );
+  return {
+    outcome,
+    draft: decodeJobImportDraft(result.draft),
+  };
 }
 
 export async function reviewJobImportField(

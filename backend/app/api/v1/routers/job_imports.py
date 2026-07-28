@@ -4,7 +4,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.deps import get_current_user, get_job_import_service
+from app.api.deps import (
+    get_current_user,
+    get_job_import_processing_service,
+    get_job_import_service,
+)
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import User
 from app.schemas.job import JobRead
@@ -15,11 +19,13 @@ from app.schemas.job_import import (
     JobImportDraftInitialize,
     JobImportDraftRead,
     JobImportFieldReviewRequest,
+    JobImportProcessRequest,
+    JobImportProcessResponse,
     JobImportSourceCreate,
     JobImportSourceRead,
 )
+from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_service import JobImportError, JobImportService
-
 
 router = APIRouter(prefix="/job-imports", tags=["job-imports"])
 
@@ -124,6 +130,34 @@ async def get_import_draft(
     except JobImportError as error:
         _raise_import_error(error)
     return await service.draft_read(draft)
+
+
+@router.post(
+    "/drafts/{draft_id}/process",
+    response_model=JobImportProcessResponse,
+    summary="Process an owned normalized-text import draft privately",
+)
+async def process_import_draft(
+    draft_id: UUID,
+    _payload: JobImportProcessRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    processing_service: JobImportProcessingService = Depends(
+        get_job_import_processing_service
+    ),
+    service: JobImportService = Depends(get_job_import_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportProcessResponse:
+    try:
+        result = await processing_service.process(
+            draft_id,
+            owner_user_id=current_user.id,
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return JobImportProcessResponse(
+        outcome=result.outcome,
+        draft=await service.draft_read(result.draft),
+    )
 
 
 @router.patch(

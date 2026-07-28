@@ -10,9 +10,9 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.core.job_domain_taxonomy import (
+    CREATIVE_AUTONOMY_LEVELS,
     CREATOR_JOB_FORMATS,
     CREATOR_JOB_PLATFORMS,
-    CREATIVE_AUTONOMY_LEVELS,
     DELIVERABLE_FREQUENCIES,
     DELIVERABLE_TYPES,
     DURATION_TYPES,
@@ -76,7 +76,6 @@ from app.services.job_service import (
     JobVerificationRequiredError,
 )
 
-
 _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
     "deliverables": frozenset(
         {"type", "custom_type", "quantity", "frequency", "custom_frequency", "notes"}
@@ -85,9 +84,6 @@ _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
         {"type", "custom_label", "sensitive_access_confirmed"}
     ),
     "hiring_process": frozenset({"stage", "custom_label", "notes"}),
-    "screening_questions": frozenset(
-        {"prompt", "required", "response_guidance"}
-    ),
     "reference_videos": frozenset(
         {
             "id",
@@ -613,6 +609,7 @@ class JobImportService:
         draft_id: UUID,
         *,
         owner_user_id: UUID,
+        processing_attempt_id: UUID | None = None,
     ) -> JobImportDraft:
         draft = await self.repository.claim_draft_mutation(
             draft_id,
@@ -641,11 +638,34 @@ class JobImportService:
                 draft.source_id,
                 owner_user_id=owner_user_id,
             )
+            now = datetime.now(UTC)
+            existing_metadata = (
+                draft.provider_metadata
+                if isinstance(draft.provider_metadata, dict)
+                else {}
+            )
+            previous_attempts = existing_metadata.get("processing_attempt_count", 0)
+            attempt_count = (
+                previous_attempts
+                if isinstance(previous_attempts, int) and previous_attempts >= 0
+                else 0
+            ) + 1
+            processing_metadata = (
+                {
+                    "processing_attempt_id": str(processing_attempt_id),
+                    "processing_attempt_count": attempt_count,
+                    "processing_started_at": now.isoformat(),
+                    "processing_outcome": "processing",
+                }
+                if processing_attempt_id is not None
+                else draft.provider_metadata
+            )
             await self.repository.update_draft(
                 draft,
                 {
                     "processing_status": "processing",
                     "validation_status": "not_validated",
+                    "provider_metadata": processing_metadata,
                     "mutation_claim_token": None,
                 },
             )
@@ -666,6 +686,8 @@ class JobImportService:
         owner_user_id: UUID,
         error_code: str,
         message: str,
+        expected_processing_attempt_id: UUID | None = None,
+        provider_audit: JobImportProviderMetadata | None = None,
     ) -> JobImportDraft:
         draft = await self.repository.claim_draft_mutation(
             draft_id,
@@ -690,11 +712,26 @@ class JobImportService:
                 status_code=409,
             )
         try:
+            self._assert_processing_attempt(
+                draft,
+                expected_processing_attempt_id,
+            )
             source = await self.get_source(
                 draft.source_id,
                 owner_user_id=owner_user_id,
             )
             safe_message = " ".join(message.split())[:500]
+            current_metadata = (
+                draft.provider_metadata
+                if isinstance(draft.provider_metadata, dict)
+                else {}
+            )
+            failed_metadata = {
+                **current_metadata,
+                **(provider_audit.metadata if provider_audit else {}),
+                "processing_completed_at": datetime.now(UTC).isoformat(),
+                "processing_outcome": "failed",
+            }
             await self.repository.update_draft(
                 draft,
                 {
@@ -706,6 +743,27 @@ class JobImportService:
                             "message": safe_message,
                         }
                     },
+                    "provider_name": (
+                        provider_audit.provider_name
+                        if provider_audit
+                        else draft.provider_name
+                    ),
+                    "model_name": (
+                        provider_audit.model_name
+                        if provider_audit
+                        else draft.model_name
+                    ),
+                    "model_version": (
+                        provider_audit.model_version
+                        if provider_audit
+                        else draft.model_version
+                    ),
+                    "instruction_version": (
+                        provider_audit.instruction_version
+                        if provider_audit
+                        else draft.instruction_version
+                    ),
+                    "provider_metadata": failed_metadata,
                     "mutation_claim_token": None,
                 },
             )
@@ -718,6 +776,25 @@ class JobImportService:
         except Exception:
             await self.repository.session.rollback()
             raise
+
+    @staticmethod
+    def _assert_processing_attempt(
+        draft: JobImportDraft,
+        expected_processing_attempt_id: UUID | None,
+    ) -> None:
+        if expected_processing_attempt_id is None:
+            return
+        metadata = (
+            draft.provider_metadata
+            if isinstance(draft.provider_metadata, dict)
+            else {}
+        )
+        if metadata.get("processing_attempt_id") != str(expected_processing_attempt_id):
+            raise JobImportError(
+                "JOB_IMPORT_STALE_PROCESSING_RESULT",
+                "This processing result belongs to an outdated import attempt.",
+                status_code=409,
+            )
 
     @staticmethod
     def _adapter_for_native_field(field_name: str) -> TypeAdapter[Any]:
@@ -814,11 +891,6 @@ class JobImportService:
                 f"Unsupported nested key at {field_path}[{index}].{key}."
                 for key in unexpected
             )
-            if field_path == "screening_questions" and "required" not in item:
-                errors.append(
-                    "screening_questions"
-                    f"[{index}].required must be explicitly supplied for review."
-                )
             if field_path == "reference_videos":
                 timestamp_notes = item.get("timestamp_notes")
                 if isinstance(timestamp_notes, list):
@@ -971,16 +1043,21 @@ class JobImportService:
         *,
         owner_user_id: UUID,
         provider_metadata: JobImportProviderMetadata | None = None,
+        expected_processing_attempt_id: UUID | None = None,
     ) -> JobImportDraft:
         draft = await self.repository.claim_draft_mutation(
             draft_id,
             owner_user_id,
             uuid4(),
-            allowed_statuses={
-                "awaiting_processing",
-                "processing",
-                "processing_failed",
-            },
+            allowed_statuses=(
+                {"processing"}
+                if expected_processing_attempt_id is not None
+                else {
+                    "awaiting_processing",
+                    "processing",
+                    "processing_failed",
+                }
+            ),
         )
         if draft is None:
             existing = await self.repository.get_draft_for_owner(
@@ -999,6 +1076,10 @@ class JobImportService:
                 status_code=404,
             )
         try:
+            self._assert_processing_attempt(
+                draft,
+                expected_processing_attempt_id,
+            )
             return await self._record_extraction_result_claimed(
                 draft,
                 response,
@@ -1213,6 +1294,17 @@ class JobImportService:
         await self.repository.create_fields(rows)
         metadata = provider_metadata or JobImportProviderMetadata()
         now = datetime.now(UTC)
+        current_metadata = (
+            draft.provider_metadata
+            if isinstance(draft.provider_metadata, dict)
+            else {}
+        )
+        completed_metadata = {
+            **current_metadata,
+            **(metadata.metadata or {}),
+            "processing_completed_at": now.isoformat(),
+            "processing_outcome": "processed",
+        }
         await self.repository.update_draft(
             draft,
             {
@@ -1220,7 +1312,7 @@ class JobImportService:
                 "model_name": metadata.model_name,
                 "model_version": metadata.model_version,
                 "instruction_version": metadata.instruction_version,
-                "provider_metadata": metadata.metadata or None,
+                "provider_metadata": completed_metadata,
                 "machine_output": response.model_dump(mode="json"),
                 "processing_warnings": [
                     warning.model_dump(mode="json") for warning in response.warnings

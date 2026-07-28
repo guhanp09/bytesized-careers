@@ -4,10 +4,9 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 from app.core.job_domain_taxonomy import (
-    AIConfirmationPolicy,
     AI_FIELD_CONFIRMATION_POLICY,
+    AIConfirmationPolicy,
 )
-
 
 MissingRequirement = Literal[
     "publication_blocker",
@@ -111,7 +110,6 @@ _SUPPORTED_NATIVE_FIELDS: Final[tuple[str, ...]] = (
     "trial_notes",
     "hiring_process",
     "hiring_process_notes",
-    "screening_questions",
     "employer_context_type",
 )
 
@@ -176,7 +174,6 @@ _RECOMMENDED_FIELDS: Final[frozenset[str]] = frozenset(
         "trial_status",
         "duration_type",
         "hiring_process",
-        "screening_questions",
         "employer_context_type",
     }
 )
@@ -279,7 +276,6 @@ _SECTION_FIELDS: Final[dict[ReviewSection, frozenset[str]]] = {
             "how_to_apply",
             "hiring_process",
             "hiring_process_notes",
-            "screening_questions",
         }
     ),
     "identity": frozenset({"employer_context_type"}),

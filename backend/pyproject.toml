@@ -16,6 +16,7 @@ dependencies = [
   "python-jose[cryptography]>=3.3.0",
   "bcrypt>=4.2.0",
   "greenlet>=3.0.3",
+  "openai>=2.49.0,<3.0.0",
 ]
 
 [dependency-groups]

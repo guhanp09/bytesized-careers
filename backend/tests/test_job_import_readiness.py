@@ -10,7 +10,9 @@ import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from conftest import TestSessionLocal
 from httpx import AsyncClient
+from job_import_response_fixtures import SCENARIOS, scenario
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -27,8 +29,6 @@ from app.schemas.job_import import (
 )
 from app.services.job_import_service import JobImportError, JobImportService
 from app.services.job_service import JobService
-from conftest import TestSessionLocal
-from job_import_response_fixtures import SCENARIOS, scenario
 
 
 async def _auth(client: AsyncClient, label: str) -> tuple[dict[str, str], UUID]:
@@ -538,7 +538,21 @@ async def test_internal_processing_contract_and_failure_transition_are_provider_
         if "/job-imports/" in path
     }
     assert import_paths
-    assert all("process" not in path for path in import_paths)
+    process_operation = import_paths[
+        "/api/v1/job-imports/drafts/{draft_id}/process"
+    ]["post"]
+    request_schema = process_operation["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    assert request_schema == {
+        "$ref": "#/components/schemas/JobImportProcessRequest"
+    }
+    assert (
+        openapi["components"]["schemas"]["JobImportProcessRequest"].get(
+            "additionalProperties"
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -832,6 +846,7 @@ async def test_invalid_taxonomy_must_be_edited_and_consequential_fields_are_gate
     assert "hiring_verification_status_snapshot" not in policies
     assert "languages" not in policies
     assert "language_requirements" not in policies
+    assert "screening_questions" not in policies
     assert all(
         not key.startswith("language_")
         for key in request.allowed_taxonomies

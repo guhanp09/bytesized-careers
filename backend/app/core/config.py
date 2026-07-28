@@ -2,7 +2,7 @@ import json
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,6 +55,33 @@ class Settings(BaseSettings):
     )
     youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
     youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
+    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(
+        default="gpt-5.6-luna",
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        alias="OPENAI_MODEL",
+    )
+    openai_request_timeout_seconds: float = Field(
+        default=30.0,
+        ge=5.0,
+        le=120.0,
+        alias="OPENAI_REQUEST_TIMEOUT_SECONDS",
+    )
+    openai_max_retries: int = Field(
+        default=2,
+        ge=0,
+        le=3,
+        alias="OPENAI_MAX_RETRIES",
+    )
+    job_import_prompt_version: str = Field(
+        default="job-import-text-v1",
+        min_length=1,
+        max_length=80,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        alias="JOB_IMPORT_PROMPT_VERSION",
+    )
     media_root: str = Field(default=".local-data/media", alias="MEDIA_ROOT")
     media_base_path: str = Field(default="/media", alias="MEDIA_BASE_PATH")
 
