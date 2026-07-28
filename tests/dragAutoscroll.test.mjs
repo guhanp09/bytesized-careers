@@ -77,7 +77,6 @@ function harness({ scrollHeight = 2000, clientHeight = 500, top = 0 } = {}) {
   const styles = { overflowY: "auto", overflowX: "visible" };
   globalThis.getComputedStyle = () => styles;
 
-  let time = 0;
   const frames = [];
   return {
     container,

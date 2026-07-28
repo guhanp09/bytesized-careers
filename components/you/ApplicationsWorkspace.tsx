@@ -1692,6 +1692,7 @@ export function MessageBubble({
         <ScreeningQuestionsCard message={message} />
       ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
         <div
+          data-testid="chat-bubble"
           className={[
             "min-w-0 px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
             bubbleCorners(me, position),
@@ -1844,7 +1845,7 @@ export function MessageGroup({
         data-from="me"
         className="flex justify-end"
       >
-        <div className="flex max-w-[82%] min-w-0 flex-col items-end">{bubbles}</div>
+        <div className="flex min-w-0 max-w-[80%] flex-col items-end">{bubbles}</div>
       </div>
     );
   }
@@ -1878,7 +1879,24 @@ export function MessageGroup({
           avatar
         )}
       </div>
-      <div className="flex max-w-[82%] min-w-0 flex-col items-start">{bubbles}</div>
+      {/*
+        The rail comes out of the width, not off the side of it.
+
+        A flat 82% cap measured the column *after* the avatar's 36px, so in a
+        narrow thread canvas — 380px at a 1280px window — an incoming bubble at
+        full width sat 36px from the left and 32px from the right. Alignment is
+        one of the three things carrying ownership, and at those numbers it was
+        carrying none of it. Subtracting the rail keeps the asymmetry the same
+        on both sides at every canvas width.
+      */}
+      <div
+        className={[
+          "flex min-w-0 flex-col items-start",
+          compact ? "max-w-[calc(80%-1.875rem)]" : "max-w-[calc(80%-2.25rem)]",
+        ].join(" ")}
+      >
+        {bubbles}
+      </div>
     </div>
   );
 }
@@ -2204,6 +2222,19 @@ export default function ApplicationsWorkspace({
   const [notifyNote, setNotifyNote] = useState("");
   // Private manager note editor state for the selected received item.
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  /**
+   * A request to land in the composer, deferred until the composer exists.
+   *
+   * The row's reply shortcut selects a record and then focuses — but on the
+   * first selection the detail panel has not mounted yet, so `composerRef` is
+   * still null and the focus went nowhere. That is the *only* thing the
+   * shortcut does beyond what clicking the row already does, so silently losing
+   * it made the control indistinguishable from the row it sits on.
+   *
+   * The id, not a boolean: a request for one record must not be honoured by a
+   * different record's composer if the selection changes first.
+   */
+  const [composerFocusFor, setComposerFocusFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!liveMode || !backendAccessToken) return;
@@ -3996,6 +4027,20 @@ export default function ApplicationsWorkspace({
     composerRef.current?.focus();
   };
 
+  // Honour a deferred composer focus once the panel it belongs to has mounted.
+  useEffect(() => {
+    if (!composerFocusFor) return;
+    if (selected?.id !== composerFocusFor) {
+      // The selection moved on; the request is stale rather than pending.
+      setComposerFocusFor(null);
+      return;
+    }
+    const composer = composerRef.current;
+    if (!composer) return;
+    composer.focus();
+    setComposerFocusFor(null);
+  }, [composerFocusFor, selected?.id, sending]);
+
   /**
    * Run the recommended action. Low-confidence recommendations open the decision
    * surface rather than committing anything, so the product never guesses an
@@ -4010,7 +4055,17 @@ export default function ApplicationsWorkspace({
       );
       switch (action.key) {
         case "reply":
-          composerRef.current?.focus();
+          /*
+            Only focus now if this record's composer is the one on screen.
+
+            The list auto-selects a record, so `composerRef` is almost never
+            null — it points at whichever conversation is currently open. Acting
+            on it from a *different* row focused the wrong composer, and then the
+            panel remounted for the new record and threw that focus away, which
+            is why the shortcut appeared to do nothing at all.
+          */
+          if (selectedItemId === item.id && composerRef.current) composerRef.current.focus();
+          else setComposerFocusFor(item.id);
           return;
         case "choose-next-step":
         case "record-decision":
@@ -5233,13 +5288,19 @@ export default function ApplicationsWorkspace({
                     >
                       <span aria-hidden="true">←</span>
                     </button>
-                    {/* Header answers "who am I talking to?" — the counterparty, not the job title. */}
+                    {/*
+                      Header answers "who am I talking to?" — the counterparty,
+                      not the job title. 40px: one step above the 36px used on
+                      cards and in context blocks, and never smaller than the
+                      44px row that led here, so the identity does not appear to
+                      shrink as you open it.
+                    */}
                     {subtitle?.href ? (
                       <Link
                         href={subtitle.href}
                         className="group flex min-w-0 items-center gap-2.5 transition-opacity hover:opacity-90"
                       >
-                        <InteractionAvatar name={subtitle.avatarName} src={subtitle.avatarSrc} sizeClasses="h-9 w-9" />
+                        <InteractionAvatar name={subtitle.avatarName} src={subtitle.avatarSrc} sizeClasses="h-10 w-10" />
                         <span className="min-w-0">
                           <h1 className="truncate text-[15px] font-semibold leading-tight text-ink">
                             {subtitle.lead}
@@ -5262,7 +5323,7 @@ export default function ApplicationsWorkspace({
                         <InteractionAvatar
                           name={subtitle?.avatarName ?? selected.counterpartyName}
                           src={subtitle?.avatarSrc ?? selected.counterpartyAvatarUrl}
-                          sizeClasses="h-9 w-9"
+                          sizeClasses="h-10 w-10"
                         />
                         <span className="min-w-0">
                           <h1 className="truncate text-[15px] font-semibold leading-tight text-ink">

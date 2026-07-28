@@ -1134,6 +1134,24 @@ export default function PipelineBoard({
                           firstMessageLines.length > 0 &&
                           !item.proposedTerms?.trim();
                         const hasFit = portfolio.length > 0 || (facts.length > 0 && !factsDuplicateEvidence);
+                        /*
+                          What the evidence zone can say about a creator when
+                          there is no work to show. Tools first: "DaVinci Resolve
+                          · Premiere Pro" is a concrete thing a recruiter can act
+                          on, where a headline is usually a restatement of the
+                          role. Anything that merely repeats the card's own
+                          context line is dropped.
+                        */
+                        const creatorAside = (() => {
+                          const tools = item.talent?.tools?.filter(Boolean) ?? [];
+                          if (tools.length > 0) return tools.slice(0, 3).join(" · ");
+                          const candidates = [item.talent?.headline, item.talent?.location];
+                          for (const value of candidates) {
+                            const text = (value || "").trim();
+                            if (text && text.toLowerCase() !== (context || "").trim().toLowerCase()) return text;
+                          }
+                          return null;
+                        })();
                         return (
                           <div
                             key={item.id}
@@ -1365,8 +1383,17 @@ export default function PipelineBoard({
                                       ? `${portfolioCount} portfolio item${portfolioCount === 1 ? "" : "s"} on their profile`
                                       : "No work samples shared"}
                                   </p>
-                                  {context ? (
-                                    <p className="truncate text-[10.5px] text-subtle">For {context}</p>
+                                  {/*
+                                    Whatever else is known about them, not the job
+                                    they applied for — the card header says that
+                                    two lines up, and "For Colorist for food
+                                    channel" under "Colorist for food channel" is
+                                    a reserved zone spending itself on an echo.
+                                  */}
+                                  {creatorAside ? (
+                                    <p className="line-clamp-2 text-[10.5px] leading-snug text-subtle">
+                                      {creatorAside}
+                                    </p>
                                   ) : null}
                                 </div>
                               )}
