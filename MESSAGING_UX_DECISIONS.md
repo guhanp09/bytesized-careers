@@ -270,7 +270,70 @@ waste half of it.
 - Identity and message preview survive at 320px; context clamps.
 - Reveal-on-hover controls do not exist on touch — the equivalent actions live in
   the opened conversation, not crammed into the row.
-- Bubbles cap at 82% of the thread width so the direction remains readable.
+- Bubbles cap at **80% of the thread width, minus the avatar rail**. A flat
+  percentage measured the column *after* the rail, so in a 380px canvas an
+  incoming bubble sat 36px from the left and 32px from the right and alignment
+  stopped carrying anything.
+- **Structured cards are exempt from the bubble cap.** The cap exists so a
+  sentence never looks centred; a first-message summary is a labelled block whose
+  ownership the rail and its own framing already carry.
 - The Pipeline card uses its own uniform height, and its footer stays inside the
   card at 320px.
-- No horizontal scrolling at any supported width.
+- No horizontal scrolling at any supported width, in either view, in any of the
+  five scenarios.
+
+---
+
+## 9. What was measured
+
+### Pipeline card height
+
+| Breakpoint | Height | Cards measured |
+|---|---|---|
+| ≥ `sm` (desktop, laptop, 200% zoom) | **332px**, every card | 231 across five scenarios |
+| < `sm` (390px, 320px) | **356px**, every card | 231 across five scenarios |
+
+Before: 304–384px within a single column. Footers now start at the same offset
+in every card at a breakpoint, because the footer's second line below `sm` is a
+layout decision applied to every card rather than a consequence of how long a
+particular label happens to be.
+
+### Conversation row
+
+One height for every row (±1px of rounding), whether or not a human message
+exists — the preview falls back to a marked system line rather than collapsing.
+Rows that additionally carry a labelled recommended action gain a band beneath
+them; that is a deliberate hierarchy, not a second row size.
+
+### Defects found by looking, and fixed
+
+1. **Answers rendered one letter per line** on a phone. The first-message card's
+   `auto` label column took the full width of a ~180px card and the value column
+   collapsed. Now stacks below 256px of *its own* width — a container query, not
+   a media query, because the same card appears in narrow desktop rails.
+2. **The reply shortcut did nothing.** The list auto-selects a record, so
+   `composerRef` was almost never null; the shortcut focused the open
+   conversation's composer and the panel then remounted for the newly selected
+   record and discarded it. Deferred and keyed to the requesting record.
+3. **Ownership was nearly centred** for long incoming messages in a narrow
+   canvas — see §8.
+4. **The job context was printed twice** on a card with no portfolio: "For
+   Colorist for food channel" beneath a header reading "Colorist for food
+   channel". The zone now shows what else is known about the person, tools first.
+5. **The rate and turnaround appeared twice** on a card — once as structured
+   answers, once as the facts row four lines below, because both read the same
+   `firstMessageAnswers`.
+6. **The detail header's avatar was smaller than the row that led to it**, so
+   identity appeared to shrink as you opened a conversation.
+
+### Known limitations
+
+- **Star does not survive a navigation in demo mode.** There is no server to hold
+  a per-user preference, and a star that refused to move would be one more
+  control that looks live and is not. Backend mode persists it; the QA suite
+  covers that path.
+- **Canonical scenario threads alternate strictly**, so the 44-message
+  conversation produces 44 runs of one. Grouping is proven in the browser by
+  composing consecutive messages, and exhaustively in `tests/senderGrouping.test.mjs`.
+- Uniform card height is enforced at the two breakpoints the product supports.
+  A third intermediate width would need its own measured figure.
