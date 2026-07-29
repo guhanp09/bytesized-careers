@@ -116,9 +116,12 @@ and Messenger sit at 48–56px with two text lines; this row carries three. At 4
 the avatar is taller than the text column it labels, which reads as a contact
 list that happens to show messages. At 36px — where it was — it stops being the
 first thing the eye lands on, which is the defect being fixed. 44px is the
-largest size that still leaves the text column taller than the avatar, and it is
-exactly the WCAG 2.5.8 minimum touch target, so the avatar-and-name region is a
-compliant tap target on mobile without extra padding.
+largest size that still leaves the text column taller than the avatar, and it
+also happens to be the long-standing 44×44 touch-target guidance, so the
+avatar-and-name region is a comfortable tap target on mobile without extra
+padding. (The *conformance* floor is WCAG 2.5.8's 24×24 CSS px, which is what
+the automated check asserts; 44px is the more generous convention, not the
+requirement.)
 
 ### Message group
 
@@ -259,8 +262,10 @@ waste half of it.
 - Focus is never stolen by an incoming message or a status change; updates
   announce through `aria-live="polite"`, and `assertive` is reserved for
   destructive-action errors.
-- Interactive targets are ≥44px on touch, including the Star and the reply
-  shortcut.
+- Interactive targets clear WCAG 2.5.8's 24×24 CSS px — asserted, not assumed —
+  and the row's identity region is the more generous 44px. The Star and the
+  reply shortcut are 24px squares in a reserved gutter; they are desktop-only,
+  and their equivalents on touch live in the opened conversation at full size.
 - Truncated content is reachable without a pointer.
 - Every reveal-on-hover control is equally revealed by `focus-visible`.
 - Reduced motion removes transitions rather than shortening them.
@@ -326,6 +331,21 @@ them; that is a deliberate hierarchy, not a second row size.
 6. **The detail header's avatar was smaller than the row that led to it**, so
    identity appeared to shrink as you opened a conversation.
 
+### Defects found by running the suites, and fixed
+
+7. **The header's primary action appeared and then vanished.** Opening a thread
+   with unread messages recommends replying, and then marks the thread read —
+   removing the evidence the recommendation rested on. The button left about a
+   second later, under a pointer already moving toward it. It was invisible
+   before only because the low-confidence case used to render "Choose next step"
+   in the same place, so the control changed its label instead of leaving. The
+   last confident recommendation for the *open* record now survives a derivation
+   that has gone quiet, is dropped when the selection changes, and is rendered
+   only while the record still offers that action — so it can never become a
+   button that does nothing. Held in a ref written during render rather than in
+   state, because the value is read in the same render and must not cost a
+   commit every time the list's live signals move.
+
 ### Known limitations
 
 - **Star does not survive a navigation in demo mode.** There is no server to hold
@@ -337,3 +357,16 @@ them; that is a deliberate hierarchy, not a second row size.
   composing consecutive messages, and exhaustively in `tests/senderGrouping.test.mjs`.
 - Uniform card height is enforced at the two breakpoints the product supports.
   A third intermediate width would need its own measured figure.
+- **The sticky recommendation is per-session, not per-record-history.** It holds
+  the last confident action for the conversation currently open; leaving and
+  returning re-derives from scratch. That is deliberate — anything durable would
+  be a second opinion competing with the derivation — but it does mean a record
+  can show a primary action on one visit and none on the next, if the evidence
+  that justified it is gone.
+- **`workspace-performance › the list-wide reads happen once per load` is
+  load-sensitive.** It bounds each list-wide read at two requests, and a second
+  realtime-refresh burst occasionally makes it three. Reproduced on the
+  unmodified baseline (1 in 8 runs) as well as with this work, including with an
+  8-second settle window, so it is timing rather than an extra fetch. The
+  invariant the test exists for — that these reads do not grow with the number
+  of records — holds either way.

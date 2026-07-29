@@ -230,14 +230,25 @@ test("a private Not proceeding is held back until the recruiter chooses to send 
 test("Inbox and Pipeline never disagree about what a record needs", async ({ page }) => {
   await asRecruiter(page);
   await openCandidate(page, "Priya Nair");
-  const inboxAction = await page.getByTestId("next-action-primary").textContent().catch(() => null);
+  /*
+    A short, explicit budget. Without one this waits the whole test timeout for
+    an element that may legitimately never appear — a record the ladder is not
+    confident about carries no primary at all — so "there is no recommendation
+    here" cost forty-five seconds and read as a hang.
+  */
+  const inboxAction = await page
+    .getByTestId("next-action-primary")
+    .textContent({ timeout: 2_000 })
+    .catch(() => null);
 
   await page.getByTestId("applications-view-pipeline").click();
   await expect(page.getByTestId("pipeline-board")).toBeVisible();
 
   if (inboxAction) {
     // The same recommendation, in the same words, from the same derivation.
-    const card = page.getByTestId("pipeline-card").filter({ hasText: "Priya Nair" }).first();
+    // `pipeline-row` is what the board actually renders; the old `pipeline-card`
+    // matched nothing, so this comparison had quietly never run.
+    const card = page.getByTestId("pipeline-row").filter({ hasText: "Priya Nair" }).first();
     if (await card.isVisible().catch(() => false)) {
       await expect(card).toContainText(inboxAction.trim());
     }

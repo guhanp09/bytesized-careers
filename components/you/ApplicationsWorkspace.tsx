@@ -3883,6 +3883,38 @@ export default function ApplicationsWorkspace({
     [selected, flags.nextAction, signalsFor]
   );
 
+  /*
+    Hold the recommendation still while a conversation settles.
+
+    Opening a thread with unread messages recommends replying — and then marks
+    the thread read, which removes the very evidence the recommendation rested
+    on. The button therefore appeared and vanished about a second later, under a
+    pointer already moving towards it. That flicker was hidden before only
+    because the low-confidence case used to render "Choose next step" in the
+    same place, so the control changed its label instead of leaving.
+
+    A ref written during render, not state. The value is a pure function of this
+    render's inputs and is read in the same render, so nothing is deferred and
+    nothing re-renders. State would cost a commit every time the derivation is
+    recomputed — which is whenever the list's live signals move — for a value
+    that is not allowed to change anything else.
+
+    The last confident recommendation for the *open* record survives a
+    derivation that has gone quiet. It is dropped the moment the selection
+    changes, replaced the moment a new confident one appears, and — the part
+    that keeps it honest — only rendered while the action is still one the
+    record actually offers, so it can never become a button that does nothing.
+  */
+  const stickyActionRef = useRef<{ itemId: string; action: NextBestAction } | null>(null);
+  if (!selected) {
+    stickyActionRef.current = null;
+  } else if (selectedNextAction?.highConfidence) {
+    stickyActionRef.current = { itemId: selected.id, action: selectedNextAction };
+  } else if (stickyActionRef.current && stickyActionRef.current.itemId !== selected.id) {
+    stickyActionRef.current = null;
+  }
+  const stickyAction = stickyActionRef.current;
+
   const analyticsBase = useCallback(
     (item: OwnerInteraction): WorkspaceEventPayload => ({
       surface: "inbox",
@@ -4215,6 +4247,22 @@ export default function ApplicationsWorkspace({
   const selectedActive = selected
     ? !selectedMessagingClosed && (!liveMode || Boolean(liveThread))
     : false;
+
+  /**
+   * The recommendation the header renders: the live one while the derivation is
+   * confident, otherwise the last confident one for this same record — and only
+   * while the record still offers it. Reply is gated on the thread being open
+   * rather than on the menu, because the composer is where reply lives.
+   */
+  const headerNextAction = (() => {
+    if (selectedNextAction?.highConfidence) return selectedNextAction;
+    if (!selected || !stickyAction || stickyAction.itemId !== selected.id) return null;
+    const offered =
+      stickyAction.action.key === "reply"
+        ? selectedActive
+        : headerActions.some((entry) => entry.key === stickyAction.action.key);
+    return offered ? stickyAction.action : null;
+  })();
 
   /**
    * The decision surface and the intent chips answer the same question, so only
@@ -5458,7 +5506,7 @@ export default function ApplicationsWorkspace({
                       >
                         {interviewStep.label}
                       </button>
-                    ) : selectedNextAction?.highConfidence ? (
+                    ) : headerNextAction ? (
                       /*
                         Only a well-evidenced action earns a primary button.
 
@@ -5472,12 +5520,12 @@ export default function ApplicationsWorkspace({
                       <button
                         type="button"
                         data-testid="next-action-primary"
-                        data-action-key={selectedNextAction.key}
+                        data-action-key={headerNextAction.key}
                         disabled={Boolean(statusMutationKey)}
-                        onClick={() => runNextAction(selected, selectedNextAction)}
+                        onClick={() => runNextAction(selected, headerNextAction)}
                         className="surface-primary hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
                       >
-                        {selectedNextAction.label}
+                        {headerNextAction.label}
                       </button>
                     ) : null}
                     <OverflowMenu items={menuItems} />

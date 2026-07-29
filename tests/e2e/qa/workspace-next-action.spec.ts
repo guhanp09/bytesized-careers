@@ -302,24 +302,40 @@ test("the recommended action is operable by keyboard", async ({ page }) => {
         // test cannot tell apart from a silent no-op.
         page.getByTestId("decision-strip").locator('[data-testid^="decision-strip-option-"]').first();
   await expect(control).toBeVisible();
+  const headerBefore = (await page.getByTestId("applications-detail-header").innerText()).replace(/\s+/g, "");
   await control.focus();
   await expect(control).toBeFocused();
   await control.press("Enter");
-  // Something observable must happen — never a silent no-op. Which outcome is
-  // correct depends on the recommendation, so accept any legitimate one.
+
+  /*
+    Something observable must happen — never a silent no-op. Which outcome is
+    correct depends on the recommendation, and "a surface opened" is only some
+    of them: taking a decision option can *commit* a stage instead, which shows
+    up as the header changing rather than as anything appearing. Both count.
+  */
   await expect
     .poll(async () => {
-      const [strip, notify, dialog, menu] = await Promise.all([
+      const [strip, notify, dialog, menu, scheduler] = await Promise.all([
         page.getByTestId("decision-strip").count(),
         page.getByTestId("stage-notify-prompt").count(),
         page.getByRole("dialog").count(),
         page.getByRole("menu").count(),
+        page.getByTestId("interview-scheduler").count(),
       ]);
       const composerFocused = await page
         .getByRole("textbox", { name: "Reply message" })
         .evaluate((node) => node === document.activeElement)
         .catch(() => false);
-      return strip + notify + dialog + menu > 0 || composerFocused;
+      const headerNow = (await page
+        .getByTestId("applications-detail-header")
+        .innerText()
+        .catch(() => ""))
+        .replace(/\s+/g, "");
+      return (
+        strip + notify + dialog + menu + scheduler > 0 ||
+        composerFocused ||
+        (headerNow.length > 0 && headerNow !== headerBefore)
+      );
     })
     .toBe(true);
 });

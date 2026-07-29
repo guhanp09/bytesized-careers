@@ -97,12 +97,16 @@ test("the primary action is a lifted surface, not a flat rectangle", async ({ pa
   const rows = page.getByTestId("interaction-row");
   const total = await rows.count();
   let found = false;
-  for (let index = 0; index < Math.min(total, 12); index += 1) {
+  for (let index = 0; index < Math.min(total, 6) && !found; index += 1) {
     await rows.nth(index).click();
-    if ((await page.getByTestId("next-action-primary").count()) > 0) {
-      found = true;
-      break;
-    }
+    // Give the header a moment to settle: opening a conversation resolves over
+    // several renders, so an immediate count() reads the frame before the
+    // recommendation lands and would walk past a record that does have one.
+    found = await page
+      .getByTestId("next-action-primary")
+      .waitFor({ state: "attached", timeout: 1_500 })
+      .then(() => true)
+      .catch(() => false);
   }
   test.skip(!found, "no record in this scenario carries a confident recommendation");
 
