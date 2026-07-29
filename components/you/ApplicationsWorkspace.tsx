@@ -66,6 +66,7 @@ import {
   markInteractionReviewStarted,
   setConversationSnooze,
   sendConversationMessage,
+  sendScreeningAnswers,
   setConversationQueueDismissed,
   setConversationStarred,
   setApplicationArchived,
@@ -1038,9 +1039,11 @@ export type ChatMessage = {
    * "status" renders as a centered platform update line; "screening" renders the
    * automated screening-question message natively from its structured snapshot.
    */
-  kind?: "status" | "screening";
+  kind?: "status" | "screening" | "screening-answers";
   /** Structured snapshot for the automated screening-question message. */
   screening?: ChatThreadMessage["screening"];
+  /** The applicant's answers, paired with the questions as they were asked. */
+  screeningAnswers?: ChatThreadMessage["screeningAnswers"];
   rate?: string | null;
   attachments?: OwnerInteraction["attachments"];
   firstMessageAnswers?: FirstMessageAnswers | null;
@@ -1613,8 +1616,28 @@ function AttachmentChip({
   );
 }
 
-function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
+function ScreeningQuestionsCard({
+  message,
+  onAnswer,
+  answered = false,
+}: {
+  message: ChatMessage;
+  /**
+   * Supplied only to the side that was asked, and only while the questions are
+   * still open. Absent for the hiring side, who asked them.
+   */
+  onAnswer?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  answered?: boolean;
+}) {
   const questions = message.screening?.questions ?? [];
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const missingRequired = questions.some(
+    (question, index) =>
+      question.required && !(draft[question.position ?? index] || "").trim()
+  );
   return (
     <div
       className={[
@@ -1649,7 +1672,159 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
       ) : (
         <p className="mt-2 whitespace-pre-line break-words text-[13px] leading-relaxed text-white/82">{message.body}</p>
       )}
-      <p className="mt-2.5 text-[11px] text-subtle">Reply in this conversation with your answers.</p>
+      {/*
+        Answering happens where the asking did. A structured form rather than
+        "reply with your answers in the composer": free text cannot say which
+        question it is answering, so the reviewer would be left pairing prose
+        with prompts by eye — and the required ones could be silently skipped.
+      */}
+      {onAnswer && !answered ? (
+        open ? (
+          <form
+            data-testid="screening-answer-form"
+            className="mt-3 space-y-2.5 border-t border-line pt-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (saving || missingRequired) return;
+              setSaving(true);
+              setError(null);
+              void onAnswer(
+                questions.map((question, index) => ({
+                  position: question.position ?? index,
+                  response: (draft[question.position ?? index] || "").trim(),
+                }))
+              )
+                .catch(() => setError("Couldn’t send those answers. Try again."))
+                .finally(() => setSaving(false));
+            }}
+          >
+            {questions.map((question, index) => {
+              const position = question.position ?? index;
+              return (
+                <label key={question.id || position} className="block">
+                  <span className="block text-[11px] font-medium text-muted">
+                    {index + 1}. {question.prompt}
+                    {question.required ? (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-state-interview">
+                        Required
+                      </span>
+                    ) : null}
+                  </span>
+                  <textarea
+                    data-testid={`screening-answer-${position}`}
+                    rows={2}
+                    maxLength={5000}
+                    value={draft[position] || ""}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, [position]: event.target.value }))
+                    }
+                    className="mt-1 w-full resize-none rounded-lg border border-line bg-wash px-2.5 py-1.5 text-[12.5px] leading-relaxed text-white/88 placeholder:text-subtle focus:border-line-strong focus:outline-none"
+                    placeholder={question.response_guidance || "Your answer"}
+                  />
+                </label>
+              );
+            })}
+            {error ? <p className="text-[11px] text-rose-300/90">{error}</p> : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                data-testid="screening-answer-send"
+                disabled={saving || missingRequired}
+                className="surface-primary inline-flex h-7 cursor-pointer items-center rounded-lg px-3 text-[11.5px] font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Sending…" : "Send answers"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-7 cursor-pointer items-center rounded-lg px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-ink"
+              >
+                Not now
+              </button>
+              {missingRequired ? (
+                <span className="text-[11px] text-subtle">Required questions still need an answer.</span>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            data-testid="screening-answer-open"
+            onClick={() => setOpen(true)}
+            className="mt-2.5 inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-overlay px-2.5 text-[11.5px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
+          >
+            Answer these
+          </button>
+        )
+      ) : (
+        <p className="mt-2.5 text-[11px] text-subtle">
+          {answered ? "You answered these below." : "Reply in this conversation with your answers."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The answers, where the questions were asked.
+ *
+ * One authoritative surface, in the thread — not a second copy in the context
+ * rail or the timeline. The questions already arrive here as a structured
+ * message; putting the answers anywhere else would mean a reviewer reading two
+ * halves of one exchange in two places, and would give a later job edit a
+ * second thing to disagree with.
+ *
+ * Every asked question is listed, answered or not. Dropping the blanks would
+ * make a skipped optional question indistinguishable from one that was never
+ * put, which is exactly the distinction somebody deciding on a candidate needs.
+ */
+function ScreeningAnswersCard({ message }: { message: ChatMessage }) {
+  const answers = message.screeningAnswers?.answers ?? [];
+  if (answers.length === 0) {
+    return (
+      <div className="min-w-0 rounded-2xl rounded-br-md bg-white/[0.13] px-3.5 py-2.5 text-[13px] leading-relaxed text-white/92">
+        <p className="whitespace-pre-line break-words">{message.body}</p>
+      </div>
+    );
+  }
+  const answered = answers.filter((entry) => entry.answered).length;
+  return (
+    <div
+      data-testid="screening-answers-card"
+      className={[
+        "min-w-0 rounded-2xl border border-line bg-raised px-3.5 py-3",
+        "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
+        message.fromMe ? "rounded-br-md" : "rounded-bl-md",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-secondary">
+        <Icon name="clipboard-check" className="h-3.5 w-3.5 opacity-70" />
+        <span>Screening answers</span>
+        <span className="ml-auto shrink-0 text-[10.5px] font-medium tabular-nums text-subtle">
+          {answered} of {answers.length} answered
+        </span>
+      </div>
+      <ol className="mt-2.5 space-y-2.5">
+        {answers.map((entry) => (
+          <li key={`${entry.position}-${entry.prompt}`} className="min-w-0">
+            <p className="break-words text-[11.5px] leading-relaxed text-muted">
+              {entry.prompt}
+              {entry.required ? null : (
+                <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-disabled">Optional</span>
+              )}
+            </p>
+            <p
+              className={
+                entry.answered
+                  ? "mt-1 whitespace-pre-wrap break-words border-l-2 border-blue-400/40 pl-3 text-[13px] leading-relaxed text-white/88"
+                  : "mt-1 border-l-2 border-white/10 pl-3 text-[12px] italic text-subtle"
+              }
+            >
+              {entry.answered ? entry.response : "Skipped — this one was optional"}
+            </p>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -1682,9 +1857,14 @@ function bubbleCorners(fromMe: boolean, position: BubblePosition): string {
 export function MessageBubble({
   message,
   position = "single",
+  onAnswerScreening,
+  screeningAnswered = false,
 }: {
   message: ChatMessage;
   position?: BubblePosition;
+  /** Present only for the side that was asked, while the questions are open. */
+  onAnswerScreening?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  screeningAnswered?: boolean;
 }) {
   const me = message.fromMe;
   const portfolioPopup = usePortfolioDetailPopup(`applications-message-portfolio-${message.id}`);
@@ -1704,7 +1884,13 @@ export function MessageBubble({
       className={["flex w-full min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}
     >
       {message.kind === "screening" ? (
-        <ScreeningQuestionsCard message={message} />
+        <ScreeningQuestionsCard
+          message={message}
+          onAnswer={onAnswerScreening}
+          answered={screeningAnswered}
+        />
+      ) : message.kind === "screening-answers" ? (
+        <ScreeningAnswersCard message={message} />
       ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
         <div
           data-testid="chat-bubble"
@@ -1784,6 +1970,8 @@ export function MessageGroup({
   showSenderName = false,
   seenMessageId = null,
   density = "comfortable",
+  onAnswerScreening,
+  screeningAnswered = false,
 }: {
   senderName: string;
   fromMe: boolean;
@@ -1796,6 +1984,8 @@ export function MessageGroup({
   /** The latest outgoing message known to have been read. */
   seenMessageId?: string | null;
   density?: "comfortable" | "compact";
+  onAnswerScreening?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  screeningAnswered?: boolean;
 }) {
   const compact = density === "compact";
   const avatarSize = compact ? "h-6 w-6" : "h-7 w-7";
@@ -1809,7 +1999,10 @@ export function MessageGroup({
     for a signal that block never needed.
   */
   const structuredOnly = messages.every(
-    (message) => message.kind === "screening" || Boolean(message.firstMessageAnswers && message.firstMessageContext)
+    (message) =>
+      message.kind === "screening" ||
+      message.kind === "screening-answers" ||
+      Boolean(message.firstMessageAnswers && message.firstMessageContext)
   );
   const showSeen = messages.some((message) => message.id === seenMessageId);
   const position = (index: number): BubblePosition => {
@@ -1853,7 +2046,13 @@ export function MessageGroup({
         </p>
       ) : null}
       {messages.map((message, index) => (
-        <MessageBubble key={message.id} message={message} position={position(index)} />
+        <MessageBubble
+          key={message.id}
+          message={message}
+          position={position(index)}
+          onAnswerScreening={onAnswerScreening}
+          screeningAnswered={screeningAnswered}
+        />
       ))}
       {meta}
     </div>
@@ -4379,6 +4578,27 @@ export default function ApplicationsWorkspace({
         .filter((message) => !message.fromMe && message.kind !== "status")
         .map((message) => message.senderName)
     ).size > 1;
+  /*
+    Answering is offered to the side that was asked, once, while the questions
+    are still open. The hiring side asked them and has nothing to answer; a
+    thread that already carries an answers message has nothing left to ask for.
+  */
+  const screeningAlreadyAnswered = conversation.some((message) => message.kind === "screening-answers");
+  const screeningAnswerHandler =
+    selected && selectedConversationId && backendAccessToken && !screeningAlreadyAnswered
+      ? async (responses: Array<{ position: number; response: string }>) => {
+          const saved = await sendScreeningAnswers(
+            backendAccessToken,
+            selectedConversationId,
+            responses
+          );
+          setLiveThreads((current) => {
+            const thread = current[selected.id];
+            if (!thread) return current;
+            return { ...current, [selected.id]: { ...thread, messages: [...thread.messages, saved] } };
+          });
+        }
+      : undefined;
   const typing = selectedConversationId ? typingByConversation[selectedConversationId] : null;
   const subtitle = selected ? subtitleFor(selected) : null;
   const forward = selected ? forwardLinkFor(selected) : null;
@@ -5747,6 +5967,8 @@ export default function ApplicationsWorkspace({
                                 counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
                                 counterpartyHref={subtitle?.href ?? null}
                                 showSenderName={threadHasSeveralVoices}
+                                onAnswerScreening={screeningAnswerHandler}
+                                screeningAnswered={screeningAlreadyAnswered}
                                 seenMessageId={
                                   latestOutgoingMessageId && latestOutgoingRead
                                     ? latestOutgoingMessageId

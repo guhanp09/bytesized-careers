@@ -9,6 +9,21 @@ export type ScreeningQuestionSnapshot = {
   response_guidance?: string | null;
 };
 
+/**
+ * One asked question and what was said back.
+ *
+ * The prompt travels with the answer rather than being looked up, so editing
+ * the job later cannot change the question a reviewer sees above an answer
+ * somebody already gave.
+ */
+export type ScreeningAnswerSnapshot = {
+  position: number;
+  prompt: string;
+  required: boolean;
+  response: string;
+  answered: boolean;
+};
+
 export type ChatThreadMessage = {
   id: string;
   fromMe: boolean;
@@ -20,11 +35,20 @@ export type ChatThreadMessage = {
    * "status" for platform-generated pipeline updates; "screening" for the automated
    * screening-question message sent by the hiring side after an application.
    */
-  kind?: "status" | "screening";
+  kind?: "status" | "screening" | "screening-answers";
   /** Structured snapshot for the automated screening-question message. */
   screening?: {
     automated: boolean;
     questions: ScreeningQuestionSnapshot[];
+  };
+  /**
+   * The applicant's answers, paired with the questions *as they were asked*.
+   * Every asked question appears, answered or not: an unanswered optional
+   * question has to be distinguishable from one that was never put.
+   */
+  screeningAnswers?: {
+    answers: ScreeningAnswerSnapshot[];
+    answeredAt?: string | null;
   };
   /**
    * True when the sender used a composer intent that genuinely asked for
@@ -43,6 +67,7 @@ type BackendMessageLike = {
   message_kind?: string | null;
   automated?: boolean;
   screening?: { questions?: ScreeningQuestionSnapshot[] } | null;
+  screening_answers?: { answers?: ScreeningAnswerSnapshot[]; answered_at?: string | null } | null;
   created_at?: string | null;
   read_by_recipient?: boolean;
   response_expected?: boolean;
@@ -57,6 +82,7 @@ export function mapBackendMessage(
   counterpartyName: string
 ): ChatThreadMessage {
   const isScreening = message.message_kind === "screening_questions";
+  const isAnswers = message.message_kind === "screening_answers";
   return {
     id: message.id,
     fromMe: message.from_me,
@@ -67,13 +93,23 @@ export function mapBackendMessage(
     responseExpected: Boolean(message.response_expected),
     kind: isScreening
       ? "screening"
-      : message.kind === "status_update" || message.kind === "engagement_update"
-        ? "status"
-        : undefined,
+      : isAnswers
+        ? "screening-answers"
+        : message.kind === "status_update" || message.kind === "engagement_update"
+          ? "status"
+          : undefined,
     screening: isScreening
       ? {
           automated: Boolean(message.automated),
           questions: Array.isArray(message.screening?.questions) ? message.screening!.questions : [],
+        }
+      : undefined,
+    screeningAnswers: isAnswers
+      ? {
+          answers: Array.isArray(message.screening_answers?.answers)
+            ? message.screening_answers!.answers!
+            : [],
+          answeredAt: message.screening_answers?.answered_at ?? null,
         }
       : undefined,
   };

@@ -3061,6 +3061,25 @@ export async function getMyReviewWorkspace(
  * precise about what is outstanding. It never changes status; consequential
  * outcomes go through the transition endpoints.
  */
+/**
+ * Answer the screening questions asked in a conversation.
+ *
+ * A dedicated call rather than a message with a payload attached, because the
+ * server validates the answers against the question snapshot it sent — required
+ * ones present, none inventing a question nobody asked — and builds the stored
+ * shape itself. The client never gets to say what it was asked.
+ */
+export async function sendScreeningAnswers(
+  accessToken: string,
+  conversationId: string,
+  answers: Array<{ position: number; response: string }>
+): Promise<BackendMessage> {
+  return requestJson<BackendMessage>(
+    `/me/conversations/${encodeURIComponent(conversationId)}/screening-answers`,
+    { method: "POST", body: JSON.stringify({ answers }), accessToken }
+  );
+}
+
 export async function sendConversationMessage(
   accessToken: string,
   conversationId: string,

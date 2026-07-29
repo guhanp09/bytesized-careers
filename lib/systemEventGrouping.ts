@@ -187,7 +187,7 @@ export const SENDER_GROUP_WINDOW_MS = 10 * 60 * 1000;
  * describe something the card already dates itself.
  */
 function isStructured(message: SenderGroupable): boolean {
-  if (message.kind === "screening") return true;
+  if (message.kind === "screening" || message.kind === "screening-answers") return true;
   const candidate = message as { firstMessageAnswers?: unknown; firstMessageContext?: unknown };
   return Boolean(candidate.firstMessageAnswers && candidate.firstMessageContext);
 }
