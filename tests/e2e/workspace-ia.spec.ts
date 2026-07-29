@@ -336,7 +336,11 @@ test.describe("narrow pipeline cards", () => {
   for (const width of [390, 320]) {
     test(`no pipeline card overflows its column at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 780 });
-      await openWorkspace(page, "?demo=1&view=pipeline&mode=recruiter");
+      // `edge`, because this needs both anatomies on one board and the
+      // completeness contract now guarantees every normal-scenario applicant
+      // two pieces of evidence. The zero-portfolio cards this test exists for
+      // live in `edge`, indexed, which is the point of that scenario.
+      await openWorkspace(page, "?demo=1&view=pipeline&mode=recruiter&seed=edge");
       await expect(page.getByTestId("pipeline-row").first()).toBeVisible({ timeout: 15_000 });
 
       /*

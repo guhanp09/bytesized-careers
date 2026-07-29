@@ -448,10 +448,91 @@ Every asked question is listed on review, answered or not.
 
 ### Still open
 
-- **Canonical profile completeness** is not finished. Applicant records carry
-  identity, portfolio, commercial context and creator facts, but the full
-  contract in the brief — biography, tools, languages, verification, hiring
-  identity depth, and generator rules that *fail* on a placeholder — is not
-  implemented. Profiles resolve and render; they are not yet uniformly rich.
 - **Classification filters are not URL state.** They were not before either;
-  view, mode, thread and stage still are.
+  view, mode, thread and stage still are. Recorded as accepted rather than
+  fixed: the three planes combine, so a URL would need to encode a triple, and
+  nobody has asked to share a filtered view.
+
+---
+
+## 11. The person behind the record — the third pass
+
+The previous pass made the *workflow* legible. This one is about the thing the
+workflow exists to serve: deciding about a person. Every route out of a review
+led to an empty page, and the corpus that QA ran against had no way to carry a
+profile at all — so nine passes over this product had concluded it looked fine
+on data no real user will ever have.
+
+### Conventions this follows
+
+These are the patterns the category has settled on, and what this product does
+about each. Graded as in §1: **established** where the reasoning is structural,
+**convention** where it is merely widespread, **ours** where it is a bet.
+
+| Pattern | Where it is conventional | What we do | Grade |
+|---|---|---|---|
+| Candidate identity is the record; every channel collapses onto one person | Greenhouse, Lever, Ashby, Workable | Adopted in the previous pass; this one makes the identity resolvable — the name is a link that arrives somewhere | Established |
+| The profile is the decision surface; the pipeline is only where it sits | Greenhouse, Lever, LinkedIn Recruiter | Adopted. `/u/{slug}` now resolves from the same corpus the workspace reads, so the two cannot disagree | Established |
+| Evidence of work, not a claim about it | Ashby, Workable, LinkedIn Recruiter | Adopted, and enforced: a normal-scenario applicant carries **two** portfolio items minimum. One is a claim; two is a body of work you can compare against itself | Ours |
+| Screening answers travel with the application, immutably | Greenhouse, Workable, Lever | Adopted as messages rather than a second table — immutable, idempotent and private without new storage | Established |
+| Structured answers rendered against the questions as asked | Greenhouse, Ashby | Adopted, including the questions left unanswered. "They chose not to say" and "we never asked" are different facts | Established |
+| Links inside user text are clickable | Messenger, WhatsApp, Slack, Discord | Adopted, narrowed: `http`/`https` only, label equals destination, and **nothing is fetched** — see below | Ours |
+| Link previews / unfurling | Messenger, WhatsApp, Slack, Discord all unfurl | **Rejected.** A preview fetches the sender's URL when the thread is opened, which hands them the reviewer's IP before anyone decided to trust the link, and turns an unopened application into a delivery receipt | Ours |
+| Rich profile derived from attached work, not only stated fields | LinkedIn Recruiter, Ashby | Adopted — and the Mock path now performs the same derivation the backend does, or the same person read as less capable in QA than in production | Established |
+
+### Rejected
+
+- **A second profile dataset for Mock mode.** `lib/mockPublicTalentProfiles.ts`
+  exists and is untouched, but the canonical resolver sits ahead of it. Two
+  sources of truth for one page is the problem this whole phase removes.
+- **An `origin` column on `Job`.** Provenance is already a relationship in this
+  product — an import draft points at the job it produced. A column would have
+  been a second answer to a question already answered.
+- **Unfurling links in screening answers.** See the table. The convention is
+  near-universal and wrong here.
+- **Naming the provenance in the imported-job fixture's copy.** The claim under
+  test is that a reviewer *cannot tell*; a title saying "imported listing"
+  would have made the test assert its own setup.
+
+### What the completeness contract refuses
+
+Generation now fails, for `default`, `busy`, `talent` and `recruiter`, on: a
+missing biography, timezone, skills or tools; an unroutable or duplicate handle;
+a portfolio item with no description, no owner, or an unsafe URL; an application
+with no job context; fewer than two pieces of evidence; an incomplete hiring
+identity; placeholder filler; screening answers referencing a question nobody
+asked, or leaving a required one blank; and more than three of any eight
+consecutive rows showing the same preview.
+
+`edge` is exempt from all of it — degenerate data is what it is for — and
+`empty` has nothing to check.
+
+Two things make this contract trustworthy rather than decorative. `generate()`
+calls `validate()`, which it did not: a timezone map keyed on invented city
+names had left half the corpus with no timezone and all six scenarios still
+reported OK. And every guard is proved to fail, one broken field at a time, in
+`test_scenario_completeness.py` — with a control asserting an unbroken corpus
+still passes, because a validator that rejected everything would score nineteen
+passes and be useless.
+
+### What observation found that assertions did not
+
+The QA matrix runs five scenarios across seven conditions and screenshots each
+cell. Looking at the images found the defect the assertions could not: the inbox
+showed the same sentence in five of the eight rows a phone displays. Three
+causes, all in the generator, all fixed — and the guard that now prevents it
+measures a *window* rather than a run of neighbours, because the first version
+counted strict runs and passed the exact screen it existed to prevent.
+
+### Still open
+
+- **The persistent left rail at 320px.** It takes 92px of a 320px viewport, so
+  names truncate mid-word. Nothing overflows and nothing is unreachable, so the
+  matrix passes; but it is the narrowest width's real comprehension cost. The
+  rail is global chrome rather than workspace UI, so changing it is a decision
+  about every page, not this one.
+- **`languages` and `audience_band` are Mock-side only.** The backend `User`
+  row has no column for either, so restore drops them rather than inventing a
+  home. Recorded in the profile-parity contract with the reason.
+- **Roles restore as names, not catalogue rows.** `UserRole` → `Role` is a join
+  the corpus does not create; the Mock profile renders the names it carries.
