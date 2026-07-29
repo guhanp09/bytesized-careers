@@ -55,7 +55,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t80002",
+      "username": "rec_t80002",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -113,7 +113,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t00209",
+      "username": "rec_t00209",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -171,7 +171,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80055",
+      "username": "rec_t80055",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -228,7 +228,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t00215",
+      "username": "rec_t00215",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -285,7 +285,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t90011",
+      "username": "rec_t90011",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -346,7 +346,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t00216",
+      "username": "rec_t00216",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -404,7 +404,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80001",
+      "username": "rec_t80001",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -461,7 +461,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t00206",
+      "username": "rec_t00206",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -519,7 +519,7 @@
         "Scrivener"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80056",
+      "username": "rec_t80056",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -580,7 +580,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80100",
+      "username": "rec_t80100",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -640,7 +640,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t00214",
+      "username": "rec_t00214",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -677,7 +677,7 @@
       "subscribers": 96000,
       "timezone": "Asia/Kolkata",
       "upload_cadence": "5 shorts/week",
-      "username": "rec-dailyfit",
+      "username": "rec_dailyfit",
       "verification_status": "verified",
       "work_mode": "Hybrid"
     },
@@ -734,7 +734,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t00213",
+      "username": "rec_t00213",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -791,7 +791,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t80003",
+      "username": "rec_t80003",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -852,7 +852,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t00204",
+      "username": "rec_t00204",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -910,7 +910,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t00201",
+      "username": "rec_t00201",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -971,7 +971,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80000",
+      "username": "rec_t80000",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1031,7 +1031,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t00210",
+      "username": "rec_t00210",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1088,7 +1088,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80006",
+      "username": "rec_t80006",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1149,7 +1149,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t90000",
+      "username": "rec_t90000",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1209,7 +1209,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t90010",
+      "username": "rec_t90010",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1266,7 +1266,7 @@
         "Lightroom"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t80054",
+      "username": "rec_t80054",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1323,7 +1323,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t00203",
+      "username": "rec_t00203",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -1382,7 +1382,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80105",
+      "username": "rec_t80105",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1440,7 +1440,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t80104",
+      "username": "rec_t80104",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1477,7 +1477,7 @@
       "subscribers": 412000,
       "timezone": "Asia/Kolkata",
       "upload_cadence": "2 videos/week",
-      "username": "rec-financesimplified",
+      "username": "rec_financesimplifie",
       "verification_status": "verified",
       "work_mode": "Remote"
     },
@@ -1533,7 +1533,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t80102",
+      "username": "rec_t80102",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -1589,7 +1589,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t00211",
+      "username": "rec_t00211",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1647,7 +1647,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80101",
+      "username": "rec_t80101",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1707,7 +1707,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80050",
+      "username": "rec_t80050",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1767,7 +1767,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t00202",
+      "username": "rec_t00202",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -1826,7 +1826,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t00207",
+      "username": "rec_t00207",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -1884,7 +1884,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t90001",
+      "username": "rec_t90001",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1942,7 +1942,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80005",
+      "username": "rec_t80005",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1999,7 +1999,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80051",
+      "username": "rec_t80051",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -2060,7 +2060,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "rec-t80004",
+      "username": "rec_t80004",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -2121,7 +2121,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t00212",
+      "username": "rec_t00212",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -2178,7 +2178,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t00208",
+      "username": "rec_t00208",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2239,7 +2239,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "rec-t80052",
+      "username": "rec_t80052",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -2297,7 +2297,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t00205",
+      "username": "rec_t00205",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2355,7 +2355,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t80103",
+      "username": "rec_t80103",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2413,7 +2413,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "rec-t80053",
+      "username": "rec_t80053",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2474,7 +2474,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t00200",
+      "username": "rec_t00200",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2534,7 +2534,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "rec-t80106",
+      "username": "rec_t80106",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -2595,7 +2595,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "rec-t80900",
+      "username": "rec_t80900",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"

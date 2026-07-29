@@ -59,6 +59,25 @@ def check_version(version: int) -> None:
 #: contract applies to neither.
 NORMAL_SCENARIOS: frozenset[str] = frozenset({"default", "busy", "talent", "recruiter"})
 
+
+def _username_pattern() -> "re.Pattern[str]":
+    """The product's own username rule, imported rather than restated.
+
+    Restating it is how the corpus came to mint handles the product rejects.
+    Falls back to a copy only if the rule cannot be imported, so validating a
+    manifest still does not *require* the application to be importable.
+    """
+
+    try:
+        from app.services.profile_rules import USERNAME_RE
+
+        return USERNAME_RE
+    except Exception:  # pragma: no cover - only when used outside the app
+        return re.compile(r"^[a-z0-9][a-z0-9_]{2,19}$")
+
+
+_USERNAME_RE = _username_pattern()
+
 #: Two is the floor for a portfolio-driven role: one item is a claim, two is a
 #: body of work a reviewer can compare against itself.
 EVIDENCE_FLOOR = 2
@@ -150,7 +169,12 @@ def _check_profile_completeness(manifest: Manifest, problems: list[str]) -> None
         if not slug:
             problems.append(f"actor {actor.id} has no username, so it has no profile route")
             continue
-        if slug != slug.lower() or " " in slug:
+        if not _USERNAME_RE.fullmatch(slug):
+            # Checked against the product's own rule, imported rather than
+            # restated. An approximation ("lowercase, no spaces") is what let
+            # every canonical handle be hyphenated — which the product rejects,
+            # so every scenario profile 404'd on the backend path while the
+            # Mock path, which matches for itself, looked fine.
             problems.append(f"actor {actor.id} has an invalid profile slug {slug!r}")
         if slug in handles:
             problems.append(f"duplicate handle {slug!r} on actors {handles[slug]} and {actor.id}")

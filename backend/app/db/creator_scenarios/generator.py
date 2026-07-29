@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,22 @@ SCENARIO_SEEDS: dict[str, int] = {
 #: already treats these as the canonical closed-job fixtures, and inventing new
 #: ones would leave the real constants untested.
 RETIRED_JOB_KEYS: tuple[str, ...] = ("job_25", "job_26")
+
+
+def _handle(scenario: str, base: str) -> str:
+    """A username the *product* would accept, not merely one that looks like one.
+
+    The product's rule is `^[a-z0-9][a-z0-9_]{2,19}$` — no hyphens, twenty
+    characters. Every canonical handle used to be hyphenated, so the backend
+    refused all of them: `/users/{username}/public-profile` returned 404 for
+    every scenario account, and only the Mock path — which does its own
+    matching — ever appeared to work. Minted here so the whole corpus is
+    routable by construction; `validation.py` checks it against the real regex.
+    """
+
+    prefix = scenario[:3]
+    cleaned = re.sub(r"[^a-z0-9]", "", base.lower())
+    return f"{prefix}_{cleaned[: 20 - len(prefix) - 1]}"
 
 
 def _timezone_for(location: str, slot: int) -> str:
@@ -165,7 +182,7 @@ class Builder:
                 # Scenario-scoped: usernames and emails are globally unique in
                 # the database, so two scenarios restored into one disposable DB
                 # must not collide.
-                username=f"{self.scenario[:3]}-{handle}",
+                username=_handle(self.scenario, handle),
                 display_name=name,
                 email=f"{self.scenario}-{handle}@scenario.invalid",
                 sides=["recruiter"],
@@ -209,7 +226,7 @@ class Builder:
             ]
             self.actors[actor_id] = Actor(
                 id=actor_id,
-                username=f"{self.scenario[:3]}-t{slot:05d}",
+                username=_handle(self.scenario, f"t{slot:05d}"),
                 display_name=display,
                 email=f"{self.scenario}-talent{slot:05d}@scenario.invalid",
                 sides=["talent"],

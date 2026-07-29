@@ -14,7 +14,7 @@
  * is the protection; a `server-only` marker would only restate it.
  *
  * **Scenario isolation is structural, not a check.** A canonical username is
- * scenario-prefixed by the generator (`def-t09101`, `bus-dailyfit`), so the
+ * scenario-prefixed by the generator (`def_t09101`, `bus_dailyfit`), so the
  * prefix *is* the lookup key: only that scenario's manifest is ever opened.
  * Switching scenarios therefore cannot surface a profile from another one —
  * not because something compares them, but because the other file is never read.
@@ -33,7 +33,11 @@ import type { ManifestActor, ManifestPortfolioItem, ScenarioManifest } from "./m
 
 const MANIFEST_DIR = path.join(process.cwd(), "fixtures", "creator_scenarios", "generated");
 
-/** `def` → `default`. The generator scopes usernames with the first three letters. */
+/**
+ * `def` → `default`. The generator scopes usernames with the first three
+ * letters, joined with `_` because the product's username rule permits no
+ * hyphen — `^[a-z0-9][a-z0-9_]{2,19}$`.
+ */
 const SCENARIO_BY_PREFIX = new Map<string, ScenarioName>(
   SCENARIO_NAMES.map((name) => [name.slice(0, 3), name])
 );
@@ -66,6 +70,20 @@ function durationLabel(seconds?: number | null): string | null {
   const rest = seconds % 60;
   const pad = (value: number) => String(value).padStart(2, "0");
   return hours ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`;
+}
+
+/** `_normalize_unique_list` — first spelling wins, compared case-insensitively. */
+function uniqueList(values: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const text = (value ?? "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
 }
 
 const sourceTypeFor = (media: ManifestPortfolioItem["media"]) =>
@@ -116,9 +134,19 @@ function toPublicProfile(
 ): BackendPublicProfileResponse {
   const hires = (actor.sides || []).includes("recruiter");
   const at = new Date(anchorFor(anchorMode)).toISOString();
-  const items = portfolio
-    .filter((item) => item.owner_id === actor.id)
-    .map((item) => toPortfolioItem(item, actor.id, at));
+  const own = portfolio.filter((item) => item.owner_id === actor.id);
+  const items = own.map((item) => toPortfolioItem(item, actor.id, at));
+
+  // The real profile service widens a talent's platforms, formats and niche
+  // with what their portfolio actually demonstrates, rather than trusting the
+  // stated list alone. Mirrored here so the same person does not appear to
+  // work on fewer surfaces in Mock mode than in production.
+  const evidence = {
+    tools: uniqueList(own.flatMap((item) => item.tools ?? [])),
+    platforms: uniqueList(own.map((item) => item.platform)),
+    formats: uniqueList(own.map((item) => item.format)),
+    niches: uniqueList(own.map((item) => item.niche)),
+  };
 
   return {
     username: actor.username,
@@ -128,7 +156,10 @@ function toPublicProfile(
     avatar_url: actor.avatar_url ?? null,
     avatar_mode: "generic",
     banner_url: null,
-    skills: actor.skills ?? [],
+    // Widened with the tools the attached work was actually made in — the
+    // profile service does the same, and a shorter list here would read as a
+    // less capable person in Mock mode than in production.
+    skills: uniqueList([...(actor.skills ?? []), ...evidence.tools]),
     public_links: actor.public_links ?? [],
     experience: [],
     availability_status:
@@ -168,7 +199,9 @@ function toPublicProfile(
             (actor.verification_status as "unverified" | "verified" | "rejected") ?? "unverified",
         }
       : null,
-    creator_platforms: hires ? [] : actor.platforms ?? [],
+    creator_platforms: hires
+      ? []
+      : uniqueList([...(actor.platforms ?? []), ...evidence.platforms]),
     roles: (actor.roles ?? []).map((name) => ({
       id: `${actor.id}:${name}`,
       name,
@@ -178,8 +211,8 @@ function toPublicProfile(
     content_style: hires
       ? { format: [], tone: [] }
       : {
-          primary_niche: actor.niches?.[0] ?? null,
-          format: actor.formats ?? [],
+          primary_niche: actor.niches?.[0] ?? evidence.niches[0] ?? null,
+          format: uniqueList([...(actor.formats ?? []), ...evidence.formats]).slice(0, 12),
           tone: [],
         },
     jobs_active: [],
@@ -205,7 +238,7 @@ export async function getCanonicalPublicProfile(
   { anchorMode = "now" }: { anchorMode?: AnchorMode } = {}
 ): Promise<BackendPublicProfileResponse | null> {
   const normalized = slug.trim().toLowerCase();
-  const prefix = normalized.split("-")[0];
+  const prefix = normalized.split("_")[0];
   const scenario = SCENARIO_BY_PREFIX.get(prefix);
   if (!scenario) return null;
 

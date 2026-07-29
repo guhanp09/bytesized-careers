@@ -55,7 +55,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10102",
+      "username": "bus_t10102",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -111,7 +111,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t40003",
+      "username": "bus_t40003",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -171,7 +171,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10050",
+      "username": "bus_t10050",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -228,7 +228,7 @@
         "Premiere Pro"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10027",
+      "username": "bus_t10027",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -285,7 +285,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10163",
+      "username": "bus_t10163",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -343,7 +343,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20020",
+      "username": "bus_t20020",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -402,7 +402,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20007",
+      "username": "bus_t20007",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -460,7 +460,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10204",
+      "username": "bus_t10204",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -517,7 +517,7 @@
         "Lightroom"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10094",
+      "username": "bus_t10094",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -577,7 +577,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t90010",
+      "username": "bus_t90010",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -634,7 +634,7 @@
         "Premiere Pro"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70507",
+      "username": "bus_t70507",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -691,7 +691,7 @@
         "Zapier"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10149",
+      "username": "bus_t10149",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -750,7 +750,7 @@
         "Figma"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10098",
+      "username": "bus_t10098",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -808,7 +808,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10053",
+      "username": "bus_t10053",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -868,7 +868,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10066",
+      "username": "bus_t10066",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -925,7 +925,7 @@
         "Zapier"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10029",
+      "username": "bus_t10029",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -982,7 +982,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20006",
+      "username": "bus_t20006",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1039,7 +1039,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10091",
+      "username": "bus_t10091",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1097,7 +1097,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70540",
+      "username": "bus_t70540",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1157,7 +1157,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10054",
+      "username": "bus_t10054",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1214,7 +1214,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t40009",
+      "username": "bus_t40009",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1272,7 +1272,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10161",
+      "username": "bus_t10161",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1327,7 +1327,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10039",
+      "username": "bus_t10039",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1385,7 +1385,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70501",
+      "username": "bus_t70501",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1441,7 +1441,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10123",
+      "username": "bus_t10123",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -1498,7 +1498,7 @@
         "Zapier"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10209",
+      "username": "bus_t10209",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1553,7 +1553,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10099",
+      "username": "bus_t10099",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1611,7 +1611,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10105",
+      "username": "bus_t10105",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1671,7 +1671,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70546",
+      "username": "bus_t70546",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1727,7 +1727,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10003",
+      "username": "bus_t10003",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -1788,7 +1788,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10044",
+      "username": "bus_t10044",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -1847,7 +1847,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10121",
+      "username": "bus_t10121",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -1908,7 +1908,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10020",
+      "username": "bus_t10020",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -1965,7 +1965,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10070",
+      "username": "bus_t10070",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2024,7 +2024,7 @@
         "Canva"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10138",
+      "username": "bus_t10138",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2084,7 +2084,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10114",
+      "username": "bus_t10114",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -2145,7 +2145,7 @@
         "YouTube Studio"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10196",
+      "username": "bus_t10196",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -2203,7 +2203,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t40000",
+      "username": "bus_t40000",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2264,7 +2264,7 @@
         "YouTube Studio"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10016",
+      "username": "bus_t10016",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -2320,7 +2320,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20035",
+      "username": "bus_t20035",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2376,7 +2376,7 @@
         "Lightroom"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10178",
+      "username": "bus_t10178",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2433,7 +2433,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10009",
+      "username": "bus_t10009",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -2489,7 +2489,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10195",
+      "username": "bus_t10195",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2549,7 +2549,7 @@
         "Figma"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20034",
+      "username": "bus_t20034",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -2609,7 +2609,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10090",
+      "username": "bus_t10090",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2670,7 +2670,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70524",
+      "username": "bus_t70524",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -2731,7 +2731,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10032",
+      "username": "bus_t10032",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -2789,7 +2789,7 @@
         "Scrivener"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10132",
+      "username": "bus_t10132",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -2848,7 +2848,7 @@
         "Canva"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10078",
+      "username": "bus_t10078",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -2906,7 +2906,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10180",
+      "username": "bus_t10180",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -2963,7 +2963,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10059",
+      "username": "bus_t10059",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -3023,7 +3023,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10170",
+      "username": "bus_t10170",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -3081,7 +3081,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10213",
+      "username": "bus_t10213",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -3141,7 +3141,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10088",
+      "username": "bus_t10088",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -3202,7 +3202,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10184",
+      "username": "bus_t10184",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -3259,7 +3259,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10151",
+      "username": "bus_t10151",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -3317,7 +3317,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70547",
+      "username": "bus_t70547",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -3377,7 +3377,7 @@
         "Hindenburg"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70517",
+      "username": "bus_t70517",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -3433,7 +3433,7 @@
         "Lightroom"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10118",
+      "username": "bus_t10118",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -3492,7 +3492,7 @@
         "Hindenburg"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10073",
+      "username": "bus_t10073",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -3549,7 +3549,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10069",
+      "username": "bus_t10069",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -3607,7 +3607,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10041",
+      "username": "bus_t10041",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -3667,7 +3667,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20046",
+      "username": "bus_t20046",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -3726,7 +3726,7 @@
         "Zapier"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20037",
+      "username": "bus_t20037",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -3786,7 +3786,7 @@
         "Hindenburg"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10097",
+      "username": "bus_t10097",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -3846,7 +3846,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10110",
+      "username": "bus_t10110",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -3904,7 +3904,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10173",
+      "username": "bus_t10173",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -3963,7 +3963,7 @@
         "Figma"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10038",
+      "username": "bus_t10038",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -4021,7 +4021,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10033",
+      "username": "bus_t10033",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -4082,7 +4082,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70520",
+      "username": "bus_t70520",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -4141,7 +4141,7 @@
         "Zapier"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10017",
+      "username": "bus_t10017",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -4197,7 +4197,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70543",
+      "username": "bus_t70543",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -4254,7 +4254,7 @@
         "Premiere Pro"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10147",
+      "username": "bus_t10147",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -4311,7 +4311,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70502",
+      "username": "bus_t70502",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -4369,7 +4369,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10165",
+      "username": "bus_t10165",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -4427,7 +4427,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70503",
+      "username": "bus_t70503",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -4487,7 +4487,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70522",
+      "username": "bus_t70522",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -4544,7 +4544,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70511",
+      "username": "bus_t70511",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -4602,7 +4602,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t90001",
+      "username": "bus_t90001",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -4660,7 +4660,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10131",
+      "username": "bus_t10131",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -4718,7 +4718,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t40011",
+      "username": "bus_t40011",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -4777,7 +4777,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70527",
+      "username": "bus_t70527",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -4836,7 +4836,7 @@
         "Hindenburg"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10013",
+      "username": "bus_t10013",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -4896,7 +4896,7 @@
         "Figma"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10194",
+      "username": "bus_t10194",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -4955,7 +4955,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70505",
+      "username": "bus_t70505",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -5015,7 +5015,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10148",
+      "username": "bus_t10148",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -5075,7 +5075,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20014",
+      "username": "bus_t20014",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -5133,7 +5133,7 @@
         "Scrivener"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10036",
+      "username": "bus_t10036",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -5193,7 +5193,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10028",
+      "username": "bus_t10028",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -5253,7 +5253,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70534",
+      "username": "bus_t70534",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -5313,7 +5313,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10182",
+      "username": "bus_t10182",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -5371,7 +5371,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70525",
+      "username": "bus_t70525",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -5431,7 +5431,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70506",
+      "username": "bus_t70506",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -5487,7 +5487,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10135",
+      "username": "bus_t10135",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -5546,7 +5546,7 @@
         "Zapier"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10077",
+      "username": "bus_t10077",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -5604,7 +5604,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10185",
+      "username": "bus_t10185",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -5664,7 +5664,7 @@
         "Hindenburg"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10157",
+      "username": "bus_t10157",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -5723,7 +5723,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20021",
+      "username": "bus_t20021",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -5781,7 +5781,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10153",
+      "username": "bus_t10153",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -5839,7 +5839,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10095",
+      "username": "bus_t10095",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -5898,7 +5898,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10047",
+      "username": "bus_t10047",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -5959,7 +5959,7 @@
         "YouTube Studio"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10076",
+      "username": "bus_t10076",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -6015,7 +6015,7 @@
         "DocuSign"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10019",
+      "username": "bus_t10019",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -6073,7 +6073,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10143",
+      "username": "bus_t10143",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -6134,7 +6134,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10200",
+      "username": "bus_t10200",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -6192,7 +6192,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10083",
+      "username": "bus_t10083",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -6250,7 +6250,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10101",
+      "username": "bus_t10101",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -6309,7 +6309,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10107",
+      "username": "bus_t10107",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -6369,7 +6369,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t40008",
+      "username": "bus_t40008",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -6430,7 +6430,7 @@
         "YouTube Studio"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10136",
+      "username": "bus_t10136",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -6489,7 +6489,7 @@
         "Frame.io"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10117",
+      "username": "bus_t10117",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -6549,7 +6549,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10206",
+      "username": "bus_t10206",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -6605,7 +6605,7 @@
         "DocuSign"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10199",
+      "username": "bus_t10199",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -6666,7 +6666,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10212",
+      "username": "bus_t10212",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -6725,7 +6725,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10181",
+      "username": "bus_t10181",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -6781,7 +6781,7 @@
         "DocuSign"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10139",
+      "username": "bus_t10139",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -6838,7 +6838,7 @@
         "Premiere Pro"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10207",
+      "username": "bus_t10207",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -6894,7 +6894,7 @@
         "Lightroom"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20018",
+      "username": "bus_t20018",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -6952,7 +6952,7 @@
         "Scrivener"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20032",
+      "username": "bus_t20032",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -7013,7 +7013,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10164",
+      "username": "bus_t10164",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7072,7 +7072,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20045",
+      "username": "bus_t20045",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -7128,7 +7128,7 @@
         "Lightroom"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10058",
+      "username": "bus_t10058",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -7189,7 +7189,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70544",
+      "username": "bus_t70544",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7246,7 +7246,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20029",
+      "username": "bus_t20029",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7303,7 +7303,7 @@
         "Premiere Pro"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10087",
+      "username": "bus_t10087",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -7363,7 +7363,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10122",
+      "username": "bus_t10122",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -7421,7 +7421,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10201",
+      "username": "bus_t10201",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -7479,7 +7479,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10113",
+      "username": "bus_t10113",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -7536,7 +7536,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10119",
+      "username": "bus_t10119",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7596,7 +7596,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70510",
+      "username": "bus_t70510",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -7654,7 +7654,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10084",
+      "username": "bus_t10084",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7712,7 +7712,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20013",
+      "username": "bus_t20013",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -7769,7 +7769,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20019",
+      "username": "bus_t20019",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7830,7 +7830,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20024",
+      "username": "bus_t20024",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -7888,7 +7888,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10141",
+      "username": "bus_t10141",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -7948,7 +7948,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20010",
+      "username": "bus_t20010",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -8007,7 +8007,7 @@
         "Hindenburg"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10193",
+      "username": "bus_t10193",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -8066,7 +8066,7 @@
         "Figma"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10158",
+      "username": "bus_t10158",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -8125,7 +8125,7 @@
         "Hindenburg"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10133",
+      "username": "bus_t10133",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -8183,7 +8183,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t40005",
+      "username": "bus_t40005",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -8240,7 +8240,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10189",
+      "username": "bus_t10189",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -8298,7 +8298,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20031",
+      "username": "bus_t20031",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -8355,7 +8355,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10168",
+      "username": "bus_t10168",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -8413,7 +8413,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20044",
+      "username": "bus_t20044",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -8470,7 +8470,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10106",
+      "username": "bus_t10106",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -8528,7 +8528,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10071",
+      "username": "bus_t10071",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -8584,7 +8584,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20023",
+      "username": "bus_t20023",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -8642,7 +8642,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70504",
+      "username": "bus_t70504",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -8700,7 +8700,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10049",
+      "username": "bus_t10049",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -8759,7 +8759,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10061",
+      "username": "bus_t10061",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -8820,7 +8820,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10152",
+      "username": "bus_t10152",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -8881,7 +8881,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70500",
+      "username": "bus_t70500",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -8937,7 +8937,7 @@
         "DocuSign"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10079",
+      "username": "bus_t10079",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -8995,7 +8995,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10065",
+      "username": "bus_t10065",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -9056,7 +9056,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20000",
+      "username": "bus_t20000",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -9113,7 +9113,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10048",
+      "username": "bus_t10048",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -9173,7 +9173,7 @@
         "Figma"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10074",
+      "username": "bus_t10074",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -9230,7 +9230,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10010",
+      "username": "bus_t10010",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -9286,7 +9286,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20011",
+      "username": "bus_t20011",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -9347,7 +9347,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70512",
+      "username": "bus_t70512",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -9405,7 +9405,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10144",
+      "username": "bus_t10144",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -9465,7 +9465,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10006",
+      "username": "bus_t10006",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -9522,7 +9522,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70528",
+      "username": "bus_t70528",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -9580,7 +9580,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10023",
+      "username": "bus_t10023",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -9638,7 +9638,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t40007",
+      "username": "bus_t40007",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -9697,7 +9697,7 @@
         "Zapier"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10197",
+      "username": "bus_t10197",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -9754,7 +9754,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10022",
+      "username": "bus_t10022",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -9812,7 +9812,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20043",
+      "username": "bus_t20043",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -9870,7 +9870,7 @@
         "Scrivener"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10024",
+      "username": "bus_t10024",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -9926,7 +9926,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70531",
+      "username": "bus_t70531",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -9983,7 +9983,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10130",
+      "username": "bus_t10130",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -10044,7 +10044,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20004",
+      "username": "bus_t20004",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -10103,7 +10103,7 @@
         "Zapier"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10137",
+      "username": "bus_t10137",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -10161,7 +10161,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70521",
+      "username": "bus_t70521",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -10219,7 +10219,7 @@
         "Scrivener"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10012",
+      "username": "bus_t10012",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -10276,7 +10276,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10166",
+      "username": "bus_t10166",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -10334,7 +10334,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70545",
+      "username": "bus_t70545",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -10392,7 +10392,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20025",
+      "username": "bus_t20025",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -10453,7 +10453,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10056",
+      "username": "bus_t10056",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -10510,7 +10510,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10055",
+      "username": "bus_t10055",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -10568,7 +10568,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20009",
+      "username": "bus_t20009",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -10625,7 +10625,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10142",
+      "username": "bus_t10142",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -10683,7 +10683,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10093",
+      "username": "bus_t10093",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -10741,7 +10741,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10081",
+      "username": "bus_t10081",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -10800,7 +10800,7 @@
         "Canva"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20038",
+      "username": "bus_t20038",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -10858,7 +10858,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10203",
+      "username": "bus_t10203",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -10919,7 +10919,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t90000",
+      "username": "bus_t90000",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -10979,7 +10979,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20026",
+      "username": "bus_t20026",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -11039,7 +11039,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70548",
+      "username": "bus_t70548",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -11100,7 +11100,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10124",
+      "username": "bus_t10124",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -11158,7 +11158,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10045",
+      "username": "bus_t10045",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -11216,7 +11216,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10125",
+      "username": "bus_t10125",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -11274,7 +11274,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20041",
+      "username": "bus_t20041",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -11334,7 +11334,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10030",
+      "username": "bus_t10030",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -11392,7 +11392,7 @@
         "Frame.io"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10021",
+      "username": "bus_t10021",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -11453,7 +11453,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10140",
+      "username": "bus_t10140",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -11514,7 +11514,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t40004",
+      "username": "bus_t40004",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -11571,7 +11571,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t40010",
+      "username": "bus_t40010",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -11630,7 +11630,7 @@
         "Canva"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10198",
+      "username": "bus_t10198",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -11689,7 +11689,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70541",
+      "username": "bus_t70541",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -11747,7 +11747,7 @@
         "Scrivener"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10192",
+      "username": "bus_t10192",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -11804,7 +11804,7 @@
         "Lightroom"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10034",
+      "username": "bus_t10034",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -11861,7 +11861,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10031",
+      "username": "bus_t10031",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -11917,7 +11917,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10183",
+      "username": "bus_t10183",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -11975,7 +11975,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10109",
+      "username": "bus_t10109",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -12034,7 +12034,7 @@
         "Frame.io"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20017",
+      "username": "bus_t20017",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -12092,7 +12092,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10169",
+      "username": "bus_t10169",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -12149,7 +12149,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10211",
+      "username": "bus_t10211",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -12207,7 +12207,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10191",
+      "username": "bus_t10191",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -12267,7 +12267,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10210",
+      "username": "bus_t10210",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -12323,7 +12323,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10075",
+      "username": "bus_t10075",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -12382,7 +12382,7 @@
         "TubeBuddy"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10167",
+      "username": "bus_t10167",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -12440,7 +12440,7 @@
         "Zapier"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20001",
+      "username": "bus_t20001",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -12500,7 +12500,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10162",
+      "username": "bus_t10162",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -12560,7 +12560,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10002",
+      "username": "bus_t10002",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -12617,7 +12617,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20008",
+      "username": "bus_t20008",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -12673,7 +12673,7 @@
         "DocuSign"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t20039",
+      "username": "bus_t20039",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -12733,7 +12733,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70542",
+      "username": "bus_t70542",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -12793,7 +12793,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10128",
+      "username": "bus_t10128",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -12849,7 +12849,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10015",
+      "username": "bus_t10015",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -12908,7 +12908,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10025",
+      "username": "bus_t10025",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -12969,7 +12969,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10172",
+      "username": "bus_t10172",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -13027,7 +13027,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10000",
+      "username": "bus_t10000",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -13086,7 +13086,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10205",
+      "username": "bus_t10205",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -13141,7 +13141,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10159",
+      "username": "bus_t10159",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -13201,7 +13201,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20022",
+      "username": "bus_t20022",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -13262,7 +13262,7 @@
         "Descript"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10104",
+      "username": "bus_t10104",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -13321,7 +13321,7 @@
         "Figma"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70518",
+      "username": "bus_t70518",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -13381,7 +13381,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10068",
+      "username": "bus_t10068",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -13439,7 +13439,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10120",
+      "username": "bus_t10120",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -13496,7 +13496,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10103",
+      "username": "bus_t10103",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -13552,7 +13552,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10111",
+      "username": "bus_t10111",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -13612,7 +13612,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20028",
+      "username": "bus_t20028",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -13649,7 +13649,7 @@
       "subscribers": 2400000,
       "timezone": "Asia/Kolkata",
       "upload_cadence": "daily",
-      "username": "bus-pixelforge",
+      "username": "bus_pixelforge",
       "verification_status": "verified",
       "work_mode": "Hybrid"
     },
@@ -13705,7 +13705,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20003",
+      "username": "bus_t20003",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -13763,7 +13763,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10155",
+      "username": "bus_t10155",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -13821,7 +13821,7 @@
         "Scrivener"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10096",
+      "username": "bus_t10096",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -13878,7 +13878,7 @@
         "Zapier"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10089",
+      "username": "bus_t10089",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -13939,7 +13939,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10100",
+      "username": "bus_t10100",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -13996,7 +13996,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20030",
+      "username": "bus_t20030",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -14057,7 +14057,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10064",
+      "username": "bus_t10064",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -14114,7 +14114,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10043",
+      "username": "bus_t10043",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -14175,7 +14175,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10040",
+      "username": "bus_t10040",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -14234,7 +14234,7 @@
         "Frame.io"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10057",
+      "username": "bus_t10057",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -14292,7 +14292,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10127",
+      "username": "bus_t10127",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -14352,7 +14352,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10026",
+      "username": "bus_t10026",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -14407,7 +14407,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70519",
+      "username": "bus_t70519",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -14468,7 +14468,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10004",
+      "username": "bus_t10004",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -14528,7 +14528,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10188",
+      "username": "bus_t10188",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -14588,7 +14588,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10186",
+      "username": "bus_t10186",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -14644,7 +14644,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10171",
+      "username": "bus_t10171",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -14701,7 +14701,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10046",
+      "username": "bus_t10046",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -14759,7 +14759,7 @@
         "Hindenburg"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70529",
+      "username": "bus_t70529",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -14817,7 +14817,7 @@
         "Frame.io"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20005",
+      "username": "bus_t20005",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -14878,7 +14878,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10160",
+      "username": "bus_t10160",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -14938,7 +14938,7 @@
         "Figma"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70530",
+      "username": "bus_t70530",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -14995,7 +14995,7 @@
         "Lightroom"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10154",
+      "username": "bus_t10154",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -15054,7 +15054,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10001",
+      "username": "bus_t10001",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -15113,7 +15113,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10145",
+      "username": "bus_t10145",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -15171,7 +15171,7 @@
         "TubeBuddy"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10011",
+      "username": "bus_t10011",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -15227,7 +15227,7 @@
         "Premiere Pro"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10051",
+      "username": "bus_t10051",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -15287,7 +15287,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10086",
+      "username": "bus_t10086",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -15345,7 +15345,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10067",
+      "username": "bus_t10067",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -15402,7 +15402,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10175",
+      "username": "bus_t10175",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -15461,7 +15461,7 @@
         "Frame.io"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70537",
+      "username": "bus_t70537",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -15518,7 +15518,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10129",
+      "username": "bus_t10129",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -15578,7 +15578,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10042",
+      "username": "bus_t10042",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -15639,7 +15639,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t50000",
+      "username": "bus_t50000",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -15700,7 +15700,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10112",
+      "username": "bus_t10112",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -15758,7 +15758,7 @@
         "Zapier"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10005",
+      "username": "bus_t10005",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -15814,7 +15814,7 @@
         "Lightroom"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70538",
+      "username": "bus_t70538",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -15873,7 +15873,7 @@
         "Hindenburg"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10085",
+      "username": "bus_t10085",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -15934,7 +15934,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20012",
+      "username": "bus_t20012",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -15994,7 +15994,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10126",
+      "username": "bus_t10126",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -16051,7 +16051,7 @@
         "Lightroom"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70514",
+      "username": "bus_t70514",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -16111,7 +16111,7 @@
         "Canva"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10174",
+      "username": "bus_t10174",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -16172,7 +16172,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10176",
+      "username": "bus_t10176",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -16230,7 +16230,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10035",
+      "username": "bus_t10035",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -16287,7 +16287,7 @@
         "DocuSign"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70523",
+      "username": "bus_t70523",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -16345,7 +16345,7 @@
         "Scrivener"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70516",
+      "username": "bus_t70516",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -16403,7 +16403,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70515",
+      "username": "bus_t70515",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -16463,7 +16463,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10062",
+      "username": "bus_t10062",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -16500,7 +16500,7 @@
       "subscribers": 96000,
       "timezone": "Asia/Kolkata",
       "upload_cadence": "5 shorts/week",
-      "username": "bus-dailyfit",
+      "username": "bus_dailyfit",
       "verification_status": "verified",
       "work_mode": "Hybrid"
     },
@@ -16556,7 +16556,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10082",
+      "username": "bus_t10082",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -16614,7 +16614,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20027",
+      "username": "bus_t20027",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -16675,7 +16675,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10116",
+      "username": "bus_t10116",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -16735,7 +16735,7 @@
         "Canva"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t40006",
+      "username": "bus_t40006",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -16792,7 +16792,7 @@
         "Frame.io"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70549",
+      "username": "bus_t70549",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -16852,7 +16852,7 @@
         "Canva"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10150",
+      "username": "bus_t10150",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -16910,7 +16910,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10187",
+      "username": "bus_t10187",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -16968,7 +16968,7 @@
         "Zapier"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70533",
+      "username": "bus_t70533",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -17028,7 +17028,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70508",
+      "username": "bus_t70508",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -17086,7 +17086,7 @@
         "Scrivener"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10072",
+      "username": "bus_t10072",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -17146,7 +17146,7 @@
         "Figma"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10146",
+      "username": "bus_t10146",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17206,7 +17206,7 @@
         "Figma"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10014",
+      "username": "bus_t10014",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -17263,7 +17263,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10115",
+      "username": "bus_t10115",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -17324,7 +17324,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t30000",
+      "username": "bus_t30000",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -17382,7 +17382,7 @@
         "Scrivener"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t10156",
+      "username": "bus_t10156",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17439,7 +17439,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70539",
+      "username": "bus_t70539",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -17500,7 +17500,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20040",
+      "username": "bus_t20040",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -17557,7 +17557,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t20015",
+      "username": "bus_t20015",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -17617,7 +17617,7 @@
         "Figma"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t40002",
+      "username": "bus_t40002",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -17674,7 +17674,7 @@
         "Scrivener"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10108",
+      "username": "bus_t10108",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -17735,7 +17735,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20016",
+      "username": "bus_t20016",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17792,7 +17792,7 @@
         "DocuSign"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t90011",
+      "username": "bus_t90011",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17853,7 +17853,7 @@
         "YouTube Studio"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t20036",
+      "username": "bus_t20036",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17914,7 +17914,7 @@
         "Descript"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70536",
+      "username": "bus_t70536",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -17971,7 +17971,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10202",
+      "username": "bus_t10202",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -18028,7 +18028,7 @@
         "DocuSign"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t70535",
+      "username": "bus_t70535",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -18088,7 +18088,7 @@
         "Figma"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10134",
+      "username": "bus_t10134",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -18148,7 +18148,7 @@
         "Hindenburg"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10037",
+      "username": "bus_t10037",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -18206,7 +18206,7 @@
         "DocuSign"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10007",
+      "username": "bus_t10007",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -18267,7 +18267,7 @@
         "Descript"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10092",
+      "username": "bus_t10092",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Standard business hours, US Central"
@@ -18328,7 +18328,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10052",
+      "username": "bus_t10052",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -18387,7 +18387,7 @@
         "Frame.io"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t10177",
+      "username": "bus_t10177",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -18447,7 +18447,7 @@
         "Canva"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20002",
+      "username": "bus_t20002",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Standard business hours, US Central"
@@ -18506,7 +18506,7 @@
         "Canva"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10018",
+      "username": "bus_t10018",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -18565,7 +18565,7 @@
         "Hindenburg"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t20033",
+      "username": "bus_t20033",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -18625,7 +18625,7 @@
         "YouTube Studio"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10208",
+      "username": "bus_t10208",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -18682,7 +18682,7 @@
         "Zapier"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t70509",
+      "username": "bus_t70509",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -18740,7 +18740,7 @@
         "Frame.io"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t70513",
+      "username": "bus_t70513",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -18799,7 +18799,7 @@
         "Hindenburg"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t40001",
+      "username": "bus_t40001",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -18856,7 +18856,7 @@
         "Lightroom"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10190",
+      "username": "bus_t10190",
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -18917,7 +18917,7 @@
         "Descript"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10080",
+      "username": "bus_t10080",
       "verification_status": "verified",
       "work_mode": "Remote",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -18974,7 +18974,7 @@
         "TubeBuddy"
       ],
       "turnaround": "Three working days, faster on retainer",
-      "username": "bus-t10179",
+      "username": "bus_t10179",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Split day, overlapping both EU and US East"
@@ -19031,7 +19031,7 @@
         "Lightroom"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t20042",
+      "username": "bus_t20042",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -19088,7 +19088,7 @@
         "Lightroom"
       ],
       "turnaround": "One working week per episode, including a revision round",
-      "username": "bus-t70526",
+      "username": "bus_t70526",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Afternoons and evenings, flexible for handover calls"
@@ -19144,7 +19144,7 @@
         "Premiere Pro"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10063",
+      "username": "bus_t10063",
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Evenings IST — async the rest of the day"
@@ -19205,7 +19205,7 @@
         "YouTube Studio"
       ],
       "turnaround": "48 hours for a first pass",
-      "username": "bus-t70532",
+      "username": "bus_t70532",
       "verification_status": "unverified",
       "work_mode": "On-site",
       "working_hours": "Standard business hours, US Central"
@@ -19263,7 +19263,7 @@
         "Scrivener"
       ],
       "turnaround": "Two to three days for a long-form cut, same-day for shorts",
-      "username": "bus-t10060",
+      "username": "bus_t10060",
       "verification_status": "verified",
       "work_mode": "Hybrid",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
@@ -19323,7 +19323,7 @@
         "Descript"
       ],
       "turnaround": "Same-week delivery, two revision rounds included",
-      "username": "bus-t10008",
+      "username": "bus_t10008",
       "verification_status": "unverified",
       "work_mode": "Remote",
       "working_hours": "Evenings IST — async the rest of the day"
