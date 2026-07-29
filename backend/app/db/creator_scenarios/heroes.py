@@ -144,7 +144,10 @@ HEROES: tuple[dict[str, Any], ...] = (
         "participant_stage": "interviewing",
         "created": -14 * DAY,
         "summary": "Interview happened; the recruiter owes a decision.",
-        "condition": "Decision needed · interview completed",
+        # Named for the attention plane's own option, not the phrase that plane
+        # replaced. A QA index that keeps a retired vocabulary alive sends the
+        # reader looking for a control the product no longer has.
+        "condition": "Ready for decision · interview happened, no outcome recorded",
         "action": "Record a decision and choose whether to share it.",
         "messages": [
             ("talent", -14 * DAY, "Applying for the scriptwriter role — three Hindi explainer scripts attached."),

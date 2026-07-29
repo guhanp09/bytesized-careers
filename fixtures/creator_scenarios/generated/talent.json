@@ -1701,7 +1701,7 @@
     {
       "action_to_test": "Record a decision and choose whether to share it.",
       "conversation_id": "92928cf4-8e25-5e8e-8ea1-de61c9f77209",
-      "expected_condition": "Decision needed · interview completed",
+      "expected_condition": "Ready for decision · interview happened, no outcome recorded",
       "expected_stage": "interviewing",
       "job_id": "d4bc9615-a77d-5ec0-a710-210f478997e1",
       "persona": "recruiter",

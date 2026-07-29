@@ -43,7 +43,7 @@ Use disposable local databases only.
 | Seed | Best for | Volume | Personas | Important coverage |
 | --- | --- | --- | --- | --- |
 | `empty` | First-run and empty states | 0 records / 0 jobs | — | — |
-| `default` | Ordinary design and workflow QA | 196 records / 34 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 668 portfolio items |
+| `default` | Ordinary design and workflow QA | 199 records / 35 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 681 portfolio items |
 | `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 1251 portfolio items |
 | `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 78 portfolio items |
 | `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 72 portfolio items |
@@ -62,14 +62,20 @@ is in the manifest's `index`.
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `07ab0a22` | `2524fa7f` | Not proceeding · shared with them | Confirm both sides read the same outcome. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `e13265ba` | `318d1863` | Engagement active · payment funded | Check the payment card says funded without claiming funds are held. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `341475fb` | Screening questions asked and not yet answered | open the record and review the screening answers in the thread |
-| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `36b79ded` | Imported-style screened job · every question answered | open the record and review the screening answers in the thread |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `36b79ded` | Screened job · every question answered | open the record and review the screening answers in the thread |
+| `default` | `/applications?view=pipeline&mode=recruiter&direction=received&demo=1` | Mock | Recruiter | `26864576` | `3dcb48b7` | Card to move · destination offscreen after the drop | Move it to a later stage and confirm the card is brought into view, emphasised briefly, and announced. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `26864576` | `3dcb48b7` | Opened · Reviewing · the applicant still sees New | Confirm Reviewing is a private position: the counterparty's view is unchanged. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `5d23feb5` | `4906122a` | Not proceeding · saved privately (counterparty still sees Reviewing) | Verify the applicant is never shown the private decision. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `492b9f6d` | Needs your reply (talent side) | Reply from the Talent inbox and watch the state change on both sides. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `8ffbc415` | `4d559846` | Snoozed — hidden from the queue until it returns | Confirm snoozing changes no status and the record comes back. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `4dbcceb2` | Answers only · no typed message · must not render a blank thread | Confirm one opening bubble is generated from the answers, with the budget shown. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `26864576` | `567f7db8` | Complete applicant profile · six pieces of evidence | Open the applicant's name and confirm /u/def_t09200 renders bio, location, timezone, skills, tools and every portfolio item. |
+| `default` | `/u/def_techunpacked?demo=1` | Mock | Recruiter | `26864576` | `567f7db8` | Complete hiring identity · channel, audience band and description | Confirm the hiring account can be opened and understood without leaving the page. |
+| `default` | `/u/def_t09200?demo=1` | Mock | Recruiter | `26864576` | `567f7db8` | Portfolio deep enough to scroll · every item described | Confirm each item shows its description and what this person did on it, not only a title. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `3ad13549` | `5eaa4448` | Legacy Shortlisted · private · maps to Reviewing plus a private Star | Confirm the private legacy state reads as Reviewing and carries a Star. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `645a1961` | Screening answer long enough to test wrapping rather than truncation | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `6b546f0c` | Screening answers with an optional question deliberately skipped | open the record and review the screening answers in the thread |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `26864576` | `85ef3d94` | Not opened yet · nobody has looked at it | Open it, dwell, and confirm it moves to Opened/Reviewing while the applicant is told nothing. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `8e0ed828` | Accepted (talent side) | Check the accepted request reads as an agreement, not as a pending action. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `80ccf00e` | `92257c6d` | Waiting on them · no reply needed from you | Confirm the card does not ask you to act while you are the one waiting. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `40d7e63b` | `9ec348eb` | Completion confirmed · release requested | Confirm the work status and the payment status are reported separately. |
@@ -83,7 +89,7 @@ is in the manifest's `index`.
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `c11d317f` | `eb462148` | Screening on an imported listing, asked and answered in full | confirm the screening reads identically to a manually posted job |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `1d28537d` | `efee222d` | Withdrawn by the applicant | Check no action is offered that would move a withdrawn record. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `836d157f` | `f465887a` | Interview confirmed after a reschedule | Confirm the timeline shows the move without contradicting itself. |
-| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `77106b7d` | `f4f3732d` | Decision needed · interview completed | Record a decision and choose whether to share it. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `77106b7d` | `f4f3732d` | Ready for decision · interview happened, no outcome recorded | Record a decision and choose whether to share it. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `3ded9a92` | `fbff4fee` | Payment disputed · engagement unaffected | Confirm the dispute changes no application or engagement state, and blocks no action. |
 | `busy` | `/applications?view=inbox&mode=recruiter&demo=1&seed=busy` | Mock | Recruiter | `30bea8bd` | `15a12d4f` | payment setup_pending with engagement start_pending | Confirm the payment plane and the work status are reported separately. |
 | `busy` | `/applications?view=inbox&mode=recruiter&demo=1&seed=busy` | Mock | Recruiter | `30bea8bd` | `1dc63e7e` | payment disputed with engagement ready_to_start | Confirm the payment plane and the work status are reported separately. |
@@ -140,7 +146,7 @@ is in the manifest's `index`.
 | `talent` | `/applications?view=inbox&mode=talent&demo=1&seed=talent` | Mock | Talent | — | `3b873157` | hiring request in archived | Confirm the talent-facing wording matches the state. |
 | `talent` | `/applications?view=inbox&mode=recruiter&demo=1&seed=talent` | Mock | Recruiter | `d4e6df0c` | `43a88385` | Legacy Shortlisted · communicated · reads as Under consideration | Confirm the applicant sees Under consideration and no new transition offers Shortlisted. |
 | `talent` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=talent` | Mock | Recruiter | `06397a6c` | `471e4560` | pending applicant on retired job job_25 | Confirm no action is offered that would reopen a closed job. |
-| `talent` | `/applications?view=inbox&mode=recruiter&demo=1&seed=talent` | Mock | Recruiter | `d4bc9615` | `5e6ec0d7` | Decision needed · interview completed | Record a decision and choose whether to share it. |
+| `talent` | `/applications?view=inbox&mode=recruiter&demo=1&seed=talent` | Mock | Recruiter | `d4bc9615` | `5e6ec0d7` | Ready for decision · interview happened, no outcome recorded | Record a decision and choose whether to share it. |
 | `talent` | `/applications?view=inbox&mode=talent&demo=1&seed=talent` | Mock | Talent | `0b3c2ec7` | `7a82fadf` | legacy Shortlisted shown as Under consideration | Confirm the talent never sees the raw Shortlisted label. |
 | `talent` | `/applications?view=inbox&mode=talent&demo=1&seed=talent` | Mock | Talent | — | `7aaea637` | hiring request in new | Confirm the talent-facing wording matches the state. |
 | `talent` | `/applications?view=inbox&mode=recruiter&demo=1&seed=talent` | Mock | Recruiter | `ef079c56` | `7f25af45` | Start confirmation pending | Confirm the start and watch the engagement move without touching payment. |
@@ -166,7 +172,7 @@ is in the manifest's `index`.
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `78fd7b64` | `87a81e60` | stage reviewing | Move the record and confirm the transition is offered honestly. |
 | `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `943887c0` | `91f9161b` | Not proceeding · saved privately (counterparty still sees Reviewing) | Verify the applicant is never shown the private decision. |
 | `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `734a98ad` | `94e7b4c9` | Not proceeding · shared with them | Confirm both sides read the same outcome. |
-| `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `6e85f917` | `9e4bce7e` | Decision needed · interview completed | Record a decision and choose whether to share it. |
+| `recruiter` | `/applications?view=inbox&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `6e85f917` | `9e4bce7e` | Ready for decision · interview happened, no outcome recorded | Record a decision and choose whether to share it. |
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `78fd7b64` | `a3a04163` | stage withdrawn | Move the record and confirm the transition is offered honestly. |
 | `recruiter` | `/applications?view=inbox&mode=talent&demo=1&seed=recruiter` | Mock | Talent | — | `b75c957b` | Needs your reply (talent side) | Reply from the Talent inbox and watch the state change on both sides. |
 | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | Mock | Recruiter | `78fd7b64` | `c2d23f30` | stage archived | Move the record and confirm the transition is offered honestly. |
@@ -197,7 +203,7 @@ is in the manifest's `index`.
 | Hire | `recruiter` | `/applications?view=pipeline&mode=recruiter&demo=1&seed=recruiter` | `8224b9e6` | stage hired |
 | Start confirmation | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `adda028f` | Start confirmation pending |
 | Active engagement | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `318d1863` | Engagement active · payment funded |
-| Completion confirmation | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `f4f3732d` | Decision needed · interview completed |
+| Completion confirmation | `busy` | `/applications?view=inbox&mode=recruiter&demo=1&seed=busy` | `cafb7904` | payment work_in_progress with engagement completed |
 | Payment funded | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `318d1863` | Engagement active · payment funded |
 | Release requested | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `9ec348eb` | Completion confirmed · release requested |
 | Released | `busy` | `/applications?view=inbox&mode=recruiter&demo=1&seed=busy` | `54c87815` | payment released with engagement cancelled_before_start |
@@ -225,10 +231,10 @@ is in the manifest's `index`.
 
 | Dimension | Coverage across all six manifests |
 | --- | --- |
-| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 147 · rejected 83 · reviewing 162 · shortlisted 7 · withdrawn 28 |
+| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 148 · rejected 83 · reviewing 164 · shortlisted 7 · withdrawn 28 |
 | Payment state | disputed 8 · expired 6 · funded 12 · funding_pending 8 · not_applicable 10 · refunded 7 · release_requested 8 · released 9 · setup_pending 10 · work_in_progress 8 |
-| Relationship kind | application 588 · hiring_request 41 |
-| Indexed persona | Recruiter 108 · Talent 19 |
+| Relationship kind | application 591 · hiring_request 41 |
+| Indexed persona | Recruiter 114 · Talent 19 |
 | Portfolio volume | 37 records with none · 1 with 20+ |
 
 ## High volume: what renders, and how to reach the rest

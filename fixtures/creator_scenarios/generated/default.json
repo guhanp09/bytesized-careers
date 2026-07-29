@@ -5925,6 +5925,67 @@
       "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
+      "availability": "unavailable",
+      "availability_status": "unavailable",
+      "bio": "I localise rather than transcribe. Timing, reading speed and idiom all matter — a caption that is technically correct and unreadable at pace has failed the person it was for.",
+      "deactivated": false,
+      "display_name": "Sameer Verma",
+      "email": "default-talent09200@scenario.invalid",
+      "experience_years": 2,
+      "formats": [
+        "Captions",
+        "Voice-over"
+      ],
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "languages": [
+        "English",
+        "Hindi",
+        "Spanish",
+        "Tamil"
+      ],
+      "location": "Bengaluru, India",
+      "niches": [
+        "Technology"
+      ],
+      "platforms": [
+        "youtube",
+        "youtube_shorts",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/subtitler-09200"
+      ],
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
+      "roles": [
+        "Subtitler / translator"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "Subtitling",
+        "Localisation",
+        "Transcription",
+        "Reading-speed timing",
+        "QC"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit",
+        "Descript",
+        "YouTube Studio"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "def_t09200",
+      "verification_status": "verified",
+      "work_mode": "On-site",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
+    },
+    {
       "availability": "selective",
       "availability_status": "selective",
       "bio": "I write for the ear and the retention graph at once. Research first, structure second, and a hook that pays off what it promised — I would rather cut a good line than keep one that stalls the middle.",
@@ -5981,6 +6042,64 @@
       "verification_status": "unverified",
       "work_mode": "Hybrid",
       "working_hours": "Split day, overlapping both EU and US East"
+    },
+    {
+      "availability": "available",
+      "availability_status": "available",
+      "avatar_url": "https://avatars.scenario.invalid/9201.jpg",
+      "bio": "I look after the parts of an audience that never comment. Moderation, tone, and knowing which threads to leave alone — most of the job is judgement rather than volume.",
+      "deactivated": false,
+      "display_name": "Anjali Reddy",
+      "email": "default-talent09201@scenario.invalid",
+      "experience_years": 3,
+      "formats": [
+        "Social posts",
+        "Channel research"
+      ],
+      "headline": "Community manager for creator-led channels",
+      "id": "845e62c6-acb4-5f08-9327-9a21a3656648",
+      "languages": [
+        "English"
+      ],
+      "location": "Delhi NCR, India",
+      "niches": [
+        "Food"
+      ],
+      "platforms": [
+        "twitch",
+        "multi_platform",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/community-09201"
+      ],
+      "rate_currency": "INR",
+      "rate_min": 2500,
+      "roles": [
+        "Community manager"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "Community moderation",
+        "Tone of voice",
+        "Escalation handling",
+        "Event running",
+        "Reporting"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Discord",
+        "Notion",
+        "YouTube Studio",
+        "Zapier"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "def_t09201",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
       "availability": "selective",
@@ -10611,6 +10730,66 @@
       "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
+      "availability": "selective",
+      "availability_status": "selective",
+      "avatar_url": "https://avatars.scenario.invalid/9202.jpg",
+      "bio": "I shoot and cut creator-style ads that do not feel like ads. Usually three to five variants per brief so there is something real to test rather than one hero cut.",
+      "deactivated": false,
+      "display_name": "Varun Shah",
+      "email": "default-talent09202@scenario.invalid",
+      "experience_years": 4,
+      "formats": [
+        "Ad creatives",
+        "Shorts/Reels",
+        "Social posts"
+      ],
+      "headline": "UGC creator for creator-led channels",
+      "id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "languages": [
+        "English"
+      ],
+      "location": "Hyderabad, India",
+      "niches": [
+        "Travel"
+      ],
+      "platforms": [
+        "tiktok",
+        "instagram_reels",
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/ugc-09202"
+      ],
+      "rate_currency": "INR",
+      "rate_max": 25000,
+      "rate_min": 8000,
+      "roles": [
+        "UGC creator"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "UGC production",
+        "On-camera delivery",
+        "Ad variants",
+        "Lighting",
+        "Direct response"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "CapCut",
+        "Premiere Pro",
+        "Lightroom",
+        "Canva"
+      ],
+      "turnaround": "48 hours for a first pass",
+      "username": "def_t09202",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Standard business hours, US Central"
+    },
+    {
       "availability": "unavailable",
       "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/3206.jpg",
@@ -11728,11 +11907,33 @@
     {
       "action_to_test": "open the record and review the screening answers in the thread",
       "conversation_id": "3b4578a4-393d-55f8-aec4-9fca1fac18cc",
-      "expected_condition": "Imported-style screened job · every question answered",
+      "expected_condition": "Screened job · every question answered",
       "expected_stage": "reviewing",
       "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
       "persona": "recruiter",
       "relationship_id": "36b79ded-be4c-5c85-92ba-f7e6f16b2884",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Move it to a later stage and confirm the card is brought into view, emphasised briefly, and announced.",
+      "conversation_id": "7f47aae6-d9a6-59dc-b3e0-7eec62869f2d",
+      "expected_condition": "Card to move · destination offscreen after the drop",
+      "expected_stage": "reviewing",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "3dcb48b7-aca6-5058-b6d8-ccb27a34d344",
+      "route": "/applications?view=pipeline&mode=recruiter&direction=received",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Confirm Reviewing is a private position: the counterparty's view is unchanged.",
+      "conversation_id": "7f47aae6-d9a6-59dc-b3e0-7eec62869f2d",
+      "expected_condition": "Opened · Reviewing · the applicant still sees New",
+      "expected_stage": "reviewing",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "3dcb48b7-aca6-5058-b6d8-ccb27a34d344",
       "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "default"
     },
@@ -11779,6 +11980,39 @@
       "scenario": "default"
     },
     {
+      "action_to_test": "Open the applicant's name and confirm /u/def_t09200 renders bio, location, timezone, skills, tools and every portfolio item.",
+      "conversation_id": "3da6e309-cdb3-5df0-bc26-c8cc51df619c",
+      "expected_condition": "Complete applicant profile · six pieces of evidence",
+      "expected_stage": "reviewing",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "567f7db8-7e6a-5376-8a48-420560fe08b2",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Confirm the hiring account can be opened and understood without leaving the page.",
+      "conversation_id": "3da6e309-cdb3-5df0-bc26-c8cc51df619c",
+      "expected_condition": "Complete hiring identity · channel, audience band and description",
+      "expected_stage": "reviewing",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "567f7db8-7e6a-5376-8a48-420560fe08b2",
+      "route": "/u/def_techunpacked",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Confirm each item shows its description and what this person did on it, not only a title.",
+      "conversation_id": "3da6e309-cdb3-5df0-bc26-c8cc51df619c",
+      "expected_condition": "Portfolio deep enough to scroll · every item described",
+      "expected_stage": "reviewing",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "567f7db8-7e6a-5376-8a48-420560fe08b2",
+      "route": "/u/def_t09200",
+      "scenario": "default"
+    },
+    {
       "action_to_test": "Confirm the private legacy state reads as Reviewing and carries a Star.",
       "conversation_id": "72212421-4936-5609-a1cb-a62868ab93e5",
       "expected_condition": "Legacy Shortlisted · private · maps to Reviewing plus a private Star",
@@ -11808,6 +12042,17 @@
       "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
       "persona": "recruiter",
       "relationship_id": "6b546f0c-8a3f-5952-b78d-4275a5290228",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "Open it, dwell, and confirm it moves to Opened/Reviewing while the applicant is told nothing.",
+      "conversation_id": "260ae381-59b2-54ad-8549-3fe3826da4c8",
+      "expected_condition": "Not opened yet · nobody has looked at it",
+      "expected_stage": "new",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "persona": "recruiter",
+      "relationship_id": "85ef3d94-fde4-5abe-8ef8-d1674044f991",
       "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "default"
     },
@@ -11954,7 +12199,7 @@
     {
       "action_to_test": "Record a decision and choose whether to share it.",
       "conversation_id": "0141307e-2b03-535c-b3c3-0d836b62cfe9",
-      "expected_condition": "Decision needed · interview completed",
+      "expected_condition": "Ready for decision · interview happened, no outcome recorded",
       "expected_stage": "interviewing",
       "job_id": "77106b7d-29bb-5b93-a3f2-2f2243bc40ef",
       "persona": "recruiter",
@@ -12187,6 +12432,39 @@
       "turnaround_unit": "weeks",
       "turnaround_value": 2,
       "work_mode": "On-site"
+    },
+    {
+      "compensation_currency": "INR",
+      "compensation_max": 4000.0,
+      "compensation_min": 1500.0,
+      "compensation_mode": "range",
+      "compensation_unit": "per video",
+      "experience": "1–3 years",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "location": "Kathmandu, Nepal",
+      "niches": [
+        "Beauty"
+      ],
+      "origin": "manual",
+      "owner_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "posted_offset": -86400,
+      "status": "published",
+      "tags": [
+        "Shorts/Reels",
+        "Beauty"
+      ],
+      "title": "Documentary editor for a long-form series",
+      "turnaround_basis": "final_delivery",
+      "turnaround_unit": "hours",
+      "turnaround_value": 8,
+      "work_mode": "Remote"
     },
     {
       "compensation_currency": "INR",
@@ -13497,6 +13775,25 @@
       "url": "https://work.scenario.invalid/052b3cfc"
     },
     {
+      "contribution": "Captions and localisation",
+      "description": "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.",
+      "format": "Repurposed clips",
+      "id": "053ccab4-07c7-581d-9002-95509929eefd",
+      "media": "link",
+      "niche": "Travel",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "twitch",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/053ccab4.jpg",
+      "title": "Translation + subtitle pass",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/053ccab4"
+    },
+    {
       "contribution": "Design system",
       "description": "Reworked a back catalogue's thumbnails so the grid reads as one channel — shared type, a fixed face position, and a colour rule per series.",
       "format": "Shorts/Reels",
@@ -13648,6 +13945,25 @@
         "CapCut"
       ],
       "url": "https://work.scenario.invalid/07e36f5f"
+    },
+    {
+      "contribution": "Structure and outline",
+      "description": "Outline and beat sheet for a six-part run, structured so each episode stands alone and still earns the next.",
+      "format": "Podcast editing",
+      "id": "07e425a3-eae0-569d-b59f-eda535c7fe58",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "podcast",
+      "role": "Structure and outline",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/07e425a3.jpg",
+      "title": "Series outline — six episodes",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/07e425a3"
     },
     {
       "contribution": "Lead editor",
@@ -16383,6 +16699,26 @@
       "url": "https://work.scenario.invalid/3fde5592"
     },
     {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 2254,
+      "format": "Repurposed clips",
+      "id": "404c10ba-6503-5674-b4b6-2c9885b3f906",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "platform": "twitch",
+      "role": "Edit and direction",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/404c10ba.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/404c10ba"
+    },
+    {
       "contribution": "Lead editor, packaging",
       "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
       "duration_seconds": 587,
@@ -17775,6 +18111,25 @@
       "url": "https://work.scenario.invalid/598bf26c"
     },
     {
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
+      "format": "Long-form video",
+      "id": "59fc4037-5b4f-5d8b-8eea-9371362f5fa5",
+      "media": "link",
+      "niche": "True crime",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "youtube",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/59fc4037.jpg",
+      "title": "Hook pass — twelve shorts — series two",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/59fc4037"
+    },
+    {
       "contribution": "Research and script",
       "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Repurposed clips",
@@ -18440,6 +18795,26 @@
       "url": "https://work.scenario.invalid/6ff9845c"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
+      "duration_seconds": 2365,
+      "format": "Long-form video",
+      "id": "70064922-982d-5e03-b0bc-ba7487b3cb23",
+      "media": "video",
+      "niche": "True crime",
+      "owner_id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "platform": "youtube",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/70064922.jpg",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/70064922"
+    },
+    {
       "contribution": "Lead editor",
       "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
       "duration_seconds": 513,
@@ -18588,6 +18963,25 @@
         "Premiere Pro"
       ],
       "url": "https://work.scenario.invalid/72115fe0"
+    },
+    {
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
+      "format": "Shorts/Reels",
+      "id": "722a3e13-70d5-57eb-9760-3706009e199c",
+      "media": "link",
+      "niche": "Technology",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "tiktok",
+      "role": "Research and script",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/722a3e13.jpg",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/722a3e13"
     },
     {
       "contribution": "Edit and direction",
@@ -18897,6 +19291,23 @@
       "url": "https://work.scenario.invalid/7837b72d"
     },
     {
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
+      "format": "Content strategy",
+      "id": "785f6a1c-6f45-5480-9a11-ec823710fac2",
+      "media": "link",
+      "niche": "Comedy",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "multi_platform",
+      "role": "Research and script",
+      "thumbnail_broken": false,
+      "title": "Script — data-led explainer — second pass",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ]
+    },
+    {
       "contribution": "Strategy and planning",
       "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Podcast editing",
@@ -19047,6 +19458,26 @@
         "Premiere Pro"
       ],
       "url": "https://work.scenario.invalid/7b3fe656"
+    },
+    {
+      "contribution": "Edit, timing",
+      "description": "A ninety-second read cut to thirty-five without losing the offer, placed after the first payoff rather than before it.",
+      "duration_seconds": 2291,
+      "format": "Podcast editing",
+      "id": "7b611096-c9bb-570f-ac8d-fdeaa59ed704",
+      "media": "video",
+      "niche": "Education",
+      "owner_id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "platform": "podcast",
+      "role": "Edit, timing",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/7b611096.jpg",
+      "title": "Sponsor integration cutdown",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/7b611096"
     },
     {
       "contribution": "Analysis and recommendations",
@@ -20996,6 +21427,24 @@
       "url": "https://work.scenario.invalid/a240b6af"
     },
     {
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
+      "format": "Shorts/Reels",
+      "id": "a2ba2263-7bf8-5a19-afb5-9337c9e8b89e",
+      "media": "link",
+      "niche": "Food",
+      "owner_id": "845e62c6-acb4-5f08-9327-9a21a3656648",
+      "platform": "instagram_reels",
+      "role": "Strategy and planning",
+      "thumbnail_broken": false,
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
+      "url": "https://work.scenario.invalid/a2ba2263"
+    },
+    {
       "contribution": "Research and script",
       "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Long-form video",
@@ -21373,6 +21822,25 @@
         "CapCut"
       ],
       "url": "https://work.scenario.invalid/aa11e8ac"
+    },
+    {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
+      "format": "Podcast editing",
+      "id": "aa21c67e-dece-5cdc-8adc-90615e19a08c",
+      "media": "link",
+      "niche": "Education",
+      "owner_id": "845e62c6-acb4-5f08-9327-9a21a3656648",
+      "platform": "podcast",
+      "role": "Policy and process",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/aa21c67e.jpg",
+      "title": "Community guidelines and escalation path",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
+      "url": "https://work.scenario.invalid/aa21c67e"
     },
     {
       "contribution": "Edit and direction",
@@ -21974,6 +22442,25 @@
         "Notion"
       ],
       "url": "https://work.scenario.invalid/b9652fbd"
+    },
+    {
+      "contribution": "Lead editor",
+      "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
+      "duration_seconds": 2328,
+      "format": "Content strategy",
+      "id": "b97b47a1-70c8-53d1-afa1-c680eb9d5ceb",
+      "media": "video",
+      "niche": "Comedy",
+      "owner_id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "platform": "multi_platform",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "title": "Interview multicam edit",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/b97b47a1"
     },
     {
       "contribution": "Policy and process",
@@ -23999,6 +24486,25 @@
       "url": "https://work.scenario.invalid/dcbdfd24"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
+      "format": "Repurposed clips",
+      "id": "dce4dd97-ca1c-5bae-8e7f-f9122c57dde0",
+      "media": "link",
+      "niche": "Travel",
+      "owner_id": "845e62c6-acb4-5f08-9327-9a21a3656648",
+      "platform": "twitch",
+      "role": "Commercial strategy",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/dce4dd97.jpg",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
+      "url": "https://work.scenario.invalid/dce4dd97"
+    },
+    {
       "contribution": "Edit and direction",
       "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
       "duration_seconds": 254,
@@ -24952,6 +25458,24 @@
         "Cinema 4D"
       ],
       "url": "https://work.scenario.invalid/ef9299f8"
+    },
+    {
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
+      "format": "Shorts/Reels",
+      "id": "f0428585-31c7-5222-b912-97aa522183c7",
+      "media": "link",
+      "niche": "Food",
+      "owner_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "platform": "instagram_reels",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/f0428585"
     },
     {
       "contribution": "Template system",
@@ -28091,6 +28615,54 @@
       "updated_offset": -504000
     },
     {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
+      "archived": false,
+      "conversation_id": "7f47aae6-d9a6-59dc-b3e0-7eec62869f2d",
+      "created_offset": -259200,
+      "id": "3dcb48b7-aca6-5058-b6d8-ccb27a34d344",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Happy to send a paid trial cut if that helps you decide.",
+          "conversation_id": "7f47aae6-d9a6-59dc-b3e0-7eec62869f2d",
+          "id": "846d219c-f42d-539f-869d-13570611f1d8",
+          "kind": "text",
+          "offset_seconds": -259200,
+          "read": true,
+          "sender_id": "e7317a5e-4bad-5d02-addd-b846784713b8"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "404c10ba-6503-5674-b4b6-2c9885b3f906",
+        "7b611096-c9bb-570f-ac8d-fdeaa59ed704",
+        "b97b47a1-70c8-53d1-afa1-c680eb9d5ceb",
+        "70064922-982d-5e03-b0bc-ba7487b3cb23"
+      ],
+      "recruiter_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "e7317a5e-4bad-5d02-addd-b846784713b8",
+      "unread": 0,
+      "updated_offset": -259200
+    },
+    {
       "archived": true,
       "conversation_id": "1172d447-4b7f-5ae3-87de-b60b399e6dda",
       "created_offset": -806400,
@@ -28691,6 +29263,56 @@
       "talent_id": "616379d3-561c-5cd9-9b41-fad6df75252c",
       "unread": 0,
       "updated_offset": -806400
+    },
+    {
+      "answers": {
+        "custom_instruction": "Yes, I can work to a Monday-to-Thursday cycle.",
+        "expected_rate": {
+          "amount": "2,500",
+          "unit": "per video"
+        },
+        "fit_note": "Your last three uploads drop at the same point — that is a hook problem I have fixed before.",
+        "relevant_experience": "Finance and education channels, mostly long-form",
+        "start_availability": "Next week",
+        "tools_workflow": "Premiere Pro, After Effects, Frame.io for review",
+        "turnaround": {
+          "unit": "days",
+          "value": "4"
+        },
+        "working_hours": "Evenings IST"
+      },
+      "archived": false,
+      "conversation_id": "3da6e309-cdb3-5df0-bc26-c8cc51df619c",
+      "created_offset": -345600,
+      "id": "567f7db8-7e6a-5376-8a48-420560fe08b2",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "I've worked on three series at this length — the most recent is at the top of my profile.",
+          "conversation_id": "3da6e309-cdb3-5df0-bc26-c8cc51df619c",
+          "id": "e2bc903d-c4f1-5e21-a4bd-49a045dafe5d",
+          "kind": "text",
+          "offset_seconds": -345600,
+          "read": true,
+          "sender_id": "82f639b9-8e37-539b-9f49-942f6875305d"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "722a3e13-70d5-57eb-9760-3706009e199c",
+        "f0428585-31c7-5222-b912-97aa522183c7",
+        "053ccab4-07c7-581d-9002-95509929eefd",
+        "07e425a3-eae0-569d-b59f-eda535c7fe58",
+        "785f6a1c-6f45-5480-9a11-ec823710fac2",
+        "59fc4037-5b4f-5d8b-8eea-9371362f5fa5"
+      ],
+      "recruiter_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "82f639b9-8e37-539b-9f49-942f6875305d",
+      "unread": 0,
+      "updated_offset": -345600
     },
     {
       "archived": false,
@@ -30143,6 +30765,37 @@
       "talent_id": "aafacad9-5ed3-5d4b-8aa0-cf9a618b857e",
       "unread": 0,
       "updated_offset": -604800
+    },
+    {
+      "archived": false,
+      "conversation_id": "260ae381-59b2-54ad-8549-3fe3826da4c8",
+      "created_offset": -21600,
+      "id": "85ef3d94-fde4-5abe-8ef8-d1674044f991",
+      "job_id": "26864576-cd37-54ee-97b1-a1392e8e5ae5",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "Applying for the series role — three years on long-form documentary.",
+          "conversation_id": "260ae381-59b2-54ad-8549-3fe3826da4c8",
+          "id": "e0078260-cf17-5702-97f4-d7e92844e1b1",
+          "kind": "text",
+          "offset_seconds": -21600,
+          "read": true,
+          "sender_id": "845e62c6-acb4-5f08-9327-9a21a3656648"
+        }
+      ],
+      "participant_stage": "new",
+      "portfolio_ids": [
+        "a2ba2263-7bf8-5a19-afb5-9337c9e8b89e",
+        "dce4dd97-ca1c-5bae-8e7f-f9122c57dde0",
+        "aa21c67e-dece-5cdc-8adc-90615e19a08c"
+      ],
+      "recruiter_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
+      "stage": "new",
+      "starred": false,
+      "talent_id": "845e62c6-acb4-5f08-9327-9a21a3656648",
+      "unread": 1,
+      "updated_offset": -21600
     },
     {
       "archived": false,
@@ -34262,15 +34915,15 @@
   "scenario": "default",
   "seed": 2000,
   "stats": {
-    "actors": 200,
-    "applications": 168,
+    "actors": 203,
+    "applications": 171,
     "client_state": 0,
-    "conversations": 196,
+    "conversations": 199,
     "engagements": 20,
     "hiring_requests": 28,
     "interviews": 19,
-    "jobs": 34,
-    "messages": 299,
+    "jobs": 35,
+    "messages": 302,
     "payment_states": {
       "disputed": 1,
       "funded": 4,
@@ -34281,17 +34934,17 @@
       "setup_pending": 1,
       "work_in_progress": 3
     },
-    "portfolio_items": 668,
-    "relationships": 196,
+    "portfolio_items": 681,
+    "relationships": 199,
     "stages": {
       "accepted": 5,
       "archived": 20,
       "declined": 5,
       "hired": 20,
       "interviewing": 19,
-      "new": 40,
+      "new": 41,
       "rejected": 20,
-      "reviewing": 44,
+      "reviewing": 46,
       "shortlisted": 2,
       "withdrawn": 21
     }

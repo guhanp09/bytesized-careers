@@ -804,7 +804,7 @@ def _screened_applications(builder: Builder) -> None:
                 1: "Two a week comfortably, three in a lighter week.",
                 2: "I work Mornings IST and can overlap with EU afternoons.",
             },
-            "Imported-style screened job · every question answered",
+            "Screened job · every question answered",
         ),
         (
             "partial",
@@ -1012,6 +1012,116 @@ def _default(builder: Builder) -> None:
     )
 
     _retired_jobs(builder)
+    _profile_examples(builder)
+
+
+def _profile_examples(builder: Builder) -> None:
+    """The records a reviewer is sent to when the *person* is what is being checked.
+
+    The index used to address workflow states only — stages, decisions, payment.
+    But the page a review actually turns on is the applicant's, and none of the
+    conditions that page depends on could be reached from the index at all: a
+    complete profile, a hiring identity worth opening, a deep portfolio, and the
+    two ends of the review-progress plane. A condition nobody can navigate to is
+    a condition nobody checks.
+    """
+
+    recruiter = builder.recruiter(2)
+    job = builder.job(recruiter, 960)
+    job.title = "Documentary editor for a long-form series"
+
+    # A complete applicant: every profile field the page renders, and enough
+    # work attached that the portfolio is a portfolio rather than a single item.
+    complete = builder.talent(9_200)
+    portfolio = builder.portfolio_for(complete, 6, slot=9_200)
+    rel = builder.relationship(
+        key="default:profile:complete",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=complete,
+        stage="reviewing",
+        participant_stage="reviewing",
+        created=-4 * DAY,
+        messages=[("talent", -4 * DAY, "I've worked on three series at this length — the most recent is at the top of my profile.")],
+        portfolio_ids=portfolio,
+        unread=0,
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Complete applicant profile · six pieces of evidence",
+        action=f"Open the applicant's name and confirm /u/{complete.username} renders bio, location, timezone, skills, tools and every portfolio item.",
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route=f"/u/{complete.username}",
+        condition="Portfolio deep enough to scroll · every item described",
+        action="Confirm each item shows its description and what this person did on it, not only a title.",
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route=f"/u/{recruiter.username}",
+        condition="Complete hiring identity · channel, audience band and description",
+        action="Confirm the hiring account can be opened and understood without leaving the page.",
+    )
+
+    # The two ends of the review-progress plane, addressable on purpose. Without
+    # these, "Not opened yet" and "Opened" could only be reached by guessing
+    # which row happened to be in which state.
+    untouched = builder.talent(9_201)
+    unopened = builder.relationship(
+        key="default:profile:unopened",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=untouched,
+        stage="new",
+        participant_stage="new",
+        created=-6 * HOUR,
+        messages=[("talent", -6 * HOUR, "Applying for the series role — three years on long-form documentary.")],
+        portfolio_ids=builder.portfolio_for(untouched, 3, slot=9_201),
+        unread=1,
+    )
+    builder.add_index(
+        unopened,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Not opened yet · nobody has looked at it",
+        action="Open it, dwell, and confirm it moves to Opened/Reviewing while the applicant is told nothing.",
+    )
+
+    read = builder.talent(9_202)
+    opened = builder.relationship(
+        key="default:profile:opened",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=read,
+        stage="reviewing",
+        participant_stage="new",
+        created=-3 * DAY,
+        messages=[("talent", -3 * DAY, "Happy to send a paid trial cut if that helps you decide.")],
+        portfolio_ids=builder.portfolio_for(read, 4, slot=9_202),
+        unread=0,
+    )
+    builder.add_index(
+        opened,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Opened · Reviewing · the applicant still sees New",
+        action="Confirm Reviewing is a private position: the counterparty's view is unchanged.",
+    )
+    builder.add_index(
+        opened,
+        persona="recruiter",
+        route="/applications?view=pipeline&mode=recruiter&direction=received",
+        condition="Card to move · destination offscreen after the drop",
+        action="Move it to a later stage and confirm the card is brought into view, emphasised briefly, and announced.",
+    )
 
 
 def _busy(builder: Builder) -> None:
