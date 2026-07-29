@@ -13,6 +13,7 @@ scenario or a pool entry does not renumber the records in the others.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import re
@@ -54,6 +55,16 @@ SCENARIO_SEEDS: dict[str, int] = {
 #: already treats these as the canonical closed-job fixtures, and inventing new
 #: ones would leave the real constants untested.
 RETIRED_JOB_KEYS: tuple[str, ...] = ("job_25", "job_26")
+
+#: What each applicant to a since-closed job actually wrote. Four distinct
+#: lines, because these records are the oldest in the corpus and therefore sit
+#: next to each other however the list is sorted.
+RETIRED_JOB_OPENERS: tuple[str, ...] = (
+    "Applying while this was still open — happy to hear either way.",
+    "I know this closed a while back. If you reopen it, I am still interested.",
+    "Sending this in before the deadline; my reel is linked on my profile.",
+    "Late to this one, but the format is exactly what I have been doing all year.",
+)
 
 
 def _handle(scenario: str, base: str) -> str:
@@ -574,16 +585,27 @@ def _bulk(
         created = -((index % 45) + 1) * DAY - (index % 11) * HOUR
         messages: list[tuple[str, int, str]] = []
         if with_messages:
+            # Keyed by the record, not by its position.
+            #
+            # `index` restarts at zero for every job, so all sixteen jobs drew
+            # the same nine lines; and because the preview column shows the
+            # *last* message, and the inbox sorts by recency, identical
+            # sentences landed next to each other — six rows running, which
+            # reads as broken data long before anyone works out it is a modulo.
+            # Hashing the key spreads them, and — the reason `_answer_set`
+            # already does this — adding a relationship does not reshuffle the
+            # lines of the ones already generated.
+            line = int(hashlib.blake2s(f"{key_prefix}:{index}:{salt}".encode(), digest_size=4).hexdigest(), 16)
             messages.append(
-                ("talent", created, pools.APPLICANT_OPENERS[index % len(pools.APPLICANT_OPENERS)])
+                ("talent", created, pools.APPLICANT_OPENERS[line % len(pools.APPLICANT_OPENERS)])
             )
             if index % 3 == 0:
                 messages.append(
-                    ("recruiter", created + 6 * HOUR, pools.RECRUITER_FOLLOWUPS[index % len(pools.RECRUITER_FOLLOWUPS)])
+                    ("recruiter", created + 6 * HOUR, pools.RECRUITER_FOLLOWUPS[line % len(pools.RECRUITER_FOLLOWUPS)])
                 )
             if index % 5 == 0:
                 messages.append(
-                    ("talent", created + 9 * HOUR, pools.TALENT_FOLLOWUPS[index % len(pools.TALENT_FOLLOWUPS)])
+                    ("talent", created + 9 * HOUR, pools.TALENT_FOLLOWUPS[line % len(pools.TALENT_FOLLOWUPS)])
                 )
         # Two is the floor for a portfolio-driven role in a normal scenario: one
         # item is a claim, two is a body of work you can compare. Zero- and
@@ -1543,7 +1565,10 @@ def _retired_jobs(builder: Builder) -> None:
                 stage=("reviewing", "rejected")[offset],
                 participant_stage=("reviewing", "rejected")[offset],
                 created=created,
-                messages=[("talent", created, "Applying while this was still open.")],
+                # One line per record rather than one line four times: these are
+                # the oldest rows in the corpus, so they sort adjacently and a
+                # shared sentence shows up as four identical previews in a run.
+                messages=[("talent", created, RETIRED_JOB_OPENERS[index * 2 + offset])],
                 portfolio_ids=builder.portfolio_for(talent, 2, slot=60 + offset),
                 historical=f"Applicant left pending on retired job {legacy}.",
             )

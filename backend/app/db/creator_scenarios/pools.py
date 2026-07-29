@@ -241,6 +241,24 @@ APPLICANT_OPENERS: tuple[str, ...] = (
     "I work with two other creator-led channels on a weekly cadence, so the turnaround is realistic for me.",
     "Your retention drop-off looks like a hook problem more than a pacing one — I'd start there.",
     "I can take the whole workflow from raw files to upload-ready, including captions and thumbnails.",
+    "I've been editing long-form for three years and shorts for two — the reel covers both.",
+    "The last channel I worked with went from 4k to 30k average views over eight months.",
+    "I'd want to see one full raw file before committing to a weekly turnaround, if that's alright.",
+    "I read the brief properly — the two-day revision window is the part I want to check with you.",
+    "Most of my work is in this format, though the subject matter is new to me.",
+    "I can start next week. My current retainer ends on Friday.",
+    "I keep a shared folder per project so you can see progress rather than waiting for a cut.",
+    "Not the fastest editor you'll talk to, but I'll ask about the argument before I touch the timeline.",
+    "I've done exactly this on a smaller channel and would like a go at it at this scale.",
+    "Sound is where I'd start with your back catalogue — the picture is already good.",
+    "Rates are on my profile; happy to work to a fixed per-video figure instead if that's simpler.",
+    "I write my own captions rather than auto-generating them, which is slower and reads better.",
+    "I've subtitled in three languages before, if that's ever useful to you.",
+    "I'd rather do one video well as a trial than promise a schedule I haven't tested.",
+    "Colour is the thing I'm strongest at — the second link shows a before and after.",
+    "I've worked with a producer in your timezone before, so the overlap is familiar.",
+    "Happy to be a second pair of hands during a busy stretch rather than the only editor.",
+    "I've had a look at your last four uploads and have notes if you want them.",
 )
 
 RECRUITER_OPENERS: tuple[str, ...] = (
@@ -298,11 +316,27 @@ TALENT_ANSWER_SETS: tuple[dict[str, object], ...] = (
     },
 )
 
+# Paired by position: `TALENT_FOLLOWUPS[i]` answers `RECRUITER_FOLLOWUPS[i]`, and
+# the generator draws both with the same index so a thread reads as a
+# conversation rather than two unrelated sentences. Any addition here has to be
+# an addition to both, in the same place.
+#
+# The length matters as much as the content. Four pairs across two hundred
+# records put the same answer in five of the eight rows a phone can show, which
+# reads as broken data — the list looked duplicated rather than busy.
 RECRUITER_FOLLOWUPS: tuple[str, ...] = (
     "Could you share one example where you rebuilt the structure rather than just trimming?",
     "What does your turnaround look like if we send files on a Monday?",
     "Do you handle captions and thumbnails as well, or edit only?",
     "What would you charge for a four-video batch?",
+    "How much direction do you want on the first cut?",
+    "Have you worked on anything at this length before?",
+    "Which part of the process do you want us to be involved in?",
+    "Are you comfortable working from a script, or do you prefer the raw footage first?",
+    "What happens if we need a change after the final cut is delivered?",
+    "Do you have capacity for a weekly slot, or is this a one-off for you?",
+    "What software do you work in, and can you hand over project files?",
+    "How do you usually handle music and licensing?",
 )
 
 TALENT_FOLLOWUPS: tuple[str, ...] = (
@@ -310,6 +344,14 @@ TALENT_FOLLOWUPS: tuple[str, ...] = (
     "Monday files means first draft by Thursday, final by Friday.",
     "I do both, though thumbnails are usually a separate line item.",
     "For a batch of four I'd do a slightly lower per-video rate.",
+    "As much as you can give me on the first one, then less as I learn the channel.",
+    "The longest I've cut is about forty minutes, an interview piece rather than an essay.",
+    "The structure decision, mostly. After that I'd rather just get it to you.",
+    "Script first if there is one — it saves me guessing at what the footage is for.",
+    "One round is included; past that I'd charge by the hour so it stays fair both ways.",
+    "A weekly slot suits me better than one-offs, if the schedule is real.",
+    "Resolve, and yes — I hand over the project file and the media at the end.",
+    "I stick to licensed libraries and keep the receipts with the project file.",
 )
 
 PORTFOLIO_TITLES: tuple[str, ...] = (

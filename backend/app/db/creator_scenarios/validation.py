@@ -82,6 +82,13 @@ _USERNAME_RE = _username_pattern()
 #: body of work a reviewer can compare against itself.
 EVIDENCE_FLOOR = 2
 
+#: Roughly one screenful on a phone, and the unit a reader judges variety in.
+PREVIEW_WINDOW = 8
+
+#: How many rows in that window may show the same last message before the list
+#: stops looking like real correspondence.
+PREVIEW_REPEAT_LIMIT = 3
+
 #: Copy that means "we had nothing to put here". Matched on word boundaries and
 #: case-insensitively, so a legitimate sentence containing "tested" or "sample
 #: rate" is not condemned for the substring — the corpus is full of real prose
@@ -265,6 +272,44 @@ def _check_profile_completeness(manifest: Manifest, problems: list[str]) -> None
             problems.append(f"job {job.id} has a placeholder title ({pattern})")
 
 
+def _check_preview_variety(manifest: Manifest, problems: list[str]) -> None:
+    """No screenful of the inbox may be mostly the same sentence.
+
+    The list shows each record's *last* message and sorts by recency, so a
+    message pool indexed by position puts identical sentences near each other.
+    Repetition across two hundred records is fine and unavoidable; repetition
+    inside one screenful is what makes the dataset look broken rather than busy.
+
+    Measured over a *window* rather than as a run of neighbours, because that is
+    what a reader actually sees. An earlier version of this counted only strict
+    runs and passed a screen showing the same answer in five rows out of eight,
+    which is precisely the state it existed to prevent.
+
+    `edge` is exempt: degenerate and duplicated content is what it is for.
+    """
+
+    if manifest.scenario not in NORMAL_SCENARIOS:
+        return
+
+    rows = [rel.messages[-1].body for rel in
+            sorted((r for r in manifest.relationships if r.messages),
+                   key=lambda r: -r.updated_offset)]
+
+    for start in range(len(rows)):
+        window = rows[start : start + PREVIEW_WINDOW]
+        if len(window) < PREVIEW_WINDOW:
+            break
+        counts: dict[str, int] = {}
+        for body in window:
+            counts[body] = counts.get(body, 0) + 1
+        worst, seen = max(counts.items(), key=lambda item: item[1])
+        if seen > PREVIEW_REPEAT_LIMIT:
+            problems.append(
+                f"{seen} of {PREVIEW_WINDOW} consecutive records show the preview {worst[:48]!r}"
+            )
+            return
+
+
 def validate(manifest: Manifest) -> None:
     check_version(manifest.version)
     problems: list[str] = []
@@ -408,6 +453,7 @@ def validate(manifest: Manifest) -> None:
             problems.append("no portfolio item is attached to any relationship")
 
     _check_profile_completeness(manifest, problems)
+    _check_preview_variety(manifest, problems)
 
     _fail(problems)
 
