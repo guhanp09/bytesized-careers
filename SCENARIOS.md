@@ -43,7 +43,7 @@ Use disposable local databases only.
 | Seed | Best for | Volume | Personas | Important coverage |
 | --- | --- | --- | --- | --- |
 | `empty` | First-run and empty states | 0 records / 0 jobs | — | — |
-| `default` | Ordinary design and workflow QA | 193 records / 33 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 659 portfolio items |
+| `default` | Ordinary design and workflow QA | 196 records / 34 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 668 portfolio items |
 | `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 1251 portfolio items |
 | `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 78 portfolio items |
 | `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 72 portfolio items |
@@ -57,6 +57,7 @@ is in the manifest's `index`.
 | Seed | Route | Mode | Persona | Job | Record | Expected visible state | Action to test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `d34ff60f` | `004efea4` | Interview proposed · future time · unconfirmed | Check the arranged time reads as upcoming and the applicant has no organiser controls. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `12390fb9` | Screening answers containing links, including an unsafe scheme | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=pipeline&mode=recruiter&demo=1` | Mock | Recruiter | `3a92c70d` | `1d3926a0` | pending applicant on retired job job_25 | Confirm no action is offered that would reopen a closed job. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `07ab0a22` | `2524fa7f` | Not proceeding · shared with them | Confirm both sides read the same outcome. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `e13265ba` | `318d1863` | Engagement active · payment funded | Check the payment card says funded without claiming funds are held. |
@@ -67,6 +68,7 @@ is in the manifest's `index`.
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `8ffbc415` | `4d559846` | Snoozed — hidden from the queue until it returns | Confirm snoozing changes no status and the record comes back. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `4dbcceb2` | Answers only · no typed message · must not render a blank thread | Confirm one opening bubble is generated from the answers, with the budget shown. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `3ad13549` | `5eaa4448` | Legacy Shortlisted · private · maps to Reviewing plus a private Star | Confirm the private legacy state reads as Reviewing and carries a Star. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `645a1961` | Screening answer long enough to test wrapping rather than truncation | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `6b546f0c` | Screening answers with an optional question deliberately skipped | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `8e0ed828` | Accepted (talent side) | Check the accepted request reads as an agreement, not as a pending action. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `80ccf00e` | `92257c6d` | Waiting on them · no reply needed from you | Confirm the card does not ask you to act while you are the one waiting. |
@@ -78,6 +80,7 @@ is in the manifest's `index`.
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `62d383cb` | `bee5d46b` | New · unread · portfolio attached | Open it and record a first decision. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `dd894f9f` | Inbound hiring request awaiting a reply | Reply and confirm the request leaves the needs-you queue. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `a9ff3afd` | `dfdf28dc` | Starred — personal organisation, never visible to the counterparty | Confirm the star is private and changes no lifecycle state. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `c11d317f` | `eb462148` | Screening on an imported listing, asked and answered in full | confirm the screening reads identically to a manually posted job |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `1d28537d` | `efee222d` | Withdrawn by the applicant | Check no action is offered that would move a withdrawn record. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `836d157f` | `f465887a` | Interview confirmed after a reschedule | Confirm the timeline shows the move without contradicting itself. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `77106b7d` | `f4f3732d` | Decision needed · interview completed | Record a decision and choose whether to share it. |
@@ -222,10 +225,10 @@ is in the manifest's `index`.
 
 | Dimension | Coverage across all six manifests |
 | --- | --- |
-| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 147 · rejected 83 · reviewing 159 · shortlisted 7 · withdrawn 28 |
+| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 147 · rejected 83 · reviewing 162 · shortlisted 7 · withdrawn 28 |
 | Payment state | disputed 8 · expired 6 · funded 12 · funding_pending 8 · not_applicable 10 · refunded 7 · release_requested 8 · released 9 · setup_pending 10 · work_in_progress 8 |
-| Relationship kind | application 585 · hiring_request 41 |
-| Indexed persona | Recruiter 105 · Talent 19 |
+| Relationship kind | application 588 · hiring_request 41 |
+| Indexed persona | Recruiter 108 · Talent 19 |
 | Portfolio volume | 37 records with none · 1 with 20+ |
 
 ## High volume: what renders, and how to reach the rest

@@ -4093,6 +4093,66 @@
       "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
+      "availability": "available",
+      "availability_status": "available",
+      "avatar_url": "https://avatars.scenario.invalid/9150.jpg",
+      "bio": "I build systems rather than one-off animations — a title set, a lower-third kit, a data-callout template a team can actually use without me. The goal is that episode forty looks like episode one.",
+      "deactivated": false,
+      "display_name": "Aarav Das",
+      "email": "default-talent09150@scenario.invalid",
+      "experience_years": 6,
+      "formats": [
+        "Motion graphics",
+        "YouTube packaging",
+        "Ad creatives"
+      ],
+      "headline": "Motion-graphics artist for creator-led channels",
+      "id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a",
+      "languages": [
+        "English"
+      ],
+      "location": "Kathmandu, Nepal",
+      "niches": [
+        "True crime"
+      ],
+      "platforms": [
+        "youtube",
+        "instagram_reels",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/motion-graphics-09150"
+      ],
+      "rate_currency": "INR",
+      "rate_max": 4000,
+      "rate_min": 1500,
+      "roles": [
+        "Motion-graphics artist"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "Motion graphics",
+        "Template systems",
+        "Data visualisation",
+        "Rigging",
+        "Brand animation"
+      ],
+      "timezone": "Asia/Kathmandu",
+      "tools": [
+        "After Effects",
+        "Cinema 4D",
+        "Illustrator",
+        "Figma"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "def_t09150",
+      "verification_status": "verified",
+      "work_mode": "Remote",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
+    },
+    {
       "availability": "selective",
       "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/3247.jpg",
@@ -8958,6 +9018,67 @@
       "working_hours": "Split day, overlapping both EU and US East"
     },
     {
+      "availability": "unavailable",
+      "availability_status": "unavailable",
+      "bio": "I localise rather than transcribe. Timing, reading speed and idiom all matter — a caption that is technically correct and unreadable at pace has failed the person it was for.",
+      "deactivated": false,
+      "display_name": "Dev Reddy",
+      "email": "default-talent09104@scenario.invalid",
+      "experience_years": 5,
+      "formats": [
+        "Captions",
+        "Voice-over"
+      ],
+      "headline": "Subtitler / translator for creator-led channels",
+      "id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7",
+      "languages": [
+        "English",
+        "Hindi",
+        "Spanish",
+        "Tamil"
+      ],
+      "location": "Hyderabad, India",
+      "niches": [
+        "Education"
+      ],
+      "platforms": [
+        "youtube",
+        "youtube_shorts",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/subtitler-09104"
+      ],
+      "rate_currency": "INR",
+      "rate_max": 60000,
+      "rate_min": 35000,
+      "roles": [
+        "Subtitler / translator"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "Subtitling",
+        "Localisation",
+        "Transcription",
+        "Reading-speed timing",
+        "QC"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit",
+        "Descript",
+        "YouTube Studio"
+      ],
+      "turnaround": "Three working days, faster on retainer",
+      "username": "def_t09104",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Split day, overlapping both EU and US East"
+    },
+    {
       "availability": "selective",
       "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/202.jpg",
@@ -9259,6 +9380,62 @@
       "verification_status": "verified",
       "work_mode": "On-site",
       "working_hours": "Mornings IST, overlapping with EU afternoons"
+    },
+    {
+      "availability": "selective",
+      "availability_status": "selective",
+      "avatar_url": "https://avatars.scenario.invalid/9103.jpg",
+      "bio": "Grading is continuity work as much as look development. I match across shoot days first, then build the look — a beautiful grade that flickers between cuts is a problem, not a style.",
+      "deactivated": false,
+      "display_name": "Kavya Verma",
+      "email": "default-talent09103@scenario.invalid",
+      "experience_years": 4,
+      "formats": [
+        "Long-form video",
+        "Ad creatives"
+      ],
+      "headline": "Colorist for creator-led channels",
+      "id": "d134558f-ef4b-5d60-bed5-451275ab94c3",
+      "languages": [
+        "English"
+      ],
+      "location": "Delhi NCR, India",
+      "niches": [
+        "Travel"
+      ],
+      "platforms": [
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/colorist-09103"
+      ],
+      "rate_currency": "EUR",
+      "rate_min": 800,
+      "roles": [
+        "Colorist"
+      ],
+      "sides": [
+        "talent"
+      ],
+      "skills": [
+        "Colour grading",
+        "Look development",
+        "Shot matching",
+        "LUT design",
+        "Delivery specs"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight",
+        "Premiere Pro"
+      ],
+      "turnaround": "Same-week delivery, two revision rounds included",
+      "username": "def_t09103",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Evenings IST — async the rest of the day"
     },
     {
       "availability": "unavailable",
@@ -11494,6 +11671,17 @@
       "scenario": "default"
     },
     {
+      "action_to_test": "open the record and review the screening answers in the thread",
+      "conversation_id": "ddae475a-298c-5bbb-92f3-d663b43f05f4",
+      "expected_condition": "Screening answers containing links, including an unsafe scheme",
+      "expected_stage": "reviewing",
+      "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
+      "persona": "recruiter",
+      "relationship_id": "12390fb9-9a97-5adc-8295-bcb8efda6c96",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
       "action_to_test": "Confirm no action is offered that would reopen a closed job.",
       "conversation_id": "f98a4f27-57d3-5bee-8080-dfd78afd8a80",
       "expected_condition": "pending applicant on retired job job_25",
@@ -11598,6 +11786,17 @@
       "job_id": "3ad13549-c650-5361-bff3-ab9be3a2172a",
       "persona": "recruiter",
       "relationship_id": "5eaa4448-029c-5f00-917d-a96f40ae9d1f",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
+      "action_to_test": "open the record and review the screening answers in the thread",
+      "conversation_id": "53964506-bbca-5f1f-b799-a681c9fdf980",
+      "expected_condition": "Screening answer long enough to test wrapping rather than truncation",
+      "expected_stage": "reviewing",
+      "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
+      "persona": "recruiter",
+      "relationship_id": "645a1961-304e-5771-b922-38171c2307b2",
       "route": "/applications?view=inbox&mode=recruiter",
       "scenario": "default"
     },
@@ -11720,6 +11919,17 @@
       "scenario": "default"
     },
     {
+      "action_to_test": "confirm the screening reads identically to a manually posted job",
+      "conversation_id": "51849b66-52f3-58d4-9f0d-b2a65a68ab6b",
+      "expected_condition": "Screening on an imported listing, asked and answered in full",
+      "expected_stage": "reviewing",
+      "job_id": "c11d317f-edfc-5131-b688-9d7490adf433",
+      "persona": "recruiter",
+      "relationship_id": "eb462148-f371-523d-b91a-f70a90ec3e2d",
+      "route": "/applications?view=inbox&mode=recruiter",
+      "scenario": "default"
+    },
+    {
       "action_to_test": "Check no action is offered that would move a withdrawn record.",
       "conversation_id": "ceab039d-3067-51a4-9689-6730c3f9d7f8",
       "expected_condition": "Withdrawn by the applicant",
@@ -11781,6 +11991,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "f9001a2a-066f-59e8-a69e-8f93c593dbd0",
       "platforms": [
         "tiktok"
@@ -11812,6 +12023,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "podcast"
@@ -11840,6 +12052,7 @@
       "niches": [
         "Gaming"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "multi_platform"
@@ -11872,6 +12085,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "twitch"
@@ -11924,6 +12138,7 @@
       "niches": [
         "Travel"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "youtube"
@@ -11956,6 +12171,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube"
@@ -11988,6 +12204,7 @@
       "niches": [
         "Comedy"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "tiktok"
@@ -12020,6 +12237,7 @@
       "niches": [
         "Travel"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "multi_platform"
@@ -12053,6 +12271,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "twitch"
@@ -12085,6 +12304,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "tiktok"
@@ -12115,6 +12335,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "tiktok"
@@ -12146,6 +12367,7 @@
       "niches": [
         "Comedy"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube_shorts"
@@ -12178,6 +12400,7 @@
       "niches": [
         "Education"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "youtube_shorts"
@@ -12210,6 +12433,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "podcast"
@@ -12242,6 +12466,7 @@
       "niches": [
         "Fitness"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube"
@@ -12273,6 +12498,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "f9001a2a-066f-59e8-a69e-8f93c593dbd0",
       "platforms": [
         "instagram_reels"
@@ -12304,6 +12530,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
       "platforms": [
         "multi_platform"
@@ -12331,6 +12558,7 @@
       "niches": [
         "Kids"
       ],
+      "origin": "manual",
       "owner_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
       "platforms": [
         "twitch"
@@ -12362,6 +12590,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube_shorts"
@@ -12390,6 +12619,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "podcast"
@@ -12421,6 +12651,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube_shorts"
@@ -12453,6 +12684,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "twitch"
@@ -12485,6 +12717,7 @@
       "niches": [
         "Kids"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "podcast"
@@ -12516,6 +12749,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "f9001a2a-066f-59e8-a69e-8f93c593dbd0",
       "platforms": [
         "youtube_shorts"
@@ -12547,6 +12781,7 @@
       "niches": [
         "Gaming"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "instagram_reels"
@@ -12579,6 +12814,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "b20000e5-a22c-5a3e-880e-74ac9bef4571",
       "platforms": [
         "multi_platform"
@@ -12611,6 +12847,7 @@
       "niches": [
         "Gaming"
       ],
+      "origin": "manual",
       "owner_id": "f9001a2a-066f-59e8-a69e-8f93c593dbd0",
       "platforms": [
         "youtube"
@@ -12643,6 +12880,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "tiktok"
@@ -12660,6 +12898,59 @@
       "work_mode": "Hybrid"
     },
     {
+      "compensation_currency": "INR",
+      "compensation_min": 2500.0,
+      "compensation_mode": "fixed",
+      "compensation_unit": "per video",
+      "experience": "2–4 years",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "id": "c11d317f-edfc-5131-b688-9d7490adf433",
+      "location": "Indore, India",
+      "niches": [
+        "Kids"
+      ],
+      "origin": "imported",
+      "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
+      "platforms": [
+        "podcast"
+      ],
+      "posted_offset": -172800,
+      "screening_questions": [
+        {
+          "id": "q1",
+          "position": 0,
+          "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+          "required": true,
+          "response_guidance": "Name one project and what you actually did to it."
+        },
+        {
+          "id": "q2",
+          "position": 1,
+          "prompt": "How many videos a week can you turn around at this length?",
+          "required": true
+        },
+        {
+          "id": "q3",
+          "position": 2,
+          "prompt": "Anything else the hiring team should know?",
+          "required": false
+        }
+      ],
+      "status": "published",
+      "tags": [
+        "Podcast editing",
+        "Kids"
+      ],
+      "title": "Shorts editor for a weekly cooking channel",
+      "turnaround_basis": "first_draft",
+      "turnaround_unit": "weeks",
+      "turnaround_value": 1,
+      "work_mode": "Hybrid"
+    },
+    {
       "compensation_currency": "EUR",
       "compensation_min": 800.0,
       "compensation_mode": "fixed",
@@ -12674,6 +12965,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "instagram_reels"
@@ -12706,6 +12998,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "twitch"
@@ -12738,6 +13031,7 @@
       "niches": [
         "Education"
       ],
+      "origin": "manual",
       "owner_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
       "platforms": [
         "youtube"
@@ -12767,6 +13061,7 @@
       "niches": [
         "Fitness"
       ],
+      "origin": "manual",
       "owner_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
       "platforms": [
         "podcast"
@@ -12798,6 +13093,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "fc2ffc8f-0b74-5985-b466-a0914f4d1e4c",
       "platforms": [
         "instagram_reels"
@@ -13504,6 +13800,26 @@
         "HubSpot"
       ],
       "url": "https://work.scenario.invalid/0d4085c8"
+    },
+    {
+      "contribution": "Lead editor",
+      "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
+      "duration_seconds": 1228,
+      "format": "Shorts/Reels",
+      "id": "0d478776-4ee6-52bf-b7f5-0cf574fae3a6",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "d134558f-ef4b-5d60-bed5-451275ab94c3",
+      "platform": "youtube_shorts",
+      "role": "Lead editor",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/0d478776.jpg",
+      "title": "Interview multicam edit",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight"
+      ],
+      "url": "https://work.scenario.invalid/0d478776"
     },
     {
       "contribution": "Strategy and planning",
@@ -14443,6 +14759,26 @@
       "url": "https://work.scenario.invalid/20f550ef"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
+      "duration_seconds": 2930,
+      "format": "Podcast editing",
+      "id": "21297c89-3173-5c88-9895-e42c3453bf9a",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a",
+      "platform": "podcast",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/21297c89.jpg",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "After Effects",
+        "Cinema 4D"
+      ],
+      "url": "https://work.scenario.invalid/21297c89"
+    },
+    {
       "contribution": "Design system",
       "description": "Title and thumbnail pairs designed together, with a template a non-designer on the team can extend without breaking it.",
       "format": "Content strategy",
@@ -14477,6 +14813,26 @@
         "HubSpot"
       ],
       "url": "https://work.scenario.invalid/213caaed"
+    },
+    {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 3004,
+      "format": "Long-form video",
+      "id": "216b8a7e-8d1e-5d31-91c8-f4a81a716693",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a",
+      "platform": "youtube",
+      "role": "Edit and direction",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/216b8a7e.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "After Effects",
+        "Cinema 4D"
+      ],
+      "url": "https://work.scenario.invalid/216b8a7e"
     },
     {
       "contribution": "Research and script",
@@ -15456,6 +15812,26 @@
       ]
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
+      "duration_seconds": 1265,
+      "format": "Shorts/Reels",
+      "id": "35f0d750-d5b7-5af0-b7a9-bc0e4164a857",
+      "media": "video",
+      "niche": "Beauty",
+      "owner_id": "d134558f-ef4b-5d60-bed5-451275ab94c3",
+      "platform": "tiktok",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/35f0d750.jpg",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight"
+      ],
+      "url": "https://work.scenario.invalid/35f0d750"
+    },
+    {
       "contribution": "Commercial strategy",
       "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Shorts/Reels",
@@ -16160,6 +16536,25 @@
         "Adobe Audition"
       ],
       "url": "https://work.scenario.invalid/43c62a03"
+    },
+    {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
+      "duration_seconds": 2967,
+      "format": "Content strategy",
+      "id": "43c7bb8c-af04-5d7b-958c-0149a2f528f0",
+      "media": "video",
+      "niche": "Food",
+      "owner_id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a",
+      "platform": "multi_platform",
+      "role": "Lead editor, packaging",
+      "thumbnail_broken": false,
+      "title": "Series packaging — education channel",
+      "tools": [
+        "After Effects",
+        "Cinema 4D"
+      ],
+      "url": "https://work.scenario.invalid/43c7bb8c"
     },
     {
       "contribution": "Lead editor",
@@ -17590,6 +17985,25 @@
       "url": "https://work.scenario.invalid/6166eddf"
     },
     {
+      "contribution": "Edit, timing",
+      "description": "A ninety-second read cut to thirty-five without losing the offer, placed after the first payoff rather than before it.",
+      "duration_seconds": 1191,
+      "format": "Long-form video",
+      "id": "6240953e-7a32-5ee7-9e82-ca2e78a8d8dd",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "d134558f-ef4b-5d60-bed5-451275ab94c3",
+      "platform": "youtube",
+      "role": "Edit, timing",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight"
+      ],
+      "url": "https://work.scenario.invalid/6240953e"
+    },
+    {
       "contribution": "Audio edit and mix",
       "description": "Noise floor, plosives and room tone matched across two remote guests recording on very different setups.",
       "duration_seconds": 513,
@@ -18292,6 +18706,25 @@
         "Notion"
       ],
       "url": "https://work.scenario.invalid/74507ecb"
+    },
+    {
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
+      "format": "Shorts/Reels",
+      "id": "74e8b4aa-8e1b-5ee3-a6d8-45bf50c25c21",
+      "media": "link",
+      "niche": "Beauty",
+      "owner_id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7",
+      "platform": "tiktok",
+      "role": "Script and structure",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/74e8b4aa.jpg",
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/74e8b4aa"
     },
     {
       "contribution": "Strategy and planning",
@@ -23281,6 +23714,24 @@
       "url": "https://work.scenario.invalid/d8111dcb"
     },
     {
+      "contribution": "Captions and localisation",
+      "description": "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.",
+      "format": "Shorts/Reels",
+      "id": "d8c6d553-adc3-5aac-bab8-84d8d6c4f1a6",
+      "media": "link",
+      "niche": "Technology",
+      "owner_id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7",
+      "platform": "instagram_reels",
+      "role": "Captions and localisation",
+      "thumbnail_broken": false,
+      "title": "Translation + subtitle pass",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/d8c6d553"
+    },
+    {
       "contribution": "Sound and captions",
       "description": "Sound design and captions for a narrative episode, timed so the captions never land before the beat they describe.",
       "duration_seconds": 254,
@@ -23411,6 +23862,25 @@
         "DaVinci Resolve"
       ],
       "url": "https://work.scenario.invalid/daad6c3e"
+    },
+    {
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
+      "format": "Shorts/Reels",
+      "id": "dae170af-daef-521d-b398-6b5ca0ea6c1a",
+      "media": "link",
+      "niche": "Gaming",
+      "owner_id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7",
+      "platform": "youtube_shorts",
+      "role": "Research and script",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/dae170af.jpg",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
+      "url": "https://work.scenario.invalid/dae170af"
     },
     {
       "contribution": "Policy and process",
@@ -26041,6 +26511,99 @@
     },
     {
       "archived": false,
+      "conversation_id": "ddae475a-298c-5bbb-92f3-d663b43f05f4",
+      "created_offset": -518400,
+      "id": "12390fb9-9a97-5adc-8295-bcb8efda6c96",
+      "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "A few questions from the hiring team:\n\n1. Which edit of yours best shows your retention judgement, and what did you change? (Required)\n2. How many videos a week can you turn around at this length? (Required)\n3. Anything else the hiring team should know?\n\nReply in this conversation with your answers.",
+          "conversation_id": "ddae475a-298c-5bbb-92f3-d663b43f05f4",
+          "id": "0aa9e573-151a-51c1-8c5f-24daf4de2aba",
+          "kind": "screening_questions",
+          "metadata": {
+            "automated": true,
+            "message_kind": "screening_questions",
+            "questions": [
+              {
+                "id": "q1",
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response_guidance": "Name one project and what you actually did to it."
+              },
+              {
+                "id": "q2",
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true
+              },
+              {
+                "id": "q3",
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false
+              }
+            ],
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -514800,
+          "read": true,
+          "sender_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3"
+        },
+        {
+          "body": "Answers to your questions:\n\n1. Which edit of yours best shows your retention judgement, and what did you change?\n   Two that show it best — the retention rebuild at https://folio.scenario.invalid/retention-rebuild, and the cold-open pass at https://folio.scenario.invalid/cold-open (that one has the before/after side by side).\n2. How many videos a week can you turn around at this length?\n   Two a week, three at a push.\n3. Anything else the hiring team should know?\n   Reachable at javascript:alert('not a link') — that is my old handle, not a site.",
+          "conversation_id": "ddae475a-298c-5bbb-92f3-d663b43f05f4",
+          "id": "1f8a6f1b-939b-56f8-8e3c-647dd752f493",
+          "kind": "screening_answers",
+          "metadata": {
+            "answers": [
+              {
+                "answered": true,
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response": "Two that show it best — the retention rebuild at https://folio.scenario.invalid/retention-rebuild, and the cold-open pass at https://folio.scenario.invalid/cold-open (that one has the before/after side by side)."
+              },
+              {
+                "answered": true,
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true,
+                "response": "Two a week, three at a push."
+              },
+              {
+                "answered": true,
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false,
+                "response": "Reachable at javascript:alert('not a link') — that is my old handle, not a site."
+              }
+            ],
+            "message_kind": "screening_answers",
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -500400,
+          "read": true,
+          "sender_id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "dae170af-daef-521d-b398-6b5ca0ea6c1a",
+        "74e8b4aa-8e1b-5ee3-a6d8-45bf50c25c21",
+        "d8c6d553-adc3-5aac-bab8-84d8d6c4f1a6"
+      ],
+      "recruiter_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "ca68339c-e8b1-56e7-a96f-63df3b6f05e7",
+      "unread": 0,
+      "updated_offset": -500400
+    },
+    {
+      "archived": false,
       "conversation_id": "fc468995-4936-587b-8a45-a97b6fa8fde1",
       "created_offset": -716400,
       "id": "13f4d437-faf2-5ee0-b458-89febe092973",
@@ -28468,6 +29031,115 @@
       "talent_id": "5449feef-ccfd-5bee-b72b-12ec3ca05e05",
       "unread": 0,
       "updated_offset": -604800
+    },
+    {
+      "answers": {
+        "custom_instruction": "Happy to start with one paid test edit.",
+        "expected_rate": {
+          "amount": "18,000",
+          "unit": "per month"
+        },
+        "fit_note": "I already edit in this niche, so pacing needs no calibration.",
+        "relevant_experience": "Two years on a weekly gaming channel",
+        "start_availability": "Immediately",
+        "tools_workflow": "DaVinci Resolve, Notion for tracking",
+        "turnaround": {
+          "unit": "days",
+          "value": "2"
+        },
+        "working_hours": "Mornings, overlapping with EU"
+      },
+      "archived": false,
+      "conversation_id": "53964506-bbca-5f1f-b799-a681c9fdf980",
+      "created_offset": -432000,
+      "id": "645a1961-304e-5771-b922-38171c2307b2",
+      "job_id": "14b8ef0f-0097-51a0-bbe1-68f9441397a8",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "A few questions from the hiring team:\n\n1. Which edit of yours best shows your retention judgement, and what did you change? (Required)\n2. How many videos a week can you turn around at this length? (Required)\n3. Anything else the hiring team should know?\n\nReply in this conversation with your answers.",
+          "conversation_id": "53964506-bbca-5f1f-b799-a681c9fdf980",
+          "id": "d496115d-8014-5147-8e83-9b148bc5697a",
+          "kind": "screening_questions",
+          "metadata": {
+            "automated": true,
+            "message_kind": "screening_questions",
+            "questions": [
+              {
+                "id": "q1",
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response_guidance": "Name one project and what you actually did to it."
+              },
+              {
+                "id": "q2",
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true
+              },
+              {
+                "id": "q3",
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false
+              }
+            ],
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -428400,
+          "read": true,
+          "sender_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3"
+        },
+        {
+          "body": "Answers to your questions:\n\n1. Which edit of yours best shows your retention judgement, and what did you change?\n   The one I'd point at is a 26-minute pension explainer that was losing roughly half its audience before the four-minute mark. The script was sound; the problem was that it opened with two minutes of definitions before it said why any of it mattered to the viewer.\n\nI restructured it so the consequence came first — a single number, on screen, in the first eight seconds — and then folded the definitions into the walkthrough as they became necessary rather than teaching them up front. That meant re-cutting the middle act around three questions instead of five sections, dropping about ninety seconds of B-roll that was there to cover narration I ended up removing, and rebuilding the lower thirds so the figures stayed on screen while they were discussed rather than flashing past.\n\nThe four-minute retention went from 48% to 71% and average view duration rose by just over three minutes. What I took from it: on this kind of channel the edit's job is to keep answering \"and why do I care\" for as long as the runtime lasts, and definitions almost never do that.\n2. How many videos a week can you turn around at this length?\n   Two at this length, comfortably. Three if one of them is a repeat format I have already built the template for.\n3. Anything else the hiring team should know?\n   I keep Fridays clear for revisions, so a Thursday cut usually comes back same-week.",
+          "conversation_id": "53964506-bbca-5f1f-b799-a681c9fdf980",
+          "id": "288aad6f-4b49-591e-b361-a6ae286b86d7",
+          "kind": "screening_answers",
+          "metadata": {
+            "answers": [
+              {
+                "answered": true,
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response": "The one I'd point at is a 26-minute pension explainer that was losing roughly half its audience before the four-minute mark. The script was sound; the problem was that it opened with two minutes of definitions before it said why any of it mattered to the viewer.\n\nI restructured it so the consequence came first — a single number, on screen, in the first eight seconds — and then folded the definitions into the walkthrough as they became necessary rather than teaching them up front. That meant re-cutting the middle act around three questions instead of five sections, dropping about ninety seconds of B-roll that was there to cover narration I ended up removing, and rebuilding the lower thirds so the figures stayed on screen while they were discussed rather than flashing past.\n\nThe four-minute retention went from 48% to 71% and average view duration rose by just over three minutes. What I took from it: on this kind of channel the edit's job is to keep answering \"and why do I care\" for as long as the runtime lasts, and definitions almost never do that."
+              },
+              {
+                "answered": true,
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true,
+                "response": "Two at this length, comfortably. Three if one of them is a repeat format I have already built the template for."
+              },
+              {
+                "answered": true,
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false,
+                "response": "I keep Fridays clear for revisions, so a Thursday cut usually comes back same-week."
+              }
+            ],
+            "message_kind": "screening_answers",
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -414000,
+          "read": true,
+          "sender_id": "d134558f-ef4b-5d60-bed5-451275ab94c3"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "6240953e-7a32-5ee7-9e82-ca2e78a8d8dd",
+        "0d478776-4ee6-52bf-b7f5-0cf574fae3a6",
+        "35f0d750-d5b7-5af0-b7a9-bc0e4164a857"
+      ],
+      "recruiter_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "d134558f-ef4b-5d60-bed5-451275ab94c3",
+      "unread": 0,
+      "updated_offset": -414000
     },
     {
       "archived": false,
@@ -32620,6 +33292,99 @@
     },
     {
       "archived": false,
+      "conversation_id": "51849b66-52f3-58d4-9f0d-b2a65a68ab6b",
+      "created_offset": -777600,
+      "id": "eb462148-f371-523d-b91a-f70a90ec3e2d",
+      "job_id": "c11d317f-edfc-5131-b688-9d7490adf433",
+      "kind": "application",
+      "messages": [
+        {
+          "body": "A few questions from the hiring team:\n\n1. Which edit of yours best shows your retention judgement, and what did you change? (Required)\n2. How many videos a week can you turn around at this length? (Required)\n3. Anything else the hiring team should know?\n\nReply in this conversation with your answers.",
+          "conversation_id": "51849b66-52f3-58d4-9f0d-b2a65a68ab6b",
+          "id": "22c9d54d-e4af-56c3-ab67-d6374cf4ff94",
+          "kind": "screening_questions",
+          "metadata": {
+            "automated": true,
+            "message_kind": "screening_questions",
+            "questions": [
+              {
+                "id": "q1",
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response_guidance": "Name one project and what you actually did to it."
+              },
+              {
+                "id": "q2",
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true
+              },
+              {
+                "id": "q3",
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false
+              }
+            ],
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -770400,
+          "read": true,
+          "sender_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3"
+        },
+        {
+          "body": "Answers to your questions:\n\n1. Which edit of yours best shows your retention judgement, and what did you change?\n   The shorts run I cut for a cooking channel — I rebuilt the first two seconds around the plate landing rather than the presenter's greeting.\n2. How many videos a week can you turn around at this length?\n   Five or six a week at this length.\n3. Anything else the hiring team should know?\n   Happy to work to a template once we agree one.",
+          "conversation_id": "51849b66-52f3-58d4-9f0d-b2a65a68ab6b",
+          "id": "0bcd0856-e66c-56ff-9a45-8e813b33531b",
+          "kind": "screening_answers",
+          "metadata": {
+            "answers": [
+              {
+                "answered": true,
+                "position": 0,
+                "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+                "required": true,
+                "response": "The shorts run I cut for a cooking channel — I rebuilt the first two seconds around the plate landing rather than the presenter's greeting."
+              },
+              {
+                "answered": true,
+                "position": 1,
+                "prompt": "How many videos a week can you turn around at this length?",
+                "required": true,
+                "response": "Five or six a week at this length."
+              },
+              {
+                "answered": true,
+                "position": 2,
+                "prompt": "Anything else the hiring team should know?",
+                "required": false,
+                "response": "Happy to work to a template once we agree one."
+              }
+            ],
+            "message_kind": "screening_answers",
+            "snapshot_version": "scenario-v1"
+          },
+          "offset_seconds": -756000,
+          "read": true,
+          "sender_id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a"
+        }
+      ],
+      "participant_stage": "reviewing",
+      "portfolio_ids": [
+        "21297c89-3173-5c88-9895-e42c3453bf9a",
+        "43c7bb8c-af04-5d7b-958c-0149a2f528f0",
+        "216b8a7e-8d1e-5d31-91c8-f4a81a716693"
+      ],
+      "recruiter_id": "f8e4dffa-43da-5b79-8705-f300f27dd7b3",
+      "stage": "reviewing",
+      "starred": false,
+      "talent_id": "62a5ea35-9d11-55d2-b0af-897c4e8aee9a",
+      "unread": 0,
+      "updated_offset": -756000
+    },
+    {
+      "archived": false,
       "conversation_id": "411e2ea7-170b-533b-86c3-f94f35e03993",
       "created_offset": -626400,
       "id": "efe08df1-fc11-515d-90b1-9d1c11fb776c",
@@ -33497,15 +34262,15 @@
   "scenario": "default",
   "seed": 2000,
   "stats": {
-    "actors": 197,
-    "applications": 165,
+    "actors": 200,
+    "applications": 168,
     "client_state": 0,
-    "conversations": 193,
+    "conversations": 196,
     "engagements": 20,
     "hiring_requests": 28,
     "interviews": 19,
-    "jobs": 33,
-    "messages": 293,
+    "jobs": 34,
+    "messages": 299,
     "payment_states": {
       "disputed": 1,
       "funded": 4,
@@ -33516,8 +34281,8 @@
       "setup_pending": 1,
       "work_in_progress": 3
     },
-    "portfolio_items": 659,
-    "relationships": 193,
+    "portfolio_items": 668,
+    "relationships": 196,
     "stages": {
       "accepted": 5,
       "archived": 20,
@@ -33526,7 +34291,7 @@
       "interviewing": 19,
       "new": 40,
       "rejected": 20,
-      "reviewing": 41,
+      "reviewing": 44,
       "shortlisted": 2,
       "withdrawn": 21
     }

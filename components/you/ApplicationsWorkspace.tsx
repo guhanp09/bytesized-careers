@@ -20,6 +20,7 @@ import { formatNoteTimestamp, type PrivateNote } from "../../lib/privateNotes";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
+import { splitAnswerLinks } from "../../lib/answerLinks";
 import { useRealtimeMessaging, type RealtimeMessagingEvent } from "../../lib/realtimeMessaging";
 import {
   buildUnreadByThread,
@@ -1785,6 +1786,38 @@ function ScreeningQuestionsCard({
  * make a skipped optional question indistinguishable from one that was never
  * put, which is exactly the distinction somebody deciding on a candidate needs.
  */
+/**
+ * An answer, with the links in it usable but not trusted.
+ *
+ * "Here is the reel: <url>" is most of what people write, and leaving it as
+ * inert text taxes every application. Only `http`/`https` become anchors, the
+ * label is exactly what was typed, and nothing is fetched — a preview would
+ * disclose the reviewer's IP to the sender the moment the thread was opened.
+ */
+function AnswerText({ text }: { text: string }) {
+  const segments = splitAnswerLinks(text);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === "link" ? (
+          <a
+            key={`link-${index}`}
+            href={segment.href}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            data-testid="screening-answer-link"
+            className="break-all text-blue-300 underline underline-offset-2 transition-colors hover:text-blue-200"
+          >
+            {segment.value}
+          </a>
+        ) : (
+          <span key={`text-${index}`}>{segment.value}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function ScreeningAnswersCard({ message }: { message: ChatMessage }) {
   const answers = message.screeningAnswers?.answers ?? [];
   if (answers.length === 0) {
@@ -1821,13 +1854,14 @@ function ScreeningAnswersCard({ message }: { message: ChatMessage }) {
               )}
             </p>
             <p
+              data-testid="screening-answer-response"
               className={
                 entry.answered
                   ? "mt-1 whitespace-pre-wrap break-words border-l-2 border-blue-400/40 pl-3 text-[13px] leading-relaxed text-white/88"
                   : "mt-1 border-l-2 border-white/10 pl-3 text-[12px] italic text-subtle"
               }
             >
-              {entry.answered ? entry.response : "Skipped — this one was optional"}
+              {entry.answered ? <AnswerText text={entry.response} /> : "Skipped — this one was optional"}
             </p>
           </li>
         ))}

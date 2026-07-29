@@ -2915,6 +2915,7 @@
       "niches": [
         "Travel"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "multi_platform"
@@ -2946,6 +2947,7 @@
       "niches": [
         "Comedy"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube_shorts"
@@ -2978,6 +2980,7 @@
       "niches": [
         "Education"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube"
@@ -3007,6 +3010,7 @@
       "niches": [
         "Fitness"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube"
@@ -3038,6 +3042,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube_shorts"
@@ -3067,6 +3072,7 @@
       "niches": [
         "Kids"
       ],
+      "origin": "manual",
       "owner_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
       "platforms": [
         "podcast"
@@ -3097,6 +3103,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "tiktok"
@@ -3128,6 +3135,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "instagram_reels"
@@ -3159,6 +3167,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube_shorts"
@@ -3190,6 +3199,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "podcast"
@@ -3223,6 +3233,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "67fa7273-7ba1-5ba4-943c-b98fab2dec5c",
       "platforms": [
         "twitch"
@@ -3254,6 +3265,7 @@
       "niches": [
         "Gaming"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "multi_platform"
@@ -3286,6 +3298,7 @@
       "niches": [
         "Travel"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "podcast"
@@ -3318,6 +3331,7 @@
       "niches": [
         "Comedy"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube"
@@ -3350,6 +3364,7 @@
       "niches": [
         "Finance"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "podcast"
@@ -3382,6 +3397,7 @@
       "niches": [
         "Food"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "tiktok"
@@ -3414,6 +3430,7 @@
       "niches": [
         "Beauty"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "youtube"
@@ -3446,6 +3463,7 @@
       "niches": [
         "Gaming"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "instagram_reels"
@@ -3477,6 +3495,7 @@
       "niches": [
         "Education"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "multi_platform"
@@ -3509,6 +3528,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "a0f5e49e-e4fc-569b-b4ee-b49671805ac1",
       "platforms": [
         "twitch"

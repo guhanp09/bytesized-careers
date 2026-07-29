@@ -28,6 +28,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.core.security import hash_password
 from app.models import (
     Conversation,
@@ -40,6 +41,7 @@ from app.models import (
     User,
     UserContentStyle,
 )
+from app.models.job_import import JobImportDraft, JobImportSource
 from app.models.review import Engagement
 
 from .schema import SCENARIO_NAMES, scenario_id
@@ -171,6 +173,15 @@ async def restore_manifest(
         await session.execute(delete(JobApplication).where(JobApplication.id.in_(rel_ids)))
         await session.execute(delete(TalentInterest).where(TalentInterest.id.in_(rel_ids)))
     if job_ids:
+        # Drafts and their sources first: both point at rows below them.
+        await session.execute(
+            delete(JobImportDraft).where(JobImportDraft.target_job_id.in_(job_ids))
+        )
+        await session.execute(
+            delete(JobImportSource).where(
+                JobImportSource.id.in_([UUID(scenario_id("import-source", str(j))) for j in job_ids])
+            )
+        )
         await session.execute(delete(Job).where(Job.id.in_(job_ids)))
     if actor_ids:
         await session.execute(delete(TalentListing).where(TalentListing.owner_user_id.in_(actor_ids)))
@@ -291,6 +302,46 @@ async def restore_manifest(
                 screening_questions=job.get("screening_questions") or None,
                 status="published" if job.get("status") != "closed" else "closed",
                 created_at=_instant(at, job.get("posted_offset", -86_400)),
+            )
+        )
+    await session.flush()
+
+    # Provenance is a relationship in this product, not a column: a listing is
+    # "imported" because an import draft points at it. Recorded the real way so
+    # the imported path is exercisable against a backend rather than only
+    # asserted in Mock mode. Written after the jobs are flushed, because the
+    # draft's foreign key needs the row it points at to already exist.
+    for job in jobs:
+        if job.get("origin") != "imported":
+            continue
+        posted = _instant(at, job.get("posted_offset", -86_400))
+        source_id = UUID(scenario_id("import-source", job["id"]))
+        session.add(
+            JobImportSource(
+                id=source_id,
+                owner_user_id=UUID(job["owner_id"]),
+                source_type="external_listing_text",
+                source_title=job["title"],
+                content_fingerprint=scenario_id("import-fingerprint", job["id"]).replace("-", ""),
+                processing_state="processed",
+                created_at=posted,
+                updated_at=posted,
+            )
+        )
+    await session.flush()
+    for job in jobs:
+        if job.get("origin") != "imported":
+            continue
+        posted = _instant(at, job.get("posted_offset", -86_400))
+        session.add(
+            JobImportDraft(
+                id=UUID(scenario_id("import-draft", job["id"])),
+                owner_user_id=UUID(job["owner_id"]),
+                source_id=UUID(scenario_id("import-source", job["id"])),
+                target_listing_schema_version=CURRENT_LISTING_SCHEMA_VERSION,
+                target_job_id=UUID(job["id"]),
+                created_at=posted,
+                updated_at=posted,
             )
         )
     await session.flush()

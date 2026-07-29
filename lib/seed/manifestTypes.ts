@@ -113,6 +113,12 @@ export type ManifestJob = {
   trial_amount?: number | null;
   trial_currency?: string | null;
   tags?: string[];
+  /**
+   * "manual" or "imported" — how the listing came to exist. Screening prompts
+   * are the one field the importer may not author, so an imported job that
+   * screens is where that boundary is actually observable.
+   */
+  origin?: string;
   legacy_key?: string | null;
 };
 

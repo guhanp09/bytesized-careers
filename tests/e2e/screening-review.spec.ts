@@ -104,3 +104,91 @@ test("the answers stand apart from the human messages around them", async ({ pag
     if (group.hasAnswers) expect(group.bubbles).toBe(1);
   }
 });
+
+test("a long answer is shown in full, wrapped rather than cut", async ({ page }) => {
+  const target = anchor("default", "long enough to test wrapping", { persona: "recruiter" });
+  await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
+  const detail = await openRecord(page, target);
+
+  const answers = detail.getByTestId("screening-answers-card");
+  await expect(answers).toBeVisible();
+  // Both ends of the long response are present: a truncated answer would be a
+  // silent editorial decision about somebody's application.
+  await expect(answers).toContainText(/26-minute pension explainer/i);
+  await expect(answers).toContainText(/definitions almost never do that/i);
+
+  // And it wrapped inside its column rather than widening the thread.
+  const overflow = await answers.evaluate((node) => {
+    const scroller = node.closest("[data-testid='applications-detail']") ?? document.body;
+    return {
+      wider: node.scrollWidth - node.clientWidth,
+      pageWider: scroller.scrollWidth - scroller.clientWidth,
+    };
+  });
+  expect(overflow.wider, "the answers card scrolls sideways").toBeLessThanOrEqual(1);
+  expect(overflow.pageWider, "a long answer widened the conversation").toBeLessThanOrEqual(1);
+});
+
+test("links in an answer are usable, and only the safe ones", async ({ page }) => {
+  const target = anchor("default", "containing links", { persona: "recruiter" });
+  await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
+  const detail = await openRecord(page, target);
+
+  const answers = detail.getByTestId("screening-answers-card");
+  await expect(answers).toBeVisible();
+
+  const links = answers.getByTestId("screening-answer-link");
+  await expect(links).toHaveCount(2);
+  for (let index = 0; index < 2; index += 1) {
+    const link = links.nth(index);
+    const href = await link.getAttribute("href");
+    expect(href, "a rendered link must carry a safe scheme").toMatch(/^https?:\/\//);
+    // Opening somebody's link must not hand them the referrer or the opener.
+    expect(await link.getAttribute("rel")).toContain("noopener");
+    expect(await link.getAttribute("rel")).toContain("noreferrer");
+    // The label is the destination — no link may display one and go to another.
+    expect((await link.textContent())?.trim()).toBe(href);
+  }
+
+  // The scripting scheme is visible as text and is not a link.
+  await expect(answers).toContainText("javascript:alert");
+  const hrefs = await links.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href")));
+  for (const href of hrefs) expect(href).not.toMatch(/^javascript:/i);
+});
+
+test("nothing in an answer is fetched when the thread is opened", async ({ page }) => {
+  // A preview would disclose the reviewer's IP to whoever sent the link, the
+  // moment the conversation was opened and before anyone chose to trust it.
+  const reached: string[] = [];
+  await page.route("**://folio.scenario.invalid/**", (route) => {
+    reached.push(route.request().url());
+    return route.abort();
+  });
+
+  const target = anchor("default", "containing links", { persona: "recruiter" });
+  await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
+  const detail = await openRecord(page, target);
+  await expect(detail.getByTestId("screening-answers-card")).toBeVisible();
+  await page.waitForTimeout(600);
+
+  expect(reached, `the page fetched ${reached.join(", ")}`).toHaveLength(0);
+});
+
+test("screening on an imported listing reads exactly like any other", async ({ page }) => {
+  // The importer may not author screening prompts, so these were added by the
+  // recruiter afterwards. None of that is visible from inside the conversation,
+  // and it must not be: how a question was asked cannot depend on where the
+  // listing came from.
+  const target = anchor("default", "imported listing", { persona: "recruiter" });
+  await openWorkspace(page, { scenario: "default", mode: "recruiter", view: "inbox" });
+  const detail = await openRecord(page, target);
+
+  await expect(detail.getByText("Screening questions").first()).toBeVisible();
+  const answers = detail.getByTestId("screening-answers-card");
+  await expect(answers).toBeVisible();
+  await expect(answers).toContainText("3 of 3 answered");
+  await expect(answers).toContainText(/plate landing rather than the presenter/i);
+
+  // Nothing anywhere claims the questions were generated.
+  await expect(detail.getByText(/imported|auto-generated|extracted/i)).toHaveCount(0);
+});

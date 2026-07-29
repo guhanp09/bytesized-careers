@@ -267,6 +267,11 @@ class Job:
     #: The recruiter's private screening prompts. Authored, never inferred — the
     #: import provider is explicitly forbidden from producing them.
     screening_questions: list[dict[str, Any]] = field(default_factory=list)
+    #: How this listing came to exist: "manual" (typed into the post-job flow)
+    #: or "imported" (brought in by the importer, then edited). It matters here
+    #: because screening prompts are the one thing the importer may not author,
+    #: so an imported job that screens is where that boundary is observable.
+    origin: str = "manual"
     #: Retired canonical job ids reused rather than reinvented (job_25, job_26).
     legacy_key: str | None = None
 

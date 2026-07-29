@@ -783,6 +783,19 @@ def _screened_applications(builder: Builder) -> None:
     job.title = "Long-form editor for a screened finance channel"
     job.screening_questions = [dict(entry) for entry in SCREENING_PROMPTS]
 
+    # The same screening, on a listing that arrived through the importer rather
+    # than the post-job flow. Worth a fixture of its own because the importer is
+    # forbidden from authoring screening prompts: these were added by the
+    # recruiter afterwards, and a reviewer must not be able to tell the
+    # difference from inside the conversation. Nothing about how a question was
+    # asked should depend on where the listing came from.
+    imported = builder.job(recruiter, 901)
+    # Titled as the recruiter would title it. Naming the provenance in the copy
+    # would defeat the fixture: the whole claim is that a reviewer cannot tell.
+    imported.title = "Shorts editor for a weekly cooking channel"
+    imported.origin = "imported"
+    imported.screening_questions = [dict(entry) for entry in SCREENING_PROMPTS]
+
     cases: tuple[tuple[str, dict[int, str] | None, str], ...] = (
         (
             "complete",
@@ -805,6 +818,46 @@ def _screened_applications(builder: Builder) -> None:
             "unanswered",
             None,
             "Screening questions asked and not yet answered",
+        ),
+        (
+            "long",
+            {
+                0: (
+                    "The one I'd point at is a 26-minute pension explainer that was losing "
+                    "roughly half its audience before the four-minute mark. The script was "
+                    "sound; the problem was that it opened with two minutes of definitions "
+                    "before it said why any of it mattered to the viewer.\n\n"
+                    "I restructured it so the consequence came first — a single number, on "
+                    "screen, in the first eight seconds — and then folded the definitions "
+                    "into the walkthrough as they became necessary rather than teaching them "
+                    "up front. That meant re-cutting the middle act around three questions "
+                    "instead of five sections, dropping about ninety seconds of B-roll that "
+                    "was there to cover narration I ended up removing, and rebuilding the "
+                    "lower thirds so the figures stayed on screen while they were discussed "
+                    "rather than flashing past.\n\n"
+                    "The four-minute retention went from 48% to 71% and average view "
+                    "duration rose by just over three minutes. What I took from it: on this "
+                    "kind of channel the edit's job is to keep answering \"and why do I care\" "
+                    "for as long as the runtime lasts, and definitions almost never do that."
+                ),
+                1: "Two at this length, comfortably. Three if one of them is a repeat format I have already built the template for.",
+                2: "I keep Fridays clear for revisions, so a Thursday cut usually comes back same-week.",
+            },
+            "Screening answer long enough to test wrapping rather than truncation",
+        ),
+        (
+            "links",
+            {
+                0: (
+                    "Two that show it best — the retention rebuild at "
+                    "https://folio.scenario.invalid/retention-rebuild, and the cold-open pass "
+                    "at https://folio.scenario.invalid/cold-open (that one has the before/after "
+                    "side by side)."
+                ),
+                1: "Two a week, three at a push.",
+                2: "Reachable at javascript:alert('not a link') — that is my old handle, not a site.",
+            },
+            "Screening answers containing links, including an unsafe scheme",
         ),
     )
     for index, (key, responses, condition) in enumerate(cases):
@@ -834,6 +887,37 @@ def _screened_applications(builder: Builder) -> None:
             condition=condition,
             action="open the record and review the screening answers in the thread",
         )
+
+    imported_talent = builder.talent(9_150)
+    imported_created = -9 * DAY
+    imported_rel = builder.relationship(
+        key="default:screened:imported",
+        kind="application",
+        job=imported,
+        recruiter=recruiter,
+        talent=imported_talent,
+        stage="reviewing",
+        participant_stage="reviewing",
+        created=imported_created,
+        messages=_screening_exchange(
+            asked_at=imported_created + 2 * HOUR,
+            answered_at=imported_created + 6 * HOUR,
+            responses={
+                0: "The shorts run I cut for a cooking channel — I rebuilt the first two seconds around the plate landing rather than the presenter's greeting.",
+                1: "Five or six a week at this length.",
+                2: "Happy to work to a template once we agree one.",
+            },
+        ),
+        portfolio_ids=builder.portfolio_for(imported_talent, 3, slot=950),
+        unread=0,
+    )
+    builder.add_index(
+        imported_rel,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Screening on an imported listing, asked and answered in full",
+        action="confirm the screening reads identically to a manually posted job",
+    )
 
 
 def _default(builder: Builder) -> None:

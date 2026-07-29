@@ -2128,6 +2128,7 @@
       "niches": [
         "Kids"
       ],
+      "origin": "manual",
       "owner_id": "9478c6b5-2e4e-5d40-b1d0-fc6ef38b040d",
       "platforms": [
         "podcast"
@@ -2160,6 +2161,7 @@
       "niches": [
         "Technology"
       ],
+      "origin": "manual",
       "owner_id": "e56864ae-4766-5e05-b286-c76ccb9e0c0d",
       "platforms": [
         "youtube_shorts"
@@ -2193,6 +2195,7 @@
       "niches": [
         "True crime"
       ],
+      "origin": "manual",
       "owner_id": "9478c6b5-2e4e-5d40-b1d0-fc6ef38b040d",
       "platforms": [
         "twitch"
