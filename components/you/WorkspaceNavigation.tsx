@@ -112,6 +112,62 @@ function useDismissable(
 }
 
 /**
+ * Arrow-key movement inside an open menu.
+ *
+ * `role="menu"` is a promise: it tells assistive technology that Up and Down
+ * move between items and that focus starts inside. Announcing the role without
+ * honouring it is worse than not announcing it, because a screen-reader user is
+ * told to expect a control that then does not respond.
+ *
+ * Home and End are included because this menu is three groups deep — reaching
+ * the last option by repeated Down is exactly the tax the grouping was meant to
+ * remove.
+ */
+function useMenuKeyboard(open: boolean, menuRef: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const items = () =>
+      Array.from(
+        menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []
+      ).filter((node) => !node.hasAttribute("disabled"));
+
+    // Focus starts on the checked item if there is one, so opening the menu
+    // says where you already are rather than dropping you at the top.
+    const frame = window.requestAnimationFrame(() => {
+      const all = items();
+      const checked = all.find((node) => node.getAttribute("aria-checked") === "true");
+      (checked ?? all[0])?.focus();
+    });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const all = items();
+      if (all.length === 0) return;
+      const index = all.indexOf(document.activeElement as HTMLElement);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        // Wrapping, because a menu with a top and a bottom you can fall off is
+        // a menu you have to look at to use.
+        const next = index < 0 ? 0 : (index + step + all.length) % all.length;
+        all[next]?.focus();
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        all[0]?.focus();
+      } else if (event.key === "End") {
+        event.preventDefault();
+        all[all.length - 1]?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, menuRef]);
+}
+
+/**
  * Layer 1 — workspace identity.
  *
  * A menu, deliberately not a segmented control. The global header's
@@ -413,7 +469,9 @@ export function WorkQueueSelector({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   useDismissable(open, () => setOpen(false), rootRef, triggerRef);
+  useMenuKeyboard(open, menuRef);
 
   const active = describeFilter(filter);
   const activeCount = countActiveFilters(filter);
@@ -442,6 +500,13 @@ export function WorkQueueSelector({
         className={[
           "inline-flex h-7 cursor-pointer items-center gap-1.5 border px-2 text-[11.5px] font-semibold transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+          /*
+            The painted control is 28px, matching the density of the toolbar it
+            sits in; the *target* is 44px, because a finger does not care what
+            the row looks like. Extended vertically only — the neighbours here
+            are horizontal, so growing sideways would steal their taps.
+          */
+          "relative before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']",
           activeCount > 0
             ? "rounded-l-lg border-r-0 border-line-strong bg-elevated text-ink elev-1"
             : "rounded-lg border-line bg-raised text-muted hover:border-line-mid hover:text-default",
@@ -472,13 +537,14 @@ export function WorkQueueSelector({
           data-testid="queue-clear"
           aria-label="Show everything"
           onClick={() => onChange(EMPTY_CLASSIFICATION_FILTER)}
-          className="inline-flex h-7 shrink-0 cursor-pointer items-center rounded-r-lg border border-line-strong bg-elevated pl-1 pr-1.5 text-ink transition-colors elev-1 hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          className="relative inline-flex h-7 shrink-0 cursor-pointer items-center rounded-r-lg border border-line-strong bg-elevated pl-1 pr-1.5 text-ink transition-colors before:absolute before:inset-x-0 before:-inset-y-2 before:content-[''] elev-1 hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <Icon name="close" className="h-3 w-3" aria-hidden="true" />
         </button>
       ) : null}
       {open ? (
         <div
+          ref={menuRef}
           role="menu"
           data-testid="queue-selector-menu"
           aria-label="What you are looking at"
@@ -502,7 +568,10 @@ export function WorkQueueSelector({
               onChange(EMPTY_CLASSIFICATION_FILTER);
             }}
             className={[
-              "flex h-8 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[12px] font-semibold transition-colors",
+              // 44px, like every other option below it. It was 32px: a single
+              // line of text next to two-line options, and the one target in
+              // the menu a finger could miss.
+              "flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] font-semibold transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
               activeCount === 0 ? "bg-elevated text-ink" : "text-secondary hover:bg-elevated hover:text-ink",
             ].join(" ")}
@@ -518,13 +587,23 @@ export function WorkQueueSelector({
 
           {sections.map((section) =>
             section.options.length === 0 ? null : (
-              <div key={section.key} className="mt-1.5" data-testid={`queue-plane-${section.key}`}>
-                {/*
-                  The heading carries the denominator, because three sections
-                  that each sum to a different thing are three sections a reader
-                  will try to add together unless told not to.
-                */}
-                <p className="flex items-baseline justify-between gap-2 px-2.5 pb-1 pt-1">
+              <div
+                key={section.key}
+                /*
+                  A group, not a styled run. Sighted readers get the three
+                  questions from the headings; without this a screen reader hears
+                  nine radio buttons in one flat list and the structure the menu
+                  exists to convey — that these answer *different* questions —
+                  is the one thing that does not survive. The label carries the
+                  denominator too, so "Opened, 12" is heard against what it
+                  reconciles with rather than as a bare number.
+                */
+                role="group"
+                aria-label={`${section.label}, of ${section.denominatorCount} ${section.denominator}`}
+                className="mt-1.5"
+                data-testid={`queue-plane-${section.key}`}
+              >
+                <p className="flex items-baseline justify-between gap-2 px-2.5 pb-1 pt-1" aria-hidden="true">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">
                     {section.label}
                   </span>
@@ -579,7 +658,12 @@ export function WorkQueueSelector({
           )}
 
           {starredCount > 0 || filter.starred ? (
-            <div className="mt-1.5 border-t border-line pt-1.5" data-testid="queue-plane-personal">
+            <div
+              role="group"
+              aria-label="Personal organisation"
+              className="mt-1.5 border-t border-line pt-1.5"
+              data-testid="queue-plane-personal"
+            >
               <button
                 type="button"
                 role="menuitemcheckbox"
