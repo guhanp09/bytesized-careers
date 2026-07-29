@@ -124,6 +124,18 @@ import { ClientContextSummary } from "./CreatorContext";
 import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupConversation } from "../../lib/systemEventGrouping";
+import {
+  CLASSIFICATION_PLANES,
+  EMPTY_CLASSIFICATION_FILTER,
+  classificationCounts,
+  describeFilter,
+  isActiveRecord,
+  isFilterActive,
+  matchesFilter,
+  queueToAttention,
+  type ClassificationFilter,
+} from "../../lib/reviewClassification";
+import type { ClassificationSection } from "./WorkspaceNavigation";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   INBOX_PAGE_SIZE,
@@ -138,9 +150,7 @@ import {
   WORK_QUEUE_ORDER,
   deriveWorkQueue,
   deriveWorkCategory,
-  WORK_CATEGORY_ORDER,
   type QueueSignals,
-  type WorkQueueKey,
   type WorkQueuePreferences,
 } from "../../lib/workQueues";
 import {
@@ -3280,7 +3290,15 @@ export default function ApplicationsWorkspace({
   /* ---------------- Queue views ---------------- */
 
   /** Null means "no queue filter" — the ordinary full list. */
-  const [activeQueue, setActiveQueue] = useState<WorkQueueKey | "starred" | "snoozed" | null>(null);
+  /*
+    One selection per plane, combined. The planes answer different questions —
+    have I looked at this, where does it stand, does anyone need to act — so
+    "opened and waiting on them" is a real thing to ask for, and the flat queue
+    this replaces could not express it.
+  */
+  const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>(
+    EMPTY_CLASSIFICATION_FILTER
+  );
 
   /*
     Narrowing the list starts its rendering window again.
@@ -3293,7 +3311,7 @@ export default function ApplicationsWorkspace({
   useEffect(() => {
     setInboxLimit(INBOX_PAGE_SIZE);
     setPagingAnnouncement("");
-  }, [mode, filter, activeQueue]);
+  }, [mode, filter, classificationFilter]);
 
   /* ---------------- B1: durable per-user interaction preferences ---------------- */
 
@@ -4510,57 +4528,36 @@ export default function ApplicationsWorkspace({
    * not feed selection normalisation — filtering your view should never throw
    * away the conversation you are reading.
    */
-  /** Queues worth offering: those with work, plus the personal views. */
-  const queueChips = ((): Array<{
-    key: string;
-    label: string;
-    count: number;
-    description?: string;
-  }> => {
-    const chips: Array<{ key: string; label: string; count: number; description?: string }> = [];
-    const labels = new Map<string, string>();
-    /*
-      Every category that has records, in working order — including the ones
-      that need nothing. A menu that lists only the urgent slices leaves the
-      reader to guess where the rest went, which is how 162 applicants came to
-      be described by two numbers adding to 56.
-    */
-    for (const category of WORK_CATEGORY_ORDER) {
-      labels.set(category.key, category.label);
-      const count = queueCounts.get(category.key) ?? 0;
-      if (count > 0) {
-        chips.push({
-          key: category.key,
-          label: category.label,
-          count,
-          description: category.description,
-        });
-      }
-    }
-    // Starred cuts across the categories rather than being one of them, so it
-    // sits after the partition and is never part of its arithmetic.
-    labels.set("starred", "Starred");
-    const starred = queueCounts.get("starred") ?? 0;
-    if (starred > 0) {
-      chips.push({
-        key: "starred",
-        label: "Starred",
-        count: starred,
-        description: "Saved by you for a second look. Only you can see this.",
-      });
-    }
-    /*
-      One exception to "only offer queues that hold work": the queue the user is
-      standing in. It can empty underneath them — unstar the last saved record
-      and "Saved" has nothing left — and dropping it here would take the filter's
-      name and its clear control off screen while the filter was still applied,
-      leaving an empty list with no visible way out.
-    */
-    if (activeQueue && !chips.some((chip) => chip.key === activeQueue)) {
-      chips.push({ key: activeQueue, label: labels.get(activeQueue) ?? "Queue", count: 0 });
-    }
-    return chips;
-  })();
+  /*
+    The three questions, each counted over its own stated denominator.
+
+    Built from one pass so the sections can never drift apart, and only options
+    that hold records are offered — with one exception below, which is the one
+    the reader is currently standing in.
+  */
+  const classification = classificationCounts(modeItems, queueSignalsFor, queuePreferences);
+  const starredCount = modeItems.filter((item) => isActiveRecord(item) && isStarred(item)).length;
+
+  const classificationSections: ClassificationSection[] = CLASSIFICATION_PLANES.map((plane) => {
+    const counts =
+      plane.key === "review"
+        ? classification.review
+        : plane.key === "status"
+          ? classification.status
+          : classification.attention;
+    const denominatorCount = plane.key === "status" ? classification.opened : classification.total;
+    const options = plane.options
+      .map((option) => ({ ...option, count: (counts as Map<string, number>).get(option.key) ?? 0 }))
+      /*
+        One exception to "only offer what holds records": the option the reader
+        is standing in. It can empty underneath them — advance the last unopened
+        application and "Not opened yet" has nothing left — and dropping it here
+        would take the filter's name off screen while the filter was still
+        applied, leaving an empty list with no visible way out.
+      */
+      .filter((option) => option.count > 0 || classificationFilter[plane.key] === option.key);
+    return { key: plane.key, label: plane.label, denominator: plane.denominator, denominatorCount, options };
+  });
 
   /**
    * Every record that matches, before any rendering limit.
@@ -4570,16 +4567,9 @@ export default function ApplicationsWorkspace({
    * screen". Only `renderedItems` below is bounded.
    */
   const listItems = ((): OwnerInteraction[] => {
-    if (!activeQueue) return visibleItems;
-    if (activeQueue === "starred") return visibleItems.filter((item) => isStarred(item));
-    if (activeQueue === "snoozed") {
-      return visibleItems.filter((item) => {
-        const until = queuePreferences.snoozedUntil(item.id);
-        return until !== null && until > Date.now();
-      });
-    }
-    return visibleItems.filter(
-      (item) => deriveWorkCategory(item, queueSignalsFor(item), queuePreferences) === activeQueue
+    if (!isFilterActive(classificationFilter)) return visibleItems;
+    return visibleItems.filter((item) =>
+      matchesFilter(item, classificationFilter, queueSignalsFor(item), queuePreferences, isStarred)
     );
   })();
 
@@ -4615,7 +4605,7 @@ export default function ApplicationsWorkspace({
           // explicitly rather than omitted, so adding a search box later gets
           // the right empty state for free.
           searchTerm: "",
-          activeQueue,
+          activeQueue: isFilterActive(classificationFilter) ? describeFilter(classificationFilter)[0] ?? null : null,
           allCaughtUp,
           snoozedCount,
         })
@@ -4748,14 +4738,15 @@ export default function ApplicationsWorkspace({
                       data-testid={`job-summary-count-${entry.key}`}
                       onClick={() => {
                         if (entry.target.kind === "queue") {
-                          setActiveQueue(entry.target.queue as typeof activeQueue);
+                          // The summary counts speak the attention plane.
+                          setClassificationFilter({ attention: queueToAttention(entry.target.queue) });
                         } else if (entry.target.kind === "starred") {
-                          setActiveQueue("starred");
+                          setClassificationFilter({ starred: true });
                         } else {
                           // A stage is a Pipeline question; take the user there
                           // with the stage focused rather than approximating it
                           // with an inbox filter that means something else.
-                          setActiveQueue(null);
+                          setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                           onPipelineStageChange?.(entry.target.stage);
                           setView("pipeline");
                         }
@@ -4891,11 +4882,11 @@ export default function ApplicationsWorkspace({
             filter={filter}
             counts={filterCounts}
             onSelect={selectFilter}
-            queueChips={flags.workState ? queueChips : []}
-            activeQueue={flags.workState ? activeQueue : null}
-            onQueueSelect={
-              flags.workState ? (key) => setActiveQueue(key as typeof activeQueue) : undefined
-            }
+            classificationSections={flags.workState ? classificationSections : []}
+            classificationFilter={flags.workState ? classificationFilter : EMPTY_CLASSIFICATION_FILTER}
+            classificationTotal={classification.total}
+            starredCount={starredCount}
+            onClassificationChange={flags.workState ? setClassificationFilter : undefined}
             trailing={
               totalUnreadCount > 0 ? (
                 <p
@@ -4931,7 +4922,7 @@ export default function ApplicationsWorkspace({
                 type="button"
                 data-testid="work-reminder"
                 data-reminder-key={reminder.key}
-                onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
+                onClick={() => setClassificationFilter({ attention: queueToAttention(reminder.queue) })}
                 className="group mx-3 mt-2.5 flex w-[calc(100%-1.5rem)] shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
               >
                 <Icon
@@ -4980,9 +4971,9 @@ export default function ApplicationsWorkspace({
                       data-testid="inbox-empty-action"
                       onClick={() => {
                         const kind = emptyState.action?.kind;
-                        if (kind === "clear-queue") setActiveQueue(null);
+                        if (kind === "clear-queue") setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                         else {
-                          setActiveQueue(null);
+                          setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                           selectFilter("all");
                         }
                       }}

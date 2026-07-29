@@ -21,6 +21,12 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  EMPTY_CLASSIFICATION_FILTER,
+  countActiveFilters,
+  describeFilter,
+  type ClassificationFilter,
+} from "../../lib/reviewClassification";
 import { Icon } from "../Icons";
 import { directionLabelsFor } from "../../lib/applicationPipeline";
 
@@ -365,27 +371,59 @@ export type WorkQueueChip = {
  * clear button, so returning to everything stays one click and needs no menu —
  * the rail this replaces made you find "All" among chips that scrolled.
  */
+export type ClassificationSection = {
+  key: "review" | "status" | "attention";
+  label: string;
+  /** What this section's numbers add up to, in words. */
+  denominator: string;
+  denominatorCount: number;
+  options: Array<{ key: string; label: string; description: string; count: number }>;
+};
+
+/**
+ * What am I looking at?
+ *
+ * This was one flat list — *Decision needed*, *New to review*, *Up to date* —
+ * whose parts added up to the whole and still left the reader unsure. The
+ * arithmetic was never the problem: those three names answer three different
+ * questions, and flattened together they compete, so the list had to pick one
+ * answer per record and silently drop the others.
+ *
+ * Three labelled sections, each a partition of a stated denominator. A record
+ * has one answer in each, they combine to narrow, and the menu prints what each
+ * section reconciles against — because a column of numbers with no denominator
+ * is a column of numbers the reader has to take on faith.
+ *
+ * Starred sits below the sections rather than inside one: it is personal
+ * organisation cutting across all three, not a fourth question about the record.
+ */
 export function WorkQueueSelector({
-  chips,
-  activeQueue,
-  onSelect,
+  sections,
+  filter,
+  total,
+  starredCount,
+  onChange,
 }: {
-  chips: WorkQueueChip[];
-  activeQueue: string | null;
-  onSelect: (key: string | null) => void;
+  sections: ClassificationSection[];
+  filter: ClassificationFilter;
+  total: number;
+  starredCount: number;
+  onChange: (next: ClassificationFilter) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   useDismissable(open, () => setOpen(false), rootRef, triggerRef);
 
-  const active = chips.find((chip) => chip.key === activeQueue) ?? null;
-  // An empty queue control advertises nothing and cannot be actioned — with one
-  // exception: a queue the user is standing in must stay visible so it can be
-  // left, even once it has emptied out underneath them.
-  if (chips.length === 0 && !activeQueue) return null;
+  const active = describeFilter(filter);
+  const activeCount = countActiveFilters(filter);
+  if (sections.every((section) => section.options.length === 0) && activeCount === 0) return null;
 
-  const total = chips.reduce((sum, chip) => sum + chip.count, 0);
+  const shown = sections.reduce((sum, section) => {
+    const selected = filter[section.key];
+    if (!selected) return sum;
+    return section.options.find((option) => option.key === selected)?.count ?? sum;
+  }, total);
 
   return (
     <div ref={rootRef} className="relative flex shrink-0 items-center" data-testid="queue-selector">
@@ -396,43 +434,44 @@ export function WorkQueueSelector({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={
-          active
-            ? `Showing ${active.label}. Change what needs attention.`
-            : `Filter by what needs attention. ${total} waiting.`
+          activeCount > 0
+            ? `Showing ${active.join(", ")}. Change what you are looking at.`
+            : `Filter what you are looking at. ${total} in view.`
         }
         onClick={() => setOpen((value) => !value)}
         className={[
           "inline-flex h-7 cursor-pointer items-center gap-1.5 border px-2 text-[11.5px] font-semibold transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-          active
+          activeCount > 0
             ? "rounded-l-lg border-r-0 border-line-strong bg-elevated text-ink elev-1"
             : "rounded-lg border-line bg-raised text-muted hover:border-line-mid hover:text-default",
         ].join(" ")}
       >
         <Icon name="sliders-horizontal" className="h-3 w-3 shrink-0" aria-hidden="true" />
         {/*
-          The name is only carried while a queue is on, where it says what is
-          being hidden. Idle, it is an offer — and spending 90px of a 390px rail
+          Named only while something is on, where the name says what is being
+          hidden. Idle it is an offer, and spending 90px of a 390px rail
           advertising an offer pushed "Archived" off the end of the scope tabs.
-          The count still shows, because that is the part worth noticing, and
-          the accessible name is complete either way.
+          Two or more selections collapse to a count so the trigger cannot grow
+          without limit.
         */}
-        {active ? <span className="max-w-[112px] truncate">{active.label}</span> : null}
+        {activeCount === 1 ? <span className="max-w-[112px] truncate">{active[0]}</span> : null}
+        {activeCount > 1 ? <span className="whitespace-nowrap">{activeCount} filters</span> : null}
         <span
           className={[
             "rounded px-1 text-[10.5px] tabular-nums",
-            active ? "bg-wash-strong text-default" : "text-subtle",
+            activeCount > 0 ? "bg-wash-strong text-default" : "text-subtle",
           ].join(" ")}
         >
-          {active ? active.count : total}
+          {activeCount > 0 ? shown : total}
         </span>
       </button>
-      {active ? (
+      {activeCount > 0 ? (
         <button
           type="button"
           data-testid="queue-clear"
           aria-label="Show everything"
-          onClick={() => onSelect(null)}
+          onClick={() => onChange(EMPTY_CLASSIFICATION_FILTER)}
           className="inline-flex h-7 shrink-0 cursor-pointer items-center rounded-r-lg border border-line-strong bg-elevated pl-1 pr-1.5 text-ink transition-colors elev-1 hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <Icon name="close" className="h-3 w-3" aria-hidden="true" />
@@ -442,98 +481,141 @@ export function WorkQueueSelector({
         <div
           role="menu"
           data-testid="queue-selector-menu"
-          aria-label="What needs attention"
-          className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-[70vh] w-[300px] overflow-y-auto rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
+          aria-label="What you are looking at"
+          className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-[70vh] w-[320px] overflow-y-auto rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
         >
           <button
             type="button"
             role="menuitemradio"
-            aria-checked={activeQueue === null}
+            aria-checked={activeCount === 0}
             data-testid="queue-chip-all"
             /*
-              The reconciliation, in the DOM. The whole point of this menu is
-              that its parts add up to its total; a test that has to parse
-              rendered text to check that is testing the formatter.
+              The denominator, in the DOM. Every section below reconciles
+              against a stated number; a test that has to parse rendered text to
+              check that is testing the formatter.
             */
             data-queue-key="all"
             data-queue-count={total}
             onClick={() => {
               setOpen(false);
               triggerRef.current?.focus();
-              onSelect(null);
+              onChange(EMPTY_CLASSIFICATION_FILTER);
             }}
             className={[
               "flex h-8 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[12px] font-semibold transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-              activeQueue === null
-                ? "bg-elevated text-ink"
-                : "text-secondary hover:bg-elevated hover:text-ink",
+              activeCount === 0 ? "bg-elevated text-ink" : "text-secondary hover:bg-elevated hover:text-ink",
             ].join(" ")}
           >
             <Icon
               name="check"
-              className={[
-                "h-3.5 w-3.5 shrink-0",
-                activeQueue === null ? "text-ink" : "text-transparent",
-              ].join(" ")}
+              className={["h-3.5 w-3.5 shrink-0", activeCount === 0 ? "text-ink" : "text-transparent"].join(" ")}
               aria-hidden="true"
             />
             <span className="flex-1">Everything</span>
-            {/*
-              The denominator. Without it the rows below are numbers with
-              nothing to add up to, which is exactly how a menu can show two
-              categories covering a third of the list and look complete.
-            */}
             <span className="shrink-0 text-[11px] tabular-nums text-subtle">{total}</span>
           </button>
-          {chips.map((chip) => {
-            const isActive = activeQueue === chip.key;
-            return (
+
+          {sections.map((section) =>
+            section.options.length === 0 ? null : (
+              <div key={section.key} className="mt-1.5" data-testid={`queue-plane-${section.key}`}>
+                {/*
+                  The heading carries the denominator, because three sections
+                  that each sum to a different thing are three sections a reader
+                  will try to add together unless told not to.
+                */}
+                <p className="flex items-baseline justify-between gap-2 px-2.5 pb-1 pt-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">
+                    {section.label}
+                  </span>
+                  <span className="text-[10px] tabular-nums text-disabled">
+                    of {section.denominatorCount} {section.denominator}
+                  </span>
+                </p>
+                {section.options.map((option) => {
+                  const isActive = filter[section.key] === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isActive}
+                      data-testid={`queue-chip-${option.key}`}
+                      data-queue-key={option.key}
+                      data-queue-count={option.count}
+                      data-plane={section.key}
+                      onClick={() => {
+                        setOpen(false);
+                        triggerRef.current?.focus();
+                        // Pressing the active option clears just that plane, so
+                        // one control both applies and undoes.
+                        onChange({ ...filter, [section.key]: isActive ? undefined : option.key });
+                      }}
+                      className={[
+                        "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                        isActive
+                          ? "bg-elevated font-semibold text-ink"
+                          : "font-medium text-secondary hover:bg-elevated hover:text-ink",
+                      ].join(" ")}
+                    >
+                      <Icon
+                        name="check"
+                        className={["h-3.5 w-3.5 shrink-0", isActive ? "text-ink" : "text-transparent"].join(" ")}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{option.label}</span>
+                        <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
+                          {option.description}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{option.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {starredCount > 0 || filter.starred ? (
+            <div className="mt-1.5 border-t border-line pt-1.5" data-testid="queue-plane-personal">
               <button
-                key={chip.key}
                 type="button"
-                role="menuitemradio"
-                aria-checked={isActive}
-                data-testid={`queue-chip-${chip.key}`}
-                data-queue-key={chip.key}
-                data-queue-count={chip.count}
+                role="menuitemcheckbox"
+                aria-checked={Boolean(filter.starred)}
+                data-testid="queue-chip-starred"
+                data-queue-key="starred"
+                data-queue-count={starredCount}
+                data-plane="personal"
                 onClick={() => {
                   setOpen(false);
                   triggerRef.current?.focus();
-                  onSelect(isActive ? null : chip.key);
+                  onChange({ ...filter, starred: filter.starred ? undefined : true });
                 }}
                 className={[
                   "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-                  isActive
+                  filter.starred
                     ? "bg-elevated font-semibold text-ink"
                     : "font-medium text-secondary hover:bg-elevated hover:text-ink",
                 ].join(" ")}
               >
                 <Icon
                   name="check"
-                  className={["h-3.5 w-3.5 shrink-0", isActive ? "text-ink" : "text-transparent"].join(
-                    " "
-                  )}
+                  className={["h-3.5 w-3.5 shrink-0", filter.starred ? "text-ink" : "text-transparent"].join(" ")}
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{chip.label}</span>
-                  {/*
-                    The criteria, not just the name. "Decision needed" in
-                    particular is a judgement the product is making on the
-                    reader's behalf, so it has to say on what basis.
-                  */}
-                  {chip.description ? (
-                    <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
-                      {chip.description}
-                    </span>
-                  ) : null}
+                  <span className="block truncate">Starred</span>
+                  <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
+                    Saved by you for a second look. Only you can see this, and it narrows whatever else is on.
+                  </span>
                 </span>
-                <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{chip.count}</span>
+                <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{starredCount}</span>
               </button>
-            );
-          })}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -559,21 +641,28 @@ export function InteractionScopeControl({
   filter,
   counts,
   onSelect,
-  queueChips = [],
-  activeQueue = null,
-  onQueueSelect,
+  classificationSections = [],
+  classificationFilter = EMPTY_CLASSIFICATION_FILTER,
+  classificationTotal = 0,
+  starredCount = 0,
+  onClassificationChange,
   trailing,
 }: {
   mode: WorkspaceMode;
   filter: WorkspaceFilter;
   counts: Record<WorkspaceFilter, number>;
   onSelect: (key: WorkspaceFilter) => void;
-  queueChips?: WorkQueueChip[];
-  activeQueue?: string | null;
-  onQueueSelect?: (key: string | null) => void;
+  classificationSections?: ClassificationSection[];
+  classificationFilter?: ClassificationFilter;
+  classificationTotal?: number;
+  starredCount?: number;
+  onClassificationChange?: (next: ClassificationFilter) => void;
   trailing?: ReactNode;
 }) {
-  const showQueues = Boolean(onQueueSelect) && (queueChips.length > 0 || Boolean(activeQueue));
+  const showQueues =
+    Boolean(onClassificationChange) &&
+    (classificationSections.some((section) => section.options.length > 0) ||
+      countActiveFilters(classificationFilter) > 0);
   return (
     <div
       className="relative flex shrink-0 items-center gap-2 border-b border-line pl-4 pr-3"
@@ -639,9 +728,11 @@ export function InteractionScopeControl({
       />
       {showQueues ? (
         <WorkQueueSelector
-          chips={queueChips}
-          activeQueue={activeQueue}
-          onSelect={(key) => onQueueSelect?.(key)}
+          sections={classificationSections}
+          filter={classificationFilter}
+          total={classificationTotal}
+          starredCount={starredCount}
+          onChange={(next) => onClassificationChange?.(next)}
         />
       ) : (
         trailing ?? null

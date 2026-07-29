@@ -216,31 +216,70 @@ test("the Star is a real control on a Pipeline card too", async ({ page }) => {
 
 /* ---- work categories ----------------------------------------------------- */
 
-test("the work-category menu accounts for every record", async ({ page }) => {
+test("each section of the menu reconciles against its own stated denominator", async ({ page }) => {
   await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
   await main(page).getByTestId("queue-selector-trigger").click();
   const menu = page.getByTestId("queue-selector-menu");
   await expect(menu).toBeVisible();
 
-  const counts = await menu.evaluate((node) => {
-    const rows = Array.from(node.querySelectorAll("[data-queue-key]"));
-    return rows.map((entry) => ({
-      key: entry.getAttribute("data-queue-key"),
-      count: Number(entry.getAttribute("data-queue-count") ?? "0"),
-      describes: (entry.textContent ?? "").trim().length > 20,
-    }));
+  const total = Number(
+    (await menu.getByTestId("queue-chip-all").getAttribute("data-queue-count")) ?? "0"
+  );
+  expect(total).toBeGreaterThan(10);
+
+  const planes = await menu.evaluate((node) => {
+    const found: Record<string, { count: number; describes: boolean }[]> = {};
+    for (const entry of Array.from(node.querySelectorAll("[data-plane]"))) {
+      const plane = entry.getAttribute("data-plane") ?? "";
+      (found[plane] ??= []).push({
+        count: Number(entry.getAttribute("data-queue-count") ?? "0"),
+        describes: (entry.textContent ?? "").trim().length > 20,
+      });
+    }
+    return found;
   });
-  expect(counts.length).toBeGreaterThan(2);
 
-  const total = counts.find((entry) => entry.key === "all");
-  expect(total, "the menu has no Everything row to reconcile against").toBeTruthy();
-  const parts = counts.filter((entry) => entry.key !== "all" && entry.key !== "starred");
-  const summed = parts.reduce((sum, entry) => sum + entry.count, 0);
-  expect(summed, `categories sum to ${summed}, total is ${total!.count}`).toBe(total!.count);
+  /*
+    Three questions, three partitions. Review progress and attention each cover
+    everything; where-it-stands covers the opened records and says so. Adding
+    the three together would be a category error, and the menu prints each
+    denominator so nobody tries.
+  */
+  const sum = (rows: { count: number }[]) => rows.reduce((a, b) => a + b.count, 0);
+  expect(sum(planes.review ?? []), "review progress").toBe(total);
+  expect(sum(planes.attention ?? []), "attention").toBe(total);
 
-  // A row naming a state without saying what it means is a label, not an
-  // explanation.
-  for (const entry of parts) expect(entry.describes, `${entry.key} explains nothing`).toBeTruthy();
+  const opened = (planes.review ?? []).length === 2 ? planes.review[1].count : null;
+  if (opened !== null) expect(sum(planes.status ?? []), "where it stands").toBe(opened);
+
+  // And every option states its criteria rather than only naming a state.
+  for (const rows of Object.values(planes)) {
+    for (const row of rows) expect(row.describes).toBeTruthy();
+  }
+});
+
+test("the planes combine, and one control clears them all", async ({ page }) => {
+  await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
+  const trigger = main(page).getByTestId("queue-selector-trigger");
+
+  await trigger.click();
+  const opened = page.getByTestId("queue-chip-opened");
+  const openedCount = Number((await opened.getAttribute("data-queue-count")) ?? "0");
+  await opened.click();
+  await expect(main(page).getByTestId("interaction-scope")).toBeVisible();
+
+  await trigger.click();
+  const reviewing = page.getByTestId("queue-chip-reviewing");
+  const narrowed = Number((await reviewing.getAttribute("data-queue-count")) ?? "0");
+  await reviewing.click();
+
+  // Combining narrows: the two questions are different, so the answer to both
+  // can only be a subset of the answer to one.
+  expect(narrowed).toBeLessThanOrEqual(openedCount);
+  await expect(trigger).toContainText("2 filters");
+
+  await main(page).getByTestId("queue-clear").click();
+  await expect(main(page).getByTestId("queue-clear")).toHaveCount(0);
 });
 
 /* ---- persona icons ------------------------------------------------------- */
