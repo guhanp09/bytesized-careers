@@ -34,7 +34,14 @@ import {
   loadedAnnouncement,
   nextLimit,
 } from "../../lib/workspacePaging";
-import { startAutoscroll, type AutoscrollController } from "../../lib/dragAutoscroll";
+import { nearestScrollable, startAutoscroll, type AutoscrollController } from "../../lib/dragAutoscroll";
+import {
+  MOVE_HIGHLIGHT_MS,
+  centeringDelta,
+  comfortablyVisible,
+  describeMove,
+  prefersReducedMotion,
+} from "../../lib/moveConfirmation";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import {
   backendStatusOf,
@@ -562,6 +569,28 @@ export default function PipelineBoard({
   const [stageLimits, setStageLimits] = useState<Record<string, number>>({});
   /** Cards that must stay rendered wherever they land — the ones just moved. */
   const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(() => new Set());
+  /*
+    The confirmation for one completed move.
+
+    Separate from `recentlyMoved`, which is a permanent rendering guarantee: a
+    card that has landed must keep its place in the bounded window, but the
+    emphasis saying *it just landed* has to expire, or the board grows a second
+    state alongside its stages. The nonce lets the same card be moved twice and
+    be confirmed twice.
+  */
+  const [moveConfirmation, setMoveConfirmation] = useState<{
+    ids: string[];
+    stageKey: string;
+    stageLabel: string;
+    /** A pointer drag must not take focus; a keyboard or menu move may. */
+    source: "pointer" | "control";
+    nonce: number;
+  } | null>(null);
+  const [highlighted, setHighlighted] = useState<Set<string>>(() => new Set());
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const moveNonceRef = useRef(0);
+  /** The outermost element the centring search may reach. */
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const [pagingAnnouncement, setPagingAnnouncement] = useState("");
   const defaultStageLimit = stageFilter ? PIPELINE_FOCUSED_PAGE_SIZE : PIPELINE_STAGE_PAGE_SIZE;
 
@@ -579,6 +608,7 @@ export default function PipelineBoard({
   const [pendingMove, setPendingMove] = useState<{
     items: OwnerInteraction[];
     stageKey: string;
+    source: "pointer" | "control";
   } | null>(null);
   // Native HTML5 drag state: the card being dragged and the hovered drop target.
   const [dragId, setDragId] = useState<string | null>(null);
@@ -722,7 +752,11 @@ export default function PipelineBoard({
     });
   };
 
-  const moveStage = async (moveItems: OwnerInteraction[], stageKey: string): Promise<boolean> => {
+  const moveStage = async (
+    moveItems: OwnerInteraction[],
+    stageKey: string,
+    source: "pointer" | "control" = "control"
+  ): Promise<boolean> => {
     if (!moveItems.length || busy) return false;
     setBusy(true);
     try {
@@ -732,24 +766,118 @@ export default function PipelineBoard({
       // Follow the card. A move that lands past the destination stage's window
       // would otherwise look like the card vanished, which is the one thing a
       // board must never do.
-      setRecentlyMoved(moved);
+      setRecentlyMoved((prev) => new Set([...prev, ...moved]));
+      /*
+        Only after the transition is authoritative. Confirming an optimistic
+        move would point at a destination the server may still refuse, and the
+        rollback would then have to un-say it.
+      */
+      moveNonceRef.current += 1;
+      setMoveConfirmation({
+        ids: moveItems.map((item) => item.id),
+        stageKey,
+        stageLabel: stages.find((entry) => entry.key === stageKey)?.label ?? stageKey,
+        source,
+        nonce: moveNonceRef.current,
+      });
       return true;
     } catch {
       // The parent surfaces the failure banner; keeping the selection lets the
-      // user retry the same move without re-picking rows.
+      // user retry the same move without re-picking rows. Nothing is confirmed
+      // or highlighted: the card is back where it was.
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const requestStageMove = (moveItems: OwnerInteraction[], stageKey: string) => {
+  const requestStageMove = (
+    moveItems: OwnerInteraction[],
+    stageKey: string,
+    source: "pointer" | "control" = "control"
+  ) => {
     if (CONFIRMED_STAGE_MOVES.includes(stageKey)) {
-      setPendingMove({ items: moveItems, stageKey });
+      setPendingMove({ items: moveItems, stageKey, source });
       return;
     }
-    void moveStage(moveItems, stageKey);
+    void moveStage(moveItems, stageKey, source);
   };
+
+  /*
+    Show the reader where the card went.
+
+    Runs after the commit that renders the destination, so the card is in the
+    DOM by the time we look for it — `recentlyMoved` has already guaranteed it a
+    place in the bounded window. Everything below is deliberately conditional:
+    a destination already comfortably in view is confirmed by the emphasis
+    alone, because moving the viewport under someone who can already see the
+    answer is the distraction rather than the fix.
+  */
+  useEffect(() => {
+    if (!moveConfirmation) return;
+    const { ids, stageLabel, source } = moveConfirmation;
+    const reduced = prefersReducedMotion();
+
+    setMoveAnnouncement(describeMove(ids.length, stageLabel));
+    setHighlighted(new Set(ids));
+
+    const frame = window.requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(
+        `[data-testid="pipeline-row"][data-record-id="${ids[0]}"]`
+      );
+      if (!card) return;
+      const box = card.getBoundingClientRect();
+      const root = boardRef.current;
+
+      for (const axis of ["vertical", "horizontal"] as const) {
+        const container = nearestScrollable(card, axis, root);
+        if (!container) continue;
+        const bounds = container.getBoundingClientRect();
+        const cardSpan =
+          axis === "vertical" ? { start: box.top, end: box.bottom } : { start: box.left, end: box.right };
+        const containerSpan =
+          axis === "vertical"
+            ? { start: bounds.top, end: bounds.bottom }
+            : { start: bounds.left, end: bounds.right };
+        if (comfortablyVisible(cardSpan, containerSpan)) continue;
+        const delta = centeringDelta(cardSpan, containerSpan, {
+          offset: axis === "vertical" ? container.scrollTop : container.scrollLeft,
+          max:
+            axis === "vertical"
+              ? container.scrollHeight - container.clientHeight
+              : container.scrollWidth - container.clientWidth,
+        });
+        if (delta === 0) continue;
+        container.scrollBy({
+          top: axis === "vertical" ? delta : 0,
+          left: axis === "horizontal" ? delta : 0,
+          behavior: reduced ? "auto" : "smooth",
+        });
+      }
+
+      /*
+        A pointer drag must not take focus — the hand is still on the mouse, and
+        moving the caret is how a board starts fighting its user. A move made
+        from the stage menu or the keyboard already had focus in the controls,
+        so following the card there is continuity rather than theft.
+      */
+      if (source === "control" && ids.length === 1) card.focus({ preventScroll: true });
+    });
+
+    const timer = window.setTimeout(() => {
+      setHighlighted(new Set());
+      setMoveConfirmation(null);
+      // Emptied as well as expired: a live region re-announces only when its
+      // text changes, so two identical moves in a row would otherwise be
+      // announced once.
+      setMoveAnnouncement("");
+    }, MOVE_HIGHLIGHT_MS);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [moveConfirmation, stages]);
 
   /*
     A held card can reach a stage that is off screen.
@@ -791,7 +919,7 @@ export default function PipelineBoard({
     const toMove = draggedItems.filter((item) => backendStatusOf(item) !== stageKey);
     endDrag();
     if (toMove.length > 0 && isValidDropStage(stageKey)) {
-      requestStageMove(toMove, stageKey);
+      requestStageMove(toMove, stageKey, "pointer");
     }
   };
 
@@ -827,6 +955,7 @@ export default function PipelineBoard({
 
   return (
     <div
+      ref={boardRef}
       className="flex h-full min-h-0 flex-col"
       data-testid="pipeline-board"
       /*
@@ -843,6 +972,7 @@ export default function PipelineBoard({
       */}
       <p aria-live="polite" className="sr-only" data-testid="pipeline-paging-status">
         {pagingAnnouncement}
+        {moveAnnouncement ? ` ${moveAnnouncement}` : ""}
       </p>
       {/*
         Layer 3 for the Pipeline, and the only control row above the board:
@@ -1122,6 +1252,7 @@ export default function PipelineBoard({
                         // requirements are the first message (matching the inbox).
                         const legacyMessage = firstMessageLines.length ? null : item.message?.trim() || null;
                         const isDragging = dragId === item.id || (dragId !== null && draggedItems.some((entry) => entry.id === item.id));
+                        const justMoved = highlighted.has(item.id);
                         // Derived once per card: the state slot renders one,
                         // the footer renders the other, and they must agree.
                         const workState = workStateFor?.(item) ?? null;
@@ -1183,16 +1314,38 @@ export default function PipelineBoard({
                               Exactly one height for every card — see
                               PIPELINE_CARD_ROWS for the tracks and the reasoning.
                             */
+                            /*
+                              Focusable only so a move made from a control can
+                              land the caret on the card it moved. Not a button:
+                              the card contains a link, a checkbox, a menu and a
+                              Message button, and a button containing buttons is
+                              both an axe failure and genuinely ambiguous.
+                            */
+                            tabIndex={-1}
+                            data-moved={justMoved ? "true" : undefined}
                             className={[
                               "group relative grid gap-1.5 overflow-hidden rounded-xl border p-3 text-left",
                               PIPELINE_CARD_ROWS,
                               "transition-[transform,box-shadow,background-color,border-color] duration-150",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
                               manageable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                               isDragging
                                 ? "scale-[0.98] border-line-strong bg-elevated opacity-40"
-                                : checked
-                                  ? "border-line-strong surface-elevated elev-3"
-                                  : "border-line surface-raised elev-2 hover:-translate-y-0.5 hover:border-line-mid hover:elev-3",
+                                : justMoved
+                                  ? /*
+                                      Where it landed. A ring and a lifted
+                                      surface rather than a pulse: one short
+                                      statement that this is the card, then
+                                      nothing — a permanent marker would be a
+                                      second board state competing with the
+                                      stages. The ring is a shape as well as a
+                                      colour, so it survives being unable to see
+                                      the accent.
+                                    */
+                                    "border-ink surface-elevated elev-3 ring-2 ring-ink/70"
+                                  : checked
+                                    ? "border-line-strong surface-elevated elev-3"
+                                    : "border-line surface-raised elev-2 hover:-translate-y-0.5 hover:border-line-mid hover:elev-3",
                             ].join(" ")}
                           >
                             {/* 1 — identity. One line for the name, one for the job. */}
@@ -1701,7 +1854,7 @@ export default function PipelineBoard({
         onConfirm={() => {
           if (!pendingMove) return;
           const next = pendingMove;
-          void moveStage(next.items, next.stageKey).then((succeeded) => {
+          void moveStage(next.items, next.stageKey, next.source).then((succeeded) => {
             if (succeeded) setPendingMove(null);
           });
         }}
