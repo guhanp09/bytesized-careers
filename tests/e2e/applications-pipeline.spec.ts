@@ -492,7 +492,13 @@ test.describe("applications pipeline view", () => {
     // not a duplicated generated prose bubble.
     await expect(dock.getByTestId("chat-status-update").first()).toContainText(`${SUBJECT.counterpartyName} applied for`);
     await expect(dock.locator('[data-testid="chat-message"]').first()).toContainText("Portfolio");
-    await expect(dock.locator('[data-testid="chat-message"]').first()).toContainText("Retention rebuild");
+    // This record's own attached work, read from the manifest. The title used
+    // to be hardcoded, which made the assertion a statement about what the
+    // generator happened to emit the day it was written.
+    expect(SUBJECT.portfolioTitles.length, "the subject has no work attached").toBeGreaterThan(0);
+    await expect(dock.locator('[data-testid="chat-message"]').first()).toContainText(
+      SUBJECT.portfolioTitles[0]
+    );
 
     // Sending a demo reply appends it to the thread.
     await dock.getByTestId("chat-dock-composer").fill("Thanks — sharing a test brief shortly.");

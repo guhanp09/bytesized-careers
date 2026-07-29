@@ -100,7 +100,12 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
   },
   {
     key: "rejected",
-    label: "Rejected",
+    // "Not selected", like every other surface. The product says "Not
+    // proceeding" on the action, "Not moving forward" in the notice and "Not
+    // selected" in the timeline — all deliberately about the decision rather
+    // than the person. This column was the one place still saying "Rejected",
+    // which is a different and harsher claim sitting next to the others.
+    label: "Not selected",
     dot: "bg-rose-300/80",
     terminal: true,
     notify: {

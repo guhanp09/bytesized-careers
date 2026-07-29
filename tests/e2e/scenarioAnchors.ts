@@ -67,6 +67,7 @@ type Manifest = {
   stats: Record<string, unknown>;
   actors: Array<{ id: string; display_name: string; username: string; deactivated?: boolean }>;
   jobs: Array<{ id: string; title: string; status?: string; legacy_key?: string | null }>;
+  portfolio: Array<{ id: string; title: string; owner_id: string }>;
   relationships: Relationship[];
   index: IndexEntry[];
   client_state?: Array<{ relationship_id: string; kind: string; body?: string | null }>;
@@ -104,6 +105,9 @@ export type Anchor = {
   kind: "application" | "hiring_request";
   archived: boolean;
   portfolioCount: number;
+  /** The titles of the work attached, so a spec asserts on this record's own
+   *  evidence rather than on a string that was true when it was written. */
+  portfolioTitles: string[];
   messageCount: number;
 };
 
@@ -133,6 +137,9 @@ function resolve(scenario: ScenarioName, entry: IndexEntry): Anchor {
     kind: rel.kind,
     archived: Boolean(rel.archived),
     portfolioCount: (rel.portfolio_ids ?? []).length,
+    portfolioTitles: (rel.portfolio_ids ?? [])
+      .map((id) => data.portfolio.find((item) => item.id === id)?.title)
+      .filter((title): title is string => Boolean(title)),
     messageCount: (rel.messages ?? []).length,
   };
 }
