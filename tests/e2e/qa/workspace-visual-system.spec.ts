@@ -138,46 +138,40 @@ test("the primary action is a lifted surface, not a flat rectangle", async ({ pa
   expect(style.image, "a confident recommendation should carry its gradient").not.toBe("none");
 });
 
-test("a confident recommendation is visually filled where a neutral one is not", async ({ page }) => {
+test("the filled weight is reserved for actions somebody else is waiting on", async ({ page }) => {
   await openRecruiterInbox(page);
 
   /*
-    An unread message on a *live* record yields "Reply to …", which is high
-    confidence. The terminal ones are excluded deliberately: a hired or rejected
-    record has nothing left to recommend, so it renders no primary action at all
-    — and this test previously took whichever unread row happened to be first,
-    which made it pass or fail on the fixture's ordering rather than on the
-    styling it exists to check.
+    Two weights share this slot, and the rule that separates them is one
+    sentence: filled means somebody else is waiting. A held interview slot, a
+    stalled engagement, a decision made and never told — those get the loudest
+    control on the panel. Recording a decision is real work at the recruiter's
+    own pace, so it is a secondary button. Replying is not here at all: the
+    composer is pinned below with the person's name in its placeholder.
+
+    Whichever weight the record in front of us earns, it has to *look* like that
+    weight — a secondary that renders filled is the interface asserting urgency
+    nobody claimed.
   */
-  const unread = page
-    .getByTestId("interaction-row")
-    .filter({ has: page.getByTestId("inbox-unread-badge") })
-    .filter({ hasNotText: /Hired|Not selected|Withdrawn|Declined|Accepted/ });
-  test.skip((await unread.count()) === 0, "no unread live conversation in this scenario");
-  await unread.first().click();
+  const rows = page.getByTestId("interaction-row");
+  const total = await rows.count();
+  let weight: string | null = null;
+  for (let index = 0; index < Math.min(total, 8) && !weight; index += 1) {
+    await rows.nth(index).click();
+    const found = await page
+      .getByTestId("next-action-primary")
+      .waitFor({ state: "attached", timeout: 1_500 })
+      .then(() => true)
+      .catch(() => false);
+    if (found) weight = await page.getByTestId("next-action-primary").getAttribute("data-action-weight");
+  }
+  test.skip(!weight, "no record in this scenario carries a header recommendation");
 
   const primary = page.getByTestId("next-action-primary");
-  await expect(primary).toBeVisible();
+  await expect(primary).toHaveAttribute("data-action-weight", weight as string);
+  // Reply is never one of them.
+  await expect(primary).not.toHaveAttribute("data-action-key", "reply");
 
-  /*
-    Settle before measuring. Opening a conversation resolves over several
-    renders — unread clears, the thread and its engagement arrive — and React
-    replaces the action button when the recommendation it carries changes. A
-    style read from a handle captured before that lands resolves against a
-    detached node and comes back as "", which reads as "the gradient is
-    missing" when the gradient is simply on a newer element.
-  */
-  await expect(primary).toHaveAttribute("data-action-key", "reply");
-
-  /*
-    Resolved and measured in one tick, deliberately. Opening a conversation
-    settles over several renders — unread clears, the thread and its engagement
-    arrive — and React replaces this button each time the recommendation it
-    carries is recomputed. A handle captured by the test and measured a moment
-    later resolves against a node React has already discarded, and
-    getComputedStyle on a detached node returns an empty declaration, which
-    reads as "the gradient is missing" when the gradient is on a newer element.
-  */
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -185,7 +179,7 @@ test("a confident recommendation is visually filled where a neutral one is not",
         return node ? getComputedStyle(node).backgroundImage : "";
       })
     )
-    .toContain("gradient");
+    .toMatch(weight === "filled" ? /gradient/ : /^(none|)$/);
 });
 
 test("text over every gradient surface stays readable", async ({ page }) => {

@@ -153,6 +153,10 @@ test("every primary recommendation carries a confident action key", async ({ pag
     if ((await primary.count()) === 0) continue;
     const key = await primary.getAttribute("data-action-key");
     expect(key).not.toBe("choose-next-step");
+    // And never Reply: the composer is pinned below with the person's name in
+    // its placeholder, so a header button focusing it is the same click twice.
+    expect(key).not.toBe("reply");
+    expect(await primary.getAttribute("data-action-weight")).toMatch(/^(filled|secondary)$/);
     await expect(primary).toBeEnabled();
   }
 });

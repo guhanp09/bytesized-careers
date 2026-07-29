@@ -97,8 +97,10 @@ test("a low-confidence recommendation offers a choice instead of guessing an out
   // gone: a recommendation the system cannot make is better expressed by not
   // making one.
   expect(actionKey).not.toBe("choose-next-step");
+  // Reply is deliberately absent: the composer is pinned below with the
+  // person's name in its placeholder, so a header button that focused it was
+  // the same click twice.
   expect([
-    "reply",
     "record-decision",
     "share-decision",
     "confirm-start",

@@ -105,6 +105,7 @@ import {
   backendStatusOf,
   deriveWorkState,
   directionLabelsFor,
+  headerActionWeight,
   nextBestActionFor,
   pipelineContextLabelOf,
   pipelineSummaryOf,
@@ -4249,19 +4250,30 @@ export default function ApplicationsWorkspace({
     : false;
 
   /**
-   * The recommendation the header renders: the live one while the derivation is
-   * confident, otherwise the last confident one for this same record — and only
-   * while the record still offers it. Reply is gated on the thread being open
-   * rather than on the menu, because the composer is where reply lives.
+   * The recommendation the header renders, and how loudly.
+   *
+   * Not every recommendation belongs here — see `headerActionWeight`. `reply` in
+   * particular no longer does: the composer is pinned at the foot of this panel,
+   * always visible, with a placeholder naming the person, so a filled button
+   * whose whole effect is to focus it was the loudest control in the workspace
+   * spending most of its life duplicating one already on screen.
+   *
+   * The live derivation wins while it is confident; otherwise the last confident
+   * recommendation for *this* record stands in, but only while the record still
+   * offers that action, so a stabilised button can never outlive its own
+   * eligibility.
    */
   const headerNextAction = (() => {
-    if (selectedNextAction?.highConfidence) return selectedNextAction;
-    if (!selected || !stickyAction || stickyAction.itemId !== selected.id) return null;
-    const offered =
-      stickyAction.action.key === "reply"
-        ? selectedActive
-        : headerActions.some((entry) => entry.key === stickyAction.action.key);
-    return offered ? stickyAction.action : null;
+    const candidate = (() => {
+      if (selectedNextAction?.highConfidence) return selectedNextAction;
+      if (!selected || !stickyAction || stickyAction.itemId !== selected.id) return null;
+      return headerActions.some((entry) => entry.key === stickyAction.action.key)
+        ? stickyAction.action
+        : null;
+    })();
+    if (!candidate) return null;
+    const weight = headerActionWeight(candidate.key);
+    return weight ? { action: candidate, weight } : null;
   })();
 
   /**
@@ -5508,24 +5520,39 @@ export default function ApplicationsWorkspace({
                       </button>
                     ) : headerNextAction ? (
                       /*
-                        Only a well-evidenced action earns a primary button.
+                        Two weights, one rule: **filled means somebody else is
+                        waiting.**
 
-                        The low-confidence fallback rendered "Choose next step",
-                        which opened the decision surface — and that surface is
-                        behind a flag, so with the flag off the button did
-                        nothing at all. A recommendation the system cannot make
-                        is better expressed by not making one: "More actions"
-                        already carries every move, so nothing is lost.
+                        A held interview slot, a stalled engagement, a decision
+                        made and never told — those are moments another person
+                        is standing in, and they get the loudest control on the
+                        panel. Recording a decision is real work at the
+                        recruiter's own pace, so it is a secondary button.
+                        Replying is not here at all: the composer is pinned
+                        below, always visible, with a placeholder naming the
+                        person, so a filled button that focused it was the same
+                        click twice.
+
+                        A well-evidenced action is still the only kind that
+                        renders. "Choose next step" named an action it could not
+                        describe and, with the decision flag off, did nothing at
+                        all when pressed.
                       */
                       <button
                         type="button"
                         data-testid="next-action-primary"
-                        data-action-key={headerNextAction.key}
+                        data-action-key={headerNextAction.action.key}
+                        data-action-weight={headerNextAction.weight}
                         disabled={Boolean(statusMutationKey)}
-                        onClick={() => runNextAction(selected, headerNextAction)}
-                        className="surface-primary hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+                        onClick={() => runNextAction(selected, headerNextAction.action)}
+                        className={[
+                          "hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
+                          headerNextAction.weight === "filled"
+                            ? "surface-primary text-black elev-2 hover:brightness-105"
+                            : "border border-line-mid bg-raised text-default hover:border-line-strong hover:text-ink",
+                        ].join(" ")}
                       >
-                        {headerNextAction.label}
+                        {headerNextAction.action.label}
                       </button>
                     ) : null}
                     <OverflowMenu items={menuItems} />
