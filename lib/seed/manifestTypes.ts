@@ -9,7 +9,7 @@
  */
 
 /** Must match `MANIFEST_VERSION` in the generator. */
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 2;
 
 export type ManifestActor = {
   id: string;
@@ -37,6 +37,35 @@ export type ManifestActor = {
   /** Exact whole years. Never a range, never a level label. */
   experience_years?: number | null;
   availability?: string | null;
+  /**
+   * The public profile, as the product describes it rather than as any one
+   * database stores it. The backend keeps talent and recruiter metadata in
+   * separate columns (`creator_platforms` vs `hiring_platforms`, content style
+   * vs `hiring_niches`); the manifest keeps one vocabulary and lets each
+   * consumer decide which side an actor's lists belong to, from `sides`.
+   *
+   * Without these an applicant resolved to a name over an empty page — which
+   * is the one page a review actually turns on.
+   */
+  bio?: string | null;
+  timezone?: string | null;
+  availability_status?: string | null;
+  skills?: string[];
+  tools?: string[];
+  public_links?: string[];
+  roles?: string[];
+  platforms?: string[];
+  formats?: string[];
+  niches?: string[];
+  languages?: string[];
+  turnaround?: string | null;
+  working_hours?: string | null;
+  work_mode?: string | null;
+  /** What kind of hiring account this is. Recruiters only. */
+  description?: string | null;
+  /** A reading of `subscribers`, never an independent claim. */
+  audience_band?: string | null;
+  verification_status?: string | null;
 };
 
 export type ManifestPortfolioItem = {
@@ -52,6 +81,10 @@ export type ManifestPortfolioItem = {
   format?: string | null;
   niche?: string | null;
   role?: string | null;
+  /** What the work is, and what this person did on it. */
+  description?: string | null;
+  contribution?: string | null;
+  tools?: string[];
   /** A URL chosen to fail, so the poster fallback is exercised for real. */
   thumbnail_broken?: boolean;
 };

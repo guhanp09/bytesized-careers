@@ -30,7 +30,7 @@ from typing import Any, Literal
 #: Bump when the manifest shape changes incompatibly. Consumers must refuse a
 #: version they do not understand rather than silently misreading fields — a
 #: seed that half-loads is far harder to diagnose than one that fails outright.
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 #: Namespace for every generated identifier. Fixed forever: changing it would
 #: renumber every record in every manifest and destroy cross-run stability.
@@ -148,6 +148,67 @@ class Actor:
     experience_years: int | None = None
     availability: str | None = None
 
+    # --- profile projection -------------------------------------------------
+    #
+    # Every field below is already storable by the backend and already exposed
+    # by `PublicProfileResponse`. None of this is a second representation: the
+    # scenario schema simply had no way to *carry* the profile, so a canonical
+    # applicant resolved to an empty page.
+    #
+    # The names are the *product's*, not any one store's, because two consumers
+    # read this file and they disagree. The backend splits talent from recruiter
+    # (`creator_platforms` vs `hiring_platforms`, a content-style row vs
+    # `hiring_niches`) and flattens `tools` to one line; the manifest keeps a
+    # single vocabulary and lets each consumer decide from `sides`. Restore is
+    # therefore a deliberate translation — see `restore.py` — and the comments
+    # below name the column each field ends up in.
+    #
+    #: `User.bio` — who this person is, in their own words.
+    bio: str | None = None
+    #: `User.timezone` — IANA name, the same form the profile editor writes.
+    timezone: str | None = None
+    #: `User.availability_status` — "available" | "selective" | "unavailable".
+    #: Distinct from `availability`, which is the free-text sentence beside it.
+    availability_status: str | None = None
+    #: `User.skills` — what they do, as the profile lists it.
+    skills: list[str] = field(default_factory=list)
+    #: `User.collaboration_tools` — the stack they actually work in.
+    tools: list[str] = field(default_factory=list)
+    #: `User.public_links` — profile links, never fabricated URLs that 404 by
+    #: accident; the invalid TLD is deliberate and uniform.
+    public_links: list[str] = field(default_factory=list)
+    #: The role catalogue entries this person claims. First is primary. These
+    #: are catalogue *rows* on the backend (`UserRole` → `Role`), so restore
+    #: does not create them; the Mock profile renders them by name.
+    roles: list[str] = field(default_factory=list)
+    #: Talent → `User.creator_platforms`; recruiter → `User.hiring_platforms`.
+    platforms: list[str] = field(default_factory=list)
+    #: Talent → `UserContentStyle.format`; recruiter → `User.hiring_formats`.
+    formats: list[str] = field(default_factory=list)
+    #: Talent → `UserContentStyle.primary_niche` (first only); recruiter →
+    #: `User.hiring_niches`.
+    niches: list[str] = field(default_factory=list)
+    #: Languages they work in. Carried for the Mock profile and the frontend
+    #: adapter; the backend `User` row has no column for them, so restore drops
+    #: them rather than inventing a home — recorded in the parity contract.
+    languages: list[str] = field(default_factory=list)
+    #: `User.collaboration_turnaround` — how fast, in their own words.
+    turnaround: str | None = None
+    #: `User.collaboration_working_hours`.
+    working_hours: str | None = None
+    #: `User.work_mode` — Remote | Hybrid | On-site.
+    work_mode: str | None = None
+    #: `User.hiring_channels_or_pages_managed` — what kind of hiring account
+    #: this is, so an organisation can be opened and understood rather than
+    #: being a name and a logo. Distinct from `bio`, which is about the channel.
+    description: str | None = None
+    #: Rounded audience band for a hiring identity ("250K–500K subscribers"),
+    #: derived from `subscribers` rather than asserted beside it. Display-only:
+    #: no backend column, so it is Mock-side and recorded in the parity contract.
+    audience_band: str | None = None
+    #: `User.hiring_verification_status` — "verified" | "unverified".
+    verification_status: str | None = None
+
 
 @dataclass(slots=True)
 class PortfolioItem:
@@ -166,6 +227,15 @@ class PortfolioItem:
     #: Marks a URL that is meant to fail loading, for fallback QA. The consumer
     #: still receives a real thumbnail_url — the point is that it 404s.
     thumbnail_broken: bool = False
+    #: `PortfolioItem.description` — what the piece is. A portfolio strip of
+    #: titles alone is a list of filenames; the description is the part a
+    #: recruiter actually reads before deciding to open something.
+    description: str | None = None
+    #: `PortfolioItem.what_i_did` — the contribution, separate from the piece.
+    #: Two editors can list the same video and have done different work on it.
+    contribution: str | None = None
+    #: `PortfolioItem.tools` — the stack this particular piece was made in.
+    tools: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

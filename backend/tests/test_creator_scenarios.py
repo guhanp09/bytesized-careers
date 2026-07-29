@@ -9,6 +9,7 @@ does not match this build fails loudly instead of half-loading.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -135,14 +136,20 @@ def test_no_manifest_stores_a_preformatted_timestamp() -> None:
     and break byte-identical regeneration the following day.
     """
 
+    # Matched as whole tokens, not substrings. A bare `"ago" in payload` also
+    # rejects "America/Chicago", which is a timezone identifier rather than a
+    # rendered date — the kind of false positive that gets a real test deleted.
+    forbidden = (
+        (re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}"), "an ISO instant"),
+        (re.compile(r"\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b"), "a relative timestamp"),
+        (re.compile(r"\b(?:GMT|UTC)[+-]?\d*\b"), "a rendered offset"),
+        (re.compile(r'"20\d\d[-/ ]'), "a leaked calendar date"),
+    )
     for scenario in SCENARIO_NAMES:
         payload = (MANIFEST_DIR / f"{scenario}.json").read_text(encoding="utf-8")
-        for needle in ("T00:00:00", "Z\"", "202", "GMT", "ago"):
-            if needle == "202":
-                # A bare year would mean a date leaked into copy or a field.
-                assert '"2024' not in payload and '"2025' not in payload and '"2026' not in payload, scenario
-            else:
-                assert needle not in payload or needle == "Z\"", scenario
+        for pattern, what in forbidden:
+            found = pattern.search(payload)
+            assert not found, f"{scenario} stores {what}: {found.group(0)!r}"
 
 
 # --- coverage ---------------------------------------------------------------

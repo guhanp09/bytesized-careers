@@ -43,11 +43,11 @@ Use disposable local databases only.
 | Seed | Best for | Volume | Personas | Important coverage |
 | --- | --- | --- | --- | --- |
 | `empty` | First-run and empty states | 0 records / 0 jobs | — | — |
-| `default` | Ordinary design and workflow QA | 193 records / 33 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 420 portfolio items |
-| `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 969 portfolio items |
-| `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 64 portfolio items |
-| `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 64 portfolio items |
-| `recruiter` | The Recruiter side end to end | 43 records / 20 jobs | Recruiter, Talent | 3 interviews, 7 engagements, 5 payment states, 100 portfolio items |
+| `default` | Ordinary design and workflow QA | 193 records / 33 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 659 portfolio items |
+| `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 1251 portfolio items |
+| `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 78 portfolio items |
+| `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 72 portfolio items |
+| `recruiter` | The Recruiter side end to end | 43 records / 20 jobs | Recruiter, Talent | 3 interviews, 7 engagements, 5 payment states, 138 portfolio items |
 
 ## Exact records
 
@@ -226,7 +226,7 @@ is in the manifest's `index`.
 | Payment state | disputed 8 · expired 6 · funded 12 · funding_pending 8 · not_applicable 10 · refunded 7 · release_requested 8 · released 9 · setup_pending 10 · work_in_progress 8 |
 | Relationship kind | application 585 · hiring_request 41 |
 | Indexed persona | Recruiter 105 · Talent 19 |
-| Portfolio volume | 131 records with none · 1 with 20+ |
+| Portfolio volume | 37 records with none · 1 with 20+ |
 
 ## High volume: what renders, and how to reach the rest
 

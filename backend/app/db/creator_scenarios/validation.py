@@ -13,6 +13,7 @@ does not follow, this is where that shows up.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from typing import Any
 
@@ -51,6 +52,193 @@ def check_version(version: int) -> None:
             f"(expected {MANIFEST_VERSION}). Regenerate the manifests, or check out a build that "
             "understands this version."
         )
+
+
+#: Scenarios whose records stand in for real ones. `edge` exists precisely to
+#: hold the incomplete cases, and `empty` holds nothing, so the completeness
+#: contract applies to neither.
+NORMAL_SCENARIOS: frozenset[str] = frozenset({"default", "busy", "talent", "recruiter"})
+
+#: Two is the floor for a portfolio-driven role: one item is a claim, two is a
+#: body of work a reviewer can compare against itself.
+EVIDENCE_FLOOR = 2
+
+#: Copy that means "we had nothing to put here". Matched on word boundaries and
+#: case-insensitively, so a legitimate sentence containing "tested" or "sample
+#: rate" is not condemned for the substring — the corpus is full of real prose
+#: and a naive `in` check would reject most of it.
+PLACEHOLDER_PATTERNS: tuple[str, ...] = (
+    r"\blorem ipsum\b",
+    r"\btest user\b",
+    r"\bsample (?:applicant|user|talent|recruiter|profile)\b",
+    r"\bplaceholder\b",
+    r"\bTBD\b",
+    r"\bN/A\b",
+    r"\bfoo\b|\bbar\b|\bbaz\b",
+    r"\bjob \d+$",
+    r"\bexample\.com\b",
+)
+
+#: Every profile field a normal-scenario person must actually carry. Named for
+#: the backend column each one restores into, so a gap here is a gap on the
+#: rendered profile rather than an abstract schema complaint.
+REQUIRED_TALENT_PROFILE: tuple[str, ...] = (
+    "username",
+    "display_name",
+    "headline",
+    "bio",
+    "location",
+    "timezone",
+    "availability_status",
+)
+REQUIRED_TALENT_LISTS: tuple[str, ...] = ("skills", "tools", "roles", "platforms", "formats")
+
+#: A hiring identity somebody has to decide whether to work with.
+REQUIRED_HIRING_IDENTITY: tuple[str, ...] = (
+    "username",
+    "display_name",
+    "employer_kind",
+    "description",
+    "audience_band",
+    "headline",
+)
+
+
+def _placeholder_hits(text: object) -> list[str]:
+    """Which sentinel patterns a piece of copy trips, if any."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    return [pattern for pattern in PLACEHOLDER_PATTERNS if re.search(pattern, text, re.IGNORECASE)]
+
+
+def check_timezone_coverage() -> None:
+    """Every location the generator can hand out must map to a real timezone.
+
+    The first version of this map was written against invented location names
+    and silently missed half the pool, which produced profiles with no timezone
+    and no complaint. A map that can go stale needs something that notices.
+    """
+    from . import pools
+
+    missing = [name for name, _ in pools.LOCATIONS if name != "Remote" and name not in pools.TIMEZONES]
+    if missing:
+        raise ManifestError(
+            "LOCATIONS entries with no timezone: " + ", ".join(sorted(missing))
+        )
+
+
+def _check_profile_completeness(manifest: Manifest, problems: list[str]) -> None:
+    """The completeness contract, enforced at generation rather than hoped for.
+
+    A corpus that renders an empty profile is not a smaller corpus, it is a
+    misleading one: every QA pass over it concludes the product looks fine on
+    data no real user will ever have. So generation fails rather than producing
+    a scenario that cannot be reviewed.
+    """
+    if manifest.scenario not in NORMAL_SCENARIOS:
+        return
+
+    actors = {actor.id: actor for actor in manifest.actors}
+    owned: dict[str, int] = {}
+    for item in manifest.portfolio:
+        owned[item.owner_id] = owned.get(item.owner_id, 0) + 1
+
+    # --- handles must be unique and route-able ------------------------------
+    handles: dict[str, str] = {}
+    for actor in manifest.actors:
+        slug = (actor.username or "").strip()
+        if not slug:
+            problems.append(f"actor {actor.id} has no username, so it has no profile route")
+            continue
+        if slug != slug.lower() or " " in slug:
+            problems.append(f"actor {actor.id} has an invalid profile slug {slug!r}")
+        if slug in handles:
+            problems.append(f"duplicate handle {slug!r} on actors {handles[slug]} and {actor.id}")
+        handles[slug] = actor.id
+
+    # --- everyone in a live relationship must be reviewable -----------------
+    for rel in manifest.relationships:
+        if rel.archived:
+            continue
+        for role, actor_id in (("talent", rel.talent_id), ("recruiter", rel.recruiter_id)):
+            actor = actors.get(actor_id)
+            if actor is None:
+                problems.append(f"relationship {rel.id} references unknown {role} {actor_id}")
+                continue
+            required = REQUIRED_HIRING_IDENTITY if role == "recruiter" else REQUIRED_TALENT_PROFILE
+            for field_name in required:
+                if not getattr(actor, field_name, None):
+                    problems.append(
+                        f"{role} {actor.username or actor.id} in {rel.id} has no {field_name}"
+                    )
+            if role == "talent":
+                for field_name in REQUIRED_TALENT_LISTS:
+                    if not getattr(actor, field_name, None):
+                        problems.append(f"talent {actor.username} has an empty {field_name}")
+                if owned.get(actor_id, 0) < EVIDENCE_FLOOR:
+                    problems.append(
+                        f"talent {actor.username} carries {owned.get(actor_id, 0)} evidence "
+                        f"items; a normal scenario needs at least {EVIDENCE_FLOOR}"
+                    )
+        if rel.kind == "application" and not rel.job_id:
+            problems.append(f"application {rel.id} has no job context")
+
+    # --- portfolio integrity ------------------------------------------------
+    for item in manifest.portfolio:
+        if item.owner_id not in actors:
+            problems.append(f"portfolio {item.id} is owned by unknown actor {item.owner_id}")
+        if not (item.description or "").strip():
+            problems.append(f"portfolio {item.id} has no description")
+        for url in (item.url, item.thumbnail_url):
+            if url and not str(url).startswith(("http://", "https://")):
+                problems.append(f"portfolio {item.id} has a malformed URL {url!r}")
+    for rel in manifest.relationships:
+        for item_id in rel.portfolio_ids:
+            owner = next((p.owner_id for p in manifest.portfolio if p.id == item_id), None)
+            if owner is not None and owner != rel.talent_id:
+                problems.append(
+                    f"relationship {rel.id} attaches portfolio {item_id} owned by another actor"
+                )
+
+    # --- screening fixtures must be answerable ------------------------------
+    questions_by_conversation: dict[str, list[dict[str, Any]]] = {}
+    for rel in manifest.relationships:
+        for message in rel.messages:
+            if message.kind == "screening_questions":
+                questions_by_conversation[rel.id] = list(message.metadata.get("questions") or [])
+    for rel in manifest.relationships:
+        asked = questions_by_conversation.get(rel.id)
+        for message in rel.messages:
+            if message.kind != "screening_answers":
+                continue
+            if asked is None:
+                problems.append(f"relationship {rel.id} answers screening questions nobody asked")
+                continue
+            positions = {int(q.get("position", -1)) for q in asked}
+            for answer in message.metadata.get("answers") or []:
+                if int(answer.get("position", -1)) not in positions:
+                    problems.append(
+                        f"relationship {rel.id} answers question "
+                        f"{answer.get('position')}, which was not asked"
+                    )
+                if answer.get("required") and not str(answer.get("response") or "").strip():
+                    problems.append(
+                        f"relationship {rel.id} leaves required question "
+                        f"{answer.get('position')} unanswered"
+                    )
+
+    # --- no filler ----------------------------------------------------------
+    for actor in manifest.actors:
+        for field_name in ("display_name", "headline", "bio", "description"):
+            for pattern in _placeholder_hits(getattr(actor, field_name, None)):
+                problems.append(f"actor {actor.username} has placeholder {field_name} ({pattern})")
+    for item in manifest.portfolio:
+        for field_name in ("title", "description"):
+            for pattern in _placeholder_hits(getattr(item, field_name, None)):
+                problems.append(f"portfolio {item.id} has placeholder {field_name} ({pattern})")
+    for job in manifest.jobs:
+        for pattern in _placeholder_hits(job.title):
+            problems.append(f"job {job.id} has a placeholder title ({pattern})")
 
 
 def validate(manifest: Manifest) -> None:
@@ -194,6 +382,8 @@ def validate(manifest: Manifest) -> None:
         # attachment step silently failed.
         if len(orphan_portfolio) == len(portfolio_ids) and portfolio_ids:
             problems.append("no portfolio item is attached to any relationship")
+
+    _check_profile_completeness(manifest, problems)
 
     _fail(problems)
 

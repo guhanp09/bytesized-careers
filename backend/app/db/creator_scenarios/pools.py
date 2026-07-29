@@ -161,17 +161,23 @@ EMPLOYER_KINDS: tuple[str, ...] = ("creator", "agency", "studio", "brand", "prod
 #: (handle, display name, kind, subscribers, cadence). Cadence is supplied here
 #: because a channel genuinely publishes on a rhythm — it is never inferred from
 #: posting history, which would be a guess presented as a fact.
-CHANNELS: tuple[tuple[str, str, str, int, str | None], ...] = (
-    ("financesimplified", "Finance Simplified", "creator", 412_000, "2 videos/week"),
-    ("dailyfit", "Daily Fit", "creator", 96_000, "5 shorts/week"),
-    ("techunpacked", "Tech Unpacked", "agency", 1_300_000, "3 videos/week"),
-    ("gyaanexpress", "Gyaan Express", "creator", 228_000, "1 video/week"),
-    ("moneywiseindia", "Moneywise India", "creator", 54_000, "2 videos/month"),
-    ("plateandpan", "Plate & Pan", "studio", 780_000, "4 videos/week"),
-    ("routeunknown", "Route Unknown", "creator", 31_000, None),
-    ("pixelforge", "Pixelforge Studio", "production_house", 2_400_000, "daily"),
-    ("brightbrand", "Bright Brand Co", "brand", 8_900, None),
-    ("casefiles", "Case Files Weekly", "creator", 615_000, "1 video/week"),
+# (handle, name, kind, subscribers, cadence, niche).
+#
+# The niche belongs to the channel rather than being drawn alongside it. Pulling
+# it from a parallel index made every hiring account contradict its own name —
+# "Finance Simplified · Fitness" — which is the first thing a reader notices and
+# the fastest way to make a whole corpus look fake.
+CHANNELS: tuple[tuple[str, str, str, int, str | None, str], ...] = (
+    ("financesimplified", "Finance Simplified", "creator", 412_000, "2 videos/week", "Finance"),
+    ("dailyfit", "Daily Fit", "creator", 96_000, "5 shorts/week", "Fitness"),
+    ("techunpacked", "Tech Unpacked", "agency", 1_300_000, "3 videos/week", "Technology"),
+    ("gyaanexpress", "Gyaan Express", "creator", 228_000, "1 video/week", "Education"),
+    ("moneywiseindia", "Moneywise India", "creator", 54_000, "2 videos/month", "Finance"),
+    ("plateandpan", "Plate & Pan", "studio", 780_000, "4 videos/week", "Food"),
+    ("routeunknown", "Route Unknown", "creator", 31_000, None, "Travel"),
+    ("pixelforge", "Pixelforge Studio", "production_house", 2_400_000, "daily", "Gaming"),
+    ("brightbrand", "Bright Brand Co", "brand", 8_900, None, "Beauty"),
+    ("casefiles", "Case Files Weekly", "creator", 615_000, "1 video/week", "True crime"),
 )
 
 # --- people -----------------------------------------------------------------
@@ -340,3 +346,246 @@ PORTFOLIO_ROLES: tuple[str, ...] = (
     "Script and structure",
     "Captions and localisation",
 )
+
+
+# --- profiles ---------------------------------------------------------------
+#
+# What a credible creator-economy professional looks like, keyed by the role
+# they lead with.
+#
+# Coherence is the whole point. A podcast producer whose only evidence is
+# thumbnail design tells a reviewer nothing, and a subtitle specialist with no
+# language on their profile is a data shape rather than a person. Each archetype
+# therefore carries a matched set: the skills, the stack those skills are
+# actually used in, the surfaces the work ships on, and — critically — the
+# *kind* of evidence that role produces, because for a scriptwriter or a channel
+# manager a video reel is not the artefact.
+
+#: role -> (bio, skills, tools, platforms, formats, languages, evidence_kind)
+PROFILE_ARCHETYPES: dict[str, dict[str, object]] = {
+    "Shorts editor": {
+        "bio": "I cut vertical for retention, not for polish. Most of my work is finding the four seconds that hold someone and building the rest of the clip around it — hook first, then pacing, then everything else.",
+        "skills": ["Short-form editing", "Hook writing", "Pacing", "Sound design", "Captioning"],
+        "tools": ["Premiere Pro", "CapCut", "After Effects", "Descript"],
+        "platforms": ["youtube_shorts", "tiktok", "instagram_reels"],
+        "formats": ["Shorts/Reels", "Hooks", "Repurposed clips", "Captions"],
+        "languages": ["English", "Hindi"],
+        "evidence": "video",
+    },
+    "Long-form editor": {
+        "bio": "Long-form is a structure problem before it is an edit problem. I spend the first pass on the shape of the argument and only then start cutting — which is usually where the retention graph stops sagging in the middle.",
+        "skills": ["Narrative structure", "Retention editing", "Colour", "Sound mix", "B-roll direction"],
+        "tools": ["Premiere Pro", "DaVinci Resolve", "After Effects", "Frame.io"],
+        "platforms": ["youtube", "multi_platform"],
+        "formats": ["Long-form video", "YouTube packaging", "Captions"],
+        "languages": ["English"],
+        "evidence": "video",
+    },
+    "Thumbnail designer": {
+        "bio": "Thumbnails are a legibility problem at 120 pixels wide. I design in sets and test against the rest of the channel's grid, because a thumbnail that wins alone and loses in context has not won.",
+        "skills": ["Thumbnail design", "Typography", "Compositing", "A/B testing", "Colour theory"],
+        "tools": ["Photoshop", "Figma", "Lightroom"],
+        "platforms": ["youtube", "youtube_shorts"],
+        "formats": ["Thumbnails", "YouTube packaging"],
+        "languages": ["English"],
+        "evidence": "design",
+    },
+    "Channel manager": {
+        "bio": "I run the parts of a channel that are not the video: the calendar, the packaging decisions, the analytics read, and the awkward conversation about what to stop making. Most of my value shows up as things that did not get published.",
+        "skills": ["Channel strategy", "Analytics", "Content planning", "Team coordination", "Packaging"],
+        "tools": ["YouTube Studio", "Notion", "Airtable", "TubeBuddy"],
+        "platforms": ["youtube", "multi_platform"],
+        "formats": ["Content strategy", "Channel research", "YouTube packaging"],
+        "languages": ["English"],
+        "evidence": "strategy",
+    },
+    "Scriptwriter": {
+        "bio": "I write for the ear and the retention graph at once. Research first, structure second, and a hook that pays off what it promised — I would rather cut a good line than keep one that stalls the middle.",
+        "skills": ["Scriptwriting", "Research", "Story structure", "Hook writing", "Interviewing"],
+        "tools": ["Google Docs", "Notion", "Scrivener"],
+        "platforms": ["youtube", "podcast", "multi_platform"],
+        "formats": ["Scripts", "Hooks", "Content strategy"],
+        "languages": ["English"],
+        "evidence": "writing",
+    },
+    "Podcast producer": {
+        "bio": "I produce interview shows end to end — booking, run of show, edit, and the clips that actually travel. The edit is where most shows lose their audience, so that is where I spend the time.",
+        "skills": ["Podcast production", "Audio editing", "Guest booking", "Run-of-show", "Clip strategy"],
+        "tools": ["Descript", "Adobe Audition", "Riverside", "Hindenburg"],
+        "platforms": ["podcast", "youtube", "multi_platform"],
+        "formats": ["Podcast editing", "Voice-over", "Repurposed clips"],
+        "languages": ["English"],
+        "evidence": "audio",
+    },
+    "Motion-graphics artist": {
+        "bio": "I build systems rather than one-off animations — a title set, a lower-third kit, a data-callout template a team can actually use without me. The goal is that episode forty looks like episode one.",
+        "skills": ["Motion graphics", "Template systems", "Data visualisation", "Rigging", "Brand animation"],
+        "tools": ["After Effects", "Cinema 4D", "Illustrator", "Figma"],
+        "platforms": ["youtube", "instagram_reels", "multi_platform"],
+        "formats": ["Motion graphics", "YouTube packaging", "Ad creatives"],
+        "languages": ["English"],
+        "evidence": "video",
+    },
+    "Colorist": {
+        "bio": "Grading is continuity work as much as look development. I match across shoot days first, then build the look — a beautiful grade that flickers between cuts is a problem, not a style.",
+        "skills": ["Colour grading", "Look development", "Shot matching", "LUT design", "Delivery specs"],
+        "tools": ["DaVinci Resolve", "Baselight", "Premiere Pro"],
+        "platforms": ["youtube", "multi_platform"],
+        "formats": ["Long-form video", "Ad creatives"],
+        "languages": ["English"],
+        "evidence": "video",
+    },
+    "Subtitler / translator": {
+        "bio": "I localise rather than transcribe. Timing, reading speed and idiom all matter — a caption that is technically correct and unreadable at pace has failed the person it was for.",
+        "skills": ["Subtitling", "Localisation", "Transcription", "Reading-speed timing", "QC"],
+        "tools": ["Aegisub", "Subtitle Edit", "Descript", "YouTube Studio"],
+        "platforms": ["youtube", "youtube_shorts", "multi_platform"],
+        "formats": ["Captions", "Voice-over"],
+        "languages": ["English", "Hindi", "Spanish", "Tamil"],
+        "evidence": "writing",
+    },
+    "Community manager": {
+        "bio": "I look after the parts of an audience that never comment. Moderation, tone, and knowing which threads to leave alone — most of the job is judgement rather than volume.",
+        "skills": ["Community moderation", "Tone of voice", "Escalation handling", "Event running", "Reporting"],
+        "tools": ["Discord", "Notion", "YouTube Studio", "Zapier"],
+        "platforms": ["twitch", "multi_platform", "instagram_reels"],
+        "formats": ["Social posts", "Channel research"],
+        "languages": ["English"],
+        "evidence": "strategy",
+    },
+    "UGC creator": {
+        "bio": "I shoot and cut creator-style ads that do not feel like ads. Usually three to five variants per brief so there is something real to test rather than one hero cut.",
+        "skills": ["UGC production", "On-camera delivery", "Ad variants", "Lighting", "Direct response"],
+        "tools": ["CapCut", "Premiere Pro", "Lightroom", "Canva"],
+        "platforms": ["tiktok", "instagram_reels", "youtube_shorts"],
+        "formats": ["Ad creatives", "Shorts/Reels", "Social posts"],
+        "languages": ["English"],
+        "evidence": "video",
+    },
+    "Brand-deal manager": {
+        "bio": "I handle the commercial side of a channel — inbound sorting, rate cards, deliverables that do not quietly expand, and the follow-up nobody enjoys. I would rather lose a deal than agree to terms that hurt the channel.",
+        "skills": ["Sponsorship sales", "Rate negotiation", "Deliverable scoping", "Reporting", "Brand safety"],
+        "tools": ["Notion", "HubSpot", "Google Sheets", "DocuSign"],
+        "platforms": ["multi_platform", "youtube"],
+        "formats": ["Content strategy", "Ad creatives"],
+        "languages": ["English"],
+        "evidence": "strategy",
+    },
+}
+
+#: Evidence a role actually produces. A scriptwriter's portfolio is scripts; a
+#: channel manager's is an audit or a growth plan. Satisfying a portfolio floor
+#: with irrelevant video for either would be the corpus lying about the person.
+EVIDENCE_TEMPLATES: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    # (title, description, contribution, media)
+    "video": (
+        ("Retention rebuild — market explainer", "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.", "Edit rebuild, hook rewrite", "video"),
+        ("Series packaging — education channel", "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.", "Lead editor, packaging", "video"),
+        ("Cold open reshoot — fitness channel", "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.", "Edit and direction", "video"),
+        ("Sponsor integration cutdown", "A ninety-second read cut to thirty-five without losing the offer, placed after the first payoff rather than before it.", "Edit, timing", "video"),
+        ("Interview multicam edit", "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.", "Lead editor", "video"),
+    ),
+    "design": (
+        ("Thumbnail A/B set — finance", "Four thumbnails for one upload, built to be legible at 120px and distinct from the eleven videos around them on the channel page.", "Concepting and design", "image"),
+        ("Channel grid refresh", "Reworked a back catalogue's thumbnails so the grid reads as one channel — shared type, a fixed face position, and a colour rule per series.", "Design system", "image"),
+        ("Packaging system — education series", "Title and thumbnail pairs designed together, with a template a non-designer on the team can extend without breaking it.", "Design system", "image"),
+        ("Motion titles system", "A title kit with three states and documented spacing, so later episodes match the first without me.", "Template system", "image"),
+    ),
+    "writing": (
+        ("Script — data-led explainer", "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.", "Research and script", "link"),
+        ("Hook pass — twelve shorts", "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.", "Script and structure", "link"),
+        ("Translation + subtitle pass", "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.", "Captions and localisation", "link"),
+        ("Series outline — six episodes", "Outline and beat sheet for a six-part run, structured so each episode stands alone and still earns the next.", "Structure and outline", "link"),
+    ),
+    "strategy": (
+        ("Channel audit — 40 uploads", "A read of forty uploads against retention, click-through and publish cadence, ending in three things to stop doing.", "Analysis and recommendations", "link"),
+        ("Ninety-day growth plan", "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.", "Strategy and planning", "link"),
+        ("Sponsorship rate card and process", "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.", "Commercial strategy", "link"),
+        ("Community guidelines and escalation path", "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.", "Policy and process", "link"),
+    ),
+    "audio": (
+        ("Podcast highlight reel", "Twenty-two minutes of highlights pulled from six hours, chosen for what travels as a clip rather than what was most interesting in the room.", "Edit and clip strategy", "audio"),
+        ("Dialogue clean-up — weekly show", "Noise floor, plosives and room tone matched across two remote guests recording on very different setups.", "Audio edit and mix", "audio"),
+        ("Caption + sound design pass", "Sound design and captions for a narrative episode, timed so the captions never land before the beat they describe.", "Sound and captions", "audio"),
+        ("Show format redesign", "Restructured a rambling interview show into a three-act run of show, with the cold open cut from the best answer.", "Production and structure", "audio"),
+    ),
+}
+
+#: Timezones, keyed by the *actual* strings in LOCATIONS. Written by hand and
+#: then checked against that pool by the validator, because a map that silently
+#: misses a location produces a profile with no timezone and nothing complains.
+TIMEZONES: dict[str, str] = {
+    "Mumbai, India": "Asia/Kolkata",
+    "Bengaluru, India": "Asia/Kolkata",
+    "Delhi NCR, India": "Asia/Kolkata",
+    "Hyderabad, India": "Asia/Kolkata",
+    "Indore, India": "Asia/Kolkata",
+    "Kochi, India": "Asia/Kolkata",
+    "Guwahati, India": "Asia/Kolkata",
+    "Kathmandu, Nepal": "Asia/Kathmandu",
+    "London, UK": "Europe/London",
+    "Berlin, Germany": "Europe/Berlin",
+    "Austin, USA": "America/Chicago",
+    "Toronto, Canada": "America/Toronto",
+    "Adelaide, Australia": "Australia/Adelaide",
+}
+
+#: Somebody working remotely still lives somewhere. "Remote" is a work mode
+#: wearing a location's clothes, so the timezone comes from this instead of
+#: being left empty — an empty timezone on a profile reads as missing data.
+REMOTE_TIMEZONES: tuple[str, ...] = (
+    "Asia/Kolkata",
+    "Europe/London",
+    "America/New_York",
+    "Europe/Berlin",
+    "America/Los_Angeles",
+)
+
+WORKING_HOURS: tuple[str, ...] = (
+    "Mornings IST, overlapping with EU afternoons",
+    "Afternoons and evenings, flexible for handover calls",
+    "Standard business hours, US Central",
+    "Evenings IST — async the rest of the day",
+    "Split day, overlapping both EU and US East",
+)
+
+TURNAROUND_NOTES: tuple[str, ...] = (
+    "Two to three days for a long-form cut, same-day for shorts",
+    "One working week per episode, including a revision round",
+    "48 hours for a first pass",
+    "Same-week delivery, two revision rounds included",
+    "Three working days, faster on retainer",
+)
+
+#: What a hiring identity is, in its own words.
+EMPLOYER_DESCRIPTIONS: dict[str, str] = {
+    # Says what *kind* of account this is, never how often it publishes — the
+    # cadence is a per-channel fact and stating it here contradicts half of them.
+    "creator": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
+    "agency": "A creator-economy agency running production for a roster of channels, with a standing team of editors, writers and designers.",
+    "studio": "A production studio making long-form and documentary work for creators and brands, with in-house post.",
+    "brand": "An in-house content team producing owned-channel video alongside paid social, hiring specialists per format.",
+    "production_house": "A production house handling shoot-to-delivery for creator and branded work, staffing crews per project.",
+}
+
+# Ceilings, ascending. `audience_band` is a *reading* of the subscriber count on
+# the same profile, so it is derived rather than drawn: a card showing "412,000
+# subscribers" above the band "10K–50K" is not a data gap, it is a visible lie.
+AUDIENCE_BANDS: tuple[tuple[int | None, str], ...] = (
+    (10_000, "Under 10K subscribers"),
+    (50_000, "10K–50K subscribers"),
+    (250_000, "50K–250K subscribers"),
+    (500_000, "250K–500K subscribers"),
+    (1_000_000, "500K–1M subscribers"),
+    (None, "1M+ subscribers"),
+)
+
+
+def audience_band_for(subscribers: int | None) -> str | None:
+    """The band that actually contains `subscribers`."""
+    if not subscribers:
+        return None
+    for ceiling, label in AUDIENCE_BANDS:
+        if ceiling is None or subscribers < ceiling:
+            return label
+    return AUDIENCE_BANDS[-1][1]

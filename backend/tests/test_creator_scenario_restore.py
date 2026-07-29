@@ -20,7 +20,16 @@ from app.db.creator_scenarios.restore import (
 )
 from app.db.creator_scenarios.validation import ManifestError
 from app.db.qa_scenarios import SCENARIO_BY_KEY, restore_scenario
-from app.models import Conversation, Job, JobApplication, Message, TalentInterest, User
+from app.models import (
+    Conversation,
+    Job,
+    JobApplication,
+    Message,
+    PortfolioItem,
+    TalentInterest,
+    User,
+    UserContentStyle,
+)
 from app.models.review import Engagement
 from conftest import TestSessionLocal
 
@@ -94,6 +103,89 @@ async def test_restoring_edge_writes_what_the_manifest_declares() -> None:
             assert row is not None
             assert row.status == rel["stage"]
             assert row.participant_status == (rel.get("participant_stage") or rel["stage"])
+
+
+async def test_the_restore_writes_a_profile_a_recruiter_could_actually_read() -> None:
+    """The applicant page is the point of the review, so it has to arrive whole.
+
+    Counting rows would have passed throughout the period when every restored
+    applicant had a name, an empty biography and no work attached.
+    """
+
+    manifest = load_manifest("default")
+    await _restore("default")
+    actor = next(
+        a
+        for a in manifest["actors"]
+        if "recruiter" not in (a.get("sides") or []) and a.get("bio")
+    )
+
+    async with TestSessionLocal() as session:
+        row = await session.scalar(select(User).where(User.id == UUID(actor["id"])))
+        assert row is not None
+        assert row.bio == actor["bio"]
+        assert row.timezone == actor["timezone"]
+        assert row.skills == actor["skills"]
+        assert row.availability_status == actor["availability_status"]
+        # The manifest names fields after the product concept; the backend keeps
+        # talent and recruiter metadata in separate columns. This is the seam.
+        assert row.creator_platforms == actor["platforms"]
+        assert row.hiring_platforms == []
+        assert row.collaboration_tools == ", ".join(actor["tools"])
+
+        style = await session.scalar(
+            select(UserContentStyle).where(UserContentStyle.user_id == UUID(actor["id"]))
+        )
+        assert style is not None
+        assert style.primary_niche == actor["niches"][0]
+        assert style.format == actor["formats"]
+
+
+async def test_a_restored_applicant_has_their_work_attached() -> None:
+    manifest = load_manifest("default")
+    await _restore("default")
+    items = [p for p in manifest["portfolio"] if p.get("description")]
+    assert items, "no described portfolio item in the manifest to check"
+    item = items[0]
+
+    async with TestSessionLocal() as session:
+        row = await session.scalar(select(PortfolioItem).where(PortfolioItem.id == UUID(item["id"])))
+        assert row is not None, "the portfolio existed only inside the application payload"
+        assert row.title == item["title"]
+        assert row.description == item["description"]
+        assert row.contribution_summary == item["contribution"]
+        assert row.tools == item["tools"]
+        assert row.is_public is True
+        # Seconds in the manifest, the product's own label in the column.
+        if item.get("duration_seconds"):
+            assert row.duration and ":" in row.duration
+
+
+async def test_a_hiring_identity_restores_onto_the_recruiter_side() -> None:
+    manifest = load_manifest("default")
+    await _restore("default")
+    actor = next(a for a in manifest["actors"] if "recruiter" in (a.get("sides") or []))
+
+    async with TestSessionLocal() as session:
+        row = await session.scalar(select(User).where(User.id == UUID(actor["id"])))
+        assert row is not None
+        assert row.hiring_platforms == actor["platforms"]
+        assert row.hiring_niches == actor["niches"]
+        assert row.hiring_formats == actor["formats"]
+        assert row.hiring_verification_status == actor["verification_status"]
+        assert row.hiring_channels_or_pages_managed == actor["description"]
+        # A hiring account's own bio is about the channel; the description is
+        # about the kind of account. Restoring one into both prints it twice.
+        assert row.bio and row.bio != row.hiring_channels_or_pages_managed
+        assert row.creator_platforms == []
+
+
+async def test_restoring_twice_does_not_duplicate_a_profile() -> None:
+    await _restore("default")
+    first = await _count(PortfolioItem)
+    await _restore("default")
+    assert await _count(PortfolioItem) == first
+    assert first > 0
 
 
 async def test_a_private_decision_survives_the_restore_as_a_divergence() -> None:

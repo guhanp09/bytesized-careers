@@ -2,499 +2,1582 @@
   "actors": [
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/209.jpg",
+      "bio": "I produce interview shows end to end — booking, run of show, edit, and the clips that actually travel. The edit is where most shows lose their audience, so that is where I spend the time.",
       "deactivated": false,
       "display_name": "Maya Das",
       "email": "talent-talent00209@scenario.invalid",
       "experience_years": 2,
+      "formats": [
+        "Podcast editing",
+        "Voice-over",
+        "Repurposed clips"
+      ],
       "headline": "Podcast producer for creator-led channels",
       "id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
+      "languages": [
+        "English"
+      ],
       "location": "Adelaide, Australia",
+      "niches": [
+        "Fitness"
+      ],
+      "platforms": [
+        "podcast",
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/podcast-00209"
+      ],
       "rate_currency": "INR",
+      "roles": [
+        "Podcast producer"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00209"
+      "skills": [
+        "Podcast production",
+        "Audio editing",
+        "Guest booking",
+        "Run-of-show",
+        "Clip strategy"
+      ],
+      "timezone": "Australia/Adelaide",
+      "tools": [
+        "Descript",
+        "Adobe Audition",
+        "Riverside",
+        "Hindenburg"
+      ],
+      "turnaround": "Three working days, faster on retainer",
+      "username": "tal-t00209",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Split day, overlapping both EU and US East"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
+      "bio": "I write for the ear and the retention graph at once. Research first, structure second, and a hook that pays off what it promised — I would rather cut a good line than keep one that stalls the middle.",
       "deactivated": false,
       "display_name": "Priya Nair",
       "email": "talent-talent70000@scenario.invalid",
       "experience_years": 7,
+      "formats": [
+        "Scripts",
+        "Hooks",
+        "Content strategy"
+      ],
       "headline": "Scriptwriter for creator-led channels",
       "id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
+      "languages": [
+        "English"
+      ],
       "location": "Remote",
+      "niches": [
+        "Education"
+      ],
+      "platforms": [
+        "youtube",
+        "podcast",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/scriptwriter-70000"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "Scriptwriter"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t70000"
+      "skills": [
+        "Scriptwriting",
+        "Research",
+        "Story structure",
+        "Hook writing",
+        "Interviewing"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Google Docs",
+        "Notion",
+        "Scrivener"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t70000",
+      "verification_status": "verified",
+      "work_mode": "Hybrid",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "available",
+      "availability_status": "available",
       "avatar_url": "https://avatars.scenario.invalid/207.jpg",
+      "bio": "I run the parts of a channel that are not the video: the calendar, the packaging decisions, the analytics read, and the awkward conversation about what to stop making. Most of my value shows up as things that did not get published.",
       "deactivated": false,
       "display_name": "Grace Gupta",
       "email": "talent-talent00207@scenario.invalid",
       "experience_years": 0,
+      "formats": [
+        "Content strategy",
+        "Channel research",
+        "YouTube packaging"
+      ],
       "headline": "Channel manager for creator-led channels",
       "id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
+      "languages": [
+        "English"
+      ],
       "location": "Austin, USA",
+      "niches": [
+        "True crime"
+      ],
+      "platforms": [
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/channel-00207"
+      ],
       "rate_currency": "INR",
       "rate_max": 1200,
       "rate_min": 700,
+      "roles": [
+        "Channel manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00207"
+      "skills": [
+        "Channel strategy",
+        "Analytics",
+        "Content planning",
+        "Team coordination",
+        "Packaging"
+      ],
+      "timezone": "America/Chicago",
+      "tools": [
+        "YouTube Studio",
+        "Notion",
+        "Airtable",
+        "TubeBuddy"
+      ],
+      "turnaround": "48 hours for a first pass",
+      "username": "tal-t00207",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Standard business hours, US Central"
     },
     {
+      "audience_band": "250K–500K subscribers",
+      "availability_status": "selective",
+      "bio": "Finance Simplified covers finance for an audience of 412,000, publishing 2 videos/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "financesimplified",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Finance Simplified",
       "email": "talent-financesimplified@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "headline": "Creator · Finance",
       "id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "location": "Remote",
+      "niches": [
+        "Finance"
+      ],
+      "platforms": [
+        "youtube"
+      ],
+      "public_links": [
+        "https://financesimplified.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 412000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "2 videos/week",
-      "username": "tal-financesimplified"
+      "username": "tal-financesimplified",
+      "verification_status": "verified",
+      "work_mode": "Remote"
     },
     {
       "availability": "available",
+      "availability_status": "available",
       "avatar_url": "https://avatars.scenario.invalid/213.jpg",
+      "bio": "I look after the parts of an audience that never comment. Moderation, tone, and knowing which threads to leave alone — most of the job is judgement rather than volume.",
       "deactivated": false,
       "display_name": "Ananya Mehta",
       "email": "talent-talent00213@scenario.invalid",
       "experience_years": 6,
+      "formats": [
+        "Social posts",
+        "Channel research"
+      ],
       "headline": "Community manager for creator-led channels",
       "id": "1ac04abf-fd84-5325-aa85-fbf6b1db9fc1",
+      "languages": [
+        "English"
+      ],
       "location": "Delhi NCR, India",
+      "niches": [
+        "Technology"
+      ],
+      "platforms": [
+        "twitch",
+        "multi_platform",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/community-00213"
+      ],
       "rate_currency": "EUR",
       "rate_min": 800,
+      "roles": [
+        "Community manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00213"
+      "skills": [
+        "Community moderation",
+        "Tone of voice",
+        "Escalation handling",
+        "Event running",
+        "Reporting"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Discord",
+        "Notion",
+        "YouTube Studio",
+        "Zapier"
+      ],
+      "turnaround": "Same-week delivery, two revision rounds included",
+      "username": "tal-t00213",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Evenings IST — async the rest of the day"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
+      "bio": "I write for the ear and the retention graph at once. Research first, structure second, and a hook that pays off what it promised — I would rather cut a good line than keep one that stalls the middle.",
       "deactivated": false,
       "display_name": "Daniel Chopra",
       "email": "talent-talent00208@scenario.invalid",
       "experience_years": 1,
+      "formats": [
+        "Scripts",
+        "Hooks",
+        "Content strategy"
+      ],
       "headline": "Scriptwriter for creator-led channels",
       "id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
+      "languages": [
+        "English"
+      ],
       "location": "Toronto, Canada",
+      "niches": [
+        "Kids"
+      ],
+      "platforms": [
+        "youtube",
+        "podcast",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/scriptwriter-00208"
+      ],
       "rate_currency": "INR",
       "rate_min": 900,
+      "roles": [
+        "Scriptwriter"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00208"
+      "skills": [
+        "Scriptwriting",
+        "Research",
+        "Story structure",
+        "Hook writing",
+        "Interviewing"
+      ],
+      "timezone": "America/Toronto",
+      "tools": [
+        "Google Docs",
+        "Notion",
+        "Scrivener"
+      ],
+      "turnaround": "Same-week delivery, two revision rounds included",
+      "username": "tal-t00208",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Evenings IST — async the rest of the day"
     },
     {
+      "audience_band": "500K–1M subscribers",
+      "availability_status": "selective",
+      "bio": "Plate & Pan covers food for an audience of 780,000, publishing 4 videos/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "plateandpan",
       "deactivated": false,
+      "description": "A production studio making long-form and documentary work for creators and brands, with in-house post.",
       "display_name": "Plate & Pan",
       "email": "talent-plateandpan@scenario.invalid",
       "employer_kind": "studio",
+      "formats": [
+        "Podcast editing",
+        "Voice-over"
+      ],
+      "headline": "Studio · Food",
       "id": "27226a6b-9544-574b-94c6-8f2de3497b5d",
       "location": "Indore, India",
+      "niches": [
+        "Food"
+      ],
+      "platforms": [
+        "podcast"
+      ],
+      "public_links": [
+        "https://plateandpan.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 780000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "4 videos/week",
-      "username": "tal-plateandpan"
+      "username": "tal-plateandpan",
+      "verification_status": "unverified",
+      "work_mode": "On-site"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/203.jpg",
+      "bio": "I handle the commercial side of a channel — inbound sorting, rate cards, deliverables that do not quietly expand, and the follow-up nobody enjoys. I would rather lose a deal than agree to terms that hurt the channel.",
       "deactivated": false,
       "display_name": "Leela Patel",
       "email": "talent-talent00203@scenario.invalid",
       "experience_years": 5,
+      "formats": [
+        "Content strategy",
+        "Ad creatives"
+      ],
       "headline": "Brand-deal manager for creator-led channels",
       "id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
+      "languages": [
+        "English"
+      ],
       "location": "Guwahati, India",
+      "niches": [
+        "Food"
+      ],
+      "platforms": [
+        "multi_platform",
+        "youtube"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/brand-deal-00203"
+      ],
       "rate_currency": "EUR",
       "rate_min": 800,
+      "roles": [
+        "Brand-deal manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00203"
+      "skills": [
+        "Sponsorship sales",
+        "Rate negotiation",
+        "Deliverable scoping",
+        "Reporting",
+        "Brand safety"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Notion",
+        "HubSpot",
+        "Google Sheets",
+        "DocuSign"
+      ],
+      "turnaround": "Same-week delivery, two revision rounds included",
+      "username": "tal-t00203",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Evenings IST — async the rest of the day"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/90010.jpg",
+      "bio": "I shoot and cut creator-style ads that do not feel like ads. Usually three to five variants per brief so there is something real to test rather than one hero cut.",
       "deactivated": false,
       "display_name": "Ishaan Khan",
       "email": "talent-talent90010@scenario.invalid",
       "experience_years": 1,
+      "formats": [
+        "Ad creatives",
+        "Shorts/Reels",
+        "Social posts"
+      ],
       "headline": "UGC creator for creator-led channels",
       "id": "322c9506-435f-5dae-9f88-f0ed6ee1208f",
+      "languages": [
+        "English"
+      ],
       "location": "Hyderabad, India",
+      "niches": [
+        "Comedy"
+      ],
+      "platforms": [
+        "tiktok",
+        "instagram_reels",
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/ugc-90010"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "UGC creator"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t90010"
+      "skills": [
+        "UGC production",
+        "On-camera delivery",
+        "Ad variants",
+        "Lighting",
+        "Direct response"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "CapCut",
+        "Premiere Pro",
+        "Lightroom",
+        "Canva"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t90010",
+      "verification_status": "verified",
+      "work_mode": "Hybrid",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/214.jpg",
+      "bio": "I shoot and cut creator-style ads that do not feel like ads. Usually three to five variants per brief so there is something real to test rather than one hero cut.",
       "deactivated": false,
       "display_name": "Vikram Nair",
       "email": "talent-talent00214@scenario.invalid",
       "experience_years": 7,
+      "formats": [
+        "Ad creatives",
+        "Shorts/Reels",
+        "Social posts"
+      ],
       "headline": "UGC creator for creator-led channels",
       "id": "42020ab6-a543-5848-8362-f083e2365d98",
+      "languages": [
+        "English"
+      ],
       "location": "Hyderabad, India",
+      "niches": [
+        "Food"
+      ],
+      "platforms": [
+        "tiktok",
+        "instagram_reels",
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/ugc-00214"
+      ],
       "rate_currency": "INR",
       "rate_max": 60000,
       "rate_min": 35000,
+      "roles": [
+        "UGC creator"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00214"
+      "skills": [
+        "UGC production",
+        "On-camera delivery",
+        "Ad variants",
+        "Lighting",
+        "Direct response"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "CapCut",
+        "Premiere Pro",
+        "Lightroom",
+        "Canva"
+      ],
+      "turnaround": "Three working days, faster on retainer",
+      "username": "tal-t00214",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Split day, overlapping both EU and US East"
     },
     {
       "availability": "available",
+      "availability_status": "available",
       "avatar_url": "https://avatars.scenario.invalid/210.jpg",
+      "bio": "I build systems rather than one-off animations — a title set, a lower-third kit, a data-callout template a team can actually use without me. The goal is that episode forty looks like episode one.",
       "deactivated": false,
       "display_name": "Aarav Joshi",
       "email": "talent-talent00210@scenario.invalid",
       "experience_years": 3,
+      "formats": [
+        "Motion graphics",
+        "YouTube packaging",
+        "Ad creatives"
+      ],
       "headline": "Motion-graphics artist for creator-led channels",
       "id": "4b0a51fd-e03f-5a52-ace4-2f973210d087",
+      "languages": [
+        "English"
+      ],
       "location": "Remote",
+      "niches": [
+        "Finance"
+      ],
+      "platforms": [
+        "youtube",
+        "instagram_reels",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/motion-graphics-00210"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "Motion-graphics artist"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00210"
+      "skills": [
+        "Motion graphics",
+        "Template systems",
+        "Data visualisation",
+        "Rigging",
+        "Brand animation"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "After Effects",
+        "Cinema 4D",
+        "Illustrator",
+        "Figma"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t00210",
+      "verification_status": "verified",
+      "work_mode": "Remote",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/211.jpg",
+      "bio": "Grading is continuity work as much as look development. I match across shoot days first, then build the look — a beautiful grade that flickers between cuts is a problem, not a style.",
       "deactivated": false,
       "display_name": "Priya Pillai",
       "email": "talent-talent00211@scenario.invalid",
       "experience_years": 4,
+      "formats": [
+        "Long-form video",
+        "Ad creatives"
+      ],
       "headline": "Colorist for creator-led channels",
       "id": "4ea6558e-0dcf-5000-8934-536d0c02b152",
+      "languages": [
+        "English"
+      ],
       "location": "Mumbai, India",
+      "niches": [
+        "Gaming"
+      ],
+      "platforms": [
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/colorist-00211"
+      ],
       "rate_currency": "INR",
       "rate_min": 2500,
+      "roles": [
+        "Colorist"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00211"
+      "skills": [
+        "Colour grading",
+        "Look development",
+        "Shot matching",
+        "LUT design",
+        "Delivery specs"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight",
+        "Premiere Pro"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t00211",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
+      "audience_band": "500K–1M subscribers",
+      "availability_status": "selective",
+      "bio": "Case Files Weekly covers true crime for an audience of 615,000, publishing 1 video/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "casefiles",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Case Files Weekly",
       "email": "talent-casefiles@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "headline": "Creator · True crime",
       "id": "4f2ecfde-800d-58d9-82cc-e16ac0add169",
       "location": "London, UK",
+      "niches": [
+        "True crime"
+      ],
+      "platforms": [
+        "tiktok"
+      ],
+      "public_links": [
+        "https://casefiles.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 615000,
+      "timezone": "Europe/London",
       "upload_cadence": "1 video/week",
-      "username": "tal-casefiles"
+      "username": "tal-casefiles",
+      "verification_status": "verified",
+      "work_mode": "Remote"
     },
     {
+      "audience_band": "50K–250K subscribers",
+      "availability_status": "selective",
+      "bio": "Daily Fit covers fitness for an audience of 96,000, publishing 5 shorts/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "dailyfit",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Daily Fit",
       "email": "talent-dailyfit@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "headline": "Creator · Fitness",
       "id": "5d69ef29-e9f3-50b8-9c83-e2fbea585e8f",
       "location": "Mumbai, India",
+      "niches": [
+        "Fitness"
+      ],
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://dailyfit.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 96000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "5 shorts/week",
-      "username": "tal-dailyfit"
+      "username": "tal-dailyfit",
+      "verification_status": "verified",
+      "work_mode": "Hybrid"
     },
     {
       "availability": "available",
+      "availability_status": "available",
+      "bio": "I cut vertical for retention, not for polish. Most of my work is finding the four seconds that hold someone and building the rest of the clip around it — hook first, then pacing, then everything else.",
       "deactivated": false,
       "display_name": "Imran Khan",
       "email": "talent-talent00204@scenario.invalid",
       "experience_years": 6,
+      "formats": [
+        "Shorts/Reels",
+        "Hooks",
+        "Repurposed clips",
+        "Captions"
+      ],
       "headline": "Shorts editor for creator-led channels",
       "id": "694cc999-b87e-581d-8d03-5e37117399c8",
+      "languages": [
+        "English",
+        "Hindi"
+      ],
       "location": "Kathmandu, Nepal",
+      "niches": [
+        "Travel"
+      ],
+      "platforms": [
+        "youtube_shorts",
+        "tiktok",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/shorts-00204"
+      ],
       "rate_currency": "INR",
       "rate_max": 60000,
       "rate_min": 35000,
+      "roles": [
+        "Shorts editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00204"
+      "skills": [
+        "Short-form editing",
+        "Hook writing",
+        "Pacing",
+        "Sound design",
+        "Captioning"
+      ],
+      "timezone": "Asia/Kathmandu",
+      "tools": [
+        "Premiere Pro",
+        "CapCut",
+        "After Effects",
+        "Descript"
+      ],
+      "turnaround": "Three working days, faster on retainer",
+      "username": "tal-t00204",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Split day, overlapping both EU and US East"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/90011.jpg",
+      "bio": "I handle the commercial side of a channel — inbound sorting, rate cards, deliverables that do not quietly expand, and the follow-up nobody enjoys. I would rather lose a deal than agree to terms that hurt the channel.",
       "deactivated": false,
       "display_name": "Nisha Rao",
       "email": "talent-talent90011@scenario.invalid",
       "experience_years": 2,
+      "formats": [
+        "Content strategy",
+        "Ad creatives"
+      ],
       "headline": "Brand-deal manager for creator-led channels",
       "id": "75996898-ea4f-5a80-897e-5b4d6896ad36",
+      "languages": [
+        "English"
+      ],
       "location": "Indore, India",
+      "niches": [
+        "True crime"
+      ],
+      "platforms": [
+        "multi_platform",
+        "youtube"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/brand-deal-90011"
+      ],
       "rate_currency": "INR",
       "rate_min": 2500,
+      "roles": [
+        "Brand-deal manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t90011"
+      "skills": [
+        "Sponsorship sales",
+        "Rate negotiation",
+        "Deliverable scoping",
+        "Reporting",
+        "Brand safety"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Notion",
+        "HubSpot",
+        "Google Sheets",
+        "DocuSign"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t90011",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
       "availability": "available",
+      "availability_status": "available",
+      "bio": "I cut vertical for retention, not for polish. Most of my work is finding the four seconds that hold someone and building the rest of the clip around it — hook first, then pacing, then everything else.",
       "deactivated": false,
       "display_name": "Aarav Mehta",
       "email": "talent-talent90000@scenario.invalid",
       "experience_years": 0,
+      "formats": [
+        "Shorts/Reels",
+        "Hooks",
+        "Repurposed clips",
+        "Captions"
+      ],
       "headline": "Shorts editor for creator-led channels",
       "id": "76e02269-eb5a-5afa-8584-4f4aabde8236",
+      "languages": [
+        "English",
+        "Hindi"
+      ],
       "location": "Kathmandu, Nepal",
+      "niches": [
+        "True crime"
+      ],
+      "platforms": [
+        "youtube_shorts",
+        "tiktok",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/shorts-90000"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "Shorts editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t90000"
+      "skills": [
+        "Short-form editing",
+        "Hook writing",
+        "Pacing",
+        "Sound design",
+        "Captioning"
+      ],
+      "timezone": "Asia/Kathmandu",
+      "tools": [
+        "Premiere Pro",
+        "CapCut",
+        "After Effects",
+        "Descript"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t90000",
+      "verification_status": "verified",
+      "work_mode": "Remote",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/90001.jpg",
+      "bio": "Long-form is a structure problem before it is an edit problem. I spend the first pass on the shape of the argument and only then start cutting — which is usually where the retention graph stops sagging in the middle.",
       "deactivated": false,
       "display_name": "Priya Nair",
       "email": "talent-talent90001@scenario.invalid",
       "experience_years": 1,
+      "formats": [
+        "Long-form video",
+        "YouTube packaging",
+        "Captions"
+      ],
       "headline": "Long-form editor for creator-led channels",
       "id": "7d616b57-3522-54c8-a9f4-733b72827e08",
+      "languages": [
+        "English"
+      ],
       "location": "London, UK",
+      "niches": [
+        "Kids"
+      ],
+      "platforms": [
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/long-form-90001"
+      ],
       "rate_currency": "INR",
       "rate_min": 2500,
+      "roles": [
+        "Long-form editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t90001"
+      "skills": [
+        "Narrative structure",
+        "Retention editing",
+        "Colour",
+        "Sound mix",
+        "B-roll direction"
+      ],
+      "timezone": "Europe/London",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve",
+        "After Effects",
+        "Frame.io"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t90001",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
       "availability": "available",
+      "availability_status": "available",
       "avatar_url": "https://avatars.scenario.invalid/201.jpg",
+      "bio": "I look after the parts of an audience that never comment. Moderation, tone, and knowing which threads to leave alone — most of the job is judgement rather than volume.",
       "deactivated": false,
       "display_name": "Anjali Reddy",
       "email": "talent-talent00201@scenario.invalid",
       "experience_years": 3,
+      "formats": [
+        "Social posts",
+        "Channel research"
+      ],
       "headline": "Community manager for creator-led channels",
       "id": "94219c99-66d7-5d2b-b53f-63b39f32d73f",
+      "languages": [
+        "English"
+      ],
       "location": "Indore, India",
+      "niches": [
+        "Beauty"
+      ],
+      "platforms": [
+        "twitch",
+        "multi_platform",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/community-00201"
+      ],
       "rate_currency": "INR",
       "rate_min": 2500,
+      "roles": [
+        "Community manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00201"
+      "skills": [
+        "Community moderation",
+        "Tone of voice",
+        "Escalation handling",
+        "Event running",
+        "Reporting"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Discord",
+        "Notion",
+        "YouTube Studio",
+        "Zapier"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t00201",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
+      "audience_band": "50K–250K subscribers",
+      "availability_status": "selective",
+      "bio": "Gyaan Express covers education for an audience of 228,000, publishing 1 video/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "gyaanexpress",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Gyaan Express",
       "email": "talent-gyaanexpress@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Shorts/Reels",
+        "Social posts"
+      ],
+      "headline": "Creator · Education",
       "id": "9bf9b85d-ff5f-5041-82cc-89b74b543e36",
       "location": "Delhi NCR, India",
+      "niches": [
+        "Education"
+      ],
+      "platforms": [
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://gyaanexpress.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 228000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "1 video/week",
-      "username": "tal-gyaanexpress"
+      "username": "tal-gyaanexpress",
+      "verification_status": "verified",
+      "work_mode": "Remote"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/215.jpg",
+      "bio": "I handle the commercial side of a channel — inbound sorting, rate cards, deliverables that do not quietly expand, and the follow-up nobody enjoys. I would rather lose a deal than agree to terms that hurt the channel.",
       "deactivated": false,
       "display_name": "Meera Sharma",
       "email": "talent-talent00215@scenario.invalid",
       "experience_years": 8,
+      "formats": [
+        "Content strategy",
+        "Ad creatives"
+      ],
       "headline": "Brand-deal manager for creator-led channels",
       "id": "a7d3e6cc-87f4-5187-85a5-2774f793eab4",
+      "languages": [
+        "English"
+      ],
       "location": "Indore, India",
+      "niches": [
+        "Travel"
+      ],
+      "platforms": [
+        "multi_platform",
+        "youtube"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/brand-deal-00215"
+      ],
       "rate_currency": "USD",
       "rate_min": 900,
+      "roles": [
+        "Brand-deal manager"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00215"
+      "skills": [
+        "Sponsorship sales",
+        "Rate negotiation",
+        "Deliverable scoping",
+        "Reporting",
+        "Brand safety"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Notion",
+        "HubSpot",
+        "Google Sheets",
+        "DocuSign"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t00215",
+      "verification_status": "verified",
+      "work_mode": "On-site",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "available",
+      "availability_status": "available",
+      "bio": "I cut vertical for retention, not for polish. Most of my work is finding the four seconds that hold someone and building the rest of the clip around it — hook first, then pacing, then everything else.",
       "deactivated": false,
       "display_name": "Karan Iyer",
       "email": "talent-talent00216@scenario.invalid",
       "experience_years": 0,
+      "formats": [
+        "Shorts/Reels",
+        "Hooks",
+        "Repurposed clips",
+        "Captions"
+      ],
       "headline": "Shorts editor for creator-led channels",
       "id": "b75754b4-6c23-5a83-8e4b-6be74e5bf006",
+      "languages": [
+        "English",
+        "Hindi"
+      ],
       "location": "Kochi, India",
+      "niches": [
+        "Education"
+      ],
+      "platforms": [
+        "youtube_shorts",
+        "tiktok",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/shorts-00216"
+      ],
       "rate_currency": "USD",
       "rate_max": 45,
       "rate_min": 25,
+      "roles": [
+        "Shorts editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00216"
+      "skills": [
+        "Short-form editing",
+        "Hook writing",
+        "Pacing",
+        "Sound design",
+        "Captioning"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Premiere Pro",
+        "CapCut",
+        "After Effects",
+        "Descript"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t00216",
+      "verification_status": "unverified",
+      "work_mode": "Remote",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/202.jpg",
+      "bio": "I shoot and cut creator-style ads that do not feel like ads. Usually three to five variants per brief so there is something real to test rather than one hero cut.",
       "deactivated": false,
       "display_name": "Varun Shah",
       "email": "talent-talent00202@scenario.invalid",
       "experience_years": 4,
+      "formats": [
+        "Ad creatives",
+        "Shorts/Reels",
+        "Social posts"
+      ],
       "headline": "UGC creator for creator-led channels",
       "id": "bf1debaa-df1b-53f3-8b78-2a3db204d10d",
+      "languages": [
+        "English"
+      ],
       "location": "Kochi, India",
+      "niches": [
+        "Technology"
+      ],
+      "platforms": [
+        "tiktok",
+        "instagram_reels",
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/ugc-00202"
+      ],
       "rate_currency": "INR",
       "rate_max": 25000,
       "rate_min": 8000,
+      "roles": [
+        "UGC creator"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00202"
+      "skills": [
+        "UGC production",
+        "On-camera delivery",
+        "Ad variants",
+        "Lighting",
+        "Direct response"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "CapCut",
+        "Premiere Pro",
+        "Lightroom",
+        "Canva"
+      ],
+      "turnaround": "48 hours for a first pass",
+      "username": "tal-t00202",
+      "verification_status": "unverified",
+      "work_mode": "Hybrid",
+      "working_hours": "Standard business hours, US Central"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
       "avatar_url": "https://avatars.scenario.invalid/206.jpg",
+      "bio": "Thumbnails are a legibility problem at 120 pixels wide. I design in sets and test against the rest of the channel's grid, because a thumbnail that wins alone and loses in context has not won.",
       "deactivated": false,
       "display_name": "Joseph Menon",
       "email": "talent-talent00206@scenario.invalid",
       "experience_years": 8,
+      "formats": [
+        "Thumbnails",
+        "YouTube packaging"
+      ],
       "headline": "Thumbnail designer for creator-led channels",
       "id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
+      "languages": [
+        "English"
+      ],
       "location": "Berlin, Germany",
+      "niches": [
+        "Comedy"
+      ],
+      "platforms": [
+        "youtube",
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/thumbnail-00206"
+      ],
       "rate_currency": "USD",
       "rate_max": 45,
       "rate_min": 25,
+      "roles": [
+        "Thumbnail designer"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00206"
+      "skills": [
+        "Thumbnail design",
+        "Typography",
+        "Compositing",
+        "A/B testing",
+        "Colour theory"
+      ],
+      "timezone": "Europe/Berlin",
+      "tools": [
+        "Photoshop",
+        "Figma",
+        "Lightroom"
+      ],
+      "turnaround": "One working week per episode, including a revision round",
+      "username": "tal-t00206",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Afternoons and evenings, flexible for handover calls"
     },
     {
+      "audience_band": "Under 10K subscribers",
+      "availability_status": "selective",
+      "bio": "Bright Brand Co covers beauty for an audience of 8,900, publishing in seasons rather than to a fixed schedule. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "brightbrand",
       "deactivated": false,
+      "description": "An in-house content team producing owned-channel video alongside paid social, hiring specialists per format.",
       "display_name": "Bright Brand Co",
       "email": "talent-brightbrand@scenario.invalid",
       "employer_kind": "brand",
+      "formats": [
+        "Shorts/Reels",
+        "Hooks"
+      ],
+      "headline": "Brand · Beauty",
       "id": "d0bac7e6-f441-5181-a60d-d42e2266d640",
       "location": "Kathmandu, Nepal",
+      "niches": [
+        "Beauty"
+      ],
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "public_links": [
+        "https://brightbrand.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 8900,
-      "username": "tal-brightbrand"
+      "timezone": "Asia/Kathmandu",
+      "username": "tal-brightbrand",
+      "verification_status": "unverified",
+      "work_mode": "On-site"
     },
     {
       "availability": "selective",
+      "availability_status": "selective",
       "avatar_url": "https://avatars.scenario.invalid/205.jpg",
+      "bio": "Long-form is a structure problem before it is an edit problem. I spend the first pass on the shape of the argument and only then start cutting — which is usually where the retention graph stops sagging in the middle.",
       "deactivated": false,
       "display_name": "Fatima Rao",
       "email": "talent-talent00205@scenario.invalid",
       "experience_years": 7,
+      "formats": [
+        "Long-form video",
+        "YouTube packaging",
+        "Captions"
+      ],
       "headline": "Long-form editor for creator-led channels",
       "id": "d3239b9b-0cb4-5249-8e8c-5c1c3ef83d5e",
+      "languages": [
+        "English"
+      ],
       "location": "London, UK",
+      "niches": [
+        "Education"
+      ],
+      "platforms": [
+        "youtube",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/long-form-00205"
+      ],
       "rate_currency": "USD",
       "rate_min": 900,
+      "roles": [
+        "Long-form editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00205"
+      "skills": [
+        "Narrative structure",
+        "Retention editing",
+        "Colour",
+        "Sound mix",
+        "B-roll direction"
+      ],
+      "timezone": "Europe/London",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve",
+        "After Effects",
+        "Frame.io"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t00205",
+      "verification_status": "verified",
+      "work_mode": "Hybrid",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
+      "audience_band": "1M+ subscribers",
+      "availability_status": "selective",
+      "bio": "Pixelforge Studio covers gaming for an audience of 2,400,000, publishing daily. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "pixelforge",
       "deactivated": false,
+      "description": "A production house handling shoot-to-delivery for creator and branded work, staffing crews per project.",
       "display_name": "Pixelforge Studio",
       "email": "talent-pixelforge@scenario.invalid",
       "employer_kind": "production_house",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "headline": "Production House · Gaming",
       "id": "dd9aac68-c92b-52d1-8ecb-780379a69dea",
       "location": "Guwahati, India",
+      "niches": [
+        "Gaming"
+      ],
+      "platforms": [
+        "youtube"
+      ],
+      "public_links": [
+        "https://pixelforge.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 2400000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "daily",
-      "username": "tal-pixelforge"
+      "username": "tal-pixelforge",
+      "verification_status": "verified",
+      "work_mode": "Hybrid"
     },
     {
+      "audience_band": "10K–50K subscribers",
+      "availability_status": "selective",
+      "bio": "Route Unknown covers travel for an audience of 31,000, publishing in seasons rather than to a fixed schedule. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "routeunknown",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Route Unknown",
       "email": "talent-routeunknown@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Content strategy",
+        "Channel research"
+      ],
+      "headline": "Creator · Travel",
       "id": "ddcf0119-7a6d-555c-802b-b7af72b45d09",
       "location": "Kochi, India",
+      "niches": [
+        "Travel"
+      ],
+      "platforms": [
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://routeunknown.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 31000,
-      "username": "tal-routeunknown"
+      "timezone": "Asia/Kolkata",
+      "username": "tal-routeunknown",
+      "verification_status": "verified",
+      "work_mode": "Remote"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
+      "bio": "I localise rather than transcribe. Timing, reading speed and idiom all matter — a caption that is technically correct and unreadable at pace has failed the person it was for.",
       "deactivated": false,
       "display_name": "Sameer Verma",
       "email": "talent-talent00200@scenario.invalid",
       "experience_years": 2,
+      "formats": [
+        "Captions",
+        "Voice-over"
+      ],
       "headline": "Subtitler / translator for creator-led channels",
       "id": "e04ffd0a-e6fe-5f4e-86e0-90a468ece4bf",
+      "languages": [
+        "English",
+        "Hindi",
+        "Spanish",
+        "Tamil"
+      ],
       "location": "Hyderabad, India",
+      "niches": [
+        "Gaming"
+      ],
+      "platforms": [
+        "youtube",
+        "youtube_shorts",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/subtitler-00200"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "Subtitler / translator"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00200"
+      "skills": [
+        "Subtitling",
+        "Localisation",
+        "Transcription",
+        "Reading-speed timing",
+        "QC"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit",
+        "Descript",
+        "YouTube Studio"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "tal-t00200",
+      "verification_status": "verified",
+      "work_mode": "On-site",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
       "availability": "unavailable",
+      "availability_status": "unavailable",
+      "bio": "I localise rather than transcribe. Timing, reading speed and idiom all matter — a caption that is technically correct and unreadable at pace has failed the person it was for.",
       "deactivated": false,
       "display_name": "Rohan Sinha",
       "email": "talent-talent00212@scenario.invalid",
       "experience_years": 5,
+      "formats": [
+        "Captions",
+        "Voice-over"
+      ],
       "headline": "Subtitler / translator for creator-led channels",
       "id": "ec15d498-a79b-541d-a4ae-d28cba4f7f92",
+      "languages": [
+        "English",
+        "Hindi",
+        "Spanish",
+        "Tamil"
+      ],
       "location": "Bengaluru, India",
+      "niches": [
+        "Beauty"
+      ],
+      "platforms": [
+        "youtube",
+        "youtube_shorts",
+        "multi_platform"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/subtitler-00212"
+      ],
       "rate_currency": "INR",
       "rate_max": 25000,
       "rate_min": 8000,
+      "roles": [
+        "Subtitler / translator"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "tal-t00212"
+      "skills": [
+        "Subtitling",
+        "Localisation",
+        "Transcription",
+        "Reading-speed timing",
+        "QC"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit",
+        "Descript",
+        "YouTube Studio"
+      ],
+      "turnaround": "48 hours for a first pass",
+      "username": "tal-t00212",
+      "verification_status": "unverified",
+      "work_mode": "On-site",
+      "working_hours": "Standard business hours, US Central"
     }
   ],
   "description": "The Talent side, seen from the talent's own account.",
@@ -1446,124 +2529,194 @@
   ],
   "portfolio": [
     {
-      "duration_seconds": 328,
+      "contribution": "Analysis and recommendations",
+      "description": "A read of forty uploads against retention, click-through and publish cadence, ending in three things to stop doing.",
       "format": "Repurposed clips",
       "id": "028e52a1-aaea-5b73-8d1a-fbd90c4116ff",
-      "media": "video",
+      "media": "link",
       "niche": "Technology",
       "owner_id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Analysis and recommendations",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/028e52a1.jpg",
-      "title": "Hook pass — 12 shorts",
+      "title": "Channel audit — 40 uploads",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/028e52a1"
     },
     {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
       "format": "Shorts/Reels",
       "id": "09ccb208-4da5-50d4-b47d-6828d36b24b3",
       "media": "link",
       "niche": "Technology",
       "owner_id": "a7d3e6cc-87f4-5187-85a5-2774f793eab4",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Policy and process",
       "thumbnail_broken": false,
-      "title": "Brand spot — 30s cutdown",
+      "title": "Community guidelines and escalation path",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/09ccb208"
     },
     {
-      "duration_seconds": 476,
+      "contribution": "Concepting and design",
+      "description": "Four thumbnails for one upload, built to be legible at 120px and distinct from the eleven videos around them on the channel page.",
       "format": "Shorts/Reels",
       "id": "0fb1751e-f1cd-5da2-ae69-40fcc943d1d7",
-      "media": "video",
+      "media": "image",
       "niche": "Comedy",
       "owner_id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Concepting and design",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/0fb1751e.jpg",
-      "title": "Motion titles system",
+      "title": "Thumbnail A/B set — finance",
+      "tools": [
+        "Photoshop",
+        "Figma"
+      ],
       "url": "https://work.scenario.invalid/0fb1751e"
     },
     {
-      "duration_seconds": 624,
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Podcast editing",
       "id": "11d510bb-da82-5753-b70c-0bafd12480df",
-      "media": "video",
+      "media": "link",
       "niche": "Finance",
       "owner_id": "ec15d498-a79b-541d-a4ae-d28cba4f7f92",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Research and script",
       "thumbnail_broken": false,
-      "title": "Gaming montage — 8 minute",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
       "url": "https://work.scenario.invalid/11d510bb"
     },
     {
-      "duration_seconds": 513,
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
       "format": "Shorts/Reels",
       "id": "15f8b0a2-155d-5802-be0b-29b5a62546db",
-      "media": "video",
+      "media": "link",
       "niche": "True crime",
       "owner_id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Script and structure",
       "thumbnail_broken": false,
-      "title": "Caption + sound design pass",
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/15f8b0a2"
     },
     {
-      "duration_seconds": 180,
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Long-form video",
       "id": "1c3b53d8-45c6-5848-be93-9ddefee9c700",
-      "media": "video",
+      "media": "link",
       "niche": "Fitness",
       "owner_id": "e04ffd0a-e6fe-5f4e-86e0-90a468ece4bf",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Research and script",
       "thumbnail_broken": false,
-      "title": "Retention rebuild — market explainer",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
       "url": "https://work.scenario.invalid/1c3b53d8"
     },
     {
+      "contribution": "Captions and localisation",
+      "description": "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.",
       "format": "Shorts/Reels",
       "id": "1cad55cb-2409-55f1-bdbf-41a3f5a2511f",
-      "media": "image",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Captions and localisation",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/1cad55cb.jpg",
-      "title": "Cold open reshoot — fitness channel",
+      "title": "Translation + subtitle pass",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/1cad55cb"
     },
     {
-      "duration_seconds": 661,
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
       "format": "Content strategy",
       "id": "1e73396c-e552-5088-821e-f84cefe7afd1",
-      "media": "video",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "ec15d498-a79b-541d-a4ae-d28cba4f7f92",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Script and structure",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/1e73396c.jpg",
-      "title": "Recipe short — vertical",
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
       "url": "https://work.scenario.invalid/1e73396c"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
+      "duration_seconds": 550,
+      "format": "Shorts/Reels",
+      "id": "2825c824-1da5-5b82-b690-c1300cc54ed7",
+      "media": "video",
+      "niche": "Kids",
+      "owner_id": "4b0a51fd-e03f-5a52-ace4-2f973210d087",
+      "platform": "instagram_reels",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/2825c824.jpg",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "After Effects",
+        "Cinema 4D"
+      ],
+      "url": "https://work.scenario.invalid/2825c824"
+    },
+    {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
       "format": "Repurposed clips",
       "id": "2cb27d3e-2112-5ed1-98bd-1b54b95a35a2",
       "media": "link",
       "niche": "Fitness",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Policy and process",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/2cb27d3e.jpg",
-      "title": "Weekly recap format"
+      "title": "Community guidelines and escalation path — second pass",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ]
     },
     {
+      "contribution": "Lead editor",
+      "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
       "duration_seconds": 328,
       "format": "Repurposed clips",
       "id": "38d0f63f-a0e1-56de-a484-21a9fd337aa6",
@@ -1571,13 +2724,19 @@
       "niche": "Technology",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Lead editor",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/38d0f63f.jpg",
-      "title": "Hook pass — 12 shorts",
+      "title": "Interview multicam edit",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/38d0f63f"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
       "duration_seconds": 365,
       "format": "Podcast editing",
       "id": "3a20dc31-b488-5f46-8a88-e504323f2742",
@@ -1585,40 +2744,78 @@
       "niche": "Food",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Edit rebuild, hook rewrite",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/3a20dc31.jpg",
-      "title": "Documentary-style deep dive",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/3a20dc31"
     },
     {
+      "contribution": "Captions and localisation",
+      "description": "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.",
       "format": "Shorts/Reels",
       "id": "3a385e77-0338-5631-be72-934cf01b1b47",
-      "media": "image",
+      "media": "link",
       "niche": "Kids",
       "owner_id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Captions and localisation",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/3a385e77.jpg",
-      "title": "Channel trailer",
+      "title": "Translation + subtitle pass",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/3a385e77"
     },
     {
+      "contribution": "Audio edit and mix",
+      "description": "Noise floor, plosives and room tone matched across two remote guests recording on very different setups.",
       "duration_seconds": 661,
       "format": "Content strategy",
       "id": "46df7e4b-0727-5640-a9ad-cdb594b68596",
-      "media": "video",
+      "media": "audio",
       "niche": "Gaming",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Audio edit and mix",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/46df7e4b.jpg",
-      "title": "Recipe short — vertical",
+      "title": "Dialogue clean-up — weekly show — second pass",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/46df7e4b"
     },
     {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 809,
+      "format": "Shorts/Reels",
+      "id": "59593da6-76d9-5a2f-a335-7f4683effec8",
+      "media": "video",
+      "niche": "Travel",
+      "owner_id": "b75754b4-6c23-5a83-8e4b-6be74e5bf006",
+      "platform": "instagram_reels",
+      "role": "Edit and direction",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/59593da6.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
+      "url": "https://work.scenario.invalid/59593da6"
+    },
+    {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
       "duration_seconds": 2400,
       "format": "Repurposed clips",
       "id": "5a0d06ba-3e20-5e63-bd71-51310368a1ff",
@@ -1626,12 +2823,56 @@
       "niche": "Food",
       "owner_id": "322c9506-435f-5dae-9f88-f0ed6ee1208f",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Edit rebuild, hook rewrite",
       "thumbnail_broken": false,
-      "title": "Explainer with data callouts",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
       "url": "https://work.scenario.invalid/5a0d06ba"
     },
     {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 624,
+      "format": "Podcast editing",
+      "id": "608c5474-9a6f-59a3-bbfe-cca4064bf336",
+      "media": "video",
+      "niche": "Finance",
+      "owner_id": "4ea6558e-0dcf-5000-8934-536d0c02b152",
+      "platform": "podcast",
+      "role": "Edit and direction",
+      "thumbnail_broken": false,
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight"
+      ],
+      "url": "https://work.scenario.invalid/608c5474"
+    },
+    {
+      "contribution": "Edit, timing",
+      "description": "A ninety-second read cut to thirty-five without losing the offer, placed after the first payoff rather than before it.",
+      "duration_seconds": 291,
+      "format": "Shorts/Reels",
+      "id": "62b6062d-25a7-5515-9540-d9dc3dc15eaa",
+      "media": "video",
+      "niche": "Beauty",
+      "owner_id": "bf1debaa-df1b-53f3-8b78-2a3db204d10d",
+      "platform": "instagram_reels",
+      "role": "Edit, timing",
+      "thumbnail_broken": false,
+      "title": "Sponsor integration cutdown",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/62b6062d"
+    },
+    {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
       "duration_seconds": 2437,
       "format": "Podcast editing",
       "id": "635aa225-2f0c-5c83-8dff-8ca2bbd476b3",
@@ -1639,26 +2880,37 @@
       "niche": "Travel",
       "owner_id": "7d616b57-3522-54c8-a9f4-733b72827e08",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/635aa225.jpg",
-      "title": "Interview multicam edit",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve"
+      ],
       "url": "https://work.scenario.invalid/635aa225"
     },
     {
-      "duration_seconds": 180,
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Long-form video",
       "id": "63f30df4-0cb0-53f0-b09d-2c7bc00b6158",
-      "media": "video",
+      "media": "link",
       "niche": "Fitness",
       "owner_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Research and script",
       "thumbnail_broken": false,
-      "title": "Retention rebuild — market explainer",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/63f30df4"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
       "duration_seconds": 2437,
       "format": "Podcast editing",
       "id": "6843d489-f6af-5532-8a34-75cc83ce26a9",
@@ -1666,117 +2918,190 @@
       "niche": "Travel",
       "owner_id": "76e02269-eb5a-5afa-8584-4f4aabde8236",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/6843d489.jpg",
-      "title": "Interview multicam edit",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/6843d489"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
+      "duration_seconds": 402,
       "format": "Content strategy",
       "id": "706b17a3-079e-5c3d-873b-3802d0ce3c27",
-      "media": "image",
+      "media": "video",
       "niche": "Travel",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
-      "title": "Sponsor integration cutdown",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/706b17a3"
     },
     {
+      "contribution": "Captions and localisation",
+      "description": "A full episode localised with reading-speed timing rather than raw transcription, plus a glossary for recurring terms.",
       "format": "Shorts/Reels",
       "id": "7aa196be-7681-54d8-bda2-4d8b4f97e1ed",
-      "media": "image",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "e04ffd0a-e6fe-5f4e-86e0-90a468ece4bf",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Captions and localisation",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/7aa196be.jpg",
-      "title": "Cold open reshoot — fitness channel",
+      "title": "Translation + subtitle pass",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
       "url": "https://work.scenario.invalid/7aa196be"
     },
     {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 439,
       "format": "Long-form video",
       "id": "7bf0db33-695a-5d53-870c-b7faec40d6f3",
-      "media": "link",
+      "media": "video",
       "niche": "Education",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Edit and direction",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/7bf0db33.jpg",
-      "title": "Podcast highlight reel",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/7bf0db33"
     },
     {
-      "duration_seconds": 772,
+      "contribution": "Analysis and recommendations",
+      "description": "A read of forty uploads against retention, click-through and publish cadence, ending in three things to stop doing.",
       "format": "Shorts/Reels",
       "id": "809a21e3-c306-5a9f-b3bd-5b73b3f2907e",
-      "media": "video",
+      "media": "link",
       "niche": "Food",
       "owner_id": "a7d3e6cc-87f4-5187-85a5-2774f793eab4",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Analysis and recommendations",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/809a21e3.jpg",
-      "title": "Explainer with data callouts",
+      "title": "Channel audit — 40 uploads",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/809a21e3"
     },
     {
+      "contribution": "Template system",
+      "description": "A title kit with three states and documented spacing, so later episodes match the first without me.",
       "format": "Long-form video",
       "id": "89aae62d-b48b-52e6-9645-ae1d733cd593",
-      "media": "link",
+      "media": "image",
       "niche": "Education",
       "owner_id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Template system",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/89aae62d.jpg",
-      "title": "Podcast highlight reel",
+      "title": "Motion titles system",
+      "tools": [
+        "Photoshop",
+        "Figma"
+      ],
       "url": "https://work.scenario.invalid/89aae62d"
     },
     {
-      "duration_seconds": 513,
+      "contribution": "Design system",
+      "description": "Reworked a back catalogue's thumbnails so the grid reads as one channel — shared type, a fixed face position, and a colour rule per series.",
       "format": "Shorts/Reels",
       "id": "89cb84ae-d41b-52aa-bf3e-5cdd995f9507",
-      "media": "video",
+      "media": "image",
       "niche": "True crime",
       "owner_id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Design system",
       "thumbnail_broken": false,
-      "title": "Caption + sound design pass",
+      "title": "Channel grid refresh",
+      "tools": [
+        "Photoshop",
+        "Figma"
+      ],
       "url": "https://work.scenario.invalid/89cb84ae"
     },
     {
+      "contribution": "Structure and outline",
+      "description": "Outline and beat sheet for a six-part run, structured so each episode stands alone and still earns the next.",
       "format": "Repurposed clips",
       "id": "8d88cc92-eab2-56b3-abd6-9aa96c850cd4",
       "media": "link",
       "niche": "Fitness",
       "owner_id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Structure and outline",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/8d88cc92.jpg",
-      "title": "Weekly recap format",
+      "title": "Series outline — six episodes",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/8d88cc92"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
+      "duration_seconds": 735,
+      "format": "Shorts/Reels",
+      "id": "8f82a58f-4a5e-5379-b986-ea7be813e3a3",
+      "media": "video",
+      "niche": "Technology",
+      "owner_id": "42020ab6-a543-5848-8362-f083e2365d98",
+      "platform": "youtube_shorts",
+      "role": "Edit rebuild, hook rewrite",
+      "thumbnail_broken": false,
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/8f82a58f"
+    },
+    {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Content strategy",
       "id": "90a7b5a2-d491-5444-a8df-d47e2e049177",
-      "media": "image",
+      "media": "link",
       "niche": "Education",
       "owner_id": "75996898-ea4f-5a80-897e-5b4d6896ad36",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/90a7b5a2.jpg",
-      "title": "Shorts batch — 15 clips",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/90a7b5a2"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
       "duration_seconds": 772,
       "format": "Shorts/Reels",
       "id": "947f84ca-a698-5ea9-9dac-f20a2aab1690",
@@ -1784,37 +3109,55 @@
       "niche": "Food",
       "owner_id": "b75754b4-6c23-5a83-8e4b-6be74e5bf006",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/947f84ca.jpg",
-      "title": "Explainer with data callouts",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/947f84ca"
     },
     {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
       "format": "Shorts/Reels",
       "id": "96023460-613f-567e-827b-0a724ccfb60a",
       "media": "link",
       "niche": "Beauty",
       "owner_id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Policy and process",
       "thumbnail_broken": false,
-      "title": "Thumbnail A/B set — finance",
+      "title": "Community guidelines and escalation path",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/96023460"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Content strategy",
       "id": "9a7c4de8-7ccb-5c33-b741-6807c25127b2",
-      "media": "image",
+      "media": "link",
       "niche": "Travel",
       "owner_id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
-      "title": "Sponsor integration cutdown",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/9a7c4de8"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
       "duration_seconds": 2400,
       "format": "Repurposed clips",
       "id": "9df12527-be8b-5f5b-bfef-a8cfb249a5eb",
@@ -1822,39 +3165,55 @@
       "niche": "Food",
       "owner_id": "76e02269-eb5a-5afa-8584-4f4aabde8236",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Edit rebuild, hook rewrite",
       "thumbnail_broken": false,
-      "title": "Explainer with data callouts",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/9df12527"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Long-form video",
       "id": "a01b24eb-25e3-5e4a-9943-01e4f1f63df1",
-      "media": "image",
+      "media": "link",
       "niche": "Beauty",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/a01b24eb.jpg",
-      "title": "Travel vlog restructure",
+      "title": "Sponsorship rate card and process — follow-up",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/a01b24eb"
     },
     {
-      "duration_seconds": 328,
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Repurposed clips",
       "id": "a3ca3cfb-b634-57bf-8c98-6884b1299bcd",
-      "media": "video",
+      "media": "link",
       "niche": "Technology",
       "owner_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Research and script",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/a3ca3cfb.jpg",
-      "title": "Hook pass — 12 shorts",
-      "url": "https://work.scenario.invalid/a3ca3cfb"
+      "title": "Script — data-led explainer — second pass",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ]
     },
     {
+      "contribution": "Edit, timing",
+      "description": "A ninety-second read cut to thirty-five without losing the offer, placed after the first payoff rather than before it.",
       "duration_seconds": 476,
       "format": "Shorts/Reels",
       "id": "a71bfb02-a26c-52b9-9a18-7c7de590e793",
@@ -1862,13 +3221,19 @@
       "niche": "Comedy",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Edit, timing",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/a71bfb02.jpg",
-      "title": "Motion titles system",
+      "title": "Sponsor integration cutdown",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/a71bfb02"
     },
     {
+      "contribution": "Lead editor",
+      "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
       "duration_seconds": 513,
       "format": "Shorts/Reels",
       "id": "a82095cc-d655-5b51-aa0e-7fa598fa14f4",
@@ -1876,119 +3241,171 @@
       "niche": "True crime",
       "owner_id": "694cc999-b87e-581d-8d03-5e37117399c8",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Lead editor",
       "thumbnail_broken": false,
-      "title": "Caption + sound design pass",
+      "title": "Interview multicam edit — series two",
+      "tools": [
+        "Premiere Pro",
+        "CapCut"
+      ],
       "url": "https://work.scenario.invalid/a82095cc"
     },
     {
-      "duration_seconds": 217,
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
       "format": "Shorts/Reels",
       "id": "a9fa1a48-9dc3-5e22-b60f-e7d5bc7e3c1e",
-      "media": "video",
+      "media": "link",
       "niche": "Finance",
       "owner_id": "e04ffd0a-e6fe-5f4e-86e0-90a468ece4bf",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Script and structure",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/a9fa1a48.jpg",
-      "title": "Series packaging — education channel",
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Aegisub",
+        "Subtitle Edit"
+      ],
       "url": "https://work.scenario.invalid/a9fa1a48"
     },
     {
-      "duration_seconds": 513,
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Shorts/Reels",
       "id": "aad35900-b69c-5120-bc92-881c9fa6b93e",
-      "media": "video",
+      "media": "link",
       "niche": "True crime",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
-      "title": "Caption + sound design pass",
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/aad35900"
     },
     {
+      "contribution": "Audio edit and mix",
+      "description": "Noise floor, plosives and room tone matched across two remote guests recording on very different setups.",
       "duration_seconds": 513,
       "format": "Shorts/Reels",
       "id": "ab57a05d-0104-5308-9744-717e5b476927",
-      "media": "video",
+      "media": "audio",
       "niche": "True crime",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Audio edit and mix",
       "thumbnail_broken": false,
-      "title": "Caption + sound design pass",
+      "title": "Dialogue clean-up — weekly show",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/ab57a05d"
     },
     {
+      "contribution": "Production and structure",
+      "description": "Restructured a rambling interview show into a three-act run of show, with the cold open cut from the best answer.",
+      "duration_seconds": 587,
       "format": "Repurposed clips",
       "id": "ae735746-2385-5edd-9c12-b46d71bb547f",
-      "media": "link",
+      "media": "audio",
       "niche": "Fitness",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "twitch",
-      "role": "Thumbnail concepting and design",
+      "role": "Production and structure",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/ae735746.jpg",
-      "title": "Weekly recap format",
+      "title": "Show format redesign",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/ae735746"
     },
     {
+      "contribution": "Sound and captions",
+      "description": "Sound design and captions for a narrative episode, timed so the captions never land before the beat they describe.",
+      "duration_seconds": 698,
       "format": "Long-form video",
       "id": "b03ff6a6-b75c-53c7-9792-c4085f158735",
-      "media": "image",
+      "media": "audio",
       "niche": "Beauty",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Sound and captions",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/b03ff6a6.jpg",
-      "title": "Travel vlog restructure",
+      "title": "Caption + sound design pass — series two",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/b03ff6a6"
     },
     {
-      "duration_seconds": 365,
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Podcast editing",
       "id": "b18d0e7b-8b98-5c6d-93a6-4a200a9ddfc1",
-      "media": "video",
+      "media": "link",
       "niche": "Food",
       "owner_id": "2ee567d4-41d3-5d8b-9247-e23326f3e3e3",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/b18d0e7b.jpg",
-      "title": "Documentary-style deep dive",
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/b18d0e7b"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Long-form video",
       "id": "b5a9ae82-098f-562a-bf92-02649cb47533",
-      "media": "image",
+      "media": "link",
       "niche": "Beauty",
       "owner_id": "1ac04abf-fd84-5325-aa85-fbf6b1db9fc1",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/b5a9ae82.jpg",
-      "title": "Travel vlog restructure",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/b5a9ae82"
     },
     {
-      "duration_seconds": 217,
+      "contribution": "Script and structure",
+      "description": "Twelve openings rewritten against the originals, with the reasoning for each change kept beside it so the team could apply the pattern themselves.",
       "format": "Shorts/Reels",
       "id": "b5ad9afd-8850-5579-bf13-2e91409c90b7",
-      "media": "video",
+      "media": "link",
       "niche": "Finance",
       "owner_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Script and structure",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/b5ad9afd.jpg",
-      "title": "Series packaging — education channel",
+      "title": "Hook pass — twelve shorts",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/b5ad9afd"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
       "duration_seconds": 2437,
       "format": "Podcast editing",
       "id": "b7085379-4c66-5d3f-a194-3df85870d401",
@@ -1996,79 +3413,136 @@
       "niche": "Travel",
       "owner_id": "322c9506-435f-5dae-9f88-f0ed6ee1208f",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/b7085379.jpg",
-      "title": "Interview multicam edit",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
       "url": "https://work.scenario.invalid/b7085379"
     },
     {
+      "contribution": "Production and structure",
+      "description": "Restructured a rambling interview show into a three-act run of show, with the cold open cut from the best answer.",
+      "duration_seconds": 735,
       "format": "Shorts/Reels",
       "id": "c59d1602-efe4-59b4-b802-3b9545c61f36",
-      "media": "link",
+      "media": "audio",
       "niche": "Technology",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Production and structure",
       "thumbnail_broken": false,
-      "title": "Brand spot — 30s cutdown",
+      "title": "Show format redesign — reshoot",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/c59d1602"
     },
     {
+      "contribution": "Sound and captions",
+      "description": "Sound design and captions for a narrative episode, timed so the captions never land before the beat they describe.",
+      "duration_seconds": 550,
       "format": "Shorts/Reels",
       "id": "c686eabf-37e9-5f8c-9dc1-159fb7ca6cc5",
-      "media": "image",
+      "media": "audio",
       "niche": "Kids",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Sound and captions",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/c686eabf.jpg",
-      "title": "Channel trailer",
+      "title": "Caption + sound design pass",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/c686eabf"
     },
     {
-      "duration_seconds": 217,
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Shorts/Reels",
       "id": "d4db3af1-68fe-58ca-9a05-86e7a55e66d9",
-      "media": "video",
+      "media": "link",
       "niche": "Finance",
       "owner_id": "94219c99-66d7-5d2b-b53f-63b39f32d73f",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/d4db3af1.jpg",
-      "title": "Series packaging — education channel",
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/d4db3af1"
     },
     {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 254,
+      "format": "Shorts/Reels",
+      "id": "d63c0c4f-ae85-5d1e-8cb1-c008207e2dc0",
+      "media": "video",
+      "niche": "Gaming",
+      "owner_id": "bf1debaa-df1b-53f3-8b78-2a3db204d10d",
+      "platform": "tiktok",
+      "role": "Edit and direction",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/d63c0c4f.jpg",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
+      "url": "https://work.scenario.invalid/d63c0c4f"
+    },
+    {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 2474,
       "format": "Content strategy",
       "id": "d8095623-104c-55a6-af41-fdd8d21df7c8",
-      "media": "image",
+      "media": "video",
       "niche": "Education",
       "owner_id": "7d616b57-3522-54c8-a9f4-733b72827e08",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Edit and direction",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/d8095623.jpg",
-      "title": "Shorts batch — 15 clips",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve"
+      ],
       "url": "https://work.scenario.invalid/d8095623"
     },
     {
-      "duration_seconds": 661,
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Content strategy",
       "id": "d8dfd95d-ee82-5538-ba9d-48483ba95c4c",
-      "media": "video",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "1ac04abf-fd84-5325-aa85-fbf6b1db9fc1",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/d8dfd95d.jpg",
-      "title": "Recipe short — vertical",
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/d8dfd95d"
     },
     {
+      "contribution": "Edit rebuild, hook rewrite",
+      "description": "A twelve-minute explainer recut to eight after the retention graph flattened at 0:40. Restructured the cold open around the strongest visual and moved the thesis forward by ninety seconds.",
       "duration_seconds": 365,
       "format": "Podcast editing",
       "id": "da147ecf-0171-529e-aff6-30a5da09a294",
@@ -2076,218 +3550,356 @@
       "niche": "Food",
       "owner_id": "d3239b9b-0cb4-5249-8e8c-5c1c3ef83d5e",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Edit rebuild, hook rewrite",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/da147ecf.jpg",
-      "title": "Documentary-style deep dive",
+      "title": "Retention rebuild — market explainer",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve"
+      ],
       "url": "https://work.scenario.invalid/da147ecf"
     },
     {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
       "format": "Long-form video",
       "id": "db68f951-2c32-5380-b195-399b8e416ba3",
       "media": "link",
       "niche": "Education",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Policy and process",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/db68f951.jpg",
-      "title": "Podcast highlight reel",
+      "title": "Community guidelines and escalation path",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/db68f951"
     },
     {
+      "contribution": "Policy and process",
+      "description": "Written tone guide and a moderation escalation ladder, adopted across a Discord of forty thousand.",
       "format": "Shorts/Reels",
       "id": "dcbdbfec-0059-5221-95df-109fe30df943",
       "media": "link",
       "niche": "Technology",
       "owner_id": "1ac04abf-fd84-5325-aa85-fbf6b1db9fc1",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Policy and process",
       "thumbnail_broken": false,
-      "title": "Brand spot — 30s cutdown",
+      "title": "Community guidelines and escalation path",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/dcbdbfec"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Shorts/Reels",
       "id": "dcdfac79-2bb1-5552-ab99-d0106fba1b6d",
-      "media": "image",
+      "media": "link",
       "niche": "Kids",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/dcdfac79.jpg",
-      "title": "Channel trailer",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/dcdfac79"
     },
     {
+      "contribution": "Design system",
+      "description": "Title and thumbnail pairs designed together, with a template a non-designer on the team can extend without breaking it.",
       "format": "Content strategy",
       "id": "dfc36f3c-d601-54d2-b12c-2ab688b4ab0c",
       "media": "image",
       "niche": "Travel",
       "owner_id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Design system",
       "thumbnail_broken": false,
-      "title": "Sponsor integration cutdown",
+      "title": "Packaging system — education series",
+      "tools": [
+        "Photoshop",
+        "Figma"
+      ],
       "url": "https://work.scenario.invalid/dfc36f3c"
     },
     {
-      "duration_seconds": 2437,
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
+      "duration_seconds": 587,
+      "format": "Repurposed clips",
+      "id": "e07b1e17-feee-55bc-abe4-00cfd6c6bc50",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "4ea6558e-0dcf-5000-8934-536d0c02b152",
+      "platform": "twitch",
+      "role": "Lead editor, packaging",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/e07b1e17.jpg",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "DaVinci Resolve",
+        "Baselight"
+      ],
+      "url": "https://work.scenario.invalid/e07b1e17"
+    },
+    {
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Podcast editing",
       "id": "e460e1c4-8e44-5211-8b77-b377c6288e41",
-      "media": "video",
+      "media": "link",
       "niche": "Travel",
       "owner_id": "75996898-ea4f-5a80-897e-5b4d6896ad36",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/e460e1c4.jpg",
-      "title": "Interview multicam edit",
+      "title": "Ninety-day growth plan",
+      "tools": [
+        "Notion",
+        "HubSpot"
+      ],
       "url": "https://work.scenario.invalid/e460e1c4"
     },
     {
+      "contribution": "Edit and clip strategy",
+      "description": "Twenty-two minutes of highlights pulled from six hours, chosen for what travels as a clip rather than what was most interesting in the room.",
       "duration_seconds": 624,
       "format": "Podcast editing",
       "id": "e4cca1e2-6a06-5dc4-8c10-75422a96386d",
-      "media": "video",
+      "media": "audio",
       "niche": "Finance",
       "owner_id": "01785004-c976-50f6-a96b-d9f6d96b30c6",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Edit and clip strategy",
       "thumbnail_broken": false,
-      "title": "Gaming montage — 8 minute",
+      "title": "Podcast highlight reel",
+      "tools": [
+        "Descript",
+        "Adobe Audition"
+      ],
       "url": "https://work.scenario.invalid/e4cca1e2"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
+      "duration_seconds": 402,
       "format": "Content strategy",
       "id": "e53ee763-8e86-5f49-bac4-4c713fa36929",
-      "media": "image",
+      "media": "video",
       "niche": "Travel",
       "owner_id": "d3239b9b-0cb4-5249-8e8c-5c1c3ef83d5e",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Lead editor, packaging",
       "thumbnail_broken": false,
-      "title": "Sponsor integration cutdown",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve"
+      ],
       "url": "https://work.scenario.invalid/e53ee763"
     },
     {
-      "duration_seconds": 624,
+      "contribution": "Analysis and recommendations",
+      "description": "A read of forty uploads against retention, click-through and publish cadence, ending in three things to stop doing.",
       "format": "Podcast editing",
       "id": "e9259c92-b8c1-5696-a383-76c4131c887f",
-      "media": "video",
+      "media": "link",
       "niche": "Finance",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "podcast",
-      "role": "Script and structure",
+      "role": "Analysis and recommendations",
       "thumbnail_broken": false,
-      "title": "Gaming montage — 8 minute",
+      "title": "Channel audit — 40 uploads — series two",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/e9259c92"
     },
     {
-      "duration_seconds": 476,
+      "contribution": "Analysis and recommendations",
+      "description": "A read of forty uploads against retention, click-through and publish cadence, ending in three things to stop doing.",
       "format": "Shorts/Reels",
       "id": "ecc699b6-641b-50ad-be9c-1521e4b8d880",
-      "media": "video",
+      "media": "link",
       "niche": "Comedy",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Analysis and recommendations",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/ecc699b6.jpg",
-      "title": "Motion titles system",
+      "title": "Channel audit — 40 uploads",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/ecc699b6"
     },
     {
-      "duration_seconds": 476,
+      "contribution": "Research and script",
+      "description": "Full script for a nine-minute explainer, researched from primary sources with every claim footnoted in the doc for the fact-check pass.",
       "format": "Shorts/Reels",
       "id": "ed4765a4-4e71-5df4-a947-0ec0341dcd70",
-      "media": "video",
+      "media": "link",
       "niche": "Comedy",
       "owner_id": "1d963fc6-16de-5cd3-8123-f676fdaf93ac",
       "platform": "youtube_shorts",
-      "role": "Edit rebuild, hook rewrite",
+      "role": "Research and script",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/ed4765a4.jpg",
-      "title": "Motion titles system",
+      "title": "Script — data-led explainer",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/ed4765a4"
     },
     {
+      "contribution": "Lead editor, packaging",
+      "description": "Six episodes given one visual grammar: consistent titles, chapter cards and a recurring data treatment, so the series reads as a series in the sidebar.",
+      "duration_seconds": 587,
+      "format": "Repurposed clips",
+      "id": "ef2f7e83-c511-55ba-aaf3-54083e5465ee",
+      "media": "video",
+      "niche": "Fitness",
+      "owner_id": "4b0a51fd-e03f-5a52-ace4-2f973210d087",
+      "platform": "twitch",
+      "role": "Lead editor, packaging",
+      "thumbnail_broken": false,
+      "thumbnail_url": "https://thumbs.scenario.invalid/ef2f7e83.jpg",
+      "title": "Series packaging — education channel",
+      "tools": [
+        "After Effects",
+        "Cinema 4D"
+      ],
+      "url": "https://work.scenario.invalid/ef2f7e83"
+    },
+    {
+      "contribution": "Edit and direction",
+      "description": "Reshot and recut the first twenty seconds of an underperforming upload. Same footage otherwise; the change was entirely in what the viewer meets first.",
+      "duration_seconds": 439,
       "format": "Long-form video",
       "id": "f06f3915-8a17-5a68-a130-75e914bfb1cf",
-      "media": "link",
+      "media": "video",
       "niche": "Education",
       "owner_id": "d3239b9b-0cb4-5249-8e8c-5c1c3ef83d5e",
       "platform": "youtube",
-      "role": "Lead editor",
+      "role": "Edit and direction",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/f06f3915.jpg",
-      "title": "Podcast highlight reel",
+      "title": "Cold open reshoot — fitness channel",
+      "tools": [
+        "Premiere Pro",
+        "DaVinci Resolve"
+      ],
       "url": "https://work.scenario.invalid/f06f3915"
     },
     {
-      "duration_seconds": 661,
+      "contribution": "Strategy and planning",
+      "description": "A quarter's calendar with a stated hypothesis per format and the measure that would falsify it.",
       "format": "Content strategy",
       "id": "f1b49b74-75b6-575d-ac78-6b1a4d317b15",
-      "media": "video",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "171f0ecc-fa75-5c74-8dbd-f2c78e8670d1",
       "platform": "multi_platform",
-      "role": "Captions and localisation",
+      "role": "Strategy and planning",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/f1b49b74.jpg",
-      "title": "Recipe short — vertical",
+      "title": "Ninety-day growth plan — reshoot",
+      "tools": [
+        "YouTube Studio",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/f1b49b74"
     },
     {
+      "contribution": "Lead editor",
+      "description": "Three-camera sit-down assembled with a hard rule: no shot held past its usefulness. Cut ninety minutes to twenty-two.",
+      "duration_seconds": 698,
       "format": "Long-form video",
       "id": "f1ebfe35-ccfb-56bc-a1de-d81d2265a2c0",
-      "media": "image",
+      "media": "video",
       "niche": "Beauty",
       "owner_id": "42020ab6-a543-5848-8362-f083e2365d98",
       "platform": "youtube",
       "role": "Lead editor",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/f1ebfe35.jpg",
-      "title": "Travel vlog restructure",
+      "title": "Interview multicam edit",
+      "tools": [
+        "CapCut",
+        "Premiere Pro"
+      ],
       "url": "https://work.scenario.invalid/f1ebfe35"
     },
     {
+      "contribution": "Commercial strategy",
+      "description": "Rate card, deliverable definitions and an inbound-sorting process that cut reply time to under a day.",
       "format": "Shorts/Reels",
       "id": "f3029142-739d-597f-9f59-a6ddd29a11b2",
-      "media": "image",
+      "media": "link",
       "niche": "Gaming",
       "owner_id": "94219c99-66d7-5d2b-b53f-63b39f32d73f",
       "platform": "tiktok",
-      "role": "Motion graphics, template system",
+      "role": "Commercial strategy",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/f3029142.jpg",
-      "title": "Cold open reshoot — fitness channel",
+      "title": "Sponsorship rate card and process",
+      "tools": [
+        "Discord",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/f3029142"
     },
     {
+      "contribution": "Structure and outline",
+      "description": "Outline and beat sheet for a six-part run, structured so each episode stands alone and still earns the next.",
       "format": "Shorts/Reels",
       "id": "f90b9de7-5f15-58a1-bf6e-be12e3e22c94",
       "media": "link",
       "niche": "Beauty",
       "owner_id": "1552fd40-dd58-5291-9a44-e9219c3e862b",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Structure and outline",
       "thumbnail_broken": false,
-      "title": "Thumbnail A/B set — finance",
+      "title": "Series outline — six episodes",
+      "tools": [
+        "Google Docs",
+        "Notion"
+      ],
       "url": "https://work.scenario.invalid/f90b9de7"
     },
     {
+      "contribution": "Design system",
+      "description": "Title and thumbnail pairs designed together, with a template a non-designer on the team can extend without breaking it.",
       "format": "Shorts/Reels",
       "id": "f98a9996-beaf-566b-8390-3ac72e4a414a",
       "media": "image",
       "niche": "Kids",
       "owner_id": "cbe206d3-7756-56dc-9b5f-aed5fc1ac336",
       "platform": "instagram_reels",
-      "role": "Colour and sound",
+      "role": "Design system",
       "thumbnail_broken": false,
       "thumbnail_url": "https://thumbs.scenario.invalid/f98a9996.jpg",
-      "title": "Channel trailer",
+      "title": "Packaging system — education series — second pass",
+      "tools": [
+        "Photoshop",
+        "Figma"
+      ],
       "url": "https://work.scenario.invalid/f98a9996"
     }
   ],
@@ -2519,7 +4131,8 @@
       ],
       "participant_stage": "withdrawn",
       "portfolio_ids": [
-        "f1ebfe35-ccfb-56bc-a1de-d81d2265a2c0"
+        "f1ebfe35-ccfb-56bc-a1de-d81d2265a2c0",
+        "8f82a58f-4a5e-5379-b986-ea7be813e3a3"
       ],
       "recruiter_id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "stage": "withdrawn",
@@ -2654,6 +4267,10 @@
         }
       ],
       "participant_stage": "accepted",
+      "portfolio_ids": [
+        "2825c824-1da5-5b82-b690-c1300cc54ed7",
+        "ef2f7e83-c511-55ba-aaf3-54083e5465ee"
+      ],
       "recruiter_id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "stage": "accepted",
       "starred": false,
@@ -3125,7 +4742,8 @@
       ],
       "participant_stage": "new",
       "portfolio_ids": [
-        "947f84ca-a698-5ea9-9dac-f20a2aab1690"
+        "947f84ca-a698-5ea9-9dac-f20a2aab1690",
+        "59593da6-76d9-5a2f-a335-7f4683effec8"
       ],
       "recruiter_id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "stage": "shortlisted",
@@ -3445,6 +5063,10 @@
         }
       ],
       "participant_stage": "new",
+      "portfolio_ids": [
+        "d63c0c4f-ae85-5d1e-8cb1-c008207e2dc0",
+        "62b6062d-25a7-5515-9540-d9dc3dc15eaa"
+      ],
       "recruiter_id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "stage": "new",
       "starred": false,
@@ -3617,6 +5239,10 @@
         }
       ],
       "participant_stage": "declined",
+      "portfolio_ids": [
+        "e07b1e17-feee-55bc-abe4-00cfd6c6bc50",
+        "608c5474-9a6f-59a3-bbfe-cca4064bf336"
+      ],
       "recruiter_id": "1917a1ac-f218-53b2-9a08-caf8fbca9cf9",
       "stage": "declined",
       "starred": false,
@@ -3703,7 +5329,7 @@
       "release_requested": 1,
       "setup_pending": 1
     },
-    "portfolio_items": 64,
+    "portfolio_items": 72,
     "relationships": 32,
     "stages": {
       "accepted": 2,
@@ -3718,5 +5344,5 @@
       "withdrawn": 2
     }
   },
-  "version": 1
+  "version": 2
 }
