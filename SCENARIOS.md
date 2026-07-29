@@ -43,7 +43,7 @@ Use disposable local databases only.
 | Seed | Best for | Volume | Personas | Important coverage |
 | --- | --- | --- | --- | --- |
 | `empty` | First-run and empty states | 0 records / 0 jobs | — | — |
-| `default` | Ordinary design and workflow QA | 190 records / 32 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 411 portfolio items |
+| `default` | Ordinary design and workflow QA | 193 records / 33 jobs | Recruiter, Talent | 19 interviews, 20 engagements, 8 payment states, 420 portfolio items |
 | `busy` | Volume, pagination and performance | 329 records / 9 jobs | Recruiter | 46 interviews, 50 engagements, 10 payment states, 969 portfolio items |
 | `edge` | Identity, portfolio and conflict cases | 29 records / 3 jobs | Recruiter | 1 interviews, 5 engagements, 4 payment states, 64 portfolio items |
 | `talent` | The Talent side end to end | 32 records / 21 jobs | Recruiter, Talent | 3 interviews, 4 engagements, 4 payment states, 64 portfolio items |
@@ -60,11 +60,14 @@ is in the manifest's `index`.
 | `default` | `/applications?view=pipeline&mode=recruiter&demo=1` | Mock | Recruiter | `3a92c70d` | `1d3926a0` | pending applicant on retired job job_25 | Confirm no action is offered that would reopen a closed job. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `07ab0a22` | `2524fa7f` | Not proceeding · shared with them | Confirm both sides read the same outcome. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `e13265ba` | `318d1863` | Engagement active · payment funded | Check the payment card says funded without claiming funds are held. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `341475fb` | Screening questions asked and not yet answered | open the record and review the screening answers in the thread |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `36b79ded` | Imported-style screened job · every question answered | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `5d23feb5` | `4906122a` | Not proceeding · saved privately (counterparty still sees Reviewing) | Verify the applicant is never shown the private decision. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `492b9f6d` | Needs your reply (talent side) | Reply from the Talent inbox and watch the state change on both sides. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `8ffbc415` | `4d559846` | Snoozed — hidden from the queue until it returns | Confirm snoozing changes no status and the record comes back. |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `4dbcceb2` | Answers only · no typed message · must not render a blank thread | Confirm one opening bubble is generated from the answers, with the budget shown. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `3ad13549` | `5eaa4448` | Legacy Shortlisted · private · maps to Reviewing plus a private Star | Confirm the private legacy state reads as Reviewing and carries a Star. |
+| `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `14b8ef0f` | `6b546f0c` | Screening answers with an optional question deliberately skipped | open the record and review the screening answers in the thread |
 | `default` | `/applications?view=inbox&mode=talent&demo=1` | Mock | Talent | — | `8e0ed828` | Accepted (talent side) | Check the accepted request reads as an agreement, not as a pending action. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `80ccf00e` | `92257c6d` | Waiting on them · no reply needed from you | Confirm the card does not ask you to act while you are the one waiting. |
 | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | Mock | Recruiter | `40d7e63b` | `9ec348eb` | Completion confirmed · release requested | Confirm the work status and the payment status are reported separately. |
@@ -183,7 +186,7 @@ is in the manifest's `index`.
 | Workflow | Seed | Route | Record | Condition |
 | --- | --- | --- | --- | --- |
 | New application | `default` | `/applications?view=inbox&mode=talent&demo=1` | `492b9f6d` | Needs your reply (talent side) |
-| Question and reply | `busy` | `/applications?view=inbox&mode=recruiter&demo=1&seed=busy` | `846c3471` | Conversation with 44 messages and 17 unread |
+| Question and reply | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `341475fb` | Screening questions asked and not yet answered |
 | Interview proposal | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `004efea4` | Interview proposed · future time · unconfirmed |
 | Interview confirmation | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `004efea4` | Interview proposed · future time · unconfirmed |
 | Interview reschedule | `default` | `/applications?view=inbox&mode=recruiter&demo=1` | `f465887a` | Interview confirmed after a reschedule |
@@ -219,10 +222,10 @@ is in the manifest's `index`.
 
 | Dimension | Coverage across all six manifests |
 | --- | --- |
-| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 146 · rejected 83 · reviewing 157 · shortlisted 7 · withdrawn 28 |
+| Lifecycle stage | accepted 8 · archived 24 · declined 8 · hired 85 · interviewing 77 · new 147 · rejected 83 · reviewing 159 · shortlisted 7 · withdrawn 28 |
 | Payment state | disputed 8 · expired 6 · funded 12 · funding_pending 8 · not_applicable 10 · refunded 7 · release_requested 8 · released 9 · setup_pending 10 · work_in_progress 8 |
-| Relationship kind | application 582 · hiring_request 41 |
-| Indexed persona | Recruiter 102 · Talent 19 |
+| Relationship kind | application 585 · hiring_request 41 |
+| Indexed persona | Recruiter 105 · Talent 19 |
 | Portfolio volume | 131 records with none · 1 with 20+ |
 
 ## High volume: what renders, and how to reach the rest

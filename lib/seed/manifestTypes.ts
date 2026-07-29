@@ -90,8 +90,19 @@ export type ManifestMessage = {
   sender_id?: string | null;
   body: string;
   offset_seconds: number;
-  kind?: "text" | "status";
+  kind?: "text" | "status" | "screening_questions" | "screening_answers";
   read?: boolean;
+  /**
+   * Curated structured payload for the kinds the Inbox renders natively — the
+   * screening question snapshot, and the answers given against it.
+   */
+  metadata?: {
+    message_kind?: string;
+    automated?: boolean;
+    snapshot_version?: string;
+    questions?: unknown[];
+    answers?: unknown[];
+  };
 };
 
 export type ManifestInterview = {

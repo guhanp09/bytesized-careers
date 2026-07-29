@@ -194,6 +194,9 @@ class Job:
     trial_amount: float | None = None
     trial_currency: str | None = None
     tags: list[str] = field(default_factory=list)
+    #: The recruiter's private screening prompts. Authored, never inferred — the
+    #: import provider is explicitly forbidden from producing them.
+    screening_questions: list[dict[str, Any]] = field(default_factory=list)
     #: Retired canonical job ids reused rather than reinvented (job_25, job_26).
     legacy_key: str | None = None
 
@@ -205,8 +208,11 @@ class Message:
     sender_id: str | None  # None = platform/system event
     body: str
     offset_seconds: int
-    kind: str = "text"  # text | status
+    kind: str = "text"  # text | status | screening_questions | screening_answers
     read: bool = True
+    #: Curated structured payload for the message kinds the Inbox renders
+    #: natively — the screening question snapshot, and the answers to it.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

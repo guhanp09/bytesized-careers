@@ -1114,6 +1114,11 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       senderName: item.response.from,
       body: item.response.body,
       createdAt: item.response.sentAt,
+      // Structured kinds survive the trip: a screening exchange must render as
+      // its card wherever in the thread it happens to fall.
+      kind: item.response.kind,
+      screening: item.response.screening as ChatMessage["screening"],
+      screeningAnswers: item.response.screeningAnswers as ChatMessage["screeningAnswers"],
     });
   }
   (item.replies || []).forEach((reply, index) => {
@@ -1124,6 +1129,8 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       body: reply.body,
       createdAt: reply.sentAt,
       kind: reply.kind,
+      screening: reply.screening as ChatMessage["screening"],
+      screeningAnswers: reply.screeningAnswers as ChatMessage["screeningAnswers"],
     });
   });
   return messages;

@@ -214,6 +214,10 @@ async def restore_manifest(
                 work_mode=job.get("work_mode"),
                 experience_level=job.get("experience"),
                 tags=job.get("tags", []),
+                # Private prompts the recruiter authored. Restored so the
+                # screened path is exercisable against a real backend, not only
+                # in Mock.
+                screening_questions=job.get("screening_questions") or None,
                 status="published" if job.get("status") != "closed" else "closed",
                 created_at=_instant(at, job.get("posted_offset", -86_400)),
             )
@@ -398,6 +402,12 @@ async def restore_manifest(
                         conversation_id=UUID(message["conversation_id"]),
                         sender_user_id=UUID(message["sender_id"]) if message.get("sender_id") else None,
                         body=message["body"],
+                        # The curated structured payload for the message kinds
+                        # the Inbox renders natively — the screening question
+                        # snapshot and the answers to it. Everything else keeps
+                        # an empty metadata object, exactly as a plain message
+                        # posted through the service would.
+                        metadata_json=message.get("metadata") or {},
                         # Direct: see DIRECT_INSERTIONS["conversation.messages"].
                         created_at=_instant(at, message["offset_seconds"]),
                     )

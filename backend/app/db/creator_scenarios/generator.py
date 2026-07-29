@@ -247,14 +247,19 @@ class Builder:
         participant_stage: str | None,
         created: int,
         updated: int | None = None,
-        messages: list[tuple[str, int, str]] | None = None,
+        messages: list[tuple[Any, ...]] | None = None,
         portfolio_ids: list[str] | None = None,
         **extra: Any,
     ) -> Relationship:
         rel_id = scenario_id("relationship", self.scenario, key)
         conversation_id = scenario_id("conversation", self.scenario, key)
         built: list[Message] = []
-        for index, (who, offset, body) in enumerate(messages or []):
+        for index, entry in enumerate(messages or []):
+            # A fourth element carries a structured payload — the screening
+            # question snapshot, or the answers to it. Plain text stays a
+            # three-tuple so every existing caller reads unchanged.
+            who, offset, body = entry[0], entry[1], entry[2]
+            structured = entry[3] if len(entry) > 3 else None
             sender = recruiter.id if who == "recruiter" else (talent.id if who == "talent" else None)
             built.append(
                 Message(
@@ -263,8 +268,13 @@ class Builder:
                     sender_id=sender,
                     body=body,
                     offset_seconds=offset,
-                    kind="status" if who == "system" else "text",
+                    kind=(
+                        str(structured["message_kind"])
+                        if isinstance(structured, dict) and structured.get("message_kind")
+                        else "status" if who == "system" else "text"
+                    ),
                     read=True,
+                    metadata=dict(structured) if isinstance(structured, dict) else {},
                 )
             )
         rel = Relationship(
@@ -548,6 +558,162 @@ def _empty(builder: Builder) -> None:
     builder.talent(0)
 
 
+SCREENING_PROMPTS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "q1",
+        "position": 0,
+        "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+        "required": True,
+        "response_guidance": "Name one project and what you actually did to it.",
+    },
+    {
+        "id": "q2",
+        "position": 1,
+        "prompt": "How many videos a week can you turn around at this length?",
+        "required": True,
+        "response_guidance": None,
+    },
+    {
+        "id": "q3",
+        "position": 2,
+        "prompt": "Anything else the hiring team should know?",
+        "required": False,
+        "response_guidance": None,
+    },
+)
+
+
+def _screening_exchange(
+    *,
+    asked_at: int,
+    answered_at: int | None,
+    responses: dict[int, str],
+) -> list[tuple[Any, ...]]:
+    """The two structured messages a screened application produces.
+
+    The questions are asked by the hiring side after the application; the
+    answers come back against that snapshot. Both are messages, because that is
+    where both participants already look — and because a message is immutable,
+    so editing the job later cannot rewrite what was already answered.
+    """
+    questions = [dict(entry) for entry in SCREENING_PROMPTS]
+    lines = ["A few questions from the hiring team:", ""]
+    for number, question in enumerate(questions, start=1):
+        lines.append(f"{number}. {question['prompt']}" + (" (Required)" if question["required"] else ""))
+    lines.extend(["", "Reply in this conversation with your answers."])
+    out: list[tuple[Any, ...]] = [
+        (
+            "recruiter",
+            asked_at,
+            "\n".join(lines),
+            {
+                "message_kind": "screening_questions",
+                "automated": True,
+                "snapshot_version": "scenario-v1",
+                "questions": questions,
+            },
+        )
+    ]
+    if answered_at is None:
+        return out
+    # Every asked question appears, answered or not: a skipped optional question
+    # has to be distinguishable from one that was never put.
+    answers = [
+        {
+            "position": question["position"],
+            "prompt": question["prompt"],
+            "required": question["required"],
+            "response": responses.get(question["position"], ""),
+            "answered": bool(responses.get(question["position"], "")),
+        }
+        for question in questions
+    ]
+    body_lines = ["Answers to your questions:", ""]
+    for number, answer in enumerate(answers, start=1):
+        body_lines.append(f"{number}. {answer['prompt']}")
+        body_lines.append(
+            f"   {answer['response'] or ('No answer' if answer['required'] else 'Skipped (optional)')}"
+        )
+    out.append(
+        (
+            "talent",
+            answered_at,
+            "\n".join(body_lines),
+            {
+                "message_kind": "screening_answers",
+                "snapshot_version": "scenario-v1",
+                "answers": answers,
+            },
+        )
+    )
+    return out
+
+
+def _screened_applications(builder: Builder) -> None:
+    """A job that screens, and the three answer states a reviewer must tell apart.
+
+    Complete answers, a skipped optional one, and questions still outstanding.
+    Without all three a reviewer cannot see that "no answer" and "not asked"
+    render differently, which is the whole point of listing every question.
+    """
+    recruiter = builder.recruiter(0)
+    job = builder.job(recruiter, 900)
+    job.title = "Long-form editor for a screened finance channel"
+    job.screening_questions = [dict(entry) for entry in SCREENING_PROMPTS]
+
+    cases: tuple[tuple[str, dict[int, str] | None, str], ...] = (
+        (
+            "complete",
+            {
+                0: "The retention rebuild for a finance channel — I cut the intro entirely and moved the strongest visual to the cold open, which held the 30-second graph flat.",
+                1: "Two a week comfortably, three in a lighter week.",
+                2: "I work Mornings IST and can overlap with EU afternoons.",
+            },
+            "Imported-style screened job · every question answered",
+        ),
+        (
+            "partial",
+            {
+                0: "A three-part explainer series where I restructured the middle act.",
+                1: "Two a week.",
+            },
+            "Screening answers with an optional question deliberately skipped",
+        ),
+        (
+            "unanswered",
+            None,
+            "Screening questions asked and not yet answered",
+        ),
+    )
+    for index, (key, responses, condition) in enumerate(cases):
+        talent = builder.talent(9_100 + index)
+        created = -(index + 2) * DAY
+        rel = builder.relationship(
+            key=f"default:screened:{key}",
+            kind="application",
+            job=job,
+            recruiter=recruiter,
+            talent=talent,
+            stage="reviewing" if responses else "new",
+            participant_stage="reviewing" if responses else "new",
+            created=created,
+            messages=_screening_exchange(
+                asked_at=created + HOUR,
+                answered_at=created + 5 * HOUR if responses else None,
+                responses=responses or {},
+            ),
+            portfolio_ids=builder.portfolio_for(talent, 3, slot=900 + index),
+            unread=0 if responses else 1,
+        )
+        builder.add_index(
+            rel,
+            persona="recruiter",
+            route="/applications?view=inbox&mode=recruiter",
+            condition=condition,
+            action="open the record and review the screening answers in the thread",
+        )
+
+
 def _default(builder: Builder) -> None:
     """A broad, realistic dataset for ordinary design and workflow QA."""
 
@@ -574,6 +740,8 @@ def _default(builder: Builder) -> None:
                 salt=job_index,
             )
             job_index += 1
+
+    _screened_applications(builder)
 
     # Outbound requests, so the Talent side of `default` is not an afterthought.
     recruiter = builder.recruiter(0)
