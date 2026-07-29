@@ -3836,6 +3836,18 @@ export default function ApplicationsWorkspace({
     if (isArchivedInteraction(selected)) return;
     if (backendStatusOf(selected) !== "new") return;
     if (autoReviewedRef.current.has(selected.id)) return;
+    /*
+      The conversation must actually be on screen.
+
+      The workspace keeps a selected record whichever view is showing, so
+      without this, landing on the Pipeline silently marked whichever card the
+      selection happened to fall on as Reviewing — a private position assigned
+      by navigating to a board, which is not reading an application by any
+      definition. On a narrow viewport the list is the landing screen, so the
+      detail has to have been opened deliberately there too.
+    */
+    if (view !== "inbox") return;
+    if (typeof window !== "undefined" && window.innerWidth < 1024 && !mobileDetailOpen) return;
     // The detail must genuinely be loaded — an in-flight open is not a read.
     // Demo mode has no thread to fetch, so the record itself is the detail.
     if (liveMode && !liveThreads[selected.id]) return;
@@ -3919,6 +3931,8 @@ export default function ApplicationsWorkspace({
     selected,
     liveThreads,
     cohort,
+    view,
+    mobileDetailOpen,
   ]);
 
 
