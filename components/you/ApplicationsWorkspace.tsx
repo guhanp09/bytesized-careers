@@ -3625,13 +3625,14 @@ export default function ApplicationsWorkspace({
    * stand between someone and reading or answering their messages.
    */
   useEffect(() => {
-    if (!flags.autoReviewing || !liveMode || !backendAccessToken) return;
+    if (!flags.autoReviewing) return;
     if (!selected || selected.direction !== "received") return;
     if (isArchivedInteraction(selected)) return;
     if (backendStatusOf(selected) !== "new") return;
     if (autoReviewedRef.current.has(selected.id)) return;
     // The detail must genuinely be loaded — an in-flight open is not a read.
-    if (!liveThreads[selected.id]) return;
+    // Demo mode has no thread to fetch, so the record itself is the detail.
+    if (liveMode && !liveThreads[selected.id]) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
     const interactionId = selected.id;
@@ -3650,6 +3651,27 @@ export default function ApplicationsWorkspace({
         durationMs: flags.autoReviewingDwellMs,
         flagCohort: cohort,
       });
+      /*
+        Demo mode has no server to hold the private position, so the deliberate
+        open commits locally instead. Without it "Not opened yet" never moves in
+        sample data, which is precisely the behaviour the review-progress plane
+        exists to make legible — a classification you cannot watch change is one
+        nobody can trust.
+      */
+      if (!liveMode || !backendAccessToken) {
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.id === interactionId && backendStatusOf(entry) === "new"
+              ? {
+                  ...entry,
+                  status: interactionStatusFromBackend(entry.kind, entry.direction, "reviewing"),
+                  backendStatus: "reviewing",
+                }
+              : entry
+          )
+        );
+        return;
+      }
       void (async () => {
         try {
           const result = await markInteractionReviewStarted(
