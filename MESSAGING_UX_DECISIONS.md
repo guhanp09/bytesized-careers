@@ -370,3 +370,88 @@ them; that is a deliberate hierarchy, not a second row size.
   8-second settle window, so it is timing rather than an extra fetch. The
   invariant the test exists for — that these reads do not grow with the number
   of records — holds either way.
+
+---
+
+## 10. Applicant review — the second pass
+
+Four changes, one theme: the workspace was asserting things it could not
+support, and staying silent about things it could.
+
+### References consulted
+
+| Source | Read for | Verdict |
+|---|---|---|
+| [W3C WAI G210 — cancellable drag and drop](https://www.w3.org/WAI/WCAG22/Techniques/general/G210) | What a drag owes a keyboard and a screen reader | **Adopted**: escape cancels, every state change is announced |
+| [Accessible drag-and-drop patterns](https://www.adacompliancepros.com/blog/drag-and-drop-accessibility) | Live-region phrasing for pick-up / move / drop | Adopted the *shape* — a destination-naming sentence — not the phrasing |
+| [Drag-and-drop UI practice](https://blog.logrocket.com/ux-design/drag-and-drop-ui-examples/) | Post-drop feedback; toasts as confirmation | Adopted the confirmation; **rejected the toast** — the answer belongs on the card, not in a corner |
+| ATS pipeline conventions (Greenhouse, Lever, Ashby) | Stage as a column; reviewer progress tracked separately | **Adopted the separation**; rejected stage-builder sprawl and RAG health scoring |
+| Inbox triage (Superhuman, Linear, Slack) | Unread kept apart from needs-action | **Adopted**: one is about you, the other about the work |
+
+### Rejected
+
+- **One flat category list.** Mixing "have I looked at this", "where does it
+  stand" and "who owes a move" forces the list to pick one answer per record and
+  drop the others. It is what made *Decision needed* grow until it meant nothing.
+- **A toast after a drop.** It confirms in the wrong place — the eye is on the
+  board, and the card is what moved.
+- **A permanent "recently moved" marker.** A second board state competing with
+  the stages it sits inside.
+- **Forcing every applicant into a decision bucket.** "Ready for decision" now
+  requires objective evidence and nothing else qualifies.
+- **A second screening-answer store.** The questions already travel as a message;
+  answers go back the same way, which makes them immutable and idempotent for
+  free.
+- **Collecting screening answers before applying.** Settled earlier and still
+  right: private prompts must not become a barrier to applying, and the import
+  provider is explicitly forbidden from inventing them.
+
+### The header action, evaluated
+
+| Action | Duplicate route | Unique value | Placement |
+|---|---|---|---|
+| `confirm-interview` | Interview card, up a long thread | Reaches and focuses the confirm control; a held slot expires | **Filled** |
+| `confirm-start` | Engagement row, below the thread | Work cannot begin until it happens | **Filled** |
+| `share-decision` | Overflow → Share decision | Opens the notify prompt: preview, optional note on the same operation, exactly-once | **Filled** |
+| `resolve-legacy-stage` | Overflow → stage list | Unblocks ordinary management | **Filled** |
+| `record-decision` | Decision surface (auto-opens), Pipeline stage menu | Re-opens a surface that may have been dismissed | **Secondary** |
+| `reply` | The pinned composer, naming the person | None inside the detail | **Removed** |
+
+The rule in one sentence: **filled means somebody else is waiting.**
+
+### The three planes
+
+*Review progress* (of everything) — Not opened yet · Opened. Read from the
+stage, so it survives a reload and a second recruiter.
+
+*Where it stands* (of opened) — Reviewing · Interviewing · Hired/starting ·
+Closed. Undefined for an unopened record, because inventing a management
+position for something nobody has read asserts a judgement no one made.
+
+*Needs attention* (of everything) — Needs your reply · New to read · Ready for
+decision · Decision not sent · Interview to confirm · Start to confirm · Waiting
+on them · Snoozed · No action needed.
+
+**Ready for decision** means exactly one thing: the interview happened and no
+outcome was recorded. The old copy claimed the recruiter "had everything they
+needed" on the evidence that nothing else had matched, which is not evidence.
+
+### Screening
+
+Questions are asked after applying, as one snapshotted message. Answers come
+back the same way, validated against that snapshot — required ones present, none
+inventing a question nobody asked. The client never says what it was asked.
+Being a message makes them immutable, idempotent and private without a second
+table, and there is one place to read them: the thread.
+
+Every asked question is listed on review, answered or not.
+
+### Still open
+
+- **Canonical profile completeness** is not finished. Applicant records carry
+  identity, portfolio, commercial context and creator facts, but the full
+  contract in the brief — biography, tools, languages, verification, hiring
+  identity depth, and generator rules that *fail* on a placeholder — is not
+  implemented. Profiles resolve and render; they are not yet uniformly rich.
+- **Classification filters are not URL state.** They were not before either;
+  view, mode, thread and stage still are.
