@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { Icon } from "./Icons";
 import Sidebar from "./Sidebar";
@@ -56,6 +56,7 @@ const notificationIconFor = (item: BackendNotification): NotificationIconName =>
 
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -66,7 +67,9 @@ export default function Header() {
   const [notifications, setNotifications] = useState<BackendNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [searchValue, setSearchValue] = useState("");
-  const [searchMode, setSearchMode] = useState<"jobs" | "talent">("jobs");
+  const [searchMode, setSearchMode] = useState<"jobs" | "talent">(() =>
+    pathname === "/talent" || pathname.startsWith("/talent/") ? "talent" : "jobs"
+  );
   const menuRef = useRef<HTMLDivElement | null>(null);
   const bellRef = useRef<HTMLDivElement | null>(null);
 

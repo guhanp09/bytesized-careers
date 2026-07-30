@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import TalentFeedClient from "../../components/TalentFeedClient";
 import {
   canUseLocalMockFallback,
+  deepSearchTalent,
   listTalentListings,
+  type BackendSearchIntent,
 } from "../../lib/backendClient";
 import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { filterMockTalentListings } from "../../lib/mockTalentListings";
@@ -58,10 +60,15 @@ export async function TalentBrowse({
   const dataSource = await getMarketplaceDataSourceState();
   const usingMock = dataSource.source === "mock";
   const canUseMocks = canUseLocalMockFallback() && dataSource.overrideSource !== "backend";
+  let searchIntent: BackendSearchIntent | null = null;
+  let searchTotal: number | undefined;
+  let noExactMatch = false;
+  let matchReasons: Record<string, string[]> = {};
+  let usedDeepSearch = false;
 
   type TalentItems = Awaited<ReturnType<typeof listTalentListings>>["items"];
   const rankForQuery = (items: TalentItems) => {
-    if (!query) return items;
+    if (!query || usedDeepSearch) return items;
     const parsed = parseQuery(query);
     let ranked = rankTalent(items, parsed);
     if (ranked.length === 0 && (parsed.budget || parsed.locations.length > 0)) {
@@ -79,13 +86,38 @@ export async function TalentBrowse({
     return <TalentFeedClient items={items} query={query} seoRoute={seoRoute || null} />;
   }
 
-  const result = await listTalentListings({
-    role,
-    platform,
-    location,
-    availability,
-    limit: 100,
-  })
+  const result = await (
+    query
+      ? deepSearchTalent({
+          q: query,
+          role: role || undefined,
+          platform: platform || undefined,
+          location: location || undefined,
+          availability: availability || undefined,
+          limit: 100,
+        }).then((search) => {
+          usedDeepSearch = true;
+          searchIntent = search.intent;
+          searchTotal = search.total;
+          noExactMatch = search.noExactMatch;
+          matchReasons = Object.fromEntries(
+            search.items.map((match) => [match.item.id, match.reasons]),
+          );
+          return {
+            items: search.items.map((match) => match.item),
+            total: search.total,
+            limit: search.limit,
+            offset: search.offset,
+          };
+        })
+      : listTalentListings({
+          role,
+          platform,
+          location,
+          availability,
+          limit: 100,
+        })
+  )
     .then((response) => ({ response, notice: null as string | null }))
     .catch(() => {
       if (!canUseMocks) {
@@ -103,7 +135,18 @@ export async function TalentBrowse({
     return <TalentFeedClient items={items} seoRoute={seoRoute || null} />;
   }
 
-  return <TalentFeedClient items={selectForView(result.response.items)} notice={result.notice} query={query} seoRoute={seoRoute || null} />;
+  return (
+    <TalentFeedClient
+      items={selectForView(result.response.items)}
+      notice={result.notice}
+      query={query}
+      seoRoute={seoRoute || null}
+      searchIntent={searchIntent}
+      searchTotal={searchTotal}
+      noExactMatch={noExactMatch}
+      matchReasons={matchReasons}
+    />
+  );
 }
 
 export default async function TalentPage({

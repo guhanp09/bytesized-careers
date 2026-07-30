@@ -28,6 +28,7 @@ from app.models import Job, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
+from app.repositories.search_repository import SearchRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
 from app.services.job_import_processing_service import JobImportProcessingService
@@ -38,6 +39,7 @@ from app.services.job_service import JobNotFoundError, JobService
 from app.services.job_url_fetcher import PublicJobUrlFetcher
 from app.services.me_service import MeService
 from app.services.profile_service import ProfileService
+from app.services.search_service import SearchService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -49,6 +51,10 @@ async def get_db(session: AsyncSession = Depends(get_db_session)) -> AsyncSessio
 async def get_job_service(session: AsyncSession = Depends(get_db)) -> JobService:
     repository = JobRepository(session)
     return JobService(repository)
+
+
+async def get_search_service(session: AsyncSession = Depends(get_db)) -> SearchService:
+    return SearchService(SearchRepository(session))
 
 
 async def get_job_import_service(

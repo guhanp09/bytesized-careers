@@ -1385,6 +1385,75 @@ export type ListJobsResult = {
   backendUrl: string;
 };
 
+export type BackendSearchCompensationIntent = {
+  amount: number;
+  operator: "approx" | "under" | "over";
+  currency?: string | null;
+  unit?: string | null;
+};
+
+export type BackendSearchIntent = {
+  version: 1;
+  domain: "jobs" | "talent";
+  query: string;
+  roles: string[];
+  role_labels: string[];
+  specializations: string[];
+  tools: string[];
+  tool_labels: string[];
+  skills: string[];
+  platforms: string[];
+  formats: string[];
+  genres: string[];
+  niches: string[];
+  locations: string[];
+  work_modes: string[];
+  engagement_types: string[];
+  availability: string[];
+  compensation?: BackendSearchCompensationIntent | null;
+  weekly_hours?: number | null;
+  turnaround?: { value?: number | null; unit?: "hours" | "days" | "weeks" | null; fast: boolean } | null;
+  experience_years_min?: number | null;
+  hard_constraints: string[];
+  preferred_constraints: string[];
+  free_text_terms: string[];
+  corrections: string[];
+};
+
+export type BackendJobSearchMatch = {
+  item: BackendJob;
+  score: number;
+  reasons: string[];
+  matched_all_recognized: boolean;
+};
+
+export type BackendTalentSearchMatch = {
+  item: BackendTalentListing;
+  score: number;
+  reasons: string[];
+  matched_all_recognized: boolean;
+};
+
+export type DeepJobSearchResult = {
+  domain: "jobs";
+  intent: BackendSearchIntent;
+  items: Array<{ item: Job; score: number; reasons: string[]; matchedAllRecognized: boolean }>;
+  total: number;
+  limit: number;
+  offset: number;
+  noExactMatch: boolean;
+};
+
+export type DeepTalentSearchResult = {
+  domain: "talent";
+  intent: BackendSearchIntent;
+  items: BackendTalentSearchMatch[];
+  total: number;
+  limit: number;
+  offset: number;
+  noExactMatch: boolean;
+};
+
 const normalizeLegacyCategory = (value?: string | null): string | null => value?.trim() || null;
 
 const ensureStartTimeframe = (value?: string | null): StartTimeframe => {
@@ -1956,6 +2025,60 @@ export async function listJobsWithMeta(params: ListJobsParams = {}): Promise<Lis
 export async function listJobsFromBackend(): Promise<Job[]> {
   const payload = await listJobsWithMeta({ limit: 100, offset: 0 });
   return payload.items;
+}
+
+type DeepSearchParams = {
+  q: string;
+  role?: string | string[];
+  platform?: string | string[];
+  format?: string | string[];
+  work_mode?: string | string[];
+  engagement_type?: string | string[];
+  location?: string | string[];
+  availability?: string | string[];
+  limit?: number;
+  offset?: number;
+};
+
+const deepSearchQuery = (params: DeepSearchParams) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value)) {
+      value.filter(Boolean).forEach((item) => query.append(key, String(item)));
+    } else {
+      query.set(key, String(value));
+    }
+  });
+  if (!query.has("limit")) query.set("limit", "100");
+  if (!query.has("offset")) query.set("offset", "0");
+  return query;
+};
+
+export async function deepSearchJobs(params: DeepSearchParams): Promise<DeepJobSearchResult> {
+  const payload = await requestJson<{
+    domain: "jobs";
+    intent: BackendSearchIntent;
+    items: BackendJobSearchMatch[];
+    total: number;
+    limit: number;
+    offset: number;
+    no_exact_match: boolean;
+  }>(`/search/jobs?${deepSearchQuery(params).toString()}`);
+  return {
+    domain: payload.domain,
+    intent: payload.intent,
+    items: payload.items.map((match) => ({
+      item: toFrontendJob(match.item),
+      score: match.score,
+      reasons: match.reasons,
+      matchedAllRecognized: match.matched_all_recognized,
+    })),
+    total: payload.total,
+    limit: payload.limit,
+    offset: payload.offset,
+    noExactMatch: payload.no_exact_match,
+  };
 }
 
 export async function getJobByIdFromBackend(id: string): Promise<Job | null> {
@@ -2657,6 +2780,27 @@ export async function listTalentListings(params: {
   if (!query.has("limit")) query.set("limit", "100");
   if (!query.has("offset")) query.set("offset", "0");
   return requestJson<BackendTalentListingListResponse>(`/talent-listings?${query.toString()}`);
+}
+
+export async function deepSearchTalent(params: DeepSearchParams): Promise<DeepTalentSearchResult> {
+  const payload = await requestJson<{
+    domain: "talent";
+    intent: BackendSearchIntent;
+    items: BackendTalentSearchMatch[];
+    total: number;
+    limit: number;
+    offset: number;
+    no_exact_match: boolean;
+  }>(`/search/talent?${deepSearchQuery(params).toString()}`);
+  return {
+    domain: payload.domain,
+    intent: payload.intent,
+    items: payload.items,
+    total: payload.total,
+    limit: payload.limit,
+    offset: payload.offset,
+    noExactMatch: payload.no_exact_match,
+  };
 }
 
 export async function getTalentListing(listingId: string): Promise<BackendTalentListing> {

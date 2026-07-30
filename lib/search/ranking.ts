@@ -168,10 +168,6 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
   const structuredGenreField = matcher(job.contentGenres);
   const workModeField = matcher(job.workMode, job.contractType);
   const toolsField = matcher(job.tools, job.requiredToolKeys, job.otherRequiredTools);
-  const requiredLanguages = job.languageRequirements == null
-    ? job.languages
-    : job.languageRequirements.filter((item) => item.priority === "required").map((item) => item.language);
-  const langField = matcher(requiredLanguages);
   const locationField = matcher(job.location);
   const corpus = matcher(
     job.title,
@@ -186,7 +182,6 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
     job.formatsHiredFor,
     job.tags,
     job.tools,
-    requiredLanguages,
     job.channel?.name
   );
 
@@ -203,8 +198,8 @@ export function scoreJob(job: JobLike, p: ParsedQuery): number {
     if (canonicalInField("format", format, structuredFormatField)) score += W.format + 3;
     else if (canonicalInField("format", format, formatField)) score += W.format;
   for (const mode of p.workModes) if (canonicalInField("workMode", mode, workModeField)) score += W.workMode;
-  for (const language of p.languages)
-    if (termInField(langField, language.toLowerCase()) || termInField(corpus, language.toLowerCase())) score += W.language;
+  // Historical job-language values remain readable for compatibility but are not
+  // an active public discovery or ranking signal.
   score += locationScore(p.locations, locationField, workModeField);
   for (const token of p.freeTokens) score += freeTokenInField(corpus, token) || (termInField(nicheField, token) ? W.niche : 0) || (termInField(toolsField, token) ? W.tool : 0);
 

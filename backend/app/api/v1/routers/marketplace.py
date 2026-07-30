@@ -1634,14 +1634,24 @@ async def list_talent_listings(
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
 ) -> TalentListingListResponse:
+    if status_filter not in (None, "published", "featured"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "PUBLIC_TALENT_STATUS_INVALID",
+                "message": "Public talent listings only support published records.",
+            },
+        )
     query = (
         select(TalentListing, User)
         .join(User, TalentListing.owner_user_id == User.id)
         # Suspended owners' listings are excluded from the public marketplace.
         .where(TalentListing.deleted_at.is_(None), User.suspended_at.is_(None))
     )
-    if status_filter:
-        query = query.where(TalentListing.status == status_filter)
+    if status_filter == "featured":
+        query = query.where(TalentListing.status == "featured")
+    else:
+        query = query.where(TalentListing.status.in_(("published", "featured")))
     if q:
         term = f"%{q.lower()}%"
         query = query.where(

@@ -12,6 +12,7 @@ import { getTalentInterestedRecruiters, getTalentResponseRate, normalizeCount } 
 import { useCardSheen } from "../lib/useCardSheen";
 import { formatCompactNumber } from "../lib/format";
 import { Icon } from "./Icons";
+import SearchMatchReasons from "./search/SearchMatchReasons";
 import { CardActionFeedback, copyTextToClipboard, MetaRow, StatRow, TagPill, useTransientCardFeedback } from "./ui";
 
 const formatInr = (amount: number) => `₹${new Intl.NumberFormat("en-IN").format(amount)}`;
@@ -159,7 +160,13 @@ function ListingCta({
   );
 }
 
-export default function TalentCard({ item }: { item: BackendTalentListing }) {
+export default function TalentCard({
+  item,
+  matchReasons,
+}: {
+  item: BackendTalentListing;
+  matchReasons?: string[];
+}) {
   const router = useRouter();
   const { data: session } = useSession();
   const [saving, setSaving] = useState(false);
@@ -368,6 +375,7 @@ export default function TalentCard({ item }: { item: BackendTalentListing }) {
           </div>
         </div>
       </div>
+      <SearchMatchReasons reasons={matchReasons} />
     </div>
   );
 }

@@ -1,12 +1,24 @@
 import type { Metadata } from "next";
 import JobGridClient from "../../components/JobGridClient";
-import { canUseLocalMockFallback, listJobsWithMeta, listRoles, type BackendRole } from "../../lib/backendClient";
+import {
+  canUseLocalMockFallback,
+  deepSearchJobs,
+  listJobsWithMeta,
+  listRoles,
+  type BackendRole,
+  type BackendSearchIntent,
+} from "../../lib/backendClient";
 import { getMarketplaceDataSourceState } from "../../lib/devDataSource.server";
 import { JOBS } from "../../lib/jobs";
 import { parseQuery } from "../../lib/search/queryParser";
 import { rankJobs, relaxParsedQuery } from "../../lib/search/ranking";
 import { filterAndOrderJobsForSeoRoute, refinementCriteriaFromParams } from "../../lib/seoFilterMatch";
-import { jobMatchesDiscovery, parseJobDiscovery, roleSlugFromName } from "../../lib/jobDiscovery";
+import {
+  activeJobDiscoveryCount,
+  jobMatchesDiscovery,
+  parseJobDiscovery,
+  roleSlugFromName,
+} from "../../lib/jobDiscovery";
 import type { SeoFilterRoute } from "../../lib/seoFilterRoutes";
 import { Job } from "../../lib/types";
 
@@ -69,6 +81,11 @@ export async function JobsBrowse({
   let jobs: Job[] = [];
   let roles: BackendRole[] = [];
   let notice: string | null = null;
+  let searchIntent: BackendSearchIntent | null = null;
+  let searchTotal: number | undefined;
+  let noExactMatch = false;
+  let matchReasons: Record<string, string[]> = {};
+  let usedDeepSearch = false;
   const dataSource = await getMarketplaceDataSourceState();
   const usingMock = dataSource.source === "mock";
   const canUseMocks = canUseLocalMockFallback() && dataSource.overrideSource !== "backend";
@@ -76,20 +93,42 @@ export async function JobsBrowse({
     jobs = JOBS;
   } else {
     try {
-      const response = await listJobsWithMeta({
-        role: seoRoute ? undefined : role,
-        platform,
-        format: seoRoute ? undefined : format,
-        work_mode: seoRoute ? undefined : workMode,
-        engagement_type: seoRoute ? undefined : engagement,
-        budget_unit: seoRoute ? undefined : compensationUnit,
-        location,
-        start_timeframe: startTimeframe,
-        status: "published",
-        limit: 100,
-        offset: 0,
-      });
-      jobs = response.items;
+      if (query) {
+        const response = await deepSearchJobs({
+          q: query,
+          role: discovery.role,
+          platform: discovery.platform,
+          format: discovery.format,
+          work_mode: discovery.workMode,
+          engagement_type: discovery.engagement,
+          location: discovery.location,
+          limit: 100,
+          offset: 0,
+        });
+        jobs = response.items.map((match) => match.item);
+        matchReasons = Object.fromEntries(
+          response.items.map((match) => [String(match.item.id), match.reasons]),
+        );
+        searchIntent = response.intent;
+        searchTotal = response.total;
+        noExactMatch = response.noExactMatch;
+        usedDeepSearch = true;
+      } else {
+        const response = await listJobsWithMeta({
+          role: seoRoute ? undefined : role,
+          platform,
+          format: seoRoute ? undefined : format,
+          work_mode: seoRoute ? undefined : workMode,
+          engagement_type: seoRoute ? undefined : engagement,
+          budget_unit: seoRoute ? undefined : compensationUnit,
+          location,
+          start_timeframe: startTimeframe,
+          status: "published",
+          limit: 100,
+          offset: 0,
+        });
+        jobs = response.items;
+      }
       roles = (await listRoles().catch(() => ({ items: [] }))).items;
     } catch {
       if (canUseMocks) {
@@ -120,7 +159,7 @@ export async function JobsBrowse({
     // then relevance ordering — a curated route must not leak weak/irrelevant
     // matches just because they share a broad tag.
     jobs = filterAndOrderJobsForSeoRoute(jobs, seoRoute, refinements);
-  } else if (query) {
+  } else if (query && !usedDeepSearch) {
     const parsed = parseQuery(query);
     let ranked = rankJobs(jobs, parsed);
     if (ranked.length === 0 && (parsed.budget || parsed.locations.length > 0)) {
@@ -132,12 +171,27 @@ export async function JobsBrowse({
   // The backend applies these exact filters for the public feed. Reapplying the
   // pure predicate keeps local mocks and curated SEO routes behaviorally equal.
   jobs = jobs.filter((job) => jobMatchesDiscovery(job, discovery));
+  if (usedDeepSearch && activeJobDiscoveryCount(discovery) > 0) {
+    searchTotal = jobs.length;
+  }
 
   if (posted === "1") {
     notice = "Job posted. It should appear at the top of the feed. Refresh to verify it persists.";
   }
 
-  return <JobGridClient jobs={jobs} notice={notice} query={query} seoRoute={seoRoute || null} roles={roles} />;
+  return (
+    <JobGridClient
+      jobs={jobs}
+      notice={notice}
+      query={query}
+      seoRoute={seoRoute || null}
+      roles={roles}
+      searchIntent={searchIntent}
+      searchTotal={searchTotal}
+      noExactMatch={noExactMatch}
+      matchReasons={matchReasons}
+    />
+  );
 }
 
 export default async function JobsPage({

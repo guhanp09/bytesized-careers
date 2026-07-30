@@ -22,6 +22,7 @@ import type { Job } from "../lib/types";
 import { useCardSheen } from "../lib/useCardSheen";
 import { Icon } from "./Icons";
 import ChannelAttribution from "./jobs/ChannelAttribution";
+import SearchMatchReasons from "./search/SearchMatchReasons";
 import {
   CardActionFeedback,
   copyTextToClipboard,
@@ -95,7 +96,7 @@ function ListingCta({ onClick }: { onClick: (event: React.MouseEvent<HTMLButtonE
   );
 }
 
-export function JobCard({ job }: { job: Job }) {
+export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string[] }) {
   const router = useRouter();
   const { data: session } = useSession();
   const [saving, setSaving] = React.useState(false);
@@ -304,6 +305,7 @@ export function JobCard({ job }: { job: Job }) {
           </div>
         </footer>
       </div>
+      <SearchMatchReasons reasons={matchReasons} />
     </div>
   );
 }

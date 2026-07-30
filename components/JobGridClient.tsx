@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useState } from "react";
 
-import type { BackendRole } from "../lib/backendClient";
+import type { BackendRole, BackendSearchIntent } from "../lib/backendClient";
 import { formatStartFilterLabel } from "../lib/format";
 import {
   JOB_DISCOVERY_PARAMS,
@@ -26,6 +26,7 @@ import {
 import type { Job } from "../lib/types";
 import { JobCard } from "./JobCard";
 import JobFiltersDrawer from "./jobs/JobFiltersDrawer";
+import SearchSummary from "./search/SearchSummary";
 import SubfilterRow from "./SubfilterRow";
 import { Reveal } from "./ui";
 
@@ -56,12 +57,20 @@ export default function JobGridClient({
   query,
   seoRoute,
   roles = [],
+  searchIntent,
+  searchTotal,
+  noExactMatch,
+  matchReasons = {},
 }: {
   jobs: Job[];
   notice?: string | null;
   query?: string;
   seoRoute?: SeoFilterRoute | null;
   roles?: BackendRole[];
+  searchIntent?: BackendSearchIntent | null;
+  searchTotal?: number;
+  noExactMatch?: boolean;
+  matchReasons?: Record<string, string[]>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -153,6 +162,14 @@ export default function JobGridClient({
 
       <section className={`min-w-0 px-3 py-8 sm:px-6 ${hasSubfilterRow ? "pt-[8.5rem]" : "pt-24"}`}>
         {notice ? <div className="mb-6 rounded-2xl border border-[var(--vt-line-mid,rgba(255,255,255,0.12))] bg-[var(--vt-card,rgba(255,255,255,0.06))] px-4 py-3 text-sm text-[var(--vt-text-secondary,rgba(255,255,255,0.85))]">{notice}</div> : null}
+        {searchIntent ? (
+          <SearchSummary
+            domain="jobs"
+            intent={searchIntent}
+            total={searchTotal ?? jobs.length}
+            noExactMatch={noExactMatch}
+          />
+        ) : null}
         {activeCount ? (
           <div className="mb-5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted" aria-live="polite">
             <span>{filtered.length} matching job{filtered.length === 1 ? "" : "s"}</span>
@@ -188,7 +205,7 @@ export default function JobGridClient({
           ) : (
             sorted.map((job, index) => (
               <Reveal key={job.id} delay={Math.min(index, 7) * 55} className="h-full min-w-0">
-                <JobCard job={job} />
+                <JobCard job={job} matchReasons={matchReasons[String(job.id)]} />
               </Reveal>
             ))
           )}

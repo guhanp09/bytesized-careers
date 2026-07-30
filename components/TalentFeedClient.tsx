@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BackendTalentListing } from "../lib/backendClient";
+import { BackendTalentListing, type BackendSearchIntent } from "../lib/backendClient";
 import {
   primaryRoleChipsForType,
   seoSelectedChipLabels,
@@ -12,6 +12,7 @@ import {
 } from "../lib/seoFilterRoutes";
 import SubfilterRow from "./SubfilterRow";
 import TalentCard from "./TalentCard";
+import SearchSummary from "./search/SearchSummary";
 import { Reveal } from "./ui";
 
 type TalentFilter = {
@@ -92,11 +93,19 @@ export default function TalentFeedClient({
   notice,
   query,
   seoRoute,
+  searchIntent,
+  searchTotal,
+  noExactMatch,
+  matchReasons = {},
 }: {
   items: BackendTalentListing[];
   notice?: string | null;
   query?: string;
   seoRoute?: SeoFilterRoute | null;
+  searchIntent?: BackendSearchIntent | null;
+  searchTotal?: number;
+  noExactMatch?: boolean;
+  matchReasons?: Record<string, string[]>;
 }) {
   // Local (client-side) filters are single-select with the SEO chips. Landing on
   // the base list with ?filter=<label> — how the local chips replace an SEO
@@ -213,11 +222,19 @@ export default function TalentFeedClient({
             </button>
           </div>
         ) : null}
+        {searchIntent ? (
+          <SearchSummary
+            domain="talent"
+            intent={searchIntent}
+            total={searchTotal ?? items.length}
+            noExactMatch={noExactMatch}
+          />
+        ) : null}
         {filtered.length ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {sorted.map((item, index) => (
               <Reveal key={item.id} delay={Math.min(index, 7) * 55} className="h-full min-w-0">
-                <TalentCard item={item} />
+                <TalentCard item={item} matchReasons={matchReasons[item.id]} />
               </Reveal>
             ))}
           </div>
