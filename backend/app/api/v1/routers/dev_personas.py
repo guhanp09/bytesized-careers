@@ -5,11 +5,19 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db, get_job_import_service
 from app.core.config import settings
 from app.db import seed
 from app.db import seed_data_personas as personas
+from app.db.seed_data_job_import import processed_review_fixture
 from app.models import Job, JobApplication, Notification, TalentListing, User
+from app.schemas.job_import import (
+    JobImportDraftInitialize,
+    JobImportDraftRead,
+    JobImportProviderMetadata,
+    JobImportSourceCreate,
+)
+from app.services.job_import_service import JobImportService
 
 router = APIRouter(prefix="/dev", tags=["dev"])
 
@@ -77,6 +85,11 @@ class ResetResponse(BaseModel):
     result: dict
 
 
+class DevJobImportFixtureResponse(BaseModel):
+    draft: JobImportDraftRead
+    created: bool
+
+
 @router.get("/personas", response_model=PersonaListResponse)
 async def list_personas() -> PersonaListResponse:
     _ensure_dev_only()
@@ -137,3 +150,51 @@ async def reset_dev_data(
         )
     result = await seed.reset_dev_seed_data(session)
     return ResetResponse(status="ok", result=result)
+
+
+@router.post(
+    "/job-import-review",
+    response_model=DevJobImportFixtureResponse,
+    summary="Create an owned processed job-import review fixture",
+)
+async def create_job_import_review_fixture(
+    current_user: User = Depends(get_current_user),
+    service: JobImportService = Depends(get_job_import_service),
+) -> DevJobImportFixtureResponse:
+    _ensure_dev_only()
+    await seed.seed_roles_if_missing(service.repository.session)
+    source = await service.create_source(
+        JobImportSourceCreate(
+            source_type="rough_description",
+            source_title="Development review example",
+            original_text=(
+                "Development-only private source used to inspect the recruiter review "
+                "interface without a provider call."
+            ),
+            idempotency_key=f"dev-review-source-{current_user.id}",
+        ),
+        owner_user_id=current_user.id,
+    )
+    draft = await service.initialize_draft(
+        source.id,
+        JobImportDraftInitialize(
+            idempotency_key=f"dev-review-draft-{current_user.id}",
+        ),
+        owner_user_id=current_user.id,
+    )
+    created = draft.processing_status == "awaiting_processing"
+    if created:
+        draft = await service.record_extraction_result(
+            draft.id,
+            processed_review_fixture(),
+            owner_user_id=current_user.id,
+            provider_metadata=JobImportProviderMetadata(
+                provider_name="development_fixture",
+                instruction_version="dev-review-v1",
+                metadata={"fixture": True},
+            ),
+        )
+    return DevJobImportFixtureResponse(
+        draft=await service.draft_read(draft),
+        created=created,
+    )

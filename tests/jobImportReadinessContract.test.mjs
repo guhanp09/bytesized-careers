@@ -80,7 +80,7 @@ test("structured backend errors retain machine-readable import metadata", () => 
   assert.match(client, /parsed\.error\?\.request_id/);
 });
 
-test("no application or component links the readiness substrate into user-facing UI", () => {
+test("the user-facing import flow uses the private readiness substrate without provider branding", () => {
   const userFacingSource = [
     ...sourceFiles("app"),
     ...sourceFiles("components"),
@@ -88,9 +88,13 @@ test("no application or component links the readiness substrate into user-facing
     .map((filename) => readFileSync(filename, "utf8"))
     .join("\n");
 
-  assert.doesNotMatch(userFacingSource, /jobImportReadiness/);
+  assert.match(userFacingSource, /jobImportReadiness/);
+  assert.match(userFacingSource, /Create job draft/);
+  assert.match(userFacingSource, /Source summary/);
+  assert.match(userFacingSource, /resolveJobImportConflict/);
   assert.doesNotMatch(userFacingSource, /Create with AI/);
   assert.doesNotMatch(userFacingSource, /Process with AI/);
+  assert.doesNotMatch(userFacingSource, /OpenAI|GPT-|provider selector/i);
 });
 
 test("repository dependencies contain only the approved OpenAI provider SDK", () => {

@@ -390,3 +390,21 @@ export async function applyJobImportDraft(
     created: result.created,
   };
 }
+
+export async function createDevelopmentJobImportFixture(
+  accessToken: string
+): Promise<{ draft: JobImportDraft; created: boolean }> {
+  const response = await requestJson<unknown>("/dev/job-import-review", {
+    method: "POST",
+    body: JSON.stringify({}),
+    accessToken,
+  });
+  const result = requireRecord(response, "development job-import fixture");
+  if (typeof result.created !== "boolean") {
+    throw new Error("Invalid development job-import fixture outcome.");
+  }
+  return {
+    draft: decodeJobImportDraft(result.draft),
+    created: result.created,
+  };
+}
