@@ -60,6 +60,7 @@ from app.schemas.job_import import (
     JobImportProcessResponse,
     JobImportSourceCreate,
     JobImportSourceRead,
+    JobImportUrlSourceCreate,
 )
 from app.schemas.marketplace import (
     ActivitySummaryResponse,
@@ -185,6 +186,7 @@ __all__ = [
     "JobImportProcessResponse",
     "JobImportSourceCreate",
     "JobImportSourceRead",
+    "JobImportUrlSourceCreate",
     "LaunchCheckoutRequest",
     "LoginRequest",
     "LoginResponse",

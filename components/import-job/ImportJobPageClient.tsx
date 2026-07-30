@@ -9,8 +9,10 @@ import {
   applyJobImportDraft,
   createDevelopmentJobImportFixture,
   createJobImportSource,
+  createJobImportUrlSource,
   discardJobImportDraft,
   getJobImportDraft,
+  getJobImportSource,
   initializeJobImportDraft,
   processJobImportDraft,
   resolveJobImportConflict,
@@ -18,6 +20,7 @@ import {
   type JobImportDraft,
   type JobImportField,
   type JobImportNonNullJsonValue,
+  type JobImportSource,
 } from "../../lib/jobImportReadiness";
 import { describeActionError } from "../../lib/backendClient";
 import { normalizeImportText } from "../../lib/importJob/normalize";
@@ -26,10 +29,12 @@ import ImportReviewWorkspace from "./ImportReviewWorkspace";
 import {
   importGhostButton,
   importPanelClass,
+  importInputBase,
   importPrimaryButton,
 } from "./importPrimitives";
 
 type Phase = "entry" | "creating" | "processing" | "review" | "source_summary";
+type EntryMode = "text" | "url";
 
 const isDevelopmentRuntime =
   process.env.NODE_ENV === "development" ||
@@ -57,15 +62,19 @@ export default function ImportJobPageClient() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const [phase, setPhase] = React.useState<Phase>("entry");
+  const [entryMode, setEntryMode] = React.useState<EntryMode>("text");
   const [text, setText] = React.useState("");
+  const [url, setUrl] = React.useState("");
   const [truncated, setTruncated] = React.useState(false);
   const [draft, setDraft] = React.useState<JobImportDraft | null>(null);
+  const [source, setSource] = React.useState<JobImportSource | null>(null);
   const [error, setError] = React.useState("");
   const [busyField, setBusyField] = React.useState<string | null>(null);
   const [applying, setApplying] = React.useState(false);
   const [confirmStartOver, setConfirmStartOver] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
   const restoredRef = React.useRef(false);
+  const urlRequestIdRef = React.useRef<string | null>(null);
 
   const accessToken = session?.backendAccessToken ?? "";
 
@@ -83,6 +92,12 @@ export default function ImportJobPageClient() {
     void getJobImportDraft(accessToken, draftId)
       .then((loaded) => {
         setDraft(loaded);
+        void getJobImportSource(accessToken, loaded.source_id)
+          .then((loadedSource) => {
+            setSource(loadedSource);
+            setEntryMode(loadedSource.source_type === "public_url" ? "url" : "text");
+          })
+          .catch(() => undefined);
         if (
           loaded.processing_status === "awaiting_processing" ||
           loaded.processing_status === "processing" ||
@@ -172,6 +187,7 @@ export default function ImportJobPageClient() {
         original_text: text,
         idempotency_key: `text-source-${requestId}`,
       });
+      setSource(source);
       const initialized = await initializeJobImportDraft(accessToken, source.id, {
         idempotency_key: `text-draft-${requestId}`,
       });
@@ -184,6 +200,47 @@ export default function ImportJobPageClient() {
     }
   };
 
+  const prepareUrl = async () => {
+    if (!url.trim() || !accessToken) return;
+    let parsed: URL;
+    try {
+      parsed = new URL(url.trim());
+    } catch {
+      setError("Enter a complete public job-listing URL.");
+      return;
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      setError("Enter a public HTTP or HTTPS URL without sign-in credentials.");
+      return;
+    }
+    setPhase("creating");
+    setError("");
+    setAnnouncement("Retrieving the public page safely.");
+    const requestId = urlRequestIdRef.current ?? crypto.randomUUID();
+    urlRequestIdRef.current = requestId;
+    try {
+      const createdSource = await createJobImportUrlSource(accessToken, {
+        source_url: parsed.toString(),
+        idempotency_key: `url-source-${requestId}`,
+      });
+      setSource(createdSource);
+      const initialized = await initializeJobImportDraft(accessToken, createdSource.id, {
+        idempotency_key: `url-draft-${requestId}`,
+      });
+      setDraft(initialized);
+      setDraftLocation(initialized.id);
+      await processDraft(initialized);
+    } catch (caught) {
+      setPhase("entry");
+      setError(
+        describeActionError(
+          caught,
+          "We couldn’t retrieve that public page. Check the URL and try again."
+        )
+      );
+    }
+  };
+
   const openDevelopmentFixture = async () => {
     if (!accessToken) return;
     setPhase("creating");
@@ -191,6 +248,9 @@ export default function ImportJobPageClient() {
     try {
       const result = await createDevelopmentJobImportFixture(accessToken);
       setDraft(result.draft);
+      void getJobImportSource(accessToken, result.draft.source_id)
+        .then(setSource)
+        .catch(() => undefined);
       setDraftLocation(result.draft.id);
       setPhase("review");
       setAnnouncement("Development review example opened.");
@@ -281,7 +341,10 @@ export default function ImportJobPageClient() {
       }
     }
     setDraft(null);
+    setSource(null);
     setText("");
+    setUrl("");
+    urlRequestIdRef.current = null;
     setTruncated(false);
     setError("");
     setDraftLocation(null);
@@ -342,20 +405,96 @@ export default function ImportJobPageClient() {
         {phase === "entry" ? (
           <div className="mx-auto max-w-3xl space-y-4">
             <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-xs leading-relaxed text-white/60">
-              <p className="font-semibold text-white/75">Private text import</p>
+              <p className="font-semibold text-white/75">Private import</p>
               <p className="mt-1">
-                Paste text only. CreatorJobs stores it privately for extraction and review.
+                CreatorJobs stores normalized source text privately for extraction and review.
                 Suggestions are never published or treated as confirmed until you act.
               </p>
             </section>
-            <PastePanel
-              text={text}
-              truncatedAtLimit={truncated}
-              restoredFromSession={false}
-              onTextChange={updateText}
-              onPrepare={() => void prepareText()}
-              onClearRequest={() => updateText("")}
-            />
+            <div
+              role="tablist"
+              aria-label="Import source"
+              className="inline-flex rounded-2xl border border-white/10 bg-white/[0.035] p-1"
+            >
+              {(
+                [
+                  ["text", "Paste text"],
+                  ["url", "Public URL"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={entryMode === mode}
+                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition ${
+                    entryMode === mode
+                      ? "bg-white text-black"
+                      : "text-white/60 hover:text-white"
+                  }`}
+                  onClick={() => {
+                    setEntryMode(mode);
+                    setError("");
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {entryMode === "text" ? (
+              <PastePanel
+                text={text}
+                truncatedAtLimit={truncated}
+                restoredFromSession={false}
+                onTextChange={updateText}
+                onPrepare={() => void prepareText()}
+                onClearRequest={() => updateText("")}
+              />
+            ) : (
+              <section className={importPanelClass} data-testid="url-import-panel">
+                <h2 className="text-sm font-semibold text-white/85">
+                  Import a public job-listing page
+                </h2>
+                <p className="mt-2 text-xs leading-relaxed text-white/55">
+                  Enter a page anyone can open without signing in. CreatorJobs retrieves only
+                  that page—without cookies, browser sessions, JavaScript, forms, or linked
+                  resources. Some websites may not be supported.
+                </p>
+                <label htmlFor="job-import-url" className="mt-5 block text-xs font-semibold text-white/70">
+                  Public listing URL
+                </label>
+                <input
+                  id="job-import-url"
+                  type="url"
+                  value={url}
+                  onChange={(event) => {
+                    setUrl(event.target.value);
+                    urlRequestIdRef.current = null;
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && url.trim()) {
+                      event.preventDefault();
+                      void prepareUrl();
+                    }
+                  }}
+                  placeholder="https://example.com/jobs/video-editor"
+                  className={`${importInputBase} mt-2`}
+                  autoComplete="url"
+                  data-testid="import-url-input"
+                />
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    className={importPrimaryButton}
+                    disabled={!url.trim()}
+                    onClick={() => void prepareUrl()}
+                    data-testid="import-url-prepare"
+                  >
+                    Retrieve and prepare
+                  </button>
+                </div>
+              </section>
+            )}
             {error ? (
               <p role="alert" className="text-sm text-amber-200/90">
                 {error}
@@ -384,7 +523,9 @@ export default function ImportJobPageClient() {
           <section className={`${importPanelClass} mx-auto max-w-3xl`} aria-live="polite">
             <p className="text-sm font-semibold">Saving private source…</p>
             <p className="mt-1 text-xs text-white/50">
-              Nothing is being published.
+              {entryMode === "url"
+                ? "Retrieving one public page without cookies or browser access. Nothing is being published."
+                : "Nothing is being published."}
             </p>
             <div className="ui-skeleton mt-5 h-3 w-2/3 rounded-full" />
           </section>
@@ -452,7 +593,11 @@ export default function ImportJobPageClient() {
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-white/45">Type</dt>
-                <dd className="mt-1 text-white/80">Pasted or normalized text</dd>
+                <dd className="mt-1 text-white/80">
+                  {source?.source_type === "public_url"
+                    ? "Public URL normalized to private text"
+                    : "Pasted or normalized text"}
+                </dd>
               </div>
               <div>
                 <dt className="text-white/45">Processing</dt>
@@ -470,6 +615,14 @@ export default function ImportJobPageClient() {
                 <dt className="text-white/45">Privacy</dt>
                 <dd className="mt-1 text-white/80">Only visible to your account</dd>
               </div>
+              {source?.source_type === "public_url" && source.final_source_url ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-white/45">Retrieved page</dt>
+                  <dd className="mt-1 break-all text-white/80">
+                    {source.final_source_url}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
             <button
               type="button"

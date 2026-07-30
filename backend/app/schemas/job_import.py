@@ -197,6 +197,26 @@ class JobImportSourceCreate(BaseModel):
         return self
 
 
+class JobImportUrlSourceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_url: HttpUrl = Field(max_length=2048)
+    source_title: str | None = Field(default=None, max_length=255)
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=80,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+
+    @field_validator("source_title", mode="before")
+    @classmethod
+    def normalize_source_title(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
+
+
 class JobImportSourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
@@ -206,6 +226,9 @@ class JobImportSourceRead(BaseModel):
     source_title: str | None = None
     original_text: str | None = None
     source_url: str | None = None
+    final_source_url: str | None = None
+    retrieved_at: datetime | None = None
+    retrieval_metadata: dict[str, object] | None = None
     original_filename: str | None = None
     content_type: str | None = None
     storage_references: list[str]

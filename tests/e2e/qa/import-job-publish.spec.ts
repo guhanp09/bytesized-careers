@@ -141,6 +141,20 @@ test("a private import draft is not readable after a same-tab persona switch", a
   await expect(page.getByText(/Import draft not found/i)).toBeVisible();
 });
 
+test("public URL entry rejects a local destination with an actionable private error", async ({
+  page,
+}) => {
+  await loginController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Public URL" }).click();
+  await page.getByTestId("import-url-input").fill("http://127.0.0.1:8100/api/v1/health");
+  await page.getByTestId("import-url-prepare").click();
+  await expect(page.getByText("That address is not a public website.")).toBeVisible();
+  await expect(page.getByTestId("url-import-panel")).toBeVisible();
+  await expect(page.getByTestId("provider-import-review")).toHaveCount(0);
+});
+
 test.describe("mobile review", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

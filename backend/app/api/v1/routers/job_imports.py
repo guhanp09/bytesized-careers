@@ -8,6 +8,7 @@ from app.api.deps import (
     get_current_user,
     get_job_import_processing_service,
     get_job_import_service,
+    get_job_import_url_service,
 )
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import User
@@ -23,9 +24,11 @@ from app.schemas.job_import import (
     JobImportProcessResponse,
     JobImportSourceCreate,
     JobImportSourceRead,
+    JobImportUrlSourceCreate,
 )
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_service import JobImportError, JobImportService
+from app.services.job_import_url_service import JobImportUrlService
 
 router = APIRouter(prefix="/job-imports", tags=["job-imports"])
 
@@ -51,6 +54,26 @@ async def create_import_source(
 ) -> JobImportSourceRead:
     try:
         source = await service.create_source(payload, owner_user_id=current_user.id)
+    except JobImportError as error:
+        _raise_import_error(error)
+    return service.source_read(source)
+
+
+@router.post(
+    "/url-sources",
+    response_model=JobImportSourceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Securely retrieve and create a private public-URL import source",
+)
+async def create_url_import_source(
+    payload: JobImportUrlSourceCreate,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    url_service: JobImportUrlService = Depends(get_job_import_url_service),
+    service: JobImportService = Depends(get_job_import_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportSourceRead:
+    try:
+        source = await url_service.ingest(payload, owner_user_id=current_user.id)
     except JobImportError as error:
         _raise_import_error(error)
     return service.source_read(source)

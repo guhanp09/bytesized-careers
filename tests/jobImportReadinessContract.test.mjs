@@ -29,6 +29,7 @@ test("job-import readiness client owns the private typed contract", () => {
   }
   for (const operation of [
     "createJobImportSource",
+    "createJobImportUrlSource",
     "getJobImportSource",
     "redactJobImportSource",
     "initializeJobImportDraft",

@@ -77,6 +77,9 @@ export type JobImportSource = {
   source_title: string | null;
   original_text: string | null;
   source_url: string | null;
+  final_source_url: string | null;
+  retrieved_at: string | null;
+  retrieval_metadata: Record<string, unknown> | null;
   original_filename: string | null;
   content_type: string | null;
   storage_references: string[];
@@ -233,6 +236,23 @@ export async function createJobImportSource(
     method: "POST",
     body: JSON.stringify(payload),
     accessToken,
+  });
+  return decodeJobImportSource(response);
+}
+
+export async function createJobImportUrlSource(
+  accessToken: string,
+  payload: {
+    source_url: string;
+    source_title?: string | null;
+    idempotency_key?: string | null;
+  }
+): Promise<JobImportSource> {
+  const response = await requestJson<unknown>("/job-imports/url-sources", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    accessToken,
+    timeoutMs: 20_000,
   });
   return decodeJobImportSource(response);
 }

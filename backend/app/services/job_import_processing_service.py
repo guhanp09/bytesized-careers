@@ -35,6 +35,7 @@ class JobImportProcessingService:
         "pasted_text",
         "rough_description",
         "external_listing_text",
+        "public_url",
     }
 
     def __init__(

@@ -4,8 +4,9 @@ import { isJobImportAllowed } from "../../../lib/importJob/flag";
 import ImportJobClientBoundary from "../../../components/import-job/ImportJobClientBoundary";
 
 export const metadata: Metadata = {
-  title: "Import a hiring post — CreatorJobs",
-  description: "Paste a job announcement you've already written and CreatorJobs will prepare the draft.",
+  title: "Import job details — CreatorJobs",
+  description:
+    "Start from existing text or a public job-listing URL, review every suggestion, and create a private CreatorJobs draft.",
 };
 
 export default function ImportJobPage() {

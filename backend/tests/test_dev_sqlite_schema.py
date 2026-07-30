@@ -232,6 +232,12 @@ async def test_dev_sqlite_schema_sync_creates_private_job_import_tables(
                 for column in inspect(sync_conn).get_columns("job_import_drafts")
             }
         )
+        source_columns = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]: column
+                for column in inspect(sync_conn).get_columns("job_import_sources")
+            }
+        )
         field_columns = await conn.run_sync(
             lambda sync_conn: {
                 column["name"]: column
@@ -248,6 +254,11 @@ async def test_dev_sqlite_schema_sync_creates_private_job_import_tables(
         "job_import_fields",
     } <= table_names
     assert "mutation_claim_token" in draft_columns
+    assert {
+        "final_source_url",
+        "retrieved_at",
+        "retrieval_metadata",
+    } <= set(source_columns)
     assert str(draft_columns["can_apply_to_native_draft"]["default"]).strip(
         "'\"() "
     ).lower() in {"0", "false"}

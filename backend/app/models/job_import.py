@@ -23,7 +23,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 json_type = JSON().with_variant(JSONB, "postgresql")
 
 
@@ -65,6 +64,13 @@ class JobImportSource(Base):
     source_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     original_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    final_source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    retrieved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retrieval_metadata: Mapped[dict[str, object] | None] = mapped_column(
+        json_type, nullable=True
+    )
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     storage_references: Mapped[list[str]] = mapped_column(

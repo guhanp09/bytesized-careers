@@ -33,7 +33,9 @@ from app.services.auth_service import AuthService
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_provider import JobImportExtractionProvider
 from app.services.job_import_service import JobImportService
+from app.services.job_import_url_service import JobImportUrlService
 from app.services.job_service import JobNotFoundError, JobService
+from app.services.job_url_fetcher import PublicJobUrlFetcher
 from app.services.me_service import MeService
 from app.services.profile_service import ProfileService
 
@@ -80,6 +82,12 @@ async def get_job_import_processing_service(
     provider: JobImportExtractionProvider = Depends(get_job_import_provider),
 ) -> JobImportProcessingService:
     return JobImportProcessingService(service, provider)
+
+
+async def get_job_import_url_service(
+    service: JobImportService = Depends(get_job_import_service),
+) -> JobImportUrlService:
+    return JobImportUrlService(service, PublicJobUrlFetcher())
 
 
 async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRepository:
