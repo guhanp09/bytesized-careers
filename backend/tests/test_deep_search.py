@@ -55,7 +55,7 @@ def test_search_intent_is_order_independent_and_bounded() -> None:
         domain="jobs",
     )
     second = parse_search_intent(
-        "remote editor short-form finance",
+        "remote video editor short-form finance",
         domain="jobs",
     )
     assert first.roles == second.roles
@@ -65,8 +65,36 @@ def test_search_intent_is_order_independent_and_bounded() -> None:
     assert len(parse_search_intent("x" * 500, domain="jobs").query) == 300
 
 
+def test_search_intent_avoids_duplicate_and_inverted_criteria() -> None:
+    budget = parse_search_intent(
+        "remote thumbnail designer under ₹40,000 per month",
+        domain="jobs",
+    )
+    assert budget.work_modes == ["remote"]
+    assert budget.locations == []
+    assert budget.hard_constraints == ["compensation"]
+    assert "work mode" in budget.preferred_constraints
+
+    platform = parse_search_intent("Instagram editor", domain="talent")
+    assert platform.platforms == ["instagram"]
+    assert platform.tools == []
+    assert platform.roles == []
+
+    podcast = parse_search_intent(
+        "podcast editor with fast turnaround",
+        domain="jobs",
+    )
+    assert podcast.roles == ["podcast-editor"]
+    assert podcast.tools == []
+
+    negated = parse_search_intent("video editor not remote", domain="jobs")
+    assert negated.roles == ["video-editor"]
+    assert negated.work_modes == []
+    assert negated.locations == []
+
+
 async def _seed_search_records() -> dict[str, str]:
-    suffix = uuid4().hex[:8]
+    suffix = f"q{uuid4().hex[:8]}"
     owner = User(
         email=f"deep-search-{suffix}@example.com",
         username=f"search_{suffix}",

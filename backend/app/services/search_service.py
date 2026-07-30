@@ -103,7 +103,8 @@ _TURNAROUND_RE = re.compile(
     r"(hours?|hrs?|business days?|calendar days?|days?|weeks?)\b",
     re.IGNORECASE,
 )
-_HARD_WORDS = re.compile(r"\b(must|required|only|need(?:s|ed)?|under|below|at most)\b", re.IGNORECASE)
+_HARD_WORDS = re.compile(r"\b(must|required|only|need(?:s|ed)?)\b", re.IGNORECASE)
+_NEGATION_WORDS = frozenset({"not", "no", "without", "exclude", "excluding"})
 
 
 def _edit_distance(left: str, right: str) -> int:
@@ -131,8 +132,23 @@ def _word_matches(token: str, target: str) -> bool:
         return True
     if len(target) <= 3 or not token or token[0] != target[0]:
         return False
-    threshold = 1 if len(target) <= 5 else 2
+    threshold = 1
+    if (
+        (target.startswith(token) or token.startswith(target))
+        and abs(len(token) - len(target)) > 1
+    ):
+        return False
     return abs(len(token) - len(target)) <= threshold and _edit_distance(token, target) <= threshold
+
+
+def _is_inflection_variant(token: str, target: str) -> bool:
+    return (
+        token.rstrip("s") == target.rstrip("s")
+        or token.endswith("ies")
+        and token[:-3] == target.removesuffix("y")
+        or target.endswith("ies")
+        and target[:-3] == token.removesuffix("y")
+    )
 
 
 def _find_aliases(
@@ -163,11 +179,21 @@ def _find_aliases(
                 for offset, index in enumerate(indexes)
             ):
                 continue
+            if start > 0 and tokens[start - 1] in _NEGATION_WORDS:
+                claimed.add(start - 1)
+                claimed.update(indexes)
+                continue
             found_keys.append(entry.key)
             found_labels.append(entry.label)
             for offset, index in enumerate(indexes):
                 claimed.add(index)
-                if tokens[index] != alias_words[offset]:
+                if (
+                    tokens[index] != alias_words[offset]
+                    and not _is_inflection_variant(
+                        tokens[index],
+                        alias_words[offset],
+                    )
+                ):
                     corrections.append(f"{tokens[index]} → {alias_words[offset]}")
             break
     return found_keys, found_labels, claimed, corrections
@@ -249,6 +275,24 @@ def parse_search_intent(
     platforms, _, claimed, found_corrections = _find_aliases(tokens, PLATFORM_ALIASES)
     recognized |= claimed
     corrections.extend(found_corrections)
+    if not role_keys and "youtube" in platforms:
+        for index, token in enumerate(tokens):
+            if index in recognized or not _word_matches(token, "editor"):
+                continue
+            role_keys = ["video-editor"]
+            role_labels = ["Video Editor"]
+            recognized.add(index)
+            if token != "editor":
+                corrections.append(f"{token} → editor")
+            break
+    if platforms:
+        tool_pairs = [
+            (key, label)
+            for key, label in zip(tool_keys, tool_labels, strict=False)
+            if key not in platforms
+        ]
+        tool_keys = [key for key, _label in tool_pairs]
+        tool_labels = [label for _key, label in tool_pairs]
     formats, _, claimed, found_corrections = _find_aliases(tokens, FORMAT_ALIASES)
     recognized |= claimed
     corrections.extend(found_corrections)
@@ -274,9 +318,6 @@ def parse_search_intent(
             if canonical not in locations:
                 locations.append(canonical)
             recognized.add(index)
-    if "remote" in work_modes and "Remote" not in locations:
-        locations.append("Remote")
-
     compensation, budget_match = _parse_compensation(clean_query)
     experience_match = _EXPERIENCE_RE.search(clean_query)
     weekly_hours_match = _WEEKLY_HOURS_RE.search(clean_query)
@@ -427,6 +468,16 @@ def _free_term_match(corpus: str, term: str) -> bool:
     )
 
 
+def _platform_label(value: str) -> str:
+    return {
+        "youtube": "YouTube",
+        "instagram": "Instagram",
+        "tiktok": "TikTok",
+        "linkedin": "LinkedIn",
+        "x-twitter": "X / Twitter",
+    }.get(value, value.replace("-", " ").title())
+
+
 def _compensation_matches(
     intent: SearchCompensationIntent,
     *,
@@ -539,9 +590,16 @@ def _score_job(job: Job, intent: SearchIntentRead) -> RankedSearchResult:
             if _contains_alias(role_corpus, key, ROLE_ALIASES)
         )
         reasons.append(f"Matches {matched} role")
-    hits["tool"] = bool(intent.tools) and any(
-        key in (job.required_tool_keys or []) or _contains_alias(tool_corpus, key, TOOL_ALIASES)
+    tool_matches = [
+        key in (job.required_tool_keys or [])
+        or _contains_alias(tool_corpus, key, TOOL_ALIASES)
         for key in intent.tools
+    ]
+    hits["tool"] = any(tool_matches)
+    tool_coverage = (
+        sum(tool_matches) / len(tool_matches)
+        if tool_matches
+        else 0.0
     )
     if hits["tool"]:
         matched = [
@@ -561,7 +619,7 @@ def _score_job(job: Job, intent: SearchIntentRead) -> RankedSearchResult:
         _contains_alias(platform_corpus, key, PLATFORM_ALIASES) for key in intent.platforms
     )
     if hits["platform"]:
-        reasons.append(f"Works on {intent.platforms[0].title()}")
+        reasons.append(f"Works on {_platform_label(intent.platforms[0])}")
     hits["format"] = bool(intent.formats) and any(
         _contains_alias(format_corpus, key, FORMAT_ALIASES) for key in intent.formats
     )
@@ -642,9 +700,19 @@ def _score_job(job: Job, intent: SearchIntentRead) -> RankedSearchResult:
     hard_dimensions = {
         dimension for dimension in dimensions if _DIMENSION_LABELS[dimension] in hard_labels
     }
-    hard_match = all(hits.get(dimension, False) for dimension in hard_dimensions)
-    matched_dimensions = sum(bool(hits.get(dimension)) for dimension in dimensions)
-    score = sum(_WEIGHTS[dimension] for dimension in dimensions if hits.get(dimension))
+    dimension_complete = dict(hits)
+    if intent.tools:
+        dimension_complete["tool"] = tool_coverage == 1.0
+    hard_match = all(
+        dimension_complete.get(dimension, False) for dimension in hard_dimensions
+    )
+    score = sum(
+        _WEIGHTS[dimension]
+        for dimension in dimensions
+        if dimension != "tool" and hits.get(dimension)
+    )
+    if "tool" in dimensions:
+        score += _WEIGHTS["tool"] * tool_coverage
     free_hits = [term for term in intent.free_text_terms if _free_term_match(public_corpus, term)]
     score += len(free_hits) * 2
     if free_hits and not reasons:
@@ -655,13 +723,17 @@ def _score_job(job: Job, intent: SearchIntentRead) -> RankedSearchResult:
         if job.listing_schema_version >= 3 and job.about_channel:
             score += 0.15
     recognized_count = len(dimensions) + len(intent.free_text_terms)
-    matched_count = matched_dimensions + len(free_hits)
+    matched_all_recognized = (
+        recognized_count > 0
+        and all(dimension_complete.get(dimension, False) for dimension in dimensions)
+        and len(free_hits) == len(intent.free_text_terms)
+    )
     return RankedSearchResult(
         item=job,
         owner=None,
         score=score,
         reasons=list(dict.fromkeys(reasons))[:5],
-        matched_all_recognized=recognized_count > 0 and matched_count == recognized_count,
+        matched_all_recognized=matched_all_recognized,
         hard_match=hard_match,
         created_at=job.created_at,
     )
@@ -708,8 +780,14 @@ def _score_talent(
             if _contains_alias(role_corpus, key, ROLE_ALIASES)
         )
         reasons.append(f"Matches {matched} role")
-    hits["tool"] = bool(intent.tools) and any(
+    tool_matches = [
         _contains_alias(tool_corpus, key, TOOL_ALIASES) for key in intent.tools
+    ]
+    hits["tool"] = any(tool_matches)
+    tool_coverage = (
+        sum(tool_matches) / len(tool_matches)
+        if tool_matches
+        else 0.0
     )
     if hits["tool"]:
         matched = [
@@ -727,7 +805,7 @@ def _score_talent(
         _contains_alias(platform_corpus, key, PLATFORM_ALIASES) for key in intent.platforms
     )
     if hits["platform"]:
-        reasons.append(f"Works on {intent.platforms[0].title()}")
+        reasons.append(f"Works on {_platform_label(intent.platforms[0])}")
     hits["format"] = bool(intent.formats) and any(
         _contains_alias(format_corpus, key, FORMAT_ALIASES) for key in intent.formats
     )
@@ -791,9 +869,19 @@ def _score_talent(
     hard_dimensions = {
         dimension for dimension in dimensions if _DIMENSION_LABELS[dimension] in hard_labels
     }
-    hard_match = all(hits.get(dimension, False) for dimension in hard_dimensions)
-    matched_dimensions = sum(bool(hits.get(dimension)) for dimension in dimensions)
-    score = sum(_WEIGHTS[dimension] for dimension in dimensions if hits.get(dimension))
+    dimension_complete = dict(hits)
+    if intent.tools:
+        dimension_complete["tool"] = tool_coverage == 1.0
+    hard_match = all(
+        dimension_complete.get(dimension, False) for dimension in hard_dimensions
+    )
+    score = sum(
+        _WEIGHTS[dimension]
+        for dimension in dimensions
+        if dimension != "tool" and hits.get(dimension)
+    )
+    if "tool" in dimensions:
+        score += _WEIGHTS["tool"] * tool_coverage
     free_hits = [term for term in intent.free_text_terms if _free_term_match(public_corpus, term)]
     score += len(free_hits) * 2
     if free_hits and not reasons:
@@ -801,13 +889,17 @@ def _score_talent(
     if score > 0 and listing.availability_status == "available":
         score += 0.2
     recognized_count = len(dimensions) + len(intent.free_text_terms)
-    matched_count = matched_dimensions + len(free_hits)
+    matched_all_recognized = (
+        recognized_count > 0
+        and all(dimension_complete.get(dimension, False) for dimension in dimensions)
+        and len(free_hits) == len(intent.free_text_terms)
+    )
     return RankedSearchResult(
         item=listing,
         owner=owner,
         score=score,
         reasons=list(dict.fromkeys(reasons))[:5],
-        matched_all_recognized=recognized_count > 0 and matched_count == recognized_count,
+        matched_all_recognized=matched_all_recognized,
         hard_match=hard_match,
         created_at=listing.created_at,
     )

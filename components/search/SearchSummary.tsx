@@ -5,11 +5,20 @@ import type { BackendSearchIntent } from "../../lib/backendClient";
 
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
 
+const platformLabel = (value: string) =>
+  ({
+    youtube: "YouTube",
+    instagram: "Instagram",
+    tiktok: "TikTok",
+    linkedin: "LinkedIn",
+    "x-twitter": "X / Twitter",
+  })[value] ?? value.replaceAll("-", " ");
+
 const intentLabels = (intent: BackendSearchIntent) =>
   unique([
     ...intent.role_labels,
     ...intent.tool_labels,
-    ...intent.platforms.map((value) => value === "x-twitter" ? "X / Twitter" : value.replaceAll("-", " ")),
+    ...intent.platforms.map(platformLabel),
     ...intent.formats.map((value) => value.replaceAll("-", " ")),
     ...intent.genres.map((value) => value.replaceAll("-", " ")),
     ...intent.niches,
@@ -59,28 +68,39 @@ export default function SearchSummary({
               : `Results for “${intent.query}”`}
           </p>
         </div>
-        <div
-          role="group"
-          aria-label="Search results type"
-          className="flex w-fit shrink-0 rounded-xl border border-white/10 bg-black/15 p-1"
-        >
-          <Link
-            href={domain === "jobs" ? currentHref : otherHref}
-            aria-current={domain === "jobs" ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${
-              domain === "jobs" ? "bg-white text-black" : "text-white/60 hover:text-white"
-            }`}
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Search results type"
+            className="flex w-fit shrink-0 rounded-xl border border-white/10 bg-black/15 p-1"
           >
-            Jobs
-          </Link>
+            <Link
+              href={domain === "jobs" ? currentHref : otherHref}
+              prefetch={false}
+              aria-current={domain === "jobs" ? "page" : undefined}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${
+                domain === "jobs" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              Jobs
+            </Link>
+            <Link
+              href={domain === "talent" ? currentHref : otherHref}
+              prefetch={false}
+              aria-current={domain === "talent" ? "page" : undefined}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${
+                domain === "talent" ? "bg-white text-black" : "text-white/60 hover:text-white"
+              }`}
+            >
+              Talent
+            </Link>
+          </div>
           <Link
-            href={domain === "talent" ? currentHref : otherHref}
-            aria-current={domain === "talent" ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${
-              domain === "talent" ? "bg-white text-black" : "text-white/60 hover:text-white"
-            }`}
+            href={`/${domain}`}
+            prefetch={false}
+            className="rounded-lg px-2 py-1.5 text-xs font-semibold text-white/55 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
           >
-            Talent
+            Clear search
           </Link>
         </div>
       </div>

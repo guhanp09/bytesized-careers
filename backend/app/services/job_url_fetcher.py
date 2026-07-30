@@ -402,6 +402,20 @@ class PublicJobUrlFetcher:
         )
 
     async def fetch(self, raw_url: str) -> PublicJobUrlRetrieval:
+        try:
+            async with asyncio.timeout(URL_TOTAL_TIMEOUT_SECONDS):
+                return await self._fetch_with_operation_timeouts(raw_url)
+        except TimeoutError as exc:
+            raise PublicJobUrlFetchError(
+                "JOB_IMPORT_URL_TIMEOUT",
+                "The public page took too long to respond.",
+                status_code=504,
+            ) from exc
+
+    async def _fetch_with_operation_timeouts(
+        self,
+        raw_url: str,
+    ) -> PublicJobUrlRetrieval:
         entered_url = await self._validate_destination(raw_url)
         current_url = entered_url
         timeout = httpx.Timeout(

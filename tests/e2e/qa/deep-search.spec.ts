@@ -12,7 +12,14 @@ test("deep Jobs search explains authoritative matches and preserves the query", 
   const switcher = summary.getByRole("group", { name: "Search results type" });
   await switcher.getByRole("link", { name: "Talent" }).click();
   await expect(page).toHaveURL(/\/talent\?q=video%20editor%20remote/);
-  await expect(page.getByRole("region", { name: "Search interpretation" })).toBeVisible();
+  const talentSummary = page.getByRole("region", { name: "Search interpretation" });
+  await expect(talentSummary.getByRole("link", { name: "Talent" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+
+  await page.getByRole("link", { name: "Clear search" }).click();
+  await expect(page).toHaveURL(/\/talent$/);
 });
 
 

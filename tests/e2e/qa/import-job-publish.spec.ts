@@ -147,7 +147,16 @@ test("public URL entry rejects a local destination with an actionable private er
   await loginController(page);
   await switchPersona(page, "recruiter-active", "Finance Simplified");
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "Public URL" }).click();
+  const textTab = page.getByRole("tab", { name: "Paste text" });
+  const urlTab = page.getByRole("tab", { name: "Public URL" });
+  await textTab.focus();
+  await textTab.press("ArrowRight");
+  await expect(urlTab).toBeFocused();
+  await expect(urlTab).toHaveAttribute("aria-selected", "true");
+  await urlTab.press("ArrowRight");
+  await expect(textTab).toBeFocused();
+  await textTab.press("ArrowLeft");
+  await expect(urlTab).toBeFocused();
   await page.getByTestId("import-url-input").fill("http://127.0.0.1:8100/api/v1/health");
   await page.getByTestId("import-url-prepare").click();
   await expect(page.getByText("That address is not a public website.")).toBeVisible();

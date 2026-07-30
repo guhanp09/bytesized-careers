@@ -23,7 +23,7 @@ def normalize_search_text(value: str) -> str:
 
 
 ROLE_ALIASES: Final[tuple[SearchAlias, ...]] = (
-    SearchAlias("video-editor", "Video Editor", ("video editor", "video editing", "long form editor", "long-form editor", "editor")),
+    SearchAlias("video-editor", "Video Editor", ("video editor", "video editing", "long form editor", "long-form editor")),
     SearchAlias("shorts-editor", "Shorts Editor", ("shorts editor", "reels editor", "short form editor", "short-form editor", "clip editor")),
     SearchAlias("thumbnail-designer", "Thumbnail Designer", ("thumbnail designer", "thumbnail artist", "thumbnail")),
     SearchAlias("graphic-designer", "Graphic Designer", ("graphic designer", "graphics designer", "brand designer")),
@@ -189,6 +189,7 @@ STOP_WORDS: Final[frozenset[str]] = frozenset(
         "with",
         "uses",
         "use",
+        "using",
         "experienced",
         "experience",
         "creator",
@@ -197,5 +198,12 @@ STOP_WORDS: Final[frozenset[str]] = frozenset(
         "looking",
         "need",
         "wanted",
+        "must",
+        "required",
+        "only",
+        "not",
+        "without",
+        "exclude",
+        "excluding",
     }
 )

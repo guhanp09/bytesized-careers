@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import ipaddress
 import threading
@@ -34,6 +35,7 @@ from app.schemas.job_import import (
     JobImportExtractionResponse,
     JobImportProviderMetadata,
 )
+from app.services import job_url_fetcher as job_url_fetcher_module
 from app.services.job_import_provider import JobImportProviderResult
 from app.services.job_import_service import JobImportService
 from app.services.job_import_url_service import JobImportUrlService
@@ -338,6 +340,36 @@ async def test_fetcher_reports_content_size_empty_auth_and_timeout_failures(
     with pytest.raises(PublicJobUrlFetchError) as timeout_error:
         await timeout_fetcher.fetch("https://public.example/jobs/1")
     assert timeout_error.value.code == "JOB_IMPORT_URL_TIMEOUT"
+
+
+async def test_fetcher_enforces_one_total_deadline_across_the_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def public_resolver(_hostname: str, _port: int):
+        return [ipaddress.ip_address("93.184.216.34")]
+
+    async def slow_response(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.05)
+        return httpx.Response(
+            200,
+            text="A public creator job listing with enough readable content to import safely.",
+            headers={"Content-Type": "text/plain"},
+            request=request,
+        )
+
+    monkeypatch.setattr(
+        job_url_fetcher_module,
+        "URL_TOTAL_TIMEOUT_SECONDS",
+        0.01,
+    )
+    fetcher = PublicJobUrlFetcher(
+        resolver=public_resolver,
+        transport=httpx.MockTransport(slow_response),
+    )
+    with pytest.raises(PublicJobUrlFetchError) as caught:
+        await fetcher.fetch("https://public.example/jobs/slow")
+    assert caught.value.code == "JOB_IMPORT_URL_TIMEOUT"
+    assert caught.value.status_code == 504
 
 
 async def test_url_source_uses_same_private_review_and_native_draft_pipeline(

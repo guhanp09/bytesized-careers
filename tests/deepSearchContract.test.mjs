@@ -24,6 +24,9 @@ test("search explanation UI preserves a query while switching result domains", (
   const summary = read("components/search/SearchSummary.tsx");
   assert.match(summary, /encodeURIComponent\(intent\.query\)/);
   assert.match(summary, /aria-label="Search results type"/);
+  assert.match(summary, /Clear search/);
+  assert.equal((summary.match(/prefetch=\{false\}/g) || []).length, 3);
+  assert.match(summary, /youtube: "YouTube"/);
   assert.match(summary, /Why this result matched|Recognized search criteria/);
   assert.match(read("components/JobCard.tsx"), /SearchMatchReasons/);
   assert.match(read("components/TalentCard.tsx"), /SearchMatchReasons/);

@@ -71,10 +71,16 @@ export default function ImportJobPageClient() {
   const [error, setError] = React.useState("");
   const [busyField, setBusyField] = React.useState<string | null>(null);
   const [applying, setApplying] = React.useState(false);
+  const [processingRequest, setProcessingRequest] = React.useState(false);
+  const [pollRetry, setPollRetry] = React.useState(0);
   const [confirmStartOver, setConfirmStartOver] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
   const restoredRef = React.useRef(false);
   const urlRequestIdRef = React.useRef<string | null>(null);
+  const entrySubmissionRef = React.useRef(false);
+  const processingRequestRef = React.useRef(false);
+  const reviewMutationRef = React.useRef(false);
+  const applyRequestRef = React.useRef(false);
 
   const accessToken = session?.backendAccessToken ?? "";
 
@@ -133,13 +139,22 @@ export default function ImportJobPageClient() {
             next.processing_status === "ready_to_apply"
           ) {
             setPhase("review");
+            setError("");
             setAnnouncement("Draft prepared. Review every imported detail.");
           }
         })
-        .catch((caught) => setError(describeActionError(caught)));
+        .catch((caught) => {
+          setError(
+            describeActionError(
+              caught,
+              "We couldn’t refresh the processing status. Retrying…"
+            )
+          );
+          setPollRetry((attempt) => attempt + 1);
+        });
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [accessToken, draft, phase]);
+  }, [accessToken, draft, phase, pollRetry]);
 
   const updateText = (value: string) => {
     const normalized = normalizeImportText(value);
@@ -147,8 +162,21 @@ export default function ImportJobPageClient() {
     setTruncated(normalized.truncated);
   };
 
+  const selectEntryMode = (mode: EntryMode, moveFocus = false) => {
+    setEntryMode(mode);
+    setError("");
+    if (moveFocus) {
+      window.requestAnimationFrame(() => {
+        document.getElementById(`import-tab-${mode}`)?.focus();
+      });
+    }
+  };
+
   const processDraft = React.useCallback(
     async (current: JobImportDraft) => {
+      if (processingRequestRef.current) return;
+      processingRequestRef.current = true;
+      setProcessingRequest(true);
       setPhase("processing");
       setError("");
       setAnnouncement("Preparing a private structured draft.");
@@ -169,13 +197,17 @@ export default function ImportJobPageClient() {
           // The actionable processing error remains the primary message.
         }
         setError(readableProcessingError(caught));
+      } finally {
+        processingRequestRef.current = false;
+        setProcessingRequest(false);
       }
     },
     [accessToken]
   );
 
   const prepareText = async () => {
-    if (!text.trim() || !accessToken) return;
+    if (!text.trim() || !accessToken || entrySubmissionRef.current) return;
+    entrySubmissionRef.current = true;
     setPhase("creating");
     setError("");
     setAnnouncement("Saving your source privately.");
@@ -197,11 +229,13 @@ export default function ImportJobPageClient() {
     } catch (caught) {
       setPhase("entry");
       setError(describeActionError(caught, "We couldn’t save this private import source."));
+    } finally {
+      entrySubmissionRef.current = false;
     }
   };
 
   const prepareUrl = async () => {
-    if (!url.trim() || !accessToken) return;
+    if (!url.trim() || !accessToken || entrySubmissionRef.current) return;
     let parsed: URL;
     try {
       parsed = new URL(url.trim());
@@ -213,6 +247,7 @@ export default function ImportJobPageClient() {
       setError("Enter a public HTTP or HTTPS URL without sign-in credentials.");
       return;
     }
+    entrySubmissionRef.current = true;
     setPhase("creating");
     setError("");
     setAnnouncement("Retrieving the public page safely.");
@@ -238,11 +273,14 @@ export default function ImportJobPageClient() {
           "We couldn’t retrieve that public page. Check the URL and try again."
         )
       );
+    } finally {
+      entrySubmissionRef.current = false;
     }
   };
 
   const openDevelopmentFixture = async () => {
-    if (!accessToken) return;
+    if (!accessToken || entrySubmissionRef.current) return;
+    entrySubmissionRef.current = true;
     setPhase("creating");
     setError("");
     try {
@@ -259,6 +297,8 @@ export default function ImportJobPageClient() {
       setError(
         describeActionError(caught, "The development review example could not be opened.")
       );
+    } finally {
+      entrySubmissionRef.current = false;
     }
   };
 
@@ -270,7 +310,8 @@ export default function ImportJobPageClient() {
       | { kind: "resolve"; index: number }
       | { kind: "replace"; value: JobImportNonNullJsonValue }
   ) => {
-    if (!draft || !accessToken) return;
+    if (!draft || !accessToken || reviewMutationRef.current) return;
+    reviewMutationRef.current = true;
     setBusyField(field.field_path);
     setError("");
     try {
@@ -305,12 +346,14 @@ export default function ImportJobPageClient() {
       setError(describeActionError(caught, "That review decision could not be saved."));
       throw caught;
     } finally {
+      reviewMutationRef.current = false;
       setBusyField(null);
     }
   };
 
   const applyDraft = async () => {
-    if (!draft || !accessToken) return;
+    if (!draft || !accessToken || applyRequestRef.current) return;
+    applyRequestRef.current = true;
     setApplying(true);
     setError("");
     try {
@@ -321,6 +364,7 @@ export default function ImportJobPageClient() {
     } catch (caught) {
       setError(describeActionError(caught, "The native job draft could not be created."));
     } finally {
+      applyRequestRef.current = false;
       setApplying(false);
     }
   };
@@ -424,17 +468,35 @@ export default function ImportJobPageClient() {
               ).map(([mode, label]) => (
                 <button
                   key={mode}
+                  id={`import-tab-${mode}`}
                   type="button"
                   role="tab"
                   aria-selected={entryMode === mode}
-                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition ${
+                  aria-controls={`import-panel-${mode}`}
+                  tabIndex={entryMode === mode ? 0 : -1}
+                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition motion-reduce:transition-none ${
                     entryMode === mode
                       ? "bg-white text-black"
                       : "text-white/60 hover:text-white"
                   }`}
-                  onClick={() => {
-                    setEntryMode(mode);
-                    setError("");
+                  onClick={() => selectEntryMode(mode)}
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const modes: EntryMode[] = ["text", "url"];
+                    const currentIndex = modes.indexOf(mode);
+                    const nextMode =
+                      event.key === "Home"
+                        ? modes[0]
+                        : event.key === "End"
+                          ? modes[modes.length - 1]
+                          : modes[
+                              (currentIndex + (event.key === "ArrowLeft" ? -1 : 1) + modes.length) %
+                                modes.length
+                            ];
+                    selectEntryMode(nextMode, true);
                   }}
                 >
                   {label}
@@ -442,16 +504,28 @@ export default function ImportJobPageClient() {
               ))}
             </div>
             {entryMode === "text" ? (
-              <PastePanel
-                text={text}
-                truncatedAtLimit={truncated}
-                restoredFromSession={false}
-                onTextChange={updateText}
-                onPrepare={() => void prepareText()}
-                onClearRequest={() => updateText("")}
-              />
+              <div
+                id="import-panel-text"
+                role="tabpanel"
+                aria-labelledby="import-tab-text"
+              >
+                <PastePanel
+                  text={text}
+                  truncatedAtLimit={truncated}
+                  restoredFromSession={false}
+                  onTextChange={updateText}
+                  onPrepare={() => void prepareText()}
+                  onClearRequest={() => updateText("")}
+                />
+              </div>
             ) : (
-              <section className={importPanelClass} data-testid="url-import-panel">
+              <section
+                id="import-panel-url"
+                role="tabpanel"
+                aria-labelledby="import-tab-url"
+                className={importPanelClass}
+                data-testid="url-import-panel"
+              >
                 <h2 className="text-sm font-semibold text-white/85">
                   Import a public job-listing page
                 </h2>
@@ -557,9 +631,12 @@ export default function ImportJobPageClient() {
                 <button
                   type="button"
                   className={importPrimaryButton}
+                  disabled={processingRequest}
                   onClick={() => void processDraft(draft)}
                 >
-                  {draft.processing_status === "processing_failed"
+                  {processingRequest
+                    ? "Starting processing…"
+                    : draft.processing_status === "processing_failed"
                     ? "Retry processing"
                     : "Start processing"}
                 </button>
@@ -640,6 +717,7 @@ export default function ImportJobPageClient() {
             busyField={busyField}
             applying={applying}
             error={error}
+            interactionsLocked={busyField !== null || applying}
             onAction={reviewAction}
             onApply={applyDraft}
             onSourceSummary={() => setPhase("source_summary")}

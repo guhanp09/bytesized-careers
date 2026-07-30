@@ -34,7 +34,7 @@ export const importPrimaryButton =
   "ui-press h-11 cursor-pointer rounded-xl bg-white px-5 text-sm font-semibold tracking-wide text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle";
 
 export const importGhostButton =
-  "ui-press h-11 cursor-pointer rounded-xl border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white";
+  "ui-press h-11 cursor-pointer rounded-xl border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
 
 export const importHelperClass = "text-[11px] text-muted";
 

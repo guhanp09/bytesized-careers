@@ -346,6 +346,7 @@ export default function ImportReviewWorkspace({
   busyField,
   applying,
   error,
+  interactionsLocked,
   onAction,
   onApply,
   onSourceSummary,
@@ -355,6 +356,7 @@ export default function ImportReviewWorkspace({
   busyField: string | null;
   applying: boolean;
   error: string;
+  interactionsLocked: boolean;
   onAction: ReviewAction;
   onApply: () => Promise<void>;
   onSourceSummary: () => void;
@@ -404,10 +406,20 @@ export default function ImportReviewWorkspace({
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className={importGhostButton} onClick={onSourceSummary}>
+          <button
+            type="button"
+            className={importGhostButton}
+            onClick={onSourceSummary}
+            disabled={interactionsLocked}
+          >
             Source summary
           </button>
-          <button type="button" className={importGhostButton} onClick={onStartOver}>
+          <button
+            type="button"
+            className={importGhostButton}
+            onClick={onStartOver}
+            disabled={interactionsLocked}
+          >
             Start over
           </button>
         </div>
@@ -434,7 +446,7 @@ export default function ImportReviewWorkspace({
               <ReviewFieldCard
                 key={field.id}
                 field={field}
-                busy={busyField === field.field_path}
+                busy={busyField !== null}
                 onAction={onAction}
               />
             ))}
@@ -468,7 +480,7 @@ export default function ImportReviewWorkspace({
                       <ReviewFieldCard
                         key={field.id}
                         field={field}
-                        busy={busyField === field.field_path}
+                        busy={busyField !== null}
                         onAction={onAction}
                       />
                     ))}
@@ -498,7 +510,11 @@ export default function ImportReviewWorkspace({
         <button
           type="button"
           className={importPrimaryButton}
-          disabled={!draft.can_apply_to_native_draft || applying}
+          disabled={
+            !draft.can_apply_to_native_draft ||
+            applying ||
+            interactionsLocked
+          }
           onClick={() => void onApply()}
           data-testid="create-native-job-draft"
         >
