@@ -1456,3 +1456,174 @@ async def test_concurrent_hiring_requests_create_one_record_thread_and_notificat
             if row["type"] == "talent_interest_received" and row["resource_id"] == interest_id
         ]
     ) == 1
+
+
+async def test_screening_answers_return_through_the_conversation_and_stay_snapshotted(
+    client: AsyncClient,
+) -> None:
+    """The applicant answers in the thread; the recruiter reviews it there.
+
+    The questions already travel as one structured message. The answers go back
+    the same way — against the question set *as it was asked* — so a later edit
+    to the job cannot rewrite what somebody already answered, a retry cannot
+    duplicate it, and neither side needs a second place to look.
+    """
+    owner_token = await _register_verified_login(
+        client, email="ansown@example.com", username="ansown"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="ansapp@example.com", username="ansapp"
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    applicant_headers = {"Authorization": f"Bearer {applicant_token}"}
+    required_prompt = "Which edit best demonstrates your retention judgment?"
+    optional_prompt = "Anything else we should know?"
+
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Answerable screened role",
+        screening_questions=[
+            {"prompt": required_prompt, "required": True, "response_guidance": None},
+            {"prompt": optional_prompt, "required": False, "response_guidance": None},
+        ],
+    )
+    job_id = job.json()["id"]
+    application = await client.post(
+        f"/api/v1/jobs/{job_id}/applications", headers=applicant_headers, json={}
+    )
+    application_id = application.json()["id"]
+    convo = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_headers
+    )
+    conversation_id = convo.json()["conversation"]["id"]
+
+    # A required question left blank is refused, with a reason rather than a code.
+    refused = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/screening-answers",
+        headers=applicant_headers,
+        json={"answers": [{"position": 1, "response": "Only the optional one."}]},
+    )
+    assert refused.status_code == 422
+
+    # An answer naming a question nobody asked is refused too.
+    forged = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/screening-answers",
+        headers=applicant_headers,
+        json={"answers": [{"position": 0, "response": "ok"}, {"position": 9, "response": "forged"}]},
+    )
+    assert forged.status_code == 422
+
+    sent = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/screening-answers",
+        headers=applicant_headers,
+        json={"answers": [{"position": 0, "response": "  The retention rebuild.  "}]},
+    )
+    assert sent.status_code == 201
+    payload = sent.json()["screening_answers"]
+    # Every asked question comes back, answered or not: an unanswered optional
+    # question must be distinguishable from one that was never asked.
+    assert [entry["prompt"] for entry in payload["answers"]] == [required_prompt, optional_prompt]
+    assert payload["answers"][0]["response"] == "The retention rebuild."
+    assert payload["answers"][0]["answered"] is True
+    assert payload["answers"][1]["response"] == ""
+    assert payload["answers"][1]["answered"] is False
+    assert payload["answers"][1]["required"] is False
+
+    # The recruiter reviews it in the same thread, structured.
+    owner_convo = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=owner_headers
+    )
+    kinds = [message.get("message_kind") for message in owner_convo.json()["messages"]]
+    assert kinds == ["screening_questions", "screening_answers"]
+
+    # A retry is the same answer, not a second one.
+    again = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/screening-answers",
+        headers=applicant_headers,
+        json={"answers": [{"position": 0, "response": "The retention rebuild."}]},
+    )
+    assert again.status_code == 201
+    assert again.json()["id"] == sent.json()["id"]
+    repeated = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=applicant_headers
+    )
+    assert len(repeated.json()["messages"]) == 2
+
+    # Editing the job afterwards changes nothing that was already answered.
+    edited = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers=owner_headers,
+        json={"screening_questions": [{"prompt": "A completely different question", "required": True}]},
+    )
+    assert edited.status_code == 200
+    after = await client.get(
+        f"/api/v1/me/applications/{application_id}/conversation", headers=owner_headers
+    )
+    answered = [m for m in after.json()["messages"] if m.get("message_kind") == "screening_answers"][0]
+    assert [entry["prompt"] for entry in answered["screening_answers"]["answers"]] == [
+        required_prompt,
+        optional_prompt,
+    ]
+
+
+async def test_screening_answers_are_private_to_the_two_participants(
+    client: AsyncClient,
+) -> None:
+    owner_token = await _register_verified_login(
+        client, email="anspown@example.com", username="anspown"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="anspapp@example.com", username="anspapp"
+    )
+    outsider_token = await _register_verified_login(
+        client, email="ansout@example.com", username="ansout"
+    )
+    job = await create_valid_published_job(
+        client,
+        owner_token,
+        title="Private screened role",
+        screening_questions=[{"prompt": "Why this role?", "required": True}],
+    )
+    application = await client.post(
+        f"/api/v1/jobs/{job.json()['id']}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={},
+    )
+    convo = await client.get(
+        f"/api/v1/me/applications/{application.json()['id']}/conversation",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+    )
+    conversation_id = convo.json()["conversation"]["id"]
+
+    blocked = await client.post(
+        f"/api/v1/me/conversations/{conversation_id}/screening-answers",
+        headers={"Authorization": f"Bearer {outsider_token}"},
+        json={"answers": [{"position": 0, "response": "not mine to answer"}]},
+    )
+    assert blocked.status_code == 403
+
+
+async def test_screening_answers_need_questions_to_answer(client: AsyncClient) -> None:
+    owner_token = await _register_verified_login(
+        client, email="ansnown@example.com", username="ansnown"
+    )
+    applicant_token = await _register_verified_login(
+        client, email="ansnapp@example.com", username="ansnapp"
+    )
+    job = await create_valid_published_job(client, owner_token, title="Unscreened role")
+    application = await client.post(
+        f"/api/v1/jobs/{job.json()['id']}/applications",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={},
+    )
+    convo = await client.get(
+        f"/api/v1/me/applications/{application.json()['id']}/conversation",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+    )
+    missing = await client.post(
+        f"/api/v1/me/conversations/{convo.json()['conversation']['id']}/screening-answers",
+        headers={"Authorization": f"Bearer {applicant_token}"},
+        json={"answers": []},
+    )
+    assert missing.status_code == 404

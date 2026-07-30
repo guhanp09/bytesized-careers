@@ -42,6 +42,9 @@ class MessageRead(BaseModel):
     message_kind: str | None = None
     automated: bool = False
     screening: dict | None = None
+    # The applicant's answers to those questions, snapshotted against the
+    # question set as it was asked; absent for every other message.
+    screening_answers: dict | None = None
     # Optional composer intent the sender chose, and whether it asked for a
     # reply. Presentation evidence only — it never affects lifecycle status.
     intent: str | None = None
@@ -121,6 +124,22 @@ class SendMessageRequest(BaseModel):
         "propose_interview",
         "request_confirmation",
     ] | None = None
+
+
+class ScreeningAnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Which asked question this answers, by its position in the snapshot the
+    #: hiring side sent. Positions rather than prompts, so a client cannot
+    #: reword the question it claims to be answering.
+    position: int = Field(ge=0, le=99)
+    response: str = Field(default="", max_length=ms.SCREENING_ANSWER_MAX_LENGTH)
+
+
+class SendScreeningAnswersRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answers: list[ScreeningAnswerIn] = Field(default_factory=list, max_length=20)
 
 
 class SendStatusUpdateRequest(BaseModel):
@@ -320,6 +339,71 @@ async def get_conversation(
     detail = await _conversation_detail(session, conversation, current_user)
     await session.commit()
     return detail
+
+
+@router.post(
+    "/conversations/{conversation_id}/screening-answers",
+    response_model=MessageRead,
+    status_code=201,
+)
+async def send_screening_answers(
+    conversation_id: UUID,
+    payload: SendScreeningAnswersRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> MessageRead:
+    """Answer the screening questions asked in this conversation.
+
+    The questions arrive as a structured message; the answers go back the same
+    way, snapshotted against the question set as it was asked. That keeps both
+    halves in the one place both participants already look, makes them immutable
+    by construction — a later edit to the job cannot rewrite an answer already
+    given — and makes a retry idempotent through the message's deterministic
+    client id rather than through a second table.
+    """
+    conversation = await _require_conversation(session, conversation_id)
+    _require_participant(conversation, current_user)
+    try:
+        message = await ms.post_screening_answers(
+            session,
+            conversation,
+            current_user,
+            {entry.position: entry.response for entry in payload.answers},
+        )
+    except ms.ScreeningQuestionsMissing as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No screening questions were asked in this conversation",
+        ) from exc
+    except ms.ScreeningAnswerInvalid as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail) from exc
+    except ms.ConversationClosed as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This conversation is closed to new messages",
+        ) from exc
+    except ms.IdempotencyConflict as exc:
+        # The same answers already landed. Returning the existing message keeps a
+        # double submit from reading as a failure.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="These answers were already sent",
+        ) from exc
+    except ms.NotAParticipant as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a conversation participant") from exc
+    except ms.InteractionBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This conversation is unavailable"
+        ) from exc
+    await realtime_events.emit_message_created(
+        session, conversation=conversation, message=message
+    )
+    return MessageRead(
+        **ms.serialize_message(
+            message, current_user.id, current_user.display_name or current_user.username
+        )
+    )
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageRead, status_code=201)

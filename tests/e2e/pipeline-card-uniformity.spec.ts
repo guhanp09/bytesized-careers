@@ -127,8 +127,13 @@ for (const scenario of SCENARIOS) {
 
 test("cards with no portfolio, one, and many are all the same height", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
+  // `edge`, not `default`. The completeness contract now guarantees every
+  // normal-scenario applicant at least two pieces of evidence — an applicant
+  // with an empty profile is a case QA needs, not a case the ordinary corpus
+  // should be full of. So the zero- and one-item cards live in `edge`, indexed,
+  // which is where this claim can still be tested against real variety.
   await openWorkspace(page, {
-    scenario: "default",
+    scenario: "edge",
     view: "pipeline",
     mode: "recruiter",
     extraParams: { direction: "received" },

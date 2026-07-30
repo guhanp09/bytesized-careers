@@ -100,7 +100,12 @@ const APPLICATION_RECEIVED_STAGES: PipelineStage[] = [
   },
   {
     key: "rejected",
-    label: "Rejected",
+    // "Not selected", like every other surface. The product says "Not
+    // proceeding" on the action, "Not moving forward" in the notice and "Not
+    // selected" in the timeline — all deliberately about the decision rather
+    // than the person. This column was the one place still saying "Rejected",
+    // which is a different and harsher claim sitting next to the others.
+    label: "Not selected",
     dot: "bg-rose-300/80",
     terminal: true,
     notify: {
@@ -747,6 +752,45 @@ const firstName = (name: string) => (name || "").trim().split(/\s+/)[0] || "them
  * "Choose next step", which opens the decision surface rather than guessing that
  * a new applicant should be interviewed, rejected, or messaged.
  */
+/**
+ * Which recommendations earn a place in the conversation header, and how loudly.
+ *
+ * The header used to render whichever action the ladder returned, in one filled
+ * white button. That gave the same weight to "someone is holding an interview
+ * slot open for your answer" and to "the composer is 600px below you", and the
+ * second is by far the most common — so the loudest control in the workspace
+ * spent most of its life duplicating a control already on screen.
+ *
+ * The rule that replaces it is one sentence: **filled means somebody else is
+ * waiting.**
+ *
+ * | Action | Duplicate route | Unique value | Placement | Why |
+ * |---|---|---|---|---|
+ * | `confirm-interview` | Interview card, further up a long thread | Reaches and focuses the confirm control; a held slot expires | **Filled** | Another person is holding time open |
+ * | `confirm-start` | Engagement row, below the thread | Reaches the start controls; work cannot begin until it happens | **Filled** | An agreed engagement is stalled on it |
+ * | `share-decision` | Overflow → Share decision | Opens the notify prompt: preview of what they will see, an optional note on the same operation, exactly-once | **Filled** | A decision was made and never told; the applicant is waiting on an answer that already exists |
+ * | `resolve-legacy-stage` | Overflow → stage list | The one-time compatibility choice that unblocks ordinary management | **Filled** | Nothing else works until it is made |
+ * | `record-decision` | Decision surface (auto-opens), Pipeline stage menu | Re-opens a surface that may have been dismissed | **Secondary** | Real, but nobody is waiting on a particular moment |
+ * | `reply` | The composer, pinned and visible, placeholder naming the person | None inside the detail — it focuses a control already on screen | **Removed** | The row keeps a quiet icon, which does open *and* focus; in the header it is the same click twice |
+ * | `choose-next-step` | — | — | **Removed earlier** | Named an action it could not describe |
+ */
+export const HEADER_FILLED_ACTIONS: ReadonlySet<string> = new Set([
+  "confirm-interview",
+  "confirm-start",
+  "share-decision",
+  "resolve-legacy-stage",
+]);
+
+/** Real, but not urgent enough to be the loudest thing on the panel. */
+export const HEADER_SECONDARY_ACTIONS: ReadonlySet<string> = new Set(["record-decision"]);
+
+/** Whether a recommendation belongs in the header at all, and at which weight. */
+export function headerActionWeight(key: string): "filled" | "secondary" | null {
+  if (HEADER_FILLED_ACTIONS.has(key)) return "filled";
+  if (HEADER_SECONDARY_ACTIONS.has(key)) return "secondary";
+  return null;
+}
+
 export function nextBestActionFor(
   item: OwnerInteraction,
   signals: WorkSignals = {}

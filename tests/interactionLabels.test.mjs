@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
+import { pipelineStagesFor, stageTargetsFor } from "../lib/applicationPipeline.ts";
 import {
   INTERNAL_IDENTIFIERS,
   displayLabel,
@@ -136,4 +137,60 @@ test("no raw internal identifier is concatenated into user-facing prose", () => 
 test("no shared generic person label survives in the mapper", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "lib/ownerInteractions.ts"), "utf8");
   assert.doesNotMatch(source, /\|\|\s*"Applicant"/, 'the generic "Applicant" fallback is back');
+});
+
+/* --- one vocabulary across surfaces --------------------------------------- */
+
+test("no surface calls a person rejected", () => {
+  /*
+    The product decided to describe the decision rather than the person: the
+    action says "Not proceeding", the notice "Not moving forward", the timeline
+    "Not selected". The recruiter's own board column still said "Rejected" —
+    a harsher claim than any of its neighbours, sitting right beside them.
+
+    "Rejected" remains correct elsewhere for *things* — a listing refused by
+    moderation, a verification claim turned down — so this is scoped to the
+    stage vocabularies rather than the whole codebase.
+  */
+  for (const kind of ["application", "hiring_request"]) {
+    for (const direction of ["received", "sent"]) {
+      for (const stage of pipelineStagesFor(kind, direction)) {
+        assert.doesNotMatch(
+          stage.label,
+          /\brejected\b/i,
+          `${kind}/${direction} calls ${stage.key} "${stage.label}"`
+        );
+      }
+    }
+  }
+});
+
+test("the same backend stage reads the same way wherever a manager sees it", () => {
+  // Different registers are fine — an applicant reads "Application not
+  // selected" where a manager reads "Not selected". Two different *words* for
+  // one state on the manager's own surfaces is not.
+  for (const kind of ["application", "hiring_request"]) {
+    const board = new Map(pipelineStagesFor(kind, "received").map((stage) => [stage.key, stage.label]));
+    for (const stage of stageTargetsFor(kind)) {
+      assert.equal(
+        stage.label,
+        board.get(stage.key),
+        `${kind}: the ${stage.key} menu option and its column disagree`
+      );
+    }
+  }
+});
+
+test("no stage label is a raw internal key", () => {
+  // "Reviewing" is a good label that happens to be its key capitalised; the
+  // failure this guards is an identifier reaching the screen unconverted —
+  // lowercase, or still carrying its underscores.
+  for (const kind of ["application", "hiring_request"]) {
+    for (const stage of stageTargetsFor(kind)) {
+      assert.ok(stage.label, `${kind}/${stage.key} has no label`);
+      assert.notEqual(stage.label, stage.key, `${kind}/${stage.key} renders as its raw key`);
+      assert.doesNotMatch(stage.label, /_/, `${kind}/${stage.key} still has an underscore in it`);
+      assert.match(stage.label, /^[A-Z]/, `${kind}/${stage.key} starts lowercase`);
+    }
+  }
 });

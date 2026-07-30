@@ -20,6 +20,7 @@ import { formatNoteTimestamp, type PrivateNote } from "../../lib/privateNotes";
 import { purgeLegacyStorageKey, userStorageKey } from "../../lib/userScopedStorage";
 import { usePortfolioDetailPopup } from "../profile/PortfolioDetailPopup";
 import { formatListingTitle } from "../../lib/displayText";
+import { splitAnswerLinks } from "../../lib/answerLinks";
 import { useRealtimeMessaging, type RealtimeMessagingEvent } from "../../lib/realtimeMessaging";
 import {
   buildUnreadByThread,
@@ -66,6 +67,7 @@ import {
   markInteractionReviewStarted,
   setConversationSnooze,
   sendConversationMessage,
+  sendScreeningAnswers,
   setConversationQueueDismissed,
   setConversationStarred,
   setApplicationArchived,
@@ -105,6 +107,7 @@ import {
   backendStatusOf,
   deriveWorkState,
   directionLabelsFor,
+  headerActionWeight,
   nextBestActionFor,
   pipelineContextLabelOf,
   pipelineSummaryOf,
@@ -123,6 +126,18 @@ import { ClientContextSummary } from "./CreatorContext";
 import { PaymentStateCard } from "./PaymentStateCard";
 import { creatorViewOf } from "../../lib/creatorProjection";
 import { groupConversation } from "../../lib/systemEventGrouping";
+import {
+  CLASSIFICATION_PLANES,
+  EMPTY_CLASSIFICATION_FILTER,
+  classificationCounts,
+  describeFilter,
+  isActiveRecord,
+  isFilterActive,
+  matchesFilter,
+  queueToAttention,
+  type ClassificationFilter,
+} from "../../lib/reviewClassification";
+import type { ClassificationSection } from "./WorkspaceNavigation";
 import { pipelineStagesFor } from "../../lib/applicationPipeline";
 import {
   INBOX_PAGE_SIZE,
@@ -137,9 +152,7 @@ import {
   WORK_QUEUE_ORDER,
   deriveWorkQueue,
   deriveWorkCategory,
-  WORK_CATEGORY_ORDER,
   type QueueSignals,
-  type WorkQueueKey,
   type WorkQueuePreferences,
 } from "../../lib/workQueues";
 import {
@@ -1027,9 +1040,11 @@ export type ChatMessage = {
    * "status" renders as a centered platform update line; "screening" renders the
    * automated screening-question message natively from its structured snapshot.
    */
-  kind?: "status" | "screening";
+  kind?: "status" | "screening" | "screening-answers";
   /** Structured snapshot for the automated screening-question message. */
   screening?: ChatThreadMessage["screening"];
+  /** The applicant's answers, paired with the questions as they were asked. */
+  screeningAnswers?: ChatThreadMessage["screeningAnswers"];
   rate?: string | null;
   attachments?: OwnerInteraction["attachments"];
   firstMessageAnswers?: FirstMessageAnswers | null;
@@ -1100,6 +1115,11 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       senderName: item.response.from,
       body: item.response.body,
       createdAt: item.response.sentAt,
+      // Structured kinds survive the trip: a screening exchange must render as
+      // its card wherever in the thread it happens to fall.
+      kind: item.response.kind,
+      screening: item.response.screening as ChatMessage["screening"],
+      screeningAnswers: item.response.screeningAnswers as ChatMessage["screeningAnswers"],
     });
   }
   (item.replies || []).forEach((reply, index) => {
@@ -1110,6 +1130,8 @@ export function buildConversation(item: OwnerInteraction): ChatMessage[] {
       body: reply.body,
       createdAt: reply.sentAt,
       kind: reply.kind,
+      screening: reply.screening as ChatMessage["screening"],
+      screeningAnswers: reply.screeningAnswers as ChatMessage["screeningAnswers"],
     });
   });
   return messages;
@@ -1602,8 +1624,28 @@ function AttachmentChip({
   );
 }
 
-function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
+function ScreeningQuestionsCard({
+  message,
+  onAnswer,
+  answered = false,
+}: {
+  message: ChatMessage;
+  /**
+   * Supplied only to the side that was asked, and only while the questions are
+   * still open. Absent for the hiring side, who asked them.
+   */
+  onAnswer?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  answered?: boolean;
+}) {
   const questions = message.screening?.questions ?? [];
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const missingRequired = questions.some(
+    (question, index) =>
+      question.required && !(draft[question.position ?? index] || "").trim()
+  );
   return (
     <div
       className={[
@@ -1638,7 +1680,192 @@ function ScreeningQuestionsCard({ message }: { message: ChatMessage }) {
       ) : (
         <p className="mt-2 whitespace-pre-line break-words text-[13px] leading-relaxed text-white/82">{message.body}</p>
       )}
-      <p className="mt-2.5 text-[11px] text-subtle">Reply in this conversation with your answers.</p>
+      {/*
+        Answering happens where the asking did. A structured form rather than
+        "reply with your answers in the composer": free text cannot say which
+        question it is answering, so the reviewer would be left pairing prose
+        with prompts by eye — and the required ones could be silently skipped.
+      */}
+      {onAnswer && !answered ? (
+        open ? (
+          <form
+            data-testid="screening-answer-form"
+            className="mt-3 space-y-2.5 border-t border-line pt-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (saving || missingRequired) return;
+              setSaving(true);
+              setError(null);
+              void onAnswer(
+                questions.map((question, index) => ({
+                  position: question.position ?? index,
+                  response: (draft[question.position ?? index] || "").trim(),
+                }))
+              )
+                .catch(() => setError("Couldn’t send those answers. Try again."))
+                .finally(() => setSaving(false));
+            }}
+          >
+            {questions.map((question, index) => {
+              const position = question.position ?? index;
+              return (
+                <label key={question.id || position} className="block">
+                  <span className="block text-[11px] font-medium text-muted">
+                    {index + 1}. {question.prompt}
+                    {question.required ? (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-state-interview">
+                        Required
+                      </span>
+                    ) : null}
+                  </span>
+                  <textarea
+                    data-testid={`screening-answer-${position}`}
+                    rows={2}
+                    maxLength={5000}
+                    value={draft[position] || ""}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, [position]: event.target.value }))
+                    }
+                    className="mt-1 w-full resize-none rounded-lg border border-line bg-wash px-2.5 py-1.5 text-[12.5px] leading-relaxed text-white/88 placeholder:text-subtle focus:border-line-strong focus:outline-none"
+                    placeholder={question.response_guidance || "Your answer"}
+                  />
+                </label>
+              );
+            })}
+            {error ? <p className="text-[11px] text-rose-300/90">{error}</p> : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                data-testid="screening-answer-send"
+                disabled={saving || missingRequired}
+                className="surface-primary inline-flex h-7 cursor-pointer items-center rounded-lg px-3 text-[11.5px] font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Sending…" : "Send answers"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-7 cursor-pointer items-center rounded-lg px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-ink"
+              >
+                Not now
+              </button>
+              {missingRequired ? (
+                <span className="text-[11px] text-subtle">Required questions still need an answer.</span>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            data-testid="screening-answer-open"
+            onClick={() => setOpen(true)}
+            className="mt-2.5 inline-flex h-7 cursor-pointer items-center rounded-lg border border-line-mid bg-overlay px-2.5 text-[11.5px] font-semibold text-default transition-colors hover:border-line-strong hover:text-ink"
+          >
+            Answer these
+          </button>
+        )
+      ) : (
+        <p className="mt-2.5 text-[11px] text-subtle">
+          {answered ? "You answered these below." : "Reply in this conversation with your answers."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The answers, where the questions were asked.
+ *
+ * One authoritative surface, in the thread — not a second copy in the context
+ * rail or the timeline. The questions already arrive here as a structured
+ * message; putting the answers anywhere else would mean a reviewer reading two
+ * halves of one exchange in two places, and would give a later job edit a
+ * second thing to disagree with.
+ *
+ * Every asked question is listed, answered or not. Dropping the blanks would
+ * make a skipped optional question indistinguishable from one that was never
+ * put, which is exactly the distinction somebody deciding on a candidate needs.
+ */
+/**
+ * An answer, with the links in it usable but not trusted.
+ *
+ * "Here is the reel: <url>" is most of what people write, and leaving it as
+ * inert text taxes every application. Only `http`/`https` become anchors, the
+ * label is exactly what was typed, and nothing is fetched — a preview would
+ * disclose the reviewer's IP to the sender the moment the thread was opened.
+ */
+function AnswerText({ text }: { text: string }) {
+  const segments = splitAnswerLinks(text);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === "link" ? (
+          <a
+            key={`link-${index}`}
+            href={segment.href}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            data-testid="screening-answer-link"
+            className="break-all text-blue-300 underline underline-offset-2 transition-colors hover:text-blue-200"
+          >
+            {segment.value}
+          </a>
+        ) : (
+          <span key={`text-${index}`}>{segment.value}</span>
+        )
+      )}
+    </>
+  );
+}
+
+function ScreeningAnswersCard({ message }: { message: ChatMessage }) {
+  const answers = message.screeningAnswers?.answers ?? [];
+  if (answers.length === 0) {
+    return (
+      <div className="min-w-0 rounded-2xl rounded-br-md bg-white/[0.13] px-3.5 py-2.5 text-[13px] leading-relaxed text-white/92">
+        <p className="whitespace-pre-line break-words">{message.body}</p>
+      </div>
+    );
+  }
+  const answered = answers.filter((entry) => entry.answered).length;
+  return (
+    <div
+      data-testid="screening-answers-card"
+      className={[
+        "min-w-0 rounded-2xl border border-line bg-raised px-3.5 py-3",
+        "shadow-[0_8px_24px_-20px_rgba(0,0,0,0.9)]",
+        message.fromMe ? "rounded-br-md" : "rounded-bl-md",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-secondary">
+        <Icon name="clipboard-check" className="h-3.5 w-3.5 opacity-70" />
+        <span>Screening answers</span>
+        <span className="ml-auto shrink-0 text-[10.5px] font-medium tabular-nums text-subtle">
+          {answered} of {answers.length} answered
+        </span>
+      </div>
+      <ol className="mt-2.5 space-y-2.5">
+        {answers.map((entry) => (
+          <li key={`${entry.position}-${entry.prompt}`} className="min-w-0">
+            <p className="break-words text-[11.5px] leading-relaxed text-muted">
+              {entry.prompt}
+              {entry.required ? null : (
+                <span className="ml-1.5 text-[10px] uppercase tracking-[0.1em] text-disabled">Optional</span>
+              )}
+            </p>
+            <p
+              data-testid="screening-answer-response"
+              className={
+                entry.answered
+                  ? "mt-1 whitespace-pre-wrap break-words border-l-2 border-blue-400/40 pl-3 text-[13px] leading-relaxed text-white/88"
+                  : "mt-1 border-l-2 border-white/10 pl-3 text-[12px] italic text-subtle"
+              }
+            >
+              {entry.answered ? <AnswerText text={entry.response} /> : "Skipped — this one was optional"}
+            </p>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -1671,9 +1898,14 @@ function bubbleCorners(fromMe: boolean, position: BubblePosition): string {
 export function MessageBubble({
   message,
   position = "single",
+  onAnswerScreening,
+  screeningAnswered = false,
 }: {
   message: ChatMessage;
   position?: BubblePosition;
+  /** Present only for the side that was asked, while the questions are open. */
+  onAnswerScreening?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  screeningAnswered?: boolean;
 }) {
   const me = message.fromMe;
   const portfolioPopup = usePortfolioDetailPopup(`applications-message-portfolio-${message.id}`);
@@ -1693,7 +1925,13 @@ export function MessageBubble({
       className={["flex w-full min-w-0 flex-col gap-1", me ? "items-end" : "items-start"].join(" ")}
     >
       {message.kind === "screening" ? (
-        <ScreeningQuestionsCard message={message} />
+        <ScreeningQuestionsCard
+          message={message}
+          onAnswer={onAnswerScreening}
+          answered={screeningAnswered}
+        />
+      ) : message.kind === "screening-answers" ? (
+        <ScreeningAnswersCard message={message} />
       ) : message.body || message.rate || (message.attachments && message.attachments.length > 0) ? (
         <div
           data-testid="chat-bubble"
@@ -1773,6 +2011,8 @@ export function MessageGroup({
   showSenderName = false,
   seenMessageId = null,
   density = "comfortable",
+  onAnswerScreening,
+  screeningAnswered = false,
 }: {
   senderName: string;
   fromMe: boolean;
@@ -1785,6 +2025,8 @@ export function MessageGroup({
   /** The latest outgoing message known to have been read. */
   seenMessageId?: string | null;
   density?: "comfortable" | "compact";
+  onAnswerScreening?: (responses: Array<{ position: number; response: string }>) => Promise<void>;
+  screeningAnswered?: boolean;
 }) {
   const compact = density === "compact";
   const avatarSize = compact ? "h-6 w-6" : "h-7 w-7";
@@ -1798,7 +2040,10 @@ export function MessageGroup({
     for a signal that block never needed.
   */
   const structuredOnly = messages.every(
-    (message) => message.kind === "screening" || Boolean(message.firstMessageAnswers && message.firstMessageContext)
+    (message) =>
+      message.kind === "screening" ||
+      message.kind === "screening-answers" ||
+      Boolean(message.firstMessageAnswers && message.firstMessageContext)
   );
   const showSeen = messages.some((message) => message.id === seenMessageId);
   const position = (index: number): BubblePosition => {
@@ -1816,7 +2061,14 @@ export function MessageGroup({
       ].join(" ")}
     >
       <InteractionTime value={latestAt} />
-      {showSeen ? <span>· Seen</span> : null}
+      {/* The separator is its own element so the receipt's text is exactly
+          "Seen" — a reader looking for that word should find it, not "· Seen". */}
+      {showSeen ? (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>Seen</span>
+        </>
+      ) : null}
     </p>
   );
 
@@ -1835,7 +2087,13 @@ export function MessageGroup({
         </p>
       ) : null}
       {messages.map((message, index) => (
-        <MessageBubble key={message.id} message={message} position={position(index)} />
+        <MessageBubble
+          key={message.id}
+          message={message}
+          position={position(index)}
+          onAnswerScreening={onAnswerScreening}
+          screeningAnswered={screeningAnswered}
+        />
       ))}
       {meta}
     </div>
@@ -3272,7 +3530,15 @@ export default function ApplicationsWorkspace({
   /* ---------------- Queue views ---------------- */
 
   /** Null means "no queue filter" — the ordinary full list. */
-  const [activeQueue, setActiveQueue] = useState<WorkQueueKey | "starred" | "snoozed" | null>(null);
+  /*
+    One selection per plane, combined. The planes answer different questions —
+    have I looked at this, where does it stand, does anyone need to act — so
+    "opened and waiting on them" is a real thing to ask for, and the flat queue
+    this replaces could not express it.
+  */
+  const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>(
+    EMPTY_CLASSIFICATION_FILTER
+  );
 
   /*
     Narrowing the list starts its rendering window again.
@@ -3285,7 +3551,7 @@ export default function ApplicationsWorkspace({
   useEffect(() => {
     setInboxLimit(INBOX_PAGE_SIZE);
     setPagingAnnouncement("");
-  }, [mode, filter, activeQueue]);
+  }, [mode, filter, classificationFilter]);
 
   /* ---------------- B1: durable per-user interaction preferences ---------------- */
 
@@ -3599,13 +3865,26 @@ export default function ApplicationsWorkspace({
    * stand between someone and reading or answering their messages.
    */
   useEffect(() => {
-    if (!flags.autoReviewing || !liveMode || !backendAccessToken) return;
+    if (!flags.autoReviewing) return;
     if (!selected || selected.direction !== "received") return;
     if (isArchivedInteraction(selected)) return;
     if (backendStatusOf(selected) !== "new") return;
     if (autoReviewedRef.current.has(selected.id)) return;
+    /*
+      The conversation must actually be on screen.
+
+      The workspace keeps a selected record whichever view is showing, so
+      without this, landing on the Pipeline silently marked whichever card the
+      selection happened to fall on as Reviewing — a private position assigned
+      by navigating to a board, which is not reading an application by any
+      definition. On a narrow viewport the list is the landing screen, so the
+      detail has to have been opened deliberately there too.
+    */
+    if (view !== "inbox") return;
+    if (typeof window !== "undefined" && window.innerWidth < 1024 && !mobileDetailOpen) return;
     // The detail must genuinely be loaded — an in-flight open is not a read.
-    if (!liveThreads[selected.id]) return;
+    // Demo mode has no thread to fetch, so the record itself is the detail.
+    if (liveMode && !liveThreads[selected.id]) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
     const interactionId = selected.id;
@@ -3624,6 +3903,27 @@ export default function ApplicationsWorkspace({
         durationMs: flags.autoReviewingDwellMs,
         flagCohort: cohort,
       });
+      /*
+        Demo mode has no server to hold the private position, so the deliberate
+        open commits locally instead. Without it "Not opened yet" never moves in
+        sample data, which is precisely the behaviour the review-progress plane
+        exists to make legible — a classification you cannot watch change is one
+        nobody can trust.
+      */
+      if (!liveMode || !backendAccessToken) {
+        setItems((prev) =>
+          prev.map((entry) =>
+            entry.id === interactionId && backendStatusOf(entry) === "new"
+              ? {
+                  ...entry,
+                  status: interactionStatusFromBackend(entry.kind, entry.direction, "reviewing"),
+                  backendStatus: "reviewing",
+                }
+              : entry
+          )
+        );
+        return;
+      }
       void (async () => {
         try {
           const result = await markInteractionReviewStarted(
@@ -3665,6 +3965,8 @@ export default function ApplicationsWorkspace({
     selected,
     liveThreads,
     cohort,
+    view,
+    mobileDetailOpen,
   ]);
 
 
@@ -3875,6 +4177,38 @@ export default function ApplicationsWorkspace({
     () => (selected && flags.nextAction ? nextBestActionFor(selected, signalsFor(selected)) : null),
     [selected, flags.nextAction, signalsFor]
   );
+
+  /*
+    Hold the recommendation still while a conversation settles.
+
+    Opening a thread with unread messages recommends replying — and then marks
+    the thread read, which removes the very evidence the recommendation rested
+    on. The button therefore appeared and vanished about a second later, under a
+    pointer already moving towards it. That flicker was hidden before only
+    because the low-confidence case used to render "Choose next step" in the
+    same place, so the control changed its label instead of leaving.
+
+    A ref written during render, not state. The value is a pure function of this
+    render's inputs and is read in the same render, so nothing is deferred and
+    nothing re-renders. State would cost a commit every time the derivation is
+    recomputed — which is whenever the list's live signals move — for a value
+    that is not allowed to change anything else.
+
+    The last confident recommendation for the *open* record survives a
+    derivation that has gone quiet. It is dropped the moment the selection
+    changes, replaced the moment a new confident one appears, and — the part
+    that keeps it honest — only rendered while the action is still one the
+    record actually offers, so it can never become a button that does nothing.
+  */
+  const stickyActionRef = useRef<{ itemId: string; action: NextBestAction } | null>(null);
+  if (!selected) {
+    stickyActionRef.current = null;
+  } else if (selectedNextAction?.highConfidence) {
+    stickyActionRef.current = { itemId: selected.id, action: selectedNextAction };
+  } else if (stickyActionRef.current && stickyActionRef.current.itemId !== selected.id) {
+    stickyActionRef.current = null;
+  }
+  const stickyAction = stickyActionRef.current;
 
   const analyticsBase = useCallback(
     (item: OwnerInteraction): WorkspaceEventPayload => ({
@@ -4210,6 +4544,33 @@ export default function ApplicationsWorkspace({
     : false;
 
   /**
+   * The recommendation the header renders, and how loudly.
+   *
+   * Not every recommendation belongs here — see `headerActionWeight`. `reply` in
+   * particular no longer does: the composer is pinned at the foot of this panel,
+   * always visible, with a placeholder naming the person, so a filled button
+   * whose whole effect is to focus it was the loudest control in the workspace
+   * spending most of its life duplicating one already on screen.
+   *
+   * The live derivation wins while it is confident; otherwise the last confident
+   * recommendation for *this* record stands in, but only while the record still
+   * offers that action, so a stabilised button can never outlive its own
+   * eligibility.
+   */
+  const headerNextAction = (() => {
+    const candidate = (() => {
+      if (selectedNextAction?.highConfidence) return selectedNextAction;
+      if (!selected || !stickyAction || stickyAction.itemId !== selected.id) return null;
+      return headerActions.some((entry) => entry.key === stickyAction.action.key)
+        ? stickyAction.action
+        : null;
+    })();
+    if (!candidate) return null;
+    const weight = headerActionWeight(candidate.key);
+    return weight ? { action: candidate, weight } : null;
+  })();
+
+  /**
    * The decision surface and the intent chips answer the same question, so only
    * one of them is ever on screen. The surface wins while it is open — it
    * already offers the decisions plus "Ask a question" — and the chips return
@@ -4272,6 +4633,27 @@ export default function ApplicationsWorkspace({
         .filter((message) => !message.fromMe && message.kind !== "status")
         .map((message) => message.senderName)
     ).size > 1;
+  /*
+    Answering is offered to the side that was asked, once, while the questions
+    are still open. The hiring side asked them and has nothing to answer; a
+    thread that already carries an answers message has nothing left to ask for.
+  */
+  const screeningAlreadyAnswered = conversation.some((message) => message.kind === "screening-answers");
+  const screeningAnswerHandler =
+    selected && selectedConversationId && backendAccessToken && !screeningAlreadyAnswered
+      ? async (responses: Array<{ position: number; response: string }>) => {
+          const saved = await sendScreeningAnswers(
+            backendAccessToken,
+            selectedConversationId,
+            responses
+          );
+          setLiveThreads((current) => {
+            const thread = current[selected.id];
+            if (!thread) return current;
+            return { ...current, [selected.id]: { ...thread, messages: [...thread.messages, saved] } };
+          });
+        }
+      : undefined;
   const typing = selectedConversationId ? typingByConversation[selectedConversationId] : null;
   const subtitle = selected ? subtitleFor(selected) : null;
   const forward = selected ? forwardLinkFor(selected) : null;
@@ -4443,57 +4825,50 @@ export default function ApplicationsWorkspace({
    * not feed selection normalisation — filtering your view should never throw
    * away the conversation you are reading.
    */
-  /** Queues worth offering: those with work, plus the personal views. */
-  const queueChips = ((): Array<{
-    key: string;
-    label: string;
-    count: number;
-    description?: string;
-  }> => {
-    const chips: Array<{ key: string; label: string; count: number; description?: string }> = [];
-    const labels = new Map<string, string>();
+  /*
+    The three questions, each counted over its own stated denominator.
+
+    Built from one pass so the sections can never drift apart, and only options
+    that hold records are offered — with one exception below, which is the one
+    the reader is currently standing in.
+  */
+  const classification = classificationCounts(modeItems, queueSignalsFor, queuePreferences);
+  const starredCount = modeItems.filter((item) => isActiveRecord(item) && isStarred(item)).length;
+
+  const classificationSections: ClassificationSection[] = CLASSIFICATION_PLANES.map((plane) => {
+    const counts = plane.key === "stage" ? classification.stage : classification.attention;
+    const selected = plane.key === "stage" ? classificationFilter.stage : classificationFilter.attention;
+    const options = plane.options
+      .map((option) => ({ ...option, count: (counts as Map<string, number>).get(option.key) ?? 0 }))
+      /*
+        One exception to "only offer what holds records": the option the reader
+        is standing in. It can empty underneath them — advance the last unopened
+        application and "Not opened yet" has nothing left — and dropping it here
+        would take the filter's name off screen while the filter was still
+        applied, leaving an empty list with no visible way out.
+      */
+      .filter((option) => option.count > 0 || selected === option.key);
     /*
-      Every category that has records, in working order — including the ones
-      that need nothing. A menu that lists only the urgent slices leaves the
-      reader to guess where the rest went, which is how 162 applicants came to
-      be described by two numbers adding to 56.
+      A partition states what it sums to. Flags cannot — they overlap and a
+      record may carry none — so "Needs you" reports how many records carry any
+      of its flags, which is the number a reader actually wants, rather than
+      offering a row that means "nothing matched".
     */
-    for (const category of WORK_CATEGORY_ORDER) {
-      labels.set(category.key, category.label);
-      const count = queueCounts.get(category.key) ?? 0;
-      if (count > 0) {
-        chips.push({
-          key: category.key,
-          label: category.label,
-          count,
-          description: category.description,
-        });
-      }
-    }
-    // Starred cuts across the categories rather than being one of them, so it
-    // sits after the partition and is never part of its arithmetic.
-    labels.set("starred", "Starred");
-    const starred = queueCounts.get("starred") ?? 0;
-    if (starred > 0) {
-      chips.push({
-        key: "starred",
-        label: "Starred",
-        count: starred,
-        description: "Saved by you for a second look. Only you can see this.",
-      });
-    }
-    /*
-      One exception to "only offer queues that hold work": the queue the user is
-      standing in. It can empty underneath them — unstar the last saved record
-      and "Saved" has nothing left — and dropping it here would take the filter's
-      name and its clear control off screen while the filter was still applied,
-      leaving an empty list with no visible way out.
-    */
-    if (activeQueue && !chips.some((chip) => chip.key === activeQueue)) {
-      chips.push({ key: activeQueue, label: labels.get(activeQueue) ?? "Queue", count: 0 });
-    }
-    return chips;
-  })();
+    const summary =
+      plane.kind === "partition"
+        ? { denominator: plane.denominator, denominatorCount: classification.total }
+        : plane.key === "attention"
+          ? { denominator: `of ${classification.total}`, denominatorCount: classification.needsYou }
+          : { denominator: "", denominatorCount: 0 };
+    return {
+      key: plane.key,
+      label: plane.label,
+      kind: plane.kind,
+      denominator: summary.denominator,
+      denominatorCount: summary.denominatorCount,
+      options,
+    };
+  });
 
   /**
    * Every record that matches, before any rendering limit.
@@ -4503,16 +4878,9 @@ export default function ApplicationsWorkspace({
    * screen". Only `renderedItems` below is bounded.
    */
   const listItems = ((): OwnerInteraction[] => {
-    if (!activeQueue) return visibleItems;
-    if (activeQueue === "starred") return visibleItems.filter((item) => isStarred(item));
-    if (activeQueue === "snoozed") {
-      return visibleItems.filter((item) => {
-        const until = queuePreferences.snoozedUntil(item.id);
-        return until !== null && until > Date.now();
-      });
-    }
-    return visibleItems.filter(
-      (item) => deriveWorkCategory(item, queueSignalsFor(item), queuePreferences) === activeQueue
+    if (!isFilterActive(classificationFilter)) return visibleItems;
+    return visibleItems.filter((item) =>
+      matchesFilter(item, classificationFilter, queueSignalsFor(item), queuePreferences, isStarred)
     );
   })();
 
@@ -4548,7 +4916,7 @@ export default function ApplicationsWorkspace({
           // explicitly rather than omitted, so adding a search box later gets
           // the right empty state for free.
           searchTerm: "",
-          activeQueue,
+          activeQueue: isFilterActive(classificationFilter) ? describeFilter(classificationFilter)[0] ?? null : null,
           allCaughtUp,
           snoozedCount,
         })
@@ -4681,14 +5049,20 @@ export default function ApplicationsWorkspace({
                       data-testid={`job-summary-count-${entry.key}`}
                       onClick={() => {
                         if (entry.target.kind === "queue") {
-                          setActiveQueue(entry.target.queue as typeof activeQueue);
+                          // The summary counts speak the attention flags. A
+                          // queue that maps to nothing outstanding clears the
+                          // filter rather than selecting a row that no longer
+                          // exists — there is no "no action needed" any more.
+                          setClassificationFilter({
+                            attention: queueToAttention(entry.target.queue) ?? undefined,
+                          });
                         } else if (entry.target.kind === "starred") {
-                          setActiveQueue("starred");
+                          setClassificationFilter({ starred: true });
                         } else {
                           // A stage is a Pipeline question; take the user there
                           // with the stage focused rather than approximating it
                           // with an inbox filter that means something else.
-                          setActiveQueue(null);
+                          setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                           onPipelineStageChange?.(entry.target.stage);
                           setView("pipeline");
                         }
@@ -4824,11 +5198,11 @@ export default function ApplicationsWorkspace({
             filter={filter}
             counts={filterCounts}
             onSelect={selectFilter}
-            queueChips={flags.workState ? queueChips : []}
-            activeQueue={flags.workState ? activeQueue : null}
-            onQueueSelect={
-              flags.workState ? (key) => setActiveQueue(key as typeof activeQueue) : undefined
-            }
+            classificationSections={flags.workState ? classificationSections : []}
+            classificationFilter={flags.workState ? classificationFilter : EMPTY_CLASSIFICATION_FILTER}
+            classificationTotal={classification.total}
+            starredCount={starredCount}
+            onClassificationChange={flags.workState ? setClassificationFilter : undefined}
             trailing={
               totalUnreadCount > 0 ? (
                 <p
@@ -4864,7 +5238,9 @@ export default function ApplicationsWorkspace({
                 type="button"
                 data-testid="work-reminder"
                 data-reminder-key={reminder.key}
-                onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
+                onClick={() =>
+                  setClassificationFilter({ attention: queueToAttention(reminder.queue) ?? undefined })
+                }
                 className="group mx-3 mt-2.5 flex w-[calc(100%-1.5rem)] shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
               >
                 <Icon
@@ -4913,9 +5289,9 @@ export default function ApplicationsWorkspace({
                       data-testid="inbox-empty-action"
                       onClick={() => {
                         const kind = emptyState.action?.kind;
-                        if (kind === "clear-queue") setActiveQueue(null);
+                        if (kind === "clear-queue") setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                         else {
-                          setActiveQueue(null);
+                          setClassificationFilter(EMPTY_CLASSIFICATION_FILTER);
                           selectFilter("all");
                         }
                       }}
@@ -5028,14 +5404,35 @@ export default function ApplicationsWorkspace({
                           they came and went.
                         */}
                         <div className="flex items-baseline justify-between gap-2">
-                          <span
-                            data-testid="row-identity"
-                            className={[
-                              "truncate text-[14px] leading-5",
-                              rowUnread ? "font-semibold text-ink" : "font-medium text-default",
-                            ].join(" ")}
-                          >
-                            {rowIdentity(item)}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              data-testid="row-identity"
+                              className={[
+                                "truncate text-[14px] leading-5",
+                                rowUnread ? "font-semibold text-ink" : "font-medium text-default",
+                              ].join(" ")}
+                            >
+                              {rowIdentity(item)}
+                            </span>
+                            {/*
+                              The count travels with the name, which is what it
+                              is about. It briefly replaced the work state at the
+                              row's foot instead — one slot, one indicator — but
+                              that made the Inbox and the Pipeline disagree about
+                              the same record: the list said "2 unread" where the
+                              board said "New to review". They read one
+                              derivation and must say one thing, so the count
+                              sits here and the state keeps its slot.
+                            */}
+                            {messageUnread > 0 ? (
+                              <span
+                                data-testid="inbox-unread-badge"
+                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
+                                className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
+                              >
+                                {formatBadgeCount(messageUnread)}
+                              </span>
+                            ) : null}
                           </span>
                           {/*
                             One fixed home for the timestamp. `pr-5` is the
@@ -5074,22 +5471,15 @@ export default function ApplicationsWorkspace({
                             {rowContext(item)}
                           </p>
                           {/*
-                            One slot, one indicator, in order of how much it
-                            asks of the reader: unread messages are a thing to
-                            do, a work state is a thing to know, and the
-                            lifecycle stage is the fallback. Stacking them was
-                            the badge cluster this replaces.
+                            One state slot, one indicator: the derived work
+                            state, or the lifecycle stage when there is none.
+                            Never both — that stacking was the badge cluster
+                            this replaces — and never anything else, so this row
+                            and the Pipeline card always say the same thing
+                            about the same record.
                           */}
                           <span className="flex shrink-0 items-center pr-5">
-                            {messageUnread > 0 ? (
-                              <span
-                                data-testid="inbox-unread-badge"
-                                aria-label={`${messageUnread} unread message${messageUnread === 1 ? "" : "s"}`}
-                                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-semibold leading-none text-black"
-                              >
-                                {formatBadgeCount(messageUnread)}
-                              </span>
-                            ) : rowWorkState ? (
+                            {rowWorkState ? (
                               <WorkStateChip state={rowWorkState} />
                             ) : (
                               <StatusPill status={item.status} />
@@ -5437,26 +5827,41 @@ export default function ApplicationsWorkspace({
                       >
                         {interviewStep.label}
                       </button>
-                    ) : selectedNextAction?.highConfidence ? (
+                    ) : headerNextAction ? (
                       /*
-                        Only a well-evidenced action earns a primary button.
+                        Two weights, one rule: **filled means somebody else is
+                        waiting.**
 
-                        The low-confidence fallback rendered "Choose next step",
-                        which opened the decision surface — and that surface is
-                        behind a flag, so with the flag off the button did
-                        nothing at all. A recommendation the system cannot make
-                        is better expressed by not making one: "More actions"
-                        already carries every move, so nothing is lost.
+                        A held interview slot, a stalled engagement, a decision
+                        made and never told — those are moments another person
+                        is standing in, and they get the loudest control on the
+                        panel. Recording a decision is real work at the
+                        recruiter's own pace, so it is a secondary button.
+                        Replying is not here at all: the composer is pinned
+                        below, always visible, with a placeholder naming the
+                        person, so a filled button that focused it was the same
+                        click twice.
+
+                        A well-evidenced action is still the only kind that
+                        renders. "Choose next step" named an action it could not
+                        describe and, with the decision flag off, did nothing at
+                        all when pressed.
                       */
                       <button
                         type="button"
                         data-testid="next-action-primary"
-                        data-action-key={selectedNextAction.key}
+                        data-action-key={headerNextAction.action.key}
+                        data-action-weight={headerNextAction.weight}
                         disabled={Boolean(statusMutationKey)}
-                        onClick={() => runNextAction(selected, selectedNextAction)}
-                        className="surface-primary hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold text-black transition-all elev-2 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+                        onClick={() => runNextAction(selected, headerNextAction.action)}
+                        className={[
+                          "hidden h-8 cursor-pointer items-center rounded-lg px-3 text-[12px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex",
+                          headerNextAction.weight === "filled"
+                            ? "surface-primary text-black elev-2 hover:brightness-105"
+                            : "border border-line-mid bg-raised text-default hover:border-line-strong hover:text-ink",
+                        ].join(" ")}
                       >
-                        {selectedNextAction.label}
+                        {headerNextAction.action.label}
                       </button>
                     ) : null}
                     <OverflowMenu items={menuItems} />
@@ -5638,6 +6043,8 @@ export default function ApplicationsWorkspace({
                                 counterpartyAvatarUrl={selected.counterpartyAvatarUrl}
                                 counterpartyHref={subtitle?.href ?? null}
                                 showSenderName={threadHasSeveralVoices}
+                                onAnswerScreening={screeningAnswerHandler}
+                                screeningAnswered={screeningAlreadyAnswered}
                                 seenMessageId={
                                   latestOutgoingMessageId && latestOutgoingRead
                                     ? latestOutgoingMessageId

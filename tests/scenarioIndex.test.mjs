@@ -93,9 +93,18 @@ test("an indexed entry says enough to act on without searching", () => {
 test("every indexed route resolves to a real page and a real scenario", () => {
   const problems = [];
   for (const name of withRecords) {
+    const handles = new Set((manifests[name].actors ?? []).map((actor) => actor.username));
     for (const entry of manifests[name].index ?? []) {
       const [pathname, query = ""] = entry.route.split("?");
-      if (pathname !== "/applications") {
+      // A profile route is addressed by handle, so "resolves" means the handle
+      // is one this scenario actually contains — pointing QA at /u/ someone who
+      // is not in the dataset is worse than not indexing the condition at all.
+      if (pathname.startsWith("/u/")) {
+        const slug = pathname.slice(3);
+        if (!handles.has(slug)) {
+          problems.push(`${name}: route ${entry.route} names a handle this scenario does not have`);
+        }
+      } else if (pathname !== "/applications") {
         problems.push(`${name}: unexpected route ${entry.route}`);
       }
       const params = new URLSearchParams(query);

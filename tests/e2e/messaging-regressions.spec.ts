@@ -153,6 +153,10 @@ test("every primary recommendation carries a confident action key", async ({ pag
     if ((await primary.count()) === 0) continue;
     const key = await primary.getAttribute("data-action-key");
     expect(key).not.toBe("choose-next-step");
+    // And never Reply: the composer is pinned below with the person's name in
+    // its placeholder, so a header button focusing it is the same click twice.
+    expect(key).not.toBe("reply");
+    expect(await primary.getAttribute("data-action-weight")).toMatch(/^(filled|secondary)$/);
     await expect(primary).toBeEnabled();
   }
 });
@@ -212,31 +216,77 @@ test("the Star is a real control on a Pipeline card too", async ({ page }) => {
 
 /* ---- work categories ----------------------------------------------------- */
 
-test("the work-category menu accounts for every record", async ({ page }) => {
+test("each section of the menu reconciles against its own stated denominator", async ({ page }) => {
   await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
   await main(page).getByTestId("queue-selector-trigger").click();
   const menu = page.getByTestId("queue-selector-menu");
   await expect(menu).toBeVisible();
 
-  const counts = await menu.evaluate((node) => {
-    const rows = Array.from(node.querySelectorAll("[data-queue-key]"));
-    return rows.map((entry) => ({
-      key: entry.getAttribute("data-queue-key"),
-      count: Number(entry.getAttribute("data-queue-count") ?? "0"),
-      describes: (entry.textContent ?? "").trim().length > 20,
-    }));
+  const total = Number(
+    (await menu.getByTestId("queue-chip-all").getAttribute("data-queue-count")) ?? "0"
+  );
+  expect(total).toBeGreaterThan(10);
+
+  const planes = await menu.evaluate((node) => {
+    const found: Record<string, { count: number; describes: boolean }[]> = {};
+    for (const entry of Array.from(node.querySelectorAll("[data-plane]"))) {
+      const plane = entry.getAttribute("data-plane") ?? "";
+      (found[plane] ??= []).push({
+        count: Number(entry.getAttribute("data-queue-count") ?? "0"),
+        describes: (entry.textContent ?? "").trim().length > 20,
+      });
+    }
+    return found;
   });
-  expect(counts.length).toBeGreaterThan(2);
 
-  const total = counts.find((entry) => entry.key === "all");
-  expect(total, "the menu has no Everything row to reconcile against").toBeTruthy();
-  const parts = counts.filter((entry) => entry.key !== "all" && entry.key !== "starred");
-  const summed = parts.reduce((sum, entry) => sum + entry.count, 0);
-  expect(summed, `categories sum to ${summed}, total is ${total!.count}`).toBe(total!.count);
+  /*
+    One partition, and some flags.
 
-  // A row naming a state without saying what it means is a label, not an
-  // explanation.
-  for (const entry of parts) expect(entry.describes, `${entry.key} explains nothing`).toBeTruthy();
+    Stage covers everything and says so. The flag sections do not cover
+    anything — a record that needs nobody carries no flag — which is the change
+    that removed a row holding two thirds of the inbox and meaning nothing. So
+    the flags must sum to *less* than the total, and a run where they summed to
+    exactly it would mean the residual had come back.
+  */
+  const sum = (rows: { count: number }[]) => rows.reduce((a, b) => a + b.count, 0);
+  expect(sum(planes.stage ?? []), "stage is the partition").toBe(total);
+
+  const flagged = sum(planes.attention ?? []) + sum(planes.waiting ?? []);
+  expect(flagged, "the flags cover more records than exist").toBeLessThanOrEqual(total);
+  expect(flagged, "the flags cover everything, so a residual is back").toBeLessThan(total);
+
+  // And every option states its criteria rather than only naming a state.
+  for (const rows of Object.values(planes)) {
+    for (const row of rows) expect(row.describes).toBeTruthy();
+  }
+});
+
+test("the planes combine, and one control clears them all", async ({ page }) => {
+  await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
+  const trigger = main(page).getByTestId("queue-selector-trigger");
+
+  // A stage and a flag: the two things the menu asks separately.
+  await trigger.click();
+  const stage = page.getByTestId("queue-chip-new");
+  const stageCount = Number((await stage.getAttribute("data-queue-count")) ?? "0");
+  await stage.click();
+  await expect(main(page).getByTestId("interaction-scope")).toBeVisible();
+
+  await trigger.click();
+  // Whichever flag this board actually carries — the flags are not exhaustive,
+  // so naming one that happens to be empty would test nothing.
+  const flag = page.getByTestId("queue-selector-menu").locator('[data-plane="attention"]').first();
+  await expect(flag).toBeVisible();
+  const narrowed = Number((await flag.getAttribute("data-queue-count")) ?? "0");
+  await flag.click();
+
+  // Combining narrows: the two questions are different, so the answer to both
+  // can only be a subset of the answer to one.
+  expect(narrowed).toBeLessThanOrEqual(stageCount);
+  await expect(trigger).toContainText("2 filters");
+
+  await main(page).getByTestId("queue-clear").click();
+  await expect(main(page).getByTestId("queue-clear")).toHaveCount(0);
 });
 
 /* ---- persona icons ------------------------------------------------------- */

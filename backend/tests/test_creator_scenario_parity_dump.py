@@ -149,3 +149,54 @@ async def test_dump_backend_activity_for_parity(client: AsyncClient, scenario: s
     (DUMP_DIR / f"{scenario}.json").write_text(
         json.dumps(payloads, indent=2, sort_keys=True), encoding="utf-8"
     )
+
+
+@pytest.mark.parametrize("scenario", PARITY_SCENARIOS)
+async def test_dump_public_profiles_for_parity(client: AsyncClient, scenario: str) -> None:
+    """The same actors, as the *public profile* endpoint serves them.
+
+    Activity parity compares the workspace. It says nothing about the page a
+    reviewer opens next, which is served by a different endpoint over different
+    columns — so the two paths could agree on every application while showing
+    different people. This dumps that endpoint for the same actors, and
+    `tests/canonicalProfileParity.test.mjs` compares it with the Mock
+    resolution of the same manifest.
+    """
+
+    from datetime import datetime
+
+    anchor = datetime.fromisoformat(PARITY_ANCHOR_ISO)
+    async with TestSessionLocal() as session:
+        await restore_manifest(session, scenario, anchor=anchor)
+        await session.commit()
+
+    manifest = load_manifest(scenario)
+    relationships = [rel for rel in manifest.get("relationships", []) if not rel.get("archived")]
+    # Both sides of the marketplace: an applicant's profile and a hiring
+    # identity's are assembled from different columns, so dumping one proves
+    # nothing about the other.
+    wanted: list[str] = []
+    for rel in relationships:
+        for key in ("talent_id", "recruiter_id"):
+            if rel[key] not in wanted:
+                wanted.append(rel[key])
+
+    by_id = {actor["id"]: actor for actor in manifest["actors"]}
+    profiles: dict[str, object] = {"scenario": scenario, "profiles": {}}
+    for actor_id in wanted[:40]:
+        actor = by_id.get(actor_id)
+        if not actor or actor.get("deactivated"):
+            continue
+        response = await client.get(f"/api/v1/users/{actor['username']}/public-profile")
+        # A suspended account is refused by design; that is the product working.
+        if response.status_code in (403, 404):
+            continue
+        assert response.status_code == 200, response.text
+        profiles["profiles"][actor["username"]] = response.json()
+
+    assert profiles["profiles"], f"no {scenario} profile could be served"
+
+    DUMP_DIR.mkdir(parents=True, exist_ok=True)
+    (DUMP_DIR / f"{scenario}.profiles.json").write_text(
+        json.dumps(profiles, indent=2, sort_keys=True), encoding="utf-8"
+    )

@@ -49,15 +49,35 @@ async function openRecruiterInbox(page: Page) {
   });
 }
 
-test("the recommended action is reachable without ever opening the overflow menu", async ({ page }) => {
+test("what to do next is reachable without ever opening the overflow menu", async ({ page }) => {
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
 
+  /*
+    Two legitimate shapes, and the overflow menu is neither.
+
+    A well-evidenced recommendation is a labelled primary button. Where the
+    ladder is not confident there is deliberately no button at all — the
+    workspace used to render "Choose next step" there, which named an action it
+    could not describe and, with the decision flag off, did nothing when
+    pressed. What stands in its place is the decision surface itself, offering
+    the real choices rather than a euphemism for them.
+  */
   const primary = page.getByTestId("next-action-primary");
-  await expect(primary).toBeVisible();
-  // The overflow menu must not have been opened to get here.
+  const strip = page.getByTestId("decision-strip");
+  await expect
+    .poll(async () => (await primary.count()) + (await strip.count()))
+    .toBeGreaterThan(0);
+
+  if ((await primary.count()) > 0) {
+    await expect(primary).toBeVisible();
+    await expect(primary).not.toHaveText("");
+  } else {
+    await expect(strip).toBeVisible();
+    await expect(strip.locator('[data-testid^="decision-strip-option-"]').first()).toBeVisible();
+  }
+  // Nothing above required opening a menu.
   await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(primary).not.toHaveText("");
 });
 
 test("a low-confidence recommendation offers a choice instead of guessing an outcome", async ({ page }) => {
@@ -65,23 +85,28 @@ test("a low-confidence recommendation offers a choice instead of guessing an out
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
 
   const primary = page.getByTestId("next-action-primary");
-  const actionKey = await primary.getAttribute("data-action-key");
-
-  if (actionKey === "choose-next-step") {
-    await expect(primary).toHaveText("Choose next step");
-    await primary.click();
-    // It opens the decision surface rather than committing anything.
+  if ((await primary.count()) === 0) {
+    // No recommendation the system can stand behind, so it makes none — and the
+    // decision surface asks instead of guessing.
     await expect(page.getByTestId("decision-strip")).toBeVisible();
-  } else {
-    // Any other recommendation must be one of the well-evidenced ones.
-    expect([
-      "reply",
-      "record-decision",
-      "share-decision",
-      "confirm-start",
-      "resolve-legacy-stage",
-    ]).toContain(actionKey);
+    return;
   }
+
+  const actionKey = await primary.getAttribute("data-action-key");
+  // A guess must never reach the header. "Choose next step" in particular is
+  // gone: a recommendation the system cannot make is better expressed by not
+  // making one.
+  expect(actionKey).not.toBe("choose-next-step");
+  // Reply is deliberately absent: the composer is pinned below with the
+  // person's name in its placeholder, so a header button that focused it was
+  // the same click twice.
+  expect([
+    "record-decision",
+    "share-decision",
+    "confirm-start",
+    "confirm-interview",
+    "resolve-legacy-stage",
+  ]).toContain(actionKey);
 });
 
 test("the decision surface never covers the composer and never steals focus", async ({ page }) => {
@@ -266,26 +291,53 @@ test("the recommended action is operable by keyboard", async ({ page }) => {
   await openRecruiterInbox(page);
   await page.getByTestId("interaction-row").filter({ hasText: "Priya Nair" }).first().click();
 
+  /*
+    Whichever of the two surfaces this record gets, it has to be operable from
+    the keyboard — that is the claim, not that a particular button exists.
+  */
   const primary = page.getByTestId("next-action-primary");
-  await expect(primary).toBeVisible();
-  await primary.focus();
-  await expect(primary).toBeFocused();
-  await primary.press("Enter");
-  // Something observable must happen — never a silent no-op. Which outcome is
-  // correct depends on the recommendation, so accept any legitimate one.
+  const control =
+    (await primary.count()) > 0
+      ? primary
+      : // A decision *option*, not merely the first button in the strip — that
+        // one is the dismiss control, and dismissing is the one outcome this
+        // test cannot tell apart from a silent no-op.
+        page.getByTestId("decision-strip").locator('[data-testid^="decision-strip-option-"]').first();
+  await expect(control).toBeVisible();
+  const headerBefore = (await page.getByTestId("applications-detail-header").innerText()).replace(/\s+/g, "");
+  await control.focus();
+  await expect(control).toBeFocused();
+  await control.press("Enter");
+
+  /*
+    Something observable must happen — never a silent no-op. Which outcome is
+    correct depends on the recommendation, and "a surface opened" is only some
+    of them: taking a decision option can *commit* a stage instead, which shows
+    up as the header changing rather than as anything appearing. Both count.
+  */
   await expect
     .poll(async () => {
-      const [strip, notify, dialog, menu] = await Promise.all([
+      const [strip, notify, dialog, menu, scheduler] = await Promise.all([
         page.getByTestId("decision-strip").count(),
         page.getByTestId("stage-notify-prompt").count(),
         page.getByRole("dialog").count(),
         page.getByRole("menu").count(),
+        page.getByTestId("interview-scheduler").count(),
       ]);
       const composerFocused = await page
         .getByRole("textbox", { name: "Reply message" })
         .evaluate((node) => node === document.activeElement)
         .catch(() => false);
-      return strip + notify + dialog + menu > 0 || composerFocused;
+      const headerNow = (await page
+        .getByTestId("applications-detail-header")
+        .innerText()
+        .catch(() => ""))
+        .replace(/\s+/g, "");
+      return (
+        strip + notify + dialog + menu + scheduler > 0 ||
+        composerFocused ||
+        (headerNow.length > 0 && headerNow !== headerBefore)
+      );
     })
     .toBe(true);
 });
@@ -392,8 +444,14 @@ test("Star is private, durable, and independent per participant", async ({ page 
   await expect(star).toHaveAttribute("aria-pressed", "false");
   await star.click();
   await expect(star).toHaveAttribute("aria-pressed", "true");
-  // A quiet row marker, not a badge cluster.
-  await expect(row.getByTestId("row-starred")).toBeVisible();
+  /*
+    A quiet row marker, not a badge cluster — and it lives on the row's Star
+    control rather than beside the timestamp, because a readout in one place and
+    the control in another was the same fact drawn twice. The control is a
+    sibling of the row button (a button may not nest inside one), so it is
+    addressed through the row's wrapper.
+  */
+  await expect(row.locator("xpath=..").getByTestId("row-starred")).toBeVisible();
 
   // Durable across a full reload.
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -451,16 +509,37 @@ test("queues filter the list and only advertise work that exists", async ({ page
   const everything = page.getByTestId("queue-chip-all");
   await expect(everything).toHaveAttribute("aria-checked", "true");
 
-  const queues = menu.getByRole("menuitemradio").filter({ hasNotText: /^Everything$/ });
+  /*
+    The menu lists every category, not only the ones with work in them — that is
+    the point of the exhaustive model: the parts add up to Everything, and a
+    category at zero is information ("nothing is snoozed") rather than an
+    omission. So the filtering claim is made against the first category that
+    actually has records.
+  */
+  /*
+    Addressed by key, not by excluding the text "Everything". That exclusion was
+    written when the Everything row was exactly that word; it since grew a
+    count — the denominator the categories add up to — and `/^Everything$/`
+    stopped matching "Everything190", so the row it was meant to skip became the
+    first "queue" the test picked and selected, which clears the filter instead
+    of applying one.
+  */
+  const queues = menu.locator('[data-queue-key]:not([data-queue-key="all"])');
   const count = await queues.count();
-  expect(count, "at least one queue should have work").toBeGreaterThan(0);
+  expect(count, "the menu should offer categories").toBeGreaterThan(0);
 
-  // Every queue advertises a non-zero count and filters to exactly that many rows.
-  const first = queues.first();
-  const label = await first.innerText();
-  const advertised = Number.parseInt((label.match(/(\d+)\s*$/) ?? ["", "0"])[1], 10);
-  expect(advertised).toBeGreaterThan(0);
+  const advertisedOf = async (index: number) =>
+    Number.parseInt((await queues.nth(index).getAttribute("data-queue-count")) ?? "0", 10);
+  let index = 0;
+  let advertised = await advertisedOf(index);
+  while (advertised === 0 && index < count - 1) {
+    index += 1;
+    advertised = await advertisedOf(index);
+  }
+  expect(advertised, "no category advertised any work at all").toBeGreaterThan(0);
+  const first = queues.nth(index);
 
+  // The category filters to exactly the number it advertises.
   await first.click();
   await expect(page.getByTestId("interaction-row")).toHaveCount(advertised);
   // Active, the queue names itself on the trigger and grows its own clear.
@@ -473,7 +552,7 @@ test("queues filter the list and only advertise work that exists", async ({ page
 
   // And "Everything" inside the menu does the same job for anyone already there.
   await page.getByTestId("queue-selector-trigger").click();
-  await queues.first().click();
+  await queues.nth(index).click();
   await expect(page.getByTestId("interaction-row")).toHaveCount(advertised);
   await page.getByTestId("queue-selector-trigger").click();
   await page.getByTestId("queue-chip-all").click();

@@ -26,6 +26,7 @@ import {
   type ScenarioManifest,
   type ManifestRelationship,
 } from "./manifestTypes.ts";
+import type { ScreeningAnswerSnapshot, ScreeningQuestionSnapshot } from "../messaging.ts";
 
 export class ManifestVersionError extends Error {}
 
@@ -267,9 +268,20 @@ export function toOwnerInteraction(
 
   const job = creatorFactsFor(manifest, rel.job_id ?? undefined);
   const messages = [...(rel.messages ?? [])].sort((a, b) => a.offset_seconds - b.offset_seconds);
-  // The opening is rendered from `message` + the structured answers; everything
-  // after it is the back-and-forth.
-  const rest = messages.slice(1);
+  /*
+    The opening is rendered from `message` + the structured answers; everything
+    else is the back-and-forth.
+
+    It has to be the first *plain* message rather than simply the first one. A
+    screened application's thread opens with the questions the hiring side
+    asked, and folding that into the record's opening message would flatten a
+    structured card into the applicant's own words — and lose it from the thread
+    entirely.
+  */
+  const openingIndex = messages.findIndex(
+    (message) => !message.kind || message.kind === "text"
+  );
+  const rest = messages.filter((_, index) => index !== openingIndex);
   const asThreadMessage = (message: (typeof messages)[number]) => {
     const fromMe = asRecruiter ? message.sender_id === recruiter.id : message.sender_id === talent.id;
     return {
@@ -277,6 +289,27 @@ export function toOwnerInteraction(
       body: message.body,
       sentAt: iso(anchor, message.offset_seconds),
       ...(message.kind === "status" ? { kind: "status" as const } : {}),
+      // The two structured kinds the Inbox renders natively rather than as
+      // prose: the screening questions the hiring side asked, and the answers
+      // that came back against that snapshot.
+      ...(message.kind === "screening_questions"
+        ? {
+            kind: "screening" as const,
+            screening: {
+              automated: true,
+              questions: (message.metadata?.questions ?? []) as ScreeningQuestionSnapshot[],
+            },
+          }
+        : {}),
+      ...(message.kind === "screening_answers"
+        ? {
+            kind: "screening-answers" as const,
+            screeningAnswers: {
+              answers: (message.metadata?.answers ?? []) as ScreeningAnswerSnapshot[],
+              answeredAt: iso(anchor, message.offset_seconds),
+            },
+          }
+        : {}),
     };
   };
 
@@ -325,7 +358,7 @@ export function toOwnerInteraction(
     // first bubble, and the list row already prefers the newest reply for its
     // snippet — so using the last message here put the end of the conversation
     // at the top of it.
-    message: messages[0]?.body ?? rel.cover_note ?? "",
+    message: (openingIndex >= 0 ? messages[openingIndex]?.body : undefined) ?? rel.cover_note ?? "",
     job: job
       ? {
           jobId: rel.job_id ?? null,

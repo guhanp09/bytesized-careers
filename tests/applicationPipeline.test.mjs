@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  HEADER_FILLED_ACTIONS,
+  HEADER_SECONDARY_ACTIONS,
+  headerActionWeight,
   backendStatusOf,
   bulkStageTargetsFor,
   directionLabelsFor,
@@ -353,4 +356,44 @@ test("first-message lines condense the listing owner's requirements as answered"
   // No structured answers → no lines (the card falls back to the "First message" label).
   assert.deepEqual(pipelineFirstMessageLines({ kind: "application", firstMessageAnswers: null }), []);
   assert.deepEqual(pipelineFirstMessageLines({ kind: "application", firstMessageAnswers: {} }), []);
+});
+
+/* ---- which recommendations reach the header, and how loudly ------------- */
+
+test("reply never reaches the header, because the composer is already there", () => {
+  // The pinned composer names the person in its placeholder. A filled button
+  // whose whole effect is to focus it was the loudest control in the workspace
+  // spending most of its life duplicating one already on screen.
+  assert.equal(headerActionWeight("reply"), null);
+});
+
+test("the loud weight is reserved for actions somebody else is waiting on", () => {
+  for (const key of ["confirm-interview", "confirm-start", "share-decision", "resolve-legacy-stage"]) {
+    assert.equal(headerActionWeight(key), "filled", `${key} should be filled`);
+  }
+});
+
+test("recording a decision is real work at your own pace, so it is secondary", () => {
+  assert.equal(headerActionWeight("record-decision"), "secondary");
+});
+
+test("the retired neutral fallback has no weight at all", () => {
+  assert.equal(headerActionWeight("choose-next-step"), null);
+});
+
+test("every action the ladder can return has an explicit verdict", () => {
+  // A new rung must be classified deliberately rather than defaulting to
+  // invisible, which is how a genuinely urgent action would go missing.
+  const known = new Set([
+    "resolve-legacy-stage",
+    "confirm-interview",
+    "confirm-start",
+    "share-decision",
+    "record-decision",
+    "reply",
+    "choose-next-step",
+  ]);
+  for (const key of [...HEADER_FILLED_ACTIONS, ...HEADER_SECONDARY_ACTIONS]) {
+    assert.ok(known.has(key), `${key} is placed in the header but is not a ladder rung`);
+  }
 });

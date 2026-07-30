@@ -2,35 +2,100 @@
   "actors": [
     {
       "availability": "available",
+      "availability_status": "available",
+      "bio": "I cut vertical for retention, not for polish. Most of my work is finding the four seconds that hold someone and building the rest of the clip around it — hook first, then pacing, then everything else.",
       "deactivated": false,
       "display_name": "Aarav Mehta",
       "email": "empty-talent00000@scenario.invalid",
       "experience_years": 0,
+      "formats": [
+        "Shorts/Reels",
+        "Hooks",
+        "Repurposed clips",
+        "Captions"
+      ],
       "headline": "Shorts editor for creator-led channels",
       "id": "4f647a92-2dbb-5d5b-b7c1-6e384485dba9",
+      "languages": [
+        "English",
+        "Hindi"
+      ],
       "location": "Remote",
+      "niches": [
+        "Fitness"
+      ],
+      "platforms": [
+        "youtube_shorts",
+        "tiktok",
+        "instagram_reels"
+      ],
+      "public_links": [
+        "https://folio.scenario.invalid/shorts-00000"
+      ],
       "rate_currency": "INR",
       "rate_max": 4000,
       "rate_min": 1500,
+      "roles": [
+        "Shorts editor"
+      ],
       "sides": [
         "talent"
       ],
-      "username": "emp-t00000"
+      "skills": [
+        "Short-form editing",
+        "Hook writing",
+        "Pacing",
+        "Sound design",
+        "Captioning"
+      ],
+      "timezone": "Asia/Kolkata",
+      "tools": [
+        "Premiere Pro",
+        "CapCut",
+        "After Effects",
+        "Descript"
+      ],
+      "turnaround": "Two to three days for a long-form cut, same-day for shorts",
+      "username": "emp_t00000",
+      "verification_status": "verified",
+      "work_mode": "Remote",
+      "working_hours": "Mornings IST, overlapping with EU afternoons"
     },
     {
+      "audience_band": "250K–500K subscribers",
+      "availability_status": "selective",
+      "bio": "Finance Simplified covers finance for an audience of 412,000, publishing 2 videos/week. Briefs are written before anyone is approached, and the same person stays on a project to delivery.",
       "channel_handle": "financesimplified",
       "deactivated": false,
+      "description": "An independent channel working with a small regular bench of editors and designers rather than a rotating pool.",
       "display_name": "Finance Simplified",
       "email": "empty-financesimplified@scenario.invalid",
       "employer_kind": "creator",
+      "formats": [
+        "Long-form video",
+        "Thumbnails"
+      ],
+      "headline": "Creator · Finance",
       "id": "98d1c336-356f-5aa8-b2b2-30394c34bf99",
       "location": "Remote",
+      "niches": [
+        "Finance"
+      ],
+      "platforms": [
+        "youtube"
+      ],
+      "public_links": [
+        "https://financesimplified.scenario.invalid"
+      ],
       "sides": [
         "recruiter"
       ],
       "subscribers": 412000,
+      "timezone": "Asia/Kolkata",
       "upload_cadence": "2 videos/week",
-      "username": "emp-financesimplified"
+      "username": "emp_financesimplifie",
+      "verification_status": "verified",
+      "work_mode": "Remote"
     }
   ],
   "description": "Authenticated, with genuinely nothing in the workspace.",
@@ -49,5 +114,5 @@
     "portfolio_items": 0,
     "relationships": 0
   },
-  "version": 1
+  "version": 2
 }

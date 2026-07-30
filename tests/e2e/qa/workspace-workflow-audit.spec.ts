@@ -58,6 +58,25 @@ async function openCandidate(page: Page, name: string) {
 
 /* --- 1. Deliberate open records Reviewing, privately ---------------------- */
 
+/**
+ * Bring the decision surface up.
+ *
+ * It opens itself on the first deliberate open of a record that still needs a
+ * decision — that is the product model, and it is how a user meets it. The
+ * header's primary button used to be a second route via "Choose next step", a
+ * label that named an action it could not describe; it was removed, so this
+ * presses the primary only when the ladder is confident enough to have rendered
+ * one, and otherwise waits for the surface that is already on its way.
+ */
+async function openDecisionSurface(page: Page) {
+  const strip = page.getByTestId("decision-strip");
+  if (await strip.isVisible().catch(() => false)) return strip;
+  const primary = page.getByTestId("next-action-primary");
+  if ((await primary.count()) > 0) await primary.click();
+  await expect(strip).toBeVisible({ timeout: 20_000 });
+  return strip;
+}
+
 test("opening a new application records Reviewing without telling the applicant", async ({ page }) => {
   await asRecruiter(page);
   const target = page.getByTestId("interaction-row").filter({ hasText: "Needs review" }).first();
@@ -99,6 +118,8 @@ test("Star and private notes are invisible to the other participant", async ({ p
   await rows.first().click();
   // Neither the note nor any trace of the star appears on the counterparty side.
   await expect(page.getByText(note)).toHaveCount(0);
+  // The readout lives on the row's own Star control, which is only marked when
+  // the record is starred — so "nothing is starred" is still assertable.
   await expect(page.getByTestId("row-starred")).toHaveCount(0);
 });
 
@@ -131,7 +152,7 @@ test("the whole interview arc runs across both sides and never decides for anyon
   await asRecruiter(page);
   await openCandidate(page, "Priya Nair");
 
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   const when = new Date(Date.now() + 4 * 86_400_000);
   await page
@@ -209,14 +230,25 @@ test("a private Not proceeding is held back until the recruiter chooses to send 
 test("Inbox and Pipeline never disagree about what a record needs", async ({ page }) => {
   await asRecruiter(page);
   await openCandidate(page, "Priya Nair");
-  const inboxAction = await page.getByTestId("next-action-primary").textContent().catch(() => null);
+  /*
+    A short, explicit budget. Without one this waits the whole test timeout for
+    an element that may legitimately never appear — a record the ladder is not
+    confident about carries no primary at all — so "there is no recommendation
+    here" cost forty-five seconds and read as a hang.
+  */
+  const inboxAction = await page
+    .getByTestId("next-action-primary")
+    .textContent({ timeout: 2_000 })
+    .catch(() => null);
 
   await page.getByTestId("applications-view-pipeline").click();
   await expect(page.getByTestId("pipeline-board")).toBeVisible();
 
   if (inboxAction) {
     // The same recommendation, in the same words, from the same derivation.
-    const card = page.getByTestId("pipeline-card").filter({ hasText: "Priya Nair" }).first();
+    // `pipeline-row` is what the board actually renders; the old `pipeline-card`
+    // matched nothing, so this comparison had quietly never run.
+    const card = page.getByTestId("pipeline-row").filter({ hasText: "Priya Nair" }).first();
     if (await card.isVisible().catch(() => false)) {
       await expect(card).toContainText(inboxAction.trim());
     }

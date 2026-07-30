@@ -1351,3 +1351,12 @@ so a spec that reaches a record is a spec whose record a user could reach.
   restore both depend on — worth doing, deliberately out of scope here.
 - **Loading every page does put every row in the DOM**, by design. The bound is
   on what renders before you ask, not on what you can ask for.
+
+## Where the visual design lives
+
+This document covers the *Effortless Status* product model — the queue
+derivation, the action ladder, the six state planes, bounded rendering. The
+conversation list's hierarchy, the thread's sender grouping and the Pipeline
+card's fixed-track layout are a separate concern with separate reasoning, and
+they live in [MESSAGING_UX_DECISIONS.md](MESSAGING_UX_DECISIONS.md) rather than
+being restated here.

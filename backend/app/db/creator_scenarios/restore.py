@@ -28,20 +28,41 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.core.security import hash_password
 from app.models import (
     Conversation,
     Job,
     JobApplication,
     Message,
+    PortfolioItem,
     TalentInterest,
     TalentListing,
     User,
+    UserContentStyle,
 )
+from app.models.job_import import JobImportDraft, JobImportSource
 from app.models.review import Engagement
 
 from .schema import SCENARIO_NAMES, scenario_id
 from .validation import ManifestError, check_version
+
+
+def _duration_label(seconds: object) -> str | None:
+    """Seconds as the product already writes durations: `m:ss`, or `h:mm:ss`.
+
+    The manifest stores an integer so both consumers format it themselves. This
+    matches `youtube_service`'s label exactly — a second duration format in the
+    same column would be indistinguishable from corrupt data.
+    """
+
+    if not isinstance(seconds, int) or seconds <= 0:
+        return None
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 #: Where the committed manifests live, relative to this package.
 MANIFEST_DIR = Path(__file__).resolve().parents[4] / "fixtures" / "creator_scenarios" / "generated"
@@ -152,16 +173,38 @@ async def restore_manifest(
         await session.execute(delete(JobApplication).where(JobApplication.id.in_(rel_ids)))
         await session.execute(delete(TalentInterest).where(TalentInterest.id.in_(rel_ids)))
     if job_ids:
+        # Drafts and their sources first: both point at rows below them.
+        await session.execute(
+            delete(JobImportDraft).where(JobImportDraft.target_job_id.in_(job_ids))
+        )
+        await session.execute(
+            delete(JobImportSource).where(
+                JobImportSource.id.in_([UUID(scenario_id("import-source", str(j))) for j in job_ids])
+            )
+        )
         await session.execute(delete(Job).where(Job.id.in_(job_ids)))
     if actor_ids:
         await session.execute(delete(TalentListing).where(TalentListing.owner_user_id.in_(actor_ids)))
+        # Both cascade from `users`, but restore is also run against databases
+        # where a previous scenario left rows behind, so they are swept by hand
+        # in dependency order rather than trusted to the FK.
+        await session.execute(delete(PortfolioItem).where(PortfolioItem.user_id.in_(actor_ids)))
+        await session.execute(delete(UserContentStyle).where(UserContentStyle.user_id.in_(actor_ids)))
     if actor_ids:
         await session.execute(delete(User).where(User.id.in_(actor_ids)))
     await session.flush()
 
     # --- actors -------------------------------------------------------------
+    #
+    # The manifest names its profile fields after the *product* concept, not
+    # after a column, because the same file is read by the frontend. So this is
+    # a translation, not a copy — and the backend splits talent-side from
+    # recruiter-side metadata (`creator_platforms` vs `hiring_platforms`,
+    # content style vs `hiring_niches`), which the manifest deliberately does
+    # not. Which side an actor's lists belong to is decided here, by `sides`.
     password = hash_password(SCENARIO_PASSWORD)
     for actor in actors:
+        hires = "recruiter" in (actor.get("sides") or [])
         session.add(
             User(
                 id=UUID(actor["id"]),
@@ -173,10 +216,49 @@ async def restore_manifest(
                 headline=actor.get("headline"),
                 avatar_url=actor.get("avatar_url"),
                 location=actor.get("location"),
+                bio=actor.get("bio"),
+                timezone=actor.get("timezone"),
+                availability_status=actor.get("availability_status") or "selective",
+                availability=actor.get("availability"),
+                skills=list(actor.get("skills") or []),
+                public_links=list(actor.get("public_links") or []),
+                # `collaboration_tools` is one free-text line in the product, so
+                # the list is joined rather than silently truncated to its head.
+                collaboration_tools=", ".join(actor.get("tools") or []) or None,
+                collaboration_turnaround=actor.get("turnaround"),
+                collaboration_working_hours=actor.get("working_hours"),
+                work_mode=actor.get("work_mode"),
+                creator_platforms=[] if hires else list(actor.get("platforms") or []),
+                hiring_platforms=list(actor.get("platforms") or []) if hires else [],
+                hiring_niches=list(actor.get("niches") or []) if hires else [],
+                hiring_formats=list(actor.get("formats") or []) if hires else [],
+                hiring_channels_or_pages_managed=actor.get("description") if hires else None,
+                hiring_verification_status=actor.get("verification_status") or "unverified",
                 # A deactivated account is modelled as suspended, which is what
                 # the product actually has — there is no separate `is_active`.
                 suspended_at=at if actor.get("deactivated") else None,
                 suspension_reason="Deactivated scenario fixture" if actor.get("deactivated") else None,
+            )
+        )
+    await session.flush()
+
+    # A talent's niche and formats live in their content style, which is a
+    # separate row. Skipping it left the public profile's "what I make" section
+    # empty on the backend path while Mock mode filled it in.
+    for actor in actors:
+        if "recruiter" in (actor.get("sides") or []):
+            continue
+        niches = list(actor.get("niches") or [])
+        formats = list(actor.get("formats") or [])
+        if not niches and not formats:
+            continue
+        session.add(
+            UserContentStyle(
+                id=UUID(scenario_id("content-style", actor["id"])),
+                user_id=UUID(actor["id"]),
+                primary_niche=niches[0] if niches else None,
+                format=formats,
+                tone=[],
             )
         )
     await session.flush()
@@ -214,8 +296,52 @@ async def restore_manifest(
                 work_mode=job.get("work_mode"),
                 experience_level=job.get("experience"),
                 tags=job.get("tags", []),
+                # Private prompts the recruiter authored. Restored so the
+                # screened path is exercisable against a real backend, not only
+                # in Mock.
+                screening_questions=job.get("screening_questions") or None,
                 status="published" if job.get("status") != "closed" else "closed",
                 created_at=_instant(at, job.get("posted_offset", -86_400)),
+            )
+        )
+    await session.flush()
+
+    # Provenance is a relationship in this product, not a column: a listing is
+    # "imported" because an import draft points at it. Recorded the real way so
+    # the imported path is exercisable against a backend rather than only
+    # asserted in Mock mode. Written after the jobs are flushed, because the
+    # draft's foreign key needs the row it points at to already exist.
+    for job in jobs:
+        if job.get("origin") != "imported":
+            continue
+        posted = _instant(at, job.get("posted_offset", -86_400))
+        source_id = UUID(scenario_id("import-source", job["id"]))
+        session.add(
+            JobImportSource(
+                id=source_id,
+                owner_user_id=UUID(job["owner_id"]),
+                source_type="external_listing_text",
+                source_title=job["title"],
+                content_fingerprint=scenario_id("import-fingerprint", job["id"]).replace("-", ""),
+                processing_state="processed",
+                created_at=posted,
+                updated_at=posted,
+            )
+        )
+    await session.flush()
+    for job in jobs:
+        if job.get("origin") != "imported":
+            continue
+        posted = _instant(at, job.get("posted_offset", -86_400))
+        session.add(
+            JobImportDraft(
+                id=UUID(scenario_id("import-draft", job["id"])),
+                owner_user_id=UUID(job["owner_id"]),
+                source_id=UUID(scenario_id("import-source", job["id"])),
+                target_listing_schema_version=CURRENT_LISTING_SCHEMA_VERSION,
+                target_job_id=UUID(job["id"]),
+                created_at=posted,
+                updated_at=posted,
             )
         )
     await session.flush()
@@ -266,6 +392,43 @@ async def restore_manifest(
     # surface reads the answer, so storing ids alone left the backend path
     # showing an empty portfolio while Mock mode showed a full one.
     portfolio_by_id = {item["id"]: item for item in payload.get("portfolio", [])}
+
+    # The same items as real rows. The answer payload above is what an
+    # *application* shows; these are what the applicant's own profile shows.
+    # Only the first existed, so every canonical profile reached from a review
+    # displayed no work at all — on the one page whose entire job is to show it.
+    for item in payload.get("portfolio", []):
+        owner_id = item.get("owner_id")
+        if not owner_id or owner_id not in actor_by_id:
+            continue
+        session.add(
+            PortfolioItem(
+                id=UUID(item["id"]),
+                user_id=UUID(owner_id),
+                source_type="custom",
+                source_url=item.get("url"),
+                title=item["title"],
+                description=item.get("description"),
+                contribution_summary=item.get("contribution"),
+                role=item.get("role"),
+                role_name=item.get("role"),
+                media_url=item.get("url"),
+                thumbnail_url=item.get("thumbnail_url"),
+                duration=_duration_label(item.get("duration_seconds")),
+                tools=list(item.get("tools") or []),
+                platforms=[item["platform"]] if item.get("platform") else [],
+                formats=[item["format"]] if item.get("format") else [],
+                content_niches=[item["niche"]] if item.get("niche") else [],
+                visibility="public",
+                is_public=True,
+                publish_status="published",
+                portfolio_status="now",
+                status="now",
+                created_at=at,
+                updated_at=at,
+            )
+        )
+    await session.flush()
 
     def _first_message_answers(rel: dict[str, Any]) -> dict[str, Any]:
         """Everything the requester submitted, in one field.
@@ -398,6 +561,12 @@ async def restore_manifest(
                         conversation_id=UUID(message["conversation_id"]),
                         sender_user_id=UUID(message["sender_id"]) if message.get("sender_id") else None,
                         body=message["body"],
+                        # The curated structured payload for the message kinds
+                        # the Inbox renders natively — the screening question
+                        # snapshot and the answers to it. Everything else keeps
+                        # an empty metadata object, exactly as a plain message
+                        # posted through the service would.
+                        metadata_json=message.get("metadata") or {},
                         # Direct: see DIRECT_INSERTIONS["conversation.messages"].
                         created_at=_instant(at, message["offset_seconds"]),
                     )

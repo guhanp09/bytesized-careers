@@ -68,13 +68,32 @@ async function sendInvitation(page: Page, opts: { daysAhead: number; note?: stri
   return date;
 }
 
+/**
+ * Bring the decision surface up.
+ *
+ * It opens itself on the first deliberate open of a record that still needs a
+ * decision — that is the product model, and it is how a user meets it. The
+ * header's primary button used to be a second route via "Choose next step", a
+ * label that named an action it could not describe; it was removed, so this
+ * presses the primary only when the ladder is confident enough to have rendered
+ * one, and otherwise waits for the surface that is already on its way.
+ */
+async function openDecisionSurface(page: Page) {
+  const strip = page.getByTestId("decision-strip");
+  if (await strip.isVisible().catch(() => false)) return strip;
+  const primary = page.getByTestId("next-action-primary");
+  if ((await primary.count()) > 0) await primary.click();
+  await expect(strip).toBeVisible({ timeout: 20_000 });
+  return strip;
+}
+
 test("inviting to interview asks for a real time before anything is sent", async ({ page }) => {
   await openRecruiterInbox(page);
   await openCandidate(page, "Priya Nair");
 
   // The invitation is reached the way a user reaches it — from the decision
   // surface, not from a menu of raw stage names.
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   const invite = page.getByTestId("decision-strip-option-interviewing");
   await expect(invite).toHaveText(/Invite to interview/);
   await invite.click();
@@ -100,7 +119,7 @@ test("inviting to interview asks for a real time before anything is sent", async
 test("a time in the past is refused with a reason rather than silently failing", async ({ page }) => {
   await openRecruiterInbox(page);
   await openCandidate(page, "Priya Nair");
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
 
   await page.getByTestId("interview-date").fill("2020-01-01");
@@ -116,7 +135,7 @@ test("a time in the past is refused with a reason rather than silently failing",
 test("the applicant sees the arrangement and can confirm it", async ({ page }) => {
   await openRecruiterInbox(page);
   await openCandidate(page, "Priya Nair");
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   await sendInvitation(page, { daysAhead: 4 });
   await expect(page.getByTestId("interview-card")).toBeVisible({ timeout: 20_000 });
@@ -154,7 +173,7 @@ test("the applicant sees the arrangement and can confirm it", async ({ page }) =
 test("moving an interview keeps the stage and tells the applicant what changed", async ({ page }) => {
   await openRecruiterInbox(page);
   await openCandidate(page, "Priya Nair");
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   await sendInvitation(page, { daysAhead: 3 });
   await expect(page.getByTestId("interview-card")).toBeVisible({ timeout: 20_000 });
@@ -177,7 +196,7 @@ test("moving an interview keeps the stage and tells the applicant what changed",
 test("cancelling an interview never quietly decides about the person", async ({ page }) => {
   await openRecruiterInbox(page);
   await openCandidate(page, "Priya Nair");
-  await page.getByTestId("next-action-primary").click();
+  await openDecisionSurface(page);
   await page.getByTestId("decision-strip-option-interviewing").click();
   await sendInvitation(page, { daysAhead: 5 });
   await expect(page.getByTestId("interview-card")).toBeVisible({ timeout: 20_000 });
@@ -228,15 +247,16 @@ test("an emptied queue explains itself and offers the way back", async ({ page }
   await openRecruiterInbox(page);
   await expect(page.getByTestId("applications-workspace")).toBeVisible({ timeout: 20_000 });
 
-  // "Saved" is the one queue that is reliably empty on a fresh scenario, so
-  // starring a record is what brings it into existence.
+  // "Starred" is the one category that is reliably empty on a fresh scenario, so
+  // starring a record is what puts anything in it. It was called "Saved" until
+  // the category model was made exhaustive; the label now matches the control.
   await page.getByTestId("interaction-row").first().click();
   await page.getByTestId("star-toggle").click();
 
   await page.getByTestId("queue-selector-trigger").click({ timeout: 20_000 });
   await expect(page.getByTestId("queue-chip-starred")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("queue-chip-starred").click();
-  await expect(page.getByTestId("queue-selector-trigger")).toContainText("Saved");
+  await expect(page.getByTestId("queue-selector-trigger")).toContainText("Starred");
 
   // Empty the queue from under the user, while they are standing in it.
   await page.getByTestId("star-toggle").click();

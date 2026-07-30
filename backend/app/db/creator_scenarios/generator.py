@@ -13,14 +13,17 @@ scenario or a pool entry does not renumber the records in the others.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from . import pools
 from .heroes import DAY, HEROES, HOUR, MINUTE
+from .validation import check_timezone_coverage, validate
 from .schema import (
     MANIFEST_VERSION,
     SCENARIO_NAMES,
@@ -52,6 +55,94 @@ SCENARIO_SEEDS: dict[str, int] = {
 #: already treats these as the canonical closed-job fixtures, and inventing new
 #: ones would leave the real constants untested.
 RETIRED_JOB_KEYS: tuple[str, ...] = ("job_25", "job_26")
+
+#: What each applicant to a since-closed job actually wrote. Four distinct
+#: lines, because these records are the oldest in the corpus and therefore sit
+#: next to each other however the list is sorted.
+RETIRED_JOB_OPENERS: tuple[str, ...] = (
+    "Applying while this was still open — happy to hear either way.",
+    "I know this closed a while back. If you reopen it, I am still interested.",
+    "Sending this in before the deadline; my reel is linked on my profile.",
+    "Late to this one, but the format is exactly what I have been doing all year.",
+)
+
+
+def _handle(scenario: str, base: str) -> str:
+    """A username the *product* would accept, not merely one that looks like one.
+
+    The product's rule is `^[a-z0-9][a-z0-9_]{2,19}$` — no hyphens, twenty
+    characters. Every canonical handle used to be hyphenated, so the backend
+    refused all of them: `/users/{username}/public-profile` returned 404 for
+    every scenario account, and only the Mock path — which does its own
+    matching — ever appeared to work. Minted here so the whole corpus is
+    routable by construction; `validation.py` checks it against the real regex.
+    """
+
+    prefix = scenario[:3]
+    cleaned = re.sub(r"[^a-z0-9]", "", base.lower())
+    return f"{prefix}_{cleaned[: 20 - len(prefix) - 1]}"
+
+
+def _timezone_for(location: str, slot: int) -> str:
+    """A real timezone for every location, including "Remote"."""
+    known = pools.TIMEZONES.get(location)
+    if known:
+        return known
+    return pools.REMOTE_TIMEZONES[slot % len(pools.REMOTE_TIMEZONES)]
+
+
+def _channel_bio(name: str, niche: str, subscribers: int, cadence: str | None) -> str:
+    """What the channel says about itself, as distinct from what kind of employer it is.
+
+    `description` explains the *kind* of account ("an independent channel…") and
+    is shared by every account of that kind. The bio has to be about this one
+    channel, or the profile prints the same paragraph twice under two headings.
+    """
+    rhythm = f"publishing {cadence}" if cadence else "publishing in seasons rather than to a fixed schedule"
+    return (
+        f"{name} covers {niche.lower()} for an audience of {subscribers:,}, {rhythm}. "
+        "Briefs are written before anyone is approached, and the same person stays on a project to delivery."
+    )
+
+
+def _profile_projection(role: str, slot: int, location: str) -> dict[str, Any]:
+    """The profile fields a canonical actor carries, keyed off the role they lead with.
+
+    Every value here already has a home on the backend `User` row and is already
+    exposed by `PublicProfileResponse` — the manifest was simply unable to carry
+    it, which is why a canonical applicant used to resolve to an empty page.
+
+    Coherence is deliberate. The archetype supplies the skills, the stack those
+    skills are used in, and the surfaces the work ships on together, so a
+    subtitle specialist has languages and a channel manager has analytics tools
+    rather than everybody receiving the same plausible-looking soup.
+    """
+    archetype = pools.PROFILE_ARCHETYPES[role]
+    languages = list(archetype["languages"])  # type: ignore[arg-type]
+    return {
+        "bio": archetype["bio"],
+        "timezone": _timezone_for(location, slot),
+        "availability_status": ("available", "selective", "unavailable")[slot % 3],
+        "skills": list(archetype["skills"]),  # type: ignore[arg-type]
+        "tools": list(archetype["tools"]),  # type: ignore[arg-type]
+        "roles": [role],
+        "platforms": list(archetype["platforms"]),  # type: ignore[arg-type]
+        "formats": list(archetype["formats"]),  # type: ignore[arg-type]
+        "niches": [pools.NICHES[slot % len(pools.NICHES)]],
+        "languages": languages,
+        "turnaround": pools.TURNAROUND_NOTES[slot % len(pools.TURNAROUND_NOTES)],
+        "working_hours": pools.WORKING_HOURS[slot % len(pools.WORKING_HOURS)],
+        "work_mode": pools.WORK_MODES[slot % len(pools.WORK_MODES)],
+        # One real profile link per person. The invalid TLD is uniform and
+        # deliberate: nothing in a scenario should ever reach the network.
+        "public_links": [f"https://folio.scenario.invalid/{role.split()[0].lower()}-{slot:05d}"],
+        "verification_status": "verified" if slot % 5 == 0 else "unverified",
+    }
+
+
+def _evidence_kind(role: str) -> str:
+    """Which kind of artefact this role actually produces."""
+    return str(pools.PROFILE_ARCHETYPES[role]["evidence"])
 
 
 def _answer_set(kind: str, rel_id: str) -> dict[str, Any]:
@@ -94,7 +185,7 @@ class Builder:
     # --- actors -------------------------------------------------------------
 
     def recruiter(self, slot: int) -> Actor:
-        handle, name, kind, subs, cadence = pools.CHANNELS[slot % len(pools.CHANNELS)]
+        handle, name, kind, subs, cadence, niche = pools.CHANNELS[slot % len(pools.CHANNELS)]
         actor_id = scenario_id("actor", self.scenario, "recruiter", slot)
         if actor_id not in self.actors:
             self.actors[actor_id] = Actor(
@@ -102,7 +193,7 @@ class Builder:
                 # Scenario-scoped: usernames and emails are globally unique in
                 # the database, so two scenarios restored into one disposable DB
                 # must not collide.
-                username=f"{self.scenario[:3]}-{handle}",
+                username=_handle(self.scenario, handle),
                 display_name=name,
                 email=f"{self.scenario}-{handle}@scenario.invalid",
                 sides=["recruiter"],
@@ -111,6 +202,25 @@ class Builder:
                 subscribers=subs,
                 upload_cadence=cadence,
                 location=pools.LOCATIONS[slot % len(pools.LOCATIONS)][0],
+                timezone=_timezone_for(pools.LOCATIONS[slot % len(pools.LOCATIONS)][0], slot),
+                headline=f"{kind.replace('_', ' ').title()} · {niche}",
+                # A hiring identity nobody can read is a logo and a name. The
+                # description, band and platform context are what let a creator
+                # decide whether they want to work with this account at all.
+                description=pools.EMPLOYER_DESCRIPTIONS[kind],
+                audience_band=pools.audience_band_for(subs),
+                verification_status="verified" if slot % 3 != 2 else "unverified",
+                platforms=[pools.PLATFORMS[slot % len(pools.PLATFORMS)]],
+                niches=[niche],
+                formats=list(
+                    pools.PLATFORM_FORMATS.get(
+                        pools.PLATFORMS[slot % len(pools.PLATFORMS)], ("Long-form video",)
+                    )
+                )[:2],
+                public_links=[f"https://{handle}.scenario.invalid"],
+                bio=_channel_bio(name, niche, subs, cadence),
+                availability_status="selective",
+                work_mode=pools.WORK_MODES[slot % len(pools.WORK_MODES)],
             )
         return self.actors[actor_id]
 
@@ -127,7 +237,7 @@ class Builder:
             ]
             self.actors[actor_id] = Actor(
                 id=actor_id,
-                username=f"{self.scenario[:3]}-t{slot:05d}",
+                username=_handle(self.scenario, f"t{slot:05d}"),
                 display_name=display,
                 email=f"{self.scenario}-talent{slot:05d}@scenario.invalid",
                 sides=["talent"],
@@ -148,6 +258,7 @@ class Builder:
                 # Exact whole years. Spans 0 so "Less than 1 year" is exercised.
                 experience_years=slot % 9,
                 availability=("available", "selective", "unavailable")[slot % 3],
+                **_profile_projection(role, slot, location),
             )
         return self.actors[actor_id]
 
@@ -199,10 +310,23 @@ class Builder:
             # what really happens and what keeps ids unique.
             return existing[:count]
         ids: list[str] = list(existing)
+        # What this person's work actually looks like. A scriptwriter's evidence
+        # is scripts and a channel manager's is an audit; giving either a video
+        # reel to satisfy a count would be the corpus lying about the person.
+        role = (owner.roles or [pools.ROLES[slot % len(pools.ROLES)]])[0]
+        kind = _evidence_kind(role)
+        templates = pools.EVIDENCE_TEMPLATES[kind]
         for index in range(len(existing), count):
             item_id = scenario_id("portfolio", self.scenario, owner.id, index)
-            title = pools.PORTFOLIO_TITLES[(slot + index) % len(pools.PORTFOLIO_TITLES)]
-            media = ("video", "video", "image", "link")[(slot + index) % 4]
+            # Cycle the role's own templates rather than the shared title pool,
+            # so a five-item portfolio is five different pieces of the same
+            # person's work instead of five copies of one.
+            template = templates[(slot + index) % len(templates)]
+            title, description, contribution, media = template
+            if index >= len(templates):
+                # Past the template set, keep titles distinct rather than
+                # repeating: a duplicated title reads as a data bug, not depth.
+                title = f"{title} — {['second pass', 'series two', 'reshoot', 'follow-up'][index % 4]}"
             platform = pools.PLATFORMS[(slot + index) % len(pools.PLATFORMS)]
             # A third of items carry no thumbnail at all, which is the ordinary
             # case for an application's `relevant_portfolio` answer and the
@@ -222,11 +346,16 @@ class Builder:
                         else (f"https://thumbs.scenario.invalid/{item_id[:8]}.jpg" if has_thumb else None)
                     ),
                     thumbnail_broken=broken,
-                    duration_seconds=(180 + (slot + index) * 37) % 3600 if media == "video" else None,
+                    duration_seconds=(180 + (slot + index) * 37) % 3600 if media in ("video", "audio") else None,
                     platform=platform,
                     format=pools.PLATFORM_FORMATS.get(platform, ("Long-form video",))[0],
                     niche=pools.NICHES[(slot + index) % len(pools.NICHES)],
-                    role=pools.PORTFOLIO_ROLES[(slot + index) % len(pools.PORTFOLIO_ROLES)],
+                    role=contribution,
+                    # The part a reviewer actually reads before deciding to open
+                    # something. A strip of titles alone is a list of filenames.
+                    description=description,
+                    contribution=contribution,
+                    tools=list(pools.PROFILE_ARCHETYPES[role]["tools"])[:2],  # type: ignore[index]
                 )
             )
             ids.append(item_id)
@@ -247,14 +376,19 @@ class Builder:
         participant_stage: str | None,
         created: int,
         updated: int | None = None,
-        messages: list[tuple[str, int, str]] | None = None,
+        messages: list[tuple[Any, ...]] | None = None,
         portfolio_ids: list[str] | None = None,
         **extra: Any,
     ) -> Relationship:
         rel_id = scenario_id("relationship", self.scenario, key)
         conversation_id = scenario_id("conversation", self.scenario, key)
         built: list[Message] = []
-        for index, (who, offset, body) in enumerate(messages or []):
+        for index, entry in enumerate(messages or []):
+            # A fourth element carries a structured payload — the screening
+            # question snapshot, or the answers to it. Plain text stays a
+            # three-tuple so every existing caller reads unchanged.
+            who, offset, body = entry[0], entry[1], entry[2]
+            structured = entry[3] if len(entry) > 3 else None
             sender = recruiter.id if who == "recruiter" else (talent.id if who == "talent" else None)
             built.append(
                 Message(
@@ -263,8 +397,13 @@ class Builder:
                     sender_id=sender,
                     body=body,
                     offset_seconds=offset,
-                    kind="status" if who == "system" else "text",
+                    kind=(
+                        str(structured["message_kind"])
+                        if isinstance(structured, dict) and structured.get("message_kind")
+                        else "status" if who == "system" else "text"
+                    ),
                     read=True,
+                    metadata=dict(structured) if isinstance(structured, dict) else {},
                 )
             )
         rel = Relationship(
@@ -367,7 +506,7 @@ def _place_heroes(builder: Builder, *, recruiter_slot: int = 0) -> None:
     for index, hero in enumerate(HEROES):
         talent = builder.talent(200 + index)
         job = builder.job(recruiter, index) if hero["kind"] == "application" else None
-        portfolio_ids = builder.portfolio_for(talent, int(hero.get("portfolio", 0)), slot=index)
+        portfolio_ids = builder.portfolio_for(talent, max(2, int(hero.get("portfolio", 0))), slot=index)
         extra: dict[str, Any] = {}
         if hero.get("starred"):
             extra["starred"] = True
@@ -446,18 +585,33 @@ def _bulk(
         created = -((index % 45) + 1) * DAY - (index % 11) * HOUR
         messages: list[tuple[str, int, str]] = []
         if with_messages:
+            # Keyed by the record, not by its position.
+            #
+            # `index` restarts at zero for every job, so all sixteen jobs drew
+            # the same nine lines; and because the preview column shows the
+            # *last* message, and the inbox sorts by recency, identical
+            # sentences landed next to each other — six rows running, which
+            # reads as broken data long before anyone works out it is a modulo.
+            # Hashing the key spreads them, and — the reason `_answer_set`
+            # already does this — adding a relationship does not reshuffle the
+            # lines of the ones already generated.
+            line = int(hashlib.blake2s(f"{key_prefix}:{index}:{salt}".encode(), digest_size=4).hexdigest(), 16)
             messages.append(
-                ("talent", created, pools.APPLICANT_OPENERS[index % len(pools.APPLICANT_OPENERS)])
+                ("talent", created, pools.APPLICANT_OPENERS[line % len(pools.APPLICANT_OPENERS)])
             )
             if index % 3 == 0:
                 messages.append(
-                    ("recruiter", created + 6 * HOUR, pools.RECRUITER_FOLLOWUPS[index % len(pools.RECRUITER_FOLLOWUPS)])
+                    ("recruiter", created + 6 * HOUR, pools.RECRUITER_FOLLOWUPS[line % len(pools.RECRUITER_FOLLOWUPS)])
                 )
             if index % 5 == 0:
                 messages.append(
-                    ("talent", created + 9 * HOUR, pools.TALENT_FOLLOWUPS[index % len(pools.TALENT_FOLLOWUPS)])
+                    ("talent", created + 9 * HOUR, pools.TALENT_FOLLOWUPS[line % len(pools.TALENT_FOLLOWUPS)])
                 )
-        portfolio_count = (0, 1, 2, 3, 5, 8)[index % 6]
+        # Two is the floor for a portfolio-driven role in a normal scenario: one
+        # item is a claim, two is a body of work you can compare. Zero- and
+        # one-item records still exist — in `edge`, indexed, where the card
+        # anatomy without a portfolio is the thing under test.
+        portfolio_count = (2, 3, 2, 4, 5, 8)[index % 6]
         portfolio_ids = builder.portfolio_for(talent, portfolio_count, slot=index)
         rel = builder.relationship(
             key=f"{key_prefix}:{index}",
@@ -548,6 +702,246 @@ def _empty(builder: Builder) -> None:
     builder.talent(0)
 
 
+SCREENING_PROMPTS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "q1",
+        "position": 0,
+        "prompt": "Which edit of yours best shows your retention judgement, and what did you change?",
+        "required": True,
+        "response_guidance": "Name one project and what you actually did to it.",
+    },
+    {
+        "id": "q2",
+        "position": 1,
+        "prompt": "How many videos a week can you turn around at this length?",
+        "required": True,
+        "response_guidance": None,
+    },
+    {
+        "id": "q3",
+        "position": 2,
+        "prompt": "Anything else the hiring team should know?",
+        "required": False,
+        "response_guidance": None,
+    },
+)
+
+
+def _screening_exchange(
+    *,
+    asked_at: int,
+    answered_at: int | None,
+    responses: dict[int, str],
+) -> list[tuple[Any, ...]]:
+    """The two structured messages a screened application produces.
+
+    The questions are asked by the hiring side after the application; the
+    answers come back against that snapshot. Both are messages, because that is
+    where both participants already look — and because a message is immutable,
+    so editing the job later cannot rewrite what was already answered.
+    """
+    questions = [dict(entry) for entry in SCREENING_PROMPTS]
+    lines = ["A few questions from the hiring team:", ""]
+    for number, question in enumerate(questions, start=1):
+        lines.append(f"{number}. {question['prompt']}" + (" (Required)" if question["required"] else ""))
+    lines.extend(["", "Reply in this conversation with your answers."])
+    out: list[tuple[Any, ...]] = [
+        (
+            "recruiter",
+            asked_at,
+            "\n".join(lines),
+            {
+                "message_kind": "screening_questions",
+                "automated": True,
+                "snapshot_version": "scenario-v1",
+                "questions": questions,
+            },
+        )
+    ]
+    if answered_at is None:
+        return out
+    # Every asked question appears, answered or not: a skipped optional question
+    # has to be distinguishable from one that was never put.
+    answers = [
+        {
+            "position": question["position"],
+            "prompt": question["prompt"],
+            "required": question["required"],
+            "response": responses.get(question["position"], ""),
+            "answered": bool(responses.get(question["position"], "")),
+        }
+        for question in questions
+    ]
+    body_lines = ["Answers to your questions:", ""]
+    for number, answer in enumerate(answers, start=1):
+        body_lines.append(f"{number}. {answer['prompt']}")
+        body_lines.append(
+            f"   {answer['response'] or ('No answer' if answer['required'] else 'Skipped (optional)')}"
+        )
+    out.append(
+        (
+            "talent",
+            answered_at,
+            "\n".join(body_lines),
+            {
+                "message_kind": "screening_answers",
+                "snapshot_version": "scenario-v1",
+                "answers": answers,
+            },
+        )
+    )
+    return out
+
+
+def _screened_applications(builder: Builder) -> None:
+    """A job that screens, and the three answer states a reviewer must tell apart.
+
+    Complete answers, a skipped optional one, and questions still outstanding.
+    Without all three a reviewer cannot see that "no answer" and "not asked"
+    render differently, which is the whole point of listing every question.
+    """
+    recruiter = builder.recruiter(0)
+    job = builder.job(recruiter, 900)
+    job.title = "Long-form editor for a screened finance channel"
+    job.screening_questions = [dict(entry) for entry in SCREENING_PROMPTS]
+
+    # The same screening, on a listing that arrived through the importer rather
+    # than the post-job flow. Worth a fixture of its own because the importer is
+    # forbidden from authoring screening prompts: these were added by the
+    # recruiter afterwards, and a reviewer must not be able to tell the
+    # difference from inside the conversation. Nothing about how a question was
+    # asked should depend on where the listing came from.
+    imported = builder.job(recruiter, 901)
+    # Titled as the recruiter would title it. Naming the provenance in the copy
+    # would defeat the fixture: the whole claim is that a reviewer cannot tell.
+    imported.title = "Shorts editor for a weekly cooking channel"
+    imported.origin = "imported"
+    imported.screening_questions = [dict(entry) for entry in SCREENING_PROMPTS]
+
+    cases: tuple[tuple[str, dict[int, str] | None, str], ...] = (
+        (
+            "complete",
+            {
+                0: "The retention rebuild for a finance channel — I cut the intro entirely and moved the strongest visual to the cold open, which held the 30-second graph flat.",
+                1: "Two a week comfortably, three in a lighter week.",
+                2: "I work Mornings IST and can overlap with EU afternoons.",
+            },
+            "Screened job · every question answered",
+        ),
+        (
+            "partial",
+            {
+                0: "A three-part explainer series where I restructured the middle act.",
+                1: "Two a week.",
+            },
+            "Screening answers with an optional question deliberately skipped",
+        ),
+        (
+            "unanswered",
+            None,
+            "Screening questions asked and not yet answered",
+        ),
+        (
+            "long",
+            {
+                0: (
+                    "The one I'd point at is a 26-minute pension explainer that was losing "
+                    "roughly half its audience before the four-minute mark. The script was "
+                    "sound; the problem was that it opened with two minutes of definitions "
+                    "before it said why any of it mattered to the viewer.\n\n"
+                    "I restructured it so the consequence came first — a single number, on "
+                    "screen, in the first eight seconds — and then folded the definitions "
+                    "into the walkthrough as they became necessary rather than teaching them "
+                    "up front. That meant re-cutting the middle act around three questions "
+                    "instead of five sections, dropping about ninety seconds of B-roll that "
+                    "was there to cover narration I ended up removing, and rebuilding the "
+                    "lower thirds so the figures stayed on screen while they were discussed "
+                    "rather than flashing past.\n\n"
+                    "The four-minute retention went from 48% to 71% and average view "
+                    "duration rose by just over three minutes. What I took from it: on this "
+                    "kind of channel the edit's job is to keep answering \"and why do I care\" "
+                    "for as long as the runtime lasts, and definitions almost never do that."
+                ),
+                1: "Two at this length, comfortably. Three if one of them is a repeat format I have already built the template for.",
+                2: "I keep Fridays clear for revisions, so a Thursday cut usually comes back same-week.",
+            },
+            "Screening answer long enough to test wrapping rather than truncation",
+        ),
+        (
+            "links",
+            {
+                0: (
+                    "Two that show it best — the retention rebuild at "
+                    "https://folio.scenario.invalid/retention-rebuild, and the cold-open pass "
+                    "at https://folio.scenario.invalid/cold-open (that one has the before/after "
+                    "side by side)."
+                ),
+                1: "Two a week, three at a push.",
+                2: "Reachable at javascript:alert('not a link') — that is my old handle, not a site.",
+            },
+            "Screening answers containing links, including an unsafe scheme",
+        ),
+    )
+    for index, (key, responses, condition) in enumerate(cases):
+        talent = builder.talent(9_100 + index)
+        created = -(index + 2) * DAY
+        rel = builder.relationship(
+            key=f"default:screened:{key}",
+            kind="application",
+            job=job,
+            recruiter=recruiter,
+            talent=talent,
+            stage="reviewing" if responses else "new",
+            participant_stage="reviewing" if responses else "new",
+            created=created,
+            messages=_screening_exchange(
+                asked_at=created + HOUR,
+                answered_at=created + 5 * HOUR if responses else None,
+                responses=responses or {},
+            ),
+            portfolio_ids=builder.portfolio_for(talent, 3, slot=900 + index),
+            unread=0 if responses else 1,
+        )
+        builder.add_index(
+            rel,
+            persona="recruiter",
+            route="/applications?view=inbox&mode=recruiter",
+            condition=condition,
+            action="open the record and review the screening answers in the thread",
+        )
+
+    imported_talent = builder.talent(9_150)
+    imported_created = -9 * DAY
+    imported_rel = builder.relationship(
+        key="default:screened:imported",
+        kind="application",
+        job=imported,
+        recruiter=recruiter,
+        talent=imported_talent,
+        stage="reviewing",
+        participant_stage="reviewing",
+        created=imported_created,
+        messages=_screening_exchange(
+            asked_at=imported_created + 2 * HOUR,
+            answered_at=imported_created + 6 * HOUR,
+            responses={
+                0: "The shorts run I cut for a cooking channel — I rebuilt the first two seconds around the plate landing rather than the presenter's greeting.",
+                1: "Five or six a week at this length.",
+                2: "Happy to work to a template once we agree one.",
+            },
+        ),
+        portfolio_ids=builder.portfolio_for(imported_talent, 3, slot=950),
+        unread=0,
+    )
+    builder.add_index(
+        imported_rel,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Screening on an imported listing, asked and answered in full",
+        action="confirm the screening reads identically to a manually posted job",
+    )
+
+
 def _default(builder: Builder) -> None:
     """A broad, realistic dataset for ordinary design and workflow QA."""
 
@@ -575,10 +969,17 @@ def _default(builder: Builder) -> None:
             )
             job_index += 1
 
+    _screened_applications(builder)
+
     # Outbound requests, so the Talent side of `default` is not an afterthought.
     recruiter = builder.recruiter(0)
     for index in range(24):
         talent = builder.talent(5_000 + index)
+        # A recruiter found this person because there was something to find.
+        # The work lives on their profile rather than being attached to the
+        # request — nobody applied — but a contacted creator with an empty
+        # portfolio is a profile nobody could have decided to contact.
+        builder.portfolio_for(talent, 2 + index % 4, slot=5_000 + index)
         stage = ("new", "reviewing", "accepted", "declined", "withdrawn", "archived")[index % 6]
         created = -((index % 30) + 1) * DAY
         rel = builder.relationship(
@@ -608,12 +1009,15 @@ def _default(builder: Builder) -> None:
     # never exercises the rule that an answers-only request still renders a real
     # opening bubble rather than an empty thread. That rule exists because the
     # product used to show a blank conversation, which reads as broken.
+    answers_only_talent = builder.talent(5_900)
+    # The condition under test is an empty *thread*, not an empty person.
+    builder.portfolio_for(answers_only_talent, 3, slot=5_900)
     answers_only = builder.relationship(
         key="default:request:answers-only",
         kind="hiring_request",
         job=None,
         recruiter=builder.recruiter(1),
-        talent=builder.talent(5_900),
+        talent=answers_only_talent,
         stage="new",
         participant_stage="new",
         created=-2 * DAY,
@@ -630,6 +1034,116 @@ def _default(builder: Builder) -> None:
     )
 
     _retired_jobs(builder)
+    _profile_examples(builder)
+
+
+def _profile_examples(builder: Builder) -> None:
+    """The records a reviewer is sent to when the *person* is what is being checked.
+
+    The index used to address workflow states only — stages, decisions, payment.
+    But the page a review actually turns on is the applicant's, and none of the
+    conditions that page depends on could be reached from the index at all: a
+    complete profile, a hiring identity worth opening, a deep portfolio, and the
+    two ends of the review-progress plane. A condition nobody can navigate to is
+    a condition nobody checks.
+    """
+
+    recruiter = builder.recruiter(2)
+    job = builder.job(recruiter, 960)
+    job.title = "Documentary editor for a long-form series"
+
+    # A complete applicant: every profile field the page renders, and enough
+    # work attached that the portfolio is a portfolio rather than a single item.
+    complete = builder.talent(9_200)
+    portfolio = builder.portfolio_for(complete, 6, slot=9_200)
+    rel = builder.relationship(
+        key="default:profile:complete",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=complete,
+        stage="reviewing",
+        participant_stage="reviewing",
+        created=-4 * DAY,
+        messages=[("talent", -4 * DAY, "I've worked on three series at this length — the most recent is at the top of my profile.")],
+        portfolio_ids=portfolio,
+        unread=0,
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Complete applicant profile · six pieces of evidence",
+        action=f"Open the applicant's name and confirm /u/{complete.username} renders bio, location, timezone, skills, tools and every portfolio item.",
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route=f"/u/{complete.username}",
+        condition="Portfolio deep enough to scroll · every item described",
+        action="Confirm each item shows its description and what this person did on it, not only a title.",
+    )
+    builder.add_index(
+        rel,
+        persona="recruiter",
+        route=f"/u/{recruiter.username}",
+        condition="Complete hiring identity · channel, audience band and description",
+        action="Confirm the hiring account can be opened and understood without leaving the page.",
+    )
+
+    # The two ends of the review-progress plane, addressable on purpose. Without
+    # these, "Not opened yet" and "Opened" could only be reached by guessing
+    # which row happened to be in which state.
+    untouched = builder.talent(9_201)
+    unopened = builder.relationship(
+        key="default:profile:unopened",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=untouched,
+        stage="new",
+        participant_stage="new",
+        created=-6 * HOUR,
+        messages=[("talent", -6 * HOUR, "Applying for the series role — three years on long-form documentary.")],
+        portfolio_ids=builder.portfolio_for(untouched, 3, slot=9_201),
+        unread=1,
+    )
+    builder.add_index(
+        unopened,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Not opened yet · nobody has looked at it",
+        action="Open it, dwell, and confirm it moves to Opened/Reviewing while the applicant is told nothing.",
+    )
+
+    read = builder.talent(9_202)
+    opened = builder.relationship(
+        key="default:profile:opened",
+        kind="application",
+        job=job,
+        recruiter=recruiter,
+        talent=read,
+        stage="reviewing",
+        participant_stage="new",
+        created=-3 * DAY,
+        messages=[("talent", -3 * DAY, "Happy to send a paid trial cut if that helps you decide.")],
+        portfolio_ids=builder.portfolio_for(read, 4, slot=9_202),
+        unread=0,
+    )
+    builder.add_index(
+        opened,
+        persona="recruiter",
+        route="/applications?view=inbox&mode=recruiter",
+        condition="Opened · Reviewing · the applicant still sees New",
+        action="Confirm Reviewing is a private position: the counterparty's view is unchanged.",
+    )
+    builder.add_index(
+        opened,
+        persona="recruiter",
+        route="/applications?view=pipeline&mode=recruiter&direction=received",
+        condition="Card to move · destination offscreen after the drop",
+        action="Move it to a later stage and confirm the card is brought into view, emphasised briefly, and announced.",
+    )
 
 
 def _busy(builder: Builder) -> None:
@@ -718,7 +1232,7 @@ def _edge(builder: Builder) -> None:
             participant_stage="reviewing",
             created=-(index + 1) * DAY,
             messages=[("talent", -(index + 1) * DAY, "Applying for this role — samples attached.")],
-            portfolio_ids=builder.portfolio_for(talent, index % 3, slot=index),
+            portfolio_ids=builder.portfolio_for(talent, 2 + index % 3, slot=index),
         )
         builder.add_index(rel, persona="recruiter",
                           route="/applications?view=pipeline&mode=recruiter",
@@ -935,12 +1449,12 @@ def _recruiter(builder: Builder) -> None:
                 participant_stage="reviewing" if stage == "rejected" and index % 2 == 0 else stage,
                 created=created,
                 messages=[("talent", created, pools.APPLICANT_OPENERS[index % len(pools.APPLICANT_OPENERS)])],
-                # Not everyone attaches work. A board where every single card
-                # carries a portfolio strip is both unrealistic and untestable:
-                # the card anatomy *without* one stops being rendered anywhere,
-                # and that is the layout the narrow-column overflow defect was
-                # found on.
-                portfolio_ids=[] if index == 2 else builder.portfolio_for(talent, (index % 4) + 1, slot=index),
+                # The card anatomy without a portfolio still needs to be
+                # rendered somewhere — it is the layout the narrow-column
+                # overflow defect was found on — but it belongs in `edge`, where
+                # it is indexed as the condition it is, rather than sitting
+                # unlabelled in a normal scenario.
+                portfolio_ids=builder.portfolio_for(talent, (index % 4) + 2, slot=index),
                 starred=index == 1,
                 snoozed_offset=3 * DAY if index == 2 else None,
                 unread=1 if index in {0, 3} else 0,
@@ -1013,7 +1527,7 @@ def _payment_coverage(builder: Builder) -> None:
                 kind="application", job=job, recruiter=recruiter, talent=talent,
                 stage="hired", participant_stage="hired", created=created,
                 messages=[("talent", created, pools.APPLICANT_OPENERS[slot % len(pools.APPLICANT_OPENERS)])],
-                portfolio_ids=builder.portfolio_for(talent, (slot % 3) + 1, slot=slot),
+                portfolio_ids=builder.portfolio_for(talent, (slot % 3) + 2, slot=slot),
             )
             rel.engagement = Engagement(
                 id=scenario_id("engagement", builder.scenario, f"payment:{payment}:{repeat}"),
@@ -1051,7 +1565,10 @@ def _retired_jobs(builder: Builder) -> None:
                 stage=("reviewing", "rejected")[offset],
                 participant_stage=("reviewing", "rejected")[offset],
                 created=created,
-                messages=[("talent", created, "Applying while this was still open.")],
+                # One line per record rather than one line four times: these are
+                # the oldest rows in the corpus, so they sort adjacently and a
+                # shared sentence shows up as four identical previews in a run.
+                messages=[("talent", created, RETIRED_JOB_OPENERS[index * 2 + offset])],
                 portfolio_ids=builder.portfolio_for(talent, 2, slot=60 + offset),
                 historical=f"Applicant left pending on retired job {legacy}.",
             )
@@ -1121,7 +1638,14 @@ def generate(scenario: str) -> Manifest:
     build_fn, description = SCENARIO_BUILDERS[scenario]
     builder = Builder(scenario, SCENARIO_SEEDS[scenario], description)
     build_fn(builder)
-    return builder.build()
+    manifest = builder.build()
+    # Validate at the point of generation, not only on the way in. A corpus that
+    # renders an empty profile is not a smaller corpus, it is a misleading one:
+    # every QA pass over it concludes the product looks fine on data no real user
+    # will ever have. Failing here is how that stops being possible.
+    check_timezone_coverage()
+    validate(manifest)
+    return manifest
 
 
 def _prune(value: Any) -> Any:

@@ -44,8 +44,16 @@ export type InteractionThreadMessage = {
   body: string;
   /** ISO instant. Formatted where it is drawn, never stored preformatted. */
   sentAt: string;
-  /** "status" marks a platform-generated stage update rendered apart from bubbles. */
-  kind?: "status";
+  /**
+   * "status" marks a platform-generated stage update rendered apart from
+   * bubbles; the two screening kinds mark the structured cards the Inbox
+   * renders natively rather than as prose.
+   */
+  kind?: "status" | "screening" | "screening-answers";
+  /** The question snapshot the hiring side asked, for kind "screening". */
+  screening?: { automated: boolean; questions: unknown[] };
+  /** The answers given against that snapshot, for kind "screening-answers". */
+  screeningAnswers?: { answers: unknown[]; answeredAt?: string | null };
 };
 
 export type InteractionJobSnapshot = {

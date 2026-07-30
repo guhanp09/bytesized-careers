@@ -10,7 +10,7 @@ tester both call these functions so there is a single real code path.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -297,6 +297,145 @@ async def participant_names(session: AsyncSession, conversation: Conversation) -
     return {u.id: (u.display_name or u.username or u.email) for u in rows}
 
 
+# --- screening answers -----------------------------------------------------
+
+SCREENING_ANSWER_MAX_LENGTH = 5000
+
+#: Deterministic namespace for the applicant's answers message, so a retry, a
+#: double submit, or two tabs racing each other all resolve to the same row
+#: through the (conversation_id, client_message_id) uniqueness constraint.
+SCREENING_ANSWERS_NAMESPACE = uuid5(NAMESPACE_URL, "creatorjobs:screening-answers-message")
+
+
+class ScreeningQuestionsMissing(Exception):
+    """Nobody asked anything in this conversation."""
+
+
+class ScreeningAnswerInvalid(Exception):
+    """A required question was left blank, or an answer names no known question."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+async def latest_screening_questions(
+    session: AsyncSession, conversation: Conversation
+) -> dict[str, object] | None:
+    """The most recent screening-question snapshot asked in this conversation.
+
+    The snapshot is the authority for what was asked. Answers are validated and
+    labelled against it rather than against the job, so editing the job later
+    cannot retroactively change the question somebody already answered.
+    """
+    rows = (
+        await session.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation.id)
+            .order_by(Message.created_at.desc(), Message.id.desc())
+        )
+    ).scalars()
+    for message in rows:
+        metadata = message.metadata_json or {}
+        if metadata.get("message_kind") == "screening_questions":
+            questions = metadata.get("questions")
+            return {
+                "questions": questions if isinstance(questions, list) else [],
+                "snapshot_version": metadata.get("snapshot_version"),
+            }
+    return None
+
+
+def build_screening_answer_snapshot(
+    questions: list[dict[str, object]],
+    responses: dict[int, str],
+) -> list[dict[str, object]]:
+    """Pair each asked question with what was said, in the order it was asked.
+
+    Every question appears, answered or not. Dropping the blank ones would make
+    an unanswered optional question indistinguishable from one that was never
+    asked, which is exactly the thing a reviewer needs to be able to tell apart.
+    """
+    snapshot: list[dict[str, object]] = []
+    for index, question in enumerate(questions):
+        if not isinstance(question, dict):
+            continue
+        position = int(question.get("position", index) or index)
+        prompt = str(question.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        required = bool(question.get("required"))
+        response = (responses.get(position) or "").strip()[:SCREENING_ANSWER_MAX_LENGTH]
+        if required and not response:
+            raise ScreeningAnswerInvalid(f"Question {position + 1} needs an answer.")
+        snapshot.append(
+            {
+                "position": position,
+                "prompt": prompt,
+                "required": required,
+                "response": response,
+                "answered": bool(response),
+            }
+        )
+    known = {entry["position"] for entry in snapshot}
+    for position in responses:
+        if position not in known:
+            raise ScreeningAnswerInvalid("An answer refers to a question that was not asked.")
+    return snapshot
+
+
+def screening_answers_body(snapshot: list[dict[str, object]]) -> str:
+    """Readable fallback for notifications and any client that cannot render the card."""
+    lines = ["Answers to your questions:", ""]
+    for number, entry in enumerate(snapshot, start=1):
+        response = entry["response"] or ("No answer" if entry["required"] else "Skipped (optional)")
+        lines.append(f"{number}. {entry['prompt']}")
+        lines.append(f"   {response}")
+    return "\n".join(lines)
+
+
+async def post_screening_answers(
+    session: AsyncSession,
+    conversation: Conversation,
+    sender: User,
+    responses: dict[int, str],
+    *,
+    commit: bool = True,
+) -> Message:
+    """Answer the screening questions asked in this conversation.
+
+    One structured message rather than a new endpoint or a second table: the
+    questions already travel as a message, the thread is already the place both
+    participants look, and a message is immutable — so the answers are
+    snapshotted by construction and a later job edit cannot rewrite them.
+    """
+    asked = await latest_screening_questions(session, conversation)
+    if asked is None:
+        raise ScreeningQuestionsMissing()
+    questions = asked["questions"] if isinstance(asked["questions"], list) else []
+    snapshot = build_screening_answer_snapshot(questions, responses)
+    snapshot_version = str(asked.get("snapshot_version") or "")
+    metadata: dict[str, object] = {
+        "message_kind": "screening_answers",
+        "snapshot_version": snapshot_version,
+        "answered_at": datetime.now(timezone.utc).isoformat(),
+        "answers": snapshot,
+    }
+    client_message_id = uuid5(
+        SCREENING_ANSWERS_NAMESPACE, f"{conversation.id}:{sender.id}:{snapshot_version}"
+    )
+    return await post_message(
+        session,
+        conversation,
+        sender,
+        screening_answers_body(snapshot),
+        kind="screening_answers",
+        metadata=metadata,
+        client_message_id=client_message_id,
+        commit=commit,
+    )
+
+
 # --- posting ---------------------------------------------------------------
 
 
@@ -496,6 +635,19 @@ def serialize_message(
             "application_id": metadata.get("application_id"),
             "job_id": metadata.get("job_id"),
             "snapshot_version": metadata.get("snapshot_version"),
+        }
+    # The applicant's answers to those questions, snapshotted against the
+    # questions as they were asked. Curated the same way: the payload is built
+    # by the server from the question message plus the responses, never echoed
+    # back from client input, so a later edit to the job cannot rewrite what was
+    # already answered.
+    if metadata.get("message_kind") == "screening_answers":
+        answers = metadata.get("answers")
+        serialized["message_kind"] = "screening_answers"
+        serialized["screening_answers"] = {
+            "answers": answers if isinstance(answers, list) else [],
+            "snapshot_version": metadata.get("snapshot_version"),
+            "answered_at": metadata.get("answered_at"),
         }
     return serialized
 
