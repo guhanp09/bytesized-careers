@@ -136,12 +136,19 @@ import {
   NO_QUEUE_PREFERENCES,
   WORK_QUEUE_ORDER,
   deriveWorkQueue,
-  deriveWorkCategory,
-  WORK_CATEGORY_ORDER,
   type QueueSignals,
   type WorkQueueKey,
   type WorkQueuePreferences,
 } from "../../lib/workQueues";
+import {
+  CLASSIFICATION_SECTIONS,
+  classificationCounts,
+  isActiveRecord,
+  isFilterActive,
+  matchesFilter,
+  queueToAttention,
+  type ClassificationFilter,
+} from "../../lib/workClassification";
 import {
   flagCohortLabel,
   trackWorkspaceEvent,
@@ -3272,7 +3279,13 @@ export default function ApplicationsWorkspace({
   /* ---------------- Queue views ---------------- */
 
   /** Null means "no queue filter" — the ordinary full list. */
-  const [activeQueue, setActiveQueue] = useState<WorkQueueKey | "starred" | "snoozed" | null>(null);
+  /*
+    One selection per section — a stage, a flag, and starred — rather than one
+    queue out of a flat list. They combine to narrow, because they answer
+    different questions: "Interviewing" and "Ready for decision" together is a
+    real thing to ask for, and the flat list could never express it.
+  */
+  const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>({});
 
   /*
     Narrowing the list starts its rendering window again.
@@ -3285,7 +3298,7 @@ export default function ApplicationsWorkspace({
   useEffect(() => {
     setInboxLimit(INBOX_PAGE_SIZE);
     setPagingAnnouncement("");
-  }, [mode, filter, activeQueue]);
+  }, [mode, filter, classificationFilter]);
 
   /* ---------------- B1: durable per-user interaction preferences ---------------- */
 
@@ -3734,33 +3747,30 @@ export default function ApplicationsWorkspace({
   );
 
   /*
-    Live counts, over an exhaustive partition.
+    Live counts: one partition, and some flags.
 
-    Every record gets exactly one category, including the ones that need
-    nothing, so the parts add up to the whole. Built on `deriveWorkCategory`
-    rather than `deriveWorkQueue`: the latter answers "what needs me?" and
-    returns null for everything else, which left most of the list in no category
-    at all and the menu describing a third of its own population.
+    Stage covers every active record and sums to the total, so the menu can say
+    what its numbers add up to. The flags cover nothing in particular — a record
+    needing nobody carries none — which is what removed a row holding 133 of 190
+    records and meaning "nothing outstanding on either side".
 
-    Starred is counted separately and on purpose — it is personal organisation
-    that cuts across the categories rather than another slice of them, so it is
-    never added into the total.
+    Starred is counted separately and on purpose: personal organisation cutting
+    across the sections rather than another slice of them, so it is never added
+    into the total.
   */
-  const queueCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of modeItems) {
-      const key = deriveWorkCategory(item, queueSignalsFor(item), queuePreferences);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      if (isStarred(item)) counts.set("starred", (counts.get("starred") ?? 0) + 1);
-    }
-    return counts;
-  }, [modeItems, queueSignalsFor, queuePreferences, isStarred]);
-
-  /** Nothing outstanding anywhere — the honest "all caught up" signal. */
-  const allCaughtUp = useMemo(
-    () => WORK_QUEUE_ORDER.every((queue) => (queueCounts.get(queue.key) ?? 0) === 0),
-    [queueCounts]
+  const classification = useMemo(
+    () => classificationCounts(modeItems, queueSignalsFor, queuePreferences, isStarred),
+    [modeItems, queueSignalsFor, queuePreferences, isStarred]
   );
+
+  /**
+   * Nothing outstanding anywhere — the honest "all caught up" signal.
+   *
+   * Now a direct reading rather than a sweep over queue keys: `needsYou` counts
+   * exactly the records carrying a flag that means the next move is the
+   * reader's, so zero of them *is* caught up.
+   */
+  const allCaughtUp = classification.needsYou === 0;
 
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -4443,57 +4453,36 @@ export default function ApplicationsWorkspace({
    * not feed selection normalisation — filtering your view should never throw
    * away the conversation you are reading.
    */
-  /** Queues worth offering: those with work, plus the personal views. */
-  const queueChips = ((): Array<{
-    key: string;
-    label: string;
-    count: number;
-    description?: string;
-  }> => {
-    const chips: Array<{ key: string; label: string; count: number; description?: string }> = [];
-    const labels = new Map<string, string>();
-    /*
-      Every category that has records, in working order — including the ones
-      that need nothing. A menu that lists only the urgent slices leaves the
-      reader to guess where the rest went, which is how 162 applicants came to
-      be described by two numbers adding to 56.
-    */
-    for (const category of WORK_CATEGORY_ORDER) {
-      labels.set(category.key, category.label);
-      const count = queueCounts.get(category.key) ?? 0;
-      if (count > 0) {
-        chips.push({
-          key: category.key,
-          label: category.label,
-          count,
-          description: category.description,
-        });
-      }
-    }
-    // Starred cuts across the categories rather than being one of them, so it
-    // sits after the partition and is never part of its arithmetic.
-    labels.set("starred", "Starred");
-    const starred = queueCounts.get("starred") ?? 0;
-    if (starred > 0) {
-      chips.push({
-        key: "starred",
-        label: "Starred",
-        count: starred,
-        description: "Saved by you for a second look. Only you can see this.",
-      });
-    }
-    /*
-      One exception to "only offer queues that hold work": the queue the user is
-      standing in. It can empty underneath them — unstar the last saved record
-      and "Saved" has nothing left — and dropping it here would take the filter's
-      name and its clear control off screen while the filter was still applied,
-      leaving an empty list with no visible way out.
-    */
-    if (activeQueue && !chips.some((chip) => chip.key === activeQueue)) {
-      chips.push({ key: activeQueue, label: labels.get(activeQueue) ?? "Queue", count: 0 });
-    }
-    return chips;
-  })();
+  /*
+    One partition and two flag lists.
+
+    Every option that holds records is offered — with one exception below, the
+    one the reader is currently standing in. Stage reconciles against the whole;
+    the flags do not reconcile against anything, which is the change that
+    removed a row holding seven tenths of the inbox and meaning nothing.
+  */
+  const classificationSections = CLASSIFICATION_SECTIONS.map((section) => {
+    const counts = section.key === "stage" ? classification.stage : classification.attention;
+    const selected =
+      section.key === "stage" ? classificationFilter.stage : classificationFilter.attention;
+    const options = section.options
+      .map((option) => ({ ...option, count: (counts as Map<string, number>).get(option.key) ?? 0 }))
+      /*
+        One exception to "only offer what holds records": the option the reader
+        is standing in. It can empty underneath them — advance the last unopened
+        application and "Not opened yet" has nothing left — and dropping it here
+        would take the filter's name off screen while the filter was still
+        applied, leaving an empty list with no visible way out.
+      */
+      .filter((option) => option.count > 0 || selected === option.key);
+    return {
+      key: section.key,
+      label: section.label,
+      kind: section.kind,
+      headlineCount: section.kind === "partition" ? classification.total : classification.needsYou,
+      options,
+    };
+  });
 
   /**
    * Every record that matches, before any rendering limit.
@@ -4503,16 +4492,9 @@ export default function ApplicationsWorkspace({
    * screen". Only `renderedItems` below is bounded.
    */
   const listItems = ((): OwnerInteraction[] => {
-    if (!activeQueue) return visibleItems;
-    if (activeQueue === "starred") return visibleItems.filter((item) => isStarred(item));
-    if (activeQueue === "snoozed") {
-      return visibleItems.filter((item) => {
-        const until = queuePreferences.snoozedUntil(item.id);
-        return until !== null && until > Date.now();
-      });
-    }
-    return visibleItems.filter(
-      (item) => deriveWorkCategory(item, queueSignalsFor(item), queuePreferences) === activeQueue
+    if (!isFilterActive(classificationFilter)) return visibleItems;
+    return visibleItems.filter((item) =>
+      matchesFilter(item, classificationFilter, queueSignalsFor(item), queuePreferences, isStarred)
     );
   })();
 
@@ -4548,7 +4530,7 @@ export default function ApplicationsWorkspace({
           // explicitly rather than omitted, so adding a search box later gets
           // the right empty state for free.
           searchTerm: "",
-          activeQueue,
+          activeQueue: classificationFilter.attention ?? classificationFilter.stage ?? null,
           allCaughtUp,
           snoozedCount,
         })
@@ -4681,14 +4663,19 @@ export default function ApplicationsWorkspace({
                       data-testid={`job-summary-count-${entry.key}`}
                       onClick={() => {
                         if (entry.target.kind === "queue") {
-                          setActiveQueue(entry.target.queue as typeof activeQueue);
+                          // A queue that means nothing outstanding clears the
+                          // filter rather than selecting a row that no longer
+                          // exists — there is no "up to date" any more.
+                          setClassificationFilter({
+                            attention: queueToAttention(entry.target.queue) ?? undefined,
+                          });
                         } else if (entry.target.kind === "starred") {
-                          setActiveQueue("starred");
+                          setClassificationFilter({ starred: true });
                         } else {
                           // A stage is a Pipeline question; take the user there
                           // with the stage focused rather than approximating it
                           // with an inbox filter that means something else.
-                          setActiveQueue(null);
+                          setClassificationFilter({});
                           onPipelineStageChange?.(entry.target.stage);
                           setView("pipeline");
                         }
@@ -4824,10 +4811,20 @@ export default function ApplicationsWorkspace({
             filter={filter}
             counts={filterCounts}
             onSelect={selectFilter}
-            queueChips={flags.workState ? queueChips : []}
-            activeQueue={flags.workState ? activeQueue : null}
-            onQueueSelect={
-              flags.workState ? (key) => setActiveQueue(key as typeof activeQueue) : undefined
+            classificationSections={flags.workState ? classificationSections : []}
+            classificationSelection={flags.workState ? classificationFilter : {}}
+            classificationTotal={classification.total}
+            starredCount={classification.starred}
+            /*
+              The menu speaks in strings — it renders whatever sections it is
+              given — while the state is typed to the vocabulary. Narrowing
+              here is the one place that boundary is crossed, and the options
+              can only ever come from `CLASSIFICATION_SECTIONS`.
+            */
+            onClassificationChange={
+              flags.workState
+                ? (next) => setClassificationFilter(next as ClassificationFilter)
+                : undefined
             }
             trailing={
               totalUnreadCount > 0 ? (
@@ -4864,7 +4861,9 @@ export default function ApplicationsWorkspace({
                 type="button"
                 data-testid="work-reminder"
                 data-reminder-key={reminder.key}
-                onClick={() => setActiveQueue(reminder.queue as typeof activeQueue)}
+                onClick={() =>
+                  setClassificationFilter({ attention: queueToAttention(reminder.queue) ?? undefined })
+                }
                 className="group mx-3 mt-2.5 flex w-[calc(100%-1.5rem)] shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
               >
                 <Icon
@@ -4913,9 +4912,9 @@ export default function ApplicationsWorkspace({
                       data-testid="inbox-empty-action"
                       onClick={() => {
                         const kind = emptyState.action?.kind;
-                        if (kind === "clear-queue") setActiveQueue(null);
+                        if (kind === "clear-queue") setClassificationFilter({});
                         else {
-                          setActiveQueue(null);
+                          setClassificationFilter({});
                           selectFilter("all");
                         }
                       }}

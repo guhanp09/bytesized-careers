@@ -80,6 +80,61 @@ const PERSONA_ICONS: Record<WorkspaceMode, "user" | "briefcase"> = {
  * strands a keyboard user because only one of two implementations handled
  * Escape is the kind of inconsistency nobody finds until it has shipped.
  */
+/**
+ * Arrow-key movement inside an open menu.
+ *
+ * `role="menu"` is a promise: it tells assistive technology that Up and Down
+ * move between items and that focus starts inside. Announcing the role without
+ * honouring it is worse than not announcing it, because a screen-reader user is
+ * told to expect a control that then does not respond.
+ *
+ * Home and End are included because the menu is three groups deep — reaching
+ * the last option by repeated Down is exactly the tax the grouping removes.
+ */
+function useMenuKeyboard(open: boolean, menuRef: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    if (!open) return;
+    const items = () =>
+      Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []).filter(
+        (node) => !node.hasAttribute("disabled")
+      );
+
+    // Focus starts on the checked item if there is one, so opening the menu
+    // says where you already are rather than dropping you at the top.
+    const frame = window.requestAnimationFrame(() => {
+      const all = items();
+      const checked = all.find((node) => node.getAttribute("aria-checked") === "true");
+      (checked ?? all[0])?.focus();
+    });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const all = items();
+      if (all.length === 0) return;
+      const index = all.indexOf(document.activeElement as HTMLElement);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        // Wrapping, because a menu with a top and a bottom you can fall off is
+        // a menu you have to look at to use.
+        const next = index < 0 ? 0 : (index + step + all.length) % all.length;
+        all[next]?.focus();
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        all[0]?.focus();
+      } else if (event.key === "End") {
+        event.preventDefault();
+        all[all.length - 1]?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, menuRef]);
+}
+
 function useDismissable(
   open: boolean,
   close: () => void,
@@ -353,39 +408,93 @@ export type WorkQueueChip = {
   description?: string;
 };
 
+/** One rendered section of the classification menu. */
+export type ClassificationSection = {
+  key: "stage" | "attention" | "waiting";
+  label: string;
+  /**
+   * A partition sums to its denominator and says so. Flags do not sum to
+   * anything — they may overlap and a record may carry none — so their heading
+   * reports how many records carry any instead of implying a total.
+   */
+  kind: "partition" | "flags";
+  /** Partition: what the counts add up to. Flags: how many carry any of them. */
+  headlineCount: number;
+  options: Array<{ key: string; label: string; description: string; count: number }>;
+};
+
+export type ClassificationSelection = {
+  stage?: string;
+  attention?: string;
+  starred?: boolean;
+};
+
 /**
- * Layer 3, second axis — work queues.
+ * What am I looking at?
  *
- * Queues are recommendations layered over the ownership scope, not a second
- * ownership scope, so they hang off the scope row as a disclosure rather than
- * occupying a row of their own. A closed menu costs one control and still
- * carries the number, which is the part that earns attention.
+ * This was one flat list of eleven categories — of which three were ever
+ * visible, and the largest of those three meant nothing. On 190 records:
+ * *Decision needed* 24, *New to review* 33, *Up to date* **133**. Seventy per
+ * cent of somebody's work in a row that says "nothing outstanding on either
+ * side" is not a category; it is the absence of one.
  *
- * When a queue is active it is named on the trigger and paired with its own
- * clear button, so returning to everything stays one click and needs no menu —
- * the rail this replaces made you find "All" among chips that scrolled.
+ * The arithmetic was never the problem. The problem is that those names answer
+ * three different questions — have I looked at this, where is it in the
+ * process, does anyone owe a move — and a flat list has to pick one answer per
+ * record and silently drop the other two. That is why *Decision needed* grew
+ * until its own description had to admit it also held "messages whose intent is
+ * unclear".
+ *
+ * So: exactly one partition, and flags that cover nothing in particular.
+ * **Stage** uses the Pipeline board's own vocabulary, so a state has the same
+ * name in both places you see it. **Needs you** and **Not your move** are
+ * flags — a record needing nobody carries none, and the heading counts the ones
+ * that do.
+ *
+ * Starred sits below all of it: personal organisation cutting across the
+ * sections, never a fourth question about the record.
  */
 export function WorkQueueSelector({
-  chips,
-  activeQueue,
-  onSelect,
+  sections,
+  selection,
+  total,
+  starredCount,
+  onChange,
 }: {
-  chips: WorkQueueChip[];
-  activeQueue: string | null;
-  onSelect: (key: string | null) => void;
+  sections: ClassificationSection[];
+  selection: ClassificationSelection;
+  total: number;
+  starredCount: number;
+  onChange: (next: ClassificationSelection) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   useDismissable(open, () => setOpen(false), rootRef, triggerRef);
+  useMenuKeyboard(open, menuRef);
 
-  const active = chips.find((chip) => chip.key === activeQueue) ?? null;
-  // An empty queue control advertises nothing and cannot be actioned — with one
-  // exception: a queue the user is standing in must stay visible so it can be
-  // left, even once it has emptied out underneath them.
-  if (chips.length === 0 && !activeQueue) return null;
+  const active: string[] = [];
+  for (const section of sections) {
+    const selected = section.key === "stage" ? selection.stage : selection.attention;
+    if (!selected) continue;
+    const option = section.options.find((entry) => entry.key === selected);
+    if (option && !active.includes(option.label)) active.push(option.label);
+  }
+  if (selection.starred) active.push("Starred");
+  const activeCount = active.length;
 
-  const total = chips.reduce((sum, chip) => sum + chip.count, 0);
+  if (sections.every((section) => section.options.length === 0) && activeCount === 0) return null;
+
+  const selectedIn = (section: ClassificationSection) =>
+    section.key === "stage" ? selection.stage : selection.attention;
+
+  /** What the trigger's badge shows while a filter is on. */
+  const shown = sections.reduce((sum, section) => {
+    const selected = selectedIn(section);
+    if (!selected) return sum;
+    return section.options.find((option) => option.key === selected)?.count ?? sum;
+  }, total);
 
   return (
     <div ref={rootRef} className="relative flex shrink-0 items-center" data-testid="queue-selector">
@@ -396,144 +505,233 @@ export function WorkQueueSelector({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={
-          active
-            ? `Showing ${active.label}. Change what needs attention.`
-            : `Filter by what needs attention. ${total} waiting.`
+          activeCount > 0
+            ? `Showing ${active.join(", ")}. Change what you are looking at.`
+            : `Filter what you are looking at. ${total} in view.`
         }
         onClick={() => setOpen((value) => !value)}
         className={[
           "inline-flex h-7 cursor-pointer items-center gap-1.5 border px-2 text-[11.5px] font-semibold transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-          active
+          /*
+            The painted control is 28px, matching the density of the toolbar it
+            sits in; the *target* is 44px, because a finger does not care what
+            the row looks like. Extended vertically only — the neighbours here
+            are horizontal, so growing sideways would steal their taps.
+          */
+          "relative before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']",
+          activeCount > 0
             ? "rounded-l-lg border-r-0 border-line-strong bg-elevated text-ink elev-1"
             : "rounded-lg border-line bg-raised text-muted hover:border-line-mid hover:text-default",
         ].join(" ")}
       >
         <Icon name="sliders-horizontal" className="h-3 w-3 shrink-0" aria-hidden="true" />
         {/*
-          The name is only carried while a queue is on, where it says what is
-          being hidden. Idle, it is an offer — and spending 90px of a 390px rail
+          Named only while something is on, where the name says what is being
+          hidden. Idle it is an offer, and spending 90px of a 390px rail
           advertising an offer pushed "Archived" off the end of the scope tabs.
-          The count still shows, because that is the part worth noticing, and
-          the accessible name is complete either way.
+          Two or more selections collapse to a count so the trigger cannot grow
+          without limit.
         */}
-        {active ? <span className="max-w-[112px] truncate">{active.label}</span> : null}
+        {activeCount === 1 ? <span className="max-w-[112px] truncate">{active[0]}</span> : null}
+        {activeCount > 1 ? <span className="whitespace-nowrap">{activeCount} filters</span> : null}
         <span
           className={[
             "rounded px-1 text-[10.5px] tabular-nums",
-            active ? "bg-wash-strong text-default" : "text-subtle",
+            activeCount > 0 ? "bg-wash-strong text-default" : "text-subtle",
           ].join(" ")}
         >
-          {active ? active.count : total}
+          {activeCount > 0 ? shown : total}
         </span>
       </button>
-      {active ? (
+      {activeCount > 0 ? (
         <button
           type="button"
           data-testid="queue-clear"
           aria-label="Show everything"
-          onClick={() => onSelect(null)}
-          className="inline-flex h-7 shrink-0 cursor-pointer items-center rounded-r-lg border border-line-strong bg-elevated pl-1 pr-1.5 text-ink transition-colors elev-1 hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          onClick={() => onChange({})}
+          className="relative inline-flex h-7 shrink-0 cursor-pointer items-center rounded-r-lg border border-line-strong bg-elevated pl-1 pr-1.5 text-ink transition-colors before:absolute before:inset-x-0 before:-inset-y-2 before:content-[''] elev-1 hover:bg-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <Icon name="close" className="h-3 w-3" aria-hidden="true" />
         </button>
       ) : null}
       {open ? (
         <div
+          ref={menuRef}
           role="menu"
           data-testid="queue-selector-menu"
-          aria-label="What needs attention"
-          className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-[70vh] w-[300px] overflow-y-auto rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
+          aria-label="What you are looking at"
+          className="absolute right-0 top-[calc(100%+6px)] z-30 max-h-[70vh] w-[320px] overflow-y-auto rounded-2xl border border-line-mid bg-overlay p-1.5 elev-4"
         >
           <button
             type="button"
             role="menuitemradio"
-            aria-checked={activeQueue === null}
+            aria-checked={activeCount === 0}
             data-testid="queue-chip-all"
             /*
-              The reconciliation, in the DOM. The whole point of this menu is
-              that its parts add up to its total; a test that has to parse
-              rendered text to check that is testing the formatter.
+              The denominator, in the DOM. The partition below reconciles
+              against this number; a test that has to parse rendered text to
+              check that is testing the formatter.
             */
             data-queue-key="all"
             data-queue-count={total}
             onClick={() => {
               setOpen(false);
               triggerRef.current?.focus();
-              onSelect(null);
+              onChange({});
             }}
             className={[
-              "flex h-8 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[12px] font-semibold transition-colors",
+              // 44px, like every option below it.
+              "flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] font-semibold transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-              activeQueue === null
-                ? "bg-elevated text-ink"
-                : "text-secondary hover:bg-elevated hover:text-ink",
+              activeCount === 0 ? "bg-elevated text-ink" : "text-secondary hover:bg-elevated hover:text-ink",
             ].join(" ")}
           >
             <Icon
               name="check"
-              className={[
-                "h-3.5 w-3.5 shrink-0",
-                activeQueue === null ? "text-ink" : "text-transparent",
-              ].join(" ")}
+              className={["h-3.5 w-3.5 shrink-0", activeCount === 0 ? "text-ink" : "text-transparent"].join(" ")}
               aria-hidden="true"
             />
             <span className="flex-1">Everything</span>
-            {/*
-              The denominator. Without it the rows below are numbers with
-              nothing to add up to, which is exactly how a menu can show two
-              categories covering a third of the list and look complete.
-            */}
             <span className="shrink-0 text-[11px] tabular-nums text-subtle">{total}</span>
           </button>
-          {chips.map((chip) => {
-            const isActive = activeQueue === chip.key;
-            return (
+
+          {sections.map((section) =>
+            section.options.length === 0 ? null : (
+              <div
+                key={section.key}
+                /*
+                  A group, not a styled run. Sighted readers get the sections
+                  from the headings; without this a screen reader hears a dozen
+                  radio buttons in one flat list and the structure the menu
+                  exists to convey is the one thing that does not survive.
+                */
+                role="group"
+                aria-label={
+                  section.kind === "partition"
+                    ? `${section.label}, of ${section.headlineCount} everything`
+                    : `${section.label}, ${section.headlineCount} of ${total}`
+                }
+                className="mt-1.5"
+                data-testid={`queue-plane-${section.key}`}
+              >
+                <p className="flex items-baseline justify-between gap-2 px-2.5 pb-1 pt-1" aria-hidden="true">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">
+                    {section.label}
+                  </span>
+                  {/*
+                    A partition says what it adds up to. A flag list says how
+                    many records carry any of its flags — the number a reader
+                    wants — because flags overlap and cannot sum to anything.
+                    "Not your move" states nothing: it is neither.
+                  */}
+                  {section.key === "waiting" ? null : (
+                    <span className="text-[10px] tabular-nums text-disabled">
+                      {section.kind === "partition"
+                        ? `of ${section.headlineCount} everything`
+                        : `${section.headlineCount} of ${total}`}
+                    </span>
+                  )}
+                </p>
+                {section.options.map((option) => {
+                  const isActive = selectedIn(section) === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isActive}
+                      data-testid={`queue-chip-${option.key}`}
+                      data-queue-key={option.key}
+                      data-queue-count={option.count}
+                      data-plane={section.key}
+                      onClick={() => {
+                        setOpen(false);
+                        triggerRef.current?.focus();
+                        // Pressing the active option clears just that section,
+                        // so one control both applies and undoes.
+                        onChange({
+                          ...selection,
+                          [section.key === "stage" ? "stage" : "attention"]: isActive
+                            ? undefined
+                            : option.key,
+                        });
+                      }}
+                      className={[
+                        "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+                        isActive
+                          ? "bg-elevated font-semibold text-ink"
+                          : "font-medium text-secondary hover:bg-elevated hover:text-ink",
+                      ].join(" ")}
+                    >
+                      <Icon
+                        name="check"
+                        className={["h-3.5 w-3.5 shrink-0", isActive ? "text-ink" : "text-transparent"].join(" ")}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{option.label}</span>
+                        {/*
+                          The criteria, not just the name — every option states
+                          an observable fact rather than a judgement made on the
+                          reader's behalf.
+                        */}
+                        <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
+                          {option.description}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{option.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {starredCount > 0 || selection.starred ? (
+            <div
+              role="group"
+              aria-label="Personal organisation"
+              className="mt-1.5 border-t border-line pt-1.5"
+              data-testid="queue-plane-personal"
+            >
               <button
-                key={chip.key}
                 type="button"
-                role="menuitemradio"
-                aria-checked={isActive}
-                data-testid={`queue-chip-${chip.key}`}
-                data-queue-key={chip.key}
-                data-queue-count={chip.count}
+                role="menuitemcheckbox"
+                aria-checked={Boolean(selection.starred)}
+                data-testid="queue-chip-starred"
+                data-queue-key="starred"
+                data-queue-count={starredCount}
+                data-plane="personal"
                 onClick={() => {
                   setOpen(false);
                   triggerRef.current?.focus();
-                  onSelect(isActive ? null : chip.key);
+                  onChange({ ...selection, starred: selection.starred ? undefined : true });
                 }}
                 className={[
                   "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-                  isActive
+                  selection.starred
                     ? "bg-elevated font-semibold text-ink"
                     : "font-medium text-secondary hover:bg-elevated hover:text-ink",
                 ].join(" ")}
               >
                 <Icon
                   name="check"
-                  className={["h-3.5 w-3.5 shrink-0", isActive ? "text-ink" : "text-transparent"].join(
-                    " "
-                  )}
+                  className={["h-3.5 w-3.5 shrink-0", selection.starred ? "text-ink" : "text-transparent"].join(" ")}
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{chip.label}</span>
-                  {/*
-                    The criteria, not just the name. "Decision needed" in
-                    particular is a judgement the product is making on the
-                    reader's behalf, so it has to say on what basis.
-                  */}
-                  {chip.description ? (
-                    <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
-                      {chip.description}
-                    </span>
-                  ) : null}
+                  <span className="block truncate">Starred</span>
+                  <span className="mt-0.5 block text-[10.5px] font-normal leading-snug text-muted">
+                    Saved by you for a second look. Only you can see this.
+                  </span>
                 </span>
-                <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{chip.count}</span>
+                <span className="shrink-0 text-[10.5px] tabular-nums text-subtle">{starredCount}</span>
               </button>
-            );
-          })}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -559,21 +757,28 @@ export function InteractionScopeControl({
   filter,
   counts,
   onSelect,
-  queueChips = [],
-  activeQueue = null,
-  onQueueSelect,
+  classificationSections = [],
+  classificationSelection = {},
+  classificationTotal = 0,
+  starredCount = 0,
+  onClassificationChange,
   trailing,
 }: {
   mode: WorkspaceMode;
   filter: WorkspaceFilter;
   counts: Record<WorkspaceFilter, number>;
   onSelect: (key: WorkspaceFilter) => void;
-  queueChips?: WorkQueueChip[];
-  activeQueue?: string | null;
-  onQueueSelect?: (key: string | null) => void;
+  classificationSections?: ClassificationSection[];
+  classificationSelection?: ClassificationSelection;
+  classificationTotal?: number;
+  starredCount?: number;
+  onClassificationChange?: (next: ClassificationSelection) => void;
   trailing?: ReactNode;
 }) {
-  const showQueues = Boolean(onQueueSelect) && (queueChips.length > 0 || Boolean(activeQueue));
+  const showQueues =
+    Boolean(onClassificationChange) &&
+    (classificationSections.some((section) => section.options.length > 0) ||
+      Object.values(classificationSelection).some(Boolean));
   return (
     <div
       className="relative flex shrink-0 items-center gap-2 border-b border-line pl-4 pr-3"
@@ -639,9 +844,11 @@ export function InteractionScopeControl({
       />
       {showQueues ? (
         <WorkQueueSelector
-          chips={queueChips}
-          activeQueue={activeQueue}
-          onSelect={(key) => onQueueSelect?.(key)}
+          sections={classificationSections}
+          selection={classificationSelection}
+          total={classificationTotal}
+          starredCount={starredCount}
+          onChange={(next) => onClassificationChange?.(next)}
         />
       ) : (
         trailing ?? null
