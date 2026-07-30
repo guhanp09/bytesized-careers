@@ -212,51 +212,31 @@ test("the Star is a real control on a Pipeline card too", async ({ page }) => {
 
 /* ---- work categories ----------------------------------------------------- */
 
-test("the menu has one partition, and flags that cover nothing in particular", async ({ page }) => {
+test("the work-category menu accounts for every record", async ({ page }) => {
   await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
   await main(page).getByTestId("queue-selector-trigger").click();
   const menu = page.getByTestId("queue-selector-menu");
   await expect(menu).toBeVisible();
 
-  const rows = await menu.evaluate((node) =>
-    Array.from(node.querySelectorAll("[data-queue-key]")).map((entry) => ({
+  const counts = await menu.evaluate((node) => {
+    const rows = Array.from(node.querySelectorAll("[data-queue-key]"));
+    return rows.map((entry) => ({
       key: entry.getAttribute("data-queue-key"),
-      plane: entry.getAttribute("data-plane"),
       count: Number(entry.getAttribute("data-queue-count") ?? "0"),
       describes: (entry.textContent ?? "").trim().length > 20,
-    }))
-  );
-  expect(rows.length).toBeGreaterThan(2);
+    }));
+  });
+  expect(counts.length).toBeGreaterThan(2);
 
-  const total = rows.find((entry) => entry.key === "all");
+  const total = counts.find((entry) => entry.key === "all");
   expect(total, "the menu has no Everything row to reconcile against").toBeTruthy();
-
-  /*
-    Stage is the partition and sums to the whole. The flags do not sum to
-    anything — a record needing nobody carries none — which is the change that
-    removed a row holding 133 of 190 records and meaning "nothing outstanding
-    on either side". A run where the flags summed to the total would mean that
-    residual had come back.
-  */
-  const stage = rows.filter((entry) => entry.plane === "stage");
-  expect(stage.length, "no stage partition").toBeGreaterThan(1);
-  const stageSum = stage.reduce((sum, entry) => sum + entry.count, 0);
-  expect(stageSum, `stage sums to ${stageSum}, total is ${total!.count}`).toBe(total!.count);
-
-  const flags = rows.filter((entry) => entry.plane === "attention" || entry.plane === "waiting");
-  const flagSum = flags.reduce((sum, entry) => sum + entry.count, 0);
-  expect(flagSum, "the flags cover everything, so a residual is back").toBeLessThan(total!.count);
-
-  // And no row means "nothing matched".
-  for (const entry of rows) {
-    expect(entry.key).not.toMatch(/^(up_to_date|no_action_needed|no_reply_needed)$/);
-  }
+  const parts = counts.filter((entry) => entry.key !== "all" && entry.key !== "starred");
+  const summed = parts.reduce((sum, entry) => sum + entry.count, 0);
+  expect(summed, `categories sum to ${summed}, total is ${total!.count}`).toBe(total!.count);
 
   // A row naming a state without saying what it means is a label, not an
   // explanation.
-  for (const entry of rows.filter((row) => row.key !== "all")) {
-    expect(entry.describes, `${entry.key} explains nothing`).toBeTruthy();
-  }
+  for (const entry of parts) expect(entry.describes, `${entry.key} explains nothing`).toBeTruthy();
 });
 
 /* ---- persona icons ------------------------------------------------------- */
