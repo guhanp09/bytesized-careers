@@ -54,20 +54,32 @@ async function openMenu(page: Page) {
 
 /* ---- structure ----------------------------------------------------------- */
 
-test("each question is a group, not nine radios in a row", async ({ page }) => {
+test("each section is a group, not a flat run of radios", async ({ page }) => {
   await openMenu(page);
 
+  // Two or three, depending on the board: a section with nothing in it is not
+  // rendered, and "Not your move" is legitimately empty on some scopes.
   const groups = menu(page).getByRole("group");
   const count = await groups.count();
-  expect(count, "the planes are not exposed as groups").toBeGreaterThanOrEqual(3);
+  expect(count, "the sections are not exposed as groups").toBeGreaterThanOrEqual(2);
 
-  // And each group says what its numbers reconcile against, because a count
-  // heard without its denominator is a count taken on faith.
   const labels = await groups.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("aria-label") ?? "")
   );
-  const planes = labels.filter((label) => /\bof \d+\b/.test(label));
-  expect(planes.length, `no group states a denominator: ${labels.join(" | ")}`).toBeGreaterThanOrEqual(3);
+  for (const label of labels) expect(label.length, "an unlabelled group").toBeGreaterThan(3);
+
+  // The partition states what it sums to, because a count heard without its
+  // denominator is a count taken on faith. The flag sections state how many
+  // records carry any flag — they cannot sum to anything, and do not pretend to.
+  const withNumbers = labels.filter((label) => /\d+/.test(label));
+  expect(
+    withNumbers.length,
+    `no group states a number: ${labels.join(" | ")}`
+  ).toBeGreaterThanOrEqual(2);
+  expect(
+    labels.some((label) => /^Stage, of \d+ everything$/.test(label)),
+    `the partition does not state its denominator: ${labels.join(" | ")}`
+  ).toBe(true);
 });
 
 test("every option is a radio that says whether it is on", async ({ page }) => {
@@ -86,7 +98,7 @@ test("the trigger says what is on, so returning focus re-announces it", async ({
   const before = await trigger(page).getAttribute("aria-label");
   expect(before).toMatch(/filter what you are looking at/i);
 
-  await menu(page).getByTestId("queue-chip-opened").click();
+  await menu(page).getByTestId("queue-chip-reviewing").click();
   await expect(menu(page)).toHaveCount(0);
 
   const after = await trigger(page).getAttribute("aria-label");
@@ -162,7 +174,7 @@ test("choosing an option also returns focus to the trigger", async ({ page }) =>
   // Focus left somewhere inside a menu that no longer exists is focus on the
   // document body, which sends a keyboard user back to the top of the page.
   await openMenu(page);
-  await menu(page).getByTestId("queue-chip-opened").click();
+  await menu(page).getByTestId("queue-chip-reviewing").click();
   await expect(menu(page)).toHaveCount(0);
   await expect(trigger(page)).toBeFocused();
 });
@@ -171,7 +183,7 @@ test("choosing an option also returns focus to the trigger", async ({ page }) =>
 
 test("every interactive part of the control shows a focus ring", async ({ page }) => {
   await openMenu(page);
-  const option = menu(page).getByTestId("queue-chip-opened");
+  const option = menu(page).getByTestId("queue-chip-reviewing");
   await option.focus();
   const ring = await option.evaluate((node) => {
     const style = getComputedStyle(node);

@@ -91,7 +91,10 @@ test("the inbox reaches meaningful content and switches views without stalling",
   const queueTrigger = page.getByTestId("queue-selector-trigger");
   if (await queueTrigger.isVisible().catch(() => false)) {
     await queueTrigger.click();
-    const queue = page.getByTestId("queue-chip-decision_needed");
+    // A key that exists. This named `decision_needed` — a row from the flat
+    // list retired two redesigns ago — so the visibility guard below made the
+    // whole measurement a silent no-op.
+    const queue = page.getByTestId("queue-chip-not_opened");
     if (await queue.isVisible().catch(() => false)) {
       const queueSwitch = await timed("queue filter", async () => {
         await queue.click();

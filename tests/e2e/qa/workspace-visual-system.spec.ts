@@ -296,13 +296,20 @@ test("the queue control keeps a one-click way back to everything", async ({ page
 
   await trigger.click();
   const first = page.getByTestId("queue-selector-menu").getByRole("menuitemradio").nth(1);
-  const label = ((await first.textContent()) ?? "").trim();
+  // The option's own label, not a slice of its rendered text. Slicing broke the
+  // moment a short label ("New") sat above a long description, because the cut
+  // ran straight past the label and into the sentence under it.
+  const label = await first.evaluate(
+    (node) => node.querySelector("span > span")?.textContent?.trim() ?? ""
+  );
+  expect(label.length, "could not read the option's label").toBeGreaterThan(2);
   await first.click();
 
   // Standing inside a queue, the trigger says which one — and the way out is a
   // button beside it, not an item you have to reopen the menu to find. The rail
   // this replaced made you hunt for "All" among chips that scrolled.
-  await expect(trigger).toContainText(label.replace(/\d+$/, "").trim().slice(0, 12));
+  await expect(trigger).toContainText(label);
+  await expect(trigger).toHaveAttribute("aria-label", /showing/i);
   const clear = page.getByTestId("queue-clear");
   await expect(clear).toBeVisible();
   await clear.click();

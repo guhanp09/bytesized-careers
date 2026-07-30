@@ -4836,13 +4836,8 @@ export default function ApplicationsWorkspace({
   const starredCount = modeItems.filter((item) => isActiveRecord(item) && isStarred(item)).length;
 
   const classificationSections: ClassificationSection[] = CLASSIFICATION_PLANES.map((plane) => {
-    const counts =
-      plane.key === "review"
-        ? classification.review
-        : plane.key === "status"
-          ? classification.status
-          : classification.attention;
-    const denominatorCount = plane.key === "status" ? classification.opened : classification.total;
+    const counts = plane.key === "stage" ? classification.stage : classification.attention;
+    const selected = plane.key === "stage" ? classificationFilter.stage : classificationFilter.attention;
     const options = plane.options
       .map((option) => ({ ...option, count: (counts as Map<string, number>).get(option.key) ?? 0 }))
       /*
@@ -4852,8 +4847,27 @@ export default function ApplicationsWorkspace({
         would take the filter's name off screen while the filter was still
         applied, leaving an empty list with no visible way out.
       */
-      .filter((option) => option.count > 0 || classificationFilter[plane.key] === option.key);
-    return { key: plane.key, label: plane.label, denominator: plane.denominator, denominatorCount, options };
+      .filter((option) => option.count > 0 || selected === option.key);
+    /*
+      A partition states what it sums to. Flags cannot — they overlap and a
+      record may carry none — so "Needs you" reports how many records carry any
+      of its flags, which is the number a reader actually wants, rather than
+      offering a row that means "nothing matched".
+    */
+    const summary =
+      plane.kind === "partition"
+        ? { denominator: plane.denominator, denominatorCount: classification.total }
+        : plane.key === "attention"
+          ? { denominator: `of ${classification.total}`, denominatorCount: classification.needsYou }
+          : { denominator: "", denominatorCount: 0 };
+    return {
+      key: plane.key,
+      label: plane.label,
+      kind: plane.kind,
+      denominator: summary.denominator,
+      denominatorCount: summary.denominatorCount,
+      options,
+    };
   });
 
   /**
@@ -5035,8 +5049,13 @@ export default function ApplicationsWorkspace({
                       data-testid={`job-summary-count-${entry.key}`}
                       onClick={() => {
                         if (entry.target.kind === "queue") {
-                          // The summary counts speak the attention plane.
-                          setClassificationFilter({ attention: queueToAttention(entry.target.queue) });
+                          // The summary counts speak the attention flags. A
+                          // queue that maps to nothing outstanding clears the
+                          // filter rather than selecting a row that no longer
+                          // exists — there is no "no action needed" any more.
+                          setClassificationFilter({
+                            attention: queueToAttention(entry.target.queue) ?? undefined,
+                          });
                         } else if (entry.target.kind === "starred") {
                           setClassificationFilter({ starred: true });
                         } else {
@@ -5219,7 +5238,9 @@ export default function ApplicationsWorkspace({
                 type="button"
                 data-testid="work-reminder"
                 data-reminder-key={reminder.key}
-                onClick={() => setClassificationFilter({ attention: queueToAttention(reminder.queue) })}
+                onClick={() =>
+                  setClassificationFilter({ attention: queueToAttention(reminder.queue) ?? undefined })
+                }
                 className="group mx-3 mt-2.5 flex w-[calc(100%-1.5rem)] shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2 text-left text-[11.5px] text-secondary transition-colors hover:border-line-mid hover:bg-elevated hover:text-ink"
               >
                 <Icon

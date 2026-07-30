@@ -428,9 +428,15 @@ export type WorkQueueChip = {
  * the rail this replaces made you find "All" among chips that scrolled.
  */
 export type ClassificationSection = {
-  key: "review" | "status" | "attention";
+  key: "stage" | "attention" | "waiting";
   label: string;
-  /** What this section's numbers add up to, in words. */
+  /**
+   * How this section's numbers relate. A partition sums to its denominator and
+   * says so; flags overlap, a record may carry none, and the heading reports
+   * how many carry any instead of pretending to a total.
+   */
+  kind: "partition" | "flags";
+  /** What this section's numbers add up to, in words. Empty for a bare flag list. */
   denominator: string;
   denominatorCount: number;
   options: Array<{ key: string; label: string; description: string; count: number }>;
@@ -477,8 +483,13 @@ export function WorkQueueSelector({
   const activeCount = countActiveFilters(filter);
   if (sections.every((section) => section.options.length === 0) && activeCount === 0) return null;
 
+  // Both flag sections ("Needs you", "Not your move") select into the same
+  // filter key — they are one vocabulary rendered in two groups.
+  const selectedIn = (section: ClassificationSection) =>
+    section.key === "stage" ? filter.stage : filter.attention;
+
   const shown = sections.reduce((sum, section) => {
-    const selected = filter[section.key];
+    const selected = selectedIn(section);
     if (!selected) return sum;
     return section.options.find((option) => option.key === selected)?.count ?? sum;
   }, total);
@@ -599,7 +610,13 @@ export function WorkQueueSelector({
                   reconciles with rather than as a bare number.
                 */
                 role="group"
-                aria-label={`${section.label}, of ${section.denominatorCount} ${section.denominator}`}
+                aria-label={
+                  section.denominator
+                    ? section.kind === "partition"
+                      ? `${section.label}, of ${section.denominatorCount} ${section.denominator}`
+                      : `${section.label}, ${section.denominatorCount} ${section.denominator}`
+                    : section.label
+                }
                 className="mt-1.5"
                 data-testid={`queue-plane-${section.key}`}
               >
@@ -607,12 +624,21 @@ export function WorkQueueSelector({
                   <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">
                     {section.label}
                   </span>
-                  <span className="text-[10px] tabular-nums text-disabled">
-                    of {section.denominatorCount} {section.denominator}
-                  </span>
+                  {/*
+                    A partition says what it adds up to. A flag list says how
+                    many records carry any of its flags — the number a reader
+                    wants — because flags overlap and cannot sum to anything.
+                  */}
+                  {section.denominator ? (
+                    <span className="text-[10px] tabular-nums text-disabled">
+                      {section.kind === "partition"
+                        ? `of ${section.denominatorCount} ${section.denominator}`
+                        : `${section.denominatorCount} ${section.denominator}`}
+                    </span>
+                  ) : null}
                 </p>
                 {section.options.map((option) => {
-                  const isActive = filter[section.key] === option.key;
+                  const isActive = selectedIn(section) === option.key;
                   return (
                     <button
                       key={option.key}
@@ -628,7 +654,12 @@ export function WorkQueueSelector({
                         triggerRef.current?.focus();
                         // Pressing the active option clears just that plane, so
                         // one control both applies and undoes.
-                        onChange({ ...filter, [section.key]: isActive ? undefined : option.key });
+                        onChange({
+                          ...filter,
+                          [section.key === "stage" ? "stage" : "attention"]: isActive
+                            ? undefined
+                            : option.key,
+                        });
                       }}
                       className={[
                         "flex w-full cursor-pointer items-start gap-2 rounded-xl px-2.5 py-1.5 text-left text-[12px] transition-colors",

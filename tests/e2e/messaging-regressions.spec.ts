@@ -240,17 +240,20 @@ test("each section of the menu reconciles against its own stated denominator", a
   });
 
   /*
-    Three questions, three partitions. Review progress and attention each cover
-    everything; where-it-stands covers the opened records and says so. Adding
-    the three together would be a category error, and the menu prints each
-    denominator so nobody tries.
+    One partition, and some flags.
+
+    Stage covers everything and says so. The flag sections do not cover
+    anything — a record that needs nobody carries no flag — which is the change
+    that removed a row holding two thirds of the inbox and meaning nothing. So
+    the flags must sum to *less* than the total, and a run where they summed to
+    exactly it would mean the residual had come back.
   */
   const sum = (rows: { count: number }[]) => rows.reduce((a, b) => a + b.count, 0);
-  expect(sum(planes.review ?? []), "review progress").toBe(total);
-  expect(sum(planes.attention ?? []), "attention").toBe(total);
+  expect(sum(planes.stage ?? []), "stage is the partition").toBe(total);
 
-  const opened = (planes.review ?? []).length === 2 ? planes.review[1].count : null;
-  if (opened !== null) expect(sum(planes.status ?? []), "where it stands").toBe(opened);
+  const flagged = sum(planes.attention ?? []) + sum(planes.waiting ?? []);
+  expect(flagged, "the flags cover more records than exist").toBeLessThanOrEqual(total);
+  expect(flagged, "the flags cover everything, so a residual is back").toBeLessThan(total);
 
   // And every option states its criteria rather than only naming a state.
   for (const rows of Object.values(planes)) {
@@ -262,20 +265,24 @@ test("the planes combine, and one control clears them all", async ({ page }) => 
   await openWorkspace(page, { scenario: "busy", mode: "recruiter", view: "inbox" });
   const trigger = main(page).getByTestId("queue-selector-trigger");
 
+  // A stage and a flag: the two things the menu asks separately.
   await trigger.click();
-  const opened = page.getByTestId("queue-chip-opened");
-  const openedCount = Number((await opened.getAttribute("data-queue-count")) ?? "0");
-  await opened.click();
+  const stage = page.getByTestId("queue-chip-new");
+  const stageCount = Number((await stage.getAttribute("data-queue-count")) ?? "0");
+  await stage.click();
   await expect(main(page).getByTestId("interaction-scope")).toBeVisible();
 
   await trigger.click();
-  const reviewing = page.getByTestId("queue-chip-reviewing");
-  const narrowed = Number((await reviewing.getAttribute("data-queue-count")) ?? "0");
-  await reviewing.click();
+  // Whichever flag this board actually carries — the flags are not exhaustive,
+  // so naming one that happens to be empty would test nothing.
+  const flag = page.getByTestId("queue-selector-menu").locator('[data-plane="attention"]').first();
+  await expect(flag).toBeVisible();
+  const narrowed = Number((await flag.getAttribute("data-queue-count")) ?? "0");
+  await flag.click();
 
   // Combining narrows: the two questions are different, so the answer to both
   // can only be a subset of the answer to one.
-  expect(narrowed).toBeLessThanOrEqual(openedCount);
+  expect(narrowed).toBeLessThanOrEqual(stageCount);
   await expect(trigger).toContainText("2 filters");
 
   await main(page).getByTestId("queue-clear").click();

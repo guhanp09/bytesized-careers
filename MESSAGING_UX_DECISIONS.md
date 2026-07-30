@@ -419,7 +419,7 @@ support, and staying silent about things it could.
 
 The rule in one sentence: **filled means somebody else is waiting.**
 
-### The three planes
+### The three planes — superseded by §12
 
 *Review progress* (of everything) — Not opened yet · Opened. Read from the
 stage, so it survives a reload and a second recruiter.
@@ -435,6 +435,9 @@ on them · Snoozed · No action needed.
 **Ready for decision** means exactly one thing: the interview happened and no
 outcome was recorded. The old copy claimed the recruiter "had everything they
 needed" on the evidence that nothing else had matched, which is not evidence.
+
+> **Superseded.** Three exhaustive sections turned out to be two too many.
+> Measuring the result is what showed it — see §12.
 
 ### Screening
 
@@ -536,3 +539,52 @@ counted strict runs and passed the exact screen it existed to prevent.
   home. Recorded in the profile-parity contract with the reason.
 - **Roles restore as names, not catalogue rows.** `UserRole` → `Role` is a join
   the corpus does not create; the Mock profile renders the names it carries.
+
+---
+
+## 12. One partition, and some flags — the fourth pass
+
+§10 replaced a flat list of three buckets with three exhaustive planes. That
+fixed the grab-bag and introduced a subtler version of the same fault. Three
+numbers from `default` (155 active received) condemned it:
+
+| Symptom | Measurement |
+|---|---|
+| Residual bucket, again | **"No action needed" held 102 of 155** — 66%. The largest row in the menu meant *nothing*. The old *Decision needed* was the bucket for whatever had not matched; this was the same bucket, inverted. |
+| The same fact, named twice | **"New to read" and "Not opened yet" were the identical 35 records.** A record at stage `new` derives a `needs_review` work state by construction, so the attention plane was restating the review plane. |
+| Two screens disagreeing | **"Where it stands" covered only opened records**, so 35 had no position here while the Pipeline board put them in a **New** column — a column this menu did not offer at all. |
+
+### What the category actually does
+
+| Pattern | Where | What we do now |
+|---|---|---|
+| Exactly one exhaustive status workflow | [Linear](https://linear.app/docs/configuring-workflows) — and its docs say outright not to replicate statuses as labels | **Stage** is the only partition |
+| Action-needed is an overlay on the stage, not a stage and not a partition | [Greenhouse's visual pipeline colour-codes candidates by what action awaits someone](https://support.greenhouse.io/hc/en-us/articles/4874727408795-Visual-Candidate-Pipeline) and leaves the rest unmarked | **Flags**, with no residual |
+| The useful triage question is "does this need a response from me", not "what category is this" | [Spark on email triage](https://sparkmailapp.com/blog/email-triage) | The section is titled **Needs you**, and its heading counts them |
+| Overlapping filter categories confuse; labels must be concrete | [NN/g](https://www.nngroup.com/articles/filter-categories-values/) | Flags may overlap and are *not* presented as a partition, so nothing implies they sum |
+
+### The shape
+
+- **Stage** — `New · Reviewing · Interviewing · Hired/starting · Closed`. A
+  partition over every active record, in the Pipeline board's own vocabulary, so
+  a state has the same name in both places you see it. `Closed` is the single
+  deliberate summary, standing for the board's terminal columns.
+- **Needs you** — `Not opened yet · New to read · Needs your reply · Ready for
+  decision · Decision not sent · Interview to confirm · Start to confirm`. Flags.
+  **No residual.** A record that needs nobody carries none, and the heading reads
+  "59 of 179" rather than offering a row that means "nothing matched".
+- **Not your move** — `Waiting on them · Snoozed`.
+- **Starred**, as before, cutting across everything.
+
+`attentionOf` returns `AttentionKey | null`, and `null` is the whole design:
+there is no longer anything to return for "nothing is outstanding". It also
+checks *unopened* before consulting the work state, which is what stopped the
+two flags naming the same records — **"New to read" fell from 35 to 6**, and now
+means what it says: you have seen this before and something new arrived.
+
+### What it costs
+
+You can no longer filter to "show me the quiet ones" — there is no *No action
+needed* to click. `Everything` minus the flags is the same set but not in one
+click. That is the right trade: a row meaning "nothing matched" is not a
+category, and two thirds of the inbox landing in it is the proof.

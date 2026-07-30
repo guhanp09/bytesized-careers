@@ -1,30 +1,36 @@
 /**
- * Three questions, asked separately.
+ * One partition, and some flags.
  *
- * The applicant menu used to be one flat list — *Decision needed*, *New to
- * review*, *Up to date* — whose parts added up to the whole and still left the
- * reader unsure what they were looking at. The arithmetic was never the
- * problem. The problem is that those three names answer three different
- * questions:
+ * The menu before this asked three questions as three exhaustive sections, and
+ * measuring it showed why that was one too many:
  *
- * - **have I looked at this yet?** — a fact about the reader;
- * - **where is it in the hiring process?** — a fact about the record;
- * - **does anyone need to do something?** — a fact about the moment.
+ * - **"No action needed" held 102 of 155 records.** The largest row in the menu
+ *   meant *nothing*. That is the same disease as the flat list it replaced —
+ *   *Decision needed* was the bucket for whatever had not matched — just
+ *   inverted. A residual is not a category; it is the absence of one.
+ * - **"New to read" and "Not opened yet" were the same 35 records**, named
+ *   twice in two different sections, because a record at stage `new` derives a
+ *   `needs_review` work state by construction.
+ * - **"Where it stands" covered only opened records**, so 35 records had no
+ *   position here while the Pipeline board put them in a **New** column. The
+ *   same record had a stage on one screen and none on the other.
  *
- * Flattened into one list they compete: an application can be opened *and*
- * interviewing *and* waiting on the applicant, and a single list has to pick
- * one and silently drop the other two. That is why "Decision needed" grew until
- * it meant "we could not think of anything else", and why the reader could not
- * predict which bucket a record would land in.
+ * Every product that does this well converges on the same shape. Greenhouse's
+ * visual pipeline colour-codes candidates by *what action is awaiting someone*
+ * and leaves the rest unmarked. Linear has exactly one status workflow and says
+ * outright not to replicate it as labels. Inbox triage research puts it most
+ * plainly: the useful question is not "what category is this" but "does this
+ * need a response from me".
  *
- * So there are three planes, labelled, each exhaustive over the same active
- * population. A record has exactly one answer in each. They combine; they do
- * not add to one another, and the menu says so.
+ * So:
  *
- * ATS convention supports the split: pipeline stage and reviewer progress are
- * separate columns in every serious applicant tracker, and inbox products keep
- * "unread" apart from "needs action" for the same reason — one is about you and
- * the other is about the work.
+ * - **Stage** is the one partition. Every active record has exactly one, and it
+ *   uses the Pipeline board's own vocabulary — including `New` — so a state has
+ *   the same name in both places you see it.
+ * - **Attention** is a set of flags with **no residual**. A record that needs
+ *   nothing appears in none of them, and the section heading counts how many
+ *   need you rather than offering a row that means "nothing matched".
+ * - **Starred** is personal organisation cutting across both.
  */
 
 import type { OwnerInteraction } from "./ownerInteractions.ts";
@@ -46,12 +52,16 @@ export function isActiveRecord(item: OwnerInteraction): boolean {
   return !isArchivedInteraction(item);
 }
 
-/* ---- plane A: review progress -------------------------------------------- */
+/* ---- has anyone looked? -------------------------------------------------- */
 
 export type ReviewProgressKey = "unopened" | "opened";
 
 /**
  * Has anyone looked at this yet?
+ *
+ * No longer a section of its own — it is one attention flag, *Not opened yet* —
+ * but it is still the cleanest way to ask the question, and the stage plane and
+ * the flag list both need the answer.
  *
  * `new` is the only stage that means "arrived, untouched": the workspace moves
  * a deliberately-opened record to `reviewing` privately, so the stage *is* the
@@ -67,33 +77,49 @@ export function reviewProgressOf(item: OwnerInteraction): ReviewProgressKey {
   return backendStatusOf(item) === "new" ? "unopened" : "opened";
 }
 
-/* ---- plane B: workflow status -------------------------------------------- */
+/* ---- the one partition: stage -------------------------------------------- */
 
-export type OpenedStatusKey = "reviewing" | "interviewing" | "hired" | "closed";
+export type StageKey = "new" | "reviewing" | "interviewing" | "hired" | "closed";
+
+/** Kept as an alias: the old name is still what several call sites read. */
+export type OpenedStatusKey = StageKey;
 
 const CLOSED_STAGES = new Set(["rejected", "declined", "withdrawn", "not_selected", "expired"]);
 const HIRED_STAGES = new Set(["hired", "accepted"]);
 
 /**
- * Where an opened record sits in the process.
+ * Where a record sits in the process — over *every* active record.
  *
- * Only defined for records that have been opened — an untouched application has
- * no management position yet, and inventing one would be the product asserting
- * a judgement nobody made. Legacy `shortlisted` and `under_consideration` fold
- * into Reviewing, which is what they always meant.
+ * This used to be defined only for opened records, on the reasoning that an
+ * untouched application has no management position yet. That reasoning was
+ * wrong in one specific way: the Pipeline board already gives it one. It sits
+ * in the **New** column, because `new` is a real backend stage, not the absence
+ * of a stage. Excluding it here meant the same record had a position on one
+ * screen and none on the other, and the menu could not offer the board's own
+ * first column at all.
+ *
+ * Legacy `shortlisted` and `under_consideration` fold into Reviewing, which is
+ * what they always meant.
  */
-export function openedStatusOf(item: OwnerInteraction): OpenedStatusKey | null {
-  if (reviewProgressOf(item) === "unopened") return null;
+export function stageOf(item: OwnerInteraction): StageKey {
   const stage = backendStatusOf(item);
   if (CLOSED_STAGES.has(stage)) return "closed";
   if (HIRED_STAGES.has(stage)) return "hired";
   if (stage === "interviewing") return "interviewing";
+  if (stage === "new" && item.direction === "received") return "new";
   return "reviewing";
 }
 
-/* ---- plane C: attention -------------------------------------------------- */
+/**
+ * The previous name, preserved because it reads correctly at call sites that
+ * genuinely want "what position does this opened record hold".
+ */
+export const openedStatusOf = stageOf;
+
+/* ---- the flags: does anyone need to do something? ------------------------ */
 
 export type AttentionKey =
+  | "not_opened"
   | "needs_your_reply"
   | "unread_activity"
   | "ready_for_decision"
@@ -101,31 +127,38 @@ export type AttentionKey =
   | "interview_to_confirm"
   | "start_to_confirm"
   | "waiting_on_them"
-  | "snoozed"
-  | "no_action_needed";
+  | "snoozed";
 
 /**
- * Does anyone need to do something, and who?
+ * Does anyone need to do something, and who — or `null` for neither.
+ *
+ * **`null` is the whole point.** This used to return `no_action_needed`, which
+ * made the set exhaustive and put 102 of 155 records in a row that said
+ * "nothing outstanding on either side". Two thirds of a menu meaning nothing is
+ * not information. A record that needs no one now simply carries no flag, and
+ * the section heading counts the ones that do.
  *
  * Built on the existing deterministic work-state engine rather than beside it,
- * so a record's attention category and the chip on its row can never tell
- * different stories.
+ * so a record's flag and the chip on its row can never tell different stories.
  *
- * The important change is what *left*. "Decision needed" used to absorb both a
- * decision saved and never sent — objective — and any inbound message whose
- * intent was unclear, which is not a decision at all but an unread thing. It
- * claimed the system knew the recruiter "had everything they needed", on the
- * evidence that nothing else had matched. Those are now two honest categories,
- * and neither of them claims to know that.
+ * `not_opened` comes first deliberately. A record nobody has looked at derives
+ * a `needs_review` work state by construction, so without this it surfaced as
+ * *New to read* — the same 35 records the review section was already showing
+ * under another name. Checking it first means *New to read* keeps its real
+ * meaning: you have seen this record before and something new has arrived.
  */
 export function attentionOf(
   item: OwnerInteraction,
   signals: QueueSignals = {},
   preferences: WorkQueuePreferences = NO_QUEUE_PREFERENCES
-): AttentionKey {
+): AttentionKey | null {
   const snoozed = preferences.snoozedUntil(item.id);
   if (snoozed !== null && snoozed > Date.now()) return "snoozed";
-  if (preferences.isDismissed(item.id)) return "no_action_needed";
+  if (preferences.isDismissed(item.id)) return null;
+
+  // Before the work state, so "nobody has looked" is not reported as "you have
+  // not read the latest" — they were the same records under two names.
+  if (reviewProgressOf(item) === "unopened") return "not_opened";
 
   const state = deriveWorkState(item, signals);
   switch (state?.key) {
@@ -150,39 +183,55 @@ export function attentionOf(
       break;
   }
 
-  // Nothing outstanding on this side. Whether the other side owes a move is the
-  // remaining useful distinction, and both answers are deterministic.
+  // Nothing outstanding on this side. Whether the other side owes a move is
+  // still worth saying, and it is deterministic; everything else is quiet and
+  // gets no flag at all.
   if (item.direction === "sent") return "waiting_on_them";
   if (signals.interviewScheduled && !signals.interviewFollowUpDue) return "waiting_on_them";
-  return "no_action_needed";
+  return null;
 }
+
+/** The flags that mean the next move is yours. Drives the section heading. */
+export const NEEDS_YOU: ReadonlySet<AttentionKey> = new Set<AttentionKey>([
+  "not_opened",
+  "unread_activity",
+  "needs_your_reply",
+  "ready_for_decision",
+  "decision_not_sent",
+  "interview_to_confirm",
+  "start_to_confirm",
+]);
 
 /* ---- the menu ------------------------------------------------------------ */
 
 export type PlaneOption = { key: string; label: string; description: string };
+
 export type ClassificationPlane = {
-  key: "review" | "status" | "attention";
+  key: "stage" | "attention" | "waiting";
   label: string;
-  /** What the section's counts add up to. Stated, because unstated it is a guess. */
+  /**
+   * How the section's numbers relate to each other.
+   *
+   * `partition` sums to the stated denominator and says so. `flags` do not sum
+   * to anything — they overlap, a record can carry none, and the heading
+   * reports how many carry any rather than pretending to a total.
+   */
+  kind: "partition" | "flags";
+  /** What a partition's counts add up to. Unused for flags. */
   denominator: string;
   options: PlaneOption[];
 };
 
 export const CLASSIFICATION_PLANES: ClassificationPlane[] = [
   {
-    key: "review",
-    label: "Review progress",
+    key: "stage",
+    label: "Stage",
+    kind: "partition",
     denominator: "everything",
     options: [
-      { key: "unopened", label: "Not opened yet", description: "Arrived and nobody has looked." },
-      { key: "opened", label: "Opened", description: "You have looked at least once." },
-    ],
-  },
-  {
-    key: "status",
-    label: "Where it stands",
-    denominator: "opened",
-    options: [
+      // The Pipeline board's own vocabulary, in its own order. A state that
+      // reads "New" on the board must not read as something else here.
+      { key: "new", label: "New", description: "Arrived, and no step taken yet." },
       { key: "reviewing", label: "Reviewing", description: "Opened, and no later step taken yet." },
       { key: "interviewing", label: "Interviewing", description: "An interview is arranged or has happened." },
       { key: "hired", label: "Hired / starting", description: "Agreed, and the work is beginning." },
@@ -191,26 +240,40 @@ export const CLASSIFICATION_PLANES: ClassificationPlane[] = [
   },
   {
     key: "attention",
-    label: "Needs attention",
+    label: "Needs you",
+    kind: "flags",
     denominator: "everything",
     options: [
+      { key: "not_opened", label: "Not opened yet", description: "Nobody has looked at it." },
+      { key: "unread_activity", label: "New to read", description: "You have seen this before and something new arrived." },
       { key: "needs_your_reply", label: "Needs your reply", description: "They asked something that expects an answer." },
-      { key: "unread_activity", label: "New to read", description: "Something arrived that you have not read." },
       { key: "ready_for_decision", label: "Ready for decision", description: "The interview happened and no outcome was recorded." },
       { key: "decision_not_sent", label: "Decision not sent", description: "You decided privately and they have not been told." },
       { key: "interview_to_confirm", label: "Interview to confirm", description: "A time was proposed and nobody confirmed it." },
       { key: "start_to_confirm", label: "Start to confirm", description: "Agreed, and the start has not been confirmed." },
+    ],
+  },
+  {
+    key: "waiting",
+    label: "Not your move",
+    kind: "flags",
+    denominator: "everything",
+    options: [
       { key: "waiting_on_them", label: "Waiting on them", description: "The next move belongs to the other side." },
       { key: "snoozed", label: "Snoozed", description: "Hidden until you asked to see it again. Its status is unchanged." },
-      { key: "no_action_needed", label: "No action needed", description: "Nothing outstanding on either side." },
     ],
   },
 ];
 
+/** Which section an attention flag is rendered under. */
+export function planeForAttention(key: AttentionKey): "attention" | "waiting" {
+  return NEEDS_YOU.has(key) ? "attention" : "waiting";
+}
+
 export type ClassificationOf = {
-  review: ReviewProgressKey;
-  status: OpenedStatusKey | null;
-  attention: AttentionKey;
+  stage: StageKey;
+  /** Null when nothing and nobody is outstanding. */
+  attention: AttentionKey | null;
 };
 
 export function classify(
@@ -219,82 +282,74 @@ export function classify(
   preferences: WorkQueuePreferences = NO_QUEUE_PREFERENCES
 ): ClassificationOf {
   return {
-    review: reviewProgressOf(item),
-    status: openedStatusOf(item),
+    stage: stageOf(item),
     attention: attentionOf(item, signals, preferences),
   };
 }
 
 export type ClassificationCounts = {
-  /** Active records in scope — what "Review progress" and "Needs attention" add up to. */
+  /** Active records in scope — what Stage adds up to. */
   total: number;
-  /** Opened records — what "Where it stands" adds up to. */
-  opened: number;
-  review: Map<ReviewProgressKey, number>;
-  status: Map<OpenedStatusKey, number>;
+  stage: Map<StageKey, number>;
   attention: Map<AttentionKey, number>;
+  /** How many carry a flag that means the next move is yours. */
+  needsYou: number;
 };
 
 /**
- * Count every plane in one pass.
+ * Count the partition and the flags in one pass.
  *
- * Each plane is a partition of its own denominator, so `review` and `attention`
- * each sum to `total` and `status` sums to `opened`. Those are the invariants
- * the tests hold, and the menu prints the denominators so a reader never has to
- * guess which numbers are supposed to agree.
+ * `stage` sums to `total` and the menu says so. `attention` deliberately does
+ * not: a record can carry no flag, which is the change that removed a row
+ * holding two thirds of the inbox and meaning nothing.
  */
 export function classificationCounts(
   items: OwnerInteraction[],
   signalsFor: (item: OwnerInteraction) => QueueSignals = () => ({}),
   preferences: WorkQueuePreferences = NO_QUEUE_PREFERENCES
 ): ClassificationCounts {
-  const review = new Map<ReviewProgressKey, number>();
-  const status = new Map<OpenedStatusKey, number>();
+  const stage = new Map<StageKey, number>();
   const attention = new Map<AttentionKey, number>();
   let total = 0;
-  let opened = 0;
+  let needsYou = 0;
 
   for (const item of items) {
     if (!isActiveRecord(item)) continue;
     total += 1;
     const seen = classify(item, signalsFor(item), preferences);
-    review.set(seen.review, (review.get(seen.review) ?? 0) + 1);
-    attention.set(seen.attention, (attention.get(seen.attention) ?? 0) + 1);
-    if (seen.status) {
-      opened += 1;
-      status.set(seen.status, (status.get(seen.status) ?? 0) + 1);
+    stage.set(seen.stage, (stage.get(seen.stage) ?? 0) + 1);
+    if (seen.attention) {
+      attention.set(seen.attention, (attention.get(seen.attention) ?? 0) + 1);
+      if (NEEDS_YOU.has(seen.attention)) needsYou += 1;
     }
   }
-  return { total, opened, review, status, attention };
+  return { total, stage, attention, needsYou };
 }
 
-/** One selection per plane. Absent means "no filter on this plane". */
+/** One selection per section. Absent means "no filter from this section". */
 export type ClassificationFilter = {
-  review?: ReviewProgressKey;
-  status?: OpenedStatusKey;
+  stage?: StageKey;
   attention?: AttentionKey;
-  /** Personal organisation, which cuts across all three rather than being one. */
+  /** Personal organisation, which cuts across both rather than being one. */
   starred?: boolean;
 };
 
 export const EMPTY_CLASSIFICATION_FILTER: ClassificationFilter = {};
 
 export function isFilterActive(filter: ClassificationFilter): boolean {
-  return Boolean(filter.review || filter.status || filter.attention || filter.starred);
+  return Boolean(filter.stage || filter.attention || filter.starred);
 }
 
 export function countActiveFilters(filter: ClassificationFilter): number {
-  return [filter.review, filter.status, filter.attention, filter.starred ? "starred" : undefined].filter(
-    Boolean
-  ).length;
+  return [filter.stage, filter.attention, filter.starred ? "starred" : undefined].filter(Boolean).length;
 }
 
 /**
  * Apply the selection.
  *
- * Combining planes narrows, because they answer different questions: "opened"
- * and "waiting on them" together is a real thing to ask for, and a flat list
- * could never express it.
+ * Stage and a flag combine to narrow, because they answer different questions:
+ * "Interviewing" and "Ready for decision" together is a real thing to ask for,
+ * and a flat list could never express it.
  */
 export function matchesFilter(
   item: OwnerInteraction,
@@ -306,8 +361,7 @@ export function matchesFilter(
   if (!isActiveRecord(item)) return false;
   if (filter.starred && !isStarred(item)) return false;
   const seen = classify(item, signals, preferences);
-  if (filter.review && seen.review !== filter.review) return false;
-  if (filter.status && seen.status !== filter.status) return false;
+  if (filter.stage && seen.stage !== filter.stage) return false;
   if (filter.attention && seen.attention !== filter.attention) return false;
   return true;
 }
@@ -316,10 +370,10 @@ export function matchesFilter(
 export function describeFilter(filter: ClassificationFilter): string[] {
   const parts: string[] = [];
   for (const plane of CLASSIFICATION_PLANES) {
-    const selected = filter[plane.key];
+    const selected = plane.key === "stage" ? filter.stage : filter.attention;
     if (!selected) continue;
     const option = plane.options.find((entry) => entry.key === selected);
-    if (option) parts.push(option.label);
+    if (option && !parts.includes(option.label)) parts.push(option.label);
   }
   if (filter.starred) parts.push("Starred");
   return parts;
@@ -332,7 +386,7 @@ export function describeFilter(filter: ClassificationFilter): string[] {
  * strip — and both are asking the same question the attention plane answers, so
  * they route through it rather than keeping a parallel filter alive.
  */
-export function queueToAttention(queue: string): AttentionKey {
+export function queueToAttention(queue: string): AttentionKey | null {
   switch (queue) {
     case "start_confirmation_pending":
       return "start_to_confirm";
@@ -344,6 +398,8 @@ export function queueToAttention(queue: string): AttentionKey {
       return "needs_your_reply";
     case "new_to_review":
       return "unread_activity";
+    case "not_opened":
+      return "not_opened";
     case "decision_needed":
       return "decision_not_sent";
     case "waiting_for_them":
@@ -351,6 +407,8 @@ export function queueToAttention(queue: string): AttentionKey {
     case "snoozed":
       return "snoozed";
     default:
-      return "no_action_needed";
+      // No flag rather than a residual one: the queue said nothing is
+      // outstanding, and there is no longer a row that means that.
+      return null;
   }
 }
