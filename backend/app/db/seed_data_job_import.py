@@ -29,7 +29,13 @@ def processed_review_fixture() -> JobImportExtractionResponse:
                     "field_path": "primary_role_key",
                     "value": "video-editor",
                     "provenance": "suggested_inference",
+                    "evidence": [
+                        {
+                            "snippet": "Hiring a YouTube video editor for our finance channel."
+                        }
+                    ],
                     "explanation": "The responsibilities most closely match the Video Editor role.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
                 },
                 {
                     "field_path": "platforms",

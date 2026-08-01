@@ -6,7 +6,7 @@ import ImportJobClientBoundary from "../../../components/import-job/ImportJobCli
 export const metadata: Metadata = {
   title: "Import job details — CreatorJobs",
   description:
-    "Start from existing text or a public job-listing URL, review every suggestion, and create a private CreatorJobs draft.",
+    "Start from existing text or a public job-listing URL, then continue in a prefilled CreatorJobs Post Job draft.",
 };
 
 export default function ImportJobPage() {

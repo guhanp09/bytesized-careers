@@ -1,36 +1,34 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("public URL entry joins the existing private source, draft, process, and review flow", () => {
+test("public URL entry joins the private source, draft, process, and canonical Post Job flow", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
   const client = read("lib/jobImportReadiness.ts");
   assert.match(page, /\["url", "Public URL"\]/);
   assert.match(page, /createJobImportUrlSource/);
   assert.match(page, /initializeJobImportDraft/);
-  assert.match(page, /processDraft\(initialized\)/);
-  assert.match(page, /<ImportReviewWorkspace/);
+  assert.match(page, /processDraft\(initialized, controller\.signal\)/);
+  assert.match(page, /applyJobImportDraft/);
+  assert.match(page, /\/post-job\?draftId=/);
   assert.match(client, /"\/job-imports\/url-sources"/);
-  assert.doesNotMatch(page, /URLReview|UrlReview|applyUrlImport/);
+  assert.doesNotMatch(page, /URLReview|UrlReview|applyUrlImport|ImportReviewWorkspace/);
 });
 
-test("URL entry explains the public-only, no-browser-session retrieval boundary", () => {
+test("URL entry explains the public retrieval boundary and keeps a paste fallback", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
   for (const phrase of [
     "anyone can open without signing in",
-    "without cookies",
-    "browser sessions",
-    "JavaScript",
-    "forms",
-    "linked",
-    "Some websites may not be supported",
+    "paste the text instead",
   ]) {
     assert.match(page, new RegExp(phrase, "i"));
   }
+  assert.match(page, /Some sites block automated\s+reading/i);
   assert.match(page, /type="url"/);
   assert.match(page, /aria-label="Import source"/);
+  assert.match(page, /Enter a public HTTP or HTTPS URL without sign-in credentials/);
 });
 
 test("server URL retrieval owns SSRF, redirect, content, timeout, and size policy", () => {

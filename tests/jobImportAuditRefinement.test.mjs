@@ -4,50 +4,75 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("import entry, processing, review, and apply mutations reject duplicate clicks", () => {
+test("import creation, processing, and apply guard duplicate mutations", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
 
-  for (const guard of [
-    "entrySubmissionRef.current",
-    "processingRequestRef.current",
-    "reviewMutationRef.current",
-    "applyRequestRef.current",
+  assert.match(page, /if \(!accessToken \|\| processingRef\.current\) return/);
+  assert.match(page, /if \(!accessToken \|\| finishingRef\.current\) return/);
+  assert.match(page, /requestIdRef\.current \?\? crypto\.randomUUID\(\)/);
+  assert.match(page, /idempotency_key: `url-source-\$\{requestId\}`/);
+  assert.match(page, /idempotency_key: `text-source-\$\{requestId\}`/);
+  assert.match(page, /requestControllerRef\.current\?\.abort\(\)/);
+});
+
+test("manual edits cannot be overwritten by repeated partial-draft hydration", () => {
+  const page = read("components/PostJobPage.tsx");
+
+  assert.match(page, /partialImportAppliedRef\.current === partialImportDraftId/);
+  assert.match(page, /partialImportAppliedRef\.current = partialImportDraftId/);
+  assert.match(page, /dirtyPayloadKeysRef\.current\.add\(key\)/);
+  assert.match(page, /setManuallyChangedImportFields/);
+  assert.match(page, /manuallyChangedImportFields\.has\(nativeField\)/);
+  assert.match(page, /trackPersistedImportEdits\(completePayload\)/);
+  assert.match(page, /jobImportValueWasRemoved\(payload\[nativeField\]\)/);
+  assert.match(page, /partialImportTargetJobRef/);
+  assert.match(page, /attachJobImportDraft/);
+});
+
+test("processing recovery polls retained drafts and clears user-facing failures", () => {
+  const page = read("components/import-job/ImportJobPageClient.tsx");
+
+  assert.match(page, /phase !== "processing"/);
+  assert.match(page, /getJobImportDraft\(accessToken, draft\.id\)/);
+  assert.match(page, /terminalDraftStatuses\.has\(next\.processing_status\)/);
+  assert.match(page, /setError\(""\)/);
+  assert.match(page, /Resume draft preparation/);
+});
+
+test("loading is calm, honest, cancellable, and accessible", () => {
+  const page = read("components/import-job/ImportJobPageClient.tsx");
+  const loading = page.match(/function PreparingSurface[\s\S]*?\n}\n\nexport default/);
+  assert.ok(loading);
+  for (const stage of [
+    "Reading the job post",
+    "Understanding the role",
+    "Preparing your draft",
   ]) {
-    assert.match(page, new RegExp(guard.replace(".", "\\.")));
+    assert.match(loading[0], new RegExp(stage));
   }
-  assert.match(page, /disabled=\{processingRequest\}/);
-  assert.match(page, /interactionsLocked=\{busyField !== null \|\| applying\}/);
+  assert.match(page, /window\.setTimeout\(\(\) => setDelayed\(true\), 8_000\)/);
+  assert.match(page, /aria-live="polite"/);
+  assert.match(loading[0], /data-testid="job-import-cancel"/);
+  assert.match(loading[0], /motion-reduce:animate-none/);
+  assert.doesNotMatch(loading[0], /\d+%|evidence spans|normalization|schema mapping|model provider/i);
 });
 
-test("review actions lock together so stale concurrent responses cannot replace newer state", () => {
-  const review = read("components/import-job/ImportReviewWorkspace.tsx");
-
-  assert.match(review, /busy=\{busyField !== null\}/g);
-  assert.match(review, /disabled=\{interactionsLocked\}/);
-  assert.match(
-    review,
-    /!draft\.can_apply_to_native_draft[\s\S]+interactionsLocked/,
-  );
-});
-
-test("a transient processing-status failure retries and clears stale errors on success", () => {
+test("recoverable and partial failures retain successful work and offer clear next steps", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
-
-  assert.match(page, /setPollRetry\(\(attempt\) => attempt \+ 1\)/);
-  assert.match(page, /\[accessToken, draft, phase, pollRetry\]/);
-  assert.match(
-    page,
-    /setPhase\("review"\);\s+setError\(""\);\s+setAnnouncement\("Draft prepared/,
-  );
+  assert.match(page, /Retry/);
+  assert.match(page, /Continue manually/);
+  assert.match(page, /Paste text instead/);
+  assert.match(page, /\/post-job\?importDraftId=/);
+  assert.match(page, /Your source is still here/);
 });
 
-test("import source tabs expose a complete keyboard-operated tab pattern", () => {
+test("source tabs expose a complete keyboard-operated tab pattern", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
 
   assert.match(page, /role="tablist"/);
   assert.match(page, /aria-controls=\{`import-panel-\$\{mode\}`\}/);
   assert.match(page, /tabIndex=\{entryMode === mode \? 0 : -1\}/);
-  assert.match(page, /"ArrowLeft", "ArrowRight", "Home", "End"/);
+  assert.match(page, /"ArrowLeft"[\s\S]+"ArrowRight"[\s\S]+"Home"[\s\S]+"End"/);
   assert.match(page, /role="tabpanel"/g);
   assert.match(page, /motion-reduce:transition-none/);
 });

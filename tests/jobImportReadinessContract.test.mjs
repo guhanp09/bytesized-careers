@@ -24,6 +24,7 @@ test("job-import readiness client owns the private typed contract", () => {
     "JobImportProcessResponse",
     "JobImportProvenance",
     "JobImportReviewStatus",
+    "JobImportDraftContext",
   ]) {
     assert.match(contract, new RegExp(`export type ${typeName}`));
   }
@@ -40,6 +41,8 @@ test("job-import readiness client owns the private typed contract", () => {
     "discardJobImportDraft",
     "deleteJobImportDraft",
     "applyJobImportDraft",
+    "attachJobImportDraft",
+    "getJobImportContextForNativeJob",
   ]) {
     assert.match(contract, new RegExp(`export async function ${operation}`));
   }
@@ -90,9 +93,10 @@ test("the user-facing import flow uses the private readiness substrate without p
     .join("\n");
 
   assert.match(userFacingSource, /jobImportReadiness/);
-  assert.match(userFacingSource, /Create job draft/);
-  assert.match(userFacingSource, /Source summary/);
-  assert.match(userFacingSource, /resolveJobImportConflict/);
+  assert.match(userFacingSource, /Draft created from your job post/);
+  assert.match(userFacingSource, /ImportedDraftNotice/);
+  assert.match(userFacingSource, /getJobImportContextForNativeJob/);
+  assert.match(userFacingSource, /Why was this filled\?/);
   assert.doesNotMatch(userFacingSource, /Create with AI/);
   assert.doesNotMatch(userFacingSource, /Process with AI/);
   assert.doesNotMatch(userFacingSource, /OpenAI|GPT-|provider selector/i);

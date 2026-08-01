@@ -1788,6 +1788,7 @@ class JobImportService:
             "awaiting_recruiter_review",
             "partially_reviewed",
             "ready_to_apply",
+            "applied_to_native_draft",
         }:
             raise JobImportError(
                 "JOB_IMPORT_INVALID_TRANSITION",
@@ -1812,6 +1813,7 @@ class JobImportService:
                 "awaiting_recruiter_review",
                 "partially_reviewed",
                 "ready_to_apply",
+                "applied_to_native_draft",
             },
         )
         if draft is None:
@@ -2284,6 +2286,108 @@ class JobImportService:
                 "The native job draft could not be created.",
                 status_code=409,
             ) from exc
+        except Exception:
+            await self.repository.session.rollback()
+            raise
+
+    async def attach_to_native_job(
+        self,
+        draft_id: UUID,
+        target_job_id: UUID,
+        *,
+        owner_user_id: UUID,
+    ) -> tuple[JobImportDraft, Job, bool]:
+        """Retain import context after the normal job API saved a partial import.
+
+        This operation never creates, updates, validates, or publishes a job. It
+        only links an existing owned canonical job to its existing owned import
+        draft so provenance survives refresh and reopening.
+        """
+
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+            allowed_statuses={
+                "processing_failed",
+                "awaiting_recruiter_review",
+                "partially_reviewed",
+                "ready_to_apply",
+            },
+            require_target_unset=True,
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(draft_id, owner_user_id)
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            if existing.target_job_id == target_job_id:
+                try:
+                    job = await self.job_service.get_job_internal(target_job_id)
+                except JobNotFoundError as exc:
+                    raise JobImportError(
+                        "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
+                        "The linked canonical job no longer exists.",
+                        status_code=409,
+                    ) from exc
+                if job.posted_by_user_id != owner_user_id or job.deleted_at is not None:
+                    raise JobImportError(
+                        "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
+                        "The linked canonical job no longer exists.",
+                        status_code=404,
+                    )
+                return existing, job, False
+            raise JobImportError(
+                "JOB_IMPORT_DRAFT_NOT_ATTACHABLE",
+                "This import draft cannot be attached to that job.",
+                status_code=409,
+            )
+
+        try:
+            try:
+                job = await self.job_service.get_job_internal(target_job_id)
+            except JobNotFoundError as exc:
+                raise JobImportError(
+                    "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
+                    "The canonical job was not found.",
+                    status_code=404,
+                ) from exc
+            if job.posted_by_user_id != owner_user_id or job.deleted_at is not None:
+                raise JobImportError(
+                    "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
+                    "The canonical job was not found.",
+                    status_code=404,
+                )
+            target_draft = await self.repository.get_draft_by_target_job(
+                target_job_id,
+                owner_user_id,
+            )
+            if target_draft is not None and target_draft.id != draft.id:
+                raise JobImportError(
+                    "JOB_IMPORT_TARGET_ALREADY_LINKED",
+                    "That job already has import context.",
+                    status_code=409,
+                )
+            await self.repository.update_draft(
+                draft,
+                {
+                    "target_job_id": job.id,
+                    "processing_status": "applied_to_native_draft",
+                    "applied_at": datetime.now(UTC),
+                    "can_apply_to_native_draft": False,
+                    "can_publish_directly": False,
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.session.commit()
+            return draft, job, True
+        except JobImportError:
+            await self.repository.session.rollback()
+            raise
         except Exception:
             await self.repository.session.rollback()
             raise

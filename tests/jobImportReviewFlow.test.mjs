@@ -1,66 +1,81 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const exists = (path) => existsSync(new URL(`../${path}`, import.meta.url));
 
-test("text import creates, processes, reviews, and explicitly applies a private draft", () => {
-  const page = read("components/import-job/ImportJobPageClient.tsx");
-  const review = read("components/import-job/ImportReviewWorkspace.tsx");
+test("text import processes and applies a private draft into the normal Post Job form", () => {
+  const importPage = read("components/import-job/ImportJobPageClient.tsx");
+  const postJob = read("components/PostJobPage.tsx");
   for (const operation of [
     "createJobImportSource",
     "initializeJobImportDraft",
     "processJobImportDraft",
     "getJobImportDraft",
-    "reviewJobImportField",
-    "resolveJobImportConflict",
     "applyJobImportDraft",
   ]) {
-    assert.match(page, new RegExp(operation));
+    assert.match(importPage, new RegExp(operation));
   }
-  assert.match(page, /source_type: "pasted_text"/);
-  assert.match(review, /Create job draft/);
-  assert.match(page, /\/post-job\?draftId=/);
-  assert.doesNotMatch(page, /status:\s*"published"/);
-  assert.doesNotMatch(page, /OpenAI|GPT-|model selector/i);
+  assert.match(importPage, /source_type: "pasted_text"/);
+  assert.match(importPage, /\/post-job\?draftId=/);
+  assert.match(postJob, /<PostJobForm/);
+  assert.match(postJob, /<ImportedDraftNotice/);
+  assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
+  assert.doesNotMatch(importPage, /status:\s*"published"/);
+  assert.doesNotMatch(importPage, /OpenAI|GPT-|model selector/i);
 });
 
-test("review workspace exposes provenance, evidence, decisions, conflict alternatives, and grouped missing fields", () => {
-  const review = read("components/import-job/ImportReviewWorkspace.tsx");
+test("uncertainty and provenance stay compact inside the canonical form", () => {
+  const notice = read("components/import-job/ImportedDraftNotice.tsx");
+  const guidance = read("lib/importedDraftGuidance.ts");
+
   for (const state of [
-    "Directly supplied",
-    "Found in source",
-    "Suggested — verify",
-    "Conflict — decision required",
-    "Confirmed by you",
-    "Edited by you",
-    "Rejected",
+    "Conflicting details",
+    "Needs your input",
+    "Suggestion",
+    "Inferred",
   ]) {
-    assert.match(review, new RegExp(state));
+    assert.match(notice, new RegExp(state));
   }
-  for (const action of [
-    "Accept",
-    "Edit",
-    "Reject",
-    "Reset decision",
-    "Use this value",
-    "Enter a different value",
-  ]) {
-    assert.match(review, new RegExp(action));
-  }
-  assert.match(review, /item\.snippet/);
-  assert.match(review, /IMPORT_MISSING_GROUP_LABELS/);
-  assert.match(review, /Check carefully/);
-  assert.match(review, /aria-live|aria-labelledby|fieldset|legend/);
-  assert.doesNotMatch(review, /JSON\.stringify/);
+  assert.match(notice, /Why was this filled\?/);
+  assert.match(notice, /field\.evidence\[0\]\?\.snippet/);
+  assert.match(notice, /Review flagged fields/);
+  assert.match(notice, /Use suggestion/);
+  assert.match(notice, /Only inferred, missing, or ambiguous details appear here/);
+  assert.match(guidance, /firstImportAttentionScreen/);
+  assert.match(guidance, /manuallyChanged/);
+  assert.doesNotMatch(notice, /JSON\.stringify|chain.of.thought/i);
 });
 
-test("development review example is explicit and cannot be mistaken for a live provider call", () => {
+test("screening questions and suggestions use the normal form model and save path", () => {
+  const postJob = read("components/PostJobPage.tsx");
+  const formModel = read("lib/jobPostingForm.ts");
+
+  assert.match(postJob, /setDomain\(hydrateJobPostingDomain\(values as unknown as BackendJob\)\)/);
+  assert.match(postJob, /reviewJobImportField/);
+  assert.match(postJob, /applyImportedSuggestionValue/);
+  assert.match(formModel, /screening_questions: screeningQuestions/);
+  assert.match(formModel, /job\.screening_questions\.map/);
+  assert.match(postJob, /buildCompleteJobPayload\("published"/);
+  assert.doesNotMatch(postJob, /publishImportedJob|validateImportedJob/);
+});
+
+test("reopened native drafts treat filled formerly-missing fields as authoritative", () => {
+  const postJob = read("components/PostJobPage.tsx");
+  assert.match(postJob, /jobImportValueWasRemoved\(currentValue\)/);
+  assert.match(
+    postJob,
+    /firstImportAttentionScreen\(importContext\.draft, STEPS, changed\)/
+  );
+});
+
+test("development example is explicit and cannot be mistaken for a live provider call", () => {
   const page = read("components/import-job/ImportJobPageClient.tsx");
   const fixture = read("backend/app/db/seed_data_job_import.py");
   const devRouter = read("backend/app/api/v1/routers/dev_personas.py");
-  assert.match(page, /Open review example/);
-  assert.match(page, /without sending text to a provider/);
+  assert.match(page, /Open prepared example/);
+  assert.match(page, /without calling a provider/);
   assert.match(devRouter, /_ensure_dev_only\(\)/);
   assert.match(devRouter, /processed_review_fixture/);
   assert.match(fixture, /Development-only processed job-import fixture/);

@@ -607,6 +607,14 @@ class JobImportApplyRequest(BaseModel):
     mode: Literal["create_new"] = "create_new"
 
 
+class JobImportAttachRequest(BaseModel):
+    """Link retained import context after the canonical job API created a draft."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_job_id: uuid.UUID
+
+
 class JobImportProcessRequest(BaseModel):
     """Strict empty body: provider, model, and metadata are server-owned."""
 
@@ -687,6 +695,12 @@ class JobImportApplyResponse(BaseModel):
     draft: JobImportDraftRead
     job: JobRead
     created: bool
+
+
+class JobImportAttachResponse(BaseModel):
+    draft: JobImportDraftRead
+    job: JobRead
+    linked: bool
 
 
 class JobImportProcessResponse(BaseModel):

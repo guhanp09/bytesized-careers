@@ -1003,6 +1003,100 @@ async def test_semantic_inference_without_evidence_remains_a_suggestion(
     assert role["needs_review"] is True
 
 
+async def test_partial_import_can_attach_to_an_owned_canonical_draft_for_recovery(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-partial-attach")
+    _source, draft = await _source_and_draft(client, headers, "partial-attach")
+    await _record(
+        draft["id"],
+        owner_id,
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "about_channel",
+                    "value": "A creator channel with an incomplete hiring brief.",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "A creator channel with an incomplete hiring brief."}
+                    ],
+                }
+            ],
+        },
+    )
+    partial = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=headers,
+    )
+    assert partial.status_code == 200
+    assert partial.json()["can_apply_to_native_draft"] is False
+
+    created = await client.post(
+        "/api/v1/jobs",
+        headers=headers,
+        json={"title": "Completed manually", "status": "draft"},
+    )
+    assert created.status_code == 201, created.text
+    job = created.json()
+
+    attached = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/attach",
+        headers=headers,
+        json={"target_job_id": job["id"]},
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["linked"] is True
+    assert attached.json()["draft"]["target_job_id"] == job["id"]
+    assert attached.json()["draft"]["processing_status"] == "applied_to_native_draft"
+    assert attached.json()["job"]["title"] == "Completed manually"
+    assert attached.json()["job"]["status"] == "draft"
+
+    repeated = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/attach",
+        headers=headers,
+        json={"target_job_id": job["id"]},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["linked"] is False
+
+    context = await client.get(
+        f"/api/v1/job-imports/native-jobs/{job['id']}/context",
+        headers=headers,
+    )
+    assert context.status_code == 200
+    assert context.json()["draft"]["id"] == draft["id"]
+
+    reset = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/about_channel",
+        headers=headers,
+        json={"action": "reset"},
+    )
+    assert reset.status_code == 200
+    assert reset.json()["processing_status"] == "applied_to_native_draft"
+    accepted = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/about_channel",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert accepted.status_code == 200
+    accepted_field = next(
+        field
+        for field in accepted.json()["fields"]
+        if field["field_path"] == "about_channel"
+    )
+    assert accepted_field["authority_state"] == "confirmed_by_recruiter"
+
+    other_headers, _other_id = await _auth(client, "import-partial-attach-other")
+    forbidden = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/attach",
+        headers=other_headers,
+        json={"target_job_id": job["id"]},
+    )
+    assert forbidden.status_code == 404
+
+
 async def test_explicit_currency_wins_over_context_and_conflict_is_visible(
     client: AsyncClient,
 ) -> None:

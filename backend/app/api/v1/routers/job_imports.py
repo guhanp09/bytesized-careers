@@ -16,6 +16,8 @@ from app.schemas.job import JobRead
 from app.schemas.job_import import (
     JobImportApplyRequest,
     JobImportApplyResponse,
+    JobImportAttachRequest,
+    JobImportAttachResponse,
     JobImportConflictResolutionRequest,
     JobImportDraftContextRead,
     JobImportDraftInitialize,
@@ -322,4 +324,31 @@ async def apply_import_draft(
         draft=await service.draft_read(draft),
         job=JobRead.model_validate(job),
         created=created,
+    )
+
+
+@router.post(
+    "/drafts/{draft_id}/attach",
+    response_model=JobImportAttachResponse,
+    summary="Attach retained import context to an owned canonical job",
+)
+async def attach_import_draft(
+    draft_id: UUID,
+    payload: JobImportAttachRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportService = Depends(get_job_import_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportAttachResponse:
+    try:
+        draft, job, linked = await service.attach_to_native_job(
+            draft_id,
+            payload.target_job_id,
+            owner_user_id=current_user.id,
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return JobImportAttachResponse(
+        draft=await service.draft_read(draft),
+        job=JobRead.model_validate(job),
+        linked=linked,
     )

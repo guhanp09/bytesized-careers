@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const exists = (path) => existsSync(new URL(`../${path}`, import.meta.url));
 
-test("pasted text and public URLs converge on one private review and apply API", () => {
+test("pasted text and public URLs converge on one private process and apply API", () => {
   const router = read("backend/app/api/v1/routers/job_imports.py");
 
   for (const route of [
@@ -12,9 +13,8 @@ test("pasted text and public URLs converge on one private review and apply API",
     '"/url-sources"',
     '"/sources/{source_id}/drafts"',
     '"/drafts/{draft_id}/process"',
-    '"/drafts/{draft_id}/fields/{field_path}"',
-    '"/drafts/{draft_id}/fields/{field_path}/resolve"',
     '"/drafts/{draft_id}/apply"',
+    '"/native-jobs/{job_id}/context"',
   ]) {
     assert.match(router, new RegExp(route.replace(/[{}]/g, "\\$&")));
   }
@@ -23,14 +23,16 @@ test("pasted text and public URLs converge on one private review and apply API",
   assert.doesNotMatch(router, /apply_url|url_review|publish_import/i);
 });
 
-test("only recruiter-reviewed values can create an idempotent native draft", () => {
+test("approved import decisions create an idempotent private canonical draft", () => {
   const service = read("backend/app/services/job_import_service.py");
 
+  assert.match(service, /"review_status": "confirmed" if auto_fill else "pending"/);
   assert.match(service, /if field\.review_status == "edited":\s+return field\.edited_value/);
   assert.match(service, /if field\.review_status == "confirmed":\s+return field\.confirmed_value/);
   assert.match(service, /allowed_statuses=\{"ready_to_apply"\}/);
   assert.match(service, /if existing\.target_job_id is not None:/);
   assert.match(service, /status="draft"/);
+  assert.match(service, /return "prefilled_by_import"/);
   assert.doesNotMatch(service, /status="published"[\s\S]{0,500}create_job/);
 });
 
@@ -42,22 +44,23 @@ test("deep search reads authoritative public listings and strips private hiring 
   assert.match(repository, /Job\.deleted_at\.is_\(None\)/);
   assert.match(repository, /TalentListing\.status\.in_\(\("published", "featured"\)\)/);
   assert.match(repository, /User\.suspended_at\.is_\(None\)/);
-  assert.doesNotMatch(
-    repository,
-    /JobImport|JobApplication|Message|Screening|Evidence|Provider/,
-  );
+  assert.doesNotMatch(repository, /JobImport|JobApplication|Message|Screening|Evidence|Provider/);
   assert.match(serializer, /screening_questions = None/);
   assert.match(serializer, /languages = \[\]/);
   assert.match(serializer, /language_requirements = None/);
 });
 
-test("the integrated UI stays provider-neutral and routes applied drafts to Post Job", () => {
-  const page = read("components/import-job/ImportJobPageClient.tsx");
+test("the integrated UI is provider-neutral and opens the canonical Post Job form", () => {
+  const importPage = read("components/import-job/ImportJobPageClient.tsx");
+  const postJob = read("components/PostJobPage.tsx");
 
-  assert.match(page, /<ImportReviewWorkspace/);
-  assert.match(page, /\/post-job\?draftId=/);
-  assert.match(page, /without sending text to a provider/);
-  assert.doesNotMatch(page, /OpenAI|GPT-|model selector/i);
+  assert.match(importPage, /applyJobImportDraft/);
+  assert.match(importPage, /\/post-job\?draftId=/);
+  assert.match(postJob, /<ImportedDraftNotice/);
+  assert.match(postJob, /getJobImportContextForNativeJob/);
+  assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
+  assert.equal(exists("components/import-job/ReviewSummary.tsx"), false);
+  assert.doesNotMatch(`${importPage}\n${postJob}`, /OpenAI|GPT-|model selector/i);
 });
 
 test("the URL-source migration is additive, reversible, and follows the accepted head", () => {

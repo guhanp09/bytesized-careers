@@ -32,10 +32,21 @@ const PROVENANCE_STATES = [
 const REVIEW_STATES = ["pending", "confirmed", "edited", "rejected"] as const;
 const AUTHORITY_STATES = [
   "unconfirmed",
+  "prefilled_by_import",
   "confirmed_by_recruiter",
   "edited_by_recruiter",
   "rejected_by_recruiter",
 ] as const;
+
+const DECISION_ORIGINS = [
+  "explicit",
+  "contextual_inference",
+  "semantic_inference",
+  "suggestion",
+  "unknown",
+] as const;
+
+const DECISION_CONFIDENCES = ["high", "medium", "low"] as const;
 
 const SOURCE_TYPES = [
   "pasted_text",
@@ -113,6 +124,10 @@ export type JobImportField = {
   provenance_state: JobImportProvenance;
   review_status: JobImportReviewStatus;
   authority_state: (typeof AUTHORITY_STATES)[number];
+  decision_origin: (typeof DECISION_ORIGINS)[number];
+  decision_confidence: (typeof DECISION_CONFIDENCES)[number] | null;
+  needs_review: boolean;
+  rationale_code: string | null;
   evidence: JobImportEvidence[];
   conflicting_values: Array<{ value: unknown; evidence: JobImportEvidence[] }>;
   explanation: string | null;
@@ -180,6 +195,13 @@ export type JobImportProcessResponse = {
   draft: JobImportDraft;
 };
 
+export type JobImportDraftContext = {
+  draft: JobImportDraft;
+  source_type: JobImportSourceType;
+  source_label: string;
+  source_url: string | null;
+};
+
 const requireRecord = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label} response.`);
@@ -224,18 +246,28 @@ export const decodeJobImportDraft = (value: unknown): JobImportDraft => {
     requireKnownState(field.provenance_state, PROVENANCE_STATES, "field provenance");
     requireKnownState(field.review_status, REVIEW_STATES, "field review");
     requireKnownState(field.authority_state, AUTHORITY_STATES, "field authority");
+    requireKnownState(field.decision_origin, DECISION_ORIGINS, "field decision origin");
+    if (field.decision_confidence !== null) {
+      requireKnownState(
+        field.decision_confidence,
+        DECISION_CONFIDENCES,
+        "field decision confidence"
+      );
+    }
   }
   return draft as unknown as JobImportDraft;
 };
 
 export async function createJobImportSource(
   accessToken: string,
-  payload: JobImportSourceCreate
+  payload: JobImportSourceCreate,
+  signal?: AbortSignal
 ): Promise<JobImportSource> {
   const response = await requestJson<unknown>("/job-imports/sources", {
     method: "POST",
     body: JSON.stringify(payload),
     accessToken,
+    signal,
   });
   return decodeJobImportSource(response);
 }
@@ -246,13 +278,15 @@ export async function createJobImportUrlSource(
     source_url: string;
     source_title?: string | null;
     idempotency_key?: string | null;
-  }
+  },
+  signal?: AbortSignal
 ): Promise<JobImportSource> {
   const response = await requestJson<unknown>("/job-imports/url-sources", {
     method: "POST",
     body: JSON.stringify(payload),
     accessToken,
     timeoutMs: 20_000,
+    signal,
   });
   return decodeJobImportSource(response);
 }
@@ -281,7 +315,8 @@ export async function redactJobImportSource(
 export async function initializeJobImportDraft(
   accessToken: string,
   sourceId: string,
-  payload: JobImportDraftInitialize = {}
+  payload: JobImportDraftInitialize = {},
+  signal?: AbortSignal
 ): Promise<JobImportDraft> {
   const response = await requestJson<unknown>(
     `/job-imports/sources/${encodeURIComponent(sourceId)}/drafts`,
@@ -289,6 +324,7 @@ export async function initializeJobImportDraft(
       method: "POST",
       body: JSON.stringify(payload),
       accessToken,
+      signal,
     }
   );
   return decodeJobImportDraft(response);
@@ -307,7 +343,8 @@ export async function getJobImportDraft(
 
 export async function processJobImportDraft(
   accessToken: string,
-  draftId: string
+  draftId: string,
+  signal?: AbortSignal
 ): Promise<JobImportProcessResponse> {
   const response = await requestJson<unknown>(
     `/job-imports/drafts/${encodeURIComponent(draftId)}/process`,
@@ -315,6 +352,7 @@ export async function processJobImportDraft(
       method: "POST",
       body: JSON.stringify({}),
       accessToken,
+      signal,
     }
   );
   const result = requireRecord(response, "job-import process");
@@ -408,6 +446,56 @@ export async function applyJobImportDraft(
     draft: decodeJobImportDraft(result.draft),
     job: requireRecord(result.job, "native job") as BackendJob,
     created: result.created,
+  };
+}
+
+export async function attachJobImportDraft(
+  accessToken: string,
+  draftId: string,
+  targetJobId: string
+): Promise<{ draft: JobImportDraft; job: BackendJob; linked: boolean }> {
+  const response = await requestJson<unknown>(
+    `/job-imports/drafts/${encodeURIComponent(draftId)}/attach`,
+    {
+      method: "POST",
+      body: JSON.stringify({ target_job_id: targetJobId }),
+      accessToken,
+    }
+  );
+  const result = requireRecord(response, "job-import attach");
+  if (typeof result.linked !== "boolean") {
+    throw new Error("Invalid job-import attach outcome.");
+  }
+  return {
+    draft: decodeJobImportDraft(result.draft),
+    job: requireRecord(result.job, "native job") as BackendJob,
+    linked: result.linked,
+  };
+}
+
+export async function getJobImportContextForNativeJob(
+  accessToken: string,
+  jobId: string
+): Promise<JobImportDraftContext> {
+  const response = requireRecord(
+    await requestJson<unknown>(
+      `/job-imports/native-jobs/${encodeURIComponent(jobId)}/context`,
+      { accessToken }
+    ),
+    "native job import context"
+  );
+  if (
+    typeof response.source_type !== "string" ||
+    !(SOURCE_TYPES as readonly string[]).includes(response.source_type) ||
+    typeof response.source_label !== "string"
+  ) {
+    throw new Error("Invalid native job import context.");
+  }
+  return {
+    draft: decodeJobImportDraft(response.draft),
+    source_type: response.source_type as JobImportSourceType,
+    source_label: response.source_label,
+    source_url: typeof response.source_url === "string" ? response.source_url : null,
   };
 }
 

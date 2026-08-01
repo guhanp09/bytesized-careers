@@ -3,59 +3,185 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
-import { PageHeader, PageLoading, StateCard } from "../ui";
-import ConfirmDialog from "../ui/ConfirmDialog";
+import { BackendRequestError, describeActionError } from "../../lib/backendClient";
+import { trackJobImportEvent } from "../../lib/jobImportAnalytics";
 import {
   applyJobImportDraft,
   createDevelopmentJobImportFixture,
   createJobImportSource,
   createJobImportUrlSource,
-  discardJobImportDraft,
   getJobImportDraft,
   getJobImportSource,
   initializeJobImportDraft,
   processJobImportDraft,
-  resolveJobImportConflict,
-  reviewJobImportField,
   type JobImportDraft,
-  type JobImportField,
-  type JobImportNonNullJsonValue,
   type JobImportSource,
 } from "../../lib/jobImportReadiness";
-import { describeActionError } from "../../lib/backendClient";
 import { normalizeImportText } from "../../lib/importJob/normalize";
+import { Icon } from "../Icons";
+import { PageHeader, PageLoading, StateCard } from "../ui";
 import PastePanel from "./PastePanel";
-import ImportReviewWorkspace from "./ImportReviewWorkspace";
 import {
   importGhostButton,
-  importPanelClass,
   importInputBase,
+  importPanelClass,
   importPrimaryButton,
 } from "./importPrimitives";
 
-type Phase = "entry" | "creating" | "processing" | "review" | "source_summary";
+type Phase = "entry" | "creating" | "processing" | "applying" | "failure";
 type EntryMode = "text" | "url";
 
 const isDevelopmentRuntime =
   process.env.NODE_ENV === "development" ||
   ["development", "test"].includes(process.env.NEXT_PUBLIC_APP_ENV ?? "");
 
+const terminalDraftStatuses = new Set([
+  "awaiting_recruiter_review",
+  "partially_reviewed",
+  "ready_to_apply",
+  "applied_to_native_draft",
+]);
+
 function setDraftLocation(draftId: string | null) {
-  const url = new URL(window.location.href);
-  if (draftId) url.searchParams.set("draft", draftId);
-  else url.searchParams.delete("draft");
-  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  const next = new URL(window.location.href);
+  if (draftId) next.searchParams.set("draft", draftId);
+  else next.searchParams.delete("draft");
+  window.history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
 }
 
-function readableProcessingError(error: unknown): string {
-  const message = describeActionError(
-    error,
-    "We couldn’t prepare this import. Your source is still private and you can retry."
-  );
-  if (/api key|configuration|configured/i.test(message)) {
-    return "Text processing is unavailable right now. Your source is still private; try again later or use the local review example in development.";
+function readableImportError(error: unknown, sourceType: EntryMode): string {
+  const code = error instanceof BackendRequestError ? error.code ?? "" : "";
+  if (code === "JOB_IMPORT_URL_AUTH_REQUIRED") {
+    return "This page blocks automated access. Paste the job text instead.";
   }
-  return message;
+  if (
+    code.startsWith("JOB_IMPORT_URL_") &&
+    code !== "JOB_IMPORT_URL_TIMEOUT" &&
+    code !== "JOB_IMPORT_URL_FETCH_FAILED"
+  ) {
+    return "We couldn’t read that page safely. Check that it is a public job page, or paste the job text instead.";
+  }
+  if (code === "JOB_IMPORT_URL_TIMEOUT" || code === "JOB_IMPORT_URL_FETCH_FAILED") {
+    return "That page did not respond in time. Try again, or paste the job text instead.";
+  }
+  if (/api key|configuration|configured/i.test(String((error as Error)?.message ?? ""))) {
+    return "Draft preparation is temporarily unavailable. Your source remains private; try again later.";
+  }
+  return describeActionError(
+    error,
+    sourceType === "url"
+      ? "We couldn’t prepare a draft from that page. Try again or paste the job text."
+      : "We couldn’t prepare a draft from that text. Try again or continue manually."
+  );
+}
+
+function importCounts(draft: JobImportDraft) {
+  return draft.fields.reduce(
+    (counts, field) => {
+      if (field.decision_origin === "explicit") counts.explicitCount += 1;
+      if (
+        field.decision_origin === "contextual_inference" ||
+        field.decision_origin === "semantic_inference"
+      ) {
+        counts.inferredCount += 1;
+      }
+      if (field.decision_origin === "suggestion") counts.suggestedCount += 1;
+      if (field.needs_review) counts.reviewCount += 1;
+      if (field.provenance_state === "missing") counts.missingCount += 1;
+      return counts;
+    },
+    {
+      explicitCount: 0,
+      inferredCount: 0,
+      suggestedCount: 0,
+      reviewCount: 0,
+      missingCount: 0,
+    }
+  );
+}
+
+function PreparingSurface({
+  phase,
+  delayed,
+  sourceType,
+  onCancel,
+}: {
+  phase: Exclude<Phase, "entry" | "failure">;
+  delayed: boolean;
+  sourceType: EntryMode;
+  onCancel: () => void;
+}) {
+  const activeIndex = phase === "creating" ? 0 : phase === "processing" ? 1 : 2;
+  const stages = ["Reading the job post", "Understanding the role", "Preparing your draft"];
+  return (
+    <section
+      className={`${importPanelClass} mx-auto max-w-3xl overflow-hidden`}
+      aria-labelledby="job-import-progress-title"
+      data-testid="job-import-preparing"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+            Creating your draft
+          </p>
+          <h2 id="job-import-progress-title" className="mt-2 text-xl font-semibold text-white">
+            {stages[activeIndex]}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-white/55">
+            {delayed
+              ? "This is taking a little longer than usual. Your source is safe, and you can keep waiting or cancel."
+              : sourceType === "url"
+                ? "We’re reading the public page and preparing the same Post Job form you already use."
+                : "We’re turning your notes into the same Post Job form you already use."}
+          </p>
+        </div>
+        {phase !== "applying" ? (
+          <button
+            type="button"
+            className={importGhostButton}
+            onClick={onCancel}
+            data-testid="job-import-cancel"
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
+
+      <ol className="mt-6 grid gap-2 sm:grid-cols-3" aria-label="Draft preparation progress">
+        {stages.map((label, index) => {
+          const complete = index < activeIndex;
+          const active = index === activeIndex;
+          return (
+            <li
+              key={label}
+              aria-current={active ? "step" : undefined}
+              className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors motion-reduce:transition-none ${
+                active
+                  ? "border-white/20 bg-white/[0.08] text-white"
+                  : complete
+                    ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/75"
+                    : "border-white/[0.07] text-white/38"
+              }`}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current/25">
+                {complete ? <Icon name="check" className="h-3 w-3" /> : index + 1}
+              </span>
+              {label}
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-6 rounded-2xl border border-white/[0.07] bg-black/20 p-4" aria-hidden="true">
+        <div className="ui-skeleton h-3 w-28 rounded-full motion-reduce:animate-none" />
+        <div className="ui-skeleton mt-4 h-10 w-full rounded-xl motion-reduce:animate-none" />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="ui-skeleton h-10 rounded-xl motion-reduce:animate-none" />
+          <div className="ui-skeleton h-10 rounded-xl motion-reduce:animate-none" />
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function ImportJobPageClient() {
@@ -69,50 +195,169 @@ export default function ImportJobPageClient() {
   const [draft, setDraft] = React.useState<JobImportDraft | null>(null);
   const [source, setSource] = React.useState<JobImportSource | null>(null);
   const [error, setError] = React.useState("");
-  const [busyField, setBusyField] = React.useState<string | null>(null);
-  const [applying, setApplying] = React.useState(false);
-  const [processingRequest, setProcessingRequest] = React.useState(false);
-  const [pollRetry, setPollRetry] = React.useState(0);
-  const [confirmStartOver, setConfirmStartOver] = React.useState(false);
+  const [delayed, setDelayed] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
-  const restoredRef = React.useRef(false);
-  const urlRequestIdRef = React.useRef<string | null>(null);
-  const entrySubmissionRef = React.useRef(false);
-  const processingRequestRef = React.useRef(false);
-  const reviewMutationRef = React.useRef(false);
-  const applyRequestRef = React.useRef(false);
-
   const accessToken = session?.backendAccessToken ?? "";
+  const restoredRef = React.useRef(false);
+  const processingRef = React.useRef(false);
+  const finishingRef = React.useRef(false);
+  const requestControllerRef = React.useRef<AbortController | null>(null);
+  const requestIdRef = React.useRef<string | null>(null);
+  const startedAtRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!["creating", "processing"].includes(phase)) {
+      setDelayed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setDelayed(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  const openCanonicalDraft = React.useCallback(
+    async (readyDraft: JobImportDraft) => {
+      if (!accessToken || finishingRef.current) return;
+      if (readyDraft.target_job_id) {
+        router.replace(
+          `/post-job?draftId=${encodeURIComponent(readyDraft.target_job_id)}&imported=1`
+        );
+        return;
+      }
+      if (!readyDraft.can_apply_to_native_draft) {
+        setDraft(readyDraft);
+        setPhase("failure");
+        setError(
+          "We prepared part of the draft, but a job title still needs your input. Continue in Post Job to finish it."
+        );
+        setAnnouncement("Part of the draft is ready. Continue manually to finish it.");
+        return;
+      }
+      finishingRef.current = true;
+      setPhase("applying");
+      setAnnouncement("Preparing your Post Job draft.");
+      try {
+        const result = await applyJobImportDraft(accessToken, readyDraft.id);
+        setDraft(result.draft);
+        trackJobImportEvent("job_import.completed", {
+          sourceType: entryMode,
+          durationMs: Math.max(0, Date.now() - startedAtRef.current),
+          ...importCounts(result.draft),
+        });
+        router.replace(
+          `/post-job?draftId=${encodeURIComponent(String(result.job.id))}&imported=1`
+        );
+      } catch (caught) {
+        setPhase("failure");
+        setError(readableImportError(caught, entryMode));
+        trackJobImportEvent("job_import.failed", {
+          sourceType: entryMode,
+          durationMs: Math.max(0, Date.now() - startedAtRef.current),
+        });
+      } finally {
+        finishingRef.current = false;
+      }
+    },
+    [accessToken, entryMode, router]
+  );
+
+  const processDraft = React.useCallback(
+    async (current: JobImportDraft, signal?: AbortSignal) => {
+      if (!accessToken || processingRef.current) return;
+      processingRef.current = true;
+      setDraft(current);
+      setPhase("processing");
+      setError("");
+      setAnnouncement("Understanding the role.");
+      try {
+        const result = await processJobImportDraft(accessToken, current.id, signal);
+        setDraft(result.draft);
+        if (result.outcome !== "already_processing") {
+          await openCanonicalDraft(result.draft);
+        }
+      } catch (caught) {
+        if (signal?.aborted) return;
+        let failed = current;
+        try {
+          failed = await getJobImportDraft(accessToken, current.id);
+          setDraft(failed);
+        } catch {
+          // Keep the actionable processing error as the primary message.
+        }
+        setPhase("failure");
+        setError(readableImportError(caught, entryMode));
+        trackJobImportEvent("job_import.failed", {
+          sourceType: entryMode,
+          durationMs: Math.max(0, Date.now() - startedAtRef.current),
+          ...importCounts(failed),
+        });
+      } finally {
+        processingRef.current = false;
+      }
+    },
+    [accessToken, entryMode, openCanonicalDraft]
+  );
+
+  React.useEffect(() => {
+    if (
+      phase !== "processing" ||
+      draft?.processing_status !== "processing" ||
+      !accessToken
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void getJobImportDraft(accessToken, draft.id)
+        .then((next) => {
+          setDraft(next);
+          if (terminalDraftStatuses.has(next.processing_status)) {
+            void openCanonicalDraft(next);
+          } else if (next.processing_status === "processing_failed") {
+            setPhase("failure");
+            setError("We couldn’t finish this draft. Retry, or continue manually.");
+          }
+        })
+        .catch(() => undefined);
+    }, 1_200);
+    return () => window.clearTimeout(timer);
+  }, [accessToken, draft, openCanonicalDraft, phase]);
 
   React.useEffect(() => {
     if (
       restoredRef.current ||
       sessionStatus !== "authenticated" ||
       !accessToken
-    )
+    ) {
       return;
+    }
     restoredRef.current = true;
     const draftId = new URL(window.location.href).searchParams.get("draft");
     if (!draftId) return;
     setPhase("processing");
     void getJobImportDraft(accessToken, draftId)
-      .then((loaded) => {
+      .then(async (loaded) => {
         setDraft(loaded);
-        void getJobImportSource(accessToken, loaded.source_id)
-          .then((loadedSource) => {
-            setSource(loadedSource);
-            setEntryMode(loadedSource.source_type === "public_url" ? "url" : "text");
-          })
-          .catch(() => undefined);
-        if (
-          loaded.processing_status === "awaiting_processing" ||
-          loaded.processing_status === "processing" ||
-          loaded.processing_status === "processing_failed"
-        ) {
-          setPhase("processing");
+        try {
+          const loadedSource = await getJobImportSource(accessToken, loaded.source_id);
+          setSource(loadedSource);
+          if (loadedSource.source_type === "public_url") {
+            setEntryMode("url");
+            setUrl(loadedSource.source_url ?? loadedSource.final_source_url ?? "");
+          } else {
+            setEntryMode("text");
+            setText(loadedSource.original_text ?? "");
+          }
+        } catch {
+          // Draft recovery remains available if private source retention has ended.
+        }
+        if (terminalDraftStatuses.has(loaded.processing_status)) {
+          await openCanonicalDraft(loaded);
+        } else if (loaded.processing_status === "processing") {
+          setAnnouncement("Understanding the role.");
+        } else if (loaded.processing_status === "processing_failed") {
+          setPhase("failure");
+          setError("We couldn’t finish this draft. Retry, or continue manually.");
         } else {
-          setPhase("review");
-          setAnnouncement("Private import review loaded.");
+          await processDraft(loaded);
         }
       })
       .catch((caught) => {
@@ -120,46 +365,13 @@ export default function ImportJobPageClient() {
         setPhase("entry");
         setError(describeActionError(caught, "This import draft could not be loaded."));
       });
-  }, [accessToken, sessionStatus]);
-
-  React.useEffect(() => {
-    if (
-      phase !== "processing" ||
-      draft?.processing_status !== "processing" ||
-      !accessToken
-    )
-      return;
-    const timer = window.setTimeout(() => {
-      void getJobImportDraft(accessToken, draft.id)
-        .then((next) => {
-          setDraft(next);
-          if (
-            next.processing_status === "awaiting_recruiter_review" ||
-            next.processing_status === "partially_reviewed" ||
-            next.processing_status === "ready_to_apply"
-          ) {
-            setPhase("review");
-            setError("");
-            setAnnouncement("Draft prepared. Review every imported detail.");
-          }
-        })
-        .catch((caught) => {
-          setError(
-            describeActionError(
-              caught,
-              "We couldn’t refresh the processing status. Retrying…"
-            )
-          );
-          setPollRetry((attempt) => attempt + 1);
-        });
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [accessToken, draft, phase, pollRetry]);
+  }, [accessToken, openCanonicalDraft, processDraft, sessionStatus]);
 
   const updateText = (value: string) => {
     const normalized = normalizeImportText(value);
     setText(normalized.text);
     setTruncated(normalized.truncated);
+    requestIdRef.current = null;
   };
 
   const selectEntryMode = (mode: EntryMode, moveFocus = false) => {
@@ -172,228 +384,133 @@ export default function ImportJobPageClient() {
     }
   };
 
-  const processDraft = React.useCallback(
-    async (current: JobImportDraft) => {
-      if (processingRequestRef.current) return;
-      processingRequestRef.current = true;
-      setProcessingRequest(true);
-      setPhase("processing");
-      setError("");
-      setAnnouncement("Preparing a private structured draft.");
+  const prepare = async () => {
+    if (!accessToken || (entryMode === "text" ? !text.trim() : !url.trim())) return;
+    let parsedUrl: URL | null = null;
+    if (entryMode === "url") {
       try {
-        const result = await processJobImportDraft(accessToken, current.id);
-        setDraft(result.draft);
-        if (result.outcome === "already_processing") {
-          setAnnouncement("Processing is already in progress.");
-          return;
-        }
-        setPhase("review");
-        setAnnouncement("Draft prepared. Review every imported detail.");
-      } catch (caught) {
-        try {
-          const failed = await getJobImportDraft(accessToken, current.id);
-          setDraft(failed);
-        } catch {
-          // The actionable processing error remains the primary message.
-        }
-        setError(readableProcessingError(caught));
-      } finally {
-        processingRequestRef.current = false;
-        setProcessingRequest(false);
+        parsedUrl = new URL(url.trim());
+      } catch {
+        setError("Enter a complete public job-listing URL.");
+        return;
       }
-    },
-    [accessToken]
-  );
-
-  const prepareText = async () => {
-    if (!text.trim() || !accessToken || entrySubmissionRef.current) return;
-    entrySubmissionRef.current = true;
+      if (
+        !["http:", "https:"].includes(parsedUrl.protocol) ||
+        parsedUrl.username ||
+        parsedUrl.password
+      ) {
+        setError("Enter a public HTTP or HTTPS URL without sign-in credentials.");
+        return;
+      }
+    }
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const requestId = requestIdRef.current ?? crypto.randomUUID();
+    requestIdRef.current = requestId;
+    startedAtRef.current = Date.now();
     setPhase("creating");
     setError("");
-    setAnnouncement("Saving your source privately.");
-    const requestId = crypto.randomUUID();
+    setAnnouncement("Reading the job post.");
+    trackJobImportEvent("job_import.started", { sourceType: entryMode });
     try {
-      const source = await createJobImportSource(accessToken, {
-        source_type: "pasted_text",
-        source_title: "Pasted hiring details",
-        original_text: text,
-        idempotency_key: `text-source-${requestId}`,
-      });
-      setSource(source);
-      const initialized = await initializeJobImportDraft(accessToken, source.id, {
-        idempotency_key: `text-draft-${requestId}`,
-      });
-      setDraft(initialized);
-      setDraftLocation(initialized.id);
-      await processDraft(initialized);
-    } catch (caught) {
-      setPhase("entry");
-      setError(describeActionError(caught, "We couldn’t save this private import source."));
-    } finally {
-      entrySubmissionRef.current = false;
-    }
-  };
-
-  const prepareUrl = async () => {
-    if (!url.trim() || !accessToken || entrySubmissionRef.current) return;
-    let parsed: URL;
-    try {
-      parsed = new URL(url.trim());
-    } catch {
-      setError("Enter a complete public job-listing URL.");
-      return;
-    }
-    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
-      setError("Enter a public HTTP or HTTPS URL without sign-in credentials.");
-      return;
-    }
-    entrySubmissionRef.current = true;
-    setPhase("creating");
-    setError("");
-    setAnnouncement("Retrieving the public page safely.");
-    const requestId = urlRequestIdRef.current ?? crypto.randomUUID();
-    urlRequestIdRef.current = requestId;
-    try {
-      const createdSource = await createJobImportUrlSource(accessToken, {
-        source_url: parsed.toString(),
-        idempotency_key: `url-source-${requestId}`,
-      });
+      const createdSource =
+        entryMode === "url" && parsedUrl
+          ? await createJobImportUrlSource(
+              accessToken,
+              {
+                source_url: parsedUrl.toString(),
+                idempotency_key: `url-source-${requestId}`,
+              },
+              controller.signal
+            )
+          : await createJobImportSource(
+              accessToken,
+              {
+                source_type: "pasted_text",
+                source_title: "Pasted hiring details",
+                original_text: text,
+                idempotency_key: `text-source-${requestId}`,
+              },
+              controller.signal
+            );
+      if (controller.signal.aborted) return;
       setSource(createdSource);
-      const initialized = await initializeJobImportDraft(accessToken, createdSource.id, {
-        idempotency_key: `url-draft-${requestId}`,
-      });
+      const initialized = await initializeJobImportDraft(
+        accessToken,
+        createdSource.id,
+        { idempotency_key: `${entryMode}-draft-${requestId}` },
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
       setDraft(initialized);
       setDraftLocation(initialized.id);
-      await processDraft(initialized);
+      await processDraft(initialized, controller.signal);
     } catch (caught) {
-      setPhase("entry");
-      setError(
-        describeActionError(
-          caught,
-          "We couldn’t retrieve that public page. Check the URL and try again."
-        )
-      );
+      if (controller.signal.aborted) return;
+      setPhase("failure");
+      setError(readableImportError(caught, entryMode));
+      trackJobImportEvent("job_import.failed", {
+        sourceType: entryMode,
+        durationMs: Math.max(0, Date.now() - startedAtRef.current),
+      });
     } finally {
-      entrySubmissionRef.current = false;
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+      }
     }
   };
 
   const openDevelopmentFixture = async () => {
-    if (!accessToken || entrySubmissionRef.current) return;
-    entrySubmissionRef.current = true;
-    setPhase("creating");
+    if (!accessToken) return;
+    startedAtRef.current = Date.now();
+    setPhase("applying");
     setError("");
     try {
       const result = await createDevelopmentJobImportFixture(accessToken);
-      setDraft(result.draft);
-      void getJobImportSource(accessToken, result.draft.source_id)
-        .then(setSource)
-        .catch(() => undefined);
       setDraftLocation(result.draft.id);
-      setPhase("review");
-      setAnnouncement("Development review example opened.");
+      await openCanonicalDraft(result.draft);
     } catch (caught) {
-      setPhase("entry");
-      setError(
-        describeActionError(caught, "The development review example could not be opened.")
-      );
-    } finally {
-      entrySubmissionRef.current = false;
+      setPhase("failure");
+      setError(describeActionError(caught, "The local import example could not be opened."));
     }
   };
 
-  const reviewAction = async (
-    field: JobImportField,
-    action:
-      | { kind: "accept" | "reject" | "reset" }
-      | { kind: "edit"; value: JobImportNonNullJsonValue }
-      | { kind: "resolve"; index: number }
-      | { kind: "replace"; value: JobImportNonNullJsonValue }
-  ) => {
-    if (!draft || !accessToken || reviewMutationRef.current) return;
-    reviewMutationRef.current = true;
-    setBusyField(field.field_path);
+  const cancel = () => {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    setPhase("entry");
     setError("");
-    try {
-      let next: JobImportDraft;
-      if (action.kind === "resolve") {
-        next = await resolveJobImportConflict(
-          accessToken,
-          draft.id,
-          field.field_path,
-          { selected_value_index: action.index as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 }
-        );
-      } else if (action.kind === "replace") {
-        next = await resolveJobImportConflict(
-          accessToken,
-          draft.id,
-          field.field_path,
-          { replacement_value: action.value }
-        );
-      } else if (action.kind === "edit") {
-        next = await reviewJobImportField(accessToken, draft.id, field.field_path, {
-          action: "edit",
-          edited_value: action.value,
-        });
-      } else {
-        next = await reviewJobImportField(accessToken, draft.id, field.field_path, {
-          action: action.kind,
-        });
-      }
-      setDraft(next);
-      setAnnouncement(`${field.field_path.replaceAll("_", " ")} updated.`);
-    } catch (caught) {
-      setError(describeActionError(caught, "That review decision could not be saved."));
-      throw caught;
-    } finally {
-      reviewMutationRef.current = false;
-      setBusyField(null);
-    }
+    setAnnouncement("Draft preparation cancelled. Your source is still here.");
   };
 
-  const applyDraft = async () => {
-    if (!draft || !accessToken || applyRequestRef.current) return;
-    applyRequestRef.current = true;
-    setApplying(true);
-    setError("");
-    try {
-      const result = await applyJobImportDraft(accessToken, draft.id);
-      setDraft(result.draft);
-      setAnnouncement("Private native job draft created. Opening the full editor.");
-      router.push(`/post-job?draftId=${encodeURIComponent(String(result.job.id))}`);
-    } catch (caught) {
-      setError(describeActionError(caught, "The native job draft could not be created."));
-    } finally {
-      applyRequestRef.current = false;
-      setApplying(false);
+  const retry = () => {
+    if (draft && ["awaiting_processing", "processing_failed"].includes(draft.processing_status)) {
+      startedAtRef.current = Date.now();
+      void processDraft(draft);
+      return;
     }
+    if (draft && terminalDraftStatuses.has(draft.processing_status)) {
+      void openCanonicalDraft(draft);
+      return;
+    }
+    void prepare();
   };
 
-  const startOver = async () => {
-    setConfirmStartOver(false);
-    if (
-      draft &&
-      accessToken &&
-      !["applied_to_native_draft", "discarded", "superseded"].includes(
-        draft.processing_status
-      )
-    ) {
-      try {
-        await discardJobImportDraft(accessToken, draft.id);
-      } catch {
-        // Starting a fresh local flow must not discard a server-side audit record.
-      }
+  const continueManually = () => {
+    if (draft?.can_apply_to_native_draft) {
+      void openCanonicalDraft(draft);
+      return;
     }
+    router.push(draft ? `/post-job?importDraftId=${encodeURIComponent(draft.id)}` : "/post-job");
+  };
+
+  const startDifferentImport = () => {
     setDraft(null);
     setSource(null);
-    setText("");
-    setUrl("");
-    urlRequestIdRef.current = null;
-    setTruncated(false);
     setError("");
-    setDraftLocation(null);
     setPhase("entry");
-    setAnnouncement("Ready for a new private import.");
+    requestIdRef.current = null;
+    setDraftLocation(null);
   };
 
   if (sessionStatus === "loading") {
@@ -413,12 +530,12 @@ export default function ImportJobPageClient() {
           <PageHeader
             eyebrow="POST A JOB"
             title="Import job details"
-            description="Sign in to keep source text and imported suggestions private to your account."
+            description="Sign in to keep the source and prepared draft private to your account."
           />
           <StateCard
             icon="file"
             title="Sign in to import a job"
-            description="Your source, evidence, and review decisions are private recruiter data."
+            description="Your source and draft details stay private until you choose to publish."
             action={
               <button
                 type="button"
@@ -440,7 +557,7 @@ export default function ImportJobPageClient() {
         <PageHeader
           eyebrow="POST A JOB"
           title="Import job details"
-          description="Start from rough notes or an existing description, review every suggestion, then continue in the full job editor."
+          description="Paste an existing post or public URL. We’ll prepare a draft, then open it in the normal Post Job flow."
         />
         <p aria-live="polite" className="sr-only">
           {announcement}
@@ -451,8 +568,8 @@ export default function ImportJobPageClient() {
             <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-xs leading-relaxed text-white/60">
               <p className="font-semibold text-white/75">Private import</p>
               <p className="mt-1">
-                CreatorJobs stores normalized source text privately for extraction and review.
-                Suggestions are never published or treated as confirmed until you act.
+                CreatorJobs uses the source only to prepare your private draft. Nothing is
+                published, and uncertain details stay flagged in Post Job.
               </p>
             </section>
             <div
@@ -474,14 +591,19 @@ export default function ImportJobPageClient() {
                   aria-selected={entryMode === mode}
                   aria-controls={`import-panel-${mode}`}
                   tabIndex={entryMode === mode ? 0 : -1}
-                  className={`h-10 rounded-xl px-4 text-sm font-semibold transition motion-reduce:transition-none ${
+                  className={`h-11 rounded-xl px-4 text-sm font-semibold transition motion-reduce:transition-none ${
                     entryMode === mode
                       ? "bg-white text-black"
                       : "text-white/60 hover:text-white"
                   }`}
                   onClick={() => selectEntryMode(mode)}
                   onKeyDown={(event) => {
-                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                    if (![
+                      "ArrowLeft",
+                      "ArrowRight",
+                      "Home",
+                      "End",
+                    ].includes(event.key)) {
                       return;
                     }
                     event.preventDefault();
@@ -493,7 +615,9 @@ export default function ImportJobPageClient() {
                         : event.key === "End"
                           ? modes[modes.length - 1]
                           : modes[
-                              (currentIndex + (event.key === "ArrowLeft" ? -1 : 1) + modes.length) %
+                              (currentIndex +
+                                (event.key === "ArrowLeft" ? -1 : 1) +
+                                modes.length) %
                                 modes.length
                             ];
                     selectEntryMode(nextMode, true);
@@ -504,17 +628,13 @@ export default function ImportJobPageClient() {
               ))}
             </div>
             {entryMode === "text" ? (
-              <div
-                id="import-panel-text"
-                role="tabpanel"
-                aria-labelledby="import-tab-text"
-              >
+              <div id="import-panel-text" role="tabpanel" aria-labelledby="import-tab-text">
                 <PastePanel
                   text={text}
                   truncatedAtLimit={truncated}
-                  restoredFromSession={false}
+                  restoredFromSession={Boolean(source && text)}
                   onTextChange={updateText}
-                  onPrepare={() => void prepareText()}
+                  onPrepare={() => void prepare()}
                   onClearRequest={() => updateText("")}
                 />
               </div>
@@ -530,11 +650,13 @@ export default function ImportJobPageClient() {
                   Import a public job-listing page
                 </h2>
                 <p className="mt-2 text-xs leading-relaxed text-white/55">
-                  Enter a page anyone can open without signing in. CreatorJobs retrieves only
-                  that page—without cookies, browser sessions, JavaScript, forms, or linked
-                  resources. Some websites may not be supported.
+                  Enter a page anyone can open without signing in. Some sites block automated
+                  reading; you can always paste the text instead.
                 </p>
-                <label htmlFor="job-import-url" className="mt-5 block text-xs font-semibold text-white/70">
+                <label
+                  htmlFor="job-import-url"
+                  className="mt-5 block text-xs font-semibold text-white/70"
+                >
                   Public listing URL
                 </label>
                 <input
@@ -543,12 +665,12 @@ export default function ImportJobPageClient() {
                   value={url}
                   onChange={(event) => {
                     setUrl(event.target.value);
-                    urlRequestIdRef.current = null;
+                    requestIdRef.current = null;
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && url.trim()) {
                       event.preventDefault();
-                      void prepareUrl();
+                      void prepare();
                     }
                   }}
                   placeholder="https://example.com/jobs/video-editor"
@@ -561,10 +683,10 @@ export default function ImportJobPageClient() {
                     type="button"
                     className={importPrimaryButton}
                     disabled={!url.trim()}
-                    onClick={() => void prepareUrl()}
+                    onClick={() => void prepare()}
                     data-testid="import-url-prepare"
                   >
-                    Retrieve and prepare
+                    Prepare draft
                   </button>
                 </div>
               </section>
@@ -574,11 +696,16 @@ export default function ImportJobPageClient() {
                 {error}
               </p>
             ) : null}
+            {draft?.processing_status === "processing" ? (
+              <button type="button" className={importGhostButton} onClick={() => setPhase("processing")}>
+                Resume draft preparation
+              </button>
+            ) : null}
             {isDevelopmentRuntime ? (
               <section className="rounded-2xl border border-dashed border-white/15 p-4">
                 <p className="text-xs font-semibold text-white/70">Local development</p>
                 <p className="mt-1 text-xs text-white/45">
-                  Inspect a processed review example without sending text to a provider.
+                  Open a prepared private fixture without calling a provider.
                 </p>
                 <button
                   type="button"
@@ -586,155 +713,57 @@ export default function ImportJobPageClient() {
                   onClick={() => void openDevelopmentFixture()}
                   data-testid="open-import-review-fixture"
                 >
-                  Open review example
+                  Open prepared example
                 </button>
               </section>
             ) : null}
           </div>
         ) : null}
 
-        {phase === "creating" ? (
-          <section className={`${importPanelClass} mx-auto max-w-3xl`} aria-live="polite">
-            <p className="text-sm font-semibold">Saving private source…</p>
-            <p className="mt-1 text-xs text-white/50">
-              {entryMode === "url"
-                ? "Retrieving one public page without cookies or browser access. Nothing is being published."
-                : "Nothing is being published."}
-            </p>
-            <div className="ui-skeleton mt-5 h-3 w-2/3 rounded-full" />
-          </section>
+        {phase === "creating" || phase === "processing" || phase === "applying" ? (
+          <PreparingSurface
+            phase={phase}
+            delayed={delayed}
+            sourceType={entryMode}
+            onCancel={cancel}
+          />
         ) : null}
 
-        {phase === "processing" && draft ? (
-          <section className={`${importPanelClass} mx-auto max-w-3xl`} aria-live="polite">
-            <p className="text-sm font-semibold">
-              {draft.processing_status === "processing_failed"
-                ? "We couldn’t prepare this import"
-                : draft.processing_status === "awaiting_processing"
-                  ? "Ready to process"
-                  : "Preparing private suggestions…"}
+        {phase === "failure" ? (
+          <section className={`${importPanelClass} mx-auto max-w-3xl`} data-testid="job-import-failure">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-200/10 text-amber-100/80">
+              <Icon name="file" className="h-4 w-4" />
+            </span>
+            <h2 className="mt-4 text-lg font-semibold">Your draft needs a little help</h2>
+            <p role="alert" className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
+              {error}
             </p>
-            <p className="mt-2 text-xs leading-relaxed text-white/55">
-              The source and machine output remain private. You will review each result
-              before anything can enter a native job draft.
-            </p>
-            {draft.processing_status === "processing" ? (
-              <div className="ui-skeleton mt-5 h-3 w-2/3 rounded-full" />
-            ) : null}
-            {error ? (
-              <p role="alert" className="mt-3 text-sm text-amber-200/90">
-                {error}
-              </p>
-            ) : null}
-            {draft.processing_status !== "processing" ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={importPrimaryButton}
-                  disabled={processingRequest}
-                  onClick={() => void processDraft(draft)}
-                >
-                  {processingRequest
-                    ? "Starting processing…"
-                    : draft.processing_status === "processing_failed"
-                    ? "Retry processing"
-                    : "Start processing"}
-                </button>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button type="button" className={importPrimaryButton} onClick={retry}>
+                Retry
+              </button>
+              <button type="button" className={importGhostButton} onClick={continueManually}>
+                Continue manually
+              </button>
+              {entryMode === "url" ? (
                 <button
                   type="button"
                   className={importGhostButton}
-                  onClick={() => setConfirmStartOver(true)}
+                  onClick={() => {
+                    setPhase("entry");
+                    selectEntryMode("text");
+                  }}
                 >
-                  Start over
+                  Paste text instead
                 </button>
-                {isDevelopmentRuntime ? (
-                  <button
-                    type="button"
-                    className={importGhostButton}
-                    onClick={() => void openDevelopmentFixture()}
-                  >
-                    Open review example
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {phase === "source_summary" && draft ? (
-          <section className={`${importPanelClass} mx-auto max-w-3xl`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
-              Private source
-            </p>
-            <h2 className="mt-2 text-lg font-semibold">Import source summary</h2>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-white/45">Type</dt>
-                <dd className="mt-1 text-white/80">
-                  {source?.source_type === "public_url"
-                    ? "Public URL normalized to private text"
-                    : "Pasted or normalized text"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-white/45">Processing</dt>
-                <dd className="mt-1 text-white/80">
-                  {draft.processing_status.replaceAll("_", " ")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-white/45">Fields found</dt>
-                <dd className="mt-1 text-white/80">
-                  {draft.fields.filter((field) => field.provenance_state !== "missing").length}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-white/45">Privacy</dt>
-                <dd className="mt-1 text-white/80">Only visible to your account</dd>
-              </div>
-              {source?.source_type === "public_url" && source.final_source_url ? (
-                <div className="sm:col-span-2">
-                  <dt className="text-white/45">Retrieved page</dt>
-                  <dd className="mt-1 break-all text-white/80">
-                    {source.final_source_url}
-                  </dd>
-                </div>
               ) : null}
-            </dl>
-            <button
-              type="button"
-              className={`${importPrimaryButton} mt-5`}
-              onClick={() => setPhase("review")}
-            >
-              Return to review
-            </button>
+              <button type="button" className={importGhostButton} onClick={startDifferentImport}>
+                Start a different import
+              </button>
+            </div>
           </section>
-        ) : null}
-
-        {phase === "review" && draft ? (
-          <ImportReviewWorkspace
-            draft={draft}
-            busyField={busyField}
-            applying={applying}
-            error={error}
-            interactionsLocked={busyField !== null || applying}
-            onAction={reviewAction}
-            onApply={applyDraft}
-            onSourceSummary={() => setPhase("source_summary")}
-            onStartOver={() => setConfirmStartOver(true)}
-          />
         ) : null}
       </div>
-
-      <ConfirmDialog
-        open={confirmStartOver}
-        title="Start a new import?"
-        body="This preserves the current private audit record and starts a fresh import."
-        confirmLabel="Start over"
-        destructive
-        onConfirm={() => void startOver()}
-        onCancel={() => setConfirmStartOver(false)}
-      />
     </main>
   );
 }

@@ -14,7 +14,7 @@ test("an unauthenticated import visit explains the private account boundary", as
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Import job details" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in to import a job" })).toBeVisible();
-  await expect(page.getByText(/source, evidence, and review decisions are private/i)).toBeVisible();
+  await expect(page.getByText(/source and draft details stay private/i)).toBeVisible();
   await expect(page.getByTestId("import-textarea")).toHaveCount(0);
   await expect(page.getByText(/OpenAI|GPT-|model selector/i)).toHaveCount(0);
 });
