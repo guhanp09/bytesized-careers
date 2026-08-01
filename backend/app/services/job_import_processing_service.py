@@ -107,6 +107,7 @@ class JobImportProcessingService:
                 error.code,
                 error.message,
                 status_code=error.status_code,
+                details=self._safe_failure_details(error.metadata),
             ) from error
         except Exception as error:
             await self._mark_failed_if_current(
@@ -133,14 +134,27 @@ class JobImportProcessingService:
             )
         except JobImportError as error:
             if error.code != "JOB_IMPORT_STALE_PROCESSING_RESULT":
+                validation_audit = self._result_validation_audit(
+                    provider_result.metadata,
+                    error,
+                )
                 await self._mark_failed_if_current(
                     draft_id,
                     owner_user_id=owner_user_id,
                     processing_attempt_id=processing_attempt_id,
                     error_code=error.code,
                     message=error.message,
-                    provider_audit=provider_result.metadata,
+                    provider_audit=validation_audit,
                 )
+                raise JobImportError(
+                    error.code,
+                    error.message,
+                    status_code=error.status_code,
+                    details={
+                        **(error.details if isinstance(error.details, dict) else {}),
+                        "processing_diagnostic": self._safe_failure_details(validation_audit),
+                    },
+                ) from error
             raise
         except Exception as error:
             await self._mark_failed_if_current(
@@ -149,7 +163,16 @@ class JobImportProcessingService:
                 processing_attempt_id=processing_attempt_id,
                 error_code="JOB_IMPORT_PROCESSING_FAILED",
                 message="The extraction result could not be persisted.",
-                provider_audit=provider_result.metadata,
+                provider_audit=provider_result.metadata.model_copy(
+                    update={
+                        "metadata": {
+                            **provider_result.metadata.metadata,
+                            "processing_stage": "provider_neutral_persistence",
+                            "failure_code": "JOB_IMPORT_PROCESSING_FAILED",
+                            "failure_subreason": "persistence_failure",
+                        }
+                    }
+                ),
             )
             raise JobImportError(
                 "JOB_IMPORT_PROCESSING_FAILED",
@@ -180,6 +203,136 @@ class JobImportProcessingService:
                 status_code=409,
             )
         return None
+
+    @staticmethod
+    def _safe_field_path(value: object) -> str | None:
+        if not isinstance(value, str) or not 1 <= len(value) <= 120:
+            return None
+        if not value[0].islower():
+            return None
+        if not all(
+            character.islower() or character.isdigit() or character == "_" for character in value
+        ):
+            return None
+        return value
+
+    @classmethod
+    def _result_validation_audit(
+        cls,
+        provider_audit: JobImportProviderMetadata,
+        error: JobImportError,
+    ) -> JobImportProviderMetadata:
+        """Retain a bounded private reason when validated output fails persistence."""
+
+        details = error.details if isinstance(error.details, dict) else {}
+        stage = "provider_neutral_persistence"
+        subreason = "field_policy_rejection"
+        affected_field_path: str | None = None
+
+        if error.code == "JOB_IMPORT_EVIDENCE_REFERENCE_INVALID":
+            stage = "evidence_validation"
+            subreason = "invalid_evidence_reference"
+        elif error.code == "JOB_IMPORT_UNSUPPORTED_FIELD":
+            stage = "field_policy_validation"
+            raw_fields = details.get("fields")
+            fields = raw_fields if isinstance(raw_fields, list) else []
+            affected_field_path = next(
+                (path for value in fields if (path := cls._safe_field_path(value)) is not None),
+                None,
+            )
+            if affected_field_path in {"languages", "language_requirements"}:
+                subreason = "prohibited_language_field"
+            elif affected_field_path == "screening_questions":
+                subreason = "prohibited_screening_question_field"
+            elif affected_field_path in set(details.get("server_owned_fields") or []):
+                subreason = "creatorjobs_owned_field"
+            else:
+                subreason = "unsupported_field"
+        elif error.code == "JOB_IMPORT_UNSUPPORTED_NESTED_FIELD":
+            stage = "field_policy_validation"
+            subreason = "unsupported_nested_field"
+            affected_field_path = cls._safe_field_path(details.get("field_path"))
+        elif error.code == "JOB_IMPORT_CONFLICT_VALUES_NOT_DISTINCT":
+            stage = "provider_neutral_validation"
+            subreason = "malformed_conflict"
+            affected_field_path = cls._safe_field_path(details.get("field_path"))
+        elif error.code == "JOB_IMPORT_EXTRACTION_SCHEMA_MISMATCH":
+            stage = "provider_neutral_validation"
+            subreason = "extraction_schema_mismatch"
+        elif error.code == "JOB_IMPORT_TARGET_SCHEMA_MISMATCH":
+            stage = "provider_neutral_validation"
+            subreason = "target_schema_mismatch"
+        elif error.code == "JOB_IMPORT_MACHINE_OUTPUT_IMMUTABLE":
+            stage = "processing_state_validation"
+            subreason = "machine_output_immutable"
+
+        diagnostics: dict[str, object] = {
+            "processing_stage": stage,
+            "failure_code": error.code,
+            "failure_subreason": subreason,
+        }
+        if affected_field_path is not None:
+            diagnostics["affected_field_path"] = affected_field_path
+        alternative_index = details.get("alternative_index")
+        if isinstance(alternative_index, int) and 0 <= alternative_index <= 7:
+            diagnostics["affected_conflict_alternative_index"] = alternative_index
+        return provider_audit.model_copy(
+            update={
+                "metadata": {
+                    **provider_audit.metadata,
+                    **diagnostics,
+                }
+            }
+        )
+
+    @classmethod
+    def _safe_failure_details(
+        cls,
+        provider_audit: JobImportProviderMetadata | None,
+    ) -> dict[str, object]:
+        if provider_audit is None:
+            return {}
+        metadata = provider_audit.metadata
+        allowed_text = {
+            "request_id": 255,
+            "processing_stage": 80,
+            "failure_code": 80,
+            "failure_subreason": 80,
+            "segmentation_version": 80,
+            "affected_field_path": 120,
+            "affected_structure": 40,
+        }
+        details: dict[str, object] = {}
+        for key, maximum in allowed_text.items():
+            value = metadata.get(key)
+            if isinstance(value, str) and 1 <= len(value) <= maximum:
+                details[key] = value
+        for key in {
+            "provider_http_status",
+            "span_count",
+            "returned_evidence_id_count",
+            "invalid_evidence_id_count",
+            "unknown_evidence_id_count",
+            "duplicate_evidence_id_count",
+            "affected_structure_index",
+            "affected_conflict_alternative_index",
+        }:
+            value = metadata.get(key)
+            if isinstance(value, int) and 0 <= value <= 1_000_000:
+                details[key] = value
+        invalid_ids = metadata.get("invalid_evidence_span_ids")
+        if isinstance(invalid_ids, list):
+            bounded_ids = [
+                value
+                for value in invalid_ids[:5]
+                if isinstance(value, str)
+                and len(value) == 5
+                and value.startswith("E")
+                and value[1:].isdigit()
+            ]
+            if bounded_ids:
+                details["invalid_evidence_span_ids"] = bounded_ids
+        return details
 
     async def _mark_failed_if_current(
         self,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 from app.schemas.job_import import JobImportEvidence
@@ -22,9 +23,15 @@ _NONEMPTY_LINE_RE = re.compile(r"[^\r\n]+")
 class EvidenceSpanError(ValueError):
     """Bounded span construction or resolution failure without source disclosure."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        diagnostics: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.diagnostics = diagnostics or {}
 
 
 @dataclass(frozen=True)
@@ -176,27 +183,63 @@ def build_evidence_span_set(source_text: str) -> EvidenceSpanSet:
     )
 
 
+def evidence_reference_diagnostics(
+    span_set: EvidenceSpanSet,
+    span_ids: list[str],
+) -> dict[str, object]:
+    """Return bounded request-local counts without retaining source or model output."""
+
+    counts = Counter(span_ids)
+    malformed = [span_id for span_id in span_ids if not _SPAN_ID_RE.fullmatch(span_id)]
+    unknown = [
+        span_id
+        for span_id in span_ids
+        if _SPAN_ID_RE.fullmatch(span_id) and span_id not in span_set.by_id
+    ]
+    duplicate_count = sum(count - 1 for count in counts.values() if count > 1)
+    duplicate_known_count = sum(
+        count - 1
+        for span_id, count in counts.items()
+        if count > 1 and span_id in span_set.by_id
+    )
+    invalid_ids = list(dict.fromkeys(unknown))[:5]
+    return {
+        "reference_evidence_id_count": len(span_ids),
+        "invalid_evidence_id_count": (
+            len(malformed) + len(unknown) + duplicate_known_count
+        ),
+        "unknown_evidence_id_count": len(unknown),
+        "duplicate_evidence_id_count": duplicate_count,
+        **({"invalid_evidence_span_ids": invalid_ids} if invalid_ids else {}),
+    }
+
+
 def resolve_evidence_span_ids(
     span_set: EvidenceSpanSet,
     span_ids: list[str],
     *,
     maximum: int = MAX_EVIDENCE_SPANS_PER_REFERENCE,
+    diagnostic_context: dict[str, object] | None = None,
 ) -> list[JobImportEvidence]:
+    diagnostics = {
+        **evidence_reference_diagnostics(span_set, span_ids),
+        **(diagnostic_context or {}),
+    }
     if len(span_ids) > maximum:
-        raise EvidenceSpanError("span_reference_count_exceeded")
+        raise EvidenceSpanError("excessive_span_ids", diagnostics=diagnostics)
     if len(span_ids) != len(set(span_ids)):
-        raise EvidenceSpanError("duplicate_span_id")
+        raise EvidenceSpanError("duplicate_span_id", diagnostics=diagnostics)
 
     mapping = span_set.by_id
     resolved: list[EvidenceSpan] = []
     for span_id in span_ids:
         if not _SPAN_ID_RE.fullmatch(span_id):
-            raise EvidenceSpanError("malformed_span_id")
+            raise EvidenceSpanError("malformed_span_id", diagnostics=diagnostics)
         span = mapping.get(span_id)
         if span is None:
-            raise EvidenceSpanError("unknown_span_id")
+            raise EvidenceSpanError("unknown_span_id", diagnostics=diagnostics)
         if span_set.source_text[span.char_start : span.char_end] != span.text:
-            raise EvidenceSpanError("span_source_mismatch")
+            raise EvidenceSpanError("span_source_mismatch", diagnostics=diagnostics)
         resolved.append(span)
 
     # CreatorJobs, not the provider, owns deterministic evidence ordering.

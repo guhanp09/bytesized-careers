@@ -121,6 +121,9 @@ def _provider_result(
                     "total_tokens": 120,
                 },
                 "retry_count": 0,
+                "attempt_number": 1,
+                "elapsed_ms": 12,
+                "provider_http_status": 200,
             },
         ),
     )
@@ -180,6 +183,29 @@ class FakeResponses:
 class FakeOpenAIClient:
     def __init__(self, outcomes: list[object]) -> None:
         self.responses = FakeResponses(outcomes)
+
+
+class FakeRawResponse:
+    def __init__(self, payload: object | None = None, *, raw_text: str | None = None) -> None:
+        self.text = raw_text if raw_text is not None else json.dumps(payload)
+        self.request_id = "req_raw_openai_test"
+        self.status_code = 200
+
+
+class FakeRawResponses:
+    def __init__(self, outcomes: list[FakeRawResponse]) -> None:
+        self.outcomes = list(outcomes)
+        self.calls: list[dict[str, object]] = []
+
+    async def parse(self, **kwargs: object) -> FakeRawResponse:
+        self.calls.append(kwargs)
+        return self.outcomes.pop(0)
+
+
+class FakeRawOpenAIClient:
+    def __init__(self, outcomes: list[FakeRawResponse]) -> None:
+        raw_responses = FakeRawResponses(outcomes)
+        self.responses = SimpleNamespace(with_raw_response=raw_responses)
 
 
 def _openai_response(
@@ -283,6 +309,43 @@ def _adapter(
         ),
         client=FakeOpenAIClient(outcomes),
         sleep=record_sleep,
+    )
+
+
+def _raw_adapter(payload: object) -> OpenAIJobImportAdapter:
+    response = {
+        "status": "completed",
+        "model": "gpt-5.6-luna-2026-07-01",
+        "usage": {
+            "input_tokens": 101,
+            "output_tokens": 21,
+            "total_tokens": 122,
+        },
+        "output": [
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": json.dumps(payload),
+                    }
+                ],
+            }
+        ],
+    }
+    return _raw_response_adapter(FakeRawResponse(response))
+
+
+def _raw_response_adapter(raw_response: FakeRawResponse) -> OpenAIJobImportAdapter:
+    return OpenAIJobImportAdapter(
+        OpenAIJobImportConfig(
+            api_key="test-placeholder-not-a-real-key",
+            model="gpt-5.6-luna",
+            request_timeout_seconds=30,
+            max_retries=0,
+            instruction_version="job-import-text-v3",
+        ),
+        client=FakeRawOpenAIClient([raw_response]),
     )
 
 
@@ -431,6 +494,221 @@ async def test_openai_adapter_decodes_wire_values_before_domain_validation() -> 
     ).extract(_request())
 
     assert result.extraction.fields[0].value == ["youtube"]
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_decodes_success_from_owned_raw_http_response() -> None:
+    wire = _wire_extraction().model_dump(mode="json")
+
+    result = await _raw_adapter(wire).extract(_request())
+
+    assert result.extraction.fields[0].field_path == "title"
+    assert result.metadata.metadata["request_id"] == "req_raw_openai_test"
+    assert result.metadata.metadata["provider_http_status"] == 200
+    assert result.metadata.metadata["processing_stage"] == "validated_provider_output"
+    assert result.metadata.metadata["returned_evidence_id_count"] == 1
+    assert result.metadata.metadata["invalid_evidence_id_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_classifies_unreadable_raw_http_envelope() -> None:
+    with pytest.raises(JobImportProviderError) as caught:
+        await _raw_response_adapter(FakeRawResponse(raw_text="{")).extract(_request())
+
+    metadata = caught.value.metadata.metadata
+    assert caught.value.code == "OPENAI_MALFORMED_RESPONSE"
+    assert metadata["request_id"] == "req_raw_openai_test"
+    assert metadata["provider_http_status"] == 200
+    assert metadata["processing_stage"] == "provider_response_received"
+    assert metadata["failure_subreason"] == "provider_response_json_invalid"
+    assert metadata["span_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_classifies_invalid_output_text_json() -> None:
+    response = {
+        "status": "completed",
+        "model": "gpt-5.6-luna-2026-07-01",
+        "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
+        "output": [
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "{"}],
+            }
+        ],
+    }
+
+    with pytest.raises(JobImportProviderError) as caught:
+        await _raw_response_adapter(FakeRawResponse(response)).extract(_request())
+
+    metadata = caught.value.metadata.metadata
+    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
+    assert metadata["request_id"] == "req_raw_openai_test"
+    assert metadata["processing_stage"] == "provider_wire_validation"
+    assert metadata["failure_subreason"] == "provider_wire_invalid_json"
+    assert metadata["usage"]["total_tokens"] == 12
+
+
+def _post_response_failure_payload(case: str) -> dict[str, object]:
+    payload = _wire_extraction().model_dump(mode="json")
+    field = payload["fields"][0]
+    if case == "unknown_span_id":
+        field["evidence_span_ids"] = ["E9999"]
+    elif case == "span_from_another_request":
+        field["evidence_span_ids"] = ["E0002"]
+    elif case == "malformed_span_id":
+        field["evidence_span_ids"] = ["E1"]
+    elif case == "duplicate_span_id":
+        field["evidence_span_ids"] = ["E0001", "E0001"]
+    elif case == "excessive_span_ids":
+        field["evidence_span_ids"] = [f"E{index:04d}" for index in range(1, 7)]
+    elif case == "missing_required_evidence":
+        field["evidence_span_ids"] = []
+    elif case == "invalid_json_value":
+        field["value_json"] = "not-json"
+    elif case == "invalid_field_path":
+        field["field_path"] = "status.nested"
+    elif case == "duplicate_field_path":
+        payload["fields"].append(dict(field))
+    elif case == "invalid_conflict_evidence":
+        payload["fields"] = []
+        payload["conflicts"] = [
+            {
+                "field_path": "budget_amount",
+                "values": [
+                    {"value_json": "10", "evidence_span_ids": ["E0001"]},
+                    {"value_json": "20", "evidence_span_ids": ["E9999"]},
+                ],
+                "explanation": None,
+                "provider_confidence": None,
+            }
+        ]
+    elif case == "invalid_warning_evidence":
+        payload["warnings"] = [
+            {
+                "code": "review.warning",
+                "message": "Review this field.",
+                "field_path": "title",
+                "evidence_span_ids": ["E9999"],
+            }
+        ]
+    elif case == "evidence_not_allowed":
+        payload["missing_fields"] = [
+            {
+                "field_path": "deadline_at",
+                "explanation": None,
+                "evidence_span_ids": ["E0001"],
+            }
+        ]
+    elif case == "excessive_field_count":
+        payload["fields"] = [dict(field) for _ in range(101)]
+    elif case == "excessive_conflict_count":
+        payload["fields"] = []
+        conflict = {
+            "field_path": "budget_amount",
+            "values": [
+                {"value_json": "10", "evidence_span_ids": ["E0001"]},
+                {"value_json": "20", "evidence_span_ids": ["E0001"]},
+            ],
+            "explanation": None,
+            "provider_confidence": None,
+        }
+        payload["conflicts"] = [dict(conflict) for _ in range(31)]
+    elif case == "excessive_warning_count":
+        warning = {
+            "code": "review.warning",
+            "message": "Review this field.",
+            "field_path": "title",
+            "evidence_span_ids": [],
+        }
+        payload["warnings"] = [dict(warning) for _ in range(31)]
+    elif case == "malformed_conflict":
+        payload["fields"] = []
+        payload["conflicts"] = [
+            {
+                "field_path": "budget_amount",
+                "values": [
+                    {"value_json": "10", "evidence_span_ids": ["E0001"]},
+                    {"value_json": "10", "evidence_span_ids": ["E0001"]},
+                ],
+                "explanation": None,
+                "provider_confidence": None,
+            }
+        ]
+    elif case == "malformed_missing_field":
+        payload["missing_fields"] = [{"field_path": "INVALID.FIELD", "explanation": None}]
+    elif case == "excessive_nesting":
+        nested: object = "leaf"
+        for _ in range(300):
+            nested = [nested]
+        field["value_json"] = json.dumps(nested)
+    elif case == "response_size_exceeded":
+        field["value_json"] = json.dumps("x" * MAX_EXTRACTION_RESPONSE_BYTES)
+    else:  # pragma: no cover - keeps test fixture additions explicit
+        raise AssertionError(f"Unknown diagnostic case: {case}")
+    return payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("case", "expected_subreason"),
+    [
+        ("unknown_span_id", "unknown_span_id"),
+        ("span_from_another_request", "unknown_span_id"),
+        ("malformed_span_id", "malformed_span_id"),
+        ("duplicate_span_id", "duplicate_span_id"),
+        ("excessive_span_ids", "excessive_span_ids"),
+        ("missing_required_evidence", "missing_required_evidence"),
+        ("invalid_json_value", "invalid_json_value"),
+        ("invalid_field_path", "invalid_field_path"),
+        ("duplicate_field_path", "duplicate_field_path"),
+        ("invalid_conflict_evidence", "unknown_span_id"),
+        ("invalid_warning_evidence", "unknown_span_id"),
+        ("evidence_not_allowed", "evidence_not_allowed"),
+        ("excessive_field_count", "excessive_field_count"),
+        ("excessive_conflict_count", "excessive_conflict_count"),
+        ("excessive_warning_count", "excessive_warning_count"),
+        ("malformed_conflict", "malformed_conflict"),
+        ("malformed_missing_field", "malformed_missing_field"),
+        ("excessive_nesting", "excessive_nesting"),
+        ("response_size_exceeded", "response_size_exceeded"),
+    ],
+)
+async def test_raw_http_200_post_response_failures_retain_safe_diagnostics(
+    case: str,
+    expected_subreason: str,
+) -> None:
+    with pytest.raises(JobImportProviderError) as caught:
+        await _raw_adapter(_post_response_failure_payload(case)).extract(_request())
+
+    error = caught.value
+    metadata = error.metadata.metadata
+    assert error.code in {"OPENAI_EVIDENCE_INVALID", "OPENAI_SCHEMA_MISMATCH"}
+    assert metadata["request_id"] == "req_raw_openai_test"
+    assert error.metadata.model_version == "gpt-5.6-luna-2026-07-01"
+    assert metadata["usage"] == {
+        "input_tokens": 101,
+        "output_tokens": 21,
+        "total_tokens": 122,
+    }
+    assert metadata["provider_http_status"] == 200
+    assert metadata["attempt_number"] == 1
+    assert metadata["retry_count"] == 0
+    assert metadata["elapsed_ms"] >= 0
+    assert metadata["failure_code"] == error.code
+    assert metadata["failure_subreason"] == expected_subreason
+    assert metadata["processing_stage"] in {
+        "provider_wire_validation",
+        "provider_value_decoding",
+        "provider_neutral_validation",
+        "evidence_span_resolution",
+    }
+    assert metadata["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
+    assert metadata["span_count"] == 1
+    serialized = json.dumps(metadata)
+    assert SOURCE_TEXT not in serialized
+    assert "test-placeholder-not-a-real-key" not in serialized
+    assert "output" not in metadata
 
 
 @pytest.mark.asyncio
@@ -699,7 +977,17 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     failed = await client.post(path, headers=owner_headers, json={})
 
     assert failed.status_code == 502
-    assert failed.json()["error"]["code"] == "OPENAI_EVIDENCE_INVALID"
+    api_error = failed.json()["error"]
+    assert api_error["code"] == "OPENAI_EVIDENCE_INVALID"
+    diagnostic = api_error["details"]["details"]
+    assert diagnostic["request_id"] == "req_openai_test"
+    assert diagnostic["processing_stage"] == "evidence_span_resolution"
+    assert diagnostic["failure_subreason"] == "unknown_span_id"
+    assert diagnostic["provider_http_status"] == 200
+    assert diagnostic["span_count"] == 1
+    assert diagnostic["returned_evidence_id_count"] == 1
+    assert diagnostic["unknown_evidence_id_count"] == 1
+    assert diagnostic["invalid_evidence_span_ids"] == ["E9999"]
     current = await client.get(
         f"/api/v1/job-imports/drafts/{draft['id']}",
         headers=owner_headers,
@@ -718,6 +1006,12 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     assert body["provider_metadata"]["elapsed_ms"] >= 0
     assert body["provider_metadata"]["attempt_number"] == 1
     assert body["provider_metadata"]["retry_count"] == 0
+    assert body["provider_metadata"]["provider_http_status"] == 200
+    assert body["provider_metadata"]["span_count"] == 1
+    assert body["provider_metadata"]["returned_evidence_id_count"] == 1
+    assert body["provider_metadata"]["invalid_evidence_id_count"] == 1
+    assert body["provider_metadata"]["unknown_evidence_id_count"] == 1
+    assert body["provider_metadata"]["duplicate_evidence_id_count"] == 0
     assert (
         body["provider_metadata"]["failure_code"]
         == "OPENAI_EVIDENCE_INVALID"
@@ -1113,20 +1407,21 @@ async def test_stale_provider_result_cannot_overwrite_newer_attempt(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "field_path",
+    ("field_path", "expected_subreason"),
     [
-        "status",
-        "posted_by_user_id",
-        "languages",
-        "language_requirements",
-        "screening_questions",
-        "custom_attacker_field",
+        ("status", "creatorjobs_owned_field"),
+        ("posted_by_user_id", "creatorjobs_owned_field"),
+        ("languages", "prohibited_language_field"),
+        ("language_requirements", "prohibited_language_field"),
+        ("screening_questions", "prohibited_screening_question_field"),
+        ("custom_attacker_field", "unsupported_field"),
     ],
 )
 async def test_provider_cannot_inject_unsupported_or_creatorjobs_owned_fields(
     client: AsyncClient,
     provider_override,
     field_path: str,
+    expected_subreason: str,
 ) -> None:
     label = f"openai-policy-{field_path.replace('_', '-')}"
     headers, _owner_id = await _auth(client, label)
@@ -1149,6 +1444,90 @@ async def test_provider_cannot_inject_unsupported_or_creatorjobs_owned_fields(
     )
     assert current.json()["processing_status"] == "processing_failed"
     assert current.json()["fields"] == []
+    metadata = current.json()["provider_metadata"]
+    assert metadata["failure_code"] == "JOB_IMPORT_UNSUPPORTED_FIELD"
+    assert metadata["failure_subreason"] == expected_subreason
+    assert metadata["processing_stage"] == "field_policy_validation"
+    assert metadata["affected_field_path"] == field_path
+    assert metadata["request_id"] == "req_test"
+    assert metadata["elapsed_ms"] == 12
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("case", "expected_code", "expected_stage", "expected_subreason"),
+    [
+        (
+            "unsupported_nested_field",
+            "JOB_IMPORT_UNSUPPORTED_NESTED_FIELD",
+            "field_policy_validation",
+            "unsupported_nested_field",
+        ),
+        (
+            "owned_source_evidence_mismatch",
+            "JOB_IMPORT_EVIDENCE_REFERENCE_INVALID",
+            "evidence_validation",
+            "invalid_evidence_reference",
+        ),
+    ],
+)
+async def test_post_response_service_validation_retains_safe_failure_stage(
+    client: AsyncClient,
+    provider_override,
+    case: str,
+    expected_code: str,
+    expected_stage: str,
+    expected_subreason: str,
+) -> None:
+    headers, owner_id = await _auth(client, f"openai-service-audit-{case}")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        f"service-audit-{case}",
+    )
+    if case == "unsupported_nested_field":
+        extraction = _extraction(
+            field_path="source_inputs",
+            value=[{"type": "raw_footage", "attacker_key": True}],
+        )
+    else:
+        payload = _extraction().model_dump(mode="json")
+        payload["fields"][0]["evidence"][0]["location"] = {
+            "char_start": 0,
+            "char_end": len(TITLE_TEXT),
+        }
+        extraction = JobImportExtractionResponse.model_validate(payload)
+    provider_override(FakeProvider([_provider_result(extraction)]))
+
+    response = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/process",
+        headers=headers,
+        json={},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == expected_code
+    current = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            headers=headers,
+        )
+    ).json()
+    metadata = current["provider_metadata"]
+    assert current["processing_status"] == "processing_failed"
+    assert current["fields"] == []
+    assert metadata["failure_code"] == expected_code
+    assert metadata["processing_stage"] == expected_stage
+    assert metadata["failure_subreason"] == expected_subreason
+    assert metadata["request_id"] == "req_test"
+    assert SOURCE_TEXT not in json.dumps(metadata)
+    async with TestSessionLocal() as session:
+        jobs = (
+            await session.execute(
+                select(Job).where(Job.posted_by_user_id == owner_id)
+            )
+        ).scalars().all()
+        assert jobs == []
 
 
 def test_extraction_schema_rejects_duplicates_depth_and_oversized_output() -> None:

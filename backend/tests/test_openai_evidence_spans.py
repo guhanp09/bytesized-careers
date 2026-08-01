@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.integrations.openai import job_import_spans as spans_module
 from app.integrations.openai.job_import_output import (
     OpenAIJobImportExtractionResponse,
+    OpenAIJobImportPostParseError,
 )
 from app.integrations.openai.job_import_spans import (
     EVIDENCE_SEGMENTATION_VERSION,
@@ -16,6 +17,7 @@ from app.integrations.openai.job_import_spans import (
     MAX_EVIDENCE_SPAN_TEXT_LENGTH,
     EvidenceSpanError,
     build_evidence_span_set,
+    evidence_reference_diagnostics,
     resolve_evidence_span_ids,
 )
 
@@ -210,8 +212,27 @@ def test_direct_field_without_span_fails_provider_neutral_validation() -> None:
     wire = OpenAIJobImportExtractionResponse.model_validate(
         _wire_payload(evidence_span_ids=[])
     )
-    with pytest.raises(ValidationError, match="require evidence"):
+    with pytest.raises(OpenAIJobImportPostParseError) as caught:
         wire.to_domain_response(span_set=span_set)
+    assert caught.value.reason == "missing_required_evidence"
+    assert caught.value.diagnostics["affected_field_path"] == "title"
+
+
+def test_evidence_diagnostics_do_not_double_count_duplicate_unknown_ids() -> None:
+    span_set = build_evidence_span_set("Known evidence")
+
+    diagnostics = evidence_reference_diagnostics(
+        span_set,
+        ["E0001", "E0001", "E9999", "E9999", "bad"],
+    )
+
+    assert diagnostics == {
+        "reference_evidence_id_count": 5,
+        "invalid_evidence_id_count": 4,
+        "unknown_evidence_id_count": 2,
+        "duplicate_evidence_id_count": 2,
+        "invalid_evidence_span_ids": ["E9999"],
+    }
 
 
 @pytest.mark.parametrize("with_span", [True, False])
@@ -332,8 +353,9 @@ def test_wire_contract_rejects_invalid_path_and_excessive_nesting() -> None:
     wire = OpenAIJobImportExtractionResponse.model_validate(
         _wire_payload(value_json=json.dumps(nested))
     )
-    with pytest.raises((ValidationError, ValueError, RecursionError)):
+    with pytest.raises(OpenAIJobImportPostParseError) as caught:
         wire.to_domain_response(span_set=span_set)
+    assert caught.value.reason == "excessive_nesting"
 
 
 def test_markup_and_malicious_json_remain_inert_exact_span_text() -> None:

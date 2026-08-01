@@ -740,6 +740,7 @@ class JobImportService:
                 **(provider_audit.metadata if provider_audit else {}),
                 "processing_completed_at": datetime.now(UTC).isoformat(),
                 "processing_outcome": "failed",
+                "failure_code": error_code[:80],
             }
             await self.repository.update_draft(
                 draft,

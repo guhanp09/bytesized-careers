@@ -64,7 +64,7 @@ class Settings(BaseSettings):
         alias="OPENAI_MODEL",
     )
     openai_request_timeout_seconds: float = Field(
-        default=30.0,
+        default=60.0,
         ge=5.0,
         le=120.0,
         alias="OPENAI_REQUEST_TIMEOUT_SECONDS",

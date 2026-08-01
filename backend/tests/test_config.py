@@ -54,6 +54,11 @@ def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
         == "test-placeholder-not-a-real-key"
     )
     assert settings.openai_model == "gpt-5.6-luna"
+    assert settings.openai_request_timeout_seconds == 30
+    assert (
+        config.Settings.model_fields["openai_request_timeout_seconds"].default
+        == 60
+    )
 
     with pytest.raises(ValueError):
         config.Settings(OPENAI_MAX_RETRIES=4)
