@@ -174,7 +174,11 @@ async def _auth(client: AsyncClient, label: str) -> dict[str, str]:
 
 
 class _TitleProvider:
+    def __init__(self) -> None:
+        self.requests = []
+
     async def extract(self, request):
+        self.requests.append(request)
         source = request.source.original_text or ""
         value = "YouTube Video Editor"
         start = source.index(value)
@@ -395,7 +399,8 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         )
 
     app.dependency_overrides[get_job_import_url_service] = test_url_service
-    app.dependency_overrides[get_job_import_provider] = lambda: _TitleProvider()
+    provider = _TitleProvider()
+    app.dependency_overrides[get_job_import_provider] = lambda: provider
     try:
         payload = {
             "source_url": f"{public_page_server}/redirect",
@@ -440,6 +445,9 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         )
         assert processed.status_code == 200, processed.text
         assert processed.json()["draft"]["processing_status"] == "awaiting_recruiter_review"
+        assert len(provider.requests) == 1
+        assert provider.requests[0].source.source_type == "external_listing_text"
+        assert provider.requests[0].source.original_text == source["original_text"]
 
         cross_account = await client.get(
             f"/api/v1/job-imports/sources/{source['id']}",

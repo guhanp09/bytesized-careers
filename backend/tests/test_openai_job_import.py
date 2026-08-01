@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import html
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import get_type_hints
@@ -11,6 +13,7 @@ import openai
 import pytest
 from conftest import TestSessionLocal
 from httpx import AsyncClient
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -19,6 +22,9 @@ from app.integrations.openai.job_import_adapter import (
     OPENAI_MAX_OUTPUT_TOKENS,
     OpenAIJobImportAdapter,
     OpenAIJobImportConfig,
+)
+from app.integrations.openai.job_import_output import (
+    OpenAIJobImportExtractionResponse,
 )
 from app.main import app
 from app.models import Job, JobImportDraft, JobImportField
@@ -196,6 +202,36 @@ def _openai_response(
     )
 
 
+def _wire_extraction(
+    extraction: JobImportExtractionResponse | None = None,
+) -> OpenAIJobImportExtractionResponse:
+    payload = (extraction or _extraction()).model_dump(mode="json")
+    evidence_groups: list[list[dict[str, object]]] = []
+    for field in payload["fields"]:
+        field["value_json"] = json.dumps(
+            field.pop("value"), ensure_ascii=False, separators=(",", ":")
+        )
+        confidence = field.get("provider_confidence")
+        if confidence is not None:
+            confidence.pop("metadata", None)
+        evidence_groups.append(field["evidence"])
+    for conflict in payload["conflicts"]:
+        confidence = conflict.get("provider_confidence")
+        if confidence is not None:
+            confidence.pop("metadata", None)
+        for alternative in conflict["values"]:
+            alternative["value_json"] = json.dumps(
+                alternative.pop("value"), ensure_ascii=False, separators=(",", ":")
+            )
+            evidence_groups.append(alternative["evidence"])
+    evidence_groups.extend(item["evidence"] for item in payload["missing_fields"])
+    evidence_groups.extend(item["evidence"] for item in payload["warnings"])
+    for evidence_group in evidence_groups:
+        for evidence in evidence_group:
+            evidence["snippet"] = html.unescape(str(evidence["snippet"]))
+    return OpenAIJobImportExtractionResponse.model_validate(payload)
+
+
 def _adapter(
     outcomes: list[object],
     *,
@@ -289,7 +325,7 @@ def provider_override():
 
 @pytest.mark.asyncio
 async def test_openai_adapter_builds_server_owned_structured_request() -> None:
-    response = _openai_response(parsed=_extraction())
+    response = _openai_response(parsed=_wire_extraction())
     adapter = _adapter([response])
 
     result = await adapter.extract(_request())
@@ -311,7 +347,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     }
     call = adapter._client.responses.calls[0]
     assert call["model"] == "gpt-5.6-luna"
-    assert call["text_format"] is JobImportExtractionResponse
+    assert call["text_format"] is OpenAIJobImportExtractionResponse
     assert call["max_output_tokens"] == OPENAI_MAX_OUTPUT_TOKENS
     assert call["store"] is False
     assert SOURCE_TEXT in str(call["input"])
@@ -319,6 +355,46 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert "screening_questions" in str(call["instructions"])
     assert "language_requirements" in str(call["instructions"])
     assert "chain-of-thought" in str(call["instructions"])
+
+
+def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:
+    schema = to_strict_json_schema(OpenAIJobImportExtractionResponse)
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            assert value, "Structured Outputs cannot constrain an empty schema"
+            if value.get("type") == "object":
+                assert value.get("additionalProperties") is False
+                assert set(value.get("properties", {})) == set(value.get("required", []))
+            assert value.get("format") != "uri"
+            for nested in value.values():
+                walk(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                walk(nested)
+
+    walk(schema)
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_decodes_wire_values_before_domain_validation() -> None:
+    extraction = _extraction(value=["youtube"])
+    result = await _adapter(
+        [_openai_response(parsed=_wire_extraction(extraction))]
+    ).extract(_request())
+
+    assert result.extraction.fields[0].value == ["youtube"]
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_rejects_invalid_wire_value_json() -> None:
+    wire = _wire_extraction().model_copy(deep=True)
+    wire.fields[0].value_json = "not-json"
+
+    with pytest.raises(JobImportProviderError) as caught:
+        await _adapter([_openai_response(parsed=wire)]).extract(_request())
+
+    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
 
 
 @pytest.mark.asyncio
@@ -336,7 +412,7 @@ async def test_openai_adapter_retries_only_bounded_transient_failures() -> None:
     )
     sleeps: list[float] = []
     adapter = _adapter(
-        [timeout, rate_limit, _openai_response(parsed=_extraction())],
+        [timeout, rate_limit, _openai_response(parsed=_wire_extraction())],
         sleeps=sleeps,
     )
 
@@ -417,7 +493,7 @@ async def test_openai_adapter_does_not_retry_permanent_access_failures(
 @pytest.mark.parametrize(
     ("response", "code"),
     [
-        (_openai_response(parsed=_extraction(), status="incomplete"), "OPENAI_INCOMPLETE_RESPONSE"),
+        (_openai_response(parsed=_wire_extraction(), status="incomplete"), "OPENAI_INCOMPLETE_RESPONSE"),
         (_openai_response(parsed=None), "OPENAI_MALFORMED_RESPONSE"),
         (
             _openai_response(
@@ -542,7 +618,7 @@ async def test_openai_adapter_rejects_evidence_outside_normalized_text() -> None
     invalid.fields[0].evidence[0].location.char_end = 4
 
     with pytest.raises(JobImportProviderError) as caught:
-        await _adapter([_openai_response(parsed=invalid)]).extract(_request())
+        await _adapter([_openai_response(parsed=_wire_extraction(invalid))]).extract(_request())
 
     assert caught.value.code == "OPENAI_EVIDENCE_INVALID"
 
@@ -558,7 +634,7 @@ async def test_openai_adapter_treats_html_source_as_data_and_escapes_evidence() 
     )
 
     result = await _adapter(
-        [_openai_response(parsed=extraction)]
+        [_openai_response(parsed=_wire_extraction(extraction))]
     ).extract(_request(source_text))
 
     assert result.extraction.fields[0].value == snippet

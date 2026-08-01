@@ -13,6 +13,9 @@ from pydantic import ValidationError
 from app.integrations.openai.job_import_instructions import (
     build_job_import_instructions,
 )
+from app.integrations.openai.job_import_output import (
+    OpenAIJobImportExtractionResponse,
+)
 from app.schemas.job_import import (
     JobImportEvidence,
     JobImportExtractionRequest,
@@ -94,7 +97,7 @@ class OpenAIJobImportAdapter:
                         version=self.config.instruction_version
                     ),
                     input=request.model_dump_json(),
-                    text_format=JobImportExtractionResponse,
+                    text_format=OpenAIJobImportExtractionResponse,
                     max_output_tokens=OPENAI_MAX_OUTPUT_TOKENS,
                     store=False,
                 )
@@ -138,12 +141,13 @@ class OpenAIJobImportAdapter:
                 retry_count=retries_used,
             )
         try:
-            extraction = (
+            wire_response = (
                 parsed
-                if isinstance(parsed, JobImportExtractionResponse)
-                else JobImportExtractionResponse.model_validate(parsed)
+                if isinstance(parsed, OpenAIJobImportExtractionResponse)
+                else OpenAIJobImportExtractionResponse.model_validate(parsed)
             )
-        except ValidationError as exc:
+            extraction = wire_response.to_domain_response()
+        except (ValidationError, ValueError) as exc:
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
                 "OpenAI returned an extraction response that failed CreatorJobs validation.",

@@ -583,7 +583,13 @@ class JobImportService:
             extraction_schema_version=draft.extraction_schema_version,
             target_listing_schema_version=draft.target_listing_schema_version,
             source=JobImportSourceRepresentation(
-                source_type=source.source_type,
+                # Public URL records retain their retrieval origin in storage,
+                # while providers receive only the bounded normalized text.
+                source_type=(
+                    "external_listing_text"
+                    if source.source_type == "public_url"
+                    else source.source_type
+                ),
                 original_text=source.original_text,
                 source_url=source.source_url,
                 original_filename=source.original_filename,
