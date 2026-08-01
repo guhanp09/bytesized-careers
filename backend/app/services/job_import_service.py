@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -30,6 +31,11 @@ from app.core.job_domain_taxonomy import (
     TRIAL_STATUSES,
     TRIAL_WORK_USAGE,
 )
+from app.core.job_import_inference import (
+    confidence_at_least,
+    infer_compensation_currency,
+    provider_confidence_label,
+)
 from app.core.job_import_policy import (
     AUTO_TRACKED_MISSING_FIELDS,
     JOB_IMPORT_FIELD_POLICIES,
@@ -57,11 +63,15 @@ from app.schemas.job_import import (
     JobImportConflictResolutionRequest,
     JobImportDraftInitialize,
     JobImportDraftRead,
+    JobImportEvidence,
+    JobImportExtractionField,
     JobImportExtractionRequest,
     JobImportExtractionResponse,
     JobImportFieldDefinition,
     JobImportFieldRead,
     JobImportFieldReviewRequest,
+    JobImportProcessingWarning,
+    JobImportProviderConfidence,
     JobImportProviderMetadata,
     JobImportSourceCreate,
     JobImportSourceRead,
@@ -80,10 +90,9 @@ _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
     "deliverables": frozenset(
         {"type", "custom_type", "quantity", "frequency", "custom_frequency", "notes"}
     ),
-    "source_inputs": frozenset(
-        {"type", "custom_label", "sensitive_access_confirmed"}
-    ),
+    "source_inputs": frozenset({"type", "custom_label", "sensitive_access_confirmed"}),
     "hiring_process": frozenset({"stage", "custom_label", "notes"}),
+    "screening_questions": frozenset({"prompt", "required", "response_guidance"}),
     "reference_videos": frozenset(
         {
             "id",
@@ -97,9 +106,7 @@ _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
         }
     ),
 }
-_REFERENCE_TIMESTAMP_KEYS = frozenset(
-    {"id", "time", "seconds", "title", "description"}
-)
+_REFERENCE_TIMESTAMP_KEYS = frozenset({"id", "time", "seconds", "title", "description"})
 _CUSTOM_LABEL_LIST_FIELDS = frozenset(
     {
         "other_required_tools",
@@ -107,9 +114,7 @@ _CUSTOM_LABEL_LIST_FIELDS = frozenset(
         "other_preferred_skills",
     }
 )
-_CREATOR_CONTEXT_FIELDS = frozenset(
-    {"content_niches", "content_genres", "formats_hired_for"}
-)
+_CREATOR_CONTEXT_FIELDS = frozenset({"content_niches", "content_genres", "formats_hired_for"})
 
 
 class JobImportError(Exception):
@@ -398,8 +403,7 @@ class JobImportService:
             if existing is not None:
                 if (
                     existing.source_id != source.id
-                    or existing.extraction_schema_version
-                    != payload.extraction_schema_version
+                    or existing.extraction_schema_version != payload.extraction_schema_version
                     or existing.target_listing_schema_version
                     != payload.target_listing_schema_version
                     or existing.supersedes_draft_id != payload.supersedes_draft_id
@@ -452,8 +456,7 @@ class JobImportService:
                 if existing is not None:
                     if (
                         existing.source_id != source_id
-                        or existing.extraction_schema_version
-                        != payload.extraction_schema_version
+                        or existing.extraction_schema_version != payload.extraction_schema_version
                         or existing.target_listing_schema_version
                         != payload.target_listing_schema_version
                         or existing.supersedes_draft_id != payload.supersedes_draft_id
@@ -505,6 +508,25 @@ class JobImportService:
             )
         return draft
 
+    async def get_draft_for_target_job(
+        self,
+        target_job_id: UUID,
+        *,
+        owner_user_id: UUID,
+    ) -> tuple[JobImportDraft, JobImportSource]:
+        draft = await self.repository.get_draft_by_target_job(
+            target_job_id,
+            owner_user_id,
+        )
+        if draft is None:
+            raise JobImportError(
+                "JOB_IMPORT_DRAFT_NOT_FOUND",
+                "No import context exists for this job draft.",
+                status_code=404,
+            )
+        source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
+        return draft, source
+
     async def build_extraction_request(
         self,
         draft_id: UUID,
@@ -553,14 +575,12 @@ class JobImportService:
                 }
             else:
                 assert policy.native_field is not None
-                value_schema = self._adapter_for_native_field(
-                    policy.native_field
-                ).json_schema()
+                value_schema = self._adapter_for_native_field(policy.native_field).json_schema()
             allowed_provenance = [
                 "directly_supplied",
                 "extracted_from_source",
             ]
-            if policy.confirmation_policy == "suggest_with_recruiter_confirmation":
+            if "semantic_inference" in policy.allowed_origins:
                 allowed_provenance.append("suggested_inference")
             definitions.append(
                 JobImportFieldDefinition(
@@ -568,15 +588,20 @@ class JobImportService:
                     native_field=policy.native_field,
                     value_schema=value_schema,
                     confirmation_policy=policy.confirmation_policy,
-                    nested_confirmation_policies=dict(
-                        policy.nested_confirmation_policies
-                    ),
+                    nested_confirmation_policies=dict(policy.nested_confirmation_policies),
                     allowed_provenance=allowed_provenance,
                     evidence_required_for_extraction=True,
-                    requires_recruiter_review=True,
+                    requires_recruiter_review=(
+                        policy.auto_fill_confidence is None
+                        or bool(policy.nested_confirmation_policies)
+                    ),
                     missing_requirement=policy.missing_requirement,
                     review_section=policy.review_section,
                     custom_values_allowed=policy.custom_values_allowed,
+                    inference_risk=policy.inference_risk,
+                    allowed_decision_origins=sorted(policy.allowed_origins),
+                    auto_fill_confidence=policy.auto_fill_confidence,
+                    suggestion_confidence=policy.suggestion_confidence,
                 )
             )
         return JobImportExtractionRequest(
@@ -600,10 +625,14 @@ class JobImportService:
             field_definitions=definitions,
             inference_restrictions=[
                 "Never emit CreatorJobs-owned identity, verification, status, ownership, counters, or trust fields.",
-                "Consequential fields must remain explicitly reviewable and must never be marked authoritative.",
+                "Use suggested inference only where that field's allowed_decision_origins includes semantic_inference.",
+                "High-risk and explicit-only fields must never be guessed, defaulted, or derived from market norms.",
                 "Use stable taxonomy keys; do not generate database identifiers.",
                 "Represent contradictory source statements as conflicts instead of selecting one.",
                 "Represent absent publication-relevant information as missing instead of inventing it.",
+                "Cadence and turnaround are different; never derive one from the other.",
+                "Do not add role-default tools unless the source explicitly requires them.",
+                "Screening questions must preserve source wording and cannot invent requiredness or rejection logic.",
             ],
             output_validation_instructions=[
                 "Return only the CreatorJobs extraction response contract.",
@@ -649,9 +678,7 @@ class JobImportService:
             )
             now = datetime.now(UTC)
             existing_metadata = (
-                draft.provider_metadata
-                if isinstance(draft.provider_metadata, dict)
-                else {}
+                draft.provider_metadata if isinstance(draft.provider_metadata, dict) else {}
             )
             previous_attempts = existing_metadata.get("processing_attempt_count", 0)
             attempt_count = (
@@ -731,9 +758,7 @@ class JobImportService:
             )
             safe_message = " ".join(message.split())[:500]
             current_metadata = (
-                draft.provider_metadata
-                if isinstance(draft.provider_metadata, dict)
-                else {}
+                draft.provider_metadata if isinstance(draft.provider_metadata, dict) else {}
             )
             failed_metadata = {
                 **current_metadata,
@@ -754,19 +779,13 @@ class JobImportService:
                         }
                     },
                     "provider_name": (
-                        provider_audit.provider_name
-                        if provider_audit
-                        else draft.provider_name
+                        provider_audit.provider_name if provider_audit else draft.provider_name
                     ),
                     "model_name": (
-                        provider_audit.model_name
-                        if provider_audit
-                        else draft.model_name
+                        provider_audit.model_name if provider_audit else draft.model_name
                     ),
                     "model_version": (
-                        provider_audit.model_version
-                        if provider_audit
-                        else draft.model_version
+                        provider_audit.model_version if provider_audit else draft.model_version
                     ),
                     "instruction_version": (
                         provider_audit.instruction_version
@@ -794,11 +813,7 @@ class JobImportService:
     ) -> None:
         if expected_processing_attempt_id is None:
             return
-        metadata = (
-            draft.provider_metadata
-            if isinstance(draft.provider_metadata, dict)
-            else {}
-        )
+        metadata = draft.provider_metadata if isinstance(draft.provider_metadata, dict) else {}
         if metadata.get("processing_attempt_id") != str(expected_processing_attempt_id):
             raise JobImportError(
                 "JOB_IMPORT_STALE_PROCESSING_RESULT",
@@ -826,6 +841,14 @@ class JobImportService:
             if role is None:
                 return value, ["The proposed creator role key is unknown or inactive."]
             return role.slug, []
+
+        if policy.field_path == "screening_questions" and isinstance(value, list):
+            value = [
+                ({**item, "required": False} if "required" not in item else dict(item))
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
 
         nested_errors = self._nested_shape_errors(policy.field_path, value)
         if nested_errors:
@@ -855,9 +878,7 @@ class JobImportService:
 
         assert policy.native_field is not None
         try:
-            validated_update = JobUpdate.model_validate(
-                {policy.native_field: value}
-            )
+            validated_update = JobUpdate.model_validate({policy.native_field: value})
             normalized = validated_update.model_dump(
                 mode="json",
                 exclude_unset=True,
@@ -874,16 +895,36 @@ class JobImportService:
             if unknown:
                 return normalized, [f"Unknown tool key: {item}" for item in unknown]
         if policy.field_path == "platforms":
-            unknown = [
-                str(item)
-                for item in normalized or []
-                if item not in CREATOR_JOB_PLATFORMS
-            ]
+            unknown = [str(item) for item in normalized or [] if item not in CREATOR_JOB_PLATFORMS]
             if unknown:
-                return normalized, [
-                    f"Unknown platform key: {item}" for item in unknown
-                ]
+                return normalized, [f"Unknown platform key: {item}" for item in unknown]
         return normalized, []
+
+    @staticmethod
+    def _provider_screening_questions(
+        value: object,
+        evidence: list[JobImportEvidence],
+    ) -> object:
+        """Keep imported requiredness only when the owned source says so."""
+
+        if not isinstance(value, list):
+            return value
+        evidence_text = " ".join(item.snippet for item in evidence).casefold()
+        requiredness_is_explicit = bool(
+            re.search(
+                r"\b(required|mandatory|must\s+(?:answer|complete|provide|respond))\b",
+                evidence_text,
+            )
+        )
+        return [
+            {
+                **item,
+                "required": bool(item.get("required")) and requiredness_is_explicit,
+            }
+            if isinstance(item, dict)
+            else item
+            for item in value
+        ]
 
     @staticmethod
     def _nested_shape_errors(field_path: str, value: object) -> list[str]:
@@ -898,8 +939,7 @@ class JobImportService:
                 continue
             unexpected = sorted(set(item) - allowed_keys)
             errors.extend(
-                f"Unsupported nested key at {field_path}[{index}].{key}."
-                for key in unexpected
+                f"Unsupported nested key at {field_path}[{index}].{key}." for key in unexpected
             )
             if field_path == "reference_videos":
                 timestamp_notes = item.get("timestamp_notes")
@@ -907,9 +947,7 @@ class JobImportService:
                     for note_index, note in enumerate(timestamp_notes):
                         if not isinstance(note, dict):
                             continue
-                        nested_unexpected = sorted(
-                            set(note) - _REFERENCE_TIMESTAMP_KEYS
-                        )
+                        nested_unexpected = sorted(set(note) - _REFERENCE_TIMESTAMP_KEYS)
                         errors.extend(
                             "Unsupported nested key at "
                             f"{field_path}[{index}].timestamp_notes"
@@ -919,17 +957,223 @@ class JobImportService:
         return errors
 
     @staticmethod
+    def _structured_source_evidence(
+        source: JobImportSource,
+        *,
+        label: str,
+        value: str,
+    ) -> list[JobImportEvidence]:
+        source_text = source.original_text or ""
+        snippet = f"{label}: {value}"
+        start = source_text.find(snippet)
+        if start < 0:
+            return []
+        return [
+            JobImportEvidence.model_validate(
+                {
+                    "snippet": snippet,
+                    "location": {
+                        "char_start": start,
+                        "char_end": start + len(snippet),
+                    },
+                }
+            )
+        ]
+
+    @classmethod
+    def _with_deterministic_context(
+        cls,
+        response: JobImportExtractionResponse,
+        source: JobImportSource,
+    ) -> JobImportExtractionResponse:
+        """Add only server-owned, policy-approved contextual decisions."""
+
+        fields = list(response.fields)
+        by_path = {field.field_path: field for field in fields}
+        amount_present = any(
+            isinstance(field.value, (int, float, str))
+            and not isinstance(field.value, bool)
+            and str(field.value).strip() not in {"", "0", "0.0"}
+            for path in ("budget_amount", "budget_max")
+            if (field := by_path.get(path)) is not None
+        )
+        explicit_currency_field = by_path.get("budget_currency")
+        explicit_currency = (
+            str(explicit_currency_field.value) if explicit_currency_field is not None else None
+        )
+        location_field = by_path.get("location")
+        role_location = (
+            str(location_field.value)
+            if location_field is not None
+            and location_field.provenance in {"directly_supplied", "extracted_from_source"}
+            else None
+        )
+        work_mode_field = by_path.get("work_mode")
+        work_mode = str(work_mode_field.value) if work_mode_field is not None else None
+        retrieval = source.retrieval_metadata if isinstance(source.retrieval_metadata, dict) else {}
+        structured = retrieval.get("structured_context")
+        context = structured if isinstance(structured, dict) else {}
+        if role_location is None and isinstance(context.get("role_location"), str):
+            role_location = context["role_location"]
+        employer_location = (
+            context.get("employer_location")
+            if isinstance(context.get("employer_location"), str)
+            else None
+        )
+        decision = infer_compensation_currency(
+            explicit_currency=explicit_currency,
+            amount_present=amount_present,
+            role_location=role_location,
+            work_mode=work_mode,
+            employer_location=employer_location,
+        )
+
+        warnings = list(response.warnings)
+        if decision.conflict_currency and explicit_currency_field is not None:
+            warning_evidence = [
+                *explicit_currency_field.evidence,
+                *(location_field.evidence if location_field is not None else []),
+            ][:3]
+            warnings.append(
+                JobImportProcessingWarning(
+                    code="currency_location_conflict",
+                    message=(
+                        "The stated currency conflicts with the role location. "
+                        "The stated currency was preserved."
+                    ),
+                    field_path="budget_currency",
+                    evidence=warning_evidence,
+                )
+            )
+        if (
+            explicit_currency_field is None
+            and decision.currency is not None
+            and decision.origin == "contextual_inference"
+            and len(fields) < 100
+        ):
+            evidence = list(location_field.evidence) if location_field is not None else []
+            if not evidence and role_location:
+                evidence = cls._structured_source_evidence(
+                    source,
+                    label="Structured role location",
+                    value=role_location,
+                )
+            if not evidence and employer_location:
+                evidence = cls._structured_source_evidence(
+                    source,
+                    label="Structured employer location",
+                    value=employer_location,
+                )
+            if evidence:
+                fields.append(
+                    JobImportExtractionField(
+                        field_path="budget_currency",
+                        value=decision.currency,
+                        provenance="suggested_inference",
+                        evidence=evidence,
+                        explanation=(
+                            f"{decision.currency} inferred from the job's role location."
+                            if decision.rationale_code == "currency_from_role_country"
+                            else f"{decision.currency} inferred from the local employer location."
+                        ),
+                        provider_confidence=JobImportProviderConfidence(
+                            score=1,
+                            label="high",
+                            metadata={
+                                "origin": "contextual_inference",
+                                "rationale_code": decision.rationale_code,
+                                "country_code": decision.country_code,
+                            },
+                        ),
+                    )
+                )
+                missing_fields = [
+                    item for item in response.missing_fields if item.field_path != "budget_currency"
+                ]
+            else:
+                missing_fields = list(response.missing_fields)
+        else:
+            missing_fields = list(response.missing_fields)
+        return JobImportExtractionResponse.model_validate(
+            {
+                **response.model_dump(mode="json"),
+                "fields": fields,
+                "missing_fields": missing_fields,
+                "warnings": warnings[:30],
+            }
+        )
+
+    @staticmethod
+    def _field_decision(
+        policy: JobImportFieldPolicy,
+        item: JobImportExtractionField,
+        *,
+        validation_errors: list[str],
+        force_review: bool = False,
+    ) -> tuple[bool, dict[str, object]]:
+        provider_metadata = (
+            item.provider_confidence.metadata if item.provider_confidence is not None else {}
+        )
+        contextual = provider_metadata.get("origin") == "contextual_inference"
+        origin = (
+            "contextual_inference"
+            if contextual
+            else "semantic_inference"
+            if item.provenance == "suggested_inference"
+            else "explicit"
+        )
+        confidence = (
+            "high"
+            if origin == "explicit"
+            else provider_confidence_label(
+                item.provider_confidence.score if item.provider_confidence else None,
+                item.provider_confidence.label if item.provider_confidence else None,
+            )
+        )
+        allowed = origin in policy.allowed_origins
+        auto_fill = bool(
+            not validation_errors
+            and not force_review
+            and allowed
+            and (origin == "explicit" or bool(item.evidence))
+            and (
+                origin == "explicit" or confidence_at_least(confidence, policy.auto_fill_confidence)
+            )
+        )
+        rationale = provider_metadata.get("rationale_code")
+        if not isinstance(rationale, str):
+            rationale = (
+                "explicit_source_value" if origin == "explicit" else f"semantic_{policy.field_path}"
+            )
+        metadata = {
+            **(
+                item.provider_confidence.model_dump(mode="json") if item.provider_confidence else {}
+            ),
+            "origin": origin,
+            "confidence": confidence,
+            "rationale_code": rationale,
+            "needs_review": not auto_fill,
+            "risk": policy.inference_risk,
+        }
+        return auto_fill, metadata
+
+    @staticmethod
     def _provider_inference_errors(
         policy: JobImportFieldPolicy,
         provenance: str,
         value: object,
+        provider_confidence: JobImportProviderConfidence | None = None,
     ) -> list[str]:
         errors: list[str] = []
         if provenance == "suggested_inference":
-            if policy.confirmation_policy != "suggest_with_recruiter_confirmation":
-                errors.append(
-                    "This field may only be extracted from explicit source wording."
-                )
+            origin = (
+                "contextual_inference"
+                if provider_confidence is not None
+                and provider_confidence.metadata.get("origin") == "contextual_inference"
+                else "semantic_inference"
+            )
+            if origin not in policy.allowed_origins:
+                errors.append("This field may only be extracted from explicit source wording.")
             if policy.field_path == "source_inputs" and isinstance(value, list):
                 sensitive = any(
                     isinstance(item, dict)
@@ -945,8 +1189,7 @@ class JobImportService:
                     )
         if policy.field_path == "source_inputs" and isinstance(value, list):
             provider_asserted_sensitive_confirmation = any(
-                isinstance(item, dict)
-                and item.get("sensitive_access_confirmed") is True
+                isinstance(item, dict) and item.get("sensitive_access_confirmed") is True
                 for item in value
             )
             if provider_asserted_sensitive_confirmation:
@@ -968,16 +1211,8 @@ class JobImportService:
                 for alternative in conflict.values
                 for evidence in alternative.evidence
             ),
-            *(
-                evidence
-                for missing in response.missing_fields
-                for evidence in missing.evidence
-            ),
-            *(
-                evidence
-                for warning in response.warnings
-                for evidence in warning.evidence
-            ),
+            *(evidence for missing in response.missing_fields for evidence in missing.evidence),
+            *(evidence for warning in response.warnings for evidence in warning.evidence),
         ]
         errors: list[dict[str, object]] = []
         text_length = len(source.original_text) if source.original_text is not None else None
@@ -1007,9 +1242,10 @@ class JobImportService:
                             "message": "Character offsets fall outside the owned source text.",
                         }
                     )
-                elif source.original_text[
-                    location.char_start : location.char_end
-                ] != evidence.snippet:
+                elif (
+                    source.original_text[location.char_start : location.char_end]
+                    != evidence.snippet
+                ):
                     errors.append(
                         {
                             "evidence_index": index,
@@ -1028,10 +1264,7 @@ class JobImportService:
                         "message": "Screenshot index does not reference this import source.",
                     }
                 )
-            if (
-                location.document_page is not None
-                and source.source_type not in {"document", "pdf"}
-            ):
+            if location.document_page is not None and source.source_type not in {"document", "pdf"}:
                 errors.append(
                     {
                         "evidence_index": index,
@@ -1145,6 +1378,7 @@ class JobImportService:
                 status_code=409,
             )
         source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
+        response = self._with_deterministic_context(response, source)
         self._validate_evidence_references(response, source)
 
         all_paths = {
@@ -1155,9 +1389,7 @@ class JobImportService:
         unknown_paths = sorted(path for path in all_paths if import_field_policy(path) is None)
         if unknown_paths:
             server_owned = sorted(set(unknown_paths) & SYSTEM_OWNED_IMPORT_FIELDS)
-            legacy_compatibility = sorted(
-                set(unknown_paths) & LEGACY_COMPATIBILITY_IMPORT_FIELDS
-            )
+            legacy_compatibility = sorted(set(unknown_paths) & LEGACY_COMPATIBILITY_IMPORT_FIELDS)
             raise JobImportError(
                 "JOB_IMPORT_UNSUPPORTED_FIELD",
                 "Extraction output contains unsupported or server-owned fields.",
@@ -1171,7 +1403,12 @@ class JobImportService:
         rows: list[dict[str, Any]] = []
         for item in response.fields:
             policy = JOB_IMPORT_FIELD_POLICIES[item.field_path]
-            normalized, errors = await self._validate_field_value(policy, item.value)
+            provider_value = (
+                self._provider_screening_questions(item.value, item.evidence)
+                if item.field_path == "screening_questions"
+                else item.value
+            )
+            normalized, errors = await self._validate_field_value(policy, provider_value)
             unsupported_nested = [
                 error for error in errors if error.startswith("Unsupported nested key")
             ]
@@ -1188,8 +1425,21 @@ class JobImportService:
                 self._provider_inference_errors(
                     policy,
                     item.provenance,
-                    item.value,
+                    provider_value,
+                    item.provider_confidence,
                 )
+            )
+            currency_conflict = bool(
+                item.field_path == "budget_currency"
+                and any(
+                    warning.code == "currency_location_conflict" for warning in response.warnings
+                )
+            )
+            auto_fill, decision_metadata = self._field_decision(
+                policy,
+                item,
+                validation_errors=errors,
+                force_review=currency_conflict,
             )
             rows.append(
                 {
@@ -1197,18 +1447,14 @@ class JobImportService:
                     "field_path": item.field_path,
                     "proposed_value": normalized,
                     "provenance_state": item.provenance,
-                    "evidence": [
-                        evidence.model_dump(mode="json") for evidence in item.evidence
-                    ],
+                    "evidence": [evidence.model_dump(mode="json") for evidence in item.evidence],
                     "conflicting_values": [],
                     "explanation": item.explanation,
-                    "provider_confidence": (
-                        item.provider_confidence.model_dump(mode="json")
-                        if item.provider_confidence
-                        else None
-                    ),
+                    "provider_confidence": decision_metadata,
+                    "review_status": "confirmed" if auto_fill else "pending",
+                    "confirmed_value": normalized if auto_fill else None,
                     "missing_requirement": policy.missing_requirement,
-                    "requires_confirmation": True,
+                    "requires_confirmation": not auto_fill,
                     "validation_errors": errors,
                 }
             )
@@ -1237,15 +1483,12 @@ class JobImportService:
                             "errors": unsupported_nested,
                         },
                     )
-                errors.extend(
-                    f"Alternative {index + 1}: {error}" for error in alternative_errors
-                )
+                errors.extend(f"Alternative {index + 1}: {error}" for error in alternative_errors)
                 normalized_values.append(
                     {
                         "value": normalized,
                         "evidence": [
-                            evidence.model_dump(mode="json")
-                            for evidence in alternative.evidence
+                            evidence.model_dump(mode="json") for evidence in alternative.evidence
                         ],
                     }
                 )
@@ -1269,9 +1512,18 @@ class JobImportService:
                     "conflicting_values": normalized_values,
                     "explanation": conflict.explanation,
                     "provider_confidence": (
-                        conflict.provider_confidence.model_dump(mode="json")
-                        if conflict.provider_confidence
-                        else None
+                        {
+                            **(
+                                conflict.provider_confidence.model_dump(mode="json")
+                                if conflict.provider_confidence
+                                else {}
+                            ),
+                            "origin": "explicit",
+                            "confidence": "high",
+                            "rationale_code": "conflicting_explicit_source_values",
+                            "needs_review": True,
+                            "risk": policy.inference_risk,
+                        }
                     ),
                     "missing_requirement": policy.missing_requirement,
                     "requires_confirmation": True,
@@ -1282,11 +1534,7 @@ class JobImportService:
         explicit_missing = {item.field_path: item for item in response.missing_fields}
         missing_paths = [
             *explicit_missing,
-            *(
-                path
-                for path in AUTO_TRACKED_MISSING_FIELDS
-                if path not in all_paths
-            ),
+            *(path for path in AUTO_TRACKED_MISSING_FIELDS if path not in all_paths),
         ]
         for field_path in dict.fromkeys(missing_paths):
             policy = JOB_IMPORT_FIELD_POLICIES[field_path]
@@ -1315,9 +1563,7 @@ class JobImportService:
         metadata = provider_metadata or JobImportProviderMetadata()
         now = datetime.now(UTC)
         current_metadata = (
-            draft.provider_metadata
-            if isinstance(draft.provider_metadata, dict)
-            else {}
+            draft.provider_metadata if isinstance(draft.provider_metadata, dict) else {}
         )
         completed_metadata = {
             **current_metadata,
@@ -1442,10 +1688,8 @@ class JobImportService:
         draft_errors: dict[str, list[str]] = {}
         draft_payload: JobCreate | None = None
         if "title" not in payload:
-            draft_errors["title"] = [
-                "Confirm or enter a job title before creating a native draft."
-            ]
-        elif not field_errors and not unresolved:
+            draft_errors["title"] = ["Confirm or enter a job title before creating a native draft."]
+        else:
             draft_payload, draft_errors = await self._native_validation(
                 payload,
                 owner_user_id=owner_user_id,
@@ -1460,18 +1704,13 @@ class JobImportService:
                 status="published",
             )
 
-        can_apply = bool(
-            draft_payload is not None
-            and not field_errors
-            and not unresolved
-            and not draft_errors
-        )
+        can_apply = bool(draft_payload is not None and not draft_errors)
         # Imports can only create private native drafts. Publication readiness is
         # retained in validation_errors["publication"], never exposed as authority.
         can_publish = False
-        if field_errors or draft_errors:
+        if draft_errors:
             validation_status = "invalid"
-        elif unresolved:
+        elif field_errors or unresolved:
             validation_status = "needs_review"
         else:
             validation_status = "valid"
@@ -1947,9 +2186,7 @@ class JobImportService:
                 )
             if existing.target_job_id is not None:
                 try:
-                    job = await self.job_service.get_job_internal(
-                        existing.target_job_id
-                    )
+                    job = await self.job_service.get_job_internal(existing.target_job_id)
                 except JobNotFoundError as exc:
                     raise JobImportError(
                         "JOB_IMPORT_TARGET_JOB_NOT_FOUND",
@@ -2053,14 +2290,57 @@ class JobImportService:
 
     @staticmethod
     def _authority_state(field: JobImportField) -> str:
+        if (
+            field.review_status == "confirmed"
+            and field.reviewed_by_user_id is None
+            and not field.requires_confirmation
+        ):
+            return "prefilled_by_import"
         return {
             "confirmed": "confirmed_by_recruiter",
             "edited": "edited_by_recruiter",
             "rejected": "rejected_by_recruiter",
         }.get(field.review_status, "unconfirmed")
 
+    @staticmethod
+    def _decision_read(field: JobImportField) -> tuple[str, str | None, bool, str | None]:
+        metadata = field.provider_confidence if isinstance(field.provider_confidence, dict) else {}
+        origin = metadata.get("origin")
+        if origin not in {
+            "explicit",
+            "contextual_inference",
+            "semantic_inference",
+            "suggestion",
+            "unknown",
+        }:
+            origin = (
+                "unknown"
+                if field.provenance_state == "missing"
+                else "suggestion"
+                if field.provenance_state == "suggested_inference"
+                else "explicit"
+            )
+        confidence = metadata.get("confidence")
+        if confidence not in {"high", "medium", "low"}:
+            confidence = None if origin == "unknown" else "high"
+        rationale = metadata.get("rationale_code")
+        if not isinstance(rationale, str) or not rationale:
+            rationale = None
+        raw_needs_review = metadata.get("needs_review")
+        needs_review = (
+            raw_needs_review
+            if isinstance(raw_needs_review, bool)
+            else bool(
+                field.validation_errors
+                or field.provenance_state in {"conflicting_source_values", "missing"}
+                or field.review_status == "pending"
+            )
+        )
+        return str(origin), confidence, needs_review, rationale
+
     @classmethod
     def _field_read(cls, field: JobImportField) -> JobImportFieldRead:
+        origin, confidence, needs_review, rationale = cls._decision_read(field)
         return JobImportFieldRead(
             id=field.id,
             field_path=field.field_path,
@@ -2068,6 +2348,10 @@ class JobImportService:
             provenance_state=field.provenance_state,
             review_status=field.review_status,
             authority_state=cls._authority_state(field),
+            decision_origin=origin,
+            decision_confidence=confidence,
+            needs_review=needs_review,
+            rationale_code=rationale,
             evidence=field.evidence,
             conflicting_values=field.conflicting_values,
             explanation=field.explanation,

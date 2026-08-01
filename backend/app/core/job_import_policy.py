@@ -7,6 +7,12 @@ from app.core.job_domain_taxonomy import (
     AI_FIELD_CONFIRMATION_POLICY,
     AIConfirmationPolicy,
 )
+from app.core.job_import_inference import (
+    ImportDecisionConfidence,
+    ImportDecisionOrigin,
+    ImportFieldRisk,
+    import_decision_policy,
+)
 
 MissingRequirement = Literal[
     "publication_blocker",
@@ -33,10 +39,13 @@ class JobImportFieldPolicy:
     confirmation_policy: AIConfirmationPolicy
     missing_requirement: MissingRequirement
     review_section: ReviewSection
+    inference_risk: ImportFieldRisk
+    allowed_origins: frozenset[ImportDecisionOrigin]
+    auto_fill_confidence: ImportDecisionConfidence | None
+    suggestion_confidence: ImportDecisionConfidence | None
+    explicit_evidence_required: bool
     custom_values_allowed: bool = False
-    nested_confirmation_policies: tuple[
-        tuple[str, AIConfirmationPolicy], ...
-    ] = ()
+    nested_confirmation_policies: tuple[tuple[str, AIConfirmationPolicy], ...] = ()
 
 
 _SUPPORTED_NATIVE_FIELDS: Final[tuple[str, ...]] = (
@@ -110,6 +119,7 @@ _SUPPORTED_NATIVE_FIELDS: Final[tuple[str, ...]] = (
     "trial_notes",
     "hiring_process",
     "hiring_process_notes",
+    "screening_questions",
     "employer_context_type",
 )
 
@@ -276,6 +286,7 @@ _SECTION_FIELDS: Final[dict[ReviewSection, frozenset[str]]] = {
             "how_to_apply",
             "hiring_process",
             "hiring_process_notes",
+            "screening_questions",
         }
     ),
     "identity": frozenset({"employer_context_type"}),
@@ -316,12 +327,18 @@ def _policy(field_path: str, native_field: str | None) -> JobImportFieldPolicy:
     confirmation_policy = AI_FIELD_CONFIRMATION_POLICY.get(field_path)
     if confirmation_policy is None:
         raise RuntimeError(f"Missing job-import confirmation policy for {field_path}")
+    decision = import_decision_policy(field_path)
     return JobImportFieldPolicy(
         field_path=field_path,
         native_field=native_field,
         confirmation_policy=confirmation_policy,
         missing_requirement=_missing_requirement(field_path),
         review_section=_section(field_path),
+        inference_risk=decision.risk,
+        allowed_origins=decision.allowed_origins,
+        auto_fill_confidence=decision.auto_fill_confidence,
+        suggestion_confidence=decision.suggestion_confidence,
+        explicit_evidence_required=decision.explicit_evidence_required,
         custom_values_allowed=field_path in _CUSTOM_VALUE_FIELDS,
         nested_confirmation_policies=tuple(
             sorted(

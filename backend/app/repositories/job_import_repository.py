@@ -120,6 +120,18 @@ class JobImportRepository:
         )
         return (await self.session.execute(query)).scalar_one_or_none()
 
+    async def get_draft_by_target_job(
+        self,
+        target_job_id: UUID,
+        owner_user_id: UUID,
+    ) -> JobImportDraft | None:
+        query = select(JobImportDraft).where(
+            JobImportDraft.target_job_id == target_job_id,
+            JobImportDraft.owner_user_id == owner_user_id,
+            JobImportDraft.deleted_at.is_(None),
+        )
+        return (await self.session.execute(query)).scalar_one_or_none()
+
     async def list_drafts_for_source(
         self,
         source_id: UUID,
@@ -244,9 +256,5 @@ class JobImportRepository:
         return (await self.session.execute(query)).scalar_one_or_none()
 
     async def list_active_roles(self) -> list[Role]:
-        query = (
-            select(Role)
-            .where(Role.is_active.is_(True))
-            .order_by(Role.name.asc())
-        )
+        query = select(Role).where(Role.is_active.is_(True)).order_by(Role.name.asc())
         return list((await self.session.execute(query)).scalars().all())

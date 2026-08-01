@@ -49,12 +49,7 @@ from app.services.job_url_fetcher import (
 
 
 def _load_url_migration():
-    path = (
-        Path(__file__).parents[1]
-        / "alembic"
-        / "versions"
-        / "0050_job_import_url_retrieval.py"
-    )
+    path = Path(__file__).parents[1] / "alembic" / "versions" / "0050_job_import_url_retrieval.py"
     spec = importlib.util.spec_from_file_location("url_import_migration", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -126,7 +121,31 @@ class _FixtureHandler(BaseHTTPRequestHandler):
                     "@context": "https://schema.org",
                     "@type": "JobPosting",
                     "title": "YouTube Video Editor",
-                    "description": "<p>Edit weekly finance explainers.</p>"
+                    "description": "<p>Edit weekly finance explainers.</p>",
+                    "hiringOrganization": {
+                      "@type": "Organization",
+                      "name": "Creator Finance Studio",
+                      "address": {
+                        "@type": "PostalAddress",
+                        "addressLocality": "Austin",
+                        "addressCountry": "US"
+                      }
+                    },
+                    "jobLocation": {
+                      "@type": "Place",
+                      "address": {
+                        "@type": "PostalAddress",
+                        "addressLocality": "New York",
+                        "addressCountry": "US"
+                      }
+                    },
+                    "jobLocationType": "TELECOMMUTE",
+                    "employmentType": "CONTRACTOR",
+                    "baseSalary": {
+                      "@type": "MonetaryAmount",
+                      "value": 3000,
+                      "unitText": "MONTH"
+                    }
                   }
                 </script>
               </head>
@@ -180,29 +199,43 @@ class _TitleProvider:
     async def extract(self, request):
         self.requests.append(request)
         source = request.source.original_text or ""
-        value = "YouTube Video Editor"
-        start = source.index(value)
+        values = {
+            "title": "YouTube Video Editor",
+            "location": "New York, US",
+            "budget_amount": "3000",
+        }
+        fields = []
+        for field_path, value in values.items():
+            snippet = (
+                value
+                if field_path == "title"
+                else f"Structured role location: {value}"
+                if field_path == "location"
+                else f"Structured compensation: {value} per MONTH"
+            )
+            start = source.index(snippet)
+            fields.append(
+                JobImportExtractionField(
+                    field_path=field_path,
+                    value=value,
+                    provenance="extracted_from_source",
+                    evidence=[
+                        {
+                            "snippet": snippet,
+                            "location": {
+                                "char_start": start,
+                                "char_end": start + len(snippet),
+                                "source_url": request.source.source_url,
+                            },
+                        }
+                    ],
+                )
+            )
         return JobImportProviderResult(
             extraction=JobImportExtractionResponse(
                 extraction_schema_version=request.extraction_schema_version,
                 target_listing_schema_version=request.target_listing_schema_version,
-                fields=[
-                    JobImportExtractionField(
-                        field_path="title",
-                        value=value,
-                        provenance="extracted_from_source",
-                        evidence=[
-                            {
-                                "snippet": value,
-                                "location": {
-                                    "char_start": start,
-                                    "char_end": start + len(value),
-                                    "source_url": request.source.source_url,
-                                },
-                            }
-                        ],
-                    )
-                ],
+                fields=fields,
             ),
             metadata=JobImportProviderMetadata(provider_name="test_provider"),
         )
@@ -217,11 +250,22 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     assert result.final_url == f"{public_page_server}/job"
     assert result.title == "YouTube Video Editor"
     assert "Edit weekly finance explainers." in result.normalized_text
+    assert "Structured employer: Creator Finance Studio" in result.normalized_text
+    assert "Structured role location: New York, US" in result.normalized_text
+    assert "Structured compensation: 3000 per MONTH" in result.normalized_text
     assert "Remote creator role using Premiere Pro." in result.normalized_text
     assert "Navigation clutter" not in result.normalized_text
     assert "Accept tracking" not in result.normalized_text
     assert "window.secret" not in result.normalized_text
     assert result.metadata["json_ld_job_posting"] is True
+    assert result.metadata["structured_context"] == {
+        "employer_name": "Creator Finance Studio",
+        "employer_location": "Austin, US",
+        "role_location": "New York, US",
+        "location_type": "TELECOMMUTE",
+        "employment_type": "CONTRACTOR",
+        "compensation": "3000 per MONTH",
+    }
     assert result.metadata["canonical_url"] == f"{public_page_server}/job?canonical=1"
     assert result.metadata["redirect_count"] == 1
     assert len(_FixtureHandler.requests) == 2
@@ -444,7 +488,17 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
             json={},
         )
         assert processed.status_code == 200, processed.text
-        assert processed.json()["draft"]["processing_status"] == "awaiting_recruiter_review"
+        processed_draft = processed.json()["draft"]
+        assert processed_draft["processing_status"] == "ready_to_apply"
+        currency = next(
+            field for field in processed_draft["fields"] if field["field_path"] == "budget_currency"
+        )
+        assert currency["effective_value"] == "USD"
+        assert currency["authority_state"] == "prefilled_by_import"
+        assert currency["decision_origin"] == "contextual_inference"
+        assert currency["decision_confidence"] == "high"
+        assert currency["rationale_code"] == "currency_from_role_country"
+        assert currency["evidence"][0]["snippet"] == ("Structured role location: New York, US")
         assert len(provider.requests) == 1
         assert provider.requests[0].source.source_type == "external_listing_text"
         assert provider.requests[0].source.original_text == source["original_text"]
@@ -470,6 +524,20 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         )
         assert applied.status_code == 200, applied.text
         assert applied.json()["job"]["status"] == "draft"
+        assert applied.json()["job"]["budget_currency"] == "USD"
+        context = await client.get(
+            f"/api/v1/job-imports/native-jobs/{applied.json()['job']['id']}/context",
+            headers=owner,
+        )
+        assert context.status_code == 200, context.text
+        assert context.json()["draft"]["id"] == draft["id"]
+        assert context.json()["source_type"] == "public_url"
+        assert context.json()["source_label"] == "YouTube Video Editor"
+        other_context = await client.get(
+            f"/api/v1/job-imports/native-jobs/{applied.json()['job']['id']}/context",
+            headers=other,
+        )
+        assert other_context.status_code == 404
         public_job = await client.get(f"/api/v1/jobs/{applied.json()['job']['id']}")
         assert public_job.status_code == 404
         assert source["original_text"] not in (await client.get("/api/v1/jobs")).text
@@ -524,9 +592,7 @@ def test_url_retrieval_migration_is_additive_and_reversible(tmp_path: Path) -> N
         context = MigrationContext.configure(connection)
         migration.op = Operations(context)
         migration.upgrade()
-    columns = {
-        column["name"] for column in sa.inspect(engine).get_columns("job_import_sources")
-    }
+    columns = {column["name"] for column in sa.inspect(engine).get_columns("job_import_sources")}
     assert {"final_source_url", "retrieved_at", "retrieval_metadata"} <= columns
     with engine.connect() as connection:
         assert connection.execute(sa.select(sources.c.source_url)).scalar_one() == (
@@ -537,9 +603,7 @@ def test_url_retrieval_migration_is_additive_and_reversible(tmp_path: Path) -> N
         context = MigrationContext.configure(connection)
         migration.op = Operations(context)
         migration.downgrade()
-    columns = {
-        column["name"] for column in sa.inspect(engine).get_columns("job_import_sources")
-    }
+    columns = {column["name"] for column in sa.inspect(engine).get_columns("job_import_sources")}
     assert "final_source_url" not in columns
     assert "retrieved_at" not in columns
     assert "retrieval_metadata" not in columns

@@ -33,14 +33,14 @@ async def test_development_fixture_uses_owned_private_review_pipeline(
     body = response.json()
     assert body["created"] is True
     draft = body["draft"]
-    assert draft["processing_status"] == "awaiting_recruiter_review"
+    assert draft["processing_status"] == "ready_to_apply"
     assert draft["can_publish_directly"] is False
     assert draft["target_job_id"] is None
     assert draft["provider_name"] == "development_fixture"
 
     fields = {item["field_path"]: item for item in draft["fields"]}
     assert fields["title"]["provenance_state"] == "extracted_from_source"
-    assert fields["title"]["authority_state"] == "unconfirmed"
+    assert fields["title"]["authority_state"] == "prefilled_by_import"
     assert fields["primary_role_key"]["provenance_state"] == "suggested_inference"
     assert fields["budget_amount"]["provenance_state"] == "conflicting_source_values"
     assert len(fields["budget_amount"]["conflicting_values"]) == 2
@@ -59,10 +59,7 @@ async def test_development_fixture_uses_owned_private_review_pipeline(
             and field["review_status"] == "pending"
         ):
             reviewed = await client.patch(
-                (
-                    f"/api/v1/job-imports/drafts/{draft['id']}/fields/"
-                    f"{field['field_path']}"
-                ),
+                (f"/api/v1/job-imports/drafts/{draft['id']}/fields/{field['field_path']}"),
                 headers=owner,
                 json={"action": "accept"},
             )

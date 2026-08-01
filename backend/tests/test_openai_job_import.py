@@ -279,9 +279,7 @@ def _wire_extraction(
             alternative["value_json"] = json.dumps(
                 alternative.pop("value"), ensure_ascii=False, separators=(",", ":")
             )
-            alternative["evidence_span_ids"] = span_ids_for(
-                alternative.pop("evidence")
-            )
+            alternative["evidence_span_ids"] = span_ids_for(alternative.pop("evidence"))
     for missing in payload["missing_fields"]:
         missing.pop("evidence")
     for warning in payload["warnings"]:
@@ -439,10 +437,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert result.metadata.metadata["attempt_number"] == 1
     assert result.metadata.metadata["elapsed_ms"] >= 0
     assert result.metadata.metadata["response_status"] == "completed"
-    assert (
-        result.metadata.metadata["segmentation_version"]
-        == EVIDENCE_SEGMENTATION_VERSION
-    )
+    assert result.metadata.metadata["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
     call = adapter._client.responses.calls[0]
     assert call["model"] == "gpt-5.6-luna"
     assert call["text_format"] is OpenAIJobImportExtractionResponse
@@ -454,9 +449,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert content[-1]["type"] == "input_text"
     span_payload = json.loads(content[-1]["text"].split("\n", 1)[1])
     assert span_payload["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
-    assert span_payload["evidence_spans"] == [
-        {"span_id": "E0001", "text": SOURCE_TEXT}
-    ]
+    assert span_payload["evidence_spans"] == [{"span_id": "E0001", "text": SOURCE_TEXT}]
     assert "char_start" not in content[-1]["text"]
     assert "char_end" not in content[-1]["text"]
     assert SOURCE_TEXT not in content[0]["text"]
@@ -489,9 +482,9 @@ def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:
 @pytest.mark.asyncio
 async def test_openai_adapter_decodes_wire_values_before_domain_validation() -> None:
     extraction = _extraction(value=["youtube"])
-    result = await _adapter(
-        [_openai_response(parsed=_wire_extraction(extraction))]
-    ).extract(_request())
+    result = await _adapter([_openai_response(parsed=_wire_extraction(extraction))]).extract(
+        _request()
+    )
 
     assert result.extraction.fields[0].value == ["youtube"]
 
@@ -818,7 +811,10 @@ async def test_openai_adapter_does_not_retry_permanent_access_failures(
 @pytest.mark.parametrize(
     ("response", "code"),
     [
-        (_openai_response(parsed=_wire_extraction(), status="incomplete"), "OPENAI_INCOMPLETE_RESPONSE"),
+        (
+            _openai_response(parsed=_wire_extraction(), status="incomplete"),
+            "OPENAI_INCOMPLETE_RESPONSE",
+        ),
         (_openai_response(parsed=None), "OPENAI_MALFORMED_RESPONSE"),
         (
             _openai_response(
@@ -949,10 +945,7 @@ async def test_openai_adapter_rejects_evidence_outside_normalized_text() -> None
     assert caught.value.metadata.metadata["request_id"] == "req_openai_test"
     assert caught.value.metadata.metadata["usage"]["total_tokens"] == 122
     assert caught.value.metadata.metadata["failure_code"] == "OPENAI_EVIDENCE_INVALID"
-    assert (
-        caught.value.metadata.metadata["evidence_span_failure_reason"]
-        == "unknown_span_id"
-    )
+    assert caught.value.metadata.metadata["evidence_span_failure_reason"] == "unknown_span_id"
 
 
 @pytest.mark.asyncio
@@ -969,9 +962,7 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     )
     invalid = _wire_extraction()
     invalid.fields[0].evidence_span_ids = ["E9999"]
-    provider_override(
-        _adapter([_openai_response(parsed=invalid)], max_retries=0)
-    )
+    provider_override(_adapter([_openai_response(parsed=invalid)], max_retries=0))
     path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
 
     failed = await client.post(path, headers=owner_headers, json={})
@@ -1012,18 +1003,9 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     assert body["provider_metadata"]["invalid_evidence_id_count"] == 1
     assert body["provider_metadata"]["unknown_evidence_id_count"] == 1
     assert body["provider_metadata"]["duplicate_evidence_id_count"] == 0
-    assert (
-        body["provider_metadata"]["failure_code"]
-        == "OPENAI_EVIDENCE_INVALID"
-    )
-    assert (
-        body["provider_metadata"]["evidence_span_failure_reason"]
-        == "unknown_span_id"
-    )
-    assert (
-        body["provider_metadata"]["segmentation_version"]
-        == EVIDENCE_SEGMENTATION_VERSION
-    )
+    assert body["provider_metadata"]["failure_code"] == "OPENAI_EVIDENCE_INVALID"
+    assert body["provider_metadata"]["evidence_span_failure_reason"] == "unknown_span_id"
+    assert body["provider_metadata"]["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
     serialized_metadata = json.dumps(body["provider_metadata"])
     assert SOURCE_TEXT not in serialized_metadata
     assert "test-placeholder-not-a-real-key" not in serialized_metadata
@@ -1050,11 +1032,7 @@ async def test_openai_adapter_treats_html_source_as_data_and_keeps_exact_evidenc
     )
 
     result = await _adapter(
-        [
-            _openai_response(
-                parsed=_wire_extraction(extraction, source_text=source_text)
-            )
-        ]
+        [_openai_response(parsed=_wire_extraction(extraction, source_text=source_text))]
     ).extract(_request(source_text))
 
     assert result.extraction.fields[0].value == snippet
@@ -1062,8 +1040,7 @@ async def test_openai_adapter_treats_html_source_as_data_and_keeps_exact_evidenc
     assert snippet in evidence.snippet
     assert evidence.location is not None
     assert (
-        source_text[evidence.location.char_start : evidence.location.char_end]
-        == evidence.snippet
+        source_text[evidence.location.char_start : evidence.location.char_end] == evidence.snippet
     )
 
 
@@ -1103,8 +1080,9 @@ async def test_private_process_endpoint_persists_validated_machine_output_only(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["outcome"] == "processed"
-    assert body["draft"]["processing_status"] == "awaiting_recruiter_review"
-    assert body["draft"]["confirmation_state"] == "unreviewed"
+    assert body["draft"]["processing_status"] == "ready_to_apply"
+    assert body["draft"]["confirmation_state"] == "confirmed"
+    assert body["draft"]["can_apply_to_native_draft"] is True
     assert body["draft"]["can_publish_directly"] is False
     assert body["draft"]["target_job_id"] is None
     assert body["draft"]["provider_name"] == "openai"
@@ -1114,9 +1092,7 @@ async def test_private_process_endpoint_persists_validated_machine_output_only(
     assert provider.calls == 1
     async with TestSessionLocal() as session:
         assert (
-            await session.execute(
-                select(Job).where(Job.posted_by_user_id == owner_id)
-            )
+            await session.execute(select(Job).where(Job.posted_by_user_id == owner_id))
         ).scalars().all() == []
         stored = await session.get(JobImportDraft, UUID(str(draft["id"])))
         assert stored is not None
@@ -1138,9 +1114,7 @@ async def test_process_endpoint_requires_auth_owner_and_server_owned_options(
     path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
 
     assert (await client.post(path, json={})).status_code == 401
-    assert (
-        await client.post(path, headers=other_headers, json={})
-    ).status_code == 404
+    assert (await client.post(path, headers=other_headers, json={})).status_code == 404
     for payload in (
         {"model": "attacker-selected-model"},
         {"provider_name": "attacker"},
@@ -1228,10 +1202,7 @@ async def test_process_failure_is_private_recoverable_and_retryable(
     failed = await client.post(path, headers=headers, json={})
     assert failed.status_code == 504
     assert failed.json()["error"]["code"] == "OPENAI_TIMEOUT"
-    assert (
-        failed.json()["error"]["message"]
-        == "OpenAI text extraction timed out. Please retry."
-    )
+    assert failed.json()["error"]["message"] == "OpenAI text extraction timed out. Please retry."
     current = await client.get(
         f"/api/v1/job-imports/drafts/{draft['id']}",
         headers=headers,
@@ -1300,9 +1271,7 @@ async def test_concurrent_duplicate_processing_observes_current_claim(
     _source, draft = await _source_and_draft(client, headers, "concurrent")
     started = asyncio.Event()
     release = asyncio.Event()
-    provider = provider_override(
-        FakeProvider(started=started, release=release)
-    )
+    provider = provider_override(FakeProvider(started=started, release=release))
     path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
 
     first_task = asyncio.create_task(client.post(path, headers=headers, json={}))
@@ -1413,7 +1382,6 @@ async def test_stale_provider_result_cannot_overwrite_newer_attempt(
         ("posted_by_user_id", "creatorjobs_owned_field"),
         ("languages", "prohibited_language_field"),
         ("language_requirements", "prohibited_language_field"),
-        ("screening_questions", "prohibited_screening_question_field"),
         ("custom_attacker_field", "unsupported_field"),
     ],
 )
@@ -1426,9 +1394,7 @@ async def test_provider_cannot_inject_unsupported_or_creatorjobs_owned_fields(
     label = f"openai-policy-{field_path.replace('_', '-')}"
     headers, _owner_id = await _auth(client, label)
     _source, draft = await _source_and_draft(client, headers, label)
-    provider_override(
-        FakeProvider([_provider_result(_extraction(field_path=field_path))])
-    )
+    provider_override(FakeProvider([_provider_result(_extraction(field_path=field_path))]))
 
     response = await client.post(
         f"/api/v1/job-imports/drafts/{draft['id']}/process",
@@ -1523,10 +1489,10 @@ async def test_post_response_service_validation_retains_safe_failure_stage(
     assert SOURCE_TEXT not in json.dumps(metadata)
     async with TestSessionLocal() as session:
         jobs = (
-            await session.execute(
-                select(Job).where(Job.posted_by_user_id == owner_id)
-            )
-        ).scalars().all()
+            (await session.execute(select(Job).where(Job.posted_by_user_id == owner_id)))
+            .scalars()
+            .all()
+        )
         assert jobs == []
 
 

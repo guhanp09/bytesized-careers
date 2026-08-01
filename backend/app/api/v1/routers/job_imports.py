@@ -17,6 +17,7 @@ from app.schemas.job_import import (
     JobImportApplyRequest,
     JobImportApplyResponse,
     JobImportConflictResolutionRequest,
+    JobImportDraftContextRead,
     JobImportDraftInitialize,
     JobImportDraftRead,
     JobImportFieldReviewRequest,
@@ -38,6 +39,33 @@ def _raise_import_error(error: JobImportError) -> None:
         status_code=error.status_code,
         detail=error.as_detail(),
     ) from error
+
+
+@router.get(
+    "/native-jobs/{job_id}/context",
+    response_model=JobImportDraftContextRead,
+    summary="Read private import context linked to an owned native job draft",
+)
+async def get_native_job_import_context(
+    job_id: UUID,
+    service: JobImportService = Depends(get_job_import_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportDraftContextRead:
+    try:
+        draft, source = await service.get_draft_for_target_job(
+            job_id,
+            owner_user_id=current_user.id,
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    source_url = source.final_source_url or source.source_url
+    return JobImportDraftContextRead(
+        draft=await service.draft_read(draft),
+        source_type=source.source_type,
+        source_label=source.source_title
+        or ("Public job post" if source.source_type == "public_url" else "Pasted job post"),
+        source_url=str(source_url) if source_url else None,
+    )
 
 
 @router.post(
@@ -164,9 +192,7 @@ async def process_import_draft(
     draft_id: UUID,
     _payload: JobImportProcessRequest,
     _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
-    processing_service: JobImportProcessingService = Depends(
-        get_job_import_processing_service
-    ),
+    processing_service: JobImportProcessingService = Depends(get_job_import_processing_service),
     service: JobImportService = Depends(get_job_import_service),
     current_user: User = Depends(get_current_user),
 ) -> JobImportProcessResponse:

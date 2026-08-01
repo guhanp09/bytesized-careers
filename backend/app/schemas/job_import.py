@@ -19,6 +19,10 @@ from pydantic import (
 )
 
 from app.core.job_domain_taxonomy import AIConfirmationPolicy
+from app.core.job_import_inference import (
+    ImportDecisionConfidence,
+    ImportDecisionOrigin,
+)
 from app.core.job_import_policy import MissingRequirement, ReviewSection
 from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.schemas.job import JobRead
@@ -68,6 +72,7 @@ JobImportProvenanceState = Literal[
 JobImportReviewStatus = Literal["pending", "confirmed", "edited", "rejected"]
 JobImportAuthorityState = Literal[
     "unconfirmed",
+    "prefilled_by_import",
     "confirmed_by_recruiter",
     "edited_by_recruiter",
     "rejected_by_recruiter",
@@ -522,10 +527,14 @@ class JobImportFieldDefinition(BaseModel):
         Literal["directly_supplied", "extracted_from_source", "suggested_inference"]
     ]
     evidence_required_for_extraction: bool
-    requires_recruiter_review: Literal[True] = True
+    requires_recruiter_review: bool
     missing_requirement: MissingRequirement
     review_section: ReviewSection
     custom_values_allowed: bool
+    inference_risk: Literal["low", "medium", "high"]
+    allowed_decision_origins: list[ImportDecisionOrigin]
+    auto_fill_confidence: ImportDecisionConfidence | None = None
+    suggestion_confidence: ImportDecisionConfidence | None = None
 
 
 class JobImportExtractionRequest(BaseModel):
@@ -613,6 +622,10 @@ class JobImportFieldRead(BaseModel):
     provenance_state: JobImportProvenanceState
     review_status: JobImportReviewStatus
     authority_state: JobImportAuthorityState
+    decision_origin: ImportDecisionOrigin
+    decision_confidence: ImportDecisionConfidence | None = None
+    needs_review: bool
+    rationale_code: str | None = None
     evidence: list[dict[str, object]]
     conflicting_values: list[dict[str, object]]
     explanation: str | None = None
@@ -659,6 +672,15 @@ class JobImportDraftRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     fields: list[JobImportFieldRead]
+
+
+class JobImportDraftContextRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft: JobImportDraftRead
+    source_type: JobImportSourceType
+    source_label: str
+    source_url: str | None = None
 
 
 class JobImportApplyResponse(BaseModel):

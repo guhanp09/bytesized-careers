@@ -135,11 +135,13 @@ async def _accept_all_proposed(
     headers: dict[str, str],
     draft_id: str,
 ) -> dict[str, object]:
-    current = (
-        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
-    ).json()
+    current = (await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)).json()
     for field in current["fields"]:
-        if field["provenance_state"] in {"missing", "conflicting_source_values"}:
+        if (
+            field["provenance_state"] in {"missing", "conflicting_source_values"}
+            or field["review_status"] != "pending"
+            or field["validation_errors"]
+        ):
             continue
         response = await client.patch(
             f"/api/v1/job-imports/drafts/{draft_id}/fields/{field['field_path']}",
@@ -200,9 +202,7 @@ def test_source_schema_supports_bounded_private_source_types(
     source_type: str,
     payload: dict[str, object],
 ) -> None:
-    model = JobImportSourceCreate.model_validate(
-        {"source_type": source_type, **payload}
-    )
+    model = JobImportSourceCreate.model_validate({"source_type": source_type, **payload})
     assert model.source_type == source_type
 
 
@@ -237,13 +237,9 @@ def test_source_and_provider_schemas_reject_unsafe_or_oversized_input() -> None:
             }
         )
     with pytest.raises(ValidationError):
-        JobImportExtractionResponse.model_validate(
-            scenario("malformed_provider_output")
-        )
+        JobImportExtractionResponse.model_validate(scenario("malformed_provider_output"))
     too_large = scenario("complete_creator_job")
-    too_large["fields"][0]["evidence"][0]["snippet"] = (
-        "x" * (MAX_EVIDENCE_SNIPPET_LENGTH + 1)
-    )
+    too_large["fields"][0]["evidence"][0]["snippet"] = "x" * (MAX_EVIDENCE_SNIPPET_LENGTH + 1)
     with pytest.raises(ValidationError):
         JobImportExtractionResponse.model_validate(too_large)
     url_prefix = "https://example.com/"
@@ -532,24 +528,14 @@ async def test_internal_processing_contract_and_failure_transition_are_provider_
 
     openapi = (await client.get("/api/v1/openapi.json")).json()
     import_paths = {
-        path: methods
-        for path, methods in openapi["paths"].items()
-        if "/job-imports/" in path
+        path: methods for path, methods in openapi["paths"].items() if "/job-imports/" in path
     }
     assert import_paths
-    process_operation = import_paths[
-        "/api/v1/job-imports/drafts/{draft_id}/process"
-    ]["post"]
-    request_schema = process_operation["requestBody"]["content"][
-        "application/json"
-    ]["schema"]
-    assert request_schema == {
-        "$ref": "#/components/schemas/JobImportProcessRequest"
-    }
+    process_operation = import_paths["/api/v1/job-imports/drafts/{draft_id}/process"]["post"]
+    request_schema = process_operation["requestBody"]["content"]["application/json"]["schema"]
+    assert request_schema == {"$ref": "#/components/schemas/JobImportProcessRequest"}
     assert (
-        openapi["components"]["schemas"]["JobImportProcessRequest"].get(
-            "additionalProperties"
-        )
+        openapi["components"]["schemas"]["JobImportProcessRequest"].get("additionalProperties")
         is False
     )
 
@@ -610,11 +596,13 @@ async def test_valid_simulation_outputs_are_stored_with_provenance(
     )
     assert response.status_code == 200
     stored = response.json()
-    assert stored["processing_status"] == "awaiting_recruiter_review"
+    assert stored["processing_status"] == "ready_to_apply"
     assert stored["fields"]
     paths = {field["field_path"] for field in stored["fields"]}
     assert "title" in paths
-    assert all(field["authority_state"] == "unconfirmed" for field in stored["fields"])
+    title = next(field for field in stored["fields"] if field["field_path"] == "title")
+    assert title["authority_state"] == "prefilled_by_import"
+    assert title["decision_origin"] == "explicit"
     if fixture_name == "screenshot_derived":
         title = next(field for field in stored["fields"] if field["field_path"] == "title")
         assert title["evidence"][0]["location"]["screenshot_index"] == 0
@@ -636,12 +624,12 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
     )
     await _record(draft["id"], owner_id, scenario("conflicting_compensation"))
 
-    bypass = await client.post(
-        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+    before_review = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
         headers=headers,
-        json={"mode": "create_new"},
     )
-    assert bypass.status_code == 409
+    assert before_review.status_code == 200
+    assert before_review.json()["can_apply_to_native_draft"] is True
     direct_authority = await client.patch(
         f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
         headers=headers,
@@ -655,9 +643,7 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
         json={"action": "accept"},
     )
     assert accepted.status_code == 200
-    title = next(
-        field for field in accepted.json()["fields"] if field["field_path"] == "title"
-    )
+    title = next(field for field in accepted.json()["fields"] if field["field_path"] == "title")
     assert title["authority_state"] == "confirmed_by_recruiter"
     assert title["confirmed_value"] == "Creator video editor"
 
@@ -667,9 +653,7 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
         json={"action": "reset"},
     )
     assert reset.status_code == 200
-    title = next(
-        field for field in reset.json()["fields"] if field["field_path"] == "title"
-    )
+    title = next(field for field in reset.json()["fields"] if field["field_path"] == "title")
     assert title["review_status"] == "pending"
     assert title["confirmed_value"] is None
 
@@ -679,9 +663,7 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
         json={"action": "edit", "edited_value": "Recruiter-edited creator role"},
     )
     assert edited.status_code == 200
-    title = next(
-        field for field in edited.json()["fields"] if field["field_path"] == "title"
-    )
+    title = next(field for field in edited.json()["fields"] if field["field_path"] == "title")
     assert title["authority_state"] == "edited_by_recruiter"
     assert title["effective_value"] == "Recruiter-edited creator role"
 
@@ -698,9 +680,7 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
     )
     assert resolved.status_code == 200
     compensation = next(
-        field
-        for field in resolved.json()["fields"]
-        if field["field_path"] == "budget_amount"
+        field for field in resolved.json()["fields"] if field["field_path"] == "budget_amount"
     )
     assert compensation["confirmed_value"] == "40000"
     assert compensation["selected_conflict_index"] == 1
@@ -712,13 +692,11 @@ async def test_review_transitions_conflict_resolution_and_confirmation_bypass(
         json={"action": "reject"},
     )
     assert rejected.status_code == 200
-    title = next(
-        field for field in rejected.json()["fields"] if field["field_path"] == "title"
-    )
+    title = next(field for field in rejected.json()["fields"] if field["field_path"] == "title")
     assert title["authority_state"] == "rejected_by_recruiter"
 
 
-async def test_direct_extracted_and_suggested_provenance_never_grant_authority(
+async def test_explicit_prefill_and_unsupported_suggestions_have_distinct_authority(
     client: AsyncClient,
 ) -> None:
     await _ensure_role()
@@ -738,7 +716,8 @@ async def test_direct_extracted_and_suggested_provenance_never_grant_authority(
     fields = {field["field_path"]: field for field in stored["fields"]}
     assert fields["title"]["provenance_state"] == "extracted_from_source"
     assert fields["title"]["provider_confidence"]["score"] == 1.0
-    assert fields["title"]["authority_state"] == "unconfirmed"
+    assert fields["title"]["authority_state"] == "prefilled_by_import"
+    assert fields["title"]["decision_origin"] == "explicit"
     assert fields["primary_role_key"]["provenance_state"] == "suggested_inference"
     assert fields["primary_role_key"]["authority_state"] == "unconfirmed"
 
@@ -755,11 +734,9 @@ async def test_direct_extracted_and_suggested_provenance_never_grant_authority(
             headers=headers,
         )
     ).json()
-    title = next(
-        field for field in vague_read["fields"] if field["field_path"] == "title"
-    )
+    title = next(field for field in vague_read["fields"] if field["field_path"] == "title")
     assert title["provenance_state"] == "directly_supplied"
-    assert title["authority_state"] == "unconfirmed"
+    assert title["authority_state"] == "prefilled_by_import"
 
     inferred_title = scenario("vague_one_line")
     inferred_title["fields"][0] = {
@@ -811,11 +788,7 @@ async def test_invalid_taxonomy_must_be_edited_and_consequential_fields_are_gate
         json={"action": "edit", "edited_value": "per video"},
     )
     assert corrected.status_code == 200
-    field = next(
-        item
-        for item in corrected.json()["fields"]
-        if item["field_path"] == "budget_unit"
-    )
+    field = next(item for item in corrected.json()["fields"] if item["field_path"] == "budget_unit")
     assert field["authority_state"] == "edited_by_recruiter"
     assert field["validation_errors"] == []
 
@@ -834,37 +807,276 @@ async def test_invalid_taxonomy_must_be_edited_and_consequential_fields_are_gate
             UUID(draft["id"]),
             owner_user_id=owner_id,
         )
-    policies = {
-        item.field_path: item.confirmation_policy for item in request.field_definitions
-    }
+    policies = {item.field_path: item.confirmation_policy for item in request.field_definitions}
     assert all(
-        policies[path] == "explicit_recruiter_confirmation_required"
-        for path in sensitive_paths
+        policies[path] == "explicit_recruiter_confirmation_required" for path in sensitive_paths
     )
     assert "status" not in policies
     assert "hiring_verification_status_snapshot" not in policies
     assert "languages" not in policies
     assert "language_requirements" not in policies
-    assert "screening_questions" not in policies
-    assert all(
-        not key.startswith("language_")
-        for key in request.allowed_taxonomies
-    )
+    assert policies["screening_questions"] == "extract_when_explicit"
+    assert all(not key.startswith("language_") for key in request.allowed_taxonomies)
     assert request.allowed_taxonomies["platforms"] == ["youtube", "instagram"]
     assert "Long-form video" in request.allowed_taxonomies["formats"]
     source_inputs = next(
-        item
-        for item in request.field_definitions
-        if item.field_path == "source_inputs"
+        item for item in request.field_definitions if item.field_path == "source_inputs"
     )
     assert (
-        source_inputs.nested_confirmation_policies[
-            "source_inputs.sensitive_access_confirmed"
-        ]
+        source_inputs.nested_confirmation_policies["source_inputs.sensitive_access_confirmed"]
         == "explicit_recruiter_confirmation_required"
     )
     assert source_inputs.requires_recruiter_review is True
     assert "suggested_inference" in source_inputs.allowed_provenance
+
+
+async def test_evidence_grounded_decisions_prefill_only_policy_safe_values(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-prefill-decisions")
+    source_text = (
+        "Video editor needed. Turn podcast episodes into vertical clips for YouTube. "
+        "Please answer: Which podcast clip are you most proud of?"
+    )
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "prefill-decisions",
+        source_payload={
+            "source_type": "pasted_text",
+            "source_title": "Podcast clips role",
+            "original_text": source_text,
+            "idempotency_key": "source-prefill-decisions",
+        },
+    )
+    await _record(
+        draft["id"],
+        owner_id,
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Video editor needed",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Video editor needed."}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [
+                        {"snippet": ("Turn podcast episodes into vertical clips for YouTube.")}
+                    ],
+                    "explanation": "The responsibilities describe video editing.",
+                    "provider_confidence": {"score": 0.96, "label": "high"},
+                },
+                {
+                    "field_path": "platforms",
+                    "value": ["youtube"],
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "vertical clips for YouTube."}],
+                    "explanation": "YouTube is the named destination platform.",
+                    "provider_confidence": {"score": 0.98, "label": "high"},
+                },
+                {
+                    "field_path": "experience_level",
+                    "value": "Senior",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Video editor needed."}],
+                    "explanation": "The scope may suggest senior ownership.",
+                    "provider_confidence": {"score": 0.91, "label": "high"},
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": 3000,
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Video editor needed."}],
+                    "explanation": "A market-rate guess that must not be used.",
+                    "provider_confidence": {"score": 0.99, "label": "high"},
+                },
+                {
+                    "field_path": "screening_questions",
+                    "value": [
+                        {
+                            "prompt": "Which podcast clip are you most proud of?",
+                            "required": True,
+                        }
+                    ],
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": ("Please answer: Which podcast clip are you most proud of?")}
+                    ],
+                },
+            ],
+        },
+    )
+
+    response = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    fields = {field["field_path"]: field for field in body["fields"]}
+
+    assert fields["title"]["authority_state"] == "prefilled_by_import"
+    assert fields["title"]["decision_origin"] == "explicit"
+    assert fields["primary_role_key"]["effective_value"] == "video-editor"
+    assert fields["primary_role_key"]["decision_origin"] == "semantic_inference"
+    assert fields["primary_role_key"]["needs_review"] is False
+    assert fields["platforms"]["effective_value"] == ["youtube"]
+    assert fields["experience_level"]["effective_value"] is None
+    assert fields["experience_level"]["needs_review"] is True
+    assert fields["budget_amount"]["effective_value"] is None
+    assert fields["budget_amount"]["validation_errors"] == [
+        "This field may only be extracted from explicit source wording."
+    ]
+    assert fields["screening_questions"]["effective_value"] == [
+        {
+            "prompt": "Which podcast clip are you most proud of?",
+            "required": False,
+        }
+    ]
+    assert body["can_apply_to_native_draft"] is True
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert applied.status_code == 200, applied.text
+    job = applied.json()["job"]
+    assert job["title"] == "Video editor needed"
+    assert job["primary_role_id"] is not None
+    assert job["platforms"] == ["youtube"]
+    assert job["experience_level"] is None
+    assert job["budget_amount"] is None
+    assert job["screening_questions"][0]["required"] is False
+
+
+async def test_semantic_inference_without_evidence_remains_a_suggestion(
+    client: AsyncClient,
+) -> None:
+    await _ensure_role()
+    headers, owner_id = await _auth(client, "import-inference-no-evidence")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "inference-no-evidence",
+    )
+    await _record(
+        draft["id"],
+        owner_id,
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Creator editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Creator editor"}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [],
+                    "explanation": "A possible role without source support.",
+                    "provider_confidence": {"score": 0.99, "label": "high"},
+                },
+            ],
+        },
+    )
+    body = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            headers=headers,
+        )
+    ).json()
+    role = next(field for field in body["fields"] if field["field_path"] == "primary_role_key")
+    assert role["review_status"] == "pending"
+    assert role["effective_value"] is None
+    assert role["needs_review"] is True
+
+
+async def test_explicit_currency_wins_over_context_and_conflict_is_visible(
+    client: AsyncClient,
+) -> None:
+    headers, owner_id = await _auth(client, "import-currency-conflict")
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "currency-conflict",
+        source_payload={
+            "source_type": "pasted_text",
+            "source_title": "Currency conflict",
+            "original_text": "Creator editor in the United States. Budget INR 3000.",
+            "idempotency_key": "source-currency-conflict",
+        },
+    )
+    await _record(
+        draft["id"],
+        owner_id,
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Creator editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Creator editor"}],
+                },
+                {
+                    "field_path": "location",
+                    "value": "United States",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "United States"}],
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": 3000,
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "3000"}],
+                },
+                {
+                    "field_path": "budget_currency",
+                    "value": "INR",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR"}],
+                },
+            ],
+        },
+    )
+    body = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}",
+            headers=headers,
+        )
+    ).json()
+    currency = next(field for field in body["fields"] if field["field_path"] == "budget_currency")
+    assert currency["proposed_value"] == "INR"
+    assert currency["effective_value"] is None
+    assert currency["decision_origin"] == "explicit"
+    assert currency["needs_review"] is True
+    assert body["processing_warnings"] == [
+        {
+            "code": "currency_location_conflict",
+            "message": (
+                "The stated currency conflicts with the role location. "
+                "The stated currency was preserved."
+            ),
+            "field_path": "budget_currency",
+            "evidence": [
+                {"snippet": "INR", "location": None},
+                {"snippet": "United States", "location": None},
+            ],
+        }
+    ]
 
 
 async def test_nested_policy_evidence_and_canonical_normalization_are_enforced(
@@ -888,9 +1100,7 @@ async def test_nested_policy_evidence_and_canonical_normalization_are_enforced(
         )
     ).json()
     source_inputs = next(
-        field
-        for field in sensitive["fields"]
-        if field["field_path"] == "source_inputs"
+        field for field in sensitive["fields"] if field["field_path"] == "source_inputs"
     )
     assert source_inputs["validation_errors"] == [
         "Sensitive source access must be confirmed through an explicit recruiter edit."
@@ -917,9 +1127,7 @@ async def test_nested_policy_evidence_and_canonical_normalization_are_enforced(
     )
     assert edited.status_code == 200
     edited_field = next(
-        field
-        for field in edited.json()["fields"]
-        if field["field_path"] == "source_inputs"
+        field for field in edited.json()["fields"] if field["field_path"] == "source_inputs"
     )
     assert edited_field["authority_state"] == "edited_by_recruiter"
 
@@ -1110,9 +1318,7 @@ async def test_concurrent_apply_and_discard_have_one_transactional_winner(
         ),
     )
     assert first_apply.status_code == second_apply.status_code == 200
-    assert sorted(
-        [first_apply.json()["created"], second_apply.json()["created"]]
-    ) == [False, True]
+    assert sorted([first_apply.json()["created"], second_apply.json()["created"]]) == [False, True]
     assert first_apply.json()["job"]["id"] == second_apply.json()["job"]["id"]
 
     _source, race_draft = await _source_and_draft(
@@ -1257,11 +1463,7 @@ async def test_native_creation_failure_rolls_back_job_and_import_claim(
     assert accepted.json()["processing_status"] == "ready_to_apply"
 
     async with TestSessionLocal() as session:
-        before = int(
-            (
-                await session.execute(select(sa.func.count()).select_from(Job))
-            ).scalar_one()
-        )
+        before = int((await session.execute(select(sa.func.count()).select_from(Job))).scalar_one())
         service = _service(session)
 
         async def create_then_fail(
@@ -1291,11 +1493,7 @@ async def test_native_creation_failure_rolls_back_job_and_import_claim(
             )
 
     async with TestSessionLocal() as session:
-        after = int(
-            (
-                await session.execute(select(sa.func.count()).select_from(Job))
-            ).scalar_one()
-        )
+        after = int((await session.execute(select(sa.func.count()).select_from(Job))).scalar_one())
         stored = await session.get(JobImportDraft, UUID(draft["id"]))
         assert after == before
         assert stored is not None
@@ -1341,10 +1539,7 @@ async def test_applied_draft_replay_rejects_deleted_or_cross_owner_target(
         json={"mode": "create_new"},
     )
     assert mismatched.status_code == 409
-    assert (
-        mismatched.json()["error"]["code"]
-        == "JOB_IMPORT_TARGET_OWNERSHIP_MISMATCH"
-    )
+    assert mismatched.json()["error"]["code"] == "JOB_IMPORT_TARGET_OWNERSHIP_MISMATCH"
 
     async with TestSessionLocal() as session:
         job = await session.get(Job, job_id)
@@ -1435,12 +1630,14 @@ async def test_unsupported_output_is_rejected_without_partial_storage(
     assert caught.value.details[detail_key] == [expected_field]
     async with TestSessionLocal() as session:
         fields = (
-            await session.execute(
-                select(JobImportField).where(
-                    JobImportField.draft_id == UUID(draft["id"])
+            (
+                await session.execute(
+                    select(JobImportField).where(JobImportField.draft_id == UUID(draft["id"]))
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert fields == []
 
 
@@ -1686,12 +1883,14 @@ async def test_owned_draft_deletion_redacts_machine_history_and_hides_record(
         assert stored.machine_output is None
         assert stored.provider_metadata is None
         fields = (
-            await session.execute(
-                select(JobImportField).where(
-                    JobImportField.draft_id == UUID(draft["id"])
+            (
+                await session.execute(
+                    select(JobImportField).where(JobImportField.draft_id == UUID(draft["id"]))
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert fields == []
 
 
@@ -1755,8 +1954,7 @@ def test_job_import_migration_is_additive_reversible_and_preserves_rows(
         "ck_job_import_source_type",
         "ck_job_import_source_retention_policy",
     } <= {
-        constraint["name"]
-        for constraint in inspector.get_check_constraints("job_import_sources")
+        constraint["name"] for constraint in inspector.get_check_constraints("job_import_sources")
     }
     assert migration.down_revision == "0042_creator_job_domain_contract"
     assert audit_migration.down_revision == "0043_job_import_readiness"
@@ -1767,10 +1965,7 @@ def test_job_import_migration_is_additive_reversible_and_preserves_rows(
         assert connection.execute(sa.select(sa.func.count()).select_from(users)).scalar_one() == 1
         assert connection.execute(sa.select(sa.func.count()).select_from(jobs)).scalar_one() == 1
         assert (
-            connection.execute(
-                sa.text("SELECT COUNT(*) FROM job_import_sources")
-            ).scalar_one()
-            == 0
+            connection.execute(sa.text("SELECT COUNT(*) FROM job_import_sources")).scalar_one() == 0
         )
 
     with engine.begin() as connection:
@@ -1783,7 +1978,5 @@ def test_job_import_migration_is_additive_reversible_and_preserves_rows(
     inspector = sa.inspect(engine)
     assert "job_import_sources" not in inspector.get_table_names()
     with engine.connect() as connection:
-        preserved = connection.execute(
-            sa.select(jobs.c.title, jobs.c.listing_schema_version)
-        ).one()
+        preserved = connection.execute(sa.select(jobs.c.title, jobs.c.listing_schema_version)).one()
     assert preserved == ("Preserved existing listing", 3)

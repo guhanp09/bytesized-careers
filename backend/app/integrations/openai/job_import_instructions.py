@@ -28,6 +28,22 @@ Use provenance exactly:
 - extracted_from_source: the source explicitly states the value;
 - suggested_inference: a permitted suggestion not explicitly stated.
 
+Interpret creator work semantically when the supplied field policy allows it.
+Examples: turning podcast episodes into vertical clips supports a shorts/video
+editing role and short-form format; four thumbnails every week supports an
+ongoing engagement and a four-per-week deliverable cadence. It does not support
+inventing weekly hours or turnaround. "Required" and "must" language belongs in
+required skills/tools; "helpful", "preferred", or "nice to have" belongs in
+preferred values.
+
+For suggested_inference, supply provider confidence. Use high only when the
+source context strongly supports one canonical value. Otherwise use medium or
+low and keep the result a suggestion. Never infer exact compensation amounts,
+hours, dates, years of experience, legal/authorization terms, unpaid status,
+trial economics, revenue share, rights terms, demographic requirements, or
+automatic rejection rules. Do not add role-default tools unless the source
+actually requires them.
+
 The final user input-text block contains the exact canonical source divided into
 ordered, server-owned evidence spans. Cite only span_id values supplied in that
 block. Never invent, repair, approximate, or rewrite a span ID. Use one or more
@@ -52,7 +68,7 @@ Never output:
 - ownership, verification, trust, safety, featured, counters, hiring identity,
   listing status, publication state, processing state, or timestamps;
 - language or language_requirements fields;
-- screening_questions or any private screening prompt;
+- invented screening_questions, inferred requiredness, or automatic rejection rules;
 - unsupported aliases, custom top-level fields, or recruiter confirmation state;
 - invented compensation, workload, deadline, trial, rights, access, attribution,
   legal, or application terms;

@@ -20,9 +20,7 @@ MAX_URL_REDIRECTS = 4
 URL_CONNECT_TIMEOUT_SECONDS = 5.0
 URL_TOTAL_TIMEOUT_SECONDS = 12.0
 URL_USER_AGENT = "CreatorJobs-PublicJobImporter/1.0"
-ALLOWED_URL_CONTENT_TYPES = frozenset(
-    {"text/html", "application/xhtml+xml", "text/plain"}
-)
+ALLOWED_URL_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
 
 Resolver = Callable[[str, int], Awaitable[list[ipaddress.IPv4Address | ipaddress.IPv6Address]]]
 
@@ -131,7 +129,10 @@ class _VisibleJobHtmlParser(HTMLParser):
         values = self._attributes(attrs)
         if tag == "link" and "canonical" in values.get("rel", "").casefold().split():
             self.canonical_href = values.get("href") or self.canonical_href
-        if tag == "script" and values.get("type", "").split(";", 1)[0].strip().casefold() == "application/ld+json":
+        if (
+            tag == "script"
+            and values.get("type", "").split(";", 1)[0].strip().casefold() == "application/ld+json"
+        ):
             self._json_ld_depth = 1
             self._json_ld_chunks = []
             return
@@ -208,6 +209,121 @@ def _strip_html_fragment(value: str) -> str:
     return parser.visible_text
 
 
+def _bounded_structured_text(value: object, maximum: int = 255) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = _clean_text(value)
+    return cleaned[:maximum] or None
+
+
+def _structured_address(value: object) -> str | None:
+    if isinstance(value, list):
+        addresses = [item for item in (_structured_address(entry) for entry in value) if item]
+        return " | ".join(dict.fromkeys(addresses))[:500] or None
+    if not isinstance(value, dict):
+        return None
+    address = value.get("address") if isinstance(value.get("address"), dict) else value
+    if not isinstance(address, dict):
+        return None
+    raw_country = address.get("addressCountry")
+    country = (
+        _bounded_structured_text(raw_country.get("name"))
+        if isinstance(raw_country, dict)
+        else _bounded_structured_text(raw_country)
+    )
+    parts = [
+        _bounded_structured_text(address.get("addressLocality")),
+        _bounded_structured_text(address.get("addressRegion")),
+        country,
+    ]
+    return ", ".join(dict.fromkeys(part for part in parts if part)) or None
+
+
+def _structured_location_requirement(value: object) -> str | None:
+    if isinstance(value, list):
+        values = [
+            item for item in (_structured_location_requirement(entry) for entry in value) if item
+        ]
+        return " | ".join(dict.fromkeys(values))[:500] or None
+    if isinstance(value, str):
+        return _bounded_structured_text(value)
+    if not isinstance(value, dict):
+        return None
+    return _bounded_structured_text(value.get("name")) or _structured_address(value)
+
+
+def _structured_compensation(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    currency = _bounded_structured_text(value.get("currency"), 3)
+    unit = _bounded_structured_text(value.get("unitText"), 32)
+    raw_amount = value.get("value")
+    amount: str | None = None
+    if isinstance(raw_amount, (int, float)) and not isinstance(raw_amount, bool):
+        amount = str(raw_amount)
+    elif isinstance(raw_amount, dict):
+        minimum = raw_amount.get("minValue")
+        maximum = raw_amount.get("maxValue")
+        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
+            amount = str(minimum)
+            if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
+                amount = f"{amount}-{maximum}"
+        unit = unit or _bounded_structured_text(raw_amount.get("unitText"), 32)
+    parts = [currency, amount, f"per {unit}" if unit else None]
+    return " ".join(part for part in parts if part) or None
+
+
+def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, str]:
+    if job_posting is None:
+        return {}
+    context: dict[str, str] = {}
+    organization = job_posting.get("hiringOrganization")
+    if isinstance(organization, dict):
+        employer = _bounded_structured_text(organization.get("name"))
+        employer_location = _structured_address(organization)
+        if employer:
+            context["employer_name"] = employer
+        if employer_location:
+            context["employer_location"] = employer_location
+    role_location = _structured_address(job_posting.get("jobLocation"))
+    if role_location:
+        context["role_location"] = role_location
+    remote_eligibility = _structured_location_requirement(
+        job_posting.get("applicantLocationRequirements")
+    )
+    if remote_eligibility:
+        context["remote_eligibility"] = remote_eligibility
+    location_type = _bounded_structured_text(job_posting.get("jobLocationType"), 64)
+    if location_type:
+        context["location_type"] = location_type
+    employment = job_posting.get("employmentType")
+    if isinstance(employment, list):
+        employment_text = ", ".join(
+            item for item in (_bounded_structured_text(entry, 64) for entry in employment) if item
+        )
+    else:
+        employment_text = _bounded_structured_text(employment, 128) or ""
+    if employment_text:
+        context["employment_type"] = employment_text[:128]
+    compensation = _structured_compensation(job_posting.get("baseSalary"))
+    if compensation:
+        context["compensation"] = compensation
+    return context
+
+
+def _structured_context_lines(context: dict[str, str]) -> list[str]:
+    labels = {
+        "employer_name": "Structured employer",
+        "employer_location": "Structured employer location",
+        "role_location": "Structured role location",
+        "remote_eligibility": "Structured remote eligibility",
+        "location_type": "Structured work location type",
+        "employment_type": "Structured employment type",
+        "compensation": "Structured compensation",
+    }
+    return [f"{labels[key]}: {value}" for key, value in context.items() if key in labels]
+
+
 def normalize_public_job_html(
     html_text: str,
     *,
@@ -226,6 +342,7 @@ def normalize_public_job_html(
     title = parser.page_title
     structured_title: str | None = None
     structured_description: str | None = None
+    structured_context = _job_posting_context(parser.job_posting)
     if parser.job_posting is not None:
         raw_title = parser.job_posting.get("title")
         if isinstance(raw_title, str):
@@ -236,6 +353,7 @@ def normalize_public_job_html(
 
     pieces = [
         structured_title,
+        "\n".join(_structured_context_lines(structured_context)),
         structured_description,
         parser.visible_text,
     ]
@@ -285,6 +403,7 @@ def normalize_public_job_html(
         "canonical_url": canonical_url,
         "json_ld_job_posting": parser.job_posting is not None,
         "structured_title_found": structured_title is not None,
+        "structured_context": structured_context,
     }
     return normalized, structured_title or title, metadata
 
@@ -515,7 +634,9 @@ class PublicJobUrlFetcher:
 
                 if content_type == "text/plain":
                     normalized = "\n".join(
-                        line for line in (_clean_text(item) for item in page_text.splitlines()) if line
+                        line
+                        for line in (_clean_text(item) for item in page_text.splitlines())
+                        if line
                     )[:MAX_IMPORT_SOURCE_TEXT_LENGTH]
                     if not normalized:
                         raise PublicJobUrlFetchError(
