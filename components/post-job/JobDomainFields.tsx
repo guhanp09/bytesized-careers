@@ -1527,7 +1527,7 @@ export function SkillsQualificationsFields({
         {legacyLanguages?.length ? (
           <div className="mb-4">
             <Notice tone="amber">
-              Existing language tags: <span className="font-semibold">{legacyLanguages.join(", ")}</span>. These are broad legacy search tags, not confirmed proficiency requirements. They stay unchanged; add structured rows only when the language is truly required or preferred for this work.
+              Existing language tags: <span className="font-semibold">{legacyLanguages.join(", ")}</span>. These are broad search tags from an earlier format, not confirmed proficiency requirements. They stay unchanged; add structured rows only when the language is truly required or preferred for this work.
             </Notice>
           </div>
         ) : null}

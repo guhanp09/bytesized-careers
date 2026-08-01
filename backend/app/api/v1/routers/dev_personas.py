@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +11,15 @@ from app.api.deps import get_current_user, get_db, get_job_import_service
 from app.core.config import settings
 from app.db import seed
 from app.db import seed_data_personas as personas
-from app.db.seed_data_job_import import processed_review_fixture
+from app.db.seed_data_job_import import (
+    DEVELOPMENT_IMPORT_SCENARIOS,
+    processed_review_fixture,
+)
 from app.models import Job, JobApplication, Notification, TalentListing, User
 from app.schemas.job_import import (
     JobImportDraftInitialize,
     JobImportDraftRead,
+    JobImportFieldReviewRequest,
     JobImportProviderMetadata,
     JobImportSourceCreate,
 )
@@ -158,27 +164,48 @@ async def reset_dev_data(
     summary="Create an owned processed job-import review fixture",
 )
 async def create_job_import_review_fixture(
+    scenario: str = Query(default="strong-decisions"),
+    fresh: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     service: JobImportService = Depends(get_job_import_service),
 ) -> DevJobImportFixtureResponse:
     _ensure_dev_only()
+    if scenario not in DEVELOPMENT_IMPORT_SCENARIOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unknown development import scenario.",
+        )
+    if scenario == "processing-failure":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "JOB_IMPORT_PROCESSING_FAILED",
+                "message": "The local fixture could not prepare this draft.",
+            },
+        )
     await seed.seed_roles_if_missing(service.repository.session)
+    source_titles = {
+        "strong-decisions": "Finance video editor job post",
+        "thumbnail-designer": "Science thumbnail designer job post",
+        "clean-import": "Education content strategist job post",
+    }
+    fixture_run = uuid4().hex[:8] if fresh else "stable"
     source = await service.create_source(
         JobImportSourceCreate(
             source_type="rough_description",
-            source_title="Development review example",
+            source_title=source_titles[scenario],
             original_text=(
-                "Development-only private source used to inspect the recruiter review "
-                "interface without a provider call."
+                f"Development-only {scenario} private source used to inspect the guided "
+                "recruiter experience without a provider call."
             ),
-            idempotency_key=f"dev-review-source-{current_user.id}",
+            idempotency_key=f"ds-{scenario}-{current_user.id}-{fixture_run}",
         ),
         owner_user_id=current_user.id,
     )
     draft = await service.initialize_draft(
         source.id,
         JobImportDraftInitialize(
-            idempotency_key=f"dev-review-draft-{current_user.id}",
+            idempotency_key=f"dd-{scenario}-{current_user.id}-{fixture_run}",
         ),
         owner_user_id=current_user.id,
     )
@@ -186,14 +213,21 @@ async def create_job_import_review_fixture(
     if created:
         draft = await service.record_extraction_result(
             draft.id,
-            processed_review_fixture(),
+            processed_review_fixture(scenario),
             owner_user_id=current_user.id,
             provider_metadata=JobImportProviderMetadata(
                 provider_name="development_fixture",
-                instruction_version="dev-review-v1",
-                metadata={"fixture": True},
+                instruction_version="dev-guidance-v1",
+                metadata={"fixture": True, "scenario": scenario},
             ),
         )
+        if scenario in {"clean-import", "thumbnail-designer"}:
+            draft = await service.review_field(
+                draft.id,
+                "source_inputs",
+                JobImportFieldReviewRequest(action="accept"),
+                owner_user_id=current_user.id,
+            )
     return DevJobImportFixtureResponse(
         draft=await service.draft_read(draft),
         created=created,

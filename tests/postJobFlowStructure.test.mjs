@@ -278,7 +278,7 @@ test("candidate preview is available on mobile, desktop, and the final review sc
   const form = read("components/post-job/PostJobForm.tsx");
   const preview = read("components/post-job/RecruiterJobPreview.tsx");
 
-  assert.match(page, /<details className="[^"]*lg:hidden"/);
+  assert.match(page, /<details[^>]*className="[^"]*lg:hidden"/);
   assert.match(page, /Preview candidate view/);
   assert.match(page, /<RecruiterJobPreview \{\.\.\.previewProps\} previewMode="full"/);
   assert.match(page, /sticky top-6 hidden[\s\S]*lg:block/);
@@ -317,7 +317,7 @@ test("application requests, structured screening, and public instructions remain
   assert.match(apply, /<TrialApplicationFields[\s\S]*sections=\{\["apply"\]\}/);
   assert.match(apply, /<RequirementSelector/);
   assert.match(apply, /hideCustomInstruction/);
-  assert.match(apply, /Legacy first-message prompt/);
+  assert.match(apply, /Previously saved first-message prompt/);
   assert.match(fields, />\s*Screening questions\s*</);
   assert.match(fields, /label="Public how-to-apply note"/);
   assert.match(fields, /onChange\(\{ screeningQuestions:/);

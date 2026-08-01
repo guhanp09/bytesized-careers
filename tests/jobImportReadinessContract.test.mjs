@@ -93,10 +93,11 @@ test("the user-facing import flow uses the private readiness substrate without p
     .join("\n");
 
   assert.match(userFacingSource, /jobImportReadiness/);
-  assert.match(userFacingSource, /Draft created from your job post/);
-  assert.match(userFacingSource, /ImportedDraftNotice/);
+  assert.match(userFacingSource, /I’ve built a strong first draft/);
+  assert.match(userFacingSource, /ImportedDraftConversation/);
   assert.match(userFacingSource, /getJobImportContextForNativeJob/);
-  assert.match(userFacingSource, /Why was this filled\?/);
+  assert.match(userFacingSource, /What I found/);
+  assert.doesNotMatch(userFacingSource, /Review flagged fields|Optional details not found/);
   assert.doesNotMatch(userFacingSource, /Create with AI/);
   assert.doesNotMatch(userFacingSource, /Process with AI/);
   assert.doesNotMatch(userFacingSource, /OpenAI|GPT-|provider selector/i);

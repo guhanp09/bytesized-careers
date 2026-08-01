@@ -56,7 +56,7 @@ test("the integrated UI is provider-neutral and opens the canonical Post Job for
 
   assert.match(importPage, /applyJobImportDraft/);
   assert.match(importPage, /\/post-job\?draftId=/);
-  assert.match(postJob, /<ImportedDraftNotice/);
+  assert.match(postJob, /<ImportedDraftConversation/);
   assert.match(postJob, /getJobImportContextForNativeJob/);
   assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
   assert.equal(exists("components/import-job/ReviewSummary.tsx"), false);

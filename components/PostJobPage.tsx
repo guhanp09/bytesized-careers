@@ -58,21 +58,29 @@ import {
 import { IMPORT_JUMP_TARGETS } from "../lib/importJob/applyToWizard";
 import type { ImportFieldMeta } from "../lib/importJob/types";
 import ImportReviewBanner from "./import-job/ImportReviewBanner";
-import ImportedDraftNotice from "./import-job/ImportedDraftNotice";
+import ImportedDraftConversation from "./import-job/ImportedDraftConversation";
 import {
   attachJobImportDraft,
   getJobImportContextForNativeJob,
   getJobImportDraft,
   getJobImportSource,
   reviewJobImportField,
+  resolveJobImportConflict,
+  type JobImportDraft,
   type JobImportDraftContext,
   type JobImportField,
+  type JobImportNonNullJsonValue,
 } from "../lib/jobImportReadiness";
 import {
   firstImportAttentionScreen,
-  importFieldScreen,
+  importDraftSummary,
   nativeFieldForImport,
 } from "../lib/importedDraftGuidance";
+import {
+  buildJobImportGuidanceTurns,
+  nextJobImportGuidanceTurn,
+  type JobImportGuidanceTurn,
+} from "../lib/jobImportConversation";
 import {
   jobImportValueWasRemoved,
   trackJobImportEvent,
@@ -183,6 +191,31 @@ const comparableImportValue = (value: unknown): unknown => {
 
 const importValuesMatch = (left: unknown, right: unknown): boolean =>
   JSON.stringify(comparableImportValue(left)) === JSON.stringify(comparableImportValue(right));
+
+const initialImportGuidanceTurn = (
+  draft: JobImportDraft,
+  sourceLabel: string
+): JobImportGuidanceTurn | null => {
+  const canonicalValues = Object.fromEntries(
+    draft.fields
+      .filter((field) => field.effective_value !== null && field.effective_value !== undefined)
+      .map((field) => [field.field_path, field.effective_value])
+  );
+  const jobTitle = typeof canonicalValues.title === "string" ? canonicalValues.title : null;
+  const roleName =
+    typeof canonicalValues.primary_role_key === "string"
+      ? canonicalValues.primary_role_key.replaceAll("-", " ")
+      : null;
+  return nextJobImportGuidanceTurn(
+    buildJobImportGuidanceTurns(draft, {
+      jobTitle,
+      roleName,
+      sourceLabel,
+      canonicalValues,
+      manuallyChanged: new Set(),
+    })
+  );
+};
 
 type SavedBasics = {
   title: string;
@@ -1360,7 +1393,11 @@ export default function PostJobPage() {
   const [roleSpecialization, setRoleSpecialization] = useState("");
   const [importMeta, setImportMeta] = useState<ImportFieldMeta | null>(null);
   const [importContext, setImportContext] = useState<JobImportDraftContext | null>(null);
-  const [importSummaryDismissed, setImportSummaryDismissed] = useState(false);
+  const [importGuidanceEnabled, setImportGuidanceEnabled] = useState(true);
+  const [activeImportGuidanceTurnId, setActiveImportGuidanceTurnId] = useState<string | null>(null);
+  const [importGuidanceBusy, setImportGuidanceBusy] = useState(false);
+  const [importGuidanceError, setImportGuidanceError] = useState<string | null>(null);
+  const [importGuidanceAnnouncement, setImportGuidanceAnnouncement] = useState("");
   const [manuallyChangedImportFields, setManuallyChangedImportFields] = useState<Set<string>>(
     () => new Set()
   );
@@ -1372,17 +1409,36 @@ export default function PostJobPage() {
   const [previewBudgetText, setPreviewBudgetText] = useState("");
   const [previewExperienceText, setPreviewExperienceText] = useState("");
   const [previewLocationText, setPreviewLocationText] = useState("");
+  const mobilePreviewRef = useRef<HTMLDetailsElement | null>(null);
+  const desktopPreviewRef = useRef<HTMLDivElement | null>(null);
+
+  const softlyHighlightCandidatePreview = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    [mobilePreviewRef.current, desktopPreviewRef.current].forEach((target) => {
+      if (!target || typeof target.animate !== "function") return;
+      target.animate(
+        [
+          { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
+          { boxShadow: "0 0 0 1px rgba(255,255,255,0.18)" },
+          { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
+        ],
+        { duration: reducedMotion ? 1 : 520, easing: "ease-out" }
+      );
+    });
+  }, []);
 
   const markPayloadDirty = useCallback((...keys: Array<keyof BackendCreateJobPayload>) => {
     keys.forEach((key) => dirtyPayloadKeysRef.current.add(key));
     if (importContext) {
+      softlyHighlightCandidatePreview();
       setManuallyChangedImportFields((previous) => {
         const next = new Set(previous);
         keys.forEach((key) => next.add(String(key)));
         return next;
       });
     }
-  }, [importContext]);
+  }, [importContext, softlyHighlightCandidatePreview]);
 
   const updateDomain = useCallback(
     (
@@ -1811,6 +1867,12 @@ export default function PostJobPage() {
     const job = loadedJobRef.current;
     if (!importContext || !job || draftLoading) return;
     const jobRecord = job as unknown as Record<string, unknown>;
+    const jobUpdatedAt = Date.parse(String(job.updated_at || ""));
+    const importAppliedAt = Date.parse(String(importContext.draft.applied_at || ""));
+    const nativeDraftWasSavedAfterImport =
+      Number.isFinite(jobUpdatedAt) &&
+      Number.isFinite(importAppliedAt) &&
+      jobUpdatedAt > importAppliedAt;
     const changed = new Set<string>();
     importContext.draft.fields.forEach((field) => {
       const nativeField = nativeFieldForImport(field.field_path);
@@ -1820,7 +1882,19 @@ export default function PostJobPage() {
           ? roles.find((role) => role.id === job.primary_role_id)?.slug
           : jobRecord[nativeField];
       if (field.effective_value === null || field.effective_value === undefined) {
-        if (!jobImportValueWasRemoved(currentValue)) changed.add(nativeField);
+        // Database defaults written during conversion are not recruiter answers.
+        // A later canonical save is authoritative and suppresses stale guidance.
+        const untouchedApplicationDefault =
+          field.field_path === "application_mode" &&
+          field.review_status === "pending" &&
+          currentValue === "internal";
+        if (
+          nativeDraftWasSavedAfterImport &&
+          !untouchedApplicationDefault &&
+          !jobImportValueWasRemoved(currentValue)
+        ) {
+          changed.add(nativeField);
+        }
         return;
       }
       if (!importValuesMatch(field.effective_value, currentValue)) {
@@ -1843,12 +1917,15 @@ export default function PostJobPage() {
       .then((context) => {
         if (cancelled) return;
         setImportContext(context);
-        setImportSummaryDismissed(false);
+        setImportGuidanceEnabled(true);
+        setActiveImportGuidanceTurnId(null);
+        setImportGuidanceError(null);
         setManuallyChangedImportFields(new Set());
         importEditAnalyticsRef.current.clear();
-        const attentionScreen = firstImportAttentionScreen(context.draft, STEPS);
+        const firstTurn = initialImportGuidanceTurn(context.draft, context.source_label);
+        setActiveImportGuidanceTurnId(firstTurn?.id ?? null);
         setDirection("forward");
-        setStep(attentionScreen ?? "review");
+        setStep(firstTurn?.screen ?? "review");
       })
       .catch(() => {
         // Ordinary manually-created drafts do not have import context.
@@ -2043,8 +2120,12 @@ export default function PostJobPage() {
             (importSource.source_type === "public_url" ? "Public job post" : "Pasted job post"),
           source_url: importSource.final_source_url || importSource.source_url,
         });
-        const attentionScreen = firstImportAttentionScreen(importDraft, STEPS);
-        setStep(attentionScreen ?? "role");
+        setImportGuidanceEnabled(true);
+        setImportGuidanceError(null);
+        const firstTurn = initialImportGuidanceTurn(importDraft, importSource.source_title ||
+          (importSource.source_type === "public_url" ? "Public job post" : "Pasted job post"));
+        setActiveImportGuidanceTurnId(firstTurn?.id ?? null);
+        setStep(firstTurn?.screen ?? "review");
       })
       .catch((error) => {
         if (!cancelled) {
@@ -2975,6 +3056,35 @@ export default function PostJobPage() {
     window.setTimeout(() => tryFocus(0), delays[0]);
   };
 
+  const focusImportedGuidanceTarget = (targetId?: string) => {
+    if (!targetId) return;
+    const requestId = ++focusRequestRef.current;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delays = [0, 80, 220];
+    const tryFocus = (attempt: number) => {
+      if (focusRequestRef.current !== requestId) return;
+      const target =
+        document.querySelector<HTMLElement>(`[data-quality-target="${targetId}"]`) ||
+        document.getElementById(targetId);
+      if (!target) {
+        if (attempt < delays.length - 1) {
+          window.setTimeout(() => tryFocus(attempt + 1), delays[attempt + 1] - delays[attempt]);
+        }
+        return;
+      }
+      target.scrollIntoView({
+        block: "center",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+      const focusable =
+        target.matches("button, input, select, textarea, [tabindex]")
+          ? target
+          : target.querySelector<HTMLElement>("button, input, select, textarea, [tabindex]");
+      focusable?.focus({ preventScroll: true });
+    };
+    window.setTimeout(() => tryFocus(0), delays[0]);
+  };
+
   const goToJobQualityItem = (item: JobQualityItem) => {
     setPublishReadyOpen(false);
     setDirection(STEPS.indexOf(item.step) < STEPS.indexOf(step) ? "back" : "forward");
@@ -3871,11 +3981,98 @@ export default function PostJobPage() {
     return true;
   };
 
-  const handleImportedSuggestion = async (field: JobImportField) => {
+  const currentImportCanonicalValues = (): Record<string, unknown> => {
+    const payload = buildCompleteJobPayload("draft", compensationMode || null) as Record<
+      string,
+      unknown
+    >;
+    const selectedRole = roles.find((role) => role.id === primaryRoleId);
+    return {
+      ...payload,
+      primary_role_key: selectedRole?.slug ?? null,
+      role_specialization: roleSpecialization || null,
+    };
+  };
+
+  const persistedImportValue = (field: JobImportField, value: unknown): unknown => {
+    const nativeField = nativeFieldForImport(field.field_path);
+    if (!nativeField) return undefined;
+    if (field.field_path === "primary_role_key") {
+      return roles.find((role) => role.slug === value)?.id ?? null;
+    }
+    if (nativeField === "application_requirements") {
+      return sanitizeRequirementKeys(
+        Array.isArray(value)
+          ? value.filter((item): item is string => typeof item === "string")
+          : [],
+        "job"
+      );
+    }
+    return value;
+  };
+
+  const selectImportGuidanceTurn = (
+    turn: JobImportGuidanceTurn,
+    focusQuestion = false
+  ) => {
+    setActiveImportGuidanceTurnId(turn.id);
+    setDirection(STEPS.indexOf(turn.screen) < STEPS.indexOf(step) ? "back" : "forward");
+    setStep(turn.screen);
+    setImportGuidanceError(null);
+    if (focusQuestion) {
+      window.requestAnimationFrame(() => {
+        document.getElementById("import-guidance-question")?.focus({ preventScroll: true });
+      });
+    }
+  };
+
+  const advanceImportGuidance = (
+    completedTurn: JobImportGuidanceTurn,
+    nextDraft: JobImportDraftContext["draft"],
+    canonicalOverrides: Record<string, unknown> = {}
+  ) => {
+    if (!importContext) return;
+    const nextTurns = buildJobImportGuidanceTurns(nextDraft, {
+      jobTitle: title,
+      roleName:
+        roles.find((role) => role.id === primaryRoleId)?.name ||
+        loadedJobRef.current?.primary_role_name_snapshot ||
+        null,
+      employerName: activeHiringDisplayName,
+      sourceLabel: importContext.source_label,
+      canonicalValues: {
+        ...currentImportCanonicalValues(),
+        ...canonicalOverrides,
+      },
+      manuallyChanged: manuallyChangedImportFields,
+    });
+    const nextTurn = nextJobImportGuidanceTurn(nextTurns, completedTurn.id);
+    setActiveImportGuidanceTurnId(nextTurn?.id ?? null);
+    if (nextTurn) {
+      setDirection(STEPS.indexOf(nextTurn.screen) < STEPS.indexOf(step) ? "back" : "forward");
+      setStep(nextTurn.screen);
+      window.requestAnimationFrame(() => {
+        document.getElementById("import-guidance-question")?.focus({ preventScroll: true });
+      });
+    } else {
+      setDirection("forward");
+      setStep("review");
+      window.requestAnimationFrame(() => {
+        document.getElementById("import-guidance-title")?.focus({ preventScroll: true });
+      });
+    }
+  };
+
+  const handleImportedSuggestion = async (
+    field: JobImportField,
+    guidanceTurn?: JobImportGuidanceTurn
+  ) => {
     if (!importContext || field.proposed_value === null || field.proposed_value === undefined) {
       return;
     }
     setSubmitError(null);
+    setImportGuidanceError(null);
+    setImportGuidanceBusy(true);
     try {
       const nextDraft = await withFreshBackendToken(async (token) => {
         const reviewed = await reviewJobImportField(
@@ -3920,10 +4117,203 @@ export default function PostJobPage() {
       setImportContext((previous) =>
         previous ? { ...previous, draft: nextDraft } : previous
       );
+      if (guidanceTurn) {
+        advanceImportGuidance(guidanceTurn, nextDraft, {
+          [field.field_path]: acceptedValue,
+        });
+      }
     } catch (error) {
-      setSubmitError(
+      const message =
         describeActionError(error, "This suggestion could not be applied. Review the field instead.")
+      setSubmitError(message);
+      setImportGuidanceError(message);
+    } finally {
+      setImportGuidanceBusy(false);
+    }
+  };
+
+  const handleImportedConflict = async (
+    turn: JobImportGuidanceTurn,
+    field: JobImportField,
+    alternativeIndex: number
+  ) => {
+    if (!importContext) return;
+    setImportGuidanceBusy(true);
+    setImportGuidanceError(null);
+    setSubmitError(null);
+    try {
+      const nextDraft = await withFreshBackendToken(async (token) => {
+        const reviewed = await resolveJobImportConflict(
+          token,
+          importContext.draft.id,
+          field.field_path,
+          { selected_value_index: alternativeIndex as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+        );
+        const resolved = reviewed.fields.find(
+          (item) => item.field_path === field.field_path
+        );
+        const resolvedValue = resolved?.effective_value;
+        const nativeField = nativeFieldForImport(field.field_path);
+        const persistedValue = persistedImportValue(field, resolvedValue);
+        if (draftId && nativeField && persistedValue !== null && persistedValue !== undefined) {
+          await updateJob(token, draftId, {
+            [nativeField]: persistedValue,
+          } as Partial<BackendCreateJobPayload>);
+        }
+        return { reviewed, resolvedValue };
+      });
+      const resolvedField = nextDraft.reviewed.fields.find(
+        (item) => item.field_path === field.field_path
       );
+      if (
+        nextDraft.resolvedValue !== null &&
+        nextDraft.resolvedValue !== undefined &&
+        !applyImportedSuggestionValue(resolvedField ?? field, nextDraft.resolvedValue)
+      ) {
+        throw new Error("Open the field and enter the value in the format shown.");
+      }
+      setImportContext((previous) =>
+        previous ? { ...previous, draft: nextDraft.reviewed } : previous
+      );
+      advanceImportGuidance(turn, nextDraft.reviewed, {
+        [field.field_path]: nextDraft.resolvedValue,
+      });
+    } catch (error) {
+      const message = describeActionError(
+        error,
+        "That answer could not be saved. Try again or enter it in the draft."
+      );
+      setImportGuidanceError(message);
+      setSubmitError(message);
+    } finally {
+      setImportGuidanceBusy(false);
+    }
+  };
+
+  const skipImportedGuidanceTurns = async (
+    turns: readonly JobImportGuidanceTurn[]
+  ) => {
+    if (!importContext || !turns.length) return;
+    setImportGuidanceBusy(true);
+    setImportGuidanceError(null);
+    try {
+      let nextDraft = importContext.draft;
+      await withFreshBackendToken(async (token) => {
+        for (const turn of turns) {
+          for (const fieldPath of turn.fieldPaths) {
+            const field = nextDraft.fields.find((item) => item.field_path === fieldPath);
+            if (!field || field.review_status !== "pending") continue;
+            nextDraft = await reviewJobImportField(
+              token,
+              nextDraft.id,
+              field.field_path,
+              { action: "reject" }
+            );
+          }
+        }
+      });
+      setImportContext((previous) =>
+        previous ? { ...previous, draft: nextDraft } : previous
+      );
+      advanceImportGuidance(turns[turns.length - 1], nextDraft);
+    } catch (error) {
+      const message = describeActionError(
+        error,
+        "That preference could not be saved. Try again or continue in the full editor."
+      );
+      setImportGuidanceError(message);
+    } finally {
+      setImportGuidanceBusy(false);
+    }
+  };
+
+  const commitImportedGuidanceTurn = async (turn: JobImportGuidanceTurn) => {
+    if (!importContext) return;
+    const canonicalValues = currentImportCanonicalValues();
+    const fields = importContext.draft.fields.filter((field) =>
+      turn.fieldPaths.includes(field.field_path)
+    );
+    const editable = fields.filter((field) => {
+      const native = nativeFieldForImport(field.field_path);
+      return (
+        field.review_status === "pending" &&
+        (manuallyChangedImportFields.has(field.field_path) ||
+          Boolean(native && manuallyChangedImportFields.has(native)))
+      );
+    });
+    const stillWaiting = fields.filter(
+      (field) =>
+        field.review_status === "pending" &&
+        !editable.includes(field) &&
+        (field.provenance_state === "missing" ||
+          field.provenance_state === "conflicting_source_values" ||
+          field.needs_review)
+    );
+    if (stillWaiting.length) {
+      setImportGuidanceError("Choose or enter an answer before continuing. You can also save the private draft and finish later.");
+      const first = stillWaiting[0];
+      const native = nativeFieldForImport(first.field_path);
+      if (native) {
+        const target = jobFieldEntry(native).target;
+        if (target) focusImportedGuidanceTarget(target);
+      }
+      return;
+    }
+    const values = editable.map((field) => ({
+      field,
+      value: canonicalValues[field.field_path],
+    }));
+    if (values.some(({ value }) => jobImportValueWasRemoved(value))) {
+      setImportGuidanceError("Complete the answer in the Post Job field below before continuing.");
+      return;
+    }
+    if (!editable.length) {
+      const nextTurn = nextJobImportGuidanceTurn(importGuidanceTurns, turn.id);
+      if (nextTurn) selectImportGuidanceTurn(nextTurn, true);
+      else {
+        setActiveImportGuidanceTurnId(null);
+        setStep("review");
+      }
+      return;
+    }
+
+    setImportGuidanceBusy(true);
+    setImportGuidanceError(null);
+    try {
+      let nextDraft = importContext.draft;
+      await withFreshBackendToken(async (token) => {
+        const nativePatch: Partial<BackendCreateJobPayload> = {};
+        for (const { field, value } of values) {
+          nextDraft = await reviewJobImportField(
+            token,
+            nextDraft.id,
+            field.field_path,
+            { action: "edit", edited_value: value as JobImportNonNullJsonValue }
+          );
+          const native = nativeFieldForImport(field.field_path);
+          const persistedValue = persistedImportValue(field, value);
+          if (native && persistedValue !== undefined) {
+            Object.assign(nativePatch, { [native]: persistedValue });
+          }
+        }
+        if (draftId && Object.keys(nativePatch).length) {
+          await updateJob(token, draftId, nativePatch);
+        }
+      });
+      setImportContext((previous) =>
+        previous ? { ...previous, draft: nextDraft } : previous
+      );
+      setImportGuidanceAnnouncement("Answer saved. Moving to the next guided decision.");
+      advanceImportGuidance(turn, nextDraft, canonicalValues);
+    } catch (error) {
+      const message = describeActionError(
+        error,
+        "This answer could not be saved. Check the field and try again."
+      );
+      setImportGuidanceError(message);
+      setSubmitError(message);
+    } finally {
+      setImportGuidanceBusy(false);
     }
   };
 
@@ -4044,6 +4434,24 @@ export default function PostJobPage() {
     domain,
   } as const;
 
+  const importCanonicalValues = importContext ? currentImportCanonicalValues() : {};
+  const importGuidanceTurns = importContext
+    ? buildJobImportGuidanceTurns(importContext.draft, {
+        jobTitle: title,
+        roleName: selectedRoleName,
+        employerName: activeHiringDisplayName,
+        sourceLabel: importContext.source_label,
+        canonicalValues: importCanonicalValues,
+        manuallyChanged: manuallyChangedImportFields,
+      })
+    : [];
+  const activeImportGuidanceTurn =
+    importGuidanceTurns.find((turn) => turn.id === activeImportGuidanceTurnId) ??
+    nextJobImportGuidanceTurn(importGuidanceTurns);
+  const importSummary = importContext
+    ? importDraftSummary(importContext.draft, manuallyChangedImportFields)
+    : null;
+
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
       <HiringIdentityModal
@@ -4063,7 +4471,7 @@ export default function PostJobPage() {
           <div className="min-w-0 space-y-6">
             {hiringIdentityPanel}
 
-            <details className="rounded-2xl border border-white/10 bg-white/[0.04] lg:hidden">
+            <details ref={mobilePreviewRef} className="rounded-2xl border border-white/10 bg-white/[0.04] lg:hidden">
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-white/86 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30">
                 Preview candidate view
               </summary>
@@ -4072,30 +4480,62 @@ export default function PostJobPage() {
               </div>
             </details>
 
-            {importContext ? (
-              <ImportedDraftNotice
+            {importContext && importGuidanceEnabled ? (
+              <ImportedDraftConversation
                 context={importContext}
-                currentScreen={step}
-                screenOrder={STEPS}
-                manuallyChanged={manuallyChangedImportFields}
-                dismissed={importSummaryDismissed}
-                onDismiss={() => setImportSummaryDismissed(true)}
-                onJumpToField={(field: JobImportField) => {
-                  const targetScreen = importFieldScreen(field.field_path);
-                  const nativeField = nativeFieldForImport(field.field_path);
-                  if (!targetScreen || !nativeField) return;
-                  setDirection(
-                    STEPS.indexOf(targetScreen) < STEPS.indexOf(step)
-                      ? "back"
-                      : "forward"
+                turns={importGuidanceTurns}
+                activeTurnId={activeImportGuidanceTurn?.id ?? null}
+                filledCount={importSummary?.filled ?? 0}
+                busy={importGuidanceBusy}
+                actionError={importGuidanceError}
+                announcement={importGuidanceAnnouncement}
+                onSelectTurn={selectImportGuidanceTurn}
+                onJumpToField={(turn) => {
+                  const field = importContext.draft.fields.find(
+                    (item) => item.field_path === turn.primaryFieldPath
                   );
-                  setStep(targetScreen);
+                  if (!field) return;
+                  selectImportGuidanceTurn(turn);
+                  const nativeField = nativeFieldForImport(field.field_path);
+                  if (!nativeField) return;
                   const target = jobFieldEntry(nativeField).target;
-                  if (target) focusQualityTarget(target);
+                  if (target) focusImportedGuidanceTarget(target);
                 }}
-                onUseSuggestion={(field) => void handleImportedSuggestion(field)}
+                onUseSuggestion={(turn, field) =>
+                  void handleImportedSuggestion(field, turn)
+                }
+                onResolveAlternative={(turn, field, index) =>
+                  void handleImportedConflict(turn, field, index)
+                }
+                onSkipTurn={(turn) => void skipImportedGuidanceTurns([turn])}
+                onSkipRemaining={(turns) => void skipImportedGuidanceTurns(turns)}
+                onUseFullEditor={() => {
+                  setImportGuidanceEnabled(false);
+                  setImportGuidanceError(null);
+                }}
+                onSaveForLater={() => void onSaveDraft()}
                 canUseSuggestion={canUseImportedSuggestion}
               />
+            ) : importContext ? (
+              <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white/78">Editing the full draft</p>
+                  <p className="mt-1 text-xs text-white/45">
+                    Your imported details and decisions are still saved.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportGuidanceEnabled(true);
+                    const nextTurn = nextJobImportGuidanceTurn(importGuidanceTurns);
+                    if (nextTurn) selectImportGuidanceTurn(nextTurn, true);
+                  }}
+                  className="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/62 transition-colors hover:bg-white/[0.05] hover:text-white"
+                >
+                  Resume guided decisions
+                </button>
+              </section>
             ) : null}
 
             {importMeta ? (
@@ -4124,7 +4564,18 @@ export default function PostJobPage() {
               totalSteps={STEPS.length}
               hasNext={hasNext}
               hasBack={hasBack}
-              onNext={goNext}
+              onNext={(current) => {
+                if (
+                  importContext &&
+                  importGuidanceEnabled &&
+                  activeImportGuidanceTurn &&
+                  activeImportGuidanceTurn.screen === current
+                ) {
+                  void commitImportedGuidanceTurn(activeImportGuidanceTurn);
+                  return;
+                }
+                goNext(current);
+              }}
               onBack={goBack}
               basicsErrors={basicsErrorMap}
               title={title}
@@ -4388,10 +4839,11 @@ export default function PostJobPage() {
               legacyToolsNotCaptured={legacyToolsNotCaptured}
               legacyBudgetUnit={legacyBudgetUnit}
               reviewPreview={<RecruiterJobPreview {...previewProps} previewMode="full" />}
+              guidedMode={Boolean(importContext && importGuidanceEnabled)}
             />
           </div>
 
-          <div className="sticky top-6 hidden space-y-6 lg:block">
+          <div ref={desktopPreviewRef} className="sticky top-6 hidden space-y-6 lg:block">
             <RecruiterJobPreview {...previewProps} previewMode="rail" />
             <PostJobSafety />
             <RecommendedChecklistPopup

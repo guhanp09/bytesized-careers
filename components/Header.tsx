@@ -194,7 +194,7 @@ export default function Header() {
       <header className="fixed top-0 left-0 right-0 z-[60] bg-[var(--vt-canvas-translucent,rgba(11,11,15,0.92))] backdrop-blur">
         <div className="h-14 flex items-center">
           {/* Rail column: NO horizontal padding (so it aligns with sidebar icons) */}
-          <div className="w-20 flex items-center justify-center">
+          <div className="flex w-14 shrink-0 items-center justify-center sm:w-20">
             <button
               type="button"
               className="cursor-pointer p-1 rounded-md text-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
@@ -205,7 +205,7 @@ export default function Header() {
           </div>
 
           {/* Rest of header: padding applies ONLY here */}
-          <div className="flex-1 px-3 sm:px-4 flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:gap-3 sm:px-4">
             <Link
               href="/"
               aria-label="CreatorJobs"
@@ -216,7 +216,7 @@ export default function Header() {
               <span className="hidden sm:inline font-semibold tracking-tight leading-none text-[var(--vt-ink,#ffffff)]">CreatorJobs</span>
             </Link>
 
-            <div className="flex-1 flex items-center justify-center">
+            <div className="hidden min-w-0 flex-1 items-center justify-center sm:flex">
               <div className="w-full max-w-2xl flex items-center gap-2">
                 <form
                   className="flex-1 flex items-center bg-[var(--vt-card,rgba(255,255,255,0.06))] border border-[var(--vt-line,rgba(255,255,255,0.1))] rounded-full overflow-hidden shadow-[var(--vt-search-shadow,0_10px_30px_-25px_rgba(0,0,0,0.9))] transition-[border-color,box-shadow] focus-within:border-[var(--vt-search-focus,rgba(255,255,255,0.1))] focus-within:shadow-[var(--vt-search-shadow-focus,0_10px_30px_-25px_rgba(0,0,0,0.9))]"
@@ -279,7 +279,7 @@ export default function Header() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <DevDataSourceSwitch />
               <PostMenu />
 

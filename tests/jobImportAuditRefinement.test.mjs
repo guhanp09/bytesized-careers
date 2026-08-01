@@ -44,9 +44,10 @@ test("loading is calm, honest, cancellable, and accessible", () => {
   const loading = page.match(/function PreparingSurface[\s\S]*?\n}\n\nexport default/);
   assert.ok(loading);
   for (const stage of [
-    "Reading the job post",
-    "Understanding the role",
-    "Preparing your draft",
+    "Opening the public job post",
+    "Reading the supplied job information",
+    "Matching details to CreatorJobs",
+    "Preparing the private draft",
   ]) {
     assert.match(loading[0], new RegExp(stage));
   }
@@ -54,6 +55,8 @@ test("loading is calm, honest, cancellable, and accessible", () => {
   assert.match(page, /aria-live="polite"/);
   assert.match(loading[0], /data-testid="job-import-cancel"/);
   assert.match(loading[0], /motion-reduce:animate-none/);
+  assert.match(loading[0], /Candidate preview being prepared/);
+  assert.match(loading[0], /checking the information carefully instead of guessing/);
   assert.doesNotMatch(loading[0], /\d+%|evidence spans|normalization|schema mapping|model provider/i);
 });
 

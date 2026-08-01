@@ -499,14 +499,24 @@ export async function getJobImportContextForNativeJob(
   };
 }
 
+export type DevelopmentJobImportScenario =
+  | "strong-decisions"
+  | "thumbnail-designer"
+  | "clean-import"
+  | "processing-failure";
+
 export async function createDevelopmentJobImportFixture(
-  accessToken: string
+  accessToken: string,
+  scenario: DevelopmentJobImportScenario = "strong-decisions"
 ): Promise<{ draft: JobImportDraft; created: boolean }> {
-  const response = await requestJson<unknown>("/dev/job-import-review", {
-    method: "POST",
-    body: JSON.stringify({}),
-    accessToken,
-  });
+  const response = await requestJson<unknown>(
+    `/dev/job-import-review?scenario=${encodeURIComponent(scenario)}&fresh=true`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+      accessToken,
+    }
+  );
   const result = requireRecord(response, "development job-import fixture");
   if (typeof result.created !== "boolean") {
     throw new Error("Invalid development job-import fixture outcome.");

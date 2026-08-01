@@ -1945,6 +1945,7 @@ class JobImportService:
                 "awaiting_recruiter_review",
                 "partially_reviewed",
                 "ready_to_apply",
+                "applied_to_native_draft",
             },
         )
         if draft is None:

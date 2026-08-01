@@ -973,6 +973,7 @@ export default function PostJobForm({
   legacyToolsNotCaptured = false,
   legacyBudgetUnit,
   reviewPreview,
+  guidedMode = false,
 }: {
   step: Step;
   direction: "forward" | "back";
@@ -1106,6 +1107,7 @@ export default function PostJobForm({
   legacyToolsNotCaptured?: boolean;
   legacyBudgetUnit?: string | null;
   reviewPreview?: React.ReactNode;
+  guidedMode?: boolean;
 }) {
   const [savedSection, setSavedSection] = useState<null | "basics" | "content" | "tags" | "refs">(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -1248,7 +1250,7 @@ export default function PostJobForm({
       compensationUnit: budgetUnit,
       legacyApplicationRequirements: applicationRequirements,
       publicInstructionsLockedReason: applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
-        ? "Remove the preserved legacy prompt below before adding separate public instructions."
+        ? "Remove the previously saved prompt below before adding separate public instructions."
         : null,
     } as const;
 
@@ -1476,7 +1478,7 @@ export default function PostJobForm({
                   Creator role <span className="text-muted">*</span>
                 </LabelWithIcon>
               }
-              helper="Choose the closest creator-economy role. Legacy categories are kept only for compatibility."
+              helper="Choose the closest creator-economy role. Older category values remain preserved for compatibility."
               error={requiresRoleSpecialization ? undefined : roleError}
             >
               <select
@@ -1599,7 +1601,7 @@ export default function PostJobForm({
             >
               {legacyBudgetUnit ? (
                 <div className="mb-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2.5 text-xs leading-5 text-amber-100/82">
-                  Legacy compensation unit: <span className="font-semibold">{legacyBudgetUnit}</span>. It remains unchanged until you choose a supported unit below.
+                  Previously saved compensation unit: <span className="font-semibold">{legacyBudgetUnit}</span>. It remains unchanged until you choose a supported unit below.
                 </div>
               ) : null}
               <div className="mb-3 grid gap-3 sm:grid-cols-2">
@@ -1608,7 +1610,7 @@ export default function PostJobForm({
                   aria-label="Compensation mode"
                   aria-invalid={Boolean(budgetError)}
                   aria-describedby={budgetError ? "job-compensation-mode-error" : undefined}
-                  className={basicsSelectBase}
+                  className={[basicsSelectBase, "min-w-0 w-full"].join(" ")}
                   value={compensationMode}
                   onChange={(event) => onCompensationModeChange(event.target.value as CompensationMode | "")}
                 >
@@ -1619,7 +1621,7 @@ export default function PostJobForm({
                 </select>
                 <select
                   aria-label="Compensation currency"
-                  className={basicsSelectBase}
+                  className={[basicsSelectBase, "min-w-0 w-full"].join(" ")}
                   value={budgetCurrency}
                   onChange={(event) => onBudgetCurrencyChange(event.target.value)}
                 >
@@ -2059,7 +2061,7 @@ export default function PostJobForm({
             />
             {listingSchemaVersion != null && listingSchemaVersion < 3 && startWithin && !domain.startTiming ? (
               <div className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-xs leading-5 text-muted">
-                Legacy start window: <span className="font-semibold text-white/78">{startWithin}</span>. It is preserved until you choose the clearer start timing above.
+                Earlier start window: <span className="font-semibold text-white/78">{startWithin}</span>. It is preserved until you choose the clearer start timing above.
               </div>
             ) : null}
           </div>
@@ -2371,7 +2373,7 @@ export default function PostJobForm({
               {applicationRequirements.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY) ? (
                 <div className="rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] p-3.5">
                   <label htmlFor="legacy-job-screening-prompt" className="text-xs font-semibold text-amber-50/90">
-                    Legacy first-message prompt
+                    Previously saved first-message prompt
                   </label>
                   <p className="mt-1 text-[11px] leading-4 text-amber-100/65">
                     This older prompt is preserved separately. New screening questions are managed above.
@@ -2392,7 +2394,7 @@ export default function PostJobForm({
                       onHowToApplyChange("");
                     }}
                   >
-                    Remove legacy prompt
+                    Remove saved prompt
                   </button>
                 </div>
               ) : null}
@@ -2474,23 +2476,29 @@ export default function PostJobForm({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
-        <div
-          className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/10"
-          role="progressbar"
-          aria-label="Job posting progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progressPercent}
-          aria-valuetext={`${progressPercent}% complete`}
-        >
+      {!guidedMode ? (
+        <section className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
           <div
-            className="h-full rounded-full bg-white/45 transition-[width] duration-500 ease-out motion-reduce:transition-none"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-      </section>
+            className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/10"
+            role="progressbar"
+            aria-label="Job posting progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+            aria-valuetext={`${progressPercent}% complete`}
+          >
+            <div
+              className="h-full rounded-full bg-white/45 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </section>
+      ) : (
+        <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">
+          Your answer in Post Job
+        </p>
+      )}
 
       {submitError ? (
         <section role="alert" className="rounded-2xl border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-sm text-amber-50">

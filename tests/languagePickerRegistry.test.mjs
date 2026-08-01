@@ -105,7 +105,7 @@ test("recruiter V3 uses structured language requirements while preserving honest
   assert.match(fields, /purposes:\s*\[\]/);
   assert.match(fields, /JOB_LANGUAGE_PURPOSES\.map/);
   assert.match(fields, /Existing language tags:/);
-  assert.match(fields, /broad legacy search tags, not confirmed proficiency requirements/);
+  assert.match(fields, /broad search tags from an earlier format, not confirmed proficiency requirements/);
   assert.match(fields, /They stay unchanged/);
 
   assert.match(posting, /language_requirements:\s*languageRequirements/);

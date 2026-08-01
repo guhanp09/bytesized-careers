@@ -16,6 +16,7 @@ import {
   processJobImportDraft,
   type JobImportDraft,
   type JobImportSource,
+  type DevelopmentJobImportScenario,
 } from "../../lib/jobImportReadiness";
 import { normalizeImportText } from "../../lib/importJob/normalize";
 import { Icon } from "../Icons";
@@ -104,83 +105,109 @@ function PreparingSurface({
   phase,
   delayed,
   sourceType,
+  sourceLabel,
   onCancel,
 }: {
   phase: Exclude<Phase, "entry" | "failure">;
   delayed: boolean;
   sourceType: EntryMode;
+  sourceLabel: string;
   onCancel: () => void;
 }) {
   const activeIndex = phase === "creating" ? 0 : phase === "processing" ? 1 : 2;
-  const stages = ["Reading the job post", "Understanding the role", "Preparing your draft"];
+  const stages = [
+    sourceType === "url" ? "Opening the public job post" : "Reading the supplied job information",
+    "Matching details to CreatorJobs",
+    "Preparing the private draft",
+  ];
   return (
-    <section
-      className={`${importPanelClass} mx-auto max-w-3xl overflow-hidden`}
-      aria-labelledby="job-import-progress-title"
+    <div
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
       data-testid="job-import-preparing"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-            Creating your draft
-          </p>
-          <h2 id="job-import-progress-title" className="mt-2 text-xl font-semibold text-white">
-            {stages[activeIndex]}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-white/55">
-            {delayed
-              ? "This is taking a little longer than usual. Your source is safe, and you can keep waiting or cancel."
-              : sourceType === "url"
-                ? "We’re reading the public page and preparing the same Post Job form you already use."
-                : "We’re turning your notes into the same Post Job form you already use."}
-          </p>
-        </div>
-        {phase !== "applying" ? (
-          <button
-            type="button"
-            className={importGhostButton}
-            onClick={onCancel}
-            data-testid="job-import-cancel"
-          >
-            Cancel
-          </button>
-        ) : null}
-      </div>
-
-      <ol className="mt-6 grid gap-2 sm:grid-cols-3" aria-label="Draft preparation progress">
-        {stages.map((label, index) => {
-          const complete = index < activeIndex;
-          const active = index === activeIndex;
-          return (
-            <li
-              key={label}
-              aria-current={active ? "step" : undefined}
-              className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors motion-reduce:transition-none ${
-                active
-                  ? "border-white/20 bg-white/[0.08] text-white"
-                  : complete
-                    ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/75"
-                    : "border-white/[0.07] text-white/38"
-              }`}
+      <section
+        className={`${importPanelClass} min-h-[430px] overflow-hidden`}
+        aria-labelledby="job-import-progress-title"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              CreatorJobs Assistant
+            </p>
+            <p className="mt-2 truncate text-xs text-white/42">{sourceLabel}</p>
+            <h2 id="job-import-progress-title" className="mt-4 text-xl font-semibold text-white">
+              {stages[activeIndex]}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-white/55">
+              {delayed
+                ? "I’m still working through the details. Detailed job posts can take longer to structure, so I’m checking the information carefully instead of guessing."
+                : activeIndex === 0
+                  ? sourceType === "url"
+                    ? "I’m securely reading the public page before any job details are added to your draft."
+                    : "I’m reading the role, pay, tools and requirements you supplied."
+                  : activeIndex === 1
+                    ? "I’m matching supported details to the fields in your normal Post Job draft."
+                    : "The structured details are ready. I’m creating the private draft candidates cannot see yet."}
+            </p>
+          </div>
+          {phase !== "applying" ? (
+            <button
+              type="button"
+              className={importGhostButton}
+              onClick={onCancel}
+              data-testid="job-import-cancel"
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current/25">
-                {complete ? <Icon name="check" className="h-3 w-3" /> : index + 1}
-              </span>
-              {label}
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="mt-6 rounded-2xl border border-white/[0.07] bg-black/20 p-4" aria-hidden="true">
-        <div className="ui-skeleton h-3 w-28 rounded-full motion-reduce:animate-none" />
-        <div className="ui-skeleton mt-4 h-10 w-full rounded-xl motion-reduce:animate-none" />
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="ui-skeleton h-10 rounded-xl motion-reduce:animate-none" />
-          <div className="ui-skeleton h-10 rounded-xl motion-reduce:animate-none" />
+              Cancel
+            </button>
+          ) : null}
         </div>
-      </div>
-    </section>
+
+        <ol className="mt-7 space-y-2" aria-label="Draft preparation progress">
+          {stages.map((label, index) => {
+            const complete = index < activeIndex;
+            const active = index === activeIndex;
+            return (
+              <li
+                key={label}
+                aria-current={active ? "step" : undefined}
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors motion-reduce:transition-none ${
+                  active
+                    ? "bg-white/[0.07] font-semibold text-white"
+                    : complete
+                      ? "text-emerald-100/68"
+                      : "text-white/34"
+                }`}
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current/20 text-xs">
+                  {complete ? <Icon name="check" className="h-3 w-3" /> : index + 1}
+                </span>
+                {label}
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      <aside
+        className="hidden min-h-[430px] rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5 lg:block"
+        aria-label="Candidate preview being prepared"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
+          Candidate preview
+        </p>
+        <div className="mt-6 space-y-4" aria-hidden="true">
+          <div className="ui-skeleton h-4 w-2/3 rounded-full motion-reduce:animate-none" />
+          <div className="ui-skeleton h-8 w-full rounded-xl motion-reduce:animate-none" />
+          <div className="flex gap-2">
+            <div className="ui-skeleton h-7 w-24 rounded-full motion-reduce:animate-none" />
+            <div className="ui-skeleton h-7 w-20 rounded-full motion-reduce:animate-none" />
+          </div>
+          <div className="ui-skeleton mt-8 h-3 w-28 rounded-full motion-reduce:animate-none" />
+          <div className="ui-skeleton h-20 w-full rounded-2xl motion-reduce:animate-none" />
+          <div className="ui-skeleton h-20 w-full rounded-2xl motion-reduce:animate-none" />
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -197,6 +224,10 @@ export default function ImportJobPageClient() {
   const [error, setError] = React.useState("");
   const [delayed, setDelayed] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
+  const [developmentScenario, setDevelopmentScenario] =
+    React.useState<DevelopmentJobImportScenario>("strong-decisions");
+  const [lastDevelopmentScenario, setLastDevelopmentScenario] =
+    React.useState<DevelopmentJobImportScenario | null>(null);
   const accessToken = session?.backendAccessToken ?? "";
   const restoredRef = React.useRef(false);
   const processingRef = React.useRef(false);
@@ -225,11 +256,8 @@ export default function ImportJobPageClient() {
       }
       if (!readyDraft.can_apply_to_native_draft) {
         setDraft(readyDraft);
-        setPhase("failure");
-        setError(
-          "We prepared part of the draft, but a job title still needs your input. Continue in Post Job to finish it."
-        );
-        setAnnouncement("Part of the draft is ready. Continue manually to finish it.");
+        setAnnouncement("I prepared the details I could verify. The normal Post Job draft will ask for the remaining decision.");
+        router.replace(`/post-job?importDraftId=${encodeURIComponent(readyDraft.id)}`);
         return;
       }
       finishingRef.current = true;
@@ -267,7 +295,7 @@ export default function ImportJobPageClient() {
       setDraft(current);
       setPhase("processing");
       setError("");
-      setAnnouncement("Understanding the role.");
+      setAnnouncement("Matching job details to CreatorJobs.");
       try {
         const result = await processJobImportDraft(accessToken, current.id, signal);
         setDraft(result.draft);
@@ -352,7 +380,7 @@ export default function ImportJobPageClient() {
         if (terminalDraftStatuses.has(loaded.processing_status)) {
           await openCanonicalDraft(loaded);
         } else if (loaded.processing_status === "processing") {
-          setAnnouncement("Understanding the role.");
+          setAnnouncement("Matching job details to CreatorJobs.");
         } else if (loaded.processing_status === "processing_failed") {
           setPhase("failure");
           setError("We couldn’t finish this draft. Retry, or continue manually.");
@@ -408,6 +436,7 @@ export default function ImportJobPageClient() {
     const requestId = requestIdRef.current ?? crypto.randomUUID();
     requestIdRef.current = requestId;
     startedAtRef.current = Date.now();
+    setLastDevelopmentScenario(null);
     setPhase("creating");
     setError("");
     setAnnouncement("Reading the job post.");
@@ -460,13 +489,19 @@ export default function ImportJobPageClient() {
     }
   };
 
-  const openDevelopmentFixture = async () => {
+  const openDevelopmentFixture = async (
+    scenario: DevelopmentJobImportScenario = developmentScenario
+  ) => {
     if (!accessToken) return;
     startedAtRef.current = Date.now();
+    setLastDevelopmentScenario(scenario);
     setPhase("applying");
     setError("");
     try {
-      const result = await createDevelopmentJobImportFixture(accessToken);
+      const result = await createDevelopmentJobImportFixture(
+        accessToken,
+        scenario
+      );
       setDraftLocation(result.draft.id);
       await openCanonicalDraft(result.draft);
     } catch (caught) {
@@ -484,6 +519,10 @@ export default function ImportJobPageClient() {
   };
 
   const retry = () => {
+    if (lastDevelopmentScenario) {
+      void openDevelopmentFixture(lastDevelopmentScenario);
+      return;
+    }
     if (draft && ["awaiting_processing", "processing_failed"].includes(draft.processing_status)) {
       startedAtRef.current = Date.now();
       void processDraft(draft);
@@ -510,6 +549,7 @@ export default function ImportJobPageClient() {
     setError("");
     setPhase("entry");
     requestIdRef.current = null;
+    setLastDevelopmentScenario(null);
     setDraftLocation(null);
   };
 
@@ -569,7 +609,7 @@ export default function ImportJobPageClient() {
               <p className="font-semibold text-white/75">Private import</p>
               <p className="mt-1">
                 CreatorJobs uses the source only to prepare your private draft. Nothing is
-                published, and uncertain details stay flagged in Post Job.
+                published. When the source is unclear, CreatorJobs leaves the decision to you.
               </p>
             </section>
             <div
@@ -705,16 +745,45 @@ export default function ImportJobPageClient() {
               <section className="rounded-2xl border border-dashed border-white/15 p-4">
                 <p className="text-xs font-semibold text-white/70">Local development</p>
                 <p className="mt-1 text-xs text-white/45">
-                  Open a prepared private fixture without calling a provider.
+                  Inspect a private guided scenario without calling a provider.
                 </p>
-                <button
-                  type="button"
-                  className={`${importGhostButton} mt-3`}
-                  onClick={() => void openDevelopmentFixture()}
-                  data-testid="open-import-review-fixture"
-                >
-                  Open prepared example
-                </button>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <label className="sr-only" htmlFor="development-import-scenario">
+                    Guided import scenario
+                  </label>
+                  <select
+                    id="development-import-scenario"
+                    value={developmentScenario}
+                    onChange={(event) =>
+                      setDevelopmentScenario(
+                        event.target.value as DevelopmentJobImportScenario
+                      )
+                    }
+                    className={`${importInputBase} sm:max-w-xs`}
+                    data-testid="import-development-scenario"
+                  >
+                    <option value="strong-decisions" className="bg-[#0b0b0f]">
+                      Strong draft · a few decisions
+                    </option>
+                    <option value="thumbnail-designer" className="bg-[#0b0b0f]">
+                      Thumbnail designer · role-specific help
+                    </option>
+                    <option value="clean-import" className="bg-[#0b0b0f]">
+                      Clean import · ready to edit
+                    </option>
+                    <option value="processing-failure" className="bg-[#0b0b0f]">
+                      Processing failure · retry path
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    className={importGhostButton}
+                    onClick={() => void openDevelopmentFixture()}
+                    data-testid="open-import-review-fixture"
+                  >
+                    Open local scenario
+                  </button>
+                </div>
               </section>
             ) : null}
           </div>
@@ -725,6 +794,18 @@ export default function ImportJobPageClient() {
             phase={phase}
             delayed={delayed}
             sourceType={entryMode}
+            sourceLabel={
+              source?.source_title ||
+              (entryMode === "url"
+                ? (() => {
+                    try {
+                      return new URL(url).hostname;
+                    } catch {
+                      return "Public job post";
+                    }
+                  })()
+                : "Pasted job information")
+            }
             onCancel={cancel}
           />
         ) : null}
@@ -734,7 +815,7 @@ export default function ImportJobPageClient() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-200/10 text-amber-100/80">
               <Icon name="file" className="h-4 w-4" />
             </span>
-            <h2 className="mt-4 text-lg font-semibold">Your draft needs a little help</h2>
+            <h2 className="mt-4 text-lg font-semibold">We couldn’t prepare the draft</h2>
             <p role="alert" className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
               {error}
             </p>

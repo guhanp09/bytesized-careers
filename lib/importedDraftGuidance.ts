@@ -27,8 +27,18 @@ export function importFieldScreen(fieldPath: string): RecruiterJobScreen | null 
   return native ? screenForField(native) ?? null : null;
 }
 
-const importDraftValue = (draft: JobImportDraft, fieldPath: string): unknown =>
-  draft.fields.find((field) => field.field_path === fieldPath)?.effective_value;
+export type ImportCanonicalValues = Readonly<Record<string, unknown>>;
+
+const importDraftValue = (
+  draft: JobImportDraft,
+  fieldPath: string,
+  canonicalValues: ImportCanonicalValues = {}
+): unknown => {
+  if (Object.prototype.hasOwnProperty.call(canonicalValues, fieldPath)) {
+    return canonicalValues[fieldPath];
+  }
+  return draft.fields.find((field) => field.field_path === fieldPath)?.effective_value;
+};
 
 const jobImportValueIsEmpty = (value: unknown): boolean =>
   value === null ||
@@ -36,16 +46,20 @@ const jobImportValueIsEmpty = (value: unknown): boolean =>
   (typeof value === "string" && value.trim().length === 0) ||
   (Array.isArray(value) && value.length === 0);
 
-const hasCompleteTurnaround = (draft: JobImportDraft): boolean =>
+const hasCompleteTurnaround = (
+  draft: JobImportDraft,
+  canonicalValues: ImportCanonicalValues
+): boolean =>
   ["turnaround_value", "turnaround_unit", "turnaround_basis"].every((fieldPath) =>
-    !jobImportValueIsEmpty(importDraftValue(draft, fieldPath))
+    !jobImportValueIsEmpty(importDraftValue(draft, fieldPath, canonicalValues))
   );
 
-function conditionalMissingNeedsAttention(
+export function importConditionalFieldIsActive(
   fieldPath: string,
-  draft: JobImportDraft
+  draft: JobImportDraft,
+  canonicalValues: ImportCanonicalValues = {}
 ): boolean {
-  const value = (path: string) => importDraftValue(draft, path);
+  const value = (path: string) => importDraftValue(draft, path, canonicalValues);
   const engagement = value("engagement_type");
   const compensationMode = value("compensation_mode");
   const budgetUnit = value("budget_unit");
@@ -73,7 +87,7 @@ function conditionalMissingNeedsAttention(
       return (
         ["part_time", "full_time", "fixed_term", "internship"].includes(String(engagement)) ||
         (["ongoing_freelance", "retainer"].includes(String(engagement)) &&
-          !hasCompleteTurnaround(draft))
+          !hasCompleteTurnaround(draft, canonicalValues))
       );
     case "expected_weekly_hours_max":
       return false;
@@ -130,7 +144,8 @@ function conditionalMissingNeedsAttention(
 export function importFieldNeedsAttention(
   field: JobImportField,
   manuallyChanged: ReadonlySet<string> = new Set(),
-  draft?: JobImportDraft
+  draft?: JobImportDraft,
+  canonicalValues: ImportCanonicalValues = {}
 ): boolean {
   const native = nativeFieldForImport(field.field_path);
   if (manuallyChanged.has(field.field_path) || (native && manuallyChanged.has(native))) {
@@ -144,7 +159,9 @@ export function importFieldNeedsAttention(
   if (field.provenance_state === "missing") {
     if (field.missing_requirement === "publication_blocker") return true;
     if (field.missing_requirement === "conditionally_required") {
-      return draft ? conditionalMissingNeedsAttention(field.field_path, draft) : true;
+      return draft
+        ? importConditionalFieldIsActive(field.field_path, draft, canonicalValues)
+        : true;
     }
     return false;
   }

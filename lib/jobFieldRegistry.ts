@@ -457,21 +457,21 @@ export const JOB_FIELD_REGISTRY: Record<keyof BackendCreateJobPayload, JobFieldE
     note: "Shown and required only for an until-date duration.",
   },
   start_timeframe: {
-    label: "Start window (legacy)",
+    label: "Earlier start window",
     step: "details",
     representation: "legacy-preserved",
     requirement: "optional",
     note: "Legacy start window superseded by start_timing; surfaced read-only on old listings.",
   },
   weekly_hours: {
-    label: "Weekly hours (legacy)",
+    label: "Earlier weekly-hours note",
     step: "details",
     representation: "legacy-preserved",
     requirement: "system",
     note: "Legacy free-text weekly hours superseded by expected_weekly_hours_min/max.",
   },
   contract_type: {
-    label: "Contract type (legacy)",
+    label: "Earlier contract description",
     step: "details",
     representation: "legacy-preserved",
     requirement: "system",
@@ -632,7 +632,7 @@ export const JOB_FIELD_REGISTRY: Record<keyof BackendCreateJobPayload, JobFieldE
 
   // ── System-owned / derived from the verified hiring identity ──────────────
   category: {
-    label: "Legacy category",
+    label: "Previous category",
     representation: "legacy-preserved",
     requirement: "system",
     note: "Legacy taxonomy superseded by primary_role_id; preserved for old listings.",

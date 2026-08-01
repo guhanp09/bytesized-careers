@@ -38,7 +38,7 @@ No database migration was necessary. Existing import field JSON metadata stores 
 |---|---|---|---|
 | [LinkedIn AI-assisted job descriptions](https://www.linkedin.com/help/linkedin/answer/a1579608) place generated content in the normal editable job description | Avoid learning a separate editor | Adapt | Import opens the real Post Job form, not an import review product |
 | [LinkedIn can prefill from a saved or past job](https://www.linkedin.com/help/linkedin/answer/a415043) | Reduce repeated data entry | Adopt | Accepted import values are saved into a canonical private draft |
-| [LinkedIn source citations](https://www.linkedin.com/help/linkedin/answer/a7437598) expose support for high-confidence answers | Make provenance inspectable | Adapt | “Why was this filled?” shows a concise rationale and server-owned source evidence |
+| [LinkedIn source citations](https://www.linkedin.com/help/linkedin/answer/a7437598) expose support for high-confidence answers | Make provenance inspectable | Adapt | “What I found” shows concise server-owned source evidence when it helps a decision |
 | [Workable AI writing](https://help.workable.com/hc/en-us/articles/19771256915095-Best-Practices-Explore-Workable-s-AI-capabilities) keeps generated text editable | Preserve recruiter control | Adopt | A recruiter edit is immediately authoritative in normal form state |
 | [Greenhouse job-post suggestions](https://support.greenhouse.io/hc/en-us/articles/36960585376283-Job-post-description-suggestions) save into the ordinary editor | Keep one publication workflow | Adopt | Manual and imported jobs share payload construction and publication validation |
 | [Notion Autofill](https://www.notion.com/en-gb/help/autofill?nxtPslug=autofill) fills ordinary properties and can leave unsupported values blank | Prevent unsupported guesses | Adapt | Unknown and high-risk absent values stay blank; weak suggestions remain optional |
@@ -121,30 +121,32 @@ Browser locale, URL TLD, nationality, market-rate assumptions, and unrelated com
 
 Evidence is resolved on the server against retained source content. The client cannot author or repair evidence spans. Context added from structured public-page metadata is bounded and incorporated into the retained server source before evidence resolution.
 
-The UI exposes only short rationales and relevant quotations through “Why was this filled?”. It never exposes provider prompts, hidden reasoning, chain-of-thought, token data, or raw machine output.
+The UI exposes only contextual explanations and relevant quotations through “What I found”. It never exposes provider prompts, hidden reasoning, chain-of-thought, token data, or raw machine output.
 
 ## Loading and failure behavior
 
-The import route uses one calm surface with stages tied to actual client operations:
+The import route uses one stable two-column surface with stages tied to actual client operations:
 
-1. Reading the job post;
-2. Understanding the role;
-3. Preparing your draft.
+1. Opening the public post or reading supplied text;
+2. Matching supported details to CreatorJobs during the atomic processing request;
+3. Preparing the private canonical draft after processing returns.
 
-There are no fake percentages or internal pipeline terms. A restrained Post Job skeleton establishes continuity. After eight seconds, a delayed-state message explains that the source is safe. Progress is announced through one polite live region without repeated focus changes. Motion obeys reduced-motion preferences.
+There are no fake percentages, fake completed stages, or internal pipeline terms. A restrained candidate-preview skeleton establishes continuity. After eight seconds, a delayed-state message says only that detailed posts can take longer and that CreatorJobs is checking carefully instead of guessing. Progress is announced through one polite live region without repeated focus changes. Motion obeys reduced-motion preferences.
 
 Cancel aborts the safe client request and retains pasted text or URL. Retry reuses the retained source/draft where possible. Public-page failures offer paste-text fallback. Partial processing opens the normal form with every valid value retained.
 
-## Review inside Post Job
+## Guided conversation inside Post Job
 
-The compact summary reports filled, review, and optional-missing counts. It can jump to the next field needing attention, be dismissed, or open the original public source.
+The private imported draft opens in one assistant-led surface above the real Post Job control for the current decision. It starts with the useful work completed, then shows one decision at a time. It does not lead with warning counts or show all unknown fields together.
 
-- Valid explicit high-confidence values look like ordinary prefilled form values.
-- Contextual values receive a quiet, section-local explanation.
-- Suggestions, conflicts, invalid values, and missing blockers appear only in their owning section.
-- Conditionally required missing fields appear only after their controlling choice makes them relevant; final applicability remains owned by canonical Post Job validation.
-- An evidence-backed valid suggestion may be accepted with “Use suggestion”; otherwise the recruiter edits the normal control.
-- The most useful starting screen is the earliest section with attention. A complete high-confidence draft opens Review.
+- Consequential conflicts come first, followed by publication blockers, active conditional requirements, consequential confirmations, other ambiguities, and at most three role-relevant quality suggestions.
+- Closely related values such as compensation, weekly hours, turnaround, trial terms, and application routing are grouped into coherent turns.
+- Every turn explains what the source did or did not establish, why that matters for this job, and what the recruiter needs to decide.
+- Valid explicit high-confidence values remain ordinary prefilled form values and do not manufacture questions.
+- Conflict alternatives and safe suggestions use the existing private review mutations. Missing or free-form values use the native Post Job field directly below the message.
+- Conditionally required questions are recomputed from the current canonical controls; final validity remains owned by canonical Post Job validation.
+- Answers form a compact reconstructable history. Optional suggestions can be skipped individually or together, and the full editor remains one secondary action away.
+- Completion explicitly says the draft remains private and cannot publish outside normal Post Job review.
 
 Manual changes are authoritative. Partial hydration runs once. Existing native draft values are the editing source of truth; import context does not rehydrate over them. Reopening compares retained import values with the canonical job and suppresses stale import guidance for values the recruiter has changed or previously missing values they have supplied.
 

@@ -47,11 +47,17 @@ test("development fixture opens the canonical private Post Job draft with import
   await expect(page.getByTestId("import-textarea")).toBeVisible();
   await page.getByTestId("open-import-review-fixture").click();
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-  await expect(page.getByTestId("unified-import-guidance")).toBeVisible();
-  await expect(page.getByText("Draft created from your job post")).toBeVisible();
-  await expect(page.locator("#job-title")).toHaveValue(
-    "YouTube video editor for a finance creator"
-  );
+  await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
+  await expect(page.getByText(/I’ve built a strong first draft/i)).toBeVisible();
+  const activeQuestion = page.locator("#import-guidance-question");
+  await expect(activeQuestion).toBeVisible();
+  if (/make the pay unambiguous/i.test((await activeQuestion.textContent()) ?? "")) {
+    await page.getByRole("button", { name: "30000", exact: true }).click();
+    await expect(activeQuestion).not.toHaveText(/make the pay unambiguous/i);
+  }
+  await expect(
+    page.getByRole("heading", { name: /clarify where this role can be done/i })
+  ).toBeVisible();
   await expect(page.getByText(/OpenAI|GPT-|model selector/i)).toHaveCount(0);
   await expect(page.getByTestId("provider-import-review")).toHaveCount(0);
 
@@ -67,14 +73,17 @@ test("development fixture opens the canonical private Post Job draft with import
   };
   expect(context.draft.fields.some((field) => field.field_path === "title")).toBe(true);
 
-  const useSuggestion = page.getByRole("button", { name: "Use suggestion" }).first();
-  await expect(useSuggestion).toBeVisible();
-  await useSuggestion.click();
-  await expect(page.locator("#job-primary-role")).not.toHaveValue("");
+  const remoteChoice = page.getByRole("button", { name: "remote", exact: true });
+  await expect(remoteChoice).toBeVisible();
+  await remoteChoice.click();
+  const nextHeading = page.locator("#import-guidance-question");
+  await expect(nextHeading).toBeVisible();
+  await expect(nextHeading).not.toHaveText(/clarify where this role can be done/i);
+  const nextHeadingText = await nextHeading.textContent();
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("unified-import-guidance")).toBeVisible();
-  await expect(page.locator("#job-primary-role")).not.toHaveValue("");
+  await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
+  await expect(page.locator("#import-guidance-question")).toHaveText(nextHeadingText ?? "");
 
   const publicRead = await page.request.get(`${BACKEND_API}/jobs/${nativeDraftId}`);
   expect(publicRead.status()).toBe(404);
@@ -99,8 +108,61 @@ test("a private imported native draft is not readable after a same-tab persona s
 
   await switchPersona(page, "talent-complete", "Priya Nair");
   await page.goto(privateUrl, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("unified-import-guidance")).toHaveCount(0);
+  await expect(page.getByTestId("conversational-import-guidance")).toHaveCount(0);
   await expect(page.getByText(/job draft could not be found/i)).toBeVisible();
+});
+
+test("clean and role-specific fixtures produce only useful guided work", async ({ page }) => {
+  await loginController(page);
+  await switchPersona(page, "recruiter-active", "Finance Simplified");
+
+  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("import-development-scenario").selectOption("clean-import");
+  await page.getByTestId("open-import-review-fixture").click();
+  await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
+  await expect(
+    page.getByRole("heading", { name: "Your draft is ready to edit." })
+  ).toBeVisible();
+  await expect(
+    page.locator("h2:visible").filter({ hasText: "Content strategist for an education brand" }).first()
+  ).toBeVisible();
+  await expect(page.getByText(/essential decisions? left/i)).toHaveCount(0);
+
+  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("import-development-scenario").selectOption("thumbnail-designer");
+  await page.getByTestId("open-import-review-fixture").click();
+  await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
+  await expect(
+    page.getByRole("heading", { name: /confirm the closest creator role/i })
+  ).toBeVisible();
+  await page.getByText("What I found").click();
+  await expect(
+    page.getByTestId("import-guidance-evidence").getByText(/Create bold thumbnails/i)
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Use Thumbnail designer" }).click();
+  await expect(page.getByText(/optional improvement/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Not now" })).toBeVisible();
+  await page.getByRole("button", { name: "Not now" }).click();
+  const skipRemaining = page.getByRole("button", { name: "Skip remaining suggestions" });
+  if (await skipRemaining.count()) await skipRemaining.click();
+  await expect(
+    page.getByRole("heading", { name: "Your draft is ready to edit." })
+  ).toBeVisible();
+});
+
+test("development processing failure stays separate and retryable", async ({ page }) => {
+  await loginController(page);
+  await switchPersona(page, "both-sides", "Aditi Verma");
+  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("import-development-scenario").selectOption("processing-failure");
+  await page.getByTestId("open-import-review-fixture").click();
+  await expect(page.getByTestId("job-import-failure")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "We couldn’t prepare the draft" })
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByTestId("job-import-failure")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue manually" })).toBeVisible();
 });
 
 test("public URL entry rejects a local destination with a paste-text fallback", async ({
@@ -137,8 +199,7 @@ test.describe("mobile canonical import", () => {
     await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
     await page.getByTestId("open-import-review-fixture").click();
     await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-    await expect(page.getByTestId("unified-import-guidance")).toBeVisible();
-    await expect(page.locator("#job-title")).toBeVisible();
+    await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
     for (const viewport of [
       { width: 390, height: 844 },
       { width: 320, height: 720 },
@@ -146,15 +207,32 @@ test.describe("mobile canonical import", () => {
       { width: 720, height: 450 },
     ]) {
       await page.setViewportSize(viewport);
-      const reviewButton = page.getByRole("button", { name: "Review field" }).first();
-      if (await reviewButton.count()) {
-        const box = await reviewButton.boundingBox();
+      const decisionButton = page.getByRole("button", { name: "remote", exact: true });
+      if (await decisionButton.count()) {
+        const box = await decisionButton.boundingBox();
         expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
       }
-      const noHorizontalScroll = await page.evaluate(
-        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
-      );
-      expect(noHorizontalScroll, `${viewport.width}px viewport overflows`).toBe(true);
+      const overflow = await page.evaluate(() => {
+        const overflowing =
+          document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
+        const elements = overflowing
+          ? Array.from(document.querySelectorAll<HTMLElement>("body *"))
+              .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                return rect.right > document.documentElement.clientWidth + 1 || rect.left < -1;
+              })
+              .slice(0, 8)
+              .map((element) => ({
+                tag: element.tagName,
+                id: element.id,
+                className: String(element.className),
+                text: element.innerText?.slice(0, 80),
+                right: element.getBoundingClientRect().right,
+              }))
+          : [];
+        return { overflowing, elements };
+      });
+      expect(overflow.overflowing, `${viewport.width}px overflow: ${JSON.stringify(overflow.elements)}`).toBe(false);
     }
   });
 });

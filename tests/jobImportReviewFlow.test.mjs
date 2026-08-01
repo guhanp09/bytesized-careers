@@ -20,31 +20,29 @@ test("text import processes and applies a private draft into the normal Post Job
   assert.match(importPage, /source_type: "pasted_text"/);
   assert.match(importPage, /\/post-job\?draftId=/);
   assert.match(postJob, /<PostJobForm/);
-  assert.match(postJob, /<ImportedDraftNotice/);
+  assert.match(postJob, /<ImportedDraftConversation/);
   assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
+  assert.equal(exists("components/import-job/ImportedDraftNotice.tsx"), false);
   assert.doesNotMatch(importPage, /status:\s*"published"/);
   assert.doesNotMatch(importPage, /OpenAI|GPT-|model selector/i);
 });
 
-test("uncertainty and provenance stay compact inside the canonical form", () => {
-  const notice = read("components/import-job/ImportedDraftNotice.tsx");
+test("uncertainty becomes one contextual conversation turn above the canonical form", () => {
+  const notice = read("components/import-job/ImportedDraftConversation.tsx");
   const guidance = read("lib/importedDraftGuidance.ts");
+  const conversation = read("lib/jobImportConversation.ts");
 
-  for (const state of [
-    "Conflicting details",
-    "Needs your input",
-    "Suggestion",
-    "Inferred",
-  ]) {
-    assert.match(notice, new RegExp(state));
-  }
-  assert.match(notice, /Why was this filled\?/);
-  assert.match(notice, /field\.evidence\[0\]\?\.snippet/);
-  assert.match(notice, /Review flagged fields/);
-  assert.match(notice, /Use suggestion/);
-  assert.match(notice, /Only inferred, missing, or ambiguous details appear here/);
+  assert.match(notice, /CreatorJobs Assistant/);
+  assert.match(notice, /What I found/);
+  assert.match(notice, /one decision still needs your expertise/i);
+  assert.match(notice, /Use the normal Post Job field directly below/);
+  assert.match(notice, /Use the full editor/);
+  assert.match(notice, /Not now/);
+  assert.doesNotMatch(notice, /Review flagged fields|Optional details not found|Review field|Why was this filled\?|legacy/i);
   assert.match(guidance, /firstImportAttentionScreen/);
   assert.match(guidance, /manuallyChanged/);
+  assert.match(conversation, /buildJobImportGuidanceTurns/);
+  assert.match(conversation, /JOB_FIELD_REGISTRY/);
   assert.doesNotMatch(notice, /JSON\.stringify|chain.of.thought/i);
 });
 
@@ -74,10 +72,13 @@ test("development example is explicit and cannot be mistaken for a live provider
   const page = read("components/import-job/ImportJobPageClient.tsx");
   const fixture = read("backend/app/db/seed_data_job_import.py");
   const devRouter = read("backend/app/api/v1/routers/dev_personas.py");
-  assert.match(page, /Open prepared example/);
+  assert.match(page, /Open local scenario/);
   assert.match(page, /without calling a provider/);
   assert.match(devRouter, /_ensure_dev_only\(\)/);
-  assert.match(devRouter, /processed_review_fixture/);
+  assert.match(devRouter, /processed_review_fixture\(scenario\)/);
+  assert.match(devRouter, /processing-failure/);
   assert.match(fixture, /Development-only processed job-import fixture/);
+  assert.match(fixture, /thumbnail-designer/);
+  assert.match(fixture, /clean-import/);
   assert.doesNotMatch(fixture, /api_key|OpenAIJobImportAdapter/);
 });
