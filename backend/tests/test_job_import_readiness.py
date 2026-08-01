@@ -267,15 +267,14 @@ def test_source_and_provider_schemas_reject_unsafe_or_oversized_input() -> None:
         )
 
 
-def test_provider_contract_sanitizes_evidence_and_rejects_invalid_nested_json() -> None:
+def test_provider_contract_preserves_verbatim_evidence_and_rejects_invalid_nested_json() -> None:
     payload = scenario("screenshot_derived")
     payload["fields"][0]["evidence"][0]["snippet"] = (
         "<script>alert('private')</script> Video editor"
     )
     parsed = JobImportExtractionResponse.model_validate(payload)
     snippet = parsed.fields[0].evidence[0].snippet
-    assert "<script>" not in snippet
-    assert "&lt;script&gt;" in snippet
+    assert "<script>" in snippet
     assert parsed.fields[0].evidence[0].location.screenshot_index == 0
 
     invalid = scenario("complete_creator_job")
@@ -1062,6 +1061,23 @@ async def test_evidence_must_reference_the_owned_source(
         await _record(draft["id"], owner_id, invalid_reference)
     assert evidence_error.value.code == "JOB_IMPORT_EVIDENCE_REFERENCE_INVALID"
     assert "Short source." not in str(evidence_error.value.details)
+
+    mismatched_reference = invalid_reference.copy()
+    mismatched_reference["fields"] = [
+        {
+            **invalid_reference["fields"][0],
+            "evidence": [
+                {
+                    "snippet": "Wrong",
+                    "location": {"char_start": 0, "char_end": 5},
+                }
+            ],
+        }
+    ]
+    with pytest.raises(JobImportError) as mismatch_error:
+        await _record(draft["id"], owner_id, mismatched_reference)
+    assert mismatch_error.value.code == "JOB_IMPORT_EVIDENCE_REFERENCE_INVALID"
+    assert "Short source." not in str(mismatch_error.value.details)
 
 
 async def test_concurrent_apply_and_discard_have_one_transactional_winner(

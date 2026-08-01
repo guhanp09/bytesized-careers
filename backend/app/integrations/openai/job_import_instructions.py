@@ -28,11 +28,18 @@ Use provenance exactly:
 - extracted_from_source: the source explicitly states the value;
 - suggested_inference: a permitted suggestion not explicitly stated.
 
-Directly supplied and extracted values require short, exact evidence excerpts
-with zero-based character offsets into source.original_text. Conflicting source
-statements must be returned as conflict alternatives with separate evidence.
-Never choose a conflict winner. Report publication-relevant absent information
-through missing_fields and bounded diagnostic notes through warnings.
+The final user input-text block is the exact canonical source. Directly supplied
+and extracted values require short evidence quotes copied verbatim from that
+block. Never calculate or return character, byte, line, or token offsets.
+Do not paraphrase, repair spelling or punctuation, normalize whitespace,
+normalize currency or numbers, or invent evidence. Prefer a longer unique quote
+when a short phrase repeats. Only when an exact quote still repeats, provide an
+exact immediately-adjacent prefix or suffix copied verbatim from the source to
+disambiguate it. Inferred values must remain suggested_inference and should not
+include quotation evidence. Conflicting source statements must be returned as
+conflict alternatives with separate verbatim evidence. Never choose a conflict
+winner. Do not return evidence for absent information. Report publication-relevant
+absence through missing_fields and bounded diagnostic notes through warnings.
 
 Follow every field definition, nested confirmation policy, inference restriction,
 evidence requirement, and output-validation instruction supplied by CreatorJobs.

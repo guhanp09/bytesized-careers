@@ -60,6 +60,10 @@ def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
     with pytest.raises(ValueError):
         config.Settings(OPENAI_REQUEST_TIMEOUT_SECONDS=121)
 
+    assert config.Settings.model_fields["job_import_prompt_version"].default == (
+        "job-import-text-v2"
+    )
+
 
 def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     production_settings = config.Settings(

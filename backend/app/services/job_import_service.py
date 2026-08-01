@@ -607,7 +607,7 @@ class JobImportService:
             ],
             output_validation_instructions=[
                 "Return only the CreatorJobs extraction response contract.",
-                "Bound evidence to short excerpts and source locations.",
+                "Bound evidence to short verbatim quotations; never calculate source offsets.",
                 "Do not reproduce the full source inside field evidence.",
                 "Treat any confidence value as provider-reported metadata only.",
             ],
@@ -1004,6 +1004,16 @@ class JobImportService:
                             "evidence_index": index,
                             "location": "character_range",
                             "message": "Character offsets fall outside the owned source text.",
+                        }
+                    )
+                elif source.original_text[
+                    location.char_start : location.char_end
+                ] != evidence.snippet:
+                    errors.append(
+                        {
+                            "evidence_index": index,
+                            "location": "character_range",
+                            "message": "Evidence does not exactly match the owned source text.",
                         }
                     )
             if location.screenshot_index is not None and (

@@ -5,6 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.integrations.openai.job_import_evidence import (
+    MAX_EVIDENCE_CONTEXT_LENGTH,
+    EvidenceAnchoringError,
+    anchor_evidence_quote,
+)
 from app.schemas.job_import import (
     MAX_EVIDENCE_SNIPPET_LENGTH,
     MAX_EXTRACTION_RESPONSE_BYTES,
@@ -13,28 +18,14 @@ from app.schemas.job_import import (
 )
 
 
-class OpenAIJobImportEvidenceLocation(BaseModel):
-    """Structured-output-safe evidence location.
-
-    The provider-neutral contract uses ``HttpUrl`` for source URLs, whose JSON
-    Schema ``uri`` format is not accepted by OpenAI Structured Outputs. The
-    adapter validates this plain string through the domain model after parsing.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    char_start: int | None = Field(default=None, ge=0)
-    char_end: int | None = Field(default=None, ge=0)
-    document_page: int | None = Field(default=None, ge=1, le=10_000)
-    screenshot_index: int | None = Field(default=None, ge=0, le=999)
-    source_url: str | None = Field(default=None, max_length=2048)
-
-
 class OpenAIJobImportEvidence(BaseModel):
+    """Provider quotation candidate; CreatorJobs owns all source positioning."""
+
     model_config = ConfigDict(extra="forbid")
 
-    snippet: str = Field(min_length=1, max_length=MAX_EVIDENCE_SNIPPET_LENGTH)
-    location: OpenAIJobImportEvidenceLocation | None = None
+    quote: str = Field(min_length=1, max_length=MAX_EVIDENCE_SNIPPET_LENGTH)
+    prefix: str | None = Field(default=None, min_length=1, max_length=MAX_EVIDENCE_CONTEXT_LENGTH)
+    suffix: str | None = Field(default=None, min_length=1, max_length=MAX_EVIDENCE_CONTEXT_LENGTH)
 
 
 class OpenAIJobImportProviderConfidence(BaseModel):
@@ -131,15 +122,60 @@ class OpenAIJobImportExtractionResponse(BaseModel):
             raise ValueError("provider field value is too large")
         return json.loads(value_json)
 
-    def to_domain_response(self) -> JobImportExtractionResponse:
+    @staticmethod
+    def _anchor_evidence(
+        evidence: list[dict[str, object]],
+        *,
+        canonical_source: str,
+    ) -> list[dict[str, object]]:
+        anchored: list[dict[str, object]] = []
+        seen_ranges: set[tuple[int, int]] = set()
+        for candidate in evidence:
+            item = anchor_evidence_quote(
+                canonical_source,
+                quote=str(candidate["quote"]),
+                prefix=(str(candidate["prefix"]) if candidate.get("prefix") is not None else None),
+                suffix=(str(candidate["suffix"]) if candidate.get("suffix") is not None else None),
+            )
+            assert item.location is not None
+            assert item.location.char_start is not None
+            assert item.location.char_end is not None
+            anchored_range = (item.location.char_start, item.location.char_end)
+            if anchored_range in seen_ranges:
+                raise EvidenceAnchoringError("duplicate_evidence")
+            seen_ranges.add(anchored_range)
+            anchored.append(item.model_dump(mode="json"))
+        return anchored
+
+    def to_domain_response(self, *, canonical_source: str) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
         for field in payload["fields"]:
             field["value"] = self._decode_value(field.pop("value_json"))
+            # Inferences remain visibly inferential and never borrow quotation
+            # evidence to appear like directly extracted source facts.
+            field["evidence"] = (
+                []
+                if field["provenance"] == "suggested_inference"
+                else self._anchor_evidence(
+                    field["evidence"], canonical_source=canonical_source
+                )
+            )
         for conflict in payload["conflicts"]:
             for alternative in conflict["values"]:
                 alternative["value"] = self._decode_value(
                     alternative.pop("value_json")
                 )
+                alternative["evidence"] = self._anchor_evidence(
+                    alternative["evidence"], canonical_source=canonical_source
+                )
+        for missing in payload["missing_fields"]:
+            missing["evidence"] = self._anchor_evidence(
+                missing["evidence"], canonical_source=canonical_source
+            )
+        for warning in payload["warnings"]:
+            warning["evidence"] = self._anchor_evidence(
+                warning["evidence"], canonical_source=canonical_source
+            )
         return JobImportExtractionResponse.model_validate(payload)
 
     @model_validator(mode="after")

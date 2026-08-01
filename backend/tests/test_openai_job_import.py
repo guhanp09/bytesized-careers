@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -228,7 +227,9 @@ def _wire_extraction(
     evidence_groups.extend(item["evidence"] for item in payload["warnings"])
     for evidence_group in evidence_groups:
         for evidence in evidence_group:
-            evidence["snippet"] = html.unescape(str(evidence["snippet"]))
+            quote = str(evidence.pop("snippet"))
+            evidence.clear()
+            evidence.update({"quote": quote, "prefix": None, "suffix": None})
     return OpenAIJobImportExtractionResponse.model_validate(payload)
 
 
@@ -335,22 +336,26 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert result.metadata.model_name == "gpt-5.6-luna"
     assert result.metadata.model_version == "gpt-5.6-luna-2026-07-01"
     assert result.metadata.instruction_version == "job-import-text-v1"
-    assert result.metadata.metadata == {
-        "request_id": "req_openai_test",
-        "usage": {
-            "input_tokens": 101,
-            "output_tokens": 21,
-            "total_tokens": 122,
-        },
-        "retry_count": 0,
-        "response_status": "completed",
+    assert result.metadata.metadata["request_id"] == "req_openai_test"
+    assert result.metadata.metadata["usage"] == {
+        "input_tokens": 101,
+        "output_tokens": 21,
+        "total_tokens": 122,
     }
+    assert result.metadata.metadata["retry_count"] == 0
+    assert result.metadata.metadata["attempt_number"] == 1
+    assert result.metadata.metadata["elapsed_ms"] >= 0
+    assert result.metadata.metadata["response_status"] == "completed"
     call = adapter._client.responses.calls[0]
     assert call["model"] == "gpt-5.6-luna"
     assert call["text_format"] is OpenAIJobImportExtractionResponse
     assert call["max_output_tokens"] == OPENAI_MAX_OUTPUT_TOKENS
     assert call["store"] is False
-    assert SOURCE_TEXT in str(call["input"])
+    provider_input = call["input"]
+    assert isinstance(provider_input, list)
+    content = provider_input[0]["content"]
+    assert content[-1] == {"type": "input_text", "text": SOURCE_TEXT}
+    assert SOURCE_TEXT not in content[0]["text"]
     assert SOURCE_TEXT not in str(call["instructions"])
     assert "screening_questions" in str(call["instructions"])
     assert "language_requirements" in str(call["instructions"])
@@ -613,18 +618,86 @@ async def test_openai_adapter_reports_exhausted_transient_failures(
 
 @pytest.mark.asyncio
 async def test_openai_adapter_rejects_evidence_outside_normalized_text() -> None:
-    invalid = _extraction().model_copy(deep=True)
-    invalid.fields[0].evidence[0].location.char_start = 0
-    invalid.fields[0].evidence[0].location.char_end = 4
+    invalid = _wire_extraction()
+    invalid.fields[0].evidence[0].quote = "not in the canonical source"
 
     with pytest.raises(JobImportProviderError) as caught:
-        await _adapter([_openai_response(parsed=_wire_extraction(invalid))]).extract(_request())
+        await _adapter([_openai_response(parsed=invalid)]).extract(_request())
 
     assert caught.value.code == "OPENAI_EVIDENCE_INVALID"
+    assert caught.value.metadata is not None
+    assert caught.value.metadata.metadata["request_id"] == "req_openai_test"
+    assert caught.value.metadata.metadata["usage"]["total_tokens"] == 122
+    assert caught.value.metadata.metadata["failure_code"] == "OPENAI_EVIDENCE_INVALID"
+    assert (
+        caught.value.metadata.metadata["evidence_failure_reason"]
+        == "quote_not_found"
+    )
 
 
 @pytest.mark.asyncio
-async def test_openai_adapter_treats_html_source_as_data_and_escapes_evidence() -> None:
+async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
+    client: AsyncClient,
+    provider_override,
+) -> None:
+    owner_headers, owner_id = await _auth(client, "openai-evidence-audit-owner")
+    other_headers, _other_id = await _auth(client, "openai-evidence-audit-other")
+    _source, draft = await _source_and_draft(
+        client,
+        owner_headers,
+        "evidence-audit",
+    )
+    invalid = _wire_extraction()
+    invalid.fields[0].evidence[0].quote = "quote absent from canonical source"
+    provider_override(
+        _adapter([_openai_response(parsed=invalid)], max_retries=0)
+    )
+    path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
+
+    failed = await client.post(path, headers=owner_headers, json={})
+
+    assert failed.status_code == 502
+    assert failed.json()["error"]["code"] == "OPENAI_EVIDENCE_INVALID"
+    current = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=owner_headers,
+    )
+    assert current.status_code == 200
+    body = current.json()
+    assert body["processing_status"] == "processing_failed"
+    assert body["model_name"] == "gpt-5.6-luna"
+    assert body["model_version"] == "gpt-5.6-luna-2026-07-01"
+    assert body["provider_metadata"]["request_id"] == "req_openai_test"
+    assert body["provider_metadata"]["usage"] == {
+        "input_tokens": 101,
+        "output_tokens": 21,
+        "total_tokens": 122,
+    }
+    assert body["provider_metadata"]["elapsed_ms"] >= 0
+    assert body["provider_metadata"]["attempt_number"] == 1
+    assert body["provider_metadata"]["retry_count"] == 0
+    assert (
+        body["provider_metadata"]["failure_code"]
+        == "OPENAI_EVIDENCE_INVALID"
+    )
+    assert body["provider_metadata"]["evidence_failure_reason"] == "quote_not_found"
+    serialized_metadata = json.dumps(body["provider_metadata"])
+    assert SOURCE_TEXT not in serialized_metadata
+    assert "test-placeholder-not-a-real-key" not in serialized_metadata
+    assert "output_parsed" not in serialized_metadata
+    async with TestSessionLocal() as session:
+        stored = await session.get(JobImportDraft, UUID(str(draft["id"])))
+        assert stored is not None and stored.owner_user_id == owner_id
+        assert stored.machine_output is None
+    cross_account = await client.get(
+        f"/api/v1/job-imports/drafts/{draft['id']}",
+        headers=other_headers,
+    )
+    assert cross_account.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_treats_html_source_as_data_and_keeps_exact_evidence() -> None:
     source_text = "Need <script>alert('x')</script> editing."
     snippet = "<script>alert('x')</script>"
     extraction = _extraction(
@@ -638,7 +711,10 @@ async def test_openai_adapter_treats_html_source_as_data_and_escapes_evidence() 
     ).extract(_request(source_text))
 
     assert result.extraction.fields[0].value == snippet
-    assert result.extraction.fields[0].evidence[0].snippet.startswith("&lt;script&gt;")
+    evidence = result.extraction.fields[0].evidence[0]
+    assert evidence.snippet == snippet
+    assert evidence.location is not None
+    assert source_text[evidence.location.char_start : evidence.location.char_end] == snippet
 
 
 @pytest.mark.asyncio

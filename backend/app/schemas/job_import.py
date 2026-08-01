@@ -290,11 +290,14 @@ class JobImportEvidence(BaseModel):
 
     @field_validator("snippet")
     @classmethod
-    def sanitize_snippet(cls, value: str) -> str:
-        sanitized = _safe_provider_text(value)
-        if sanitized is None:
+    def validate_verbatim_snippet(cls, value: str) -> str:
+        if not value.strip():
             raise ValueError("evidence snippet cannot be empty")
-        return sanitized
+        if any(ord(character) < 32 and character not in "\n\r\t" for character in value):
+            raise ValueError("evidence snippet contains unsupported control characters")
+        # React renders this value as text, and JSON serialization escapes it. Keep
+        # the exact source quote so stored offsets retain a byte-for-byte invariant.
+        return value
 
 
 class JobImportProviderConfidence(BaseModel):

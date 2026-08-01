@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import html
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +10,7 @@ import openai
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
+from app.integrations.openai.job_import_evidence import EvidenceAnchoringError
 from app.integrations.openai.job_import_instructions import (
     build_job_import_instructions,
 )
@@ -17,9 +18,7 @@ from app.integrations.openai.job_import_output import (
     OpenAIJobImportExtractionResponse,
 )
 from app.schemas.job_import import (
-    JobImportEvidence,
     JobImportExtractionRequest,
-    JobImportExtractionResponse,
     JobImportProviderMetadata,
 )
 from app.services.job_import_provider import (
@@ -89,6 +88,8 @@ class OpenAIJobImportAdapter:
         client = self._client_or_error()
         response: Any | None = None
         retries_used = 0
+        request_started = time.perf_counter()
+        provider_input = self._provider_input(request, source_text=source_text)
         for attempt in range(self.config.max_retries + 1):
             try:
                 response = await client.responses.parse(
@@ -96,7 +97,7 @@ class OpenAIJobImportAdapter:
                     instructions=build_job_import_instructions(
                         version=self.config.instruction_version
                     ),
-                    input=request.model_dump_json(),
+                    input=provider_input,
                     text_format=OpenAIJobImportExtractionResponse,
                     max_output_tokens=OPENAI_MAX_OUTPUT_TOKENS,
                     store=False,
@@ -117,12 +118,18 @@ class OpenAIJobImportAdapter:
                 status_code=502,
                 retry_count=retries_used,
             )
+        response_metadata = self._response_metadata(
+            response,
+            retries_used=retries_used,
+            elapsed_seconds=time.perf_counter() - request_started,
+        )
         if getattr(response, "status", None) != "completed":
             raise self._provider_error(
                 "OPENAI_INCOMPLETE_RESPONSE",
                 "OpenAI did not complete the extraction response.",
                 status_code=502,
                 retry_count=retries_used,
+                metadata=response_metadata,
             )
         if self._contains_refusal(response):
             raise self._provider_error(
@@ -130,6 +137,7 @@ class OpenAIJobImportAdapter:
                 "OpenAI declined to process this source.",
                 status_code=422,
                 retry_count=retries_used,
+                metadata=response_metadata,
             )
 
         parsed = getattr(response, "output_parsed", None)
@@ -139,6 +147,7 @@ class OpenAIJobImportAdapter:
                 "OpenAI returned an unreadable extraction response.",
                 status_code=502,
                 retry_count=retries_used,
+                metadata=response_metadata,
             )
         try:
             wire_response = (
@@ -146,17 +155,73 @@ class OpenAIJobImportAdapter:
                 if isinstance(parsed, OpenAIJobImportExtractionResponse)
                 else OpenAIJobImportExtractionResponse.model_validate(parsed)
             )
-            extraction = wire_response.to_domain_response()
+            extraction = wire_response.to_domain_response(
+                canonical_source=source_text,
+            )
+        except EvidenceAnchoringError as exc:
+            evidence_metadata = response_metadata.model_copy(
+                update={
+                    "metadata": {
+                        **response_metadata.metadata,
+                        "evidence_failure_reason": exc.reason,
+                    }
+                }
+            )
+            raise self._provider_error(
+                "OPENAI_EVIDENCE_INVALID",
+                "OpenAI returned evidence that could not be anchored to the normalized text source.",
+                status_code=502,
+                retry_count=retries_used,
+                metadata=evidence_metadata,
+            ) from exc
         except (ValidationError, ValueError) as exc:
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
                 "OpenAI returned an extraction response that failed CreatorJobs validation.",
                 status_code=502,
                 retry_count=retries_used,
+                metadata=response_metadata,
             ) from exc
 
-        self._validate_text_evidence(extraction, source_text)
-        metadata = JobImportProviderMetadata(
+        return JobImportProviderResult(
+            extraction=extraction,
+            metadata=response_metadata,
+        )
+
+    @staticmethod
+    def _provider_input(
+        request: JobImportExtractionRequest,
+        *,
+        source_text: str,
+    ) -> list[dict[str, object]]:
+        policy_request = request.model_copy(deep=True)
+        policy_request.source.original_text = None
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "CreatorJobs extraction policy JSON. The canonical source "
+                            "is the next input-text block.\n"
+                            f"{policy_request.model_dump_json()}"
+                        ),
+                    },
+                    {"type": "input_text", "text": source_text},
+                ],
+            }
+        ]
+
+    def _response_metadata(
+        self,
+        response: object,
+        *,
+        retries_used: int,
+        elapsed_seconds: float,
+    ) -> JobImportProviderMetadata:
+        response_status = self._bounded_text(getattr(response, "status", None), 40)
+        return JobImportProviderMetadata(
             provider_name="openai",
             model_name=self.config.model,
             model_version=self._bounded_text(getattr(response, "model", None), 80),
@@ -168,10 +233,11 @@ class OpenAIJobImportAdapter:
                 ),
                 "usage": self._usage_metadata(getattr(response, "usage", None)),
                 "retry_count": retries_used,
-                "response_status": "completed",
+                "attempt_number": retries_used + 1,
+                "elapsed_ms": max(0, round(elapsed_seconds * 1000)),
+                "response_status": response_status or "unknown",
             },
         )
-        return JobImportProviderResult(extraction=extraction, metadata=metadata)
 
     @staticmethod
     def _contains_refusal(response: Any) -> bool:
@@ -207,60 +273,6 @@ class OpenAIJobImportAdapter:
         return allowed or None
 
     @staticmethod
-    def _evidence_items(
-        response: JobImportExtractionResponse,
-    ) -> list[JobImportEvidence]:
-        return [
-            *(evidence for field in response.fields for evidence in field.evidence),
-            *(
-                evidence
-                for conflict in response.conflicts
-                for alternative in conflict.values
-                for evidence in alternative.evidence
-            ),
-            *(
-                evidence
-                for missing in response.missing_fields
-                for evidence in missing.evidence
-            ),
-            *(
-                evidence
-                for warning in response.warnings
-                for evidence in warning.evidence
-            ),
-        ]
-
-    def _validate_text_evidence(
-        self,
-        response: JobImportExtractionResponse,
-        source_text: str,
-    ) -> None:
-        for evidence in self._evidence_items(response):
-            location = evidence.location
-            if (
-                location is None
-                or location.char_start is None
-                or location.char_end is None
-                or location.char_start >= len(source_text)
-                or location.char_end > len(source_text)
-                or location.document_page is not None
-                or location.screenshot_index is not None
-                or location.source_url is not None
-            ):
-                raise self._provider_error(
-                    "OPENAI_EVIDENCE_INVALID",
-                    "OpenAI returned evidence that does not reference the normalized text source.",
-                    status_code=502,
-                )
-            excerpt = source_text[location.char_start : location.char_end]
-            if html.unescape(evidence.snippet) != excerpt:
-                raise self._provider_error(
-                    "OPENAI_EVIDENCE_INVALID",
-                    "OpenAI returned evidence that does not match the normalized text source.",
-                    status_code=502,
-                )
-
-    @staticmethod
     def _retry_delay(exc: Exception, attempt: int) -> float:
         response = getattr(exc, "response", None)
         headers = getattr(response, "headers", None)
@@ -282,7 +294,9 @@ class OpenAIJobImportAdapter:
         status_code: int,
         retryable: bool = False,
         retry_count: int = 0,
+        metadata: JobImportProviderMetadata | None = None,
     ) -> JobImportProviderError:
+        retained = metadata.metadata if metadata is not None else {}
         return JobImportProviderError(
             code,
             message,
@@ -292,10 +306,13 @@ class OpenAIJobImportAdapter:
             metadata=JobImportProviderMetadata(
                 provider_name="openai",
                 model_name=self.config.model,
+                model_version=(metadata.model_version if metadata else None),
                 instruction_version=self.config.instruction_version,
                 metadata={
+                    **retained,
                     "retry_count": retry_count,
                     "processing_outcome": "failed",
+                    "failure_code": code,
                 },
             ),
         )
