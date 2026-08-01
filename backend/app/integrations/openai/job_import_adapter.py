@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -10,12 +11,17 @@ import openai
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
-from app.integrations.openai.job_import_evidence import EvidenceAnchoringError
 from app.integrations.openai.job_import_instructions import (
     build_job_import_instructions,
 )
 from app.integrations.openai.job_import_output import (
     OpenAIJobImportExtractionResponse,
+)
+from app.integrations.openai.job_import_spans import (
+    EVIDENCE_SEGMENTATION_VERSION,
+    EvidenceSpanError,
+    EvidenceSpanSet,
+    build_evidence_span_set,
 )
 from app.schemas.job_import import (
     JobImportExtractionRequest,
@@ -85,11 +91,21 @@ class OpenAIJobImportAdapter:
                 status_code=422,
             )
 
+        try:
+            span_set = build_evidence_span_set(source_text)
+        except EvidenceSpanError as exc:
+            raise self._provider_error(
+                "JOB_IMPORT_EVIDENCE_SPANS_INVALID",
+                "This source cannot be represented safely for text extraction.",
+                status_code=422,
+                metadata=self._span_failure_metadata(exc.reason),
+            ) from exc
+
         client = self._client_or_error()
         response: Any | None = None
         retries_used = 0
         request_started = time.perf_counter()
-        provider_input = self._provider_input(request, source_text=source_text)
+        provider_input = self._provider_input(request, span_set=span_set)
         for attempt in range(self.config.max_retries + 1):
             try:
                 response = await client.responses.parse(
@@ -156,20 +172,20 @@ class OpenAIJobImportAdapter:
                 else OpenAIJobImportExtractionResponse.model_validate(parsed)
             )
             extraction = wire_response.to_domain_response(
-                canonical_source=source_text,
+                span_set=span_set,
             )
-        except EvidenceAnchoringError as exc:
+        except EvidenceSpanError as exc:
             evidence_metadata = response_metadata.model_copy(
                 update={
                     "metadata": {
                         **response_metadata.metadata,
-                        "evidence_failure_reason": exc.reason,
+                        "evidence_span_failure_reason": exc.reason,
                     }
                 }
             )
             raise self._provider_error(
                 "OPENAI_EVIDENCE_INVALID",
-                "OpenAI returned evidence that could not be anchored to the normalized text source.",
+                "OpenAI returned evidence references that could not be resolved safely.",
                 status_code=502,
                 retry_count=retries_used,
                 metadata=evidence_metadata,
@@ -192,7 +208,7 @@ class OpenAIJobImportAdapter:
     def _provider_input(
         request: JobImportExtractionRequest,
         *,
-        source_text: str,
+        span_set: EvidenceSpanSet,
     ) -> list[dict[str, object]]:
         policy_request = request.model_copy(deep=True)
         policy_request.source.original_text = None
@@ -203,15 +219,37 @@ class OpenAIJobImportAdapter:
                     {
                         "type": "input_text",
                         "text": (
-                            "CreatorJobs extraction policy JSON. The canonical source "
-                            "is the next input-text block.\n"
+                            "CreatorJobs extraction policy JSON. The server-owned "
+                            "evidence spans are in the next input-text block.\n"
                             f"{policy_request.model_dump_json()}"
                         ),
                     },
-                    {"type": "input_text", "text": source_text},
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "CreatorJobs canonical evidence spans JSON. Cite only "
+                            "the supplied span_id values.\n"
+                            + json.dumps(
+                                span_set.provider_payload(),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            )
+                        ),
+                    },
                 ],
             }
         ]
+
+    def _span_failure_metadata(self, reason: str) -> JobImportProviderMetadata:
+        return JobImportProviderMetadata(
+            provider_name="openai",
+            model_name=self.config.model,
+            instruction_version=self.config.instruction_version,
+            metadata={
+                "segmentation_version": EVIDENCE_SEGMENTATION_VERSION,
+                "evidence_span_failure_reason": reason,
+            },
+        )
 
     def _response_metadata(
         self,
@@ -236,6 +274,7 @@ class OpenAIJobImportAdapter:
                 "attempt_number": retries_used + 1,
                 "elapsed_ms": max(0, round(elapsed_seconds * 1000)),
                 "response_status": response_status or "unknown",
+                "segmentation_version": EVIDENCE_SEGMENTATION_VERSION,
             },
         )
 
@@ -313,6 +352,7 @@ class OpenAIJobImportAdapter:
                     "retry_count": retry_count,
                     "processing_outcome": "failed",
                     "failure_code": code,
+                    "segmentation_version": EVIDENCE_SEGMENTATION_VERSION,
                 },
             ),
         )

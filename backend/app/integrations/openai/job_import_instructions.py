@@ -28,18 +28,21 @@ Use provenance exactly:
 - extracted_from_source: the source explicitly states the value;
 - suggested_inference: a permitted suggestion not explicitly stated.
 
-The final user input-text block is the exact canonical source. Directly supplied
-and extracted values require short evidence quotes copied verbatim from that
-block. Never calculate or return character, byte, line, or token offsets.
-Do not paraphrase, repair spelling or punctuation, normalize whitespace,
-normalize currency or numbers, or invent evidence. Prefer a longer unique quote
-when a short phrase repeats. Only when an exact quote still repeats, provide an
-exact immediately-adjacent prefix or suffix copied verbatim from the source to
-disambiguate it. Inferred values must remain suggested_inference and should not
-include quotation evidence. Conflicting source statements must be returned as
-conflict alternatives with separate verbatim evidence. Never choose a conflict
-winner. Do not return evidence for absent information. Report publication-relevant
-absence through missing_fields and bounded diagnostic notes through warnings.
+The final user input-text block contains the exact canonical source divided into
+ordered, server-owned evidence spans. Cite only span_id values supplied in that
+block. Never invent, repair, approximate, or rewrite a span ID. Use one or more
+span IDs that directly support each field. Do not cite a span merely because it
+is topically related, and never repeat an ID within one evidence_span_ids array.
+Never return quotations, rewritten evidence, character or byte offsets, line
+numbers, or token positions.
+
+Directly supplied and extracted values require supporting evidence_span_ids.
+Inferred values must remain suggested_inference; contextual spans may be cited,
+but they never turn an inference into a directly stated fact. Conflict
+alternatives require their own independently supporting span IDs. Never choose a
+conflict winner. Missing fields require no evidence spans. Report
+publication-relevant absence through missing_fields and bounded diagnostic notes
+through warnings.
 
 Follow every field definition, nested confirmation policy, inference restriction,
 evidence requirement, and output-validation instruction supplied by CreatorJobs.

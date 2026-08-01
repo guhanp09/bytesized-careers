@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import json
 import unicodedata
 
 import pytest
-from pydantic import ValidationError
 
 from app.integrations.openai.job_import_evidence import (
     MAX_EVIDENCE_CONTEXT_LENGTH,
     EvidenceAnchoringError,
     anchor_evidence_quote,
-)
-from app.integrations.openai.job_import_output import (
-    OpenAIJobImportExtractionResponse,
 )
 from app.schemas.job_import import MAX_EVIDENCE_SNIPPET_LENGTH
 
@@ -163,97 +158,3 @@ def test_unicode_normalization_is_not_silently_changed() -> None:
 def test_empty_or_oversized_quotes_are_rejected(quote: str) -> None:
     with pytest.raises(EvidenceAnchoringError):
         anchor_evidence_quote("x" * 1_000, quote=quote)
-
-
-def _wire_payload(
-    *,
-    quote: str = "Video Editor",
-    provenance: str = "extracted_from_source",
-    evidence: list[dict[str, str | None]] | None = None,
-    field_path: str = "title",
-    value_json: str = '"Video Editor"',
-) -> dict[str, object]:
-    return {
-        "extraction_schema_version": 1,
-        "target_listing_schema_version": 3,
-        "fields": [
-            {
-                "field_path": field_path,
-                "value_json": value_json,
-                "provenance": provenance,
-                "evidence": evidence
-                if evidence is not None
-                else [{"quote": quote, "prefix": None, "suffix": None}],
-                "explanation": "Review-only suggestion"
-                if provenance == "suggested_inference"
-                else None,
-                "provider_confidence": None,
-            }
-        ],
-        "conflicts": [],
-        "missing_fields": [],
-        "warnings": [],
-    }
-
-
-def test_wire_response_anchors_before_provider_neutral_validation() -> None:
-    source = "Hiring a Video Editor now."
-    response = OpenAIJobImportExtractionResponse.model_validate(_wire_payload())
-    domain = response.to_domain_response(canonical_source=source)
-
-    evidence = domain.fields[0].evidence[0]
-    assert evidence.location is not None
-    assert source[evidence.location.char_start : evidence.location.char_end] == evidence.snippet
-
-
-def test_quote_from_another_source_rejects_the_whole_response() -> None:
-    response = OpenAIJobImportExtractionResponse.model_validate(_wire_payload(quote="Premiere Pro"))
-    with pytest.raises(EvidenceAnchoringError, match="quote_not_found"):
-        response.to_domain_response(canonical_source="After Effects is required.")
-
-
-def test_duplicate_anchored_evidence_rejects_the_whole_response() -> None:
-    duplicate = {"quote": "Video Editor", "prefix": None, "suffix": None}
-    response = OpenAIJobImportExtractionResponse.model_validate(
-        _wire_payload(evidence=[duplicate, duplicate])
-    )
-    with pytest.raises(EvidenceAnchoringError, match="duplicate_evidence"):
-        response.to_domain_response(canonical_source="Video Editor")
-
-
-def test_inference_stays_inferential_and_has_no_quote_evidence() -> None:
-    response = OpenAIJobImportExtractionResponse.model_validate(
-        _wire_payload(
-            quote="unsupported quote",
-            provenance="suggested_inference",
-        )
-    )
-    domain = response.to_domain_response(canonical_source="Video editing role")
-
-    assert domain.fields[0].provenance == "suggested_inference"
-    assert domain.fields[0].evidence == []
-
-
-def test_direct_extraction_without_evidence_fails_domain_validation() -> None:
-    response = OpenAIJobImportExtractionResponse.model_validate(_wire_payload(evidence=[]))
-    with pytest.raises(ValidationError, match="require evidence"):
-        response.to_domain_response(canonical_source="Video Editor")
-
-
-def test_wire_contract_rejects_bounds_invalid_paths_and_nested_values() -> None:
-    excessive_evidence = [
-        {"quote": f"quote-{index}", "prefix": None, "suffix": None} for index in range(6)
-    ]
-    with pytest.raises(ValidationError):
-        OpenAIJobImportExtractionResponse.model_validate(_wire_payload(evidence=excessive_evidence))
-    with pytest.raises(ValidationError):
-        OpenAIJobImportExtractionResponse.model_validate(_wire_payload(field_path="status.nested"))
-
-    nested: object = "leaf"
-    for _ in range(300):
-        nested = [nested]
-    response = OpenAIJobImportExtractionResponse.model_validate(
-        _wire_payload(value_json=json.dumps(nested))
-    )
-    with pytest.raises((ValidationError, ValueError, RecursionError)):
-        response.to_domain_response(canonical_source="Video Editor")

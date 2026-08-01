@@ -25,6 +25,10 @@ from app.integrations.openai.job_import_adapter import (
 from app.integrations.openai.job_import_output import (
     OpenAIJobImportExtractionResponse,
 )
+from app.integrations.openai.job_import_spans import (
+    EVIDENCE_SEGMENTATION_VERSION,
+    build_evidence_span_set,
+)
 from app.main import app
 from app.models import Job, JobImportDraft, JobImportField
 from app.repositories.job_import_repository import JobImportRepository
@@ -203,9 +207,36 @@ def _openai_response(
 
 def _wire_extraction(
     extraction: JobImportExtractionResponse | None = None,
+    *,
+    source_text: str = SOURCE_TEXT,
 ) -> OpenAIJobImportExtractionResponse:
     payload = (extraction or _extraction()).model_dump(mode="json")
-    evidence_groups: list[list[dict[str, object]]] = []
+    span_set = build_evidence_span_set(source_text)
+
+    def span_ids_for(evidence_group: list[dict[str, object]]) -> list[str]:
+        span_ids: list[str] = []
+        for evidence in evidence_group:
+            location = evidence.get("location")
+            if not isinstance(location, dict):
+                continue
+            start = location.get("char_start")
+            end = location.get("char_end")
+            if not isinstance(start, int) or not isinstance(end, int):
+                continue
+            span = next(
+                (
+                    candidate
+                    for candidate in span_set.spans
+                    if candidate.char_start <= start and candidate.char_end >= end
+                ),
+                None,
+            )
+            if span is None:
+                raise AssertionError("test evidence is not covered by a server span")
+            if span.span_id not in span_ids:
+                span_ids.append(span.span_id)
+        return span_ids
+
     for field in payload["fields"]:
         field["value_json"] = json.dumps(
             field.pop("value"), ensure_ascii=False, separators=(",", ":")
@@ -213,7 +244,7 @@ def _wire_extraction(
         confidence = field.get("provider_confidence")
         if confidence is not None:
             confidence.pop("metadata", None)
-        evidence_groups.append(field["evidence"])
+        field["evidence_span_ids"] = span_ids_for(field.pop("evidence"))
     for conflict in payload["conflicts"]:
         confidence = conflict.get("provider_confidence")
         if confidence is not None:
@@ -222,14 +253,13 @@ def _wire_extraction(
             alternative["value_json"] = json.dumps(
                 alternative.pop("value"), ensure_ascii=False, separators=(",", ":")
             )
-            evidence_groups.append(alternative["evidence"])
-    evidence_groups.extend(item["evidence"] for item in payload["missing_fields"])
-    evidence_groups.extend(item["evidence"] for item in payload["warnings"])
-    for evidence_group in evidence_groups:
-        for evidence in evidence_group:
-            quote = str(evidence.pop("snippet"))
-            evidence.clear()
-            evidence.update({"quote": quote, "prefix": None, "suffix": None})
+            alternative["evidence_span_ids"] = span_ids_for(
+                alternative.pop("evidence")
+            )
+    for missing in payload["missing_fields"]:
+        missing.pop("evidence")
+    for warning in payload["warnings"]:
+        warning["evidence_span_ids"] = span_ids_for(warning.pop("evidence"))
     return OpenAIJobImportExtractionResponse.model_validate(payload)
 
 
@@ -249,7 +279,7 @@ def _adapter(
             model="gpt-5.6-luna",
             request_timeout_seconds=30,
             max_retries=max_retries,
-            instruction_version="job-import-text-v1",
+            instruction_version="job-import-text-v3",
         ),
         client=FakeOpenAIClient(outcomes),
         sleep=record_sleep,
@@ -335,7 +365,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert result.metadata.provider_name == "openai"
     assert result.metadata.model_name == "gpt-5.6-luna"
     assert result.metadata.model_version == "gpt-5.6-luna-2026-07-01"
-    assert result.metadata.instruction_version == "job-import-text-v1"
+    assert result.metadata.instruction_version == "job-import-text-v3"
     assert result.metadata.metadata["request_id"] == "req_openai_test"
     assert result.metadata.metadata["usage"] == {
         "input_tokens": 101,
@@ -346,6 +376,10 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert result.metadata.metadata["attempt_number"] == 1
     assert result.metadata.metadata["elapsed_ms"] >= 0
     assert result.metadata.metadata["response_status"] == "completed"
+    assert (
+        result.metadata.metadata["segmentation_version"]
+        == EVIDENCE_SEGMENTATION_VERSION
+    )
     call = adapter._client.responses.calls[0]
     assert call["model"] == "gpt-5.6-luna"
     assert call["text_format"] is OpenAIJobImportExtractionResponse
@@ -354,12 +388,20 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     provider_input = call["input"]
     assert isinstance(provider_input, list)
     content = provider_input[0]["content"]
-    assert content[-1] == {"type": "input_text", "text": SOURCE_TEXT}
+    assert content[-1]["type"] == "input_text"
+    span_payload = json.loads(content[-1]["text"].split("\n", 1)[1])
+    assert span_payload["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
+    assert span_payload["evidence_spans"] == [
+        {"span_id": "E0001", "text": SOURCE_TEXT}
+    ]
+    assert "char_start" not in content[-1]["text"]
+    assert "char_end" not in content[-1]["text"]
     assert SOURCE_TEXT not in content[0]["text"]
     assert SOURCE_TEXT not in str(call["instructions"])
     assert "screening_questions" in str(call["instructions"])
     assert "language_requirements" in str(call["instructions"])
     assert "chain-of-thought" in str(call["instructions"])
+    assert "never repeat an ID" in str(call["instructions"])
 
 
 def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:
@@ -619,7 +661,7 @@ async def test_openai_adapter_reports_exhausted_transient_failures(
 @pytest.mark.asyncio
 async def test_openai_adapter_rejects_evidence_outside_normalized_text() -> None:
     invalid = _wire_extraction()
-    invalid.fields[0].evidence[0].quote = "not in the canonical source"
+    invalid.fields[0].evidence_span_ids = ["E9999"]
 
     with pytest.raises(JobImportProviderError) as caught:
         await _adapter([_openai_response(parsed=invalid)]).extract(_request())
@@ -630,8 +672,8 @@ async def test_openai_adapter_rejects_evidence_outside_normalized_text() -> None
     assert caught.value.metadata.metadata["usage"]["total_tokens"] == 122
     assert caught.value.metadata.metadata["failure_code"] == "OPENAI_EVIDENCE_INVALID"
     assert (
-        caught.value.metadata.metadata["evidence_failure_reason"]
-        == "quote_not_found"
+        caught.value.metadata.metadata["evidence_span_failure_reason"]
+        == "unknown_span_id"
     )
 
 
@@ -648,7 +690,7 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
         "evidence-audit",
     )
     invalid = _wire_extraction()
-    invalid.fields[0].evidence[0].quote = "quote absent from canonical source"
+    invalid.fields[0].evidence_span_ids = ["E9999"]
     provider_override(
         _adapter([_openai_response(parsed=invalid)], max_retries=0)
     )
@@ -680,7 +722,14 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
         body["provider_metadata"]["failure_code"]
         == "OPENAI_EVIDENCE_INVALID"
     )
-    assert body["provider_metadata"]["evidence_failure_reason"] == "quote_not_found"
+    assert (
+        body["provider_metadata"]["evidence_span_failure_reason"]
+        == "unknown_span_id"
+    )
+    assert (
+        body["provider_metadata"]["segmentation_version"]
+        == EVIDENCE_SEGMENTATION_VERSION
+    )
     serialized_metadata = json.dumps(body["provider_metadata"])
     assert SOURCE_TEXT not in serialized_metadata
     assert "test-placeholder-not-a-real-key" not in serialized_metadata
@@ -707,14 +756,21 @@ async def test_openai_adapter_treats_html_source_as_data_and_keeps_exact_evidenc
     )
 
     result = await _adapter(
-        [_openai_response(parsed=_wire_extraction(extraction))]
+        [
+            _openai_response(
+                parsed=_wire_extraction(extraction, source_text=source_text)
+            )
+        ]
     ).extract(_request(source_text))
 
     assert result.extraction.fields[0].value == snippet
     evidence = result.extraction.fields[0].evidence[0]
-    assert evidence.snippet == snippet
+    assert snippet in evidence.snippet
     assert evidence.location is not None
-    assert source_text[evidence.location.char_start : evidence.location.char_end] == snippet
+    assert (
+        source_text[evidence.location.char_start : evidence.location.char_end]
+        == evidence.snippet
+    )
 
 
 @pytest.mark.asyncio

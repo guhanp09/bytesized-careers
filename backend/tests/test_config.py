@@ -61,7 +61,7 @@ def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
         config.Settings(OPENAI_REQUEST_TIMEOUT_SECONDS=121)
 
     assert config.Settings.model_fields["job_import_prompt_version"].default == (
-        "job-import-text-v2"
+        "job-import-text-v3"
     )
 
 

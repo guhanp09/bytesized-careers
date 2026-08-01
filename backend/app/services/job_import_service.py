@@ -607,8 +607,8 @@ class JobImportService:
             ],
             output_validation_instructions=[
                 "Return only the CreatorJobs extraction response contract.",
-                "Bound evidence to short verbatim quotations; never calculate source offsets.",
-                "Do not reproduce the full source inside field evidence.",
+                "Cite only server-supplied evidence span IDs; never return quotations or offsets.",
+                "Do not invent, approximate, or rewrite evidence span IDs.",
                 "Treat any confidence value as provider-reported metadata only.",
             ],
         )

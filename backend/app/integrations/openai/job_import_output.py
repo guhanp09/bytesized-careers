@@ -1,31 +1,30 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.integrations.openai.job_import_evidence import (
-    MAX_EVIDENCE_CONTEXT_LENGTH,
-    EvidenceAnchoringError,
-    anchor_evidence_quote,
+from app.integrations.openai.job_import_spans import (
+    EVIDENCE_SPAN_ID_PATTERN,
+    MAX_EVIDENCE_SPANS_PER_REFERENCE,
+    EvidenceSpanSet,
+    resolve_evidence_span_ids,
 )
 from app.schemas.job_import import (
-    MAX_EVIDENCE_SNIPPET_LENGTH,
     MAX_EXTRACTION_RESPONSE_BYTES,
     MAX_FIELD_JSON_BYTES,
     JobImportExtractionResponse,
 )
 
-
-class OpenAIJobImportEvidence(BaseModel):
-    """Provider quotation candidate; CreatorJobs owns all source positioning."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    quote: str = Field(min_length=1, max_length=MAX_EVIDENCE_SNIPPET_LENGTH)
-    prefix: str | None = Field(default=None, min_length=1, max_length=MAX_EVIDENCE_CONTEXT_LENGTH)
-    suffix: str | None = Field(default=None, min_length=1, max_length=MAX_EVIDENCE_CONTEXT_LENGTH)
+_SpanId = Annotated[
+    str,
+    Field(
+        min_length=5,
+        max_length=5,
+        pattern=EVIDENCE_SPAN_ID_PATTERN,
+    ),
+]
 
 
 class OpenAIJobImportProviderConfidence(BaseModel):
@@ -52,7 +51,10 @@ class OpenAIJobImportExtractionField(BaseModel):
         "extracted_from_source",
         "suggested_inference",
     ]
-    evidence: list[OpenAIJobImportEvidence] = Field(default_factory=list, max_length=5)
+    evidence_span_ids: list[_SpanId] = Field(
+        default_factory=list,
+        max_length=MAX_EVIDENCE_SPANS_PER_REFERENCE,
+    )
     explanation: str | None = Field(default=None, max_length=1000)
     provider_confidence: OpenAIJobImportProviderConfidence | None = None
 
@@ -65,7 +67,10 @@ class OpenAIJobImportConflictValue(BaseModel):
         max_length=MAX_FIELD_JSON_BYTES,
         description="One compact valid JSON document encoding this conflict alternative.",
     )
-    evidence: list[OpenAIJobImportEvidence] = Field(min_length=1, max_length=5)
+    evidence_span_ids: list[_SpanId] = Field(
+        min_length=1,
+        max_length=MAX_EVIDENCE_SPANS_PER_REFERENCE,
+    )
 
 
 class OpenAIJobImportConflict(BaseModel):
@@ -82,7 +87,6 @@ class OpenAIJobImportMissingField(BaseModel):
 
     field_path: str = Field(min_length=1, max_length=120, pattern=r"^[a-z][a-z0-9_]*$")
     explanation: str | None = Field(default=None, max_length=1000)
-    evidence: list[OpenAIJobImportEvidence] = Field(default_factory=list, max_length=3)
 
 
 class OpenAIJobImportProcessingWarning(BaseModel):
@@ -95,7 +99,10 @@ class OpenAIJobImportProcessingWarning(BaseModel):
         max_length=120,
         pattern=r"^[a-z][a-z0-9_]*$",
     )
-    evidence: list[OpenAIJobImportEvidence] = Field(default_factory=list, max_length=3)
+    evidence_span_ids: list[_SpanId] = Field(
+        default_factory=list,
+        max_length=3,
+    )
 
 
 class OpenAIJobImportExtractionResponse(BaseModel):
@@ -123,58 +130,45 @@ class OpenAIJobImportExtractionResponse(BaseModel):
         return json.loads(value_json)
 
     @staticmethod
-    def _anchor_evidence(
-        evidence: list[dict[str, object]],
+    def _resolve_evidence(
+        span_ids: list[str],
         *,
-        canonical_source: str,
+        span_set: EvidenceSpanSet,
+        maximum: int = MAX_EVIDENCE_SPANS_PER_REFERENCE,
     ) -> list[dict[str, object]]:
-        anchored: list[dict[str, object]] = []
-        seen_ranges: set[tuple[int, int]] = set()
-        for candidate in evidence:
-            item = anchor_evidence_quote(
-                canonical_source,
-                quote=str(candidate["quote"]),
-                prefix=(str(candidate["prefix"]) if candidate.get("prefix") is not None else None),
-                suffix=(str(candidate["suffix"]) if candidate.get("suffix") is not None else None),
+        return [
+            evidence.model_dump(mode="json")
+            for evidence in resolve_evidence_span_ids(
+                span_set,
+                span_ids,
+                maximum=maximum,
             )
-            assert item.location is not None
-            assert item.location.char_start is not None
-            assert item.location.char_end is not None
-            anchored_range = (item.location.char_start, item.location.char_end)
-            if anchored_range in seen_ranges:
-                raise EvidenceAnchoringError("duplicate_evidence")
-            seen_ranges.add(anchored_range)
-            anchored.append(item.model_dump(mode="json"))
-        return anchored
+        ]
 
-    def to_domain_response(self, *, canonical_source: str) -> JobImportExtractionResponse:
+    def to_domain_response(self, *, span_set: EvidenceSpanSet) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
         for field in payload["fields"]:
             field["value"] = self._decode_value(field.pop("value_json"))
-            # Inferences remain visibly inferential and never borrow quotation
-            # evidence to appear like directly extracted source facts.
-            field["evidence"] = (
-                []
-                if field["provenance"] == "suggested_inference"
-                else self._anchor_evidence(
-                    field["evidence"], canonical_source=canonical_source
-                )
+            field["evidence"] = self._resolve_evidence(
+                field.pop("evidence_span_ids"),
+                span_set=span_set,
             )
         for conflict in payload["conflicts"]:
             for alternative in conflict["values"]:
                 alternative["value"] = self._decode_value(
                     alternative.pop("value_json")
                 )
-                alternative["evidence"] = self._anchor_evidence(
-                    alternative["evidence"], canonical_source=canonical_source
+                alternative["evidence"] = self._resolve_evidence(
+                    alternative.pop("evidence_span_ids"),
+                    span_set=span_set,
                 )
         for missing in payload["missing_fields"]:
-            missing["evidence"] = self._anchor_evidence(
-                missing["evidence"], canonical_source=canonical_source
-            )
+            missing["evidence"] = []
         for warning in payload["warnings"]:
-            warning["evidence"] = self._anchor_evidence(
-                warning["evidence"], canonical_source=canonical_source
+            warning["evidence"] = self._resolve_evidence(
+                warning.pop("evidence_span_ids"),
+                span_set=span_set,
+                maximum=3,
             )
         return JobImportExtractionResponse.model_validate(payload)
 
