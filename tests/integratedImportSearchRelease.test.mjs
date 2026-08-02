@@ -56,7 +56,8 @@ test("the integrated UI is provider-neutral and opens the canonical Post Job for
 
   assert.match(importPage, /applyJobImportDraft/);
   assert.match(importPage, /\/post-job\?draftId=/);
-  assert.match(postJob, /<ImportedDraftConversation/);
+  // Questions are asked on the assistant canvas, not inside the editor.
+  assert.doesNotMatch(postJob, /<ImportedDraftConversation/);
   assert.match(postJob, /getJobImportContextForNativeJob/);
   assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
   assert.equal(exists("components/import-job/ReviewSummary.tsx"), false);

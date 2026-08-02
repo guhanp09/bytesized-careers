@@ -116,17 +116,11 @@ test("development fixture opens the canonical private Post Job draft with import
   await page.getByTestId("open-import-review-fixture").click();
   await completeAssistant(page);
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-  await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
-  await expect(page.getByText(/I’ve built a strong first draft/i)).toBeVisible();
-  const activeQuestion = page.locator("#import-guidance-question");
-  await expect(activeQuestion).toBeVisible();
-  if (/make the pay unambiguous/i.test((await activeQuestion.textContent()) ?? "")) {
-    await page.getByRole("button", { name: "30000", exact: true }).click();
-    await expect(activeQuestion).not.toHaveText(/make the pay unambiguous/i);
-  }
-  await expect(
-    page.getByRole("heading", { name: /clarify where this role can be done/i })
-  ).toBeVisible();
+  // The conversation happened on the assistant canvas. What opens here is the
+  // ordinary Post Job editor with its fields already filled in — no guidance
+  // panel, no question, nothing to repair.
+  await expect(page.getByTestId("conversational-import-guidance")).toHaveCount(0);
+  await expect(page.locator("#import-guidance-question")).toHaveCount(0);
   await expect(page.getByText(/OpenAI|GPT-|model selector/i)).toHaveCount(0);
   await expect(page.getByTestId("provider-import-review")).toHaveCount(0);
 
@@ -142,17 +136,9 @@ test("development fixture opens the canonical private Post Job draft with import
   };
   expect(context.draft.fields.some((field) => field.field_path === "title")).toBe(true);
 
-  const remoteChoice = page.getByRole("button", { name: "remote", exact: true });
-  await expect(remoteChoice).toBeVisible();
-  await remoteChoice.click();
-  const nextHeading = page.locator("#import-guidance-question");
-  await expect(nextHeading).toBeVisible();
-  await expect(nextHeading).not.toHaveText(/clarify where this role can be done/i);
-  const nextHeadingText = await nextHeading.textContent();
-
+  // The import context survives a refresh even though nothing is being asked.
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
-  await expect(page.locator("#import-guidance-question")).toHaveText(nextHeadingText ?? "");
+  await expect(page).toHaveURL(/\/post-job\?draftId=/);
 
   const publicRead = await page.request.get(`${BACKEND_API}/jobs/${nativeDraftId}`);
   expect(publicRead.status()).toBe(404);
@@ -186,40 +172,27 @@ test("clean and role-specific fixtures produce only useful guided work", async (
   await loginController(page);
   await switchPersona(page, "recruiter-active", "Finance Simplified");
 
-  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("import-development-scenario").selectOption("clean-import");
-  await page.getByTestId("open-import-review-fixture").click();
-  await completeAssistant(page);
-  await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-  await expect(
-    page.getByRole("heading", { name: "Your draft is ready to edit." })
-  ).toBeVisible();
-  await expect(
-    page.locator("h2:visible").filter({ hasText: "Content strategist for an education brand" }).first()
-  ).toBeVisible();
-  await expect(page.getByText(/essential decisions? left/i)).toHaveCount(0);
+  // Both fixtures now finish their conversation on the assistant canvas and
+  // hand over an ordinary editor. What matters here is that the draft arrives
+  // filled in, with none of the old review furniture following it.
+  for (const [scenario, title] of [
+    ["clean-import", "Content strategist for an education brand"],
+    ["thumbnail-designer", "Thumbnail designer for a science channel"],
+  ] as const) {
+    await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+    await page.getByTestId("import-development-scenario").selectOption(scenario);
+    await page.getByTestId("open-import-review-fixture").click();
+    await completeAssistant(page);
+    await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 30_000 });
 
-  await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("import-development-scenario").selectOption("thumbnail-designer");
-  await page.getByTestId("open-import-review-fixture").click();
-  await completeAssistant(page);
-  await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-  await expect(
-    page.getByRole("heading", { name: /confirm the closest creator role/i })
-  ).toBeVisible();
-  await page.getByText("What I found").click();
-  await expect(
-    page.getByTestId("import-guidance-evidence").getByText(/Create bold thumbnails/i)
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Use Thumbnail designer" }).click();
-  await expect(page.getByText(/optional improvement/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Not now" })).toBeVisible();
-  await page.getByRole("button", { name: "Not now" }).click();
-  const skipRemaining = page.getByRole("button", { name: "Skip remaining suggestions" });
-  if (await skipRemaining.count()) await skipRemaining.click();
-  await expect(
-    page.getByRole("heading", { name: "Your draft is ready to edit." })
-  ).toBeVisible();
+    // Pre-filled, not blank: the title survived the handoff.
+    await expect(page.locator("body")).toContainText(title, { timeout: 20_000 });
+
+    // And none of the guidance panel, counters or review vocabulary remains.
+    await expect(page.getByTestId("conversational-import-guidance")).toHaveCount(0);
+    await expect(page.getByText(/essential decisions? left/i)).toHaveCount(0);
+    await expect(page.getByText("Review flagged fields")).toHaveCount(0);
+  }
 });
 
 test("development processing failure stays separate and retryable", async ({ page }) => {
@@ -274,7 +247,8 @@ test.describe("mobile canonical import", () => {
     await page.getByTestId("open-import-review-fixture").click();
     await completeAssistant(page);
     await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
-    await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
+    // The ordinary editor, pre-filled — the conversation already happened.
+    await expect(page.getByTestId("conversational-import-guidance")).toHaveCount(0);
     for (const viewport of [
       { width: 390, height: 844 },
       { width: 320, height: 720 },

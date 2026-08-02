@@ -48,7 +48,6 @@ import {
 } from "../lib/firstMessageRequirements";
 import { normalizeCreatorContextList } from "../lib/jobCreatorContext";
 import { normalizeReferenceTimestampNote, normalizeReferenceVideo, serializeReferenceVideo } from "../lib/referenceVideos";
-import ImportedDraftConversation from "./import-job/ImportedDraftConversation";
 import {
   attachJobImportDraft,
   getJobImportContextForNativeJob,
@@ -4385,64 +4384,6 @@ export default function PostJobPage() {
               </div>
             </details>
 
-            {importContext && importGuidanceEnabled ? (
-              <ImportedDraftConversation
-                context={importContext}
-                turns={importGuidanceTurns}
-                activeTurnId={activeImportGuidanceTurn?.id ?? null}
-                filledCount={importSummary?.filled ?? 0}
-                busy={importGuidanceBusy}
-                actionError={importGuidanceError}
-                announcement={importGuidanceAnnouncement}
-                onSelectTurn={selectImportGuidanceTurn}
-                onJumpToField={(turn) => {
-                  const field = importContext.draft.fields.find(
-                    (item) => item.field_path === turn.primaryFieldPath
-                  );
-                  if (!field) return;
-                  selectImportGuidanceTurn(turn);
-                  const nativeField = nativeFieldForImport(field.field_path);
-                  if (!nativeField) return;
-                  const target = jobFieldEntry(nativeField).target;
-                  if (target) focusImportedGuidanceTarget(target);
-                }}
-                onUseSuggestion={(turn, field) =>
-                  void handleImportedSuggestion(field, turn)
-                }
-                onResolveAlternative={(turn, field, index) =>
-                  void handleImportedConflict(turn, field, index)
-                }
-                onSkipTurn={(turn) => void skipImportedGuidanceTurns([turn])}
-                onSkipRemaining={(turns) => void skipImportedGuidanceTurns(turns)}
-                onUseFullEditor={() => {
-                  setImportGuidanceEnabled(false);
-                  setImportGuidanceError(null);
-                }}
-                onSaveForLater={() => void onSaveDraft()}
-                canUseSuggestion={canUseImportedSuggestion}
-              />
-            ) : importContext ? (
-              <section className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-white/78">Editing the full draft</p>
-                  <p className="mt-1 text-xs text-white/45">
-                    Your imported details and decisions are still saved.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImportGuidanceEnabled(true);
-                    const nextTurn = nextJobImportGuidanceTurn(importGuidanceTurns);
-                    if (nextTurn) selectImportGuidanceTurn(nextTurn, true);
-                  }}
-                  className="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/62 transition-colors hover:bg-white/[0.05] hover:text-white"
-                >
-                  Resume guided decisions
-                </button>
-              </section>
-            ) : null}
-
             <PostJobForm
               step={step}
               direction={direction}
@@ -4725,7 +4666,6 @@ export default function PostJobPage() {
               legacyToolsNotCaptured={legacyToolsNotCaptured}
               legacyBudgetUnit={legacyBudgetUnit}
               reviewPreview={<RecruiterJobPreview {...previewProps} previewMode="full" />}
-              guidedMode={Boolean(importContext && importGuidanceEnabled)}
             />
           </div>
 

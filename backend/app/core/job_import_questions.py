@@ -38,10 +38,15 @@ QuestionKind = Literal["mandatory", "confirmation", "optional"]
 #: this is deliberately not that list.
 ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
     {
-        # Money read wrongly is the most damaging kind of wrong.
+        # Money read wrongly is the most damaging kind of wrong. The amounts
+        # are here because a source that names two different figures is exactly
+        # the case a candidate would be misled by, and a contradiction about the
+        # number itself is not something to settle on their behalf.
         "compensation_mode",
         "budget_currency",
         "budget_unit",
+        "budget_amount",
+        "budget_max",
         # Who can actually take the job.
         "work_mode",
         "location",

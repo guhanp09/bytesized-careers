@@ -20,7 +20,10 @@ test("text import processes and applies a private draft into the normal Post Job
   assert.match(importPage, /source_type: "pasted_text"/);
   assert.match(importPage, /\/post-job\?draftId=/);
   assert.match(postJob, /<PostJobForm/);
-  assert.match(postJob, /<ImportedDraftConversation/);
+  // Post Job is the ordinary editor again: the conversation happens on the
+  // assistant canvas before the handoff, and what arrives here is a normal
+  // draft with its fields already filled in.
+  assert.doesNotMatch(postJob, /<ImportedDraftConversation/);
   assert.equal(exists("components/import-job/ImportReviewWorkspace.tsx"), false);
   assert.equal(exists("components/import-job/ImportedDraftNotice.tsx"), false);
   assert.doesNotMatch(importPage, /status:\s*"published"/);
