@@ -60,6 +60,10 @@ export type DraftAssistantCanvasProps = {
    * this surface never guesses.
    */
   delayed?: boolean;
+  /** The real candidate preview, once there are values worth showing. */
+  preview?: React.ReactNode | null;
+  /** How many shown values are imported but not yet confirmed. */
+  provisionalCount?: number;
 };
 
 export function DraftAssistantCanvas({
@@ -74,6 +78,8 @@ export function DraftAssistantCanvas({
   busy = false,
   error = null,
   delayed = false,
+  preview = null,
+  provisionalCount = 0,
 }: DraftAssistantCanvasProps) {
   const stages = jobImportStages(progress);
   const active = activeJobImportStage(progress);
@@ -182,7 +188,11 @@ export function DraftAssistantCanvas({
         ) : null}
       </section>
 
-      <PreviewRail ratio={ratio} />
+      <PreviewRail
+        ratio={ratio}
+        preview={preview}
+        provisionalCount={provisionalCount}
+      />
     </div>
   );
 }
@@ -343,37 +353,66 @@ function FailureMessage({ error }: { error: string | null }) {
   );
 }
 
-function PreviewRail({ ratio }: { ratio: number }) {
+function PreviewRail({
+  ratio,
+  preview,
+  provisionalCount,
+}: {
+  ratio: number;
+  preview: React.ReactNode | null;
+  provisionalCount: number;
+}) {
+  // The changed section is worth pointing at, but only once and only briefly.
+  const [pulse, setPulse] = React.useState(false);
+  const previousRatio = React.useRef(ratio);
+  React.useEffect(() => {
+    if (ratio === previousRatio.current) return;
+    previousRatio.current = ratio;
+    setPulse(true);
+    const timer = window.setTimeout(() => setPulse(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [ratio]);
+
   return (
     <aside
-      className="hidden min-h-[430px] rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5 lg:block"
+      className={[
+        "hidden min-h-[430px] rounded-3xl border bg-white/[0.025] p-5 transition-colors duration-500 lg:block",
+        "motion-reduce:transition-none",
+        pulse ? "border-[color:var(--color-state-review,#8ec5ff)]/40" : "border-white/[0.08]",
+      ].join(" ")}
       aria-label="Candidate preview being prepared"
       data-testid="draft-assistant-preview-rail"
+      data-provisional-count={provisionalCount}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
-        Candidate preview
-      </p>
-      <div className="mt-6 space-y-4" aria-hidden="true">
-        {[
-          "h-4 w-2/3 rounded-full",
-          "h-8 w-full rounded-xl",
-          "h-7 w-24 rounded-full",
-          "h-20 w-full rounded-2xl",
-          "h-20 w-full rounded-2xl",
-        ].map((shape, index) => (
-          <div
-            key={shape}
-            className={[
-              shape,
-              // Filled placeholders track earned progress, so the rail shows the
-              // draft taking shape rather than a generic spinner.
-              index / 5 < ratio
-                ? "bg-white/12"
-                : "ui-skeleton motion-reduce:animate-none",
-            ].join(" ")}
-          />
-        ))}
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
+          Candidate preview
+        </p>
+        {provisionalCount > 0 ? (
+          <p className="text-[10px] text-white/32" data-testid="preview-provisional-note">
+            {provisionalCount} still to confirm
+          </p>
+        ) : null}
       </div>
+
+      <div className="mt-4">
+        {preview ?? (
+          <div className="space-y-4" aria-hidden="true">
+            {[
+              "h-4 w-2/3 rounded-full",
+              "h-8 w-full rounded-xl",
+              "h-7 w-24 rounded-full",
+              "h-20 w-full rounded-2xl",
+            ].map((shape) => (
+              <div
+                key={shape}
+                className={`${shape} ui-skeleton motion-reduce:animate-none`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       <p className="mt-6 text-[11px] leading-4 text-white/34">
         This stays a private draft. Nothing is published until you review and post it.
       </p>

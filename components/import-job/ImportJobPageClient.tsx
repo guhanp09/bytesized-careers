@@ -24,6 +24,11 @@ import { Icon } from "../Icons";
 import { PageHeader, PageLoading, StateCard } from "../ui";
 import PastePanel from "./PastePanel";
 import { DraftAssistantCanvas } from "./assistant/DraftAssistantCanvas";
+import RecruiterJobPreview from "../post-job/RecruiterJobPreview";
+import {
+  importPreviewProps,
+  importPreviewSnapshot,
+} from "../../lib/jobImportPreview";
 import {
   importGhostButton,
   importInputBase,
@@ -207,6 +212,26 @@ export default function ImportJobPageClient() {
     },
     [accessToken, draft]
   );
+
+  /**
+   * The real candidate preview, rebuilt whenever the draft changes.
+   *
+   * It appears as soon as there is anything genuine to show and stays empty
+   * before then — a preview of nothing is just a skeleton with extra steps.
+   */
+  const livePreview = React.useMemo(() => {
+    if (!draft) return { node: null, provisionalCount: 0 };
+    const snapshot = importPreviewSnapshot(draft);
+    const filled = snapshot.recruiterFields.length + snapshot.provisionalFields.length;
+    if (filled === 0) return { node: null, provisionalCount: 0 };
+    const props = importPreviewProps(snapshot, {
+      employerName: session?.user?.name ?? "Your channel",
+    });
+    return {
+      node: <RecruiterJobPreview {...props} previewMode="rail" />,
+      provisionalCount: snapshot.provisionalFields.length,
+    };
+  }, [draft, session?.user?.name]);
 
   const processDraft = React.useCallback(
     async (current: JobImportDraft, signal?: AbortSignal) => {
@@ -738,6 +763,8 @@ export default function ImportJobPageClient() {
             busy={answeringEarlyQuestion}
             error={error || null}
             delayed={delayed}
+            preview={livePreview.node}
+            provisionalCount={livePreview.provisionalCount}
           />
         ) : null}
 

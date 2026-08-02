@@ -13,6 +13,7 @@ import {
   nativeFieldForImport,
   type ImportCanonicalValues,
 } from "./importedDraftGuidance.ts";
+import { contextualGuidance } from "./jobImportRoleGuidance.ts";
 
 export type JobImportGuidancePhase = "essential" | "quality" | "complete";
 export type JobImportGuidanceKind =
@@ -384,12 +385,54 @@ const contextSubject = (context: JobImportGuidanceContext): string => {
   return role || title || "this creator role";
 };
 
+const asStringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+const asString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null;
+
+/**
+ * Build the role-guidance context from values the product already validated.
+ *
+ * Everything here comes from the live canonical draft, so the wording tracks
+ * what the recruiter has actually decided rather than a snapshot taken when the
+ * import started.
+ */
+function roleContextFor(
+  fields: JobImportField[],
+  kind: JobImportGuidanceKind,
+  context: JobImportGuidanceContext
+) {
+  const values = context.canonicalValues ?? {};
+  return {
+    jobTitle: context.jobTitle ?? null,
+    roleName: context.roleName ?? null,
+    specialization: asString(values.role_specialization),
+    platforms: asStringList(values.platforms),
+    formats: asStringList(values.formats_hired_for),
+    niches: asStringList(values.content_niches),
+    tools: asStringList(values.tools),
+    engagementType: asString(values.engagement_type),
+    workMode: asString(values.work_mode),
+    compensationUnit: asString(values.budget_unit),
+    sourceLabel: context.sourceLabel,
+    omitted: fields.some((field) => field.provenance_state === "missing"),
+    conflicted: kind === "conflict",
+  };
+}
+
 function guidanceCopy(
   groupId: string,
   fields: JobImportField[],
   kind: JobImportGuidanceKind,
   context: JobImportGuidanceContext
 ): Pick<JobImportGuidanceTurn, "heading" | "explanation" | "question" | "candidateImpact"> {
+  // Role-aware copy wins where it exists. A Thumbnail Designer and a
+  // Scriptwriter need different reasoning for the same field, and the generic
+  // wording below can only describe the field, not the job.
+  const contextual = contextualGuidance(groupId, roleContextFor(fields, kind, context));
+  if (contextual) return contextual;
+
   const role = contextSubject(context);
   const title = context.jobTitle?.trim() || role;
   const label = importFieldLabel(fields[0].field_path);

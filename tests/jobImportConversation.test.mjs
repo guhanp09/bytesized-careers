@@ -198,8 +198,12 @@ test("guidance is not hardcoded to editors", () => {
   }));
 
   assert.equal(turns[0].id, "creative-autonomy");
-  assert.match(turns[0].explanation, /Content Strategist/);
   assert.doesNotMatch(turns[0].explanation, /editor/i);
+  // The bar is reasoning that belongs to strategy work, not the job title
+  // pasted into a sentence that would fit any role. Asserting on the title
+  // would reward exactly the substitution this guidance replaced.
+  assert.match(turns[0].explanation, /ownership|direction|decides/i);
+  assert.match(turns[0].question, /latitude|autonomy|decide/i);
 });
 
 test("fallback copy remains contextual and never exposes internal labels", () => {
