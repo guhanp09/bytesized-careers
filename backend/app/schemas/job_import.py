@@ -710,6 +710,44 @@ class JobImportDraftRead(BaseModel):
     )
 
 
+class JobImportConversationRead(BaseModel):
+    """The checkpointed conversation, as the client sees it.
+
+    Deliberately narrow: enough to render the current turn and prove nothing is
+    running, with no provider metadata, evidence identifiers or internal
+    diagnostics crossing the boundary.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: str
+    active_question: dict[str, object] | None = None
+    recruiter_context_version: int
+    continuation_count: int
+    #: True when the assistant is stopped on a person and no work is running.
+    waiting: bool
+    ready_for_draft: bool
+
+
+class JobImportAnswerRequest(BaseModel):
+    """An answer to the one question currently being asked."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field_path: str = Field(min_length=1, max_length=120)
+    value: JsonValue
+    #: The version the client last saw. A stale value makes the write a no-op
+    #: rather than advancing the conversation twice.
+    expected_context_version: int | None = None
+
+    @field_validator("value")
+    @classmethod
+    def bound_value(cls, value: JsonValue) -> JsonValue:
+        return _bounded_json(
+            value, maximum=MAX_FIELD_JSON_BYTES, label="answer value"
+        )  # type: ignore[return-value]
+
+
 class JobImportDraftContextRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -31,6 +31,7 @@ from app.repositories.job_repository import JobRepository
 from app.repositories.search_repository import SearchRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
+from app.services.job_import_conversation_service import JobImportConversationService
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_provider import JobImportExtractionProvider
 from app.services.job_import_service import JobImportService
@@ -88,6 +89,13 @@ async def get_job_import_processing_service(
     provider: JobImportExtractionProvider = Depends(get_job_import_provider),
 ) -> JobImportProcessingService:
     return JobImportProcessingService(service, provider)
+
+
+async def get_job_import_conversation_service(
+    service: JobImportService = Depends(get_job_import_service),
+) -> JobImportConversationService:
+    # No provider dependency by design: the conversation loop never calls one.
+    return JobImportConversationService(service)
 
 
 async def get_job_import_url_service(

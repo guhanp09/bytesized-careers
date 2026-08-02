@@ -229,6 +229,25 @@ class JobImportDraft(Base):
     recruiter_prefill_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Checkpointed conversation axis. Layered on top of processing_status rather
+    # than folded into it, so the existing lifecycle keeps its exact meaning.
+    conversation_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The one question the assistant is waiting on, or NULL when it is not waiting.
+    active_question: Mapped[dict[str, object] | None] = mapped_column(
+        json_type, nullable=True
+    )
+    # Bumped on every accepted answer. A provider result carrying an older version
+    # is stale and must not overwrite what the recruiter has since decided.
+    recruiter_context_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    continuation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_completed_stage: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    dismissed_suggestions: Mapped[list[str]] = mapped_column(
+        json_type, nullable=False, default=list, server_default=sa.text("'[]'")
+    )
     # Internal, transaction-scoped compare-and-set token. It is never serialized.
     # A committed row must normally contain NULL: successful mutations clear it in
     # the same transaction, while failed/crashed transactions roll it back.

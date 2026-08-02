@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import (
     get_current_user,
+    get_job_import_conversation_service,
     get_job_import_processing_service,
     get_job_import_service,
     get_job_import_url_service,
@@ -14,11 +15,13 @@ from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import User
 from app.schemas.job import JobRead
 from app.schemas.job_import import (
+    JobImportAnswerRequest,
     JobImportApplyRequest,
     JobImportApplyResponse,
     JobImportAttachRequest,
     JobImportAttachResponse,
     JobImportConflictResolutionRequest,
+    JobImportConversationRead,
     JobImportDraftContextRead,
     JobImportDraftInitialize,
     JobImportDraftRead,
@@ -29,6 +32,10 @@ from app.schemas.job_import import (
     JobImportSourceCreate,
     JobImportSourceRead,
     JobImportUrlSourceCreate,
+)
+from app.services.job_import_conversation_service import (
+    ConversationSnapshot,
+    JobImportConversationService,
 )
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_service import JobImportError, JobImportService
@@ -235,6 +242,125 @@ async def review_import_field(
     except JobImportError as error:
         _raise_import_error(error)
     return await service.draft_read(draft)
+
+
+def _conversation_read(snapshot: ConversationSnapshot) -> JobImportConversationRead:
+    return JobImportConversationRead(
+        state=snapshot.state,
+        active_question=snapshot.active_question,
+        recruiter_context_version=snapshot.recruiter_context_version,
+        continuation_count=snapshot.continuation_count,
+        waiting=snapshot.waiting,
+        ready_for_draft=snapshot.ready_for_draft,
+    )
+
+
+@router.get(
+    "/drafts/{draft_id}/conversation",
+    response_model=JobImportConversationRead,
+    summary="Read the checkpointed conversation without starting any work",
+)
+async def read_import_conversation(
+    draft_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    # Deliberately a plain read. Polling and refresh both land here, and neither
+    # may start a provider stage.
+    try:
+        snapshot = await service.snapshot(draft_id, owner_user_id=current_user.id)
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
+
+
+@router.post(
+    "/drafts/{draft_id}/conversation/begin",
+    response_model=JobImportConversationRead,
+    summary="Enter the conversation for a prepared draft",
+)
+async def begin_import_conversation(
+    draft_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    try:
+        snapshot = await service.begin(draft_id, owner_user_id=current_user.id)
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
+
+
+@router.post(
+    "/drafts/{draft_id}/conversation/answer",
+    response_model=JobImportConversationRead,
+    summary="Answer the one question the assistant is waiting on",
+)
+async def answer_import_question(
+    draft_id: UUID,
+    payload: JobImportAnswerRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    try:
+        snapshot = await service.answer_active_question(
+            draft_id,
+            payload.field_path,
+            payload.value,
+            owner_user_id=current_user.id,
+            expected_context_version=payload.expected_context_version,
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
+
+
+@router.post(
+    "/drafts/{draft_id}/conversation/skip",
+    response_model=JobImportConversationRead,
+    summary="Skip the active optional suggestion",
+)
+async def skip_import_question(
+    draft_id: UUID,
+    remaining: bool = False,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    try:
+        snapshot = (
+            await service.skip_remaining_suggestions(
+                draft_id, owner_user_id=current_user.id
+            )
+            if remaining
+            else await service.dismiss_active_question(
+                draft_id, owner_user_id=current_user.id
+            )
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
+
+
+@router.post(
+    "/drafts/{draft_id}/conversation/pause",
+    response_model=JobImportConversationRead,
+    summary="Record that the recruiter stepped away, keeping the draft resumable",
+)
+async def pause_import_conversation(
+    draft_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    try:
+        snapshot = await service.mark_abandoned(draft_id, owner_user_id=current_user.id)
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
 
 
 @router.put(
