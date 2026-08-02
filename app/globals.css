@@ -1383,3 +1383,29 @@ html {
     transform: none;
   }
 }
+
+/* A light travelling over the unearned part of the draft-assistant progress
+   track. It marks work that is genuinely in flight but whose remaining time
+   cannot be known, so it moves without ever advancing the bar. */
+@keyframes bea-progress-sweep {
+  0% {
+    opacity: 0.15;
+    transform: translateX(-30%);
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0.15;
+    transform: translateX(30%);
+  }
+}
+.bea-progress-sweep {
+  animation: bea-progress-sweep 2.2s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bea-progress-sweep {
+    animation: none;
+    opacity: 0.28;
+  }
+}

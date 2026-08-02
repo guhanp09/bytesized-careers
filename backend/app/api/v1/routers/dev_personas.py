@@ -234,8 +234,8 @@ async def create_job_import_review_fixture(
             # restore and a later provider result has something to lose against.
             await service.set_recruiter_prefill(
                 draft.id,
-                "application_mode",
-                "external",
+                "employer_context_type",
+                "agency",
                 owner_user_id=current_user.id,
             )
         draft = await service.get_draft(draft.id, owner_user_id=current_user.id)

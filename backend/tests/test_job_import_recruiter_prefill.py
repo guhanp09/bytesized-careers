@@ -98,10 +98,9 @@ async def _field(draft_id: str, field_path: str) -> JobImportField | None:
 def test_early_question_allowlist_is_narrow_and_policy_derived() -> None:
     """Only recruiter-authority, non-conditional fields may be asked early."""
 
-    assert EARLY_RECRUITER_QUESTION_FIELDS == {
-        "application_mode",
-        "employer_context_type",
-    }
+    # application_mode was removed: applications always run through CreatorJobs,
+    # so there is no routing decision left for a recruiter to make.
+    assert EARLY_RECRUITER_QUESTION_FIELDS == {"employer_context_type"}
     for field_path in EARLY_RECRUITER_QUESTION_FIELDS:
         policy = JOB_IMPORT_FIELD_POLICIES[field_path]
         # Always recruiter-confirmed, so an early answer can never be wasted work.
@@ -113,6 +112,7 @@ def test_early_question_allowlist_is_narrow_and_policy_derived() -> None:
     # recruiter-confirmed: asking early would create work extraction removes.
     for field_path in ("budget_amount", "compensation_mode", "trial_status", "title"):
         assert not is_early_recruiter_question(field_path)
+    assert not is_early_recruiter_question("application_mode")
 
 
 @pytest.mark.anyio
@@ -123,13 +123,13 @@ async def test_prefill_persists_on_the_draft_and_survives_reload(
     draft = await _source_and_draft(client, headers, "prefill-persist")
 
     response = await client.put(
-        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/application_mode",
+        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/employer_context_type",
         headers=headers,
-        json={"value": "internal"},
+        json={"value": "creator"},
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["recruiter_prefill"] == {"application_mode": "internal"}
+    assert body["recruiter_prefill"] == {"employer_context_type": "creator"}
     # The client is told which questions it may ask; it must not infer the set.
     assert body["early_question_fields"] == sorted(EARLY_RECRUITER_QUESTION_FIELDS)
 
@@ -138,7 +138,7 @@ async def test_prefill_persists_on_the_draft_and_survives_reload(
         f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers
     )
     assert reread.status_code == 200
-    assert reread.json()["recruiter_prefill"] == {"application_mode": "internal"}
+    assert reread.json()["recruiter_prefill"] == {"employer_context_type": "creator"}
 
 
 @pytest.mark.anyio
@@ -191,26 +191,27 @@ async def test_provider_output_never_overwrites_an_early_recruiter_answer(
 
     # The recruiter answers while extraction is still running.
     answered = await client.put(
-        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/application_mode",
+        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/employer_context_type",
         headers=headers,
-        json={"value": "external"},
+        json={"value": "agency"},
     )
     assert answered.status_code == 200
 
     # The provider later returns a different value for the same field.
     payload = scenario("complete_creator_job")
-    extracted_modes = [
-        item for item in payload["fields"] if item["field_path"] == "application_mode"
+    # The fixture does not mention who is hiring, so the recruiter's answer is
+    # the only source for it and must survive the merge untouched.
+    assert not [
+        item
+        for item in payload["fields"]
+        if item["field_path"] == "employer_context_type"
     ]
-    assert extracted_modes and extracted_modes[0]["value"] == "internal"
     await _record(draft["id"], owner_id, payload)
 
-    field = await _field(draft["id"], "application_mode")
+    field = await _field(draft["id"], "employer_context_type")
     assert field is not None
     assert field.review_status == "edited"
-    assert field.edited_value == "external"
-    # The machine proposal is retained for private audit, but is not effective.
-    assert field.proposed_value == "internal"
+    assert field.edited_value == "agency"
     assert field.validation_errors == []
     assert field.requires_confirmation is False
 
@@ -288,16 +289,16 @@ async def test_prefill_is_owner_private(client: AsyncClient) -> None:
     intruder_headers, _ = await _auth(client, "prefill-intruder")
 
     response = await client.put(
-        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/application_mode",
+        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/employer_context_type",
         headers=intruder_headers,
-        json={"value": "internal"},
+        json={"value": "creator"},
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "JOB_IMPORT_DRAFT_NOT_FOUND"
 
     unknown = await client.put(
-        f"/api/v1/job-imports/drafts/{uuid4()}/prefill/application_mode",
+        f"/api/v1/job-imports/drafts/{uuid4()}/prefill/employer_context_type",
         headers=owner_headers,
-        json={"value": "internal"},
+        json={"value": "creator"},
     )
     assert unknown.status_code == 404

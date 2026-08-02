@@ -389,7 +389,8 @@ AUTO_TRACKED_MISSING_FIELDS: Final[tuple[str, ...]] = tuple(
 # work the extraction was about to remove.
 _EARLY_RECRUITER_AUTHORITY_FIELDS: Final[frozenset[str]] = frozenset(
     {
-        "application_mode",
+        # application_mode used to be here. Applications always run through
+        # CreatorJobs, so there is no decision to ask about.
         "employer_context_type",
     }
 )

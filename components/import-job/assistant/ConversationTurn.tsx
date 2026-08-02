@@ -3,6 +3,10 @@
 import * as React from "react";
 
 import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
+import {
+  answerOptionsFor,
+  questionPhraseFor,
+} from "../../../lib/jobImportAnswerOptions.ts";
 import { contextualGuidance } from "../../../lib/jobImportRoleGuidance.ts";
 import type { JobImportActiveQuestion } from "../../../lib/jobImportReadiness.ts";
 
@@ -15,40 +19,6 @@ import type { JobImportActiveQuestion } from "../../../lib/jobImportReadiness.ts
  * for Post Job, so an editor is asked about footage and a strategist about
  * analytics — the same voice on both sides of the handoff.
  */
-
-/** Choice sets for fields where free text would be the wrong control. */
-const CHOICES: Readonly<Record<string, ReadonlyArray<{ value: string; label: string }>>> = {
-  application_mode: [
-    { value: "internal", label: "Apply on CreatorJobs" },
-    { value: "external", label: "Apply on another site" },
-  ],
-  work_mode: [
-    { value: "remote", label: "Remote" },
-    { value: "hybrid", label: "Hybrid" },
-    { value: "onsite", label: "On-site" },
-  ],
-  compensation_mode: [
-    { value: "fixed", label: "Fixed amount" },
-    { value: "range", label: "Range" },
-    { value: "negotiable", label: "Negotiable" },
-  ],
-  trial_status: [
-    { value: "none", label: "No trial" },
-    { value: "paid", label: "Paid trial" },
-    { value: "unpaid", label: "Unpaid trial" },
-  ],
-  budget_currency: [
-    { value: "INR", label: "INR" },
-    { value: "USD", label: "USD" },
-    { value: "EUR", label: "EUR" },
-    { value: "GBP", label: "GBP" },
-  ],
-  revision_policy: [
-    { value: "fixed", label: "A set number of rounds" },
-    { value: "unlimited", label: "Unlimited" },
-    { value: "negotiable", label: "Agree together" },
-  ],
-};
 
 /**
  * Fields the native model stores as lists.
@@ -134,7 +104,10 @@ export function ConversationTurn({
     .replace(/\s*\([^)]*\)\s*$/, "")
     .trim();
   const optional = question.kind === "optional";
-  const choices = CHOICES[question.field_path];
+  // Offer the likely answers wherever the field has them. An empty text box
+  // hands the thinking back to the recruiter for a decision the product
+  // already knows the shape of.
+  const choices = answerOptionsFor(question.field_path, { jobTitle, roleName });
 
   // Reuse the role-aware copy rather than writing a second voice for the canvas.
   const guidance = contextualGuidance(groupFor(question.field_path), {
@@ -145,15 +118,25 @@ export function ConversationTurn({
     conflicted: false,
   });
 
+  // Field-specific phrasing first: templating a form label into a sentence
+  // produced questions like "What should earlier start window be?".
+  const phrase = questionPhraseFor(question.field_path);
   const heading =
     question.explanation && question.kind === "confirmation"
       ? "One thing to confirm"
-      : (guidance?.heading ?? `What should ${label.toLowerCase()} be?`);
+      : (phrase?.heading ?? guidance?.heading ?? `What should ${label.toLowerCase()} be?`);
+  // The label leaks into the fallback too — "did not make earlier start window
+  // clear" — so a field with its own phrasing describes the gap without it.
   const explanation =
     question.explanation ??
     guidance?.explanation ??
-    `${sourceLabel} did not make ${label.toLowerCase()} clear, and candidates use it to judge whether this role suits them.`;
-  const prompt = guidance?.question ?? `What should candidates see for ${label.toLowerCase()}?`;
+    (phrase
+      ? `${sourceLabel} did not settle this, and it is not something to guess at on a candidate's behalf.`
+      : `${sourceLabel} did not make ${label.toLowerCase()} clear, and candidates use it to judge whether this role suits them.`);
+  const prompt =
+    phrase?.prompt ??
+    guidance?.question ??
+    `What should candidates see for ${label.toLowerCase()}?`;
 
   return (
     <div className="ui-rise" data-testid="conversation-turn" data-kind={question.kind}>
@@ -223,7 +206,7 @@ export function ConversationTurn({
         </button>
       ) : null}
 
-      {question.alternatives?.length ? null : choices ? (
+      {question.alternatives?.length ? null : choices.length ? (
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {choices.map((choice) => (
             <button
@@ -234,7 +217,12 @@ export function ConversationTurn({
               onClick={() => onAnswer(question.field_path, choice.value)}
               className={`${optionButton} border-white/12 bg-white/6 text-white hover:bg-white/10`}
             >
-              {choice.label}
+              <span className="block">{choice.label}</span>
+              {choice.detail ? (
+                <span className="mt-1 block text-[11px] font-normal leading-4 text-white/50">
+                  {choice.detail}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>

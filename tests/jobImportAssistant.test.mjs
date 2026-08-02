@@ -12,7 +12,9 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 // The server publishes this set on the draft. Tests use it literally so a change
 // in the backend allowlist has to be reflected here deliberately.
-const SERVER_ELIGIBLE = ["application_mode", "employer_context_type"];
+// application_mode was removed: applications always run through CreatorJobs,
+// so there is no routing decision for a recruiter to make.
+const SERVER_ELIGIBLE = ["employer_context_type"];
 
 test("only server-certified fields become questions", () => {
   // A field the server did not certify yields nothing, even if asked for.
@@ -35,28 +37,14 @@ test("one decision is offered at a time, never a list of everything missing", ()
 });
 
 test("an answered question does not come back", () => {
-  const remaining = availableEarlyQuestions(
-    SERVER_ELIGIBLE,
-    { application_mode: "internal" },
-    "pasted_text"
-  );
-  assert.deepEqual(
-    remaining.map((question) => question.fieldPath),
-    ["employer_context_type"]
-  );
-
   const none = availableEarlyQuestions(
     SERVER_ELIGIBLE,
-    { application_mode: "internal", employer_context_type: "creator" },
+    { employer_context_type: "creator" },
     "pasted_text"
   );
   assert.deepEqual(none, []);
   assert.equal(
-    nextEarlyQuestion(
-      SERVER_ELIGIBLE,
-      { application_mode: "internal", employer_context_type: "creator" },
-      "pasted_text"
-    ),
+    nextEarlyQuestion(SERVER_ELIGIBLE, { employer_context_type: "creator" }, "pasted_text"),
     null
   );
 });
@@ -96,7 +84,6 @@ test("questions never expose an internal field path or the word legacy", () => {
     ])
     .join(" ");
   for (const leak of [
-    "application_mode",
     "employer_context_type",
     "field_path",
     "legacy",
@@ -108,8 +95,8 @@ test("questions never expose an internal field path or the word legacy", () => {
 });
 
 test("answers are summarised with the product's own label, not the raw value", () => {
-  assert.equal(earlyAnswerLabel("application_mode", "internal"), "Apply on CreatorJobs");
   assert.equal(earlyAnswerLabel("employer_context_type", "production_house"), "Production house");
+  assert.equal(earlyAnswerLabel("employer_context_type", "agency"), "Agency");
 });
 
 test("the assistant surface refuses the vocabulary of the old review dashboard", () => {
@@ -221,4 +208,134 @@ test("the handoff is an explicit action, never automatic", () => {
   const turn = read("components/import-job/assistant/ConversationTurn.tsx");
   assert.match(turn, /conversation-open-draft/);
   assert.doesNotMatch(turn, /router\.(push|replace)/);
+});
+
+// ---------------------------------------------------------------------------
+// Suggested answers, and the question that no longer exists
+// ---------------------------------------------------------------------------
+
+test("applications always run through CreatorJobs, so it is never asked", async () => {
+  const { answerOptionsFor } = await import("../lib/jobImportAnswerOptions.ts");
+  const early = read("lib/jobImportEarlyQuestions.ts");
+
+  // There is no routing decision to make, so there is no question to ask.
+  assert.doesNotMatch(early, /application_mode/);
+  assert.deepEqual(answerOptionsFor("application_mode"), []);
+  assert.deepEqual(answerOptionsFor("external_apply_url"), []);
+});
+
+test("fields with a known shape offer answers instead of an empty box", async () => {
+  const { answerOptionsFor, hasAnswerOptions } = await import(
+    "../lib/jobImportAnswerOptions.ts"
+  );
+  for (const field of [
+    "work_mode",
+    "compensation_mode",
+    "budget_currency",
+    "trial_status",
+    "revision_policy",
+    "start_timeframe",
+    "engagement_type",
+    "duration_type",
+    "creative_autonomy",
+    "expected_weekly_hours_min",
+    "budget_unit",
+    "turnaround_unit",
+  ]) {
+    assert.ok(hasAnswerOptions(field), `${field} should offer options`);
+    for (const option of answerOptionsFor(field)) {
+      assert.ok(option.value.length > 0, `${field} option needs a value`);
+      assert.ok(option.label.length > 0, `${field} option needs a label`);
+    }
+  }
+});
+
+test("genuinely open fields stay free text rather than being guessed at", async () => {
+  const { answerOptionsFor } = await import("../lib/jobImportAnswerOptions.ts");
+  // A menu of reference links or channel descriptions would be invention.
+  for (const field of [
+    "reference_videos",
+    "about_channel",
+    "responsibilities",
+    "requirements",
+    "budget_amount",
+    "title",
+  ]) {
+    assert.deepEqual(answerOptionsFor(field), [], `${field} must stay free text`);
+  }
+});
+
+test("compensation units are ordered by what the role is actually paid in", async () => {
+  const { answerOptionsFor } = await import("../lib/jobImportAnswerOptions.ts");
+  const forDesigner = answerOptionsFor("budget_unit", { roleName: "Thumbnail Designer" });
+  const forWriter = answerOptionsFor("budget_unit", { roleName: "Scriptwriter" });
+  const forPodcast = answerOptionsFor("budget_unit", { roleName: "Podcast Editor" });
+
+  assert.equal(forDesigner[0].value, "per thumbnail");
+  assert.equal(forWriter[0].value, "per script");
+  assert.equal(forPodcast[0].value, "per episode");
+  // No duplicates once the role-specific units merge with the common ones.
+  const values = forDesigner.map((option) => option.value);
+  assert.equal(new Set(values).size, values.length);
+});
+
+test("engagement options come from the shared taxonomy, not a local copy", async () => {
+  const { answerOptionsFor } = await import("../lib/jobImportAnswerOptions.ts");
+  const { ENGAGEMENT_TYPES } = await import("../lib/jobContract.ts");
+  assert.deepEqual(
+    answerOptionsFor("engagement_type").map((option) => option.value),
+    [...ENGAGEMENT_TYPES]
+  );
+});
+
+test("the progress bar is one continuous track, not a row of chunks", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  // Segmented chunks read as a checklist the recruiter has to work through.
+  assert.doesNotMatch(canvas, /stages\.map\(\(stage\) => \(/);
+  assert.match(canvas, /absolute inset-y-0 left-0 rounded-full/);
+  assert.match(canvas, /style=\{\{ width: `\$\{Math\.max\(percent, 2\)\}%` \}\}/);
+  // The sweep marks in-flight work without advancing the earned width.
+  assert.match(canvas, /bea-progress-sweep/);
+});
+
+test("the progress sweep stops under reduced motion", () => {
+  const css = read("app/globals.css");
+  const block = css.slice(css.indexOf("bea-progress-sweep"));
+  assert.match(block, /prefers-reduced-motion[\s\S]*bea-progress-sweep[\s\S]*animation: none/);
+});
+
+test("asked fields get spoken phrasing, not a form label in a sentence", async () => {
+  const { questionPhraseFor } = await import("../lib/jobImportAnswerOptions.ts");
+
+  // "Earlier start window" is a registry label written to sit beside an input.
+  // Templated into "What should {label} be?" it produced a question no person
+  // would ask.
+  const start = questionPhraseFor("start_timeframe");
+  assert.ok(start);
+  assert.doesNotMatch(start.heading, /earlier start window/i);
+  assert.match(start.heading, /when should/i);
+
+  for (const field of [
+    "work_mode",
+    "budget_currency",
+    "budget_unit",
+    "compensation_mode",
+    "trial_status",
+    "engagement_type",
+    "requirements",
+    "reference_videos",
+  ]) {
+    const phrase = questionPhraseFor(field);
+    assert.ok(phrase, `${field} needs spoken phrasing`);
+    assert.ok(phrase.heading.trim().endsWith("?"), `${field} must read as a question`);
+    // No internal vocabulary reaches the recruiter.
+    for (const leak of ["_", "legacy", "field"]) {
+      assert.ok(!phrase.heading.toLowerCase().includes(leak), `${field}: "${leak}"`);
+    }
+  }
+});
+
+test("an unmapped field still falls back rather than breaking", async () => {
+  const { questionPhraseFor } = await import("../lib/jobImportAnswerOptions.ts");
+  assert.equal(questionPhraseFor("some_unmapped_field"), null);
 });

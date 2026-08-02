@@ -59,26 +59,6 @@ function buildQuestion(
   const source = sourcePhrase(sourceType);
 
   switch (fieldPath) {
-    case "application_mode":
-      return {
-        fieldPath,
-        question: "Where should candidates apply?",
-        explanation: `Only you can settle this — ${source} cannot decide where your applications should land.`,
-        candidateImpact:
-          "Candidates get one clear way to apply, and their portfolio either arrives in your CreatorJobs workspace or on your own site.",
-        options: [
-          {
-            value: "internal",
-            label: "Apply on CreatorJobs",
-            detail: "Review applications in your recruiter workspace.",
-          },
-          {
-            value: "external",
-            label: "Apply on another site",
-            detail: "Send candidates to one secure application URL.",
-          },
-        ],
-      };
     case "employer_context_type":
       return {
         fieldPath,

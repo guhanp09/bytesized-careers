@@ -147,7 +147,7 @@ async def test_the_resume_scenario_ships_with_an_answer_already_saved(
     draft = response.json()["draft"]
 
     # A refresh has something to restore, and it came from the server.
-    assert draft["recruiter_prefill"] == {"application_mode": "external"}
+    assert draft["recruiter_prefill"] == {"employer_context_type": "agency"}
     assert draft["processing_status"] == "processing"
 
 

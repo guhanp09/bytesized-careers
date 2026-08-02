@@ -303,6 +303,13 @@ function ProgressBar({
   stages: ReturnType<typeof jobImportStages>;
 }) {
   const percent = Math.round(ratio * 100);
+  const active = stages.find((stage) => stage.status === "active");
+  const paused = stages.find((stage) => stage.status === "waiting");
+  const failed = stages.some((stage) => stage.status === "failed");
+
+  // One continuous track. Segmented chunks read as a checklist of steps the
+  // recruiter is expected to follow, when the point is a single job quietly
+  // getting further along.
   return (
     <div className="mt-6">
       <div
@@ -312,31 +319,33 @@ function ProgressBar({
         aria-valuenow={percent}
         aria-valuetext={`${percent}% prepared`}
         aria-label="Draft preparation"
-        className="flex h-1.5 w-full gap-1 overflow-hidden rounded-full"
+        className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/8"
         data-testid="draft-assistant-progress"
         data-progress={percent}
+        data-state={failed ? "failed" : paused ? "waiting" : active ? "active" : "complete"}
       >
-        {stages.map((stage) => (
+        {/* Earned progress. Only completed stages contribute width, so the bar
+            can never claim more than has actually happened. */}
+        <span
+          className={[
+            "absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out",
+            "motion-reduce:transition-none",
+            failed
+              ? "bg-white/25"
+              : paused
+                ? "bg-[color:var(--color-state-review,#8ec5ff)]/55"
+                : "bg-[color:var(--color-state-review,#8ec5ff)]",
+          ].join(" ")}
+          style={{ width: `${Math.max(percent, 2)}%` }}
+        />
+        {/* Unmeasurable work in flight: a light travelling over the remaining
+            track. It advances nothing, so it cannot overstate progress. */}
+        {active?.indeterminate ? (
           <span
-            key={stage.id}
-            data-stage={stage.id}
-            data-status={stage.status}
-            className={[
-              "h-full flex-1 rounded-full transition-colors duration-300 motion-reduce:transition-none",
-              stage.status === "complete"
-                ? "bg-[color:var(--color-state-review,#8ec5ff)]"
-                : stage.status === "active"
-                  ? // Unmeasurable work animates in place rather than advancing.
-                    "bg-[color:var(--color-state-review,#8ec5ff)]/35 ui-skeleton motion-reduce:animate-none"
-                  : stage.status === "waiting"
-                    ? // Stopped on a person: still, and visibly not running.
-                      "bg-[color:var(--color-state-review,#8ec5ff)]/20"
-                    : stage.status === "failed"
-                      ? "bg-white/25"
-                      : "bg-white/8",
-            ].join(" ")}
+            className="bea-progress-sweep absolute inset-y-0 rounded-full bg-[color:var(--color-state-review,#8ec5ff)]/40"
+            style={{ left: `${percent}%`, width: `${Math.max(100 - percent, 8)}%` }}
           />
-        ))}
+        ) : null}
       </div>
     </div>
   );

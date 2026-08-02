@@ -77,11 +77,13 @@ test.describe("truthful progress", () => {
     const bar = page.getByTestId("draft-assistant-progress");
     await expect(bar).toBeVisible();
 
-    // Wait for the draft itself to land; before that the canvas is honestly at
-    // zero because nothing has been observed yet.
-    await expect(
-      bar.locator('[data-stage="structuring"][data-status="active"]')
-    ).toHaveCount(1, { timeout: 20_000 });
+    // Wait for the draft itself to land. The bar is honestly at zero until then,
+    // and "active" is true from the first frame, so gate on earned progress.
+    await expect
+      .poll(async () => Number(await bar.getAttribute("data-progress")), {
+        timeout: 20_000,
+      })
+      .toBeGreaterThan(0);
 
     // Some stages are genuinely done, so the bar is not empty...
     const percent = Number(await bar.getAttribute("data-progress"));
@@ -123,11 +125,12 @@ test.describe("early questions during processing", () => {
     await expect(page.getByTestId("early-question")).toHaveCount(1);
 
     // Extraction is still running underneath.
-    await expect(
-      page.getByTestId("draft-assistant-progress").locator('[data-status="active"]')
-    ).toHaveCount(1);
+    await expect(page.getByTestId("draft-assistant-progress")).toHaveAttribute(
+      "data-state",
+      "active"
+    );
 
-    await page.getByTestId("early-question-option-internal").click();
+    await page.getByTestId("early-question-option-creator").click();
 
     // The answer is recorded and shown in the compact history.
     await expect(page.getByText("Your answers (1)")).toBeVisible();
@@ -265,7 +268,7 @@ test.describe("responsive layout", () => {
       expect(overflow, `horizontal overflow at ${size.name}`).toBe(false);
 
       // Touch targets stay reachable.
-      const option = page.getByTestId("early-question-option-internal");
+      const option = page.getByTestId("early-question-option-creator");
       if (await option.count()) {
         const box = await option.boundingBox();
         expect(box!.height).toBeGreaterThanOrEqual(44);

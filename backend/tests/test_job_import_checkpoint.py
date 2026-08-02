@@ -419,8 +419,8 @@ def test_prohibited_and_owned_fields_can_never_become_questions() -> None:
 
 def test_an_already_answered_question_is_never_asked_again() -> None:
     result = validate_proposed_question(
-        ProposedQuestion("application_mode", "Where?", "because"),
-        answered_fields=frozenset({"application_mode"}),
+        ProposedQuestion("work_mode", "Where?", "because"),
+        answered_fields=frozenset({"work_mode"}),
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset(),
     )
@@ -429,10 +429,10 @@ def test_an_already_answered_question_is_never_asked_again() -> None:
 
 def test_a_suppressed_question_is_never_asked() -> None:
     result = validate_proposed_question(
-        ProposedQuestion("external_apply_url", "URL?", "because"),
-        answered_fields=frozenset({"application_mode"}),
-        suppressed_fields=frozenset({"external_apply_url"}),
-        active_conditional_fields=frozenset({"external_apply_url"}),
+        ProposedQuestion("trial_scope", "Scope?", "because"),
+        answered_fields=frozenset({"trial_status"}),
+        suppressed_fields=frozenset({"trial_scope"}),
+        active_conditional_fields=frozenset({"trial_scope"}),
     )
     assert result.rejection == "suppressed_by_answer"
 
@@ -452,7 +452,7 @@ def test_the_deterministic_queue_keeps_the_conversation_alive() -> None:
 
     candidate = next_question_field(
         conflicted_fields=frozenset({"budget_currency"}),
-        missing_fields={"application_mode": "publication_blocker"},
+        missing_fields={"budget_unit": "publication_blocker"},
         answered_fields=frozenset(),
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset({"budget_currency"}),
@@ -581,9 +581,14 @@ def test_only_interpretation_critical_fields_are_essential() -> None:
 
     from app.core.job_import_questions import conversation_question_kind
 
-    # Money, reach, routing and unpaid-work terms change how a listing reads.
-    for path in ("budget_currency", "work_mode", "application_mode", "trial_status"):
+    # Money, reach and unpaid-work terms change how a listing reads.
+    for path in ("budget_currency", "work_mode", "budget_unit", "trial_status"):
         assert conversation_question_kind(path, "recommended") == "mandatory", path
+
+    # Application routing is decided by the platform, so it is never a question
+    # even though it is a publication blocker.
+    for path in ("application_mode", "external_apply_url"):
+        assert conversation_question_kind(path, "publication_blocker") is None, path
 
     # Genuinely useful, but the listing is understandable without them.
     for path in ("revision_policy", "source_inputs", "turnaround_value"):
@@ -645,13 +650,13 @@ def test_essential_questions_are_always_asked_before_optional_ones() -> None:
         conflicted_fields=frozenset(),
         missing_fields={
             "revision_policy": "recommended",
-            "application_mode": "publication_blocker",
+            "budget_unit": "publication_blocker",
         },
         answered_fields=frozenset(),
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset(),
     )
-    assert queue[0].field_path == "application_mode"
+    assert queue[0].field_path == "budget_unit"
     assert queue[0].kind == "mandatory"
     assert queue[-1].kind == "optional"
 
@@ -857,12 +862,12 @@ def test_a_conflict_must_still_be_worth_asking_about() -> None:
 
     queue = deterministic_question_queue(
         conflicted_fields=frozenset({"experience_level"}),
-        missing_fields={"application_mode": "publication_blocker"},
+        missing_fields={"budget_unit": "publication_blocker"},
         answered_fields=frozenset(),
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset(),
     )
-    assert [item.field_path for item in queue] == ["application_mode"]
+    assert [item.field_path for item in queue] == ["budget_unit"]
 
 
 def test_a_conflict_on_an_essential_field_still_leads() -> None:
@@ -870,7 +875,7 @@ def test_a_conflict_on_an_essential_field_still_leads() -> None:
 
     queue = deterministic_question_queue(
         conflicted_fields=frozenset({"budget_currency"}),
-        missing_fields={"application_mode": "publication_blocker"},
+        missing_fields={"budget_unit": "publication_blocker"},
         answered_fields=frozenset(),
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset({"budget_currency"}),

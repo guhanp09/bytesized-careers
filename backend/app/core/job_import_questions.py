@@ -45,9 +45,6 @@ ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
         # Who can actually take the job.
         "work_mode",
         "location",
-        # Where applications land is a decision only the recruiter can make.
-        "application_mode",
-        "external_apply_url",
         # Whether unpaid work is being asked for, and on what terms.
         "trial_status",
         "trial_work_usage",
@@ -60,6 +57,17 @@ ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
         "primary_role_key",
     }
 )
+
+#: Decided by the platform, so never a question.
+#:
+#: Applications always run through CreatorJobs: that is how the workspace,
+#: screening and messaging hold together, so there is nothing for a recruiter to
+#: choose. Asking would offer a decision that does not exist, and external_apply_url
+#: only ever mattered as the follow-up to the answer "somewhere else".
+PLATFORM_DECIDED_FIELDS: Final[frozenset[str]] = frozenset(
+    {"application_mode", "external_apply_url"}
+)
+
 
 #: Improvements worth offering, in the order they tend to matter.
 #:
@@ -92,6 +100,10 @@ def conversation_question_kind(field_path: str, requirement: str) -> QuestionKin
     conversation the recruiter has to sit through.
     """
 
+    if field_path in PLATFORM_DECIDED_FIELDS:
+        # Not the recruiter's call, so not a question — whatever its
+        # publication requirement says.
+        return None
     if field_path in ESSENTIAL_CONVERSATION_FIELDS:
         return "mandatory"
     if requirement == "publication_blocker":
@@ -160,7 +172,7 @@ def validate_proposed_question(
 
     path = proposal.field_path
 
-    if path in PROHIBITED_QUESTION_FIELDS:
+    if path in PROHIBITED_QUESTION_FIELDS or path in PLATFORM_DECIDED_FIELDS:
         return QuestionValidation(None, "prohibited_field")
     if path in SYSTEM_OWNED_IMPORT_FIELDS:
         return QuestionValidation(None, "server_owned_field")
@@ -237,6 +249,8 @@ def deterministic_question_queue(
         if path in dismissed_fields:
             return False
         if path in PROHIBITED_QUESTION_FIELDS or path in SYSTEM_OWNED_IMPORT_FIELDS:
+            return False
+        if path in PLATFORM_DECIDED_FIELDS:
             return False
         if path in LEGACY_COMPATIBILITY_IMPORT_FIELDS:
             return False

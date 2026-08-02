@@ -67,10 +67,15 @@ async function completeAssistant(page: Page) {
     if (await skip.count()) {
       await skip.click();
     } else {
+      // A conflict renders the source's own candidate answers instead of a
+      // menu or a text box, so it needs its own branch.
+      const alternative = turn.locator('[data-testid^="conversation-alternative-"]').first();
       const option = turn.locator('[data-testid^="conversation-option-"]').first();
       const suggestion = page.getByTestId("conversation-accept-suggestion");
       const input = page.getByTestId("conversation-text-answer");
-      if (await suggestion.count()) {
+      if (await alternative.count()) {
+        await alternative.click();
+      } else if (await suggestion.count()) {
         await suggestion.click();
       } else if (await option.count()) {
         await option.click();
