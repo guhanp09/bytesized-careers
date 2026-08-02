@@ -176,6 +176,17 @@ export type JobImportDraft = {
   created_at: string;
   updated_at: string;
   fields: JobImportField[];
+  /**
+   * Answers the recruiter gave while extraction was still running, keyed by
+   * field path. Server-owned and durable, so a refresh restores them without
+   * any browser storage.
+   */
+  recruiter_prefill: Record<string, unknown>;
+  /**
+   * Which details the client may ask about before the draft is prepared. The
+   * server decides this; the client must never widen it locally.
+   */
+  early_question_fields: string[];
 };
 
 export type JobImportDraftInitialize = {
@@ -255,6 +266,22 @@ export const decodeJobImportDraft = (value: unknown): JobImportDraft => {
       );
     }
   }
+  // Tolerated rather than required: fixtures and mock drafts predate the staged
+  // prefill contract, and an absent value means "no early answers", not a
+  // malformed draft. A present value still has to be the right shape.
+  if (
+    draft.recruiter_prefill !== undefined &&
+    draft.recruiter_prefill !== null &&
+    (typeof draft.recruiter_prefill !== "object" || Array.isArray(draft.recruiter_prefill))
+  ) {
+    throw new Error("Invalid job-import recruiter prefill.");
+  }
+  draft.recruiter_prefill = (draft.recruiter_prefill ?? {}) as Record<string, unknown>;
+  draft.early_question_fields = Array.isArray(draft.early_question_fields)
+    ? draft.early_question_fields.filter(
+        (fieldPath): fieldPath is string => typeof fieldPath === "string"
+      )
+    : [];
   return draft as unknown as JobImportDraft;
 };
 
@@ -381,6 +408,33 @@ export async function reviewJobImportField(
       method: "PATCH",
       body: JSON.stringify(payload),
       accessToken,
+    }
+  );
+  return decodeJobImportDraft(response);
+}
+
+/**
+ * Answer a recruiter-owned detail while the draft is still being prepared.
+ *
+ * Only the field paths the server published in `early_question_fields` are
+ * accepted; anything else is refused with JOB_IMPORT_FIELD_NOT_EARLY_ANSWERABLE.
+ * Once extraction lands the window closes and the ordinary review mutations own
+ * the field.
+ */
+export async function setJobImportPrefill(
+  accessToken: string,
+  draftId: string,
+  fieldPath: string,
+  value: JobImportNonNullJsonValue,
+  signal?: AbortSignal
+): Promise<JobImportDraft> {
+  const response = await requestJson<unknown>(
+    `/job-imports/drafts/${encodeURIComponent(draftId)}/prefill/${encodeURIComponent(fieldPath)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+      accessToken,
+      signal,
     }
   );
   return decodeJobImportDraft(response);

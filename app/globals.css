@@ -1263,3 +1263,123 @@ html {
     animation: none;
   }
 }
+
+/* ==========================================================================
+   Draft assistant ("Bea") motion
+   --------------------------------------------------------------------------
+   The assistant that prepares an imported job draft. Every animation below is
+   tied to a real system state, never to the passage of time: the scan sweeps
+   only while a source is genuinely being read, the antenna pulses only while
+   work is genuinely in flight, and the acknowledgement fires once per answered
+   question. Nothing runs on an idle screen, nothing bounces, and nothing delays
+   an interaction to make itself visible.
+
+   The blink is the single exception to "no loops": a face whose eyes never move
+   reads as switched off rather than attentive. It is slow, tiny, and stops
+   entirely under reduced motion.
+   ========================================================================== */
+
+@keyframes bea-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.12);
+  }
+}
+.bea-eye {
+  transform-origin: center;
+  transform-box: fill-box;
+}
+[data-bea-motion="on"] .bea-eye {
+  animation: bea-blink 6.5s var(--ease-out) infinite;
+}
+/* The second eye lags fractionally so the blink reads as a face, not a switch. */
+[data-bea-motion="on"] .bea-eye--right {
+  animation-delay: 120ms;
+}
+
+/* Antenna beacon: on only while the assistant is genuinely working. */
+@keyframes bea-beacon {
+  0%,
+  100% {
+    opacity: 0.35;
+    r: 2.6;
+  }
+  50% {
+    opacity: 1;
+    r: 3.2;
+  }
+}
+[data-bea-motion="on"][data-bea-working="true"] .bea-beacon {
+  animation: bea-beacon 1.6s var(--ease-out) infinite;
+}
+
+/* Visor scan: a single light crossing the visor while a source is being read. */
+@keyframes bea-scan {
+  from {
+    transform: translateX(-13px);
+  }
+  to {
+    transform: translateX(13px);
+  }
+}
+.bea-scan {
+  opacity: 0;
+}
+[data-bea-motion="on"][data-bea-scanning="true"] .bea-scan {
+  opacity: 1;
+  transform-box: fill-box;
+  animation: bea-scan 1.9s var(--ease-emphasized) infinite alternate;
+}
+
+/* A brief, reduced-motion-aware nod when an answer is accepted. Fires once. */
+@keyframes bea-ack {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  40% {
+    transform: translateY(-2px) rotate(-2.5deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+[data-bea-motion="on"] .bea-head[data-bea-ack="true"] {
+  animation: bea-ack 420ms var(--ease-out) both;
+}
+
+/* Head tilt while considering the recruiter's answer. A held posture, not a
+   loop: it is a transition to a resting angle, so it settles and stays. */
+.bea-head {
+  transform-origin: 50% 78%;
+  transform-box: fill-box;
+  transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+[data-bea-state="thinking"] .bea-head {
+  transform: rotate(-4deg);
+}
+[data-bea-state="listening"] .bea-head {
+  transform: rotate(2deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bea-eye,
+  .bea-beacon,
+  .bea-scan,
+  .bea-head {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* The scan light is the "reading" signal, so it stays visible as a static
+     mark rather than disappearing along with its motion. */
+  [data-bea-scanning="true"] .bea-scan {
+    opacity: 0.7;
+  }
+  [data-bea-state="thinking"] .bea-head,
+  [data-bea-state="listening"] .bea-head {
+    transform: none;
+  }
+}

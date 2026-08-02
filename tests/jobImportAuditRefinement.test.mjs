@@ -39,25 +39,26 @@ test("processing recovery polls retained drafts and clears user-facing failures"
   assert.match(page, /Resume draft preparation/);
 });
 
-test("loading is calm, honest, cancellable, and accessible", () => {
+test("preparation is calm, honest, cancellable, and accessible", () => {
+  // The three-stage PreparingSurface was replaced by the assistant canvas. The
+  // product intent it protected is unchanged, so the assertions moved with it.
   const page = read("components/import-job/ImportJobPageClient.tsx");
-  const loading = page.match(/function PreparingSurface[\s\S]*?\n}\n\nexport default/);
-  assert.ok(loading);
-  for (const stage of [
-    "Opening the public job post",
-    "Reading the supplied job information",
-    "Matching details to CreatorJobs",
-    "Preparing the private draft",
-  ]) {
-    assert.match(loading[0], new RegExp(stage));
-  }
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+
+  // Stage wording is owned by the progress model, which is where it is asserted.
   assert.match(page, /window\.setTimeout\(\(\) => setDelayed\(true\), 8_000\)/);
-  assert.match(page, /aria-live="polite"/);
-  assert.match(loading[0], /data-testid="job-import-cancel"/);
-  assert.match(loading[0], /motion-reduce:animate-none/);
-  assert.match(loading[0], /Candidate preview being prepared/);
-  assert.match(loading[0], /checking the information carefully instead of guessing/);
-  assert.doesNotMatch(loading[0], /\d+%|evidence spans|normalization|schema mapping|model provider/i);
+  assert.match(page, /delayed=\{delayed\}/);
+
+  assert.match(canvas, /aria-live="polite"/);
+  assert.match(canvas, /data-testid="draft-assistant-cancel"/);
+  assert.match(canvas, /motion-reduce:animate-none/);
+  assert.match(canvas, /Candidate preview being prepared/);
+
+  // Reassurance is gated on a real elapsed wait rather than shown immediately.
+  assert.match(canvas, /delayed\s*\?\s*jobImportDelayMessage/);
+
+  // No engineering vocabulary and no invented percentage in the copy.
+  assert.doesNotMatch(canvas, /evidence spans|normalization|schema mapping|model provider/i);
 });
 
 test("recoverable and partial failures retain successful work and offer clear next steps", () => {

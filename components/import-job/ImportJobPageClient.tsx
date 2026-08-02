@@ -14,6 +14,7 @@ import {
   getJobImportSource,
   initializeJobImportDraft,
   processJobImportDraft,
+  setJobImportPrefill,
   type JobImportDraft,
   type JobImportSource,
   type DevelopmentJobImportScenario,
@@ -22,6 +23,7 @@ import { normalizeImportText } from "../../lib/importJob/normalize";
 import { Icon } from "../Icons";
 import { PageHeader, PageLoading, StateCard } from "../ui";
 import PastePanel from "./PastePanel";
+import { DraftAssistantCanvas } from "./assistant/DraftAssistantCanvas";
 import {
   importGhostButton,
   importInputBase,
@@ -101,116 +103,6 @@ function importCounts(draft: JobImportDraft) {
   );
 }
 
-function PreparingSurface({
-  phase,
-  delayed,
-  sourceType,
-  sourceLabel,
-  onCancel,
-}: {
-  phase: Exclude<Phase, "entry" | "failure">;
-  delayed: boolean;
-  sourceType: EntryMode;
-  sourceLabel: string;
-  onCancel: () => void;
-}) {
-  const activeIndex = phase === "creating" ? 0 : phase === "processing" ? 1 : 2;
-  const stages = [
-    sourceType === "url" ? "Opening the public job post" : "Reading the supplied job information",
-    "Matching details to CreatorJobs",
-    "Preparing the private draft",
-  ];
-  return (
-    <div
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
-      data-testid="job-import-preparing"
-    >
-      <section
-        className={`${importPanelClass} min-h-[430px] overflow-hidden`}
-        aria-labelledby="job-import-progress-title"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-              CreatorJobs Assistant
-            </p>
-            <p className="mt-2 truncate text-xs text-white/42">{sourceLabel}</p>
-            <h2 id="job-import-progress-title" className="mt-4 text-xl font-semibold text-white">
-              {stages[activeIndex]}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-white/55">
-              {delayed
-                ? "I’m still working through the details. Detailed job posts can take longer to structure, so I’m checking the information carefully instead of guessing."
-                : activeIndex === 0
-                  ? sourceType === "url"
-                    ? "I’m securely reading the public page before any job details are added to your draft."
-                    : "I’m reading the role, pay, tools and requirements you supplied."
-                  : activeIndex === 1
-                    ? "I’m matching supported details to the fields in your normal Post Job draft."
-                    : "The structured details are ready. I’m creating the private draft candidates cannot see yet."}
-            </p>
-          </div>
-          {phase !== "applying" ? (
-            <button
-              type="button"
-              className={importGhostButton}
-              onClick={onCancel}
-              data-testid="job-import-cancel"
-            >
-              Cancel
-            </button>
-          ) : null}
-        </div>
-
-        <ol className="mt-7 space-y-2" aria-label="Draft preparation progress">
-          {stages.map((label, index) => {
-            const complete = index < activeIndex;
-            const active = index === activeIndex;
-            return (
-              <li
-                key={label}
-                aria-current={active ? "step" : undefined}
-                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors motion-reduce:transition-none ${
-                  active
-                    ? "bg-white/[0.07] font-semibold text-white"
-                    : complete
-                      ? "text-emerald-100/68"
-                      : "text-white/34"
-                }`}
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current/20 text-xs">
-                  {complete ? <Icon name="check" className="h-3 w-3" /> : index + 1}
-                </span>
-                {label}
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-
-      <aside
-        className="hidden min-h-[430px] rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5 lg:block"
-        aria-label="Candidate preview being prepared"
-      >
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
-          Candidate preview
-        </p>
-        <div className="mt-6 space-y-4" aria-hidden="true">
-          <div className="ui-skeleton h-4 w-2/3 rounded-full motion-reduce:animate-none" />
-          <div className="ui-skeleton h-8 w-full rounded-xl motion-reduce:animate-none" />
-          <div className="flex gap-2">
-            <div className="ui-skeleton h-7 w-24 rounded-full motion-reduce:animate-none" />
-            <div className="ui-skeleton h-7 w-20 rounded-full motion-reduce:animate-none" />
-          </div>
-          <div className="ui-skeleton mt-8 h-3 w-28 rounded-full motion-reduce:animate-none" />
-          <div className="ui-skeleton h-20 w-full rounded-2xl motion-reduce:animate-none" />
-          <div className="ui-skeleton h-20 w-full rounded-2xl motion-reduce:animate-none" />
-        </div>
-      </aside>
-    </div>
-  );
-}
-
 export default function ImportJobPageClient() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
@@ -228,6 +120,7 @@ export default function ImportJobPageClient() {
     React.useState<DevelopmentJobImportScenario>("strong-decisions");
   const [lastDevelopmentScenario, setLastDevelopmentScenario] =
     React.useState<DevelopmentJobImportScenario | null>(null);
+  const [answeringEarlyQuestion, setAnsweringEarlyQuestion] = React.useState(false);
   const accessToken = session?.backendAccessToken ?? "";
   const restoredRef = React.useRef(false);
   const processingRef = React.useRef(false);
@@ -286,6 +179,33 @@ export default function ImportJobPageClient() {
       }
     },
     [accessToken, entryMode, router]
+  );
+
+  /**
+   * Record an answer the recruiter gave while extraction is still running.
+   *
+   * The write goes to the server before the answer is shown as saved, so the
+   * history never claims something that is not durable. If extraction lands
+   * first the server closes the window and says so rather than dropping the
+   * answer silently.
+   */
+  const answerEarlyQuestion = React.useCallback(
+    async (fieldPath: string, value: string) => {
+      if (!accessToken || !draft) return;
+      setAnsweringEarlyQuestion(true);
+      try {
+        const updated = await setJobImportPrefill(accessToken, draft.id, fieldPath, value);
+        setDraft(updated);
+        setAnnouncement("Answer saved.");
+      } catch (caught) {
+        setError(
+          describeActionError(caught, "That answer could not be saved. Try again.")
+        );
+      } finally {
+        setAnsweringEarlyQuestion(false);
+      }
+    },
+    [accessToken, draft]
   );
 
   const processDraft = React.useCallback(
@@ -790,10 +710,14 @@ export default function ImportJobPageClient() {
         ) : null}
 
         {phase === "creating" || phase === "processing" || phase === "applying" ? (
-          <PreparingSurface
-            phase={phase}
-            delayed={delayed}
-            sourceType={entryMode}
+          <DraftAssistantCanvas
+            progress={{
+              sourceType: entryMode === "url" ? "public_url" : "pasted_text",
+              draft,
+              sourceCreated: source !== null,
+              nativeDraftReady: phase === "applying" && Boolean(draft?.target_job_id),
+            }}
+            sourceType={entryMode === "url" ? "public_url" : "pasted_text"}
             sourceLabel={
               source?.source_title ||
               (entryMode === "url"
@@ -806,7 +730,14 @@ export default function ImportJobPageClient() {
                   })()
                 : "Pasted job information")
             }
-            onCancel={cancel}
+            sourceCharacterCount={entryMode === "url" ? null : text.length}
+            earlyQuestionFields={draft?.early_question_fields ?? []}
+            earlyAnswers={draft?.recruiter_prefill ?? {}}
+            onAnswerEarlyQuestion={answerEarlyQuestion}
+            onCancel={phase === "applying" ? null : cancel}
+            busy={answeringEarlyQuestion}
+            error={error || null}
+            delayed={delayed}
           />
         ) : null}
 
