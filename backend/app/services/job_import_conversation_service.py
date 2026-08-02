@@ -362,7 +362,11 @@ class JobImportConversationService:
             return self._snapshot_of(draft, queue)
 
         pending_suggestion = self._pending_suggestion(draft)
-        question = self._build_question(draft, candidate, pending_suggestion)
+        fields = await self.import_service.repository.list_fields(draft.id)
+        field_row = next(
+            (item for item in fields if item.field_path == candidate.field_path), None
+        )
+        question = self._build_question(draft, candidate, pending_suggestion, field_row)
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
         target_state: ConversationState = (
@@ -461,6 +465,7 @@ class JobImportConversationService:
         draft: JobImportDraft,
         candidate: QueueCandidate,
         suggestion: AnswerSuggestion | None,
+        field_row: Any | None = None,
     ) -> dict[str, Any]:
         """Shape the one active question. Presentation copy lives on the client."""
 
@@ -470,6 +475,29 @@ class JobImportConversationService:
             "asked_at": datetime.now(UTC).isoformat(),
             "context_version": (draft.recruiter_context_version or 0),
         }
+
+        # A conflict already knows the candidate answers and where each came
+        # from. Dropping them and rendering an empty text box asks the recruiter
+        # to re-read their own job post — the assistant would be holding the
+        # evidence and saying nothing.
+        if field_row is not None and getattr(field_row, "conflicting_values", None):
+            alternatives = [
+                {
+                    "value": item.get("value"),
+                    "evidence": [
+                        span.get("snippet")
+                        for span in (item.get("evidence") or [])
+                        if isinstance(span, dict) and span.get("snippet")
+                    ][:1],
+                }
+                for item in field_row.conflicting_values
+                if isinstance(item, dict)
+            ][:6]
+            if alternatives:
+                question["alternatives"] = alternatives
+                recommended = self._recommended_alternative(draft, alternatives)
+                if recommended is not None:
+                    question["recommended_value"] = recommended
         if suggestion is not None and suggestion.field_path == candidate.field_path:
             # A proposed value the recruiter confirms rather than types.
             question["suggested_value"] = suggestion.value
@@ -477,6 +505,57 @@ class JobImportConversationService:
             question["explanation"] = suggestion.explanation
             question["kind"] = "confirmation"
         return question
+
+    def _recommended_alternative(
+        self, draft: JobImportDraft, alternatives: list[dict[str, Any]]
+    ) -> Any | None:
+        """Point at the alternative the job title already settles.
+
+        A post titled "... - Fresher" that also mentions "1+ years" is not
+        really undecided: the title is the role's own name for itself, and a
+        body line welcoming applicants with some experience does not override
+        it. Reading that is the difference between an assistant and a scraper.
+
+        Only ever a recommendation — the recruiter still picks, because the
+        title is strong evidence rather than proof.
+        """
+
+        title = ""
+        for item in draft.recruiter_prefill.items() if isinstance(draft.recruiter_prefill, dict) else []:
+            if item[0] == "title" and isinstance(item[1], str):
+                title = item[1]
+        if not title:
+            title = str(self._machine_title(draft) or "")
+        if not title:
+            return None
+
+        lowered = title.lower()
+        entry_signals = ("fresher", "entry level", "entry-level", "beginner", "graduate")
+        senior_signals = ("senior", "lead ", "principal", "head of")
+        intern_signals = ("intern", "internship", "trainee")
+
+        def matches(value: Any, words: tuple[str, ...]) -> bool:
+            text = str(value or "").lower()
+            return any(word in text for word in words)
+
+        for words in (intern_signals, entry_signals, senior_signals):
+            if not any(word in lowered for word in words):
+                continue
+            for alternative in alternatives:
+                if matches(alternative.get("value"), words):
+                    return alternative.get("value")
+        return None
+
+    @staticmethod
+    def _machine_title(draft: JobImportDraft) -> str | None:
+        machine = draft.machine_output
+        if not isinstance(machine, dict):
+            return None
+        for item in machine.get("fields") or []:
+            if isinstance(item, dict) and item.get("field_path") == "title":
+                value = item.get("value")
+                return value if isinstance(value, str) else None
+        return None
 
     # ------------------------------------------------------------------
     # Provider gate

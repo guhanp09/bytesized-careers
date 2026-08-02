@@ -839,3 +839,100 @@ async def test_refresh_during_post_extraction_questioning_resumes_the_same_quest
         assert reread.json()["ready_for_draft"] is False
 
     assert counting_provider.calls == 0
+
+
+# ---------------------------------------------------------------------------
+# Reading the source rather than only scraping it
+# ---------------------------------------------------------------------------
+
+
+def test_a_conflict_must_still_be_worth_asking_about() -> None:
+    """A contradiction is not automatically consequential.
+
+    experience_level is not needed to interpret the source, so a conflict on it
+    must not outrank pay or application routing purely for being a conflict.
+    """
+
+    from app.core.job_import_questions import deterministic_question_queue
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset({"experience_level"}),
+        missing_fields={"application_mode": "publication_blocker"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert [item.field_path for item in queue] == ["application_mode"]
+
+
+def test_a_conflict_on_an_essential_field_still_leads() -> None:
+    from app.core.job_import_questions import deterministic_question_queue
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset({"budget_currency"}),
+        missing_fields={"application_mode": "publication_blocker"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset({"budget_currency"}),
+    )
+    assert queue[0].field_path == "budget_currency"
+    assert queue[0].kind == "confirmation"
+
+
+def test_the_title_settles_a_seniority_conflict_as_a_recommendation() -> None:
+    """The case that started this: a post titled "... - Fresher".
+
+    The body also said "1+ years" and "college students welcome", so extraction
+    correctly reported a conflict. An assistant that reads the title knows which
+    answer the job gives itself — and still lets the recruiter choose.
+    """
+
+    from app.services.job_import_conversation_service import JobImportConversationService
+
+    class _Draft:
+        recruiter_prefill = {"title": "YouTube Video Editor - Fresher"}
+        machine_output = None
+
+    service = JobImportConversationService.__new__(JobImportConversationService)
+    alternatives = [
+        {"value": "Fresher", "evidence": ["YouTube Video Editor - Fresher"]},
+        {"value": "1+ years video editing", "evidence": ["1+ years video editing"]},
+        {"value": "College students good at editing", "evidence": ["College students"]},
+    ]
+    assert service._recommended_alternative(_Draft(), alternatives) == "Fresher"
+
+
+def test_no_seniority_signal_means_no_recommendation() -> None:
+    """Silence is not a hint. Without a signal the recruiter simply chooses."""
+
+    from app.services.job_import_conversation_service import JobImportConversationService
+
+    class _Draft:
+        recruiter_prefill = {"title": "YouTube Video Editor"}
+        machine_output = None
+
+    service = JobImportConversationService.__new__(JobImportConversationService)
+    assert (
+        service._recommended_alternative(
+            _Draft(),
+            [{"value": "1+ years", "evidence": []}, {"value": "3+ years", "evidence": []}],
+        )
+        is None
+    )
+
+
+def test_a_senior_title_recommends_the_senior_alternative() -> None:
+    from app.services.job_import_conversation_service import JobImportConversationService
+
+    class _Draft:
+        recruiter_prefill = {"title": "Senior Video Editor"}
+        machine_output = None
+
+    service = JobImportConversationService.__new__(JobImportConversationService)
+    assert (
+        service._recommended_alternative(
+            _Draft(),
+            [{"value": "Fresher", "evidence": []}, {"value": "Senior, 5+ years", "evidence": []}],
+        )
+        == "Senior, 5+ years"
+    )

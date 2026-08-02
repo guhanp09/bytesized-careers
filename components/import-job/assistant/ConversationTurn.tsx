@@ -174,6 +174,43 @@ export function ConversationTurn({
       <p className="mt-2 text-sm leading-6 text-white/55">{explanation}</p>
       <p className="mt-1.5 text-[13px] leading-5 text-white/40">{prompt}</p>
 
+      {question.alternatives?.length ? (
+        <div className="mt-4 space-y-2" data-testid="conversation-alternatives">
+          {question.alternatives.map((alternative, index) => {
+            const value = String(alternative.value ?? "");
+            const recommended =
+              question.recommended_value !== undefined &&
+              String(question.recommended_value) === value;
+            return (
+              <button
+                key={`${value}-${index}`}
+                type="button"
+                disabled={busy}
+                data-testid={`conversation-alternative-${index}`}
+                onClick={() => onAnswer(question.field_path, value)}
+                className={`${optionButton} w-full ${
+                  recommended
+                    ? "border-white/30 bg-white/12 text-white"
+                    : "border-white/12 bg-white/6 text-white hover:bg-white/10"
+                }`}
+              >
+                <span className="block">{value}</span>
+                {recommended ? (
+                  <span className="mt-1 block text-[11px] font-normal text-white/60">
+                    Matches the title
+                  </span>
+                ) : null}
+                {alternative.evidence[0] ? (
+                  <span className="mt-1 block text-[11px] font-normal italic leading-4 text-white/45">
+                    &ldquo;{alternative.evidence[0]}&rdquo;
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {question.suggested_value !== undefined ? (
         <button
           type="button"
@@ -186,7 +223,7 @@ export function ConversationTurn({
         </button>
       ) : null}
 
-      {choices ? (
+      {question.alternatives?.length ? null : choices ? (
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {choices.map((choice) => (
             <button
@@ -201,7 +238,7 @@ export function ConversationTurn({
             </button>
           ))}
         </div>
-      ) : (
+      ) : question.alternatives?.length ? null : (
         <form
           className="mt-4 flex gap-2"
           onSubmit={(event) => {

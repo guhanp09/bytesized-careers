@@ -245,6 +245,15 @@ def deterministic_question_queue(
     for path in sorted(conflicted_fields):
         if not eligible(path):
             continue
+        # A conflict still has to earn its place in the conversation. The
+        # priority order says "consequential conflicts first", and a
+        # contradiction about a field nobody needs to interpret the source is
+        # not consequential — it would otherwise outrank pay and application
+        # routing purely for being a conflict. Post Job's review still surfaces
+        # it; it just does not stop the assistant.
+        policy = JOB_IMPORT_FIELD_POLICIES[path]
+        if conversation_question_kind(path, policy.missing_requirement) is None:
+            continue
         seen.add(path)
         candidates.append(QueueCandidate(path, "confirmation", _CONFLICT_PRIORITY))
 

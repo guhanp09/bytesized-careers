@@ -251,6 +251,13 @@ export type JobImportActiveQuestion = {
   suggested_value?: unknown;
   rationale_code?: string;
   explanation?: string;
+  /**
+   * Candidate answers the source itself supplied, with the wording each came
+   * from. Present when the source contradicted itself.
+   */
+  alternatives?: Array<{ value: unknown; evidence: string[] }>;
+  /** The alternative the job title already settles, if any. */
+  recommended_value?: unknown;
 };
 
 export type JobImportConversation = {
