@@ -48,16 +48,6 @@ import {
 } from "../lib/firstMessageRequirements";
 import { normalizeCreatorContextList } from "../lib/jobCreatorContext";
 import { normalizeReferenceTimestampNote, normalizeReferenceVideo, serializeReferenceVideo } from "../lib/referenceVideos";
-import {
-  ANON_OWNER,
-  clearImportHandoff,
-  hasRecentImportConsumption,
-  markImportConsumed,
-  readImportHandoff,
-} from "../lib/importJob/handoff";
-import { IMPORT_JUMP_TARGETS } from "../lib/importJob/applyToWizard";
-import type { ImportFieldMeta } from "../lib/importJob/types";
-import ImportReviewBanner from "./import-job/ImportReviewBanner";
 import ImportedDraftConversation from "./import-job/ImportedDraftConversation";
 import {
   attachJobImportDraft,
@@ -1252,9 +1242,7 @@ export default function PostJobPage() {
   const connectParam = searchParams.get("yt_connect");
   const draftId = searchParams.get("draftId") || "";
   const partialImportDraftId = !draftId ? searchParams.get("importDraftId") || "" : "";
-  const importFlag = !draftId && searchParams.get("import") === "1";
   const autoConnectHandledRef = useRef(false);
-  const importConsumedRef = useRef(false);
   const tokenRecoveryPromiseRef = useRef<Promise<string | null> | null>(null);
   const loadedJobRef = useRef<BackendJob | null>(null);
   const partialImportAppliedRef = useRef<string | null>(null);
@@ -1391,7 +1379,6 @@ export default function PostJobPage() {
   const [rolesError, setRolesError] = useState<string | null>(null);
   const [primaryRoleId, setPrimaryRoleId] = useState("");
   const [roleSpecialization, setRoleSpecialization] = useState("");
-  const [importMeta, setImportMeta] = useState<ImportFieldMeta | null>(null);
   const [importContext, setImportContext] = useState<JobImportDraftContext | null>(null);
   const [importGuidanceEnabled, setImportGuidanceEnabled] = useState(true);
   const [activeImportGuidanceTurnId, setActiveImportGuidanceTurnId] = useState<string | null>(null);
@@ -1403,7 +1390,7 @@ export default function PostJobPage() {
   );
   const importEditAnalyticsRef = useRef<Set<string>>(new Set());
   const [hiringIdentityModalOpen, setHiringIdentityModalOpen] = useState(
-    !draftId && !importFlag && !partialImportDraftId
+    !draftId && !partialImportDraftId
   );
   const [resolvedBackendAccessToken, setResolvedBackendAccessToken] = useState<string | undefined>();
   const [previewBudgetText, setPreviewBudgetText] = useState("");
@@ -2139,88 +2126,6 @@ export default function PostJobPage() {
       cancelled = true;
     };
   }, [partialImportDraftId, roles, rolesLoading, sessionStatus, withFreshBackendToken]);
-
-  // Import Hiring Post arrival (/post-job?import=1): consume the owner-stamped
-  // handoff exactly once, only after the session has resolved — a loading session
-  // is never treated as "anon". No backend call is involved.
-  React.useEffect(() => {
-    if (!importFlag || importConsumedRef.current || sessionStatus === "loading") return;
-    importConsumedRef.current = true;
-    const resolvedOwner =
-      sessionStatus === "authenticated" ? session?.backendUserId ?? ANON_OWNER : ANON_OWNER;
-    const payload = readImportHandoff(resolvedOwner);
-    if (!payload) {
-      // A hard remount right after consumption behaves as a fresh wizard visit;
-      // anything else (expired/foreign/malformed) shows the expired notice and
-      // restores the normal fresh-visit modal behavior.
-      if (!hasRecentImportConsumption(resolvedOwner)) {
-        setSubmitError("Your import session expired — paste the post again.");
-        setHiringIdentityModalOpen(true);
-      }
-      return;
-    }
-    const prefill = payload.prefill;
-    setTitle(prefill.title);
-    setBudgetMin(prefill.budgetMin);
-    setBudgetMax(prefill.budgetMax);
-    setBudgetUnit(prefill.budgetUnit);
-    setBudgetIntent(prefill.budgetIntent);
-    setWorkMode(prefill.workMode);
-    setCity(prefill.workMode === "Remote" ? "" : prefill.city);
-    setExpMin(prefill.expMin);
-    setExpMax(prefill.expMax);
-    setStartWithin(prefill.startWithin);
-    setPlatform(prefill.platform);
-    setPlatforms(prefill.platforms);
-    setTurnaround(
-      prefill.turnaround
-        ? {
-            value: prefill.turnaround.value,
-            unit: prefill.turnaround.unit === "days" ? "calendar_days" : prefill.turnaround.unit,
-            basis: "",
-          }
-        : null
-    );
-    const importedTools = prefill.tools.filter((tool) => typeof tool === "string" && tool.trim().length > 0);
-    setTools(importedTools);
-    setToolsConfirmed(importedTools.length > 0);
-    setLanguages(prefill.languages.filter((lang) => typeof lang === "string" && lang.trim().length > 0));
-    setAbout(prefill.about);
-    setResponsibilities(prefill.responsibilities);
-    setRequirements(prefill.requirements);
-    setHowToApply(prefill.howToApply);
-    setApplicationRequirements(sanitizeRequirementKeys(prefill.applicationRequirements, "job"));
-    // Import restores suggestions; the explicit "none" choice is a publish-time
-    // gate the owner re-confirms intentionally (same rule as draft resume).
-    setNoFirstMessageRequirements(false);
-    setTags(prefill.tags);
-    setContentNiches(normalizeCreatorContextList(prefill.contentNiches));
-    setContentGenres(normalizeCreatorContextList(prefill.contentGenres));
-    setFormatsHiredFor(normalizeCreatorContextList(prefill.formatsHiredFor));
-    setRefVideos(
-      prefill.refVideos
-        .map((entry) => normalizeReferenceVideo(entry))
-        .filter((entry): entry is ReferenceVideo => Boolean(entry))
-    );
-    setPreviewBudgetText(prefill.previewBudgetText);
-    setPreviewExperienceText(prefill.previewExperienceText);
-    setPreviewLocationText(prefill.previewLocationText);
-    if ((STEPS as string[]).includes(payload.initialStep)) {
-      setDirection("forward");
-      setStep(payload.initialStep as Step);
-    } else {
-      // Import handoff still uses the coarse domain-group ids; map to the first screen.
-      setDirection("forward");
-      setStep(firstScreenForGroup(payload.initialStep as RecruiterJobStep));
-    }
-    setImportMeta(payload.meta);
-    clearImportHandoff();
-    markImportConsumed(resolvedOwner);
-    // State-preserving history.replaceState cleans the URL without any router
-    // navigation, so nothing can remount, re-run useSearchParams consumers, or
-    // reopen the hiring-identity modal.
-    window.history.replaceState(window.history.state, "", "/post-job");
-  }, [importFlag, sessionStatus, session?.backendUserId]);
 
   React.useEffect(() => {
     if (sessionStatus !== "authenticated") {
@@ -4536,25 +4441,6 @@ export default function PostJobPage() {
                   Resume guided decisions
                 </button>
               </section>
-            ) : null}
-
-            {importMeta ? (
-              <ImportReviewBanner
-                meta={importMeta}
-                onJumpTo={(key) => {
-                  const targetKey = IMPORT_JUMP_TARGETS[key];
-                  const dest = targetKey ? JOB_COMPLETION_TARGETS[targetKey] : undefined;
-                  if (!dest) return;
-                  setDirection(STEPS.indexOf(dest.step) < STEPS.indexOf(step) ? "back" : "forward");
-                  setStep(dest.step);
-                  focusQualityTarget(dest.target);
-                }}
-                onGoToPublish={() => {
-                  setDirection("forward");
-                  setStep("review");
-                }}
-                onDismiss={() => setImportMeta(null)}
-              />
             ) : null}
 
             <PostJobForm

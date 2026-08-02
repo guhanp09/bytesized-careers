@@ -158,7 +158,9 @@ test("development processing failure stays separate and retryable", async ({ pag
   await page.getByTestId("open-import-review-fixture").click();
   await expect(page.getByTestId("job-import-failure")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "We couldn’t prepare the draft" })
+    // Bea reports the failure in her own voice; the surface is otherwise
+    // unchanged and still offers Retry, manual completion and a fresh start.
+    page.getByRole("heading", { name: "I couldn’t finish this draft" })
   ).toBeVisible();
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByTestId("job-import-failure")).toBeVisible();

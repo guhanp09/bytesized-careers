@@ -36,25 +36,52 @@ test("the import route and client boundary exist behind the server-only flag", (
   assert.doesNotMatch(flag, /NEXT_PUBLIC_ENABLE_JOB_IMPORT/);
 });
 
-test("PostJobPage consumes the owner-stamped import handoff without navigation races", () => {
+test("the obsolete sessionStorage import branch cannot come back", () => {
+  // The ?import=1 handoff and its review banner were removed once the backend
+  // draft became the only way in. Nothing wrote the payload any more, so the
+  // branch was reachable only by hand-crafting browser storage. These
+  // assertions exist so a future change cannot quietly reintroduce a second
+  // import journey alongside the canonical one.
   const page = read("components/PostJobPage.tsx");
-  assert.match(page, /readImportHandoff/);
-  assert.match(page, /hasRecentImportConsumption/);
-  assert.match(page, /markImportConsumed/);
-  assert.match(page, /ImportReviewBanner/);
-  assert.match(page, /sessionStatus === "loading"\) return;[\s\S]{0,500}readImportHandoff/);
-  assert.match(page, /window\.history\.replaceState\(window\.history\.state, "", "\/post-job"\)/);
+  for (const gone of [
+    "readImportHandoff",
+    "markImportConsumed",
+    "clearImportHandoff",
+    "hasRecentImportConsumption",
+    "ImportReviewBanner",
+    "importFlag",
+    "importMeta",
+  ]) {
+    assert.doesNotMatch(page, new RegExp(gone), `${gone} must not return`);
+  }
 
-  const importEffect = page.match(
-    /\/\/ Import Hiring Post arrival[\s\S]*?\[importFlag, sessionStatus, session\?\.backendUserId\]\);/,
-  );
-  assert.ok(importEffect, "the import hydration effect should exist");
-  assert.doesNotMatch(importEffect[0], /router\.(replace|push)/);
-  assert.match(importEffect[0], /setTitle\(prefill\.title\)/);
-  assert.match(importEffect[0], /setWorkMode\(prefill\.workMode\)/);
-  assert.match(importEffect[0], /setTools\(importedTools\)/);
-  assert.match(importEffect[0], /setApplicationRequirements\(sanitizeRequirementKeys/);
-  assert.match(importEffect[0], /markImportConsumed\(resolvedOwner\)/);
+  // The query parameter itself must no longer switch behaviour.
+  assert.doesNotMatch(page, /searchParams\.get\("import"\)/);
+
+  // And the modules behind it are gone rather than merely unreferenced.
+  for (const removed of [
+    "lib/importJob/handoff.ts",
+    "lib/importJob/applyToWizard.ts",
+    "lib/importJob/parseJobPost.ts",
+    "lib/importJob/types.ts",
+    "lib/jobImportReview.ts",
+    "components/import-job/ImportReviewBanner.tsx",
+  ]) {
+    assert.equal(exists(removed), false, `${removed} should have been removed`);
+  }
+});
+
+test("exactly one import journey reaches Post Job", () => {
+  const page = read("components/PostJobPage.tsx");
+  // The two canonical entries: an applied draft, and a partial import that
+  // attaches after the ordinary save. Nothing else.
+  assert.match(page, /searchParams\.get\("draftId"\)/);
+  assert.match(page, /searchParams\.get\("importDraftId"\)/);
+
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  assert.match(client, /\/post-job\?draftId=/);
+  assert.match(client, /\/post-job\?importDraftId=/);
+  assert.doesNotMatch(client, /\/post-job\?import=1/);
 });
 
 test("imported legacy category metadata never selects a canonical creator role", () => {
@@ -70,10 +97,12 @@ test("imported legacy category metadata never selects a canonical creator role",
 
 test("native and imported wizard state do not invent a compensation unit", () => {
   const page = read("components/PostJobPage.tsx");
+  // The prefill assertions here belonged to the removed sessionStorage branch.
+  // The rule they protected is unchanged and still enforced: the unit starts
+  // empty and nothing may default it to a guess.
   assert.match(page, /const \[budgetUnit, setBudgetUnit\] = useState<CompensationUnit \| "">\(""\)/);
-  assert.match(page, /setBudgetUnit\(prefill\.budgetUnit\)/);
-  assert.doesNotMatch(page, /setBudgetUnit\(prefill\.budgetUnit === "per month" \? "per month" : "per project"\)/);
   assert.doesNotMatch(page, /useState<CompensationUnit[^;]+\("per project"\)/);
+  assert.doesNotMatch(page, /setBudgetUnit\("per project"\)/);
 });
 
 test("the /post chooser links the import flow only when the flag allows it", () => {

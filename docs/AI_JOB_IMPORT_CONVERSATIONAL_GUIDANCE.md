@@ -169,3 +169,68 @@ Fixtures use the existing private source/draft/review pipeline, remain behind th
 ## Remaining boundaries
 
 The backend provider call is atomic, so field-level processing progress cannot be truthfully displayed. Guidance templates cover all active fields through contextual fallbacks, while the richest bespoke copy focuses on grouped consequential and role-relevant decisions. Candidate preview placeholders retain the existing preview contract rather than exposing review metadata. These boundaries are deliberate until backend progress or native preview semantics change independently.
+
+## The draft assistant (Bea)
+
+The preparation surface is no longer a loading screen followed by a review
+queue. It is one guided canvas: the assistant and the current decision on the
+left, the real candidate preview on the right, a milestone bar across the top.
+
+**Bea** is an original mark — a rounded head with one visor, two pill eyes, and
+an antenna whose tip is the beacon she is named for. Nine states, each derived
+from observed application state rather than a timer, so the character cannot
+depict work that is not happening. The SVG is decorative and hidden from
+assistive technology; `DRAFT_ASSISTANT_STATE_LABELS` in
+`lib/draftAssistantStates.ts` is what a screen reader receives, and it lives in
+a data module so its exhaustiveness over the state union is testable. Motion
+follows the existing workspace doctrine: nothing loops except a slow blink, and
+everything stops under `prefers-reduced-motion` rather than being shortened.
+
+### Truthful progress
+
+`lib/jobImportProgress.ts` takes observed state and returns stages. It reads no
+clock and holds no state — a test rejects `Date.now`, `setTimeout` and
+`Math.random` in its source. The provider call is atomic, so the stage covering
+it is marked indeterminate and animates in place; contributing a fraction of
+unmeasurable work would be the fake percentage this design refuses. Stages carry
+a past-tense label for the completed list and a present-tense one for the running
+heading, because a completion-sounding heading reports work that has not happened.
+
+### Questions during processing
+
+A small, server-certified set of recruiter-authority fields can be answered while
+extraction runs. Eligibility is decided by
+`EARLY_RECRUITER_QUESTION_FIELDS` on the server and published on the draft; the
+client never widens it. Answers persist to `recruiter_prefill` on the draft, so
+they survive refresh with no browser storage and no dependency on one tab. When
+extraction lands, the recruiter's answer wins and the machine proposal is kept
+only as private audit.
+
+### Role-aware guidance
+
+`lib/jobImportRoleGuidance.ts` supplies copy for Video Editor, Thumbnail
+Designer, Scriptwriter, Podcast Editor and Creator Strategist, plus an informed
+fallback for unprofiled creative roles. Editors are asked about footage and
+re-cuts, strategists about analytics access and ownership, writers about who does
+the research. Profiles match most-specific-first so "Podcast Editor" does not
+resolve to Video Editor. Groups that mean the same thing for every role —
+compensation, application routing — stay generic deliberately. The module is
+pure and makes no provider call.
+
+### Preview authority
+
+`lib/jobImportPreview.ts` decides which value each field currently shows:
+recruiter edit, then recruiter confirmation, then an unconfirmed proposal marked
+provisional, then blank. Rejected values disappear, values that failed validation
+are never shown, and an unresolved conflict resolves to blank rather than picking
+a side. The structured half runs through `hydrateJobPostingDomain`, the same
+function the Post Job editor uses on a saved draft, and a test asserts equality
+with a direct call so parity is structural.
+
+### Removed
+
+The `?import=1` sessionStorage handoff, its review banner, and the deterministic
+V1 parser stack were deleted once the backend draft became the only way in.
+Nothing wrote the handoff payload any more, so the branch was reachable only by
+hand-crafting browser storage. `tests/importJobFlowStructure.test.mjs` now guards
+against a second import journey returning.
