@@ -206,6 +206,45 @@ export type JobImportProcessResponse = {
   draft: JobImportDraft;
 };
 
+/**
+ * The checkpointed conversation, as the server reports it.
+ *
+ * `waiting` is the one field the UI must never infer for itself: it is the
+ * server's statement that nothing is running, and it is what the paused
+ * progress treatment and Bea's listening pose are driven from.
+ */
+export type JobImportConversationState =
+  | "source_received"
+  | "preparing"
+  | "waiting_for_recruiter"
+  | "resuming"
+  | "validating"
+  | "optional_improvements"
+  | "ready_for_native_draft"
+  | "converted"
+  | "processing_failed"
+  | "abandoned";
+
+export type JobImportActiveQuestion = {
+  field_path: string;
+  kind: "mandatory" | "confirmation" | "optional";
+  asked_at?: string;
+  context_version?: number;
+  /** Present when the assistant is proposing a value to confirm. */
+  suggested_value?: unknown;
+  rationale_code?: string;
+  explanation?: string;
+};
+
+export type JobImportConversation = {
+  state: JobImportConversationState;
+  active_question: JobImportActiveQuestion | null;
+  recruiter_context_version: number;
+  continuation_count: number;
+  waiting: boolean;
+  ready_for_draft: boolean;
+};
+
 export type JobImportDraftContext = {
   draft: JobImportDraft;
   source_type: JobImportSourceType;
@@ -438,6 +477,102 @@ export async function setJobImportPrefill(
     }
   );
   return decodeJobImportDraft(response);
+}
+
+const decodeConversation = (value: unknown): JobImportConversation => {
+  const body = requireRecord(value, "job-import conversation");
+  if (typeof body.state !== "string" || typeof body.waiting !== "boolean") {
+    throw new Error("Invalid job-import conversation response.");
+  }
+  return body as unknown as JobImportConversation;
+};
+
+/**
+ * Read the conversation. Safe to poll: the server performs no transition and
+ * starts no provider work on this path.
+ */
+export async function getJobImportConversation(
+  accessToken: string,
+  draftId: string,
+  signal?: AbortSignal
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation`,
+      { accessToken, signal }
+    )
+  );
+}
+
+/** Enter the conversation for a draft whose extraction already landed. */
+export async function beginJobImportConversation(
+  accessToken: string,
+  draftId: string
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/begin`,
+      { method: "POST", accessToken }
+    )
+  );
+}
+
+/**
+ * Answer the one open question.
+ *
+ * `expectedContextVersion` makes a resubmission a no-op rather than a second
+ * advance, so a double click cannot push the conversation forward twice.
+ */
+export async function answerJobImportQuestion(
+  accessToken: string,
+  draftId: string,
+  fieldPath: string,
+  value: JobImportNonNullJsonValue,
+  expectedContextVersion?: number
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/answer`,
+      {
+        method: "POST",
+        accessToken,
+        body: JSON.stringify({
+          field_path: fieldPath,
+          value,
+          expected_context_version: expectedContextVersion,
+        }),
+      }
+    )
+  );
+}
+
+/** Skip the active optional suggestion, or every remaining one. */
+export async function skipJobImportQuestion(
+  accessToken: string,
+  draftId: string,
+  remaining = false
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/skip?remaining=${
+        remaining ? "true" : "false"
+      }`,
+      { method: "POST", accessToken }
+    )
+  );
+}
+
+/** Record that the recruiter stepped away. Keeps the draft resumable. */
+export async function pauseJobImportConversation(
+  accessToken: string,
+  draftId: string
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/pause`,
+      { method: "POST", accessToken }
+    )
+  );
 }
 
 export async function resolveJobImportConflict(

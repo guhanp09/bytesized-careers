@@ -7,6 +7,7 @@ import {
   jobImportDelayMessage,
   jobImportProgressRatio,
   jobImportStages,
+  pausedJobImportStage,
   type JobImportProgressInput,
 } from "../../../lib/jobImportProgress.ts";
 import {
@@ -61,6 +62,11 @@ export type DraftAssistantCanvasProps = {
   preview?: React.ReactNode | null;
   /** How many shown values are imported but not yet confirmed. */
   provisionalCount?: number;
+  /**
+   * The server's statement that the assistant is stopped on a question.
+   * While true nothing is running, and the surface must not suggest otherwise.
+   */
+  waitingForRecruiter?: boolean;
 };
 
 export function DraftAssistantCanvas({
@@ -77,9 +83,11 @@ export function DraftAssistantCanvas({
   delayed = false,
   preview = null,
   provisionalCount = 0,
+  waitingForRecruiter = false,
 }: DraftAssistantCanvasProps) {
   const stages = jobImportStages(progress);
   const active = activeJobImportStage(progress);
+  const paused = pausedJobImportStage(progress);
   const ratio = jobImportProgressRatio(progress);
   const question = nextEarlyQuestion(earlyQuestionFields, earlyAnswers, sourceType);
   const [acknowledging, setAcknowledging] = React.useState(false);
@@ -95,13 +103,19 @@ export function DraftAssistantCanvas({
       ? "celebrating"
       : acknowledging
         ? "confirming"
-        : question
-          ? pendingValue
-            ? "thinking"
-            : "asking"
-          : active?.id === "structuring"
-            ? "scanning"
-            : "reading";
+        : pendingValue
+          ? "thinking"
+          : // Waiting is its own posture. Showing a working animation beside an
+            // unanswered question would claim work that is not happening.
+            waitingForRecruiter
+            ? question
+              ? "asking"
+              : "listening"
+            : question
+              ? "asking"
+              : active?.id === "structuring"
+                ? "scanning"
+                : "reading";
 
   const handleAnswer = async (value: string) => {
     if (!question || busy) return;
@@ -163,6 +177,17 @@ export function DraftAssistantCanvas({
         </p>
 
         <ProgressBar ratio={ratio} stages={stages} />
+
+        {waitingForRecruiter ? (
+          <p
+            className="mt-2 text-[11px] text-white/38"
+            data-testid="draft-assistant-paused-note"
+          >
+            {paused
+              ? "I\u2019ll pause here until you decide, then pick up where I left off."
+              : "I\u2019ll pause here until you decide."}
+          </p>
+        ) : null}
 
         <div className="mt-6">
           {progress.failed ? (
@@ -247,9 +272,12 @@ function ProgressBar({
                 : stage.status === "active"
                   ? // Unmeasurable work animates in place rather than advancing.
                     "bg-[color:var(--color-state-review,#8ec5ff)]/35 ui-skeleton motion-reduce:animate-none"
-                  : stage.status === "failed"
-                    ? "bg-white/25"
-                    : "bg-white/8",
+                  : stage.status === "waiting"
+                    ? // Stopped on a person: still, and visibly not running.
+                      "bg-[color:var(--color-state-review,#8ec5ff)]/20"
+                    : stage.status === "failed"
+                      ? "bg-white/25"
+                      : "bg-white/8",
             ].join(" ")}
           />
         ))}

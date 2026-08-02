@@ -25,7 +25,17 @@ export type JobImportStageId =
   | "answers_merged"
   | "draft_prepared";
 
-export type JobImportStageStatus = "pending" | "active" | "complete" | "failed";
+export type JobImportStageStatus =
+  | "pending"
+  | "active"
+  | "complete"
+  | "failed"
+  /**
+   * Stopped on a person. Distinct from "active" because the difference matters:
+   * an animating bar next to an unanswered question claims work that is not
+   * happening, and that is the specific dishonesty this state prevents.
+   */
+  | "waiting";
 
 export type JobImportStage = {
   id: JobImportStageId;
@@ -55,6 +65,11 @@ export type JobImportProgressInput = {
   /** True once apply/attach produced a native draft. */
   nativeDraftReady: boolean;
   failed?: boolean;
+  /**
+   * The server's statement that the assistant is stopped on a question.
+   * Never inferred locally — the client cannot know whether work is running.
+   */
+  waitingForRecruiter?: boolean;
 };
 
 const URL_STAGES: readonly JobImportStageId[] = [
@@ -158,13 +173,18 @@ export function jobImportStages(input: JobImportProgressInput): JobImportStage[]
     if (index <= through) {
       status = "complete";
     } else if (index === activeIndex) {
-      status = input.failed ? "failed" : "active";
+      status = input.failed
+        ? "failed"
+        : input.waitingForRecruiter
+          ? "waiting"
+          : "active";
     } else {
       status = "pending";
     }
 
     // Only the extraction stage is unmeasurable. Every other active stage is a
-    // short client operation whose completion we will observe imminently.
+    // short client operation whose completion we will observe imminently. A
+    // waiting stage is never indeterminate: nothing is in flight to be unsure of.
     const indeterminate = status === "active" && id === "structuring";
 
     return {
@@ -200,6 +220,18 @@ export function activeJobImportStage(
 }
 
 /**
+ * The stage the workflow is paused on, if it is paused.
+ *
+ * Progress holds here: the bar keeps everything it has earned and advances no
+ * further until an answer arrives.
+ */
+export function pausedJobImportStage(
+  input: JobImportProgressInput
+): JobImportStage | null {
+  return jobImportStages(input).find((stage) => stage.status === "waiting") ?? null;
+}
+
+/**
  * Reassurance for a long extraction, chosen from real source characteristics.
  *
  * Returns null when nothing truthful can be said, which is the common case. A
@@ -209,6 +241,8 @@ export function jobImportDelayMessage(
   input: JobImportProgressInput,
   sourceCharacterCount: number | null
 ): string | null {
+  // Nothing is running while waiting, so there is no slow run to reassure about.
+  if (input.waitingForRecruiter) return null;
   const active = activeJobImportStage(input);
   if (!active || active.id !== "structuring") return null;
   if (sourceCharacterCount !== null && sourceCharacterCount > 6_000) {

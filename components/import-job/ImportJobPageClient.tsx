@@ -12,9 +12,13 @@ import {
   createJobImportUrlSource,
   getJobImportDraft,
   getJobImportSource,
+  beginJobImportConversation,
+  getJobImportConversation,
   initializeJobImportDraft,
+  pauseJobImportConversation,
   processJobImportDraft,
   setJobImportPrefill,
+  type JobImportConversation,
   type JobImportDraft,
   type JobImportSource,
   type DevelopmentJobImportScenario,
@@ -126,6 +130,9 @@ export default function ImportJobPageClient() {
   const [lastDevelopmentScenario, setLastDevelopmentScenario] =
     React.useState<DevelopmentJobImportScenario | null>(null);
   const [answeringEarlyQuestion, setAnsweringEarlyQuestion] = React.useState(false);
+  const [conversation, setConversation] = React.useState<JobImportConversation | null>(
+    null
+  );
   const accessToken = session?.backendAccessToken ?? "";
   const restoredRef = React.useRef(false);
   const processingRef = React.useRef(false);
@@ -152,6 +159,22 @@ export default function ImportJobPageClient() {
         );
         return;
       }
+      // Open the checkpointed conversation first. If the assistant still needs a
+      // decision, the recruiter answers it here rather than discovering it as
+      // review work after the handoff.
+      try {
+        const opened = await beginJobImportConversation(accessToken, readyDraft.id);
+        setConversation(opened);
+        if (opened.waiting) {
+          setDraft(readyDraft);
+          setPhase("processing");
+          setAnnouncement("I have one question before I finish this draft.");
+          return;
+        }
+      } catch {
+        // The conversation is additive; without it the ordinary handoff stands.
+      }
+
       if (!readyDraft.can_apply_to_native_draft) {
         setDraft(readyDraft);
         setAnnouncement("I prepared the details I could verify. The normal Post Job draft will ask for the remaining decision.");
@@ -212,6 +235,40 @@ export default function ImportJobPageClient() {
     },
     [accessToken, draft]
   );
+
+  React.useEffect(() => {
+    if (!accessToken || !draft) return;
+    let cancelled = false;
+
+    const read = async () => {
+      try {
+        const next = await getJobImportConversation(accessToken, draft.id);
+        if (!cancelled) setConversation(next);
+      } catch {
+        // The conversation is additive: a draft without one still renders.
+      }
+    };
+    void read();
+
+    // A slow heartbeat, and deliberately a *read*. Polling can never start a
+    // provider stage, which is what makes an open question free to leave open.
+    const timer = window.setInterval(read, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [accessToken, draft]);
+
+  // Leaving while a question is open records the pause so returning restores it.
+  React.useEffect(() => {
+    if (!accessToken || !draft || !conversation?.waiting) return;
+    const onHide = () => {
+      if (document.visibilityState !== "hidden") return;
+      void pauseJobImportConversation(accessToken, draft.id).catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [accessToken, draft, conversation?.waiting]);
 
   /**
    * The real candidate preview, rebuilt whenever the draft changes.
@@ -766,6 +823,7 @@ export default function ImportJobPageClient() {
               draft,
               sourceCreated: source !== null,
               nativeDraftReady: phase === "applying" && Boolean(draft?.target_job_id),
+              waitingForRecruiter: conversation?.waiting ?? false,
             }}
             sourceType={entryMode === "url" ? "public_url" : "pasted_text"}
             sourceLabel={
@@ -790,6 +848,7 @@ export default function ImportJobPageClient() {
             delayed={delayed}
             preview={livePreview.node}
             provisionalCount={livePreview.provisionalCount}
+            waitingForRecruiter={conversation?.waiting ?? false}
           />
         ) : null}
 

@@ -191,3 +191,60 @@ test("stage labels stay recruiter-facing and expose no internals", () => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// Checkpointed waiting
+// ---------------------------------------------------------------------------
+
+test("waiting pauses the bar instead of animating it", async () => {
+  const { pausedJobImportStage } = await import("../lib/jobImportProgress.ts");
+  const running = input({
+    sourceCreated: true,
+    draft: draft({ processing_status: "awaiting_recruiter_review" }),
+  });
+  const waiting = { ...running, waitingForRecruiter: true };
+
+  // The stage that would have been active is paused, not running.
+  assert.equal(activeJobImportStage(waiting), null);
+  assert.ok(pausedJobImportStage(waiting));
+  assert.equal(pausedJobImportStage(running), null);
+
+  // A paused stage is never "indeterminate": nothing is in flight to be
+  // uncertain about, so there is nothing to animate.
+  assert.equal(pausedJobImportStage(waiting).indeterminate, false);
+});
+
+test("progress holds exactly where it was when the question opened", () => {
+  const running = input({
+    sourceCreated: true,
+    draft: draft({ processing_status: "awaiting_recruiter_review" }),
+  });
+  const waiting = { ...running, waitingForRecruiter: true };
+  // Everything earned is kept; nothing further is claimed.
+  assert.equal(jobImportProgressRatio(waiting), jobImportProgressRatio(running));
+  assert.ok(jobImportProgressRatio(waiting) < 1);
+});
+
+test("no slow-run reassurance is offered while nothing is running", () => {
+  const waiting = input({
+    sourceCreated: true,
+    draft: draft({ processing_status: "processing" }),
+    waitingForRecruiter: true,
+  });
+  // Saying "this is taking a while" when the assistant is idle would be a lie.
+  assert.equal(jobImportDelayMessage(waiting, 20_000), null);
+});
+
+test("waiting and failure are different states, not two words for stopped", () => {
+  const base = input({
+    sourceCreated: true,
+    draft: draft({ processing_status: "processing" }),
+  });
+  const waitingStages = jobImportStages({ ...base, waitingForRecruiter: true });
+  const failedStages = jobImportStages({ ...base, failed: true });
+
+  assert.ok(waitingStages.some((stage) => stage.status === "waiting"));
+  assert.ok(!waitingStages.some((stage) => stage.status === "failed"));
+  assert.ok(failedStages.some((stage) => stage.status === "failed"));
+  assert.ok(!failedStages.some((stage) => stage.status === "waiting"));
+});
