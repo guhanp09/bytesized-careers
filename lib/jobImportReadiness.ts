@@ -1,5 +1,22 @@
 import { requestJson, type BackendJob } from "./backendClient";
 
+/**
+ * How long the client waits for a provider-bound import request.
+ *
+ * The default write budget is 8s, which is shorter than the work: the backend
+ * allows OPENAI_REQUEST_TIMEOUT_SECONDS (30s) with up to OPENAI_MAX_RETRIES (2)
+ * retries, so a legitimate extraction can run to ~90s. Aborting at 8s cancels a
+ * request the server is still working on, and the abort surfaces as status 0 —
+ * i.e. "the backend is unreachable", about a backend that is fine.
+ *
+ * 120s clears the server's worst case with margin. The recruiter is not stuck
+ * meanwhile: the canvas shows real progress and Cancel is always available.
+ */
+const JOB_IMPORT_PROCESSING_TIMEOUT_MS = 120_000;
+
+/** Native conversion: database work, but it can involve a lot of rows. */
+const JOB_IMPORT_APPLY_TIMEOUT_MS = 30_000;
+
 const SOURCE_PROCESSING_STATES = [
   "awaiting_processing",
   "processing",
@@ -427,6 +444,7 @@ export async function processJobImportDraft(
       method: "POST",
       body: JSON.stringify({}),
       accessToken,
+      timeoutMs: JOB_IMPORT_PROCESSING_TIMEOUT_MS,
       signal,
     }
   );
@@ -652,6 +670,7 @@ export async function applyJobImportDraft(
       method: "POST",
       body: JSON.stringify({ mode: "create_new" }),
       accessToken,
+      timeoutMs: JOB_IMPORT_APPLY_TIMEOUT_MS,
     }
   );
   const result = requireRecord(response, "job-import apply");
@@ -746,6 +765,8 @@ export async function createDevelopmentJobImportFixture(
       method: "POST",
       body: JSON.stringify({}),
       accessToken,
+      // Seeds a source, a draft and every field row in one request.
+      timeoutMs: JOB_IMPORT_APPLY_TIMEOUT_MS,
     }
   );
   const result = requireRecord(response, "development job-import fixture");

@@ -61,3 +61,50 @@ test("both backend entry points apply the rule", () => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// Client timeout budget
+// ---------------------------------------------------------------------------
+
+test("provider-bound import calls outlast the server's own budget", () => {
+  const client = read("lib/jobImportReadiness.ts");
+
+  // The default write budget is 8s. A real extraction can run to ~90s, because
+  // the backend allows OPENAI_REQUEST_TIMEOUT_SECONDS (30s) with up to
+  // OPENAI_MAX_RETRIES (2) retries. Aborting first cancels work the server is
+  // still doing, and the abort is reported as "backend unreachable".
+  const processing = Number(
+    /JOB_IMPORT_PROCESSING_TIMEOUT_MS = ([\d_]+)/.exec(client)?.[1].replace(/_/g, "")
+  );
+  assert.ok(Number.isFinite(processing), "the processing budget must be declared");
+  assert.ok(
+    processing >= 90_000,
+    `processing budget ${processing}ms must clear the server's ~90s worst case`
+  );
+
+  // And it must actually be applied to the call that waits for the provider.
+  const processBlock = /processJobImportDraft[\s\S]*?\n}/.exec(client)?.[0] ?? "";
+  assert.match(
+    processBlock,
+    /timeoutMs: JOB_IMPORT_PROCESSING_TIMEOUT_MS/,
+    "the /process call must use the processing budget, not the 8s default"
+  );
+});
+
+test("the slower import writes do not fall back to the 8s default", () => {
+  const client = read("lib/jobImportReadiness.ts");
+  for (const fn of ["applyJobImportDraft", "createDevelopmentJobImportFixture"]) {
+    const block = new RegExp(`${fn}[\\s\\S]*?\\n}`).exec(client)?.[0] ?? "";
+    assert.match(block, /timeoutMs:/, `${fn} must declare its own budget`);
+  }
+});
+
+test("a client abort is reported as unreachable, which is why the budget matters", () => {
+  const backend = read("lib/backendClient.ts");
+  // An AbortError becomes BackendRequestError(0, ...), and status 0 is what
+  // describeActionError turns into "make sure the backend is running" — advice
+  // that is actively wrong when the real cause is the client giving up early.
+  assert.match(backend, /AbortError/);
+  assert.match(backend, /Request timed out after/);
+  assert.match(backend, /isBackendUnreachableError\s*=\s*\(error: unknown\)\s*=>/);
+});
