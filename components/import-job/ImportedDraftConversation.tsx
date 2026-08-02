@@ -12,6 +12,7 @@ import {
   type JobImportGuidanceTurn,
 } from "../../lib/jobImportConversation";
 import { Icon } from "../Icons";
+import { DraftAssistantRobot } from "./assistant/DraftAssistantRobot";
 
 const sourceQuote = (snippet: string) => `“${snippet}”`;
 
@@ -155,13 +156,9 @@ export default function ImportedDraftConversation({
         aria-labelledby="import-guidance-title"
       >
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.08] text-white/70">
-            <Icon name="check" className="h-4 w-4" />
-          </span>
+          <DraftAssistantRobot state="celebrating" size={40} className="shrink-0" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">
-              CreatorJobs Assistant
-            </p>
+            <p className="text-sm font-semibold text-white/80">Bea</p>
             <h2 id="import-guidance-title" tabIndex={-1} className="mt-2 text-xl font-semibold tracking-tight text-white outline-none">
               Your draft is ready to edit.
             </h2>
@@ -209,14 +206,10 @@ export default function ImportedDraftConversation({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/[0.08] text-white/66">
-            <Icon name="file" className="h-4 w-4" />
-          </span>
+          <DraftAssistantRobot state="asking" size={40} className="shrink-0" />
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">
-              CreatorJobs Assistant
-            </p>
-            <p className="mt-1 truncate text-xs text-white/42">From {context.source_label}</p>
+            <p className="text-sm font-semibold text-white/80">Bea</p>
+            <p className="truncate text-xs text-white/42">From {context.source_label}</p>
           </div>
         </div>
         <span className="rounded-full bg-white/[0.055] px-3 py-1.5 text-xs font-semibold text-white/52">

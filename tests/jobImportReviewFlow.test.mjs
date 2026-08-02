@@ -32,7 +32,11 @@ test("uncertainty becomes one contextual conversation turn above the canonical f
   const guidance = read("lib/importedDraftGuidance.ts");
   const conversation = read("lib/jobImportConversation.ts");
 
-  assert.match(notice, /CreatorJobs Assistant/);
+  // The assistant is named consistently across the canvas and the editor; a
+  // generic label in one place and a character in the other read as two
+  // different systems.
+  assert.match(notice, /Bea/);
+  assert.match(notice, /DraftAssistantRobot/);
   assert.match(notice, /What I found/);
   assert.match(notice, /one decision still needs your expertise/i);
   assert.match(notice, /Use the normal Post Job field directly below/);
