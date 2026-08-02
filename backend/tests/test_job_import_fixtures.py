@@ -56,6 +56,8 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "thumbnail-designer",
         "scriptwriter",
         "clean-import",
+        "checkpoint-currency",
+        "checkpoint-trial",
     }
     # Every processed scenario must actually have extraction output behind it.
     for scenario in processed:
@@ -98,7 +100,14 @@ async def test_processed_scenarios_produce_a_reviewable_draft(
     client: AsyncClient,
 ) -> None:
     headers = await _auth(client, "fixture-processed")
-    for scenario in ("strong-decisions", "thumbnail-designer", "scriptwriter", "clean-import"):
+    for scenario in (
+        "strong-decisions",
+        "thumbnail-designer",
+        "scriptwriter",
+        "clean-import",
+        "checkpoint-currency",
+        "checkpoint-trial",
+    ):
         response = await _fixture(client, headers, scenario)
         assert response.status_code == 200, f"{scenario}: {response.text}"
         draft = response.json()["draft"]
@@ -180,3 +189,24 @@ async def test_fixtures_are_owner_private(client: AsyncClient) -> None:
         f"/api/v1/job-imports/drafts/{draft_id}", headers=intruder_headers
     )
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_checkpoint_fixtures_stop_on_a_question(client: AsyncClient) -> None:
+    """The checkpoint scenarios exist to be seen paused, so they must pause."""
+
+    headers = await _auth(client, "fixture-checkpoint")
+    for scenario in ("checkpoint-currency", "checkpoint-trial"):
+        created = await _fixture(client, headers, scenario)
+        assert created.status_code == 200, created.text
+        draft_id = created.json()["draft"]["id"]
+
+        begun = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+        assert begun.status_code == 200, begun.text
+        body = begun.json()
+        assert body["waiting"] is True, scenario
+        assert body["active_question"] is not None, scenario
+        # Exactly one question, never a list.
+        assert isinstance(body["active_question"], dict), scenario

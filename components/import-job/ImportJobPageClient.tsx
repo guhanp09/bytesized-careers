@@ -165,7 +165,10 @@ export default function ImportJobPageClient() {
       try {
         const opened = await beginJobImportConversation(accessToken, readyDraft.id);
         setConversation(opened);
-        if (opened.waiting) {
+        // Only a decision the draft genuinely needs may hold the handoff.
+        // Optional improvements are offered inside Post Job instead — a clean
+        // import must never be stopped by a suggestion it does not need.
+        if (opened.waiting && opened.active_question?.kind !== "optional") {
           setDraft(readyDraft);
           setPhase("processing");
           setAnnouncement("I have one question before I finish this draft.");
@@ -788,6 +791,12 @@ export default function ImportJobPageClient() {
                     </option>
                     <option value="clean-import" className="bg-[#0b0b0f]">
                       Clean import · ready to edit
+                    </option>
+                    <option value="checkpoint-currency" className="bg-[#0b0b0f]">
+                      Checkpoint · pay needs a currency
+                    </option>
+                    <option value="checkpoint-trial" className="bg-[#0b0b0f]">
+                      Checkpoint · is there a trial?
                     </option>
                     <option value="delayed-processing" className="bg-[#0b0b0f]">
                       Still preparing · early question

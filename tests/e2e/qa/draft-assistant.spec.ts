@@ -278,3 +278,120 @@ test.describe("reduced motion", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Checkpointed conversation
+// ---------------------------------------------------------------------------
+
+test.describe("checkpointed conversation", () => {
+  /** Read the conversation the way the UI does, through the API. */
+  async function conversation(page: Page, draftId: string) {
+    const session = await (await page.request.get("/api/auth/session")).json();
+    const response = await page.request.get(
+      `http://127.0.0.1:8100/api/v1/job-imports/drafts/${draftId}/conversation`,
+      { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+    );
+    return response.json();
+  }
+
+  /**
+   * The draft id is kept in the URL, which is what makes refresh work. The
+   * canvas renders before the fixture resolves, so wait for it to land.
+   */
+  async function draftIdFrom(page: Page): Promise<string> {
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("draft"), { timeout: 30_000 })
+      .not.toBeNull();
+    return new URL(page.url()).searchParams.get("draft") ?? "";
+  }
+
+  test("the assistant stops on one question and the bar stops with it", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const draftId = await draftIdFrom(page);
+
+    const state = await conversation(page, draftId);
+    expect(state.waiting).toBe(true);
+    // Exactly one question is open — never a list of everything unresolved.
+    expect(state.active_question).not.toBeNull();
+    expect(Array.isArray(state.active_question)).toBe(false);
+
+    // The bar holds; nothing animates beside an unanswered question.
+    const bar = page.getByTestId("draft-assistant-progress");
+    await expect(bar.locator('[data-status="waiting"]')).toHaveCount(1);
+    await expect(bar.locator('[data-status="active"]')).toHaveCount(0);
+    await expect(page.getByTestId("draft-assistant-paused-note")).toBeVisible();
+  });
+
+  test("waiting is free: polling and refresh spend nothing", async ({ page }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-trial");
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const draftId = await draftIdFrom(page);
+    const before = await conversation(page, draftId);
+    expect(before.waiting).toBe(true);
+
+    // Sit on the question through several polling cycles, then reload.
+    await page.waitForTimeout(9_000);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const after = await conversation(page, draftId);
+    // The continuation counter is the meter. It has not moved.
+    expect(after.continuation_count).toBe(before.continuation_count);
+    expect(after.waiting).toBe(true);
+    // And the very same question is still the one being asked.
+    expect(after.active_question.field_path).toBe(before.active_question.field_path);
+  });
+
+  test("the recruiter is never shown a wall of unresolved fields", async ({ page }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const body = await page.locator("body").innerText();
+    for (const banned of [
+      "fields missing",
+      "Review flagged fields",
+      "Needs your review",
+      "Optional details not found",
+    ]) {
+      expect(body).not.toContain(banned);
+    }
+  });
+
+  test("the paused surface holds together on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginController(page);
+    await openFixture(page, "checkpoint-trial");
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    await page.screenshot({
+      path: `${SHOTS}/checkpoint-waiting-mobile.png`,
+      fullPage: true,
+    });
+
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1
+    );
+    expect(overflow, "horizontal overflow while paused").toBe(false);
+    await expect(page.getByTestId("draft-assistant-paused-note")).toBeVisible();
+  });
+});

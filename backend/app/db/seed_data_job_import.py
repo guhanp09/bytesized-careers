@@ -14,6 +14,10 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "thumbnail-designer",
     "scriptwriter",
     "clean-import",
+    # Checkpointed conversation: these land in waiting_for_recruiter so the
+    # pause, the listening pose and the answer-driven follow-up can be seen.
+    "checkpoint-currency",
+    "checkpoint-trial",
     # Failure surface: a real 503, never a fake stalled progress bar.
     "processing-failure",
     # In-flight drafts: left in `processing` so the assistant's staged behaviour
@@ -39,6 +43,10 @@ def processed_review_fixture(
         return _clean_import_fixture()
     if scenario == "scriptwriter":
         return _scriptwriter_fixture()
+    if scenario == "checkpoint-currency":
+        return _checkpoint_currency_fixture()
+    if scenario == "checkpoint-trial":
+        return _checkpoint_trial_fixture()
     if scenario == "answer-precedence":
         # Deliberately proposes the opposite of the recruiter's saved answer so
         # the merge rule is observable rather than merely asserted in a test.
@@ -634,6 +642,209 @@ def _answer_precedence_fixture() -> JobImportExtractionResponse:
             ],
             "conflicts": [],
             "missing_fields": [],
+            "warnings": [
+                {
+                    "code": "development_fixture",
+                    "message": "This local example contains demonstration data only.",
+                }
+            ],
+        }
+    )
+
+
+def _checkpoint_currency_fixture() -> JobImportExtractionResponse:
+    """A pay figure with no currency and no stated location.
+
+    The point of the scenario: the assistant must ask where the role is based
+    and then *offer* a currency rather than deciding one. A number with the
+    wrong currency beside it misleads every candidate who reads the listing.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Video editor for a personal finance channel",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Hiring a video editor for our finance channel."}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "video editor"}],
+                },
+                {
+                    "field_path": "platforms",
+                    "value": ["youtube"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "YouTube channel"}],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "ongoing_freelance",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Ongoing freelance."}],
+                },
+                {
+                    "field_path": "about_channel",
+                    "value": "A personal finance channel publishing weekly explainers for early-career viewers.",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "weekly personal finance explainers"}],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": ["Edit one long-form video each week"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "one long-form video each week"}],
+                },
+                {
+                    "field_path": "compensation_mode",
+                    "value": "fixed",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "flat rate per video"}],
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": 60000,
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "60,000 per month"}],
+                },
+                {
+                    "field_path": "budget_unit",
+                    "value": "per month",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "per month"}],
+                },
+                {
+                    "field_path": "application_mode",
+                    "value": "internal",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Apply through CreatorJobs."}],
+                },
+            ],
+            "conflicts": [],
+            "missing_fields": [
+                {
+                    "field_path": "work_mode",
+                    "explanation": "The post does not say where the work happens.",
+                },
+                {
+                    "field_path": "budget_currency",
+                    "explanation": "The post gives a figure but never labels the currency.",
+                },
+            ],
+            "warnings": [
+                {
+                    "code": "development_fixture",
+                    "message": "This local example contains demonstration data only.",
+                }
+            ],
+        }
+    )
+
+
+def _checkpoint_trial_fixture() -> JobImportExtractionResponse:
+    """Silent about trials, so the assistant has to ask.
+
+    Answering "no trial" must remove every downstream trial question at once —
+    the visible proof that an answer is treated as a fact rather than a message.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Thumbnail designer for a gaming channel",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Thumbnail designer for our gaming channel."}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "thumbnail-designer",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "thumbnail designer"}],
+                },
+                {
+                    "field_path": "platforms",
+                    "value": ["youtube"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "YouTube"}],
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": ["gaming"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "gaming channel"}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Remote."}],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "retainer",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Monthly retainer."}],
+                },
+                {
+                    "field_path": "about_channel",
+                    "value": "A gaming channel publishing three videos a week for a highly engaged audience.",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "three videos a week"}],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": ["Design three thumbnail concepts each week"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "three thumbnail concepts each week"}],
+                },
+                {
+                    "field_path": "application_mode",
+                    "value": "internal",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Apply on CreatorJobs."}],
+                },
+                {
+                    "field_path": "compensation_mode",
+                    "value": "fixed",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "flat monthly rate"}],
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": 40000,
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "40,000"}],
+                },
+                {
+                    "field_path": "budget_currency",
+                    "value": "INR",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR"}],
+                },
+                {
+                    "field_path": "budget_unit",
+                    "value": "per month",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "per month"}],
+                },
+            ],
+            "conflicts": [],
+            "missing_fields": [
+                {
+                    "field_path": "trial_status",
+                    "explanation": "The post does not say whether there is a trial assignment.",
+                },
+            ],
             "warnings": [
                 {
                     "code": "development_fixture",

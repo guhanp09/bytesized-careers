@@ -198,6 +198,7 @@ export function DraftAssistantCanvas({
               pendingValue={pendingValue}
               busy={busy}
               onAnswer={handleAnswer}
+              working={!waitingForRecruiter}
             />
           ) : (
             <WorkingMessage
@@ -315,11 +316,14 @@ function EarlyQuestionTurn({
   pendingValue,
   busy,
   onAnswer,
+  working,
 }: {
   question: EarlyQuestion;
   pendingValue: string | null;
   busy: boolean;
   onAnswer: (value: string) => void;
+  /** False while stopped, so the turn cannot promise work that is not running. */
+  working: boolean;
 }) {
   return (
     <div className="ui-rise" data-testid="early-question">
@@ -358,9 +362,11 @@ function EarlyQuestionTurn({
           </button>
         ))}
       </div>
-      <p className="mt-3 text-[11px] text-white/38">
-        I&rsquo;ll keep preparing the rest of the draft while you decide.
-      </p>
+      {working ? (
+        <p className="mt-3 text-[11px] text-white/38">
+          I&rsquo;ll keep preparing the rest of the draft while you decide.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -427,9 +433,15 @@ function PreviewRail({
       data-provisional-count={provisionalCount}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
-          Candidate preview
-        </p>
+        {/* The real preview prints its own heading; a second one above it was
+            just the same words twice. */}
+        {preview ? (
+          <span />
+        ) : (
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
+            Candidate preview
+          </p>
+        )}
         {provisionalCount > 0 ? (
           <p className="text-[10px] text-white/32" data-testid="preview-provisional-note">
             {provisionalCount} still to confirm

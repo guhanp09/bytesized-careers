@@ -190,6 +190,8 @@ async def create_job_import_review_fixture(
         "thumbnail-designer": "Science thumbnail designer job post",
         "scriptwriter": "History scriptwriter job post",
         "clean-import": "Education content strategist job post",
+        "checkpoint-currency": "Finance video editor job post",
+        "checkpoint-trial": "Gaming thumbnail designer job post",
         "delayed-processing": "Public job post being read",
         "refresh-resume": "Public job post being read",
         "answer-precedence": "Weekly review channel job post",

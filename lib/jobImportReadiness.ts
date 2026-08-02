@@ -699,6 +699,9 @@ export type DevelopmentJobImportScenario =
   | "thumbnail-designer"
   | "scriptwriter"
   | "clean-import"
+  // Land in the checkpointed conversation, waiting on one question.
+  | "checkpoint-currency"
+  | "checkpoint-trial"
   // A real 503 for the failure surface.
   | "processing-failure"
   // Drafts left genuinely mid-processing, for staged behaviour.
