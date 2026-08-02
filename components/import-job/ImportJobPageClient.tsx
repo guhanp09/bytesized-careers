@@ -713,8 +713,20 @@ export default function ImportJobPageClient() {
                     <option value="thumbnail-designer" className="bg-[#0b0b0f]">
                       Thumbnail designer · role-specific help
                     </option>
+                    <option value="scriptwriter" className="bg-[#0b0b0f]">
+                      Scriptwriter · research and length
+                    </option>
                     <option value="clean-import" className="bg-[#0b0b0f]">
                       Clean import · ready to edit
+                    </option>
+                    <option value="delayed-processing" className="bg-[#0b0b0f]">
+                      Still preparing · early question
+                    </option>
+                    <option value="refresh-resume" className="bg-[#0b0b0f]">
+                      Still preparing · one answer saved
+                    </option>
+                    <option value="answer-precedence" className="bg-[#0b0b0f]">
+                      Your answer vs a later result
                     </option>
                     <option value="processing-failure" className="bg-[#0b0b0f]">
                       Processing failure · retry path

@@ -9,10 +9,24 @@ from __future__ import annotations
 from app.schemas.job_import import JobImportExtractionResponse
 
 DEVELOPMENT_IMPORT_SCENARIOS = (
+    # Processed drafts: extraction has landed and the review queue is populated.
     "strong-decisions",
     "thumbnail-designer",
+    "scriptwriter",
     "clean-import",
+    # Failure surface: a real 503, never a fake stalled progress bar.
     "processing-failure",
+    # In-flight drafts: left in `processing` so the assistant's staged behaviour
+    # (early questions, resume, recruiter precedence) can be inspected without a
+    # provider call. These are not processed and have no fields yet.
+    "delayed-processing",
+    "refresh-resume",
+    "answer-precedence",
+)
+
+#: Scenarios that stay mid-processing rather than recording extraction output.
+IN_FLIGHT_IMPORT_SCENARIOS = frozenset(
+    {"delayed-processing", "refresh-resume", "answer-precedence"}
 )
 
 
@@ -23,6 +37,12 @@ def processed_review_fixture(
         return _thumbnail_designer_fixture()
     if scenario == "clean-import":
         return _clean_import_fixture()
+    if scenario == "scriptwriter":
+        return _scriptwriter_fixture()
+    if scenario == "answer-precedence":
+        # Deliberately proposes the opposite of the recruiter's saved answer so
+        # the merge rule is observable rather than merely asserted in a test.
+        return _answer_precedence_fixture()
     if scenario != "strong-decisions":
         raise ValueError(f"Unsupported development import scenario: {scenario}")
     return JobImportExtractionResponse.model_validate(
@@ -434,6 +454,186 @@ def _clean_import_fixture() -> JobImportExtractionResponse:
                 {"field_path": "source_inputs", "value": [{"type": "creative_brief"}], "provenance": "directly_supplied", "evidence": [{"snippet": "A creative brief will be provided for each planning cycle."}]},
                 {"field_path": "hiring_process", "value": [{"stage": "application_review"}, {"stage": "interview"}, {"stage": "offer"}], "provenance": "directly_supplied", "evidence": [{"snippet": "Application review, interview, then offer."}]},
             ],
+            "warnings": [
+                {
+                    "code": "development_fixture",
+                    "message": "This local example contains demonstration data only.",
+                }
+            ],
+        }
+    )
+
+
+def _scriptwriter_fixture() -> JobImportExtractionResponse:
+    """A scriptwriter post that leaves research ownership and length unstated.
+
+    Chosen because those two gaps are what a writer actually needs answered, and
+    because they are different gaps from the editor and designer fixtures — the
+    scenario exists to prove guidance is not one template with the role renamed.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Scriptwriter for a long-form history channel",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Looking for a scriptwriter for our history channel."}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "scriptwriter",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Write researched scripts for long-form documentaries."}],
+                    "explanation": "The described work most closely matches Scriptwriter.",
+                    "provider_confidence": {"score": 0.81, "label": "high"},
+                },
+                {
+                    "field_path": "platforms",
+                    "value": ["youtube"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "long-form YouTube documentaries"}],
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": ["history"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "our history channel"}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Fully remote."}],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "ongoing_freelance",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Ongoing freelance arrangement."}],
+                },
+                {
+                    "field_path": "about_channel",
+                    "value": "A long-form history channel publishing deeply researched documentaries for a curious general audience.",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "We publish deeply researched history documentaries."}],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": [
+                        "Write researched scripts for long-form documentary videos",
+                        "Work from a topic brief through to a narration-ready final draft",
+                    ],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Write researched scripts from brief to final draft."}],
+                },
+                {
+                    "field_path": "requirements",
+                    "value": ["Comfortable writing narrative non-fiction for a general audience"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Narrative non-fiction for a general audience."}],
+                },
+                {
+                    "field_path": "compensation_mode",
+                    "value": "fixed",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "We pay a flat rate per script."}],
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": 300,
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "flat rate per script"}],
+                },
+                {
+                    "field_path": "budget_currency",
+                    "value": "USD",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "USD"}],
+                },
+                {
+                    "field_path": "trial_status",
+                    "value": "none",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "No trial assignment."}],
+                },
+            ],
+            "conflicts": [],
+            "missing_fields": [
+                {
+                    "field_path": "budget_unit",
+                    "explanation": "The post says 'per script' but does not map it to a listed unit.",
+                },
+                {
+                    "field_path": "application_mode",
+                    "explanation": "The post does not say where candidates should apply.",
+                },
+                {
+                    "field_path": "source_inputs",
+                    "explanation": "The post does not say who supplies topics, outlines or research.",
+                },
+                {
+                    "field_path": "revision_policy",
+                    "explanation": "The post does not say how many drafts are included.",
+                },
+                {
+                    "field_path": "deliverables",
+                    "explanation": "The post does not state a target runtime or word count.",
+                },
+            ],
+            "warnings": [
+                {
+                    "code": "development_fixture",
+                    "message": "This local example contains demonstration data only.",
+                }
+            ],
+        }
+    )
+
+
+def _answer_precedence_fixture() -> JobImportExtractionResponse:
+    """Extraction that contradicts the recruiter's already-saved early answer.
+
+    The fixture proposes ``application_mode: internal``. The scenario saves
+    ``external`` first, so applying this output must leave ``external`` in place
+    and keep ``internal`` only as private audit.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Video editor for a weekly review channel",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Hiring a video editor for our weekly review channel."}],
+                },
+                {
+                    "field_path": "application_mode",
+                    "value": "internal",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Apply through our CreatorJobs listing."}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Remote."}],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "ongoing_freelance",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "Ongoing freelance."}],
+                },
+            ],
+            "conflicts": [],
+            "missing_fields": [],
             "warnings": [
                 {
                     "code": "development_fixture",

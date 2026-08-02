@@ -553,11 +553,23 @@ export async function getJobImportContextForNativeJob(
   };
 }
 
+/**
+ * Development-only scenarios. Mirrors DEVELOPMENT_IMPORT_SCENARIOS on the
+ * server; the endpoint rejects anything not on its own list, so this union is a
+ * convenience for the dev picker rather than the authority.
+ */
 export type DevelopmentJobImportScenario =
+  // Processed drafts with a populated review queue.
   | "strong-decisions"
   | "thumbnail-designer"
+  | "scriptwriter"
   | "clean-import"
-  | "processing-failure";
+  // A real 503 for the failure surface.
+  | "processing-failure"
+  // Drafts left genuinely mid-processing, for staged behaviour.
+  | "delayed-processing"
+  | "refresh-resume"
+  | "answer-precedence";
 
 export async function createDevelopmentJobImportFixture(
   accessToken: string,

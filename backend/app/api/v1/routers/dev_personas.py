@@ -13,6 +13,7 @@ from app.db import seed
 from app.db import seed_data_personas as personas
 from app.db.seed_data_job_import import (
     DEVELOPMENT_IMPORT_SCENARIOS,
+    IN_FLIGHT_IMPORT_SCENARIOS,
     processed_review_fixture,
 )
 from app.models import Job, JobApplication, Notification, TalentListing, User
@@ -187,7 +188,11 @@ async def create_job_import_review_fixture(
     source_titles = {
         "strong-decisions": "Finance video editor job post",
         "thumbnail-designer": "Science thumbnail designer job post",
+        "scriptwriter": "History scriptwriter job post",
         "clean-import": "Education content strategist job post",
+        "delayed-processing": "Public job post being read",
+        "refresh-resume": "Public job post being read",
+        "answer-precedence": "Weekly review channel job post",
     }
     fixture_run = uuid4().hex[:8] if fresh else "stable"
     source = await service.create_source(
@@ -210,6 +215,33 @@ async def create_job_import_review_fixture(
         owner_user_id=current_user.id,
     )
     created = draft.processing_status == "awaiting_processing"
+
+    if scenario in IN_FLIGHT_IMPORT_SCENARIOS:
+        # Leave the draft genuinely mid-processing. The assistant's staged
+        # behaviour is only worth inspecting against the real state machine, so
+        # these scenarios claim the draft exactly as a provider run would and
+        # then stop, rather than faking a status.
+        if created:
+            await service.begin_processing(
+                draft.id,
+                owner_user_id=current_user.id,
+                processing_attempt_id=uuid4(),
+            )
+        if scenario in {"refresh-resume", "answer-precedence"}:
+            # One recruiter answer already saved, so a refresh has something to
+            # restore and a later provider result has something to lose against.
+            await service.set_recruiter_prefill(
+                draft.id,
+                "application_mode",
+                "external",
+                owner_user_id=current_user.id,
+            )
+        draft = await service.get_draft(draft.id, owner_user_id=current_user.id)
+        return DevJobImportFixtureResponse(
+            draft=await service.draft_read(draft),
+            created=created,
+        )
+
     if created:
         draft = await service.record_extraction_result(
             draft.id,
