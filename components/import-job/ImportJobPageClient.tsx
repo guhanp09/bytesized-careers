@@ -20,10 +20,10 @@ import {
   type DevelopmentJobImportScenario,
 } from "../../lib/jobImportReadiness";
 import { normalizeImportText } from "../../lib/importJob/normalize";
-import { Icon } from "../Icons";
 import { PageHeader, PageLoading, StateCard } from "../ui";
 import PastePanel from "./PastePanel";
 import { DraftAssistantCanvas } from "./assistant/DraftAssistantCanvas";
+import { DraftAssistantRobot } from "./assistant/DraftAssistantRobot";
 import RecruiterJobPreview from "../post-job/RecruiterJobPreview";
 import {
   importPreviewProps,
@@ -448,6 +448,19 @@ export default function ImportJobPageClient() {
         scenario
       );
       setDraftLocation(result.draft.id);
+      setDraft(result.draft);
+      try {
+        setSource(await getJobImportSource(accessToken, result.draft.source_id));
+      } catch {
+        // The canvas falls back to a generic source label; not worth failing for.
+      }
+      if (result.draft.processing_status === "processing") {
+        // An in-flight scenario. It belongs on the assistant canvas, where the
+        // staged behaviour it exists to demonstrate actually lives — sending it
+        // to Post Job would skip past the thing being inspected.
+        setPhase("processing");
+        return;
+      }
       await openCanonicalDraft(result.draft);
     } catch (caught) {
       setPhase("failure");
@@ -782,10 +795,11 @@ export default function ImportJobPageClient() {
 
         {phase === "failure" ? (
           <section className={`${importPanelClass} mx-auto max-w-3xl`} data-testid="job-import-failure">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-200/10 text-amber-100/80">
-              <Icon name="file" className="h-4 w-4" />
-            </span>
-            <h2 className="mt-4 text-lg font-semibold">We couldn’t prepare the draft</h2>
+            {/* Bea stays present through a failure. Swapping her for a warning
+                icon made the failure read as a different product rather than the
+                same assistant reporting that it could not finish. */}
+            <DraftAssistantRobot state="failed" size={44} />
+            <h2 className="mt-4 text-lg font-semibold">I couldn’t finish this draft</h2>
             <p role="alert" className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
               {error}
             </p>

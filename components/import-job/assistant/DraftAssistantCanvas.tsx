@@ -38,9 +38,6 @@ import {
 const panel =
   "rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-6 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]";
 
-const ghostButton =
-  "ui-press min-h-11 cursor-pointer rounded-xl border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
-
 export type DraftAssistantCanvasProps = {
   progress: JobImportProgressInput;
   sourceType: JobImportSourceType;
@@ -124,12 +121,15 @@ export function DraftAssistantCanvas({
 
   return (
     <div
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
+      className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
       data-testid="draft-assistant-canvas"
     >
-      <section className={`${panel} min-h-[430px]`} aria-labelledby="draft-assistant-heading">
-        <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
+      <section
+        className={`${panel} min-w-0`}
+        aria-labelledby="draft-assistant-heading"
+      >
+        <header className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
             <DraftAssistantRobot
               state={robotState}
               acknowledging={acknowledging}
@@ -137,16 +137,16 @@ export function DraftAssistantCanvas({
               className="mt-0.5 shrink-0"
             />
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                Bea · CreatorJobs assistant
+              <p className="text-sm font-semibold text-white/80">Bea</p>
+              <p className="truncate text-xs text-white/42" title={sourceLabel}>
+                {sourceLabel}
               </p>
-              <p className="mt-1 truncate text-xs text-white/42">{sourceLabel}</p>
             </div>
           </div>
           {onCancel ? (
             <button
               type="button"
-              className={ghostButton}
+              className="ui-press -mr-2 min-h-11 shrink-0 cursor-pointer rounded-xl px-3 text-xs font-semibold text-white/45 transition-colors hover:text-white/80"
               onClick={onCancel}
               data-testid="draft-assistant-cancel"
             >
@@ -162,7 +162,7 @@ export function DraftAssistantCanvas({
           {active ? `. ${active.label}` : ""}
         </p>
 
-        <ProgressBar ratio={ratio} stages={stages} active={active?.id ?? null} />
+        <ProgressBar ratio={ratio} stages={stages} />
 
         <div className="mt-6">
           {progress.failed ? (
@@ -176,12 +176,29 @@ export function DraftAssistantCanvas({
             />
           ) : (
             <WorkingMessage
-              activeLabel={active?.label ?? null}
+              activeLabel={active?.activeLabel ?? null}
               sourceType={sourceType}
               delayMessage={delayMessage}
             />
           )}
         </div>
+
+        {preview ? (
+          <details
+            className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 lg:hidden"
+            data-testid="draft-assistant-preview-mobile"
+          >
+            <summary className="min-h-11 cursor-pointer list-none py-2 text-[12px] font-semibold text-white/60">
+              Preview what candidates see
+              {provisionalCount > 0 ? (
+                <span className="ml-2 font-normal text-white/32">
+                  {provisionalCount} still to confirm
+                </span>
+              ) : null}
+            </summary>
+            <div className="pb-1">{preview}</div>
+          </details>
+        ) : null}
 
         {answeredEntries.length > 0 ? (
           <AnswerHistory entries={answeredEntries} />
@@ -200,11 +217,9 @@ export function DraftAssistantCanvas({
 function ProgressBar({
   ratio,
   stages,
-  active,
 }: {
   ratio: number;
   stages: ReturnType<typeof jobImportStages>;
-  active: string | null;
 }) {
   const percent = Math.round(ratio * 100);
   return (
@@ -239,9 +254,6 @@ function ProgressBar({
           />
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-white/38">
-        {active ? stages.find((stage) => stage.id === active)?.label : "Draft prepared"}
-      </p>
     </div>
   );
 }
@@ -291,7 +303,9 @@ function EarlyQuestionTurn({
         {question.question}
       </h2>
       <p className="mt-2 text-sm leading-6 text-white/55">{question.explanation}</p>
-      <p className="mt-1.5 text-sm leading-6 text-white/45">{question.candidateImpact}</p>
+      <p className="mt-1.5 text-[13px] leading-5 text-white/40">
+        {question.candidateImpact}
+      </p>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {question.options.map((option) => (
@@ -376,7 +390,7 @@ function PreviewRail({
   return (
     <aside
       className={[
-        "hidden min-h-[430px] rounded-3xl border bg-white/[0.025] p-5 transition-colors duration-500 lg:block",
+        "hidden rounded-3xl border bg-white/[0.025] p-5 transition-colors duration-500 lg:block",
         "motion-reduce:transition-none",
         pulse ? "border-[color:var(--color-state-review,#8ec5ff)]/40" : "border-white/[0.08]",
       ].join(" ")}

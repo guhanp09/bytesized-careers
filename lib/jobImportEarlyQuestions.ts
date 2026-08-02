@@ -63,7 +63,7 @@ function buildQuestion(
       return {
         fieldPath,
         question: "Where should candidates apply?",
-        explanation: `This is your decision rather than something ${source} can settle, so I can ask it now while I finish reading the rest.`,
+        explanation: `Only you can settle this — ${source} cannot decide where your applications should land.`,
         candidateImpact:
           "Candidates get one clear way to apply, and their portfolio either arrives in your CreatorJobs workspace or on your own site.",
         options: [
@@ -83,7 +83,7 @@ function buildQuestion(
       return {
         fieldPath,
         question: "Who is hiring for this role?",
-        explanation: `You know this straight away, and ${source} often does not state it outright, so it is worth settling while I work.`,
+        explanation: `You will know this instantly, and ${source} rarely spells it out.`,
         candidateImpact:
           "Creators, agencies and brands work differently, and candidates use this to judge whether the role suits them.",
         options: [

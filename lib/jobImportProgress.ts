@@ -29,8 +29,14 @@ export type JobImportStageStatus = "pending" | "active" | "complete" | "failed";
 
 export type JobImportStage = {
   id: JobImportStageId;
-  /** Recruiter-facing. Never names a provider, schema, span, or lifecycle. */
+  /** Recruiter-facing, past tense. Used for stages that are done. */
   label: string;
+  /**
+   * Recruiter-facing, present tense. Used as the heading while the stage is
+   * running. A completed-sounding label read as a heading tells the recruiter
+   * the work is finished when it has only just started.
+   */
+  activeLabel: string;
   status: JobImportStageStatus;
   /**
    * True when the stage is genuinely in flight and its remaining work cannot be
@@ -76,11 +82,22 @@ const STAGE_LABELS: Readonly<Record<JobImportStageId, string>> = {
   source_accepted: "Job details received",
   page_retrieved: "Opened the public job post",
   source_normalized: "Read the job information",
-  structuring: "Matching the details to CreatorJobs",
+  structuring: "Matched the details to CreatorJobs",
   provider_returned: "Details organised",
   validated: "Checked against the CreatorJobs listing rules",
   answers_merged: "Your answers applied",
   draft_prepared: "Private draft prepared",
+};
+
+const STAGE_ACTIVE_LABELS: Readonly<Record<JobImportStageId, string>> = {
+  source_accepted: "Receiving the job details",
+  page_retrieved: "Opening the public job post",
+  source_normalized: "Reading the job information",
+  structuring: "Matching the details to CreatorJobs",
+  provider_returned: "Organising the details",
+  validated: "Checking the CreatorJobs listing rules",
+  answers_merged: "Applying your answers",
+  draft_prepared: "Preparing your private draft",
 };
 
 /** Draft statuses that mean extraction has genuinely finished. */
@@ -150,7 +167,13 @@ export function jobImportStages(input: JobImportProgressInput): JobImportStage[]
     // short client operation whose completion we will observe imminently.
     const indeterminate = status === "active" && id === "structuring";
 
-    return { id, label: STAGE_LABELS[id], status, indeterminate };
+    return {
+      id,
+      label: STAGE_LABELS[id],
+      activeLabel: STAGE_ACTIVE_LABELS[id],
+      status,
+      indeterminate,
+    };
   });
 }
 
