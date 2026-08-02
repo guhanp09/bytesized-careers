@@ -159,21 +159,16 @@ export default function ImportJobPageClient() {
         );
         return;
       }
-      // Open the checkpointed conversation first. If the assistant still needs a
-      // decision, the recruiter answers it here rather than discovering it as
-      // review work after the handoff.
+      // Open the checkpoint record so the conversation is durable from here on,
+      // then hand off. Once extraction has landed a native draft is always
+      // possible, and Post Job's guided review owns the questions that remain —
+      // it already has the role-aware copy, the live preview and the real
+      // controls. Holding here too would make one job take two conversations.
+      //
+      // The canvas surfaces the pause during preparation, which is the phase
+      // where the assistant genuinely cannot continue without an answer.
       try {
-        const opened = await beginJobImportConversation(accessToken, readyDraft.id);
-        setConversation(opened);
-        // Only a decision the draft genuinely needs may hold the handoff.
-        // Optional improvements are offered inside Post Job instead — a clean
-        // import must never be stopped by a suggestion it does not need.
-        if (opened.waiting && opened.active_question?.kind !== "optional") {
-          setDraft(readyDraft);
-          setPhase("processing");
-          setAnnouncement("I have one question before I finish this draft.");
-          return;
-        }
+        setConversation(await beginJobImportConversation(accessToken, readyDraft.id));
       } catch {
         // The conversation is additive; without it the ordinary handoff stands.
       }

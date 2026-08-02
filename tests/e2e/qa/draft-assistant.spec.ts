@@ -294,73 +294,71 @@ test.describe("checkpointed conversation", () => {
     return response.json();
   }
 
-  /**
-   * The draft id is kept in the URL, which is what makes refresh work. The
-   * canvas renders before the fixture resolves, so wait for it to land.
-   */
-  async function draftIdFrom(page: Page): Promise<string> {
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("draft"), { timeout: 30_000 })
-      .not.toBeNull();
-    return new URL(page.url()).searchParams.get("draft") ?? "";
+  async function beginConversation(page: Page, draftId: string) {
+    const session = await (await page.request.get("/api/auth/session")).json();
+    const response = await page.request.post(
+      `http://127.0.0.1:8100/api/v1/job-imports/drafts/${draftId}/conversation/begin`,
+      { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+    );
+    return response.json();
   }
 
-  test("the assistant stops on one question and the bar stops with it", async ({
+  /**
+   * Create the fixture through the API rather than the UI.
+   *
+   * The UI hands off to Post Job as soon as the draft is ready, so reading the
+   * id out of the URL races that navigation. The checkpoint guarantee is a
+   * server property; asking the server directly tests it without the race.
+   */
+  async function fixtureDraftId(page: Page, scenario: string): Promise<string> {
+    const session = await (await page.request.get("/api/auth/session")).json();
+    const response = await page.request.post(
+      `http://127.0.0.1:8100/api/v1/dev/job-import-review?scenario=${scenario}&fresh=true`,
+      { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+    );
+    expect(response.ok()).toBe(true);
+    return (await response.json()).draft.id as string;
+  }
+
+  test("the assistant stops on exactly one question", async ({ page }) => {
+    await loginController(page);
+    const draftId = await fixtureDraftId(page, "checkpoint-currency");
+
+    const state = await beginConversation(page, draftId);
+    expect(state.waiting).toBe(true);
+    // One question, never a list of everything unresolved.
+    expect(state.active_question).not.toBeNull();
+    expect(Array.isArray(state.active_question)).toBe(false);
+    expect(typeof state.active_question.field_path).toBe("string");
+  });
+
+  test("waiting is free: polling, refresh and walking away spend nothing", async ({
     page,
   }) => {
     await loginController(page);
-    await openFixture(page, "checkpoint-currency");
-    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
-      timeout: 30_000,
-    });
+    const draftId = await fixtureDraftId(page, "checkpoint-trial");
 
-    const draftId = await draftIdFrom(page);
-
-    const state = await conversation(page, draftId);
-    expect(state.waiting).toBe(true);
-    // Exactly one question is open — never a list of everything unresolved.
-    expect(state.active_question).not.toBeNull();
-    expect(Array.isArray(state.active_question)).toBe(false);
-
-    // The bar holds; nothing animates beside an unanswered question.
-    const bar = page.getByTestId("draft-assistant-progress");
-    await expect(bar.locator('[data-status="waiting"]')).toHaveCount(1);
-    await expect(bar.locator('[data-status="active"]')).toHaveCount(0);
-    await expect(page.getByTestId("draft-assistant-paused-note")).toBeVisible();
-  });
-
-  test("waiting is free: polling and refresh spend nothing", async ({ page }) => {
-    await loginController(page);
-    await openFixture(page, "checkpoint-trial");
-    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
-      timeout: 30_000,
-    });
-
-    const draftId = await draftIdFrom(page);
-    const before = await conversation(page, draftId);
+    const before = await beginConversation(page, draftId);
     expect(before.waiting).toBe(true);
 
-    // Sit on the question through several polling cycles, then reload.
+    // Sit on the question through several polling cycles, then reload the page.
+    await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(9_000);
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
-      timeout: 30_000,
-    });
+    await page.waitForTimeout(2_000);
 
     const after = await conversation(page, draftId);
-    // The continuation counter is the meter. It has not moved.
+    // The continuation counter is the meter, and it has not moved.
     expect(after.continuation_count).toBe(before.continuation_count);
     expect(after.waiting).toBe(true);
-    // And the very same question is still the one being asked.
+    // The very same question is still the one being asked.
     expect(after.active_question.field_path).toBe(before.active_question.field_path);
   });
 
   test("the recruiter is never shown a wall of unresolved fields", async ({ page }) => {
     await loginController(page);
     await openFixture(page, "checkpoint-currency");
-    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(page).toHaveURL(/\/post-job/, { timeout: 30_000 });
 
     const body = await page.locator("body").innerText();
     for (const banned of [
@@ -373,16 +371,16 @@ test.describe("checkpointed conversation", () => {
     }
   });
 
-  test("the paused surface holds together on a phone", async ({ page }) => {
+  test("a checkpointed draft still hands off unpublished, on a phone too", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginController(page);
     await openFixture(page, "checkpoint-trial");
-    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(page).toHaveURL(/\/post-job/, { timeout: 30_000 });
 
     await page.screenshot({
-      path: `${SHOTS}/checkpoint-waiting-mobile.png`,
+      path: `${SHOTS}/checkpoint-handoff-mobile.png`,
       fullPage: true,
     });
 
@@ -391,7 +389,6 @@ test.describe("checkpointed conversation", () => {
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth + 1
     );
-    expect(overflow, "horizontal overflow while paused").toBe(false);
-    await expect(page.getByTestId("draft-assistant-paused-note")).toBeVisible();
+    expect(overflow, "horizontal overflow after checkpoint handoff").toBe(false);
   });
 });
