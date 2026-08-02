@@ -221,6 +221,14 @@ class JobImportDraft(Base):
         nullable=True,
         index=True,
     )
+    # Recruiter answers captured before machine output exists, keyed by field path.
+    # These are authoritative: extraction merges around them and never over them.
+    recruiter_prefill: Mapped[dict[str, object]] = mapped_column(
+        json_type, nullable=False, default=dict, server_default=sa.text("'{}'")
+    )
+    recruiter_prefill_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Internal, transaction-scoped compare-and-set token. It is never serialized.
     # A committed row must normally contain NULL: successful mutations clear it in
     # the same transaction, while failed/crashed transactions roll it back.

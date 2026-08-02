@@ -23,6 +23,7 @@ from app.schemas.job_import import (
     JobImportDraftInitialize,
     JobImportDraftRead,
     JobImportFieldReviewRequest,
+    JobImportPrefillRequest,
     JobImportProcessRequest,
     JobImportProcessResponse,
     JobImportSourceCreate,
@@ -229,6 +230,31 @@ async def review_import_field(
             draft_id,
             field_path,
             payload,
+            owner_user_id=current_user.id,
+        )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return await service.draft_read(draft)
+
+
+@router.put(
+    "/drafts/{draft_id}/prefill/{field_path}",
+    response_model=JobImportDraftRead,
+    summary="Answer a recruiter-owned detail while an import draft is still being prepared",
+)
+async def set_import_prefill(
+    draft_id: UUID,
+    field_path: str,
+    payload: JobImportPrefillRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportService = Depends(get_job_import_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportDraftRead:
+    try:
+        draft = await service.set_recruiter_prefill(
+            draft_id,
+            field_path,
+            payload.value,
             owner_user_id=current_user.id,
         )
     except JobImportError as error:

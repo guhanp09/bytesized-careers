@@ -23,7 +23,11 @@ from app.core.job_import_inference import (
     ImportDecisionConfidence,
     ImportDecisionOrigin,
 )
-from app.core.job_import_policy import MissingRequirement, ReviewSection
+from app.core.job_import_policy import (
+    EARLY_RECRUITER_QUESTION_FIELDS,
+    MissingRequirement,
+    ReviewSection,
+)
 from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.schemas.job import JobRead
 
@@ -577,6 +581,23 @@ class JobImportFieldReviewRequest(BaseModel):
         return self
 
 
+class JobImportPrefillRequest(BaseModel):
+    """A recruiter answer supplied while extraction is still running."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: JsonValue
+
+    @field_validator("value")
+    @classmethod
+    def bound_value(cls, value: JsonValue) -> JsonValue:
+        return _bounded_json(
+            value,
+            maximum=MAX_FIELD_JSON_BYTES,
+            label="prefill value",
+        )  # type: ignore[return-value]
+
+
 class JobImportConflictResolutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -680,6 +701,13 @@ class JobImportDraftRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     fields: list[JobImportFieldRead]
+    # Answers given before extraction returned, so a refresh can restore them.
+    recruiter_prefill: dict[str, object] = Field(default_factory=dict)
+    # Server-owned: which details the client may ask about before the draft is
+    # prepared. The client must not infer this set for itself.
+    early_question_fields: list[str] = Field(
+        default_factory=lambda: sorted(EARLY_RECRUITER_QUESTION_FIELDS)
+    )
 
 
 class JobImportDraftContextRead(BaseModel):

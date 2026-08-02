@@ -373,6 +373,41 @@ AUTO_TRACKED_MISSING_FIELDS: Final[tuple[str, ...]] = tuple(
     if policy.missing_requirement != "optional"
 )
 
+# Fields the recruiter may answer while provider extraction is still running.
+#
+# Eligibility is deliberately narrow. A field qualifies only when answering it
+# early cannot waste the recruiter's time, which requires all three of:
+#
+#   1. the recruiter must confirm it explicitly no matter what the source says,
+#      so an early answer is never discarded by a better extraction;
+#   2. it is not conditional, so no controlling answer has to be known first;
+#   3. it is a routing or identity decision the recruiter owns rather than a
+#      fact about the role that the source is likely to state.
+#
+# Rule 3 is why compensation and trial terms are excluded even though they meet
+# the first two: the source usually states them, so asking early would create
+# work the extraction was about to remove.
+_EARLY_RECRUITER_AUTHORITY_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "application_mode",
+        "employer_context_type",
+    }
+)
+
+EARLY_RECRUITER_QUESTION_FIELDS: Final[frozenset[str]] = frozenset(
+    field_path
+    for field_path in _EARLY_RECRUITER_AUTHORITY_FIELDS
+    if (policy := JOB_IMPORT_FIELD_POLICIES.get(field_path)) is not None
+    and policy.confirmation_policy == "explicit_recruiter_confirmation_required"
+    and policy.missing_requirement != "conditionally_required"
+)
+
 
 def import_field_policy(field_path: str) -> JobImportFieldPolicy | None:
     return JOB_IMPORT_FIELD_POLICIES.get(field_path)
+
+
+def is_early_recruiter_question(field_path: str) -> bool:
+    """Answerable before machine output exists, without risking wasted work."""
+
+    return field_path in EARLY_RECRUITER_QUESTION_FIELDS

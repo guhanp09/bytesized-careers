@@ -43,6 +43,7 @@ from app.core.job_import_policy import (
     SYSTEM_OWNED_IMPORT_FIELDS,
     JobImportFieldPolicy,
     import_field_policy,
+    is_early_recruiter_question,
 )
 from app.core.job_taxonomy import (
     COMPENSATION_MODES,
@@ -1559,6 +1560,8 @@ class JobImportService:
                 }
             )
 
+        rows = self._merge_recruiter_prefill(draft, rows)
+
         await self.repository.create_fields(rows)
         metadata = provider_metadata or JobImportProviderMetadata()
         now = datetime.now(UTC)
@@ -1795,6 +1798,149 @@ class JobImportService:
                 "This import draft is not open for recruiter review.",
                 status_code=409,
             )
+
+    @staticmethod
+    def _recruiter_prefill_values(draft: JobImportDraft) -> dict[str, object]:
+        stored = draft.recruiter_prefill
+        if not isinstance(stored, dict):
+            return {}
+        return {
+            field_path: value
+            for field_path, value in stored.items()
+            if isinstance(field_path, str) and field_path in JOB_IMPORT_FIELD_POLICIES
+        }
+
+    @classmethod
+    def _merge_recruiter_prefill(
+        cls,
+        draft: JobImportDraft,
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Let answers given during processing win over the machine's proposal.
+
+        The recruiter answered before extraction returned, so their value is the
+        decision and the provider result is at most corroboration. The machine
+        proposal, evidence, and confidence stay on the row for private audit; only
+        the effective value changes. Values were validated when they were stored,
+        so no field can enter the draft here that could not enter it through the
+        ordinary review path.
+        """
+
+        prefill = cls._recruiter_prefill_values(draft)
+        if not prefill:
+            return rows
+
+        by_path = {row["field_path"]: row for row in rows}
+        for field_path, value in prefill.items():
+            policy = JOB_IMPORT_FIELD_POLICIES[field_path]
+            existing = by_path.get(field_path)
+            if existing is not None:
+                existing.update(
+                    {
+                        "review_status": "edited",
+                        "edited_value": value,
+                        "confirmed_value": None,
+                        "requires_confirmation": False,
+                        "validation_errors": [],
+                    }
+                )
+                if existing["provenance_state"] == "missing":
+                    # The machine found nothing, so this value's only origin is the
+                    # recruiter. Leaving it "missing" would misreport a field that
+                    # now has an answer, and would keep it in the missing counts.
+                    existing["provenance_state"] = "directly_supplied"
+                    existing["explanation"] = (
+                        "You answered this while the draft was being prepared."
+                    )
+                continue
+            row: dict[str, Any] = {
+                "draft_id": draft.id,
+                "field_path": field_path,
+                "proposed_value": None,
+                "provenance_state": "directly_supplied",
+                "evidence": [],
+                "conflicting_values": [],
+                "explanation": "You answered this while the draft was being prepared.",
+                "provider_confidence": None,
+                "review_status": "edited",
+                "edited_value": value,
+                "confirmed_value": None,
+                "missing_requirement": policy.missing_requirement,
+                "requires_confirmation": False,
+                "validation_errors": [],
+            }
+            rows.append(row)
+            by_path[field_path] = row
+        return rows
+
+    async def set_recruiter_prefill(
+        self,
+        draft_id: UUID,
+        field_path: str,
+        value: object,
+        *,
+        owner_user_id: UUID,
+    ) -> JobImportDraft:
+        """Record a recruiter answer that precedes machine output.
+
+        This exists because ``record_extraction_result`` refuses to write machine
+        output once any field row exists. Storing the answer on the draft keeps
+        that immutability rule intact while making the answer durable across
+        refresh and independent of any one browser tab.
+        """
+
+        if not is_early_recruiter_question(field_path):
+            raise JobImportError(
+                "JOB_IMPORT_FIELD_NOT_EARLY_ANSWERABLE",
+                "This detail cannot be answered before the draft has been prepared.",
+                status_code=409,
+                details={"field_path": field_path},
+            )
+        policy = JOB_IMPORT_FIELD_POLICIES[field_path]
+        normalized, errors = await self._validate_field_value(policy, value)
+        if errors:
+            raise JobImportError(
+                "JOB_IMPORT_FIELD_INVALID",
+                "The recruiter-supplied value is invalid.",
+                details={"errors": errors},
+            )
+
+        claim_token = uuid4()
+        draft = await self.repository.claim_draft_mutation(
+            draft_id,
+            owner_user_id,
+            claim_token,
+            allowed_statuses={"awaiting_processing", "processing", "processing_failed"},
+        )
+        if draft is None:
+            existing = await self.repository.get_draft_for_owner(draft_id, owner_user_id)
+            if existing is None:
+                raise JobImportError(
+                    "JOB_IMPORT_DRAFT_NOT_FOUND",
+                    "Import draft not found.",
+                    status_code=404,
+                )
+            # Extraction already landed, so the ordinary review path owns this field.
+            raise JobImportError(
+                "JOB_IMPORT_PREFILL_WINDOW_CLOSED",
+                "This draft is already prepared; review the field normally instead.",
+                status_code=409,
+            )
+        try:
+            current = self._recruiter_prefill_values(draft)
+            await self.repository.update_draft(
+                draft,
+                {
+                    "recruiter_prefill": {**current, field_path: normalized},
+                    "recruiter_prefill_updated_at": datetime.now(UTC),
+                    "mutation_claim_token": None,
+                },
+            )
+            await self.repository.session.commit()
+        except Exception:
+            await self.repository.session.rollback()
+            raise
+        return draft
 
     async def review_field(
         self,
@@ -2506,6 +2652,7 @@ class JobImportService:
             created_at=draft.created_at,
             updated_at=draft.updated_at,
             fields=[self._field_read(field) for field in fields],
+            recruiter_prefill=self._recruiter_prefill_values(draft),
         )
 
     @staticmethod
