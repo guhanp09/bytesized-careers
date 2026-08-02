@@ -33,9 +33,28 @@ export const canUseLocalMockFallback = () => {
 
 export const isExternalBackendEnabled = () => !isLocalMocksEnabled();
 
+/**
+ * Force the loopback host to IPv4 for local development.
+ *
+ * On macOS `localhost` resolves to ::1 first, while uvicorn's `--host 127.0.0.1`
+ * binds IPv4 only — so a browser calling `http://localhost:8000` gets connection
+ * refused while the backend is running perfectly. The fetch throws before any
+ * HTTP happens, which surfaces as status 0 and the misleading "make sure the
+ * backend is running" message.
+ *
+ * Binding uvicorn to `::` does not fix it either: on macOS that binds IPv6 only
+ * and breaks every IPv4 caller instead. Pinning the client to 127.0.0.1 is the
+ * one change that works for both, and it matches the loopback origins the
+ * backend's CORS list already allows.
+ *
+ * Only the loopback name is rewritten; real hostnames are left untouched.
+ */
+const preferIPv4Loopback = (url: string) =>
+  url.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
+
 const getBackendBaseUrl = () => {
   const raw = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000/api/v1";
-  const normalized = raw.replace(/\/+$/, "");
+  const normalized = preferIPv4Loopback(raw).replace(/\/+$/, "");
   return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 };
 

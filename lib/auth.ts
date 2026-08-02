@@ -12,13 +12,21 @@ import {
 } from "./backendTokenRefresh";
 import { isQaPersonaUiAllowed } from "./qaPersonas";
 
+/**
+ * Same loopback rule as lib/backendClient.ts: `localhost` resolves to ::1 first
+ * on macOS, and the dev backend binds IPv4 only, so sign-in would fail against a
+ * backend that is running. Only the loopback name is rewritten.
+ */
+const preferIPv4Loopback = (url: string) =>
+  url.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
+
 const getBackendBaseUrl = () => {
   const raw =
     process.env.BACKEND_URL ||
     process.env.INTERNAL_BACKEND_URL ||
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "http://localhost:8000/api/v1";
-  const normalized = raw.replace(/\/+$/, "");
+  const normalized = preferIPv4Loopback(raw).replace(/\/+$/, "");
   return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 };
 
