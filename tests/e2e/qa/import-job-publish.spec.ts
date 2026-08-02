@@ -36,6 +36,69 @@ async function backendSession(page: Page) {
   };
 }
 
+/**
+ * Drive the assistant canvas to completion, then open the draft.
+ *
+ * Extraction finishing no longer hands the recruiter off: the assistant asks
+ * everything it identified first. These specs care about what happens *after*
+ * that conversation, so this walks it to the end the way a recruiter would.
+ */
+async function completeAssistant(page: Page) {
+  // Give the canvas a chance to appear at all; a clean import may skip it.
+  await page
+    .getByTestId("conversation-turn")
+    .or(page.getByTestId("conversation-open-draft"))
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .catch(() => undefined);
+
+  for (let step = 0; step < 25; step += 1) {
+    const done = page.getByTestId("conversation-open-draft");
+    if (await done.count()) {
+      await done.click();
+      return;
+    }
+    const turn = page.getByTestId("conversation-turn");
+    if (!(await turn.count())) return;
+
+    const field = await turn.locator("h2").getAttribute("data-field");
+
+    const skip = page.getByTestId("conversation-skip-remaining");
+    if (await skip.count()) {
+      await skip.click();
+    } else {
+      const option = turn.locator('[data-testid^="conversation-option-"]').first();
+      const suggestion = page.getByTestId("conversation-accept-suggestion");
+      const input = page.getByTestId("conversation-text-answer");
+      if (await suggestion.count()) {
+        await suggestion.click();
+      } else if (await option.count()) {
+        await option.click();
+      } else if (await input.count()) {
+        const numeric = (await input.getAttribute("inputmode")) === "numeric";
+        await input.fill(numeric ? "5" : "Provided during QA");
+        await page.getByTestId("conversation-submit").click();
+      } else {
+        return;
+      }
+    }
+
+    // Each action is a server round trip. Wait for the turn to actually change
+    // rather than re-reading the DOM that is still on screen.
+    await expect
+      .poll(
+        async () => {
+          if (await page.getByTestId("conversation-open-draft").count()) return "done";
+          const next = page.getByTestId("conversation-turn");
+          if (!(await next.count())) return "gone";
+          return await next.locator("h2").getAttribute("data-field");
+        },
+        { timeout: 20_000 }
+      )
+      .not.toBe(field);
+  }
+}
+
 test("development fixture opens the canonical private Post Job draft with import guidance", async ({
   page,
 }) => {
@@ -46,6 +109,7 @@ test("development fixture opens the canonical private Post Job draft with import
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("import-textarea")).toBeVisible();
   await page.getByTestId("open-import-review-fixture").click();
+  await completeAssistant(page);
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
   await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
   await expect(page.getByText(/I’ve built a strong first draft/i)).toBeVisible();
@@ -103,6 +167,7 @@ test("a private imported native draft is not readable after a same-tab persona s
   await switchPersona(page, "recruiter-active", "Finance Simplified");
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-import-review-fixture").click();
+  await completeAssistant(page);
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
   const privateUrl = page.url();
 
@@ -119,6 +184,7 @@ test("clean and role-specific fixtures produce only useful guided work", async (
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
   await page.getByTestId("import-development-scenario").selectOption("clean-import");
   await page.getByTestId("open-import-review-fixture").click();
+  await completeAssistant(page);
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
   await expect(
     page.getByRole("heading", { name: "Your draft is ready to edit." })
@@ -131,6 +197,7 @@ test("clean and role-specific fixtures produce only useful guided work", async (
   await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
   await page.getByTestId("import-development-scenario").selectOption("thumbnail-designer");
   await page.getByTestId("open-import-review-fixture").click();
+  await completeAssistant(page);
   await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
   await expect(
     page.getByRole("heading", { name: /confirm the closest creator role/i })
@@ -200,6 +267,7 @@ test.describe("mobile canonical import", () => {
     await switchPersona(page, "both-sides", "Aditi Verma");
     await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
     await page.getByTestId("open-import-review-fixture").click();
+    await completeAssistant(page);
     await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 20_000 });
     await expect(page.getByTestId("conversational-import-guidance")).toBeVisible();
     for (const viewport of [

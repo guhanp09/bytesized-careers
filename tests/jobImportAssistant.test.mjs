@@ -190,3 +190,35 @@ test("the robot owns no timer, so it cannot depict work that is not happening", 
     assert.ok(!robot.includes(forbidden), `robot must not use ${forbidden}`);
   }
 });
+
+test("conversation questions never carry editor-side label qualifiers", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  // "(free text)" and "(legacy)" belong beside a form control, not inside a
+  // question the assistant speaks aloud.
+  // The label is stripped of any trailing parenthetical before it is spoken.
+  assert.ok(turn.includes("importFieldLabel(question.field_path)"));
+  assert.ok(turn.includes(".replace("), "the label must be normalised");
+  assert.match(turn, /editor-side qualifiers/);
+});
+
+test("the conversation turn offers a skip only for optional suggestions", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  // Essential questions must not present a fake escape.
+  assert.match(turn, /\{optional \? \(/);
+  assert.match(turn, /conversation-skip-remaining/);
+});
+
+test("the manual route out is always available while the assistant is asking", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  assert.match(canvas, /conversation-continue-manually/);
+  assert.match(canvas, /!conversation\.ready_for_draft/);
+});
+
+test("the handoff is an explicit action, never automatic", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  // Completion renders a button; nothing navigates on its own.
+  assert.match(canvas, /ConversationComplete/);
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /conversation-open-draft/);
+  assert.doesNotMatch(turn, /router\.(push|replace)/);
+});

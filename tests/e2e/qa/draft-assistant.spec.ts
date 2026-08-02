@@ -199,6 +199,19 @@ test.describe("completion and handoff", () => {
     await loginController(page);
     await openFixture(page, "clean-import");
 
+    // Even a clean import may have one improvement worth offering; skip it and
+    // take the explicit handoff.
+    const skip = page.getByTestId("conversation-skip-remaining");
+    await skip.waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
+    if (await skip.count()) {
+      await skip.click();
+      await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
+        timeout: 20_000,
+      });
+    }
+    const open = page.getByTestId("conversation-open-draft");
+    if (await open.count()) await open.click();
+
     await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 30_000 });
 
     // The normal editor, not an import-specific one.
@@ -390,5 +403,129 @@ test.describe("checkpointed conversation", () => {
         document.documentElement.clientWidth + 1
     );
     expect(overflow, "horizontal overflow after checkpoint handoff").toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The conversational-completion boundary
+// ---------------------------------------------------------------------------
+
+test.describe("conversational completion", () => {
+  test("extraction finishing does not hand the recruiter off", async ({ page }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+
+    // The assistant stays put and asks, rather than navigating away.
+    await expect(page.getByTestId("conversation-turn")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/post-job\/import/);
+    // One question, never a list.
+    await expect(page.getByTestId("conversation-turn")).toHaveCount(1);
+    // And the manual route out is present but secondary.
+    await expect(page.getByTestId("conversation-continue-manually")).toBeVisible();
+  });
+
+  test("answering reaches a completion state, and the handoff is an explicit choice", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-trial");
+    await expect(page.getByTestId("conversation-turn")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    for (let step = 0; step < 25; step += 1) {
+      if (await page.getByTestId("conversation-open-draft").count()) break;
+      const skipRemaining = page.getByTestId("conversation-skip-remaining");
+      if (await skipRemaining.count()) {
+        await skipRemaining.click();
+        await page.waitForTimeout(700);
+        continue;
+      }
+      const option = page
+        .getByTestId("conversation-turn")
+        .locator('[data-testid^="conversation-option-"]')
+        .first();
+      if (await option.count()) {
+        await option.click();
+        await page.waitForTimeout(700);
+        continue;
+      }
+      const input = page.getByTestId("conversation-text-answer");
+      if (await input.count()) {
+        await input.fill(
+        (await input.getAttribute("inputmode")) === "numeric" ? "5" : "Provided during QA"
+      );
+        await page.getByTestId("conversation-submit").click();
+        await page.waitForTimeout(700);
+        continue;
+      }
+      break;
+    }
+
+    // Bea reports completion; the recruiter has not been moved anywhere yet.
+    await expect(page.getByTestId("conversation-complete")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/post-job\/import/);
+
+    await page.getByTestId("conversation-open-draft").click();
+    await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
+    // The ordinary editor, with no AI issue dashboard in sight.
+    await expect(page.getByText("Review flagged fields")).toHaveCount(0);
+  });
+
+  test("Continue manually hands off with unanswered questions preserved", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    await expect(page.getByTestId("conversation-turn")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    await page.getByTestId("conversation-continue-manually").click();
+    await expect(page.getByTestId("conversation-complete")).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByTestId("conversation-open-draft").click();
+    await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
+  });
+
+  test("a clean import asks nothing essential, only offers", async ({ page }) => {
+    await loginController(page);
+    await openFixture(page, "clean-import");
+
+    // It genuinely has no revision policy, so offering one is the designed
+    // behaviour — but nothing here is *essential*, and it is skippable.
+    const turn = page.getByTestId("conversation-turn");
+    await expect(turn).toBeVisible({ timeout: 30_000 });
+    await expect(turn).toHaveAttribute("data-kind", "optional");
+
+    await page.getByTestId("conversation-skip-remaining").click();
+    await expect(page.getByTestId("conversation-complete")).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("the paused conversation holds together on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    await expect(page.getByTestId("conversation-turn")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    await page.screenshot({
+      path: `${SHOTS}/completion-question-mobile.png`,
+      fullPage: true,
+    });
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1
+    );
+    expect(overflow, "horizontal overflow during conversation").toBe(false);
   });
 });

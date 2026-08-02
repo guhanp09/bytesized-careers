@@ -12,8 +12,11 @@ import {
   createJobImportUrlSource,
   getJobImportDraft,
   getJobImportSource,
+  answerJobImportQuestion,
   beginJobImportConversation,
+  continueJobImportManually,
   getJobImportConversation,
+  skipJobImportQuestion,
   initializeJobImportDraft,
   pauseJobImportConversation,
   processJobImportDraft,
@@ -159,16 +162,27 @@ export default function ImportJobPageClient() {
         );
         return;
       }
-      // Open the checkpoint record so the conversation is durable from here on,
-      // then hand off. Once extraction has landed a native draft is always
-      // possible, and Post Job's guided review owns the questions that remain —
-      // it already has the role-aware copy, the live preview and the real
-      // controls. Holding here too would make one job take two conversations.
+      // Extraction finishing is not the end of the conversation. The assistant
+      // asks every question it identified — essential first, then the few
+      // improvements worth offering — inside this canvas, and only hands off
+      // once it says it is done.
       //
-      // The canvas surfaces the pause during preparation, which is the phase
-      // where the assistant genuinely cannot continue without an answer.
+      // The gate is the assistant's own completion rule, never
+      // can_apply_to_native_draft: a private draft can exist almost from the
+      // start, so using that would hand the recruiter off mid-conversation.
       try {
-        setConversation(await beginJobImportConversation(accessToken, readyDraft.id));
+        const opened = await beginJobImportConversation(accessToken, readyDraft.id);
+        setConversation(opened);
+        if (!opened.ready_for_draft) {
+          setDraft(readyDraft);
+          setPhase("processing");
+          setAnnouncement(
+            opened.phase === "optional"
+              ? "The core draft is ready. I have a couple of optional suggestions."
+              : "I have a few questions before your draft is ready."
+          );
+          return;
+        }
       } catch {
         // The conversation is additive; without it the ordinary handoff stands.
       }
@@ -267,6 +281,48 @@ export default function ImportJobPageClient() {
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [accessToken, draft, conversation?.waiting]);
+
+  /** Hand off to the ordinary editor. Always an explicit recruiter action. */
+  const openNativeDraft = React.useCallback(async () => {
+    if (!accessToken || !draft) return;
+    setAnsweringEarlyQuestion(true);
+    try {
+      if (draft.target_job_id) {
+        router.replace(
+          `/post-job?draftId=${encodeURIComponent(draft.target_job_id)}&imported=1`
+        );
+        return;
+      }
+      if (!draft.can_apply_to_native_draft) {
+        router.replace(`/post-job?importDraftId=${encodeURIComponent(draft.id)}`);
+        return;
+      }
+      const result = await applyJobImportDraft(accessToken, draft.id);
+      router.replace(
+        `/post-job?draftId=${encodeURIComponent(String(result.job.id))}&imported=1`
+      );
+    } catch (caught) {
+      setError(describeActionError(caught, "That draft could not be opened."));
+    } finally {
+      setAnsweringEarlyQuestion(false);
+    }
+  }, [accessToken, draft, router]);
+
+  /** Answer, skip, or leave — each persists before the UI moves on. */
+  const conversationAction = React.useCallback(
+    async (run: (token: string, draftId: string) => Promise<JobImportConversation>) => {
+      if (!accessToken || !draft) return;
+      setAnsweringEarlyQuestion(true);
+      try {
+        setConversation(await run(accessToken, draft.id));
+      } catch (caught) {
+        setError(describeActionError(caught, "That could not be saved. Try again."));
+      } finally {
+        setAnsweringEarlyQuestion(false);
+      }
+    },
+    [accessToken, draft]
+  );
 
   /**
    * The real candidate preview, rebuilt whenever the draft changes.
@@ -853,6 +909,40 @@ export default function ImportJobPageClient() {
             preview={livePreview.node}
             provisionalCount={livePreview.provisionalCount}
             waitingForRecruiter={conversation?.waiting ?? false}
+            conversation={conversation}
+            jobTitle={
+              typeof draft?.fields.find((f) => f.field_path === "title")
+                ?.effective_value === "string"
+                ? (draft.fields.find((f) => f.field_path === "title")
+                    ?.effective_value as string)
+                : null
+            }
+            filledCount={livePreview.provisionalCount + Object.keys(draft?.recruiter_prefill ?? {}).length}
+            onAnswerQuestion={(fieldPath, value: string | string[] | number) =>
+              void conversationAction((token, id) =>
+                answerJobImportQuestion(
+                  token,
+                  id,
+                  fieldPath,
+                  value,
+                  conversation?.recruiter_context_version
+                )
+              )
+            }
+            onSkipQuestion={() =>
+              void conversationAction((token, id) => skipJobImportQuestion(token, id))
+            }
+            onSkipRemaining={() =>
+              void conversationAction((token, id) =>
+                skipJobImportQuestion(token, id, true)
+              )
+            }
+            onContinueManually={() =>
+              void conversationAction((token, id) =>
+                continueJobImportManually(token, id)
+              )
+            }
+            onOpenDraft={() => void openNativeDraft()}
           />
         ) : null}
 

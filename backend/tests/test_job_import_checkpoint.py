@@ -141,6 +141,11 @@ async def _prepared_draft(
 
     parsed = JobImportExtractionResponse.model_validate(scenario("missing_workload"))
     async with TestSessionLocal() as session:
+        from app.db.seed import seed_roles_if_missing
+
+        # Roles arrive via a migration; this suite builds schema with
+        # create_all, so the catalog has to be seeded explicitly.
+        await seed_roles_if_missing(session)
         service = JobImportService(
             JobImportRepository(session), JobService(JobRepository(session))
         )
@@ -535,3 +540,302 @@ def test_answer_effects_can_only_touch_supported_job_fields() -> None:
             assert touched in JOB_IMPORT_FIELD_POLICIES, touched
         for suggestion in effect.suggestions:
             assert suggestion.field_path in JOB_IMPORT_FIELD_POLICIES
+
+
+# ---------------------------------------------------------------------------
+# The conversational-completion boundary
+# ---------------------------------------------------------------------------
+
+
+def test_completion_is_its_own_rule_not_native_draft_creatability() -> None:
+    """The three concepts the boundary depends on being kept apart.
+
+    A private native draft can exist almost from the start. That says nothing
+    about whether the assistant has finished the conversation it began, and
+    conflating them is what made the handoff fire mid-question.
+    """
+
+    from app.core.job_import_questions import (
+        QueueCandidate,
+        assistant_preparation_complete,
+        essential_work_remains,
+    )
+
+    essential = [QueueCandidate("budget_currency", "mandatory", 10)]
+    optional = [QueueCandidate("revision_policy", "optional", 30)]
+
+    assert not assistant_preparation_complete(essential)
+    assert essential_work_remains(essential)
+
+    # Optional work still blocks *completion* — it has been offered and not yet
+    # answered or skipped — but it is not essential work.
+    assert not assistant_preparation_complete(optional)
+    assert not essential_work_remains(optional)
+
+    # Only an empty queue means the assistant is done.
+    assert assistant_preparation_complete([])
+
+
+def test_only_interpretation_critical_fields_are_essential() -> None:
+    """Essential is about reading the source, not about publication."""
+
+    from app.core.job_import_questions import conversation_question_kind
+
+    # Money, reach, routing and unpaid-work terms change how a listing reads.
+    for path in ("budget_currency", "work_mode", "application_mode", "trial_status"):
+        assert conversation_question_kind(path, "recommended") == "mandatory", path
+
+    # Genuinely useful, but the listing is understandable without them.
+    for path in ("revision_policy", "source_inputs", "turnaround_value"):
+        assert conversation_question_kind(path, "recommended") == "optional", path
+
+    # Neither: these belong in ordinary manual editing, not an interrogation.
+    for path in ("content_genres", "content_niches", "tags"):
+        assert conversation_question_kind(path, "recommended") is None, path
+
+
+def test_the_assistant_never_asks_about_most_of_the_field_registry() -> None:
+    """A guard against the conversation growing into a second form."""
+
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+    from app.core.job_import_questions import conversation_question_kind
+
+    asked = [
+        path
+        for path, policy in JOB_IMPORT_FIELD_POLICIES.items()
+        if conversation_question_kind(path, policy.missing_requirement) is not None
+    ]
+    # Far fewer than the ~90 writable fields; the rest are ordinary editing.
+    assert len(asked) < 30, sorted(asked)
+
+
+def test_optional_suggestions_are_capped_and_ranked() -> None:
+    from app.core.job_import_questions import (
+        MAX_OPTIONAL_SUGGESTIONS,
+        deterministic_question_queue,
+    )
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={
+            "deliverables": "recommended",
+            "source_inputs": "recommended",
+            "revision_policy": "recommended",
+            "turnaround_value": "recommended",
+            "creative_autonomy": "recommended",
+            "hiring_process": "recommended",
+        },
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    optional = [item for item in queue if item.kind == "optional"]
+    # Three is a suggestion; six would be a second form.
+    assert len(optional) == MAX_OPTIONAL_SUGGESTIONS
+    # Ranked by the product's own ordering, not alphabetically. deliverables,
+    # source_inputs and turnaround are conditional and inactive here, so the
+    # first unconditional suggestion leads.
+    assert optional[0].field_path == "revision_policy"
+
+
+def test_essential_questions_are_always_asked_before_optional_ones() -> None:
+    from app.core.job_import_questions import deterministic_question_queue
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={
+            "revision_policy": "recommended",
+            "application_mode": "publication_blocker",
+        },
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert queue[0].field_path == "application_mode"
+    assert queue[0].kind == "mandatory"
+    assert queue[-1].kind == "optional"
+
+
+def test_a_clean_import_produces_no_questions_at_all() -> None:
+    from app.core.job_import_questions import (
+        assistant_preparation_complete,
+        deterministic_question_queue,
+    )
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={"content_genres": "recommended", "tags": "optional"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    # Nothing here is needed to understand the job or worth suggesting, so the
+    # assistant finishes immediately rather than manufacturing work.
+    assert queue == []
+    assert assistant_preparation_complete(queue)
+
+
+@pytest.mark.anyio
+async def test_extraction_finishing_does_not_end_the_conversation(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The correction this whole change exists for."""
+
+    headers, owner_id = await _auth(client, "cb-hold")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cb-hold")
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    body = begun.json()
+
+    # Extraction has landed and a native draft is perfectly possible, but the
+    # assistant is not finished, so the recruiter must not be handed off.
+    draft = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    assert draft["can_apply_to_native_draft"] is True
+    assert body["ready_for_draft"] is False
+    assert body["active_question"] is not None
+    assert body["phase"] == "essential"
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_answering_through_to_completion_never_calls_the_provider(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "cb-through")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cb-through")
+
+    state = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+
+    # Answer or skip whatever is asked until the assistant says it is finished.
+    for _ in range(25):
+        if state["ready_for_draft"]:
+            break
+        question = state.get("active_question")
+        if question is None:
+            break
+        if question["kind"] == "optional":
+            response = await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/skip",
+                headers=headers,
+            )
+        else:
+            response = await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+                headers=headers,
+                json={
+                    "field_path": question["field_path"],
+                    "value": _answer_for(question["field_path"]),
+                },
+            )
+        assert response.status_code == 200, response.text
+        state = response.json()
+
+    assert state["ready_for_draft"] is True
+    assert state["active_question"] is None
+    assert state["phase"] == "complete"
+    # A whole conversation, answered end to end, for nothing.
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_skip_remaining_finishes_the_optional_phase(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "cb-skip")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cb-skip")
+    state = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+
+    # Clear the essential questions first; only optional ones may be skipped.
+    for _ in range(25):
+        question = state.get("active_question")
+        if state["ready_for_draft"] or question is None or question["kind"] == "optional":
+            break
+        state = (
+            await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+                headers=headers,
+                json={
+                    "field_path": question["field_path"],
+                    "value": _answer_for(question["field_path"]),
+                },
+            )
+        ).json()
+
+    if not state["ready_for_draft"]:
+        skipped = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/skip?remaining=true",
+            headers=headers,
+        )
+        assert skipped.status_code == 200
+        assert skipped.json()["ready_for_draft"] is True
+
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_continue_manually_completes_without_answering(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The one normal route that hands off with questions still open."""
+
+    headers, owner_id = await _auth(client, "cb-manual")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cb-manual")
+    begun = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+    assert begun["ready_for_draft"] is False
+
+    manual = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/continue-manually",
+        headers=headers,
+    )
+    assert manual.status_code == 200, manual.text
+    body = manual.json()
+    assert body["ready_for_draft"] is True
+    assert body["manual_continuation"] is True
+    assert body["active_question"] is None
+
+    # Everything already answered is still on the draft; nothing was discarded.
+    draft = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    assert isinstance(draft["recruiter_prefill"], dict)
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_refresh_during_post_extraction_questioning_resumes_the_same_question(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "cb-refresh")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cb-refresh")
+    begun = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+    asked = begun["active_question"]["field_path"]
+
+    for _ in range(4):
+        reread = await client.get(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation", headers=headers
+        )
+        assert reread.status_code == 200
+        assert reread.json()["active_question"]["field_path"] == asked
+        assert reread.json()["ready_for_draft"] is False
+
+    assert counting_provider.calls == 0

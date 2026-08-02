@@ -37,7 +37,9 @@ from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_questions import (
     ProposedQuestion,
     QueueCandidate,
+    assistant_preparation_complete,
     deterministic_question_queue,
+    essential_work_remains,
     validate_proposed_question,
 )
 from app.models import JobImportDraft
@@ -54,8 +56,25 @@ class ConversationSnapshot:
     continuation_count: int
     #: True when the workflow is stopped on a person and nothing is running.
     waiting: bool
-    #: True once the private native draft can be built.
+    #: True once the assistant has finished the conversation it started.
+    #:
+    #: Deliberately *not* the same as "a native draft could exist". A private
+    #: draft can exist almost from the start; that says nothing about whether
+    #: the assistant still has questions open.
     ready_for_draft: bool
+    #: Which half of the conversation is running: the questions the assistant
+    #: needs, or the improvements it is merely offering.
+    phase: str
+    #: Essential questions still to answer. Optional ones are not counted —
+    #: they never block, so counting them would overstate the work left.
+    essential_remaining: int
+    #: True when the recruiter has taken the manual route out.
+    manual_continuation: bool
+
+
+#: Marker stored on the draft when the recruiter chooses manual editing.
+#: It is the one normal route that may hand off with questions still open.
+_MANUAL_CONTINUATION = "manual_continuation"
 
 
 class JobImportConversationService:
@@ -79,15 +98,30 @@ class JobImportConversationService:
         """
 
         draft = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
-        return self._snapshot_of(draft)
+        return self._snapshot_of(draft, await self._queue_for(draft))
 
     @staticmethod
-    def _snapshot_of(draft: JobImportDraft) -> ConversationSnapshot:
+    def _snapshot_of(
+        draft: JobImportDraft, queue: list[QueueCandidate] | None = None
+    ) -> ConversationSnapshot:
         state: ConversationState = (
             draft.conversation_state or "source_received"
         )  # type: ignore[assignment]
         question = (
             draft.active_question if isinstance(draft.active_question, dict) else None
+        )
+        manual = (draft.last_completed_stage or "") == _MANUAL_CONTINUATION
+        remaining = (
+            len([item for item in queue if item.kind != "optional"])
+            if queue is not None
+            else (1 if question and question.get("kind") != "optional" else 0)
+        )
+        phase = (
+            "complete"
+            if state in {"ready_for_native_draft", "converted"} or manual
+            else "optional"
+            if state == "optional_improvements"
+            else "essential"
         )
         return ConversationSnapshot(
             state=state,
@@ -95,7 +129,11 @@ class JobImportConversationService:
             recruiter_context_version=draft.recruiter_context_version or 0,
             continuation_count=draft.continuation_count or 0,
             waiting=is_waiting(state),
-            ready_for_draft=state in {"ready_for_native_draft", "converted"},
+            # Completion is the assistant's own rule, not native creatability.
+            ready_for_draft=state in {"ready_for_native_draft", "converted"} or manual,
+            phase=phase,
+            essential_remaining=remaining,
+            manual_continuation=manual,
         )
 
     async def resume(
@@ -255,6 +293,27 @@ class JobImportConversationService:
         )
         return await self._advance(draft, owner_user_id=owner_user_id)
 
+    async def continue_manually(
+        self, draft_id: UUID, *, owner_user_id: UUID
+    ) -> ConversationSnapshot:
+        """The recruiter chose to finish in the ordinary editor.
+
+        Everything answered so far is kept, the conversation stops, and the
+        remaining questions simply become ordinary empty draft fields. This is
+        the only normal route that hands off with questions still open.
+        """
+
+        draft = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
+        await self._store(
+            draft,
+            {
+                "conversation_state": "ready_for_native_draft",
+                "active_question": None,
+                "last_completed_stage": _MANUAL_CONTINUATION,
+            },
+        )
+        return self._snapshot_of(draft, [])
+
     # ------------------------------------------------------------------
     # The loop
     # ------------------------------------------------------------------
@@ -288,6 +347,10 @@ class JobImportConversationService:
                 )
 
         if candidate is None:
+            # Nothing essential and nothing worth suggesting: the assistant is
+            # genuinely done. A clean import reaches here immediately, which is
+            # exactly the point — no questions are manufactured for it.
+            assert assistant_preparation_complete(queue)
             await self._store(
                 draft,
                 {
@@ -296,18 +359,22 @@ class JobImportConversationService:
                     "last_completed_stage": "questions_complete",
                 },
             )
-            return self._snapshot_of(draft)
+            return self._snapshot_of(draft, queue)
 
         pending_suggestion = self._pending_suggestion(draft)
         question = self._build_question(draft, candidate, pending_suggestion)
+        # Optional suggestions live in their own phase so the UI can present
+        # them as offers rather than as remaining work.
         target_state: ConversationState = (
-            "optional_improvements" if candidate.kind == "optional" else "waiting_for_recruiter"
+            "optional_improvements"
+            if candidate.kind == "optional" and not essential_work_remains(queue)
+            else "waiting_for_recruiter"
         )
         await self._store(
             draft,
             {"conversation_state": target_state, "active_question": question},
         )
-        return self._snapshot_of(draft)
+        return self._snapshot_of(draft, queue)
 
     async def _validate_provider_question(
         self, draft: JobImportDraft, proposal: ProposedQuestion

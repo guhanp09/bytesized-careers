@@ -726,7 +726,13 @@ class JobImportConversationRead(BaseModel):
     continuation_count: int
     #: True when the assistant is stopped on a person and no work is running.
     waiting: bool
+    #: The assistant's own completion rule — not "a native draft could exist".
     ready_for_draft: bool
+    #: "essential" | "optional" | "complete".
+    phase: str
+    #: Essential questions left. Optional ones never block, so are not counted.
+    essential_remaining: int
+    manual_continuation: bool
 
 
 class JobImportAnswerRequest(BaseModel):

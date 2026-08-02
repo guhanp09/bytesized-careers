@@ -252,6 +252,9 @@ def _conversation_read(snapshot: ConversationSnapshot) -> JobImportConversationR
         continuation_count=snapshot.continuation_count,
         waiting=snapshot.waiting,
         ready_for_draft=snapshot.ready_for_draft,
+        phase=snapshot.phase,
+        essential_remaining=snapshot.essential_remaining,
+        manual_continuation=snapshot.manual_continuation,
     )
 
 
@@ -340,6 +343,24 @@ async def skip_import_question(
                 draft_id, owner_user_id=current_user.id
             )
         )
+    except JobImportError as error:
+        _raise_import_error(error)
+    return _conversation_read(snapshot)
+
+
+@router.post(
+    "/drafts/{draft_id}/conversation/continue-manually",
+    response_model=JobImportConversationRead,
+    summary="Leave the conversation and finish in the ordinary Post Job editor",
+)
+async def continue_import_manually(
+    draft_id: UUID,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    service: JobImportConversationService = Depends(get_job_import_conversation_service),
+    current_user: User = Depends(get_current_user),
+) -> JobImportConversationRead:
+    try:
+        snapshot = await service.continue_manually(draft_id, owner_user_id=current_user.id)
     except JobImportError as error:
         _raise_import_error(error)
     return _conversation_read(snapshot)

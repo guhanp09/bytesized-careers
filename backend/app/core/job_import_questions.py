@@ -29,6 +29,79 @@ from app.core.job_import_policy import (
 
 QuestionKind = Literal["mandatory", "confirmation", "optional"]
 
+#: Fields the assistant must settle before it can claim the draft is prepared.
+#:
+#: The test is *interpretation*, not publication. Each of these changes how the
+#: rest of the source should be read, or would materially mislead a candidate if
+#: left blank — a pay figure with no currency, a role with no stated work mode,
+#: an application route nobody chose. Publication has its own, larger checklist;
+#: this is deliberately not that list.
+ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        # Money read wrongly is the most damaging kind of wrong.
+        "compensation_mode",
+        "budget_currency",
+        "budget_unit",
+        # Who can actually take the job.
+        "work_mode",
+        "location",
+        # Where applications land is a decision only the recruiter can make.
+        "application_mode",
+        "external_apply_url",
+        # Whether unpaid work is being asked for, and on what terms.
+        "trial_status",
+        "trial_work_usage",
+        "trial_portfolio_permission",
+        "unpaid_trial_confirmed",
+        # How the engagement is meant to be understood.
+        "engagement_type",
+        # Identity of the work itself.
+        "title",
+        "primary_role_key",
+    }
+)
+
+#: Improvements worth offering, in the order they tend to matter.
+#:
+#: Every one of these makes a listing better without being needed to understand
+#: it, so each is skippable and none may block the handoff.
+OPTIONAL_CONVERSATION_FIELDS: Final[tuple[str, ...]] = (
+    "deliverables",
+    "source_inputs",
+    "revision_policy",
+    "turnaround_value",
+    "creative_autonomy",
+    "hiring_process",
+    "reference_videos",
+    "expected_weekly_hours_min",
+)
+
+#: How many optional suggestions the assistant may raise in one session.
+#:
+#: Three is a suggestion; ten is an interrogation. The remainder are perfectly
+#: good fields to fill in later during ordinary editing.
+MAX_OPTIONAL_SUGGESTIONS: Final[int] = 3
+
+
+def conversation_question_kind(field_path: str, requirement: str) -> QuestionKind | None:
+    """Classify a field for the assistant conversation, or None to leave it out.
+
+    Returning None is the common case and the important one: most of the 91
+    writable fields are neither needed to interpret the source nor a high-value
+    improvement, and belong in ordinary manual editing rather than in a
+    conversation the recruiter has to sit through.
+    """
+
+    if field_path in ESSENTIAL_CONVERSATION_FIELDS:
+        return "mandatory"
+    if requirement == "publication_blocker":
+        # A blocker the classification above did not name is still something the
+        # recruiter has to decide; asking now is kinder than at publish time.
+        return "mandatory"
+    if field_path in OPTIONAL_CONVERSATION_FIELDS:
+        return "optional"
+    return None
+
 #: Never askable, whatever the model proposes.
 #:
 #: Language requirements are absent from listings by product decision, and
@@ -184,16 +257,29 @@ def deterministic_question_queue(
             and path not in active_conditional_fields
         ):
             continue
+        kind = conversation_question_kind(path, requirement)
+        if kind is None:
+            # Not needed to understand the source and not a chosen improvement.
+            # Ordinary Post Job editing is the right place for it.
+            continue
         seen.add(path)
-        kind: QuestionKind = (
-            "optional" if requirement in {"recommended", "optional"} else "mandatory"
-        )
         candidates.append(
             QueueCandidate(path, kind, _REQUIREMENT_PRIORITY.get(requirement, 40))
         )
 
     candidates.sort(key=lambda candidate: (candidate.priority, candidate.field_path))
-    return candidates
+
+    essential = [item for item in candidates if item.kind != "optional"]
+    optional = [item for item in candidates if item.kind == "optional"]
+    # Rank optional suggestions by the product's own ordering, then cap them.
+    optional.sort(
+        key=lambda item: (
+            OPTIONAL_CONVERSATION_FIELDS.index(item.field_path)
+            if item.field_path in OPTIONAL_CONVERSATION_FIELDS
+            else len(OPTIONAL_CONVERSATION_FIELDS)
+        )
+    )
+    return essential + optional[:MAX_OPTIONAL_SUGGESTIONS]
 
 
 def next_question_field(
@@ -216,7 +302,19 @@ def next_question_field(
     return queue[0] if queue else None
 
 
-def mandatory_work_remains(queue: list[QueueCandidate]) -> bool:
-    """Whether anything still blocks building the private native draft."""
+def essential_work_remains(queue: list[QueueCandidate]) -> bool:
+    """Whether the assistant still needs an answer to understand this job."""
 
     return any(candidate.kind != "optional" for candidate in queue)
+
+
+def assistant_preparation_complete(queue: list[QueueCandidate]) -> bool:
+    """Whether the assistant has finished preparing, essential *and* optional.
+
+    Deliberately independent of ``can_apply_to_native_draft``. A private native
+    draft can exist almost from the start; that says nothing about whether the
+    assistant has finished the conversation it began. Conflating the two is what
+    made the handoff fire while questions were still open.
+    """
+
+    return not queue

@@ -242,7 +242,16 @@ export type JobImportConversation = {
   recruiter_context_version: number;
   continuation_count: number;
   waiting: boolean;
+  /**
+   * The assistant's own completion rule. Deliberately *not* the same as
+   * "a native draft could exist" — a private draft can exist almost from the
+   * start, which says nothing about whether questions are still open.
+   */
   ready_for_draft: boolean;
+  phase: "essential" | "optional" | "complete";
+  /** Essential questions left. Optional ones never block, so are not counted. */
+  essential_remaining: number;
+  manual_continuation: boolean;
 };
 
 export type JobImportDraftContext = {
@@ -557,6 +566,24 @@ export async function skipJobImportQuestion(
       `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/skip?remaining=${
         remaining ? "true" : "false"
       }`,
+      { method: "POST", accessToken }
+    )
+  );
+}
+
+/**
+ * Leave the conversation and finish in the ordinary editor.
+ *
+ * The one normal route that hands off with questions still open: everything
+ * answered is kept, and the rest become ordinary empty draft fields.
+ */
+export async function continueJobImportManually(
+  accessToken: string,
+  draftId: string
+): Promise<JobImportConversation> {
+  return decodeConversation(
+    await requestJson<unknown>(
+      `/job-imports/drafts/${encodeURIComponent(draftId)}/conversation/continue-manually`,
       { method: "POST", accessToken }
     )
   );

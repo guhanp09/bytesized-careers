@@ -15,7 +15,11 @@ import {
   nextEarlyQuestion,
   type EarlyQuestion,
 } from "../../../lib/jobImportEarlyQuestions.ts";
-import type { JobImportSourceType } from "../../../lib/jobImportReadiness.ts";
+import type {
+  JobImportConversation,
+  JobImportSourceType,
+} from "../../../lib/jobImportReadiness.ts";
+import { ConversationComplete, ConversationTurn } from "./ConversationTurn.tsx";
 import {
   DRAFT_ASSISTANT_STATE_LABELS,
   DraftAssistantRobot,
@@ -67,6 +71,16 @@ export type DraftAssistantCanvasProps = {
    * While true nothing is running, and the surface must not suggest otherwise.
    */
   waitingForRecruiter?: boolean;
+  /** The post-extraction conversation, once it has begun. */
+  conversation?: JobImportConversation | null;
+  jobTitle?: string | null;
+  roleName?: string | null;
+  filledCount?: number;
+  onAnswerQuestion?: (fieldPath: string, value: string | string[] | number) => void;
+  onSkipQuestion?: () => void;
+  onSkipRemaining?: () => void;
+  onContinueManually?: () => void;
+  onOpenDraft?: () => void;
 };
 
 export function DraftAssistantCanvas({
@@ -84,6 +98,15 @@ export function DraftAssistantCanvas({
   preview = null,
   provisionalCount = 0,
   waitingForRecruiter = false,
+  conversation = null,
+  jobTitle = null,
+  roleName = null,
+  filledCount = 0,
+  onAnswerQuestion,
+  onSkipQuestion,
+  onSkipRemaining,
+  onContinueManually,
+  onOpenDraft,
 }: DraftAssistantCanvasProps) {
   const stages = jobImportStages(progress);
   const active = activeJobImportStage(progress);
@@ -192,6 +215,26 @@ export function DraftAssistantCanvas({
         <div className="mt-6">
           {progress.failed ? (
             <FailureMessage error={error} />
+          ) : conversation?.ready_for_draft && onOpenDraft ? (
+            <ConversationComplete
+              filledCount={filledCount}
+              sourceLabel={sourceLabel}
+              manual={conversation.manual_continuation}
+              onOpenDraft={onOpenDraft}
+              busy={busy}
+            />
+          ) : conversation?.active_question && onAnswerQuestion ? (
+            <ConversationTurn
+              question={conversation.active_question}
+              jobTitle={jobTitle}
+              roleName={roleName}
+              sourceLabel={sourceLabel}
+              busy={busy}
+              essentialRemaining={conversation.essential_remaining}
+              onAnswer={onAnswerQuestion}
+              onSkip={onSkipQuestion ?? (() => undefined)}
+              onSkipRemaining={onSkipRemaining ?? (() => undefined)}
+            />
           ) : question ? (
             <EarlyQuestionTurn
               question={question}
@@ -208,6 +251,18 @@ export function DraftAssistantCanvas({
             />
           )}
         </div>
+
+        {conversation && !conversation.ready_for_draft && onContinueManually ? (
+          <button
+            type="button"
+            onClick={onContinueManually}
+            disabled={busy}
+            data-testid="conversation-continue-manually"
+            className="ui-press mt-5 min-h-11 cursor-pointer text-xs font-semibold text-white/45 transition-colors hover:text-white/80"
+          >
+            Continue manually in the full editor
+          </button>
+        ) : null}
 
         {preview ? (
           <details
