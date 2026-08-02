@@ -446,7 +446,7 @@ function EarlyQuestionTurn({
  */
 function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {
   return (
-    <div className="space-y-3" data-testid="conversation-transcript">
+    <div className="ui-rise space-y-3" data-testid="conversation-transcript">
       {entries.map(([fieldPath, value], index) => {
         const phrase = questionPhraseFor(fieldPath);
         const heading =

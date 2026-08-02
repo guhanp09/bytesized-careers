@@ -13,7 +13,10 @@
  */
 
 import {
+  DELIVERABLE_TYPES,
   ENGAGEMENT_TYPES,
+  HIRING_PROCESS_STAGES,
+  SOURCE_INPUT_TYPES,
   TURNAROUND_UNITS,
   type CompensationUnit,
   type EngagementType,
@@ -146,6 +149,107 @@ const STATIC_OPTIONS: Readonly<Record<string, readonly AnswerOption[]>> = {
 };
 
 /**
+ * Fields the model stores as structured rows, offered as pick-lists.
+ *
+ * These are the ones that produced "That answer is not valid for this detail":
+ * hiring_process is a list of stage objects, so a typed sentence could never be
+ * accepted. Offering a text box for them guaranteed the error. Picking from the
+ * real taxonomy makes an invalid answer unexpressible instead of rejected.
+ */
+export const MULTI_SELECT_FIELDS: ReadonlySet<string> = new Set([
+  "hiring_process",
+  "source_inputs",
+  "deliverables",
+]);
+
+const STAGE_LABELS: Readonly<Record<string, string>> = {
+  application_review: "Review applications",
+  portfolio_review: "Review portfolios",
+  screening_call: "Screening call",
+  interview: "Interview",
+  assessment: "Skills assessment",
+  paid_trial: "Paid trial",
+  unpaid_trial: "Unpaid trial",
+  final_discussion: "Final discussion",
+  offer: "Offer",
+};
+
+const SOURCE_INPUT_LABELS: Readonly<Record<string, string>> = {
+  raw_footage: "Raw footage",
+  script: "Script",
+  research: "Research",
+  creative_brief: "Creative brief",
+  brand_guidelines: "Brand guidelines",
+  reference_videos: "Reference videos",
+  thumbnail_assets: "Thumbnail assets",
+  music_or_stock_subscription: "Music / stock",
+  voice_over: "Voice-over",
+  project_files: "Project files",
+  analytics_access: "Analytics access",
+  account_access: "Account access",
+  product_footage: "Product footage",
+};
+
+const DELIVERABLE_LABELS: Readonly<Record<string, string>> = {
+  long_form_video: "Long-form video",
+  short: "Short / Reel",
+  thumbnail: "Thumbnail",
+  script: "Script",
+  episode: "Podcast episode",
+  post: "Social post",
+  graphic: "Graphic",
+};
+
+/** Choices for a structured field, or an empty list when it is not one. */
+export function multiSelectOptionsFor(fieldPath: string): AnswerOption[] {
+  if (fieldPath === "hiring_process") {
+    return HIRING_PROCESS_STAGES.filter((stage) => stage !== "other").map((value) => ({
+      value,
+      label: STAGE_LABELS[value] ?? sentence(value),
+    }));
+  }
+  if (fieldPath === "source_inputs") {
+    return SOURCE_INPUT_TYPES.filter((type) => type !== "other").map((value) => ({
+      value,
+      label: SOURCE_INPUT_LABELS[value] ?? sentence(value),
+    }));
+  }
+  if (fieldPath === "deliverables") {
+    return DELIVERABLE_TYPES.filter((type) => type !== "other")
+      .slice(0, 8)
+      .map((value) => ({
+        value,
+        label: DELIVERABLE_LABELS[value] ?? sentence(value),
+      }));
+  }
+  return [];
+}
+
+/**
+ * Build the structured value the model expects from the picked keys.
+ *
+ * Keeping the shaping beside the options is what stops the two drifting apart
+ * and reintroducing the rejection this replaced.
+ */
+export function shapeMultiSelect(
+  fieldPath: string,
+  selected: readonly string[]
+): Array<Record<string, unknown>> {
+  if (fieldPath === "hiring_process") {
+    return selected.map((stage) => ({ stage }));
+  }
+  if (fieldPath === "source_inputs") {
+    return selected.map((type) => ({ type }));
+  }
+  if (fieldPath === "deliverables") {
+    // A sensible default shape; the recruiter refines quantities in Post Job,
+    // where the repeatable row editor belongs.
+    return selected.map((type) => ({ type, quantity: 1, frequency: "per_month" }));
+  }
+  return [];
+}
+
+/**
  * Fields where a list of options would be a guess dressed as help.
  *
  * Reference links, a channel description, a list of responsibilities — these
@@ -163,9 +267,6 @@ export const FREE_TEXT_FIELDS: ReadonlySet<string> = new Set([
   "role_specialization",
   "external_apply_url",
   "how_to_apply",
-  "deliverables",
-  "source_inputs",
-  "hiring_process",
 ]);
 
 /** Likely answers for a field, or an empty list when free text is honest. */
@@ -174,6 +275,7 @@ export function answerOptionsFor(
   context: AnswerOptionContext = {}
 ): AnswerOption[] {
   if (FREE_TEXT_FIELDS.has(fieldPath)) return [];
+  if (MULTI_SELECT_FIELDS.has(fieldPath)) return [];
 
   if (fieldPath === "engagement_type") {
     return ENGAGEMENT_TYPES.map((value) => ({
@@ -268,29 +370,41 @@ const QUESTION_PHRASES: Readonly<Record<string, { heading: string; prompt: strin
     heading: "Who is hiring for this role?",
     prompt: "Creators, agencies and brands work differently.",
   },
-  requirements: {
-    heading: "What must candidates already be able to do?",
-    prompt: "Keep it to genuine must-haves so good people do not rule themselves out.",
-  },
   responsibilities: {
     heading: "What will this person actually do?",
     prompt: "Concrete work is easier to judge than a job description.",
   },
-  about_channel: {
-    heading: "What should candidates know about you?",
-    prompt: "A sentence or two about the channel and its audience.",
-  },
-  reference_videos: {
-    heading: "Any examples that show the style?",
-    prompt: "One link communicates more than a paragraph of description.",
-  },
-  deliverables: {
-    heading: "What should this person produce, and how often?",
-    prompt: "Naming the output lets candidates estimate the commitment.",
-  },
   turnaround_value: {
     heading: "How long is there for each piece of work?",
     prompt: "Turnaround decides whether this fits alongside other commitments.",
+  },
+  requirements: {
+    heading: "What must candidates already be able to do?",
+    prompt: "Keep it to genuine must-haves so good people do not rule themselves out.",
+  },
+  hiring_process: {
+    heading: "What happens after someone applies?",
+    prompt: "Knowing the steps up front is why good candidates finish an application.",
+  },
+  source_inputs: {
+    heading: "What will you hand over to work from?",
+    prompt: "It is usually the difference between a two-hour job and a two-day one.",
+  },
+  deliverables: {
+    heading: "What should this person produce?",
+    prompt: "Concrete output is what candidates price and plan their week around.",
+  },
+  budget_amount: {
+    heading: "What does the role pay?",
+    prompt: "Listings with a real figure get taken seriously; ones without get skipped.",
+  },
+  reference_videos: {
+    heading: "Anything that shows the style you want?",
+    prompt: "One link saves a paragraph and a first-round misfire.",
+  },
+  about_channel: {
+    heading: "What should candidates know about you?",
+    prompt: "People apply to a channel they can picture, not a job description.",
   },
 };
 
@@ -299,4 +413,40 @@ export function questionPhraseFor(
   fieldPath: string
 ): { heading: string; prompt: string } | null {
   return QUESTION_PHRASES[fieldPath] ?? null;
+}
+
+
+/**
+ * A concrete example for a free-text answer.
+ *
+ * Showing what a good answer looks like is how a text box stops being a guess.
+ * An empty placeholder invites something the field cannot accept; an example
+ * makes the right shape obvious before anything is typed.
+ */
+const TEXT_EXAMPLES: Readonly<Record<string, string>> = {
+  about_channel:
+    "e.g. A weekly personal-finance channel for early-career viewers, around 80k subscribers",
+  requirements: "e.g. Confident with pacing and story structure in long-form video",
+  responsibilities: "e.g. Edit one 10-minute video each week, from raw footage to final cut",
+  reference_videos: "Paste a link to a video whose style you like",
+  budget_note: "e.g. Rate reviewed after the first three videos",
+  title: "e.g. Video editor for a personal finance channel",
+  role_specialization: "e.g. Long-form YouTube editing",
+  budget_amount: "e.g. 60000",
+  budget_max: "e.g. 80000",
+  how_to_apply: "e.g. Share two recent edits and a note on your turnaround",
+};
+
+export function textExampleFor(fieldPath: string): string {
+  return TEXT_EXAMPLES[fieldPath] ?? "Type your answer…";
+}
+
+/**
+ * The smallest answer worth sending, so Send stays disabled rather than
+ * producing a rejection the recruiter has to interpret.
+ */
+export function minimumAnswerLength(fieldPath: string): number {
+  if (fieldPath === "about_channel") return 20;
+  if (fieldPath === "requirements" || fieldPath === "responsibilities") return 8;
+  return 1;
 }

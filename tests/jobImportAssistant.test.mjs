@@ -339,3 +339,69 @@ test("an unmapped field still falls back rather than breaking", async () => {
   const { questionPhraseFor } = await import("../lib/jobImportAnswerOptions.ts");
   assert.equal(questionPhraseFor("some_unmapped_field"), null);
 });
+
+// ---------------------------------------------------------------------------
+// Making a wrong answer unexpressible
+// ---------------------------------------------------------------------------
+
+test("structured fields are picked, never typed", async () => {
+  const { MULTI_SELECT_FIELDS, multiSelectOptionsFor, shapeMultiSelect, answerOptionsFor } =
+    await import("../lib/jobImportAnswerOptions.ts");
+
+  // hiring_process is a list of stage objects. A typed sentence could never be
+  // accepted, so offering a text box guaranteed "not valid for this detail".
+  assert.ok(MULTI_SELECT_FIELDS.has("hiring_process"));
+  assert.ok(MULTI_SELECT_FIELDS.has("source_inputs"));
+  assert.ok(multiSelectOptionsFor("hiring_process").length > 3);
+  // And they are not offered as single-choice either.
+  assert.deepEqual(answerOptionsFor("hiring_process"), []);
+});
+
+test("picked keys are shaped into exactly what the model stores", async () => {
+  const { shapeMultiSelect } = await import("../lib/jobImportAnswerOptions.ts");
+  assert.deepEqual(shapeMultiSelect("hiring_process", ["interview", "offer"]), [
+    { stage: "interview" },
+    { stage: "offer" },
+  ]);
+  assert.deepEqual(shapeMultiSelect("source_inputs", ["raw_footage"]), [
+    { type: "raw_footage" },
+  ]);
+  const deliverable = shapeMultiSelect("deliverables", ["long_form_video"])[0];
+  assert.equal(deliverable.type, "long_form_video");
+  assert.equal(typeof deliverable.quantity, "number");
+  assert.ok(deliverable.frequency);
+});
+
+test("free text shows a concrete example rather than an empty invitation", async () => {
+  const { textExampleFor } = await import("../lib/jobImportAnswerOptions.ts");
+  for (const field of ["about_channel", "requirements", "responsibilities", "reference_videos"]) {
+    const example = textExampleFor(field);
+    assert.ok(example.length > 12, `${field} needs a usable example`);
+    assert.notEqual(example, "Type your answer…", `${field} should not fall back`);
+  }
+});
+
+test("Send is gated on a usable answer instead of rejecting one afterwards", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  // A disabled button is the whole point: the recruiter is never told after the
+  // fact that what they wrote could not be accepted.
+  assert.match(turn, /const canSend =/);
+  assert.match(turn, /disabled=\{busy \|\| !canSend\}/);
+  assert.match(turn, /minimumAnswerLength/);
+});
+
+test("the thinking indicator is tied to a real request, not a timer", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /\{busy \? \(/);
+  assert.match(turn, /conversation-thinking/);
+  // No timers anywhere in the turn: the dots report a round trip in flight.
+  for (const forbidden of ["setTimeout", "setInterval", "Date.now"]) {
+    assert.ok(!turn.includes(forbidden), `turn must not use ${forbidden}`);
+  }
+});
+
+test("the thinking dots stop under reduced motion", () => {
+  const css = read("app/globals.css");
+  const block = css.slice(css.indexOf("@keyframes bea-dot"));
+  assert.match(block, /prefers-reduced-motion[\s\S]*\.bea-dot[\s\S]*animation: none/);
+});

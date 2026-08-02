@@ -5,7 +5,11 @@ import * as React from "react";
 import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
 import {
   answerOptionsFor,
+  minimumAnswerLength,
+  multiSelectOptionsFor,
   questionPhraseFor,
+  shapeMultiSelect,
+  textExampleFor,
 } from "../../../lib/jobImportAnswerOptions.ts";
 import type { JobImportActiveQuestion } from "../../../lib/jobImportReadiness.ts";
 import { DraftAssistantRobot } from "./DraftAssistantRobot.tsx";
@@ -147,13 +151,19 @@ export function ConversationTurn({
   onSkipRemaining,
 }: ConversationTurnProps) {
   const [text, setText] = React.useState("");
+  const [picked, setPicked] = React.useState<string[]>([]);
   const label = importFieldLabel(question.field_path)
     .replace(/\s*\([^)]*\)\s*$/, "")
     .trim();
   const optional = question.kind === "optional";
   const choices = answerOptionsFor(question.field_path, { jobTitle, roleName });
+  const multi = multiSelectOptionsFor(question.field_path);
   const phrase = questionPhraseFor(question.field_path);
   const alternatives = question.alternatives ?? [];
+  const minimum = minimumAnswerLength(question.field_path);
+  // Send is disabled until the answer can succeed, so the recruiter is never
+  // told afterwards that what they wrote was not acceptable.
+  const canSend = text.trim().length >= minimum;
 
   const heading = phrase?.heading ?? `What should ${label.toLowerCase()} be?`;
   const why =
@@ -161,12 +171,23 @@ export function ConversationTurn({
     whyItMatters(phrase?.prompt, roleName, jobTitle);
 
   const submit = () => {
-    if (!text.trim() || busy) return;
+    if (!canSend || busy) return;
     onAnswer(question.field_path, shapeAnswer(question.field_path, text.trim()));
   };
 
+  const toggle = (value: string) =>
+    setPicked((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+    );
+
   return (
-    <div className="space-y-3" data-testid="conversation-turn" data-kind={question.kind}>
+    <div
+      className="ui-rise space-y-3"
+      data-testid="conversation-turn"
+      data-kind={question.kind}
+    >
       <AssistantMessage>
         <p
           className="text-[15px] font-semibold leading-6 text-white"
@@ -226,6 +247,44 @@ export function ConversationTurn({
           >
             Yes, use {String(question.suggested_value)}
           </button>
+        ) : multi.length ? (
+          <div data-testid="conversation-multiselect">
+            <div className="flex flex-wrap gap-2">
+              {multi.map((option) => {
+                const on = picked.includes(option.value);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={busy}
+                    aria-pressed={on}
+                    data-testid={`conversation-chip-${option.value}`}
+                    onClick={() => toggle(option.value)}
+                    className={[
+                      "ui-press cursor-pointer rounded-full border px-3.5 py-2 text-[13px] transition-all duration-150",
+                      on
+                        ? "border-[color:var(--color-state-review,#8ec5ff)]/50 bg-[color:var(--color-state-review,#8ec5ff)]/18 text-white"
+                        : "border-white/12 bg-white/[0.04] text-white/70 hover:border-white/25 hover:text-white",
+                    ].join(" ")}
+                  >
+                    {on ? "✓ " : ""}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={busy || picked.length === 0}
+              data-testid="conversation-multiselect-submit"
+              onClick={() =>
+                onAnswer(question.field_path, shapeMultiSelect(question.field_path, picked) as never)
+              }
+              className="ui-press mt-3 min-h-11 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
+            >
+              {picked.length ? `Use ${picked.length} selected` : "Pick at least one"}
+            </button>
+          </div>
         ) : choices.length ? (
           <div className="grid gap-2 sm:grid-cols-2">
             {choices.map((choice) => (
@@ -263,12 +322,12 @@ export function ConversationTurn({
               data-testid="conversation-text-answer"
               inputMode={NUMBER_FIELDS.has(question.field_path) ? "numeric" : "text"}
               className="min-h-[52px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm leading-5 text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25"
-              placeholder="Type your answer…"
+              placeholder={textExampleFor(question.field_path)}
             />
             <button
               type="button"
               onClick={submit}
-              disabled={busy || !text.trim()}
+              disabled={busy || !canSend}
               data-testid="conversation-submit"
               className="ui-press mb-0.5 h-11 shrink-0 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
             >
@@ -277,8 +336,17 @@ export function ConversationTurn({
           </div>
         )}
 
-        {/* A rejected answer has to appear where it was typed. Storing the
-            reason and rendering nothing is what made Save look inert. */}
+        {busy ? (
+          <div className="mt-3 flex items-center gap-1.5" data-testid="conversation-thinking">
+            <span className="bea-dot h-1.5 w-1.5 rounded-full bg-white/45" />
+            <span className="bea-dot bea-dot--2 h-1.5 w-1.5 rounded-full bg-white/45" />
+            <span className="bea-dot bea-dot--3 h-1.5 w-1.5 rounded-full bg-white/45" />
+          </div>
+        ) : null}
+
+        {/* Kept only for a genuine failure — a network drop or a race. Ordinary
+            invalid input can no longer reach here, because Send stays disabled
+            and structured fields are picked rather than typed. */}
         {error ? (
           <p
             className="mt-2 text-[12px] leading-4 text-[color:var(--color-state-closed,#f39aa6)]"
