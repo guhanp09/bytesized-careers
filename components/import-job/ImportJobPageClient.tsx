@@ -313,8 +313,13 @@ export default function ImportJobPageClient() {
     async (run: (token: string, draftId: string) => Promise<JobImportConversation>) => {
       if (!accessToken || !draft) return;
       setAnsweringEarlyQuestion(true);
+      setError("");
       try {
         setConversation(await run(accessToken, draft.id));
+        // The answers live on the draft, and the transcript and preview both
+        // read from it — refreshing only the conversation left the reply the
+        // recruiter just gave invisible.
+        setDraft(await getJobImportDraft(accessToken, draft.id));
       } catch (caught) {
         setError(describeActionError(caught, "That could not be saved. Try again."));
       } finally {

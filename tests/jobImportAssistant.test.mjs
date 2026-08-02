@@ -184,8 +184,8 @@ test("conversation questions never carry editor-side label qualifiers", () => {
   // question the assistant speaks aloud.
   // The label is stripped of any trailing parenthetical before it is spoken.
   assert.ok(turn.includes("importFieldLabel(question.field_path)"));
-  assert.ok(turn.includes(".replace("), "the label must be normalised");
-  assert.match(turn, /editor-side qualifiers/);
+  assert.ok(turn.includes('.replace(/\\s*\\([^)]*\\)\\s*$/, "")'),
+    "the trailing parenthetical must be stripped");
 });
 
 test("the conversation turn offers a skip only for optional suggestions", () => {

@@ -61,7 +61,7 @@ async function completeAssistant(page: Page) {
     const turn = page.getByTestId("conversation-turn");
     if (!(await turn.count())) return;
 
-    const field = await turn.locator("h2").getAttribute("data-field");
+    const field = await turn.locator("[data-field]").first().getAttribute("data-field");
 
     const skip = page.getByTestId("conversation-skip-remaining");
     if (await skip.count()) {
@@ -96,7 +96,7 @@ async function completeAssistant(page: Page) {
           if (await page.getByTestId("conversation-open-draft").count()) return "done";
           const next = page.getByTestId("conversation-turn");
           if (!(await next.count())) return "gone";
-          return await next.locator("h2").getAttribute("data-field");
+          return await next.locator("[data-field]").first().getAttribute("data-field");
         },
         { timeout: 20_000 }
       )

@@ -133,7 +133,7 @@ test.describe("early questions during processing", () => {
     await page.getByTestId("early-question-option-creator").click();
 
     // The answer is recorded and shown in the compact history.
-    await expect(page.getByText("Your answers (1)")).toBeVisible();
+    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
   });
 
   test("a saved answer survives a full page reload", async ({ page }) => {
@@ -141,12 +141,12 @@ test.describe("early questions during processing", () => {
     await openFixture(page, "refresh-resume");
 
     // This fixture ships with one answer already saved server-side.
-    await expect(page.getByText("Your answers (1)")).toBeVisible();
+    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
 
     await page.reload({ waitUntil: "domcontentloaded" });
 
     // Restored from the server, with no browser storage involved.
-    await expect(page.getByText("Your answers (1)")).toBeVisible();
+    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
     await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible();
   });
 });

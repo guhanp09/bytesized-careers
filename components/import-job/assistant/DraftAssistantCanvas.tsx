@@ -7,11 +7,9 @@ import {
   jobImportDelayMessage,
   jobImportProgressRatio,
   jobImportStages,
-  pausedJobImportStage,
   type JobImportProgressInput,
 } from "../../../lib/jobImportProgress.ts";
 import {
-  earlyAnswerLabel,
   nextEarlyQuestion,
   type EarlyQuestion,
 } from "../../../lib/jobImportEarlyQuestions.ts";
@@ -19,7 +17,14 @@ import type {
   JobImportConversation,
   JobImportSourceType,
 } from "../../../lib/jobImportReadiness.ts";
-import { ConversationComplete, ConversationTurn } from "./ConversationTurn.tsx";
+import {
+  AssistantMessage,
+  ConversationComplete,
+  ConversationTurn,
+  RecruiterReply,
+} from "./ConversationTurn.tsx";
+import { answerOptionsFor, questionPhraseFor } from "../../../lib/jobImportAnswerOptions.ts";
+import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
 import {
   DRAFT_ASSISTANT_STATE_LABELS,
   DraftAssistantRobot,
@@ -110,7 +115,6 @@ export function DraftAssistantCanvas({
 }: DraftAssistantCanvasProps) {
   const stages = jobImportStages(progress);
   const active = activeJobImportStage(progress);
-  const paused = pausedJobImportStage(progress);
   const ratio = jobImportProgressRatio(progress);
   const question = nextEarlyQuestion(earlyQuestionFields, earlyAnswers, sourceType);
   const [acknowledging, setAcknowledging] = React.useState(false);
@@ -165,20 +169,25 @@ export function DraftAssistantCanvas({
         className={`${panel} min-w-0`}
         aria-labelledby="draft-assistant-heading"
       >
-        <header className="flex min-w-0 items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+        <header className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <DraftAssistantRobot
               state={robotState}
               acknowledging={acknowledging}
-              size={52}
-              className="mt-0.5 shrink-0"
+              size={28}
+              className="shrink-0"
             />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white/80">Bea</p>
-              <p className="truncate text-xs text-white/42" title={sourceLabel}>
-                {sourceLabel}
-              </p>
-            </div>
+            <p className="truncate text-xs text-white/40" title={sourceLabel}>
+              {sourceLabel}
+            </p>
+            {waitingForRecruiter ? (
+              <span
+                className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-white/45"
+                data-testid="draft-assistant-paused-note"
+              >
+                paused
+              </span>
+            ) : null}
           </div>
           {onCancel ? (
             <button
@@ -201,18 +210,11 @@ export function DraftAssistantCanvas({
 
         <ProgressBar ratio={ratio} stages={stages} />
 
-        {waitingForRecruiter ? (
-          <p
-            className="mt-2 text-[11px] text-white/38"
-            data-testid="draft-assistant-paused-note"
-          >
-            {paused
-              ? "I\u2019ll pause here until you decide, then pick up where I left off."
-              : "I\u2019ll pause here until you decide."}
-          </p>
-        ) : null}
+        <div className="mt-5 space-y-3">
+          {conversation && answeredEntries.length > 0 ? (
+            <AnswerTranscript entries={answeredEntries} />
+          ) : null}
 
-        <div className="mt-6">
           {progress.failed ? (
             <FailureMessage error={error} />
           ) : conversation?.ready_for_draft && onOpenDraft ? (
@@ -225,12 +227,15 @@ export function DraftAssistantCanvas({
             />
           ) : conversation?.active_question && onAnswerQuestion ? (
             <ConversationTurn
+              // Keyed by field: without this React reuses the instance and the
+              // previous question's typed text stays in the box.
+              key={conversation.active_question.field_path}
               question={conversation.active_question}
               jobTitle={jobTitle}
               roleName={roleName}
               sourceLabel={sourceLabel}
               busy={busy}
-              essentialRemaining={conversation.essential_remaining}
+              error={error}
               onAnswer={onAnswerQuestion}
               onSkip={onSkipQuestion ?? (() => undefined)}
               onSkipRemaining={onSkipRemaining ?? (() => undefined)}
@@ -281,9 +286,6 @@ export function DraftAssistantCanvas({
           </details>
         ) : null}
 
-        {answeredEntries.length > 0 ? (
-          <AnswerHistory entries={answeredEntries} />
-        ) : null}
       </section>
 
       <PreviewRail
@@ -435,22 +437,40 @@ function EarlyQuestionTurn({
   );
 }
 
-function AnswerHistory({ entries }: { entries: [string, unknown][] }) {
+/**
+ * Everything already decided, as the conversation that produced it.
+ *
+ * An accordion labelled "Your answers (1)" made settled work look like a filing
+ * cabinet. Replies belong in the stream, above the question being asked, the
+ * way any chat keeps its history.
+ */
+function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {
   return (
-    <details className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-      <summary className="min-h-11 cursor-pointer list-none py-2 text-[12px] font-semibold text-white/60">
-        Your answers ({entries.length})
-      </summary>
-      <ul className="mt-1 space-y-1.5 pb-1">
-        {entries.map(([fieldPath, value]) => (
-          <li key={fieldPath} className="text-[12px] text-white/50">
-            {earlyAnswerLabel(fieldPath, value)}
-          </li>
-        ))}
-      </ul>
-    </details>
+    <div className="space-y-3" data-testid="conversation-transcript">
+      {entries.map(([fieldPath, value], index) => {
+        const phrase = questionPhraseFor(fieldPath);
+        const heading =
+          phrase?.heading ??
+          importFieldLabel(fieldPath).replace(/\s*\([^)]*\)\s*$/, "").trim();
+        const option = answerOptionsFor(fieldPath).find(
+          (candidate) => candidate.value === String(value)
+        );
+        const shown = Array.isArray(value)
+          ? value.filter((item) => typeof item === "string").join(", ")
+          : String(value ?? "");
+        return (
+          <React.Fragment key={fieldPath}>
+            <AssistantMessage showAvatar={index === 0} muted>
+              <p className="text-[13px] leading-5">{heading}</p>
+            </AssistantMessage>
+            <RecruiterReply>{option?.label ?? shown}</RecruiterReply>
+          </React.Fragment>
+        );
+      })}
+    </div>
   );
 }
+
 
 function FailureMessage({ error }: { error: string | null }) {
   return (
