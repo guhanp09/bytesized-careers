@@ -64,13 +64,29 @@ const NUMBER_FIELDS: ReadonlySet<string> = new Set([
  */
 export function shapeAnswer(
   fieldPath: string,
-  text: string
+  text: string,
+  shape?: JobImportActiveQuestion["answer"]
 ): string | string[] | number {
-  if (NUMBER_FIELDS.has(fieldPath)) {
+  const kind = shape?.kind ?? (NUMBER_FIELDS.has(fieldPath) ? "number" : "text");
+  const isList = shape?.is_list ?? LIST_FIELDS.has(fieldPath);
+  if (kind === "number") {
     const parsed = Number(text.replace(/[^0-9.-]/g, ""));
     return Number.isFinite(parsed) ? parsed : text;
   }
-  return LIST_FIELDS.has(fieldPath) ? [text] : text;
+  return isList ? [text] : text;
+}
+
+/** Turn picked keys into the rows the field stores, using the server's key. */
+export function shapeRows(
+  selected: readonly string[],
+  itemKey: string | undefined
+): Array<Record<string, unknown>> | string[] {
+  if (!itemKey) return [...selected];
+  return selected.map((value) =>
+    itemKey === "type" && value.length
+      ? { [itemKey]: value, quantity: 1, frequency: "per_month" }
+      : { [itemKey]: value }
+  );
 }
 
 const optionButton =
@@ -156,14 +172,56 @@ export function ConversationTurn({
     .replace(/\s*\([^)]*\)\s*$/, "")
     .trim();
   const optional = question.kind === "optional";
-  const choices = answerOptionsFor(question.field_path, { jobTitle, roleName });
-  const multi = multiSelectOptionsFor(question.field_path);
+  const shape = question.answer;
+  // The server says what a valid answer is; local option copy only supplies
+  // friendlier labels for values it already knows.
+  const serverChoices = shape?.choices ?? [];
+  const labelled = answerOptionsFor(question.field_path, { jobTitle, roleName });
+  const labelFor = (value: string) =>
+    labelled.find((option) => option.value === value)?.label ??
+    multiSelectOptionsFor(question.field_path).find((option) => option.value === value)
+      ?.label ??
+    value.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+  const detailFor = (value: string) =>
+    labelled.find((option) => option.value === value)?.detail;
+
+  const isMulti = shape?.kind === "multi_choice";
+  const choices =
+    shape?.kind === "choice"
+      ? serverChoices.map((value) => ({
+          value,
+          label: labelFor(value),
+          detail: detailFor(value),
+        }))
+      : shape
+        ? []
+        : labelled;
+  const multi = isMulti
+    ? serverChoices.map((value) => ({ value, label: labelFor(value) }))
+    : shape
+      ? []
+      : multiSelectOptionsFor(question.field_path);
   const phrase = questionPhraseFor(question.field_path);
   const alternatives = question.alternatives ?? [];
-  const minimum = minimumAnswerLength(question.field_path);
-  // Send is disabled until the answer can succeed, so the recruiter is never
-  // told afterwards that what they wrote was not acceptable.
-  const canSend = text.trim().length >= minimum;
+  // Bounds come from the schema where the server supplied them, so the control
+  // enforces exactly what the field accepts.
+  const isNumber = shape?.kind === "number";
+  const minLength = shape?.min_length ?? minimumAnswerLength(question.field_path);
+  const maxLength = shape?.max_length;
+  const trimmed = text.trim();
+  const numeric = Number(trimmed.replace(/[^0-9.-]/g, ""));
+  const withinNumeric =
+    !isNumber ||
+    (trimmed.length > 0 &&
+      Number.isFinite(numeric) &&
+      (shape?.minimum === undefined || numeric >= shape.minimum) &&
+      (shape?.maximum === undefined || numeric <= shape.maximum));
+  // Send stays disabled until the answer would be accepted, so the recruiter is
+  // never told afterwards that what they wrote could not be used.
+  const canSend =
+    trimmed.length >= (isNumber ? 1 : minLength) &&
+    (maxLength === undefined || trimmed.length <= maxLength) &&
+    withinNumeric;
 
   const heading = phrase?.heading ?? `What should ${label.toLowerCase()} be?`;
   const why =
@@ -172,7 +230,7 @@ export function ConversationTurn({
 
   const submit = () => {
     if (!canSend || busy) return;
-    onAnswer(question.field_path, shapeAnswer(question.field_path, text.trim()));
+    onAnswer(question.field_path, shapeAnswer(question.field_path, trimmed, shape));
   };
 
   const toggle = (value: string) =>
@@ -278,7 +336,12 @@ export function ConversationTurn({
               disabled={busy || picked.length === 0}
               data-testid="conversation-multiselect-submit"
               onClick={() =>
-                onAnswer(question.field_path, shapeMultiSelect(question.field_path, picked) as never)
+                onAnswer(
+                question.field_path,
+                (shape?.item_key
+                  ? shapeRows(picked, shape.item_key)
+                  : shapeMultiSelect(question.field_path, picked)) as never
+              )
               }
               className="ui-press mt-3 min-h-11 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
             >
@@ -309,7 +372,14 @@ export function ConversationTurn({
           <div className="flex items-end gap-2">
             <textarea
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              maxLength={maxLength}
+              onChange={(event) =>
+                setText(
+                  isNumber
+                    ? event.target.value.replace(/[^0-9.]/g, "")
+                    : event.target.value
+                )
+              }
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();

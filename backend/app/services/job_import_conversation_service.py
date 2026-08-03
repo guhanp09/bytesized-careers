@@ -15,7 +15,7 @@ most* one continuation, usually zero.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -26,6 +26,7 @@ from app.core.job_import_answer_effects import (
     pay_range_from_conflict,
     suppressed_by_answers,
 )
+from app.core.job_import_answer_shapes import answer_shape_for, matching_choices
 from app.core.job_import_conversation import (
     MAX_PROVIDER_CONTINUATIONS,
     ConversationState,
@@ -412,7 +413,17 @@ class JobImportConversationService:
         field_row = next(
             (item for item in fields if item.field_path == candidate.field_path), None
         )
-        question = self._build_question(draft, candidate, pending_suggestion, field_row)
+        # The creator role is the one field whose allowed values live in the
+        # roles catalog rather than the job schema, so they are read from there.
+        role_choices: list[str] = []
+        if candidate.field_path == "primary_role_key":
+            role_choices = [
+                role.slug
+                for role in await self.import_service.repository.list_active_roles()
+            ][:40]
+        question = self._build_question(
+            draft, candidate, pending_suggestion, field_row, role_choices
+        )
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
         target_state: ConversationState = (
@@ -512,14 +523,22 @@ class JobImportConversationService:
         candidate: QueueCandidate,
         suggestion: AnswerSuggestion | None,
         field_row: Any | None = None,
+        role_choices: list[str] | None = None,
     ) -> dict[str, Any]:
         """Shape the one active question. Presentation copy lives on the client."""
 
+        # The shape travels with the question so the interface can render a
+        # control that cannot produce an invalid answer, rather than validating
+        # one after the recruiter has typed it.
+        shape = answer_shape_for(candidate.field_path)
+        if role_choices:
+            shape = replace(shape, kind="choice", choices=role_choices)
         question: dict[str, Any] = {
             "field_path": candidate.field_path,
             "kind": candidate.kind,
             "asked_at": datetime.now(UTC).isoformat(),
             "context_version": (draft.recruiter_context_version or 0),
+            "answer": shape.as_payload(),
         }
 
         # A conflict already knows the candidate answers and where each came
@@ -527,7 +546,7 @@ class JobImportConversationService:
         # to re-read their own job post — the assistant would be holding the
         # evidence and saying nothing.
         if field_row is not None and getattr(field_row, "conflicting_values", None):
-            alternatives = [
+            raw = [
                 {
                     "value": item.get("value"),
                     "evidence": [
@@ -539,6 +558,32 @@ class JobImportConversationService:
                 for item in field_row.conflicting_values
                 if isinstance(item, dict)
             ][:6]
+
+            # For a field with a fixed set of answers, the source's wording is
+            # mapped onto real values — offering the raw phrase back would hand
+            # the recruiter something the field then refuses.
+            if shape.choices:
+                allowed = matching_choices(
+                    candidate.field_path, [item["value"] for item in raw]
+                )
+                by_choice = {
+                    choice: next(
+                        (
+                            item["evidence"]
+                            for item in raw
+                            if isinstance(item["value"], str)
+                            and choice in item["value"].strip().lower()
+                        ),
+                        [],
+                    )
+                    for choice in allowed
+                }
+                alternatives = [
+                    {"value": choice, "evidence": evidence}
+                    for choice, evidence in by_choice.items()
+                ]
+            else:
+                alternatives = raw
             if alternatives:
                 question["alternatives"] = alternatives
                 recommended = self._recommended_alternative(draft, alternatives)

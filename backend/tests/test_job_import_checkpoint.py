@@ -108,7 +108,6 @@ _VALID_ANSWERS: dict[str, object] = {
     "source_inputs": [{"type": "raw_footage"}],
     "deliverables": [{"type": "long_form_video", "quantity": 1, "frequency": "per_month"}],
     "budget_max": 2000,
-    "turnaround_value": 3,
     "location": "Bengaluru, India",
 }
 
@@ -1053,4 +1052,106 @@ async def test_a_pay_conflict_is_resolved_instead_of_asked(
     assert prefill["budget_amount"] == 30000
     assert prefill["budget_max"] == 35000
     # Reading the post is free.
+    assert counting_provider.calls == 0
+
+
+# ---------------------------------------------------------------------------
+# The interface cannot offer an invalid answer
+# ---------------------------------------------------------------------------
+
+
+def test_the_answer_shape_comes_from_the_job_schema() -> None:
+    """One source of truth, so the client cannot hold a stale idea of a field."""
+
+    from app.core.job_import_answer_shapes import answer_shape_for
+
+    work_mode = answer_shape_for("work_mode")
+    assert work_mode.kind == "choice"
+    assert set(work_mode.choices) == {"remote", "hybrid", "onsite"}
+
+    # Structured rows are pickable, and carry the key each value sits under.
+    hiring = answer_shape_for("hiring_process")
+    assert hiring.kind == "multi_choice"
+    assert hiring.item_key == "stage"
+    assert hiring.is_list is True
+    assert "interview" in hiring.choices
+
+
+def test_numeric_fields_carry_their_real_bounds() -> None:
+    from app.core.job_import_answer_shapes import answer_shape_for
+
+    # Money is stored as Decimal; a bare int check would have missed every
+    # compensation field and left it without a numeric control.
+    pay = answer_shape_for("budget_amount")
+    assert pay.kind == "number"
+    assert pay.minimum == 1
+
+    hours = answer_shape_for("expected_weekly_hours_min")
+    assert hours.kind == "number"
+    assert hours.maximum == 168
+
+
+def test_text_fields_carry_their_length_limits() -> None:
+    from app.core.job_import_answer_shapes import answer_shape_for
+
+    title = answer_shape_for("title")
+    assert title.kind == "text"
+    assert title.min_length == 3
+    assert title.max_length == 255
+
+
+def test_conflicting_source_wording_is_mapped_onto_real_values() -> None:
+    """Offering the raw phrase back would hand over something the field refuses."""
+
+    from app.core.job_import_answer_shapes import matching_choices
+
+    # A source phrase is longer than the canonical value.
+    assert matching_choices("work_mode", ["Remote", "Hybrid within India"]) == [
+        "remote",
+        "hybrid",
+    ]
+    # Anything that cannot be matched is dropped rather than shown as a trap.
+    assert matching_choices("work_mode", ["Somewhere else entirely"]) == []
+    # A free-text field has no choices to map onto.
+    assert matching_choices("about_channel", ["anything"]) == []
+
+
+@pytest.mark.anyio
+async def test_every_question_describes_a_control_that_can_answer_it(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """No question may reach the recruiter without a usable control."""
+
+    headers, owner_id = await _auth(client, "shape-walk")
+    draft_id = await _prepared_draft(client, headers, owner_id, "shape-walk")
+    state = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+
+    for _ in range(20):
+        question = state.get("active_question")
+        if state["ready_for_draft"] or question is None:
+            break
+        shape = question.get("answer")
+        assert shape, f"{question['field_path']} arrived without an answer shape"
+        assert shape["kind"] != "unknown", (
+            f"{question['field_path']} has no usable control, which is how a text "
+            "box ends up on a field that cannot accept text"
+        )
+        if shape["kind"] in {"choice", "multi_choice"}:
+            assert shape.get("choices"), question["field_path"]
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={
+                "field_path": question["field_path"],
+                "value": _answer_for(question["field_path"]),
+            },
+        )
+        if response.status_code != 200:
+            break
+        state = response.json()
+
     assert counting_provider.calls == 0

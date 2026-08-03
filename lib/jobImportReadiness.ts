@@ -258,6 +258,22 @@ export type JobImportActiveQuestion = {
   alternatives?: Array<{ value: unknown; evidence: string[] }>;
   /** The alternative the job title already settles, if any. */
   recommended_value?: unknown;
+  /**
+   * What a valid answer looks like, derived on the server from the canonical
+   * job schema. The client renders from this rather than keeping its own idea
+   * of which fields are enums — that guess is what produced a text box for a
+   * field storing structured rows.
+   */
+  answer?: {
+    kind: "choice" | "multi_choice" | "number" | "text" | "url" | "date" | "unknown";
+    choices?: string[];
+    minimum?: number;
+    maximum?: number;
+    min_length?: number;
+    max_length?: number;
+    is_list?: boolean;
+    item_key?: string;
+  };
 };
 
 export type JobImportConversation = {
