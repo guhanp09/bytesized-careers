@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 from app.core.job_import_answer_effects import (
@@ -45,7 +45,7 @@ from app.core.job_import_questions import (
     validate_proposed_question,
 )
 from app.core.job_import_title_signals import title_signals
-from app.models import JobImportDraft
+from app.models import JobImportDraft, JobImportField
 from app.services.job_import_service import JobImportError, JobImportService
 
 
@@ -78,6 +78,34 @@ class ConversationSnapshot:
 #: Marker stored on the draft when the recruiter chooses manual editing.
 #: It is the one normal route that may hand off with questions still open.
 _MANUAL_CONTINUATION = "manual_continuation"
+
+
+#: Extracted fields whose text can state a sector or a seniority in passing.
+_CONTEXT_FIELDS: Final[tuple[str, ...]] = (
+    "description",
+    "role_summary",
+    "responsibilities",
+    "requirements",
+)
+
+
+def _source_context(fields: list[JobImportField]) -> str:
+    """Descriptive text the assistant may read for hints.
+
+    A niche is rarely in the title — "Vashist Pvt Ltd, an education company"
+    sits in the body. This reads only fields already extracted, stays local, and
+    never reaches a provider.
+    """
+
+    parts: list[str] = []
+    for item in fields:
+        if item.field_path not in _CONTEXT_FIELDS:
+            continue
+        value = item.edited_value or item.confirmed_value or item.proposed_value
+        if isinstance(value, str):
+            parts.append(value)
+    # Bounded: this only ever feeds substring matching against small catalogs.
+    return " ".join(parts)[:4000]
 
 
 class JobImportConversationService:
@@ -240,6 +268,9 @@ class JobImportConversationService:
         answers = self._stored_answers(draft)
         answers[field_path] = normalized
 
+        # Conversion reads field rows, so the answer has to become one.
+        await self._persist_answer(draft, field_path, normalized)
+
         # The answer is authoritative from this moment. Bumping the version is
         # what makes any provider result issued before now provably stale.
         await self._store(
@@ -360,6 +391,8 @@ class JobImportConversationService:
         if resolved is None:
             return False
 
+        for path, value in resolved.items():
+            await self._persist_answer(draft, path, value)
         await self._store(
             draft,
             {
@@ -398,7 +431,7 @@ class JobImportConversationService:
             None,
         ) or (answers.get("title") if isinstance(answers.get("title"), str) else None)
 
-        signals = title_signals(title)
+        signals = title_signals(title, extra_text=_source_context(fields))
         # Never override the source, and never re-decide something answered.
         fresh = {
             path: value
@@ -408,6 +441,8 @@ class JobImportConversationService:
         if not fresh:
             return False
 
+        for path, value in fresh.items():
+            await self._persist_answer(draft, path, value)
         await self._store(
             draft,
             {
@@ -429,8 +464,26 @@ class JobImportConversationService:
             ),
             None,
         )
-        options = title_signals(title).suggested.get("primary_role_key_options")
+        options = title_signals(
+            title, extra_text=_source_context(fields)
+        ).suggested.get("primary_role_key_options")
         return list(options) if isinstance(options, list) else []
+
+    async def _title_suggestions(self, draft: JobImportDraft) -> dict[str, object]:
+        """Values the source hints at without stating outright."""
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        title = next(
+            (
+                item.proposed_value
+                for item in fields
+                if item.field_path == "title" and isinstance(item.proposed_value, str)
+            ),
+            None,
+        )
+        return dict(
+            title_signals(title, extra_text=_source_context(fields)).suggested
+        )
 
     async def _advance(
         self,
@@ -499,7 +552,13 @@ class JobImportConversationService:
                 # A slug identifies; a name reads. The buttons need the name.
                 role_labels[slug] = by_slug[slug]
         question = self._build_question(
-            draft, candidate, pending_suggestion, field_row, role_choices, role_labels
+            draft,
+            candidate,
+            pending_suggestion,
+            field_row,
+            role_choices,
+            role_labels,
+            await self._title_suggestions(draft),
         )
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
@@ -602,6 +661,7 @@ class JobImportConversationService:
         field_row: Any | None = None,
         role_choices: list[str] | None = None,
         role_labels: dict[str, str] | None = None,
+        suggestions: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         """Shape the one active question. Presentation copy lives on the client."""
 
@@ -672,6 +732,12 @@ class JobImportConversationService:
                 recommended = self._recommended_alternative(draft, alternatives)
                 if recommended is not None:
                     question["recommended_value"] = recommended
+        if "recommended_value" not in question:
+            hint = (suggestions or {}).get(candidate.field_path)
+            if hint:
+                # The source hinted at this. Recommended, never preselected —
+                # the recruiter still confirms.
+                question["recommended_value"] = hint
         if suggestion is not None and suggestion.field_path == candidate.field_path:
             # A proposed value the recruiter confirms rather than types.
             question["suggested_value"] = suggestion.value
@@ -761,6 +827,66 @@ class JobImportConversationService:
         if not isinstance(stored, list):
             return []
         return [item for item in stored if isinstance(item, str)]
+
+    async def _persist_answer(
+        self, draft: JobImportDraft, field_path: str, value: object
+    ) -> None:
+        """Write an answer where native conversion will actually read it.
+
+        Conversion builds the job from field rows, not from the prefill map, so
+        an answer that only landed in the map was silently dropped on the way to
+        Post Job — the recruiter typed a city and the editor opened without it.
+
+        The row is marked ``edited`` because that is exactly what it is: a value
+        the recruiter supplied. Any machine proposal underneath is preserved for
+        audit, and only the effective value changes.
+        """
+
+        existing = await self.import_service.repository.get_field(draft.id, field_path)
+        if existing is not None:
+            await self.import_service.repository.update_field(
+                existing,
+                {
+                    "review_status": "edited",
+                    "edited_value": value,
+                    "confirmed_value": None,
+                    "requires_confirmation": False,
+                    "validation_errors": [],
+                    "reviewed_by_user_id": draft.owner_user_id,
+                    "reviewed_at": datetime.now(UTC),
+                    # A field the source never supplied is now directly supplied.
+                    "provenance_state": (
+                        "directly_supplied"
+                        if existing.provenance_state == "missing"
+                        else existing.provenance_state
+                    ),
+                },
+            )
+            return
+
+        policy = JOB_IMPORT_FIELD_POLICIES[field_path]
+        await self.import_service.repository.create_fields(
+            [
+                {
+                    "draft_id": draft.id,
+                    "field_path": field_path,
+                    "proposed_value": None,
+                    "provenance_state": "directly_supplied",
+                    "evidence": [],
+                    "conflicting_values": [],
+                    "explanation": "You answered this while preparing the draft.",
+                    "provider_confidence": None,
+                    "review_status": "edited",
+                    "edited_value": value,
+                    "confirmed_value": None,
+                    "missing_requirement": policy.missing_requirement,
+                    "requires_confirmation": False,
+                    "validation_errors": [],
+                    "reviewed_by_user_id": draft.owner_user_id,
+                    "reviewed_at": datetime.now(UTC),
+                }
+            ]
+        )
 
     async def _store(self, draft: JobImportDraft, updates: dict[str, Any]) -> None:
         await self.import_service.repository.update_draft(draft, updates)

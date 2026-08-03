@@ -15,6 +15,7 @@ import pytest
 from conftest import TestSessionLocal
 from httpx import AsyncClient
 from job_import_response_fixtures import scenario
+from sqlalchemy import select
 
 from app.api.deps import get_job_import_provider
 from app.core.job_import_answer_effects import effects_for_answer, suppressed_by_answers
@@ -31,6 +32,7 @@ from app.core.job_import_questions import (
     validate_proposed_question,
 )
 from app.main import app
+from app.models import JobImportField
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
 from app.schemas.job_import import JobImportExtractionResponse
@@ -603,8 +605,15 @@ def test_only_interpretation_critical_fields_are_essential() -> None:
     for path in ("revision_policy", "source_inputs", "turnaround_value"):
         assert conversation_question_kind(path, "recommended") == "optional", path
 
+    # Offered, never demanded. Candidates filter hardest on these two and the
+    # editor shows them early, so a draft that silently arrives without them
+    # loses real information — but the listing still reads correctly, so they
+    # must not block the handoff.
+    for path in ("experience_level", "content_niches"):
+        assert conversation_question_kind(path, "recommended") == "optional", path
+
     # Neither: these belong in ordinary manual editing, not an interrogation.
-    for path in ("content_genres", "content_niches", "tags"):
+    for path in ("content_genres", "tags"):
         assert conversation_question_kind(path, "recommended") is None, path
 
 
@@ -865,6 +874,8 @@ def test_a_conflict_must_still_be_worth_asking_about() -> None:
 
     experience_level is not needed to interpret the source, so a conflict on it
     must not outrank pay or application routing purely for being a conflict.
+    It may still be raised afterwards as an offer — being contradicted is a
+    reason to mention a field, never a reason to promote it.
     """
 
     from app.core.job_import_questions import deterministic_question_queue
@@ -876,7 +887,12 @@ def test_a_conflict_must_still_be_worth_asking_about() -> None:
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset(),
     )
-    assert [item.field_path for item in queue] == ["budget_unit"]
+    paths = [item.field_path for item in queue]
+    assert paths[0] == "budget_unit"
+    # Present, but demoted to an offer that can be skipped.
+    assert [item.kind for item in queue if item.field_path == "experience_level"] == [
+        "optional"
+    ]
 
 
 def test_a_conflict_on_an_essential_field_still_leads() -> None:
@@ -1366,3 +1382,71 @@ async def test_a_late_answer_is_accepted_rather_than_refused(
     )
     assert other.status_code == 200, other.text
     assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_an_answer_reaches_the_native_draft(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The bug this pins: answers were collected and then silently dropped.
+
+    Conversion builds the job from field rows. An answer that only landed in the
+    recruiter-prefill map therefore never arrived — the recruiter typed a city in
+    the conversation, the editor opened without it, and nothing reported a
+    failure. Every answered field must exist as a field row whose effective
+    value is what the recruiter said.
+    """
+
+    headers, owner_id = await _auth(client, "cp-carry")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cp-carry")
+    begin = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+
+    answered: dict[str, object] = {}
+    question = begin.json()["active_question"]
+    # Walk the conversation rather than answering one field: the guarantee is
+    # about every answer, not the first one.
+    for _ in range(12):
+        if question is None:
+            break
+        field_path = question["field_path"]
+        value = _answer_for(field_path)
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={"field_path": field_path, "value": value},
+        )
+        assert response.status_code == 200, response.text
+        answered[field_path] = value
+        question = response.json().get("active_question")
+
+    assert answered, "the conversation asked nothing, so this proves nothing"
+
+    async with TestSessionLocal() as session:
+        rows = {
+            row.field_path: row
+            for row in (
+                await session.execute(
+                    select(JobImportField).where(
+                        JobImportField.draft_id == UUID(draft_id)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+
+    for field_path, value in answered.items():
+        row = rows.get(field_path)
+        assert row is not None, f"{field_path} was answered but never stored as a field"
+        effective = row.edited_value if row.edited_value is not None else row.confirmed_value
+        # Money is stored as a JSON-safe string because the column is Decimal;
+        # comparing by value keeps that from reading as a lost answer.
+        if isinstance(value, list):
+            assert effective == value, field_path
+        else:
+            assert str(effective) == str(value), field_path
+        # A recruiter-supplied value is not a machine proposal awaiting review.
+        assert row.review_status == "edited", field_path
+        assert row.validation_errors == [], field_path

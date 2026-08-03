@@ -125,6 +125,41 @@ export function AssistantMessage({
   );
 }
 
+/** The assistant mid-turn: reading, deciding, composing the next question.
+ *
+ * A chat surface that goes blank between turns reads as broken, which is why
+ * the working state used to be a heading floating outside the conversation.
+ * Keeping it in the stream as a bubble is what makes the pause feel like
+ * someone thinking rather than nothing happening.
+ */
+export function TypingBubble({
+  label,
+  showAvatar = true,
+  testId = "assistant-typing",
+}: {
+  label?: string | null;
+  showAvatar?: boolean;
+  testId?: string;
+}) {
+  return (
+    <div className="ui-bubble-in flex items-start gap-3" data-testid={testId}>
+      <div className="hidden w-8 shrink-0 sm:block">
+        {showAvatar ? (
+          <DraftAssistantRobot state="thinking" size={32} className="mt-0.5" />
+        ) : null}
+      </div>
+      <div className="min-w-0 rounded-2xl rounded-tl-md bg-white/[0.06] px-4 py-3.5">
+        <span className="flex items-center gap-1.5" aria-hidden="true">
+          <span className="bea-dot block h-1.5 w-1.5 rounded-full bg-white/70" />
+          <span className="bea-dot bea-dot--2 block h-1.5 w-1.5 rounded-full bg-white/70" />
+          <span className="bea-dot bea-dot--3 block h-1.5 w-1.5 rounded-full bg-white/70" />
+        </span>
+        {label ? <span className="sr-only">{label}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 /** The recruiter's own reply, mirrored to the opposite side. */
 export function RecruiterReply({ children }: { children: React.ReactNode }) {
   return (
@@ -407,14 +442,6 @@ export function ConversationTurn({
           </div>
         )}
 
-        {busy ? (
-          <div className="mt-3 flex items-center gap-1.5" data-testid="conversation-thinking">
-            <span className="bea-dot h-1.5 w-1.5 rounded-full bg-white/45" />
-            <span className="bea-dot bea-dot--2 h-1.5 w-1.5 rounded-full bg-white/45" />
-            <span className="bea-dot bea-dot--3 h-1.5 w-1.5 rounded-full bg-white/45" />
-          </div>
-        ) : null}
-
         {/* Kept only for a genuine failure — a network drop or a race. Ordinary
             invalid input can no longer reach here, because Send stays disabled
             and structured fields are picked rather than typed. */}
@@ -451,6 +478,11 @@ export function ConversationTurn({
           </div>
         ) : null}
       </div>
+      {/* The assistant composing its next turn. Tied to a real request in
+          flight, never a timer, so the dots stop exactly when the work does. */}
+      {busy ? (
+        <TypingBubble testId="conversation-thinking" label="Working on your answer" />
+      ) : null}
     </div>
   );
 }

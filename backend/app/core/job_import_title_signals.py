@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
+from app.core.job_domain_taxonomy import CREATOR_CONTENT_NICHES
+
 
 @dataclass(frozen=True)
 class TitleSignals:
@@ -83,8 +85,44 @@ _ROLE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("illustrator", "illustrator"),
 )
 
+#: Experience wording, mapped onto the bands the Post Job editor can parse.
+#:
+#: "Fresher" is the common Indian-market word for no prior experience and was
+#: being ignored entirely, so a title that already answered the question still
+#: produced one.
+_EXPERIENCE_WORDS: Final[tuple[tuple[str, str], ...]] = (
+    ("fresher", "0–1 years"),
+    ("freshers", "0–1 years"),
+    ("entry level", "0–1 years"),
+    ("no experience", "0–1 years"),
+    ("junior", "1–3 years"),
+    ("mid level", "3–5 years"),
+    ("senior", "5–8 years"),
+    ("lead", "5–8 years"),
+)
+
+#: "2-4 years", "3+ years" stated as an experience requirement.
+#:
+#: Matched against text that still has its hyphens: the general normaliser turns
+#: "2-4 years" into "2 4 years", which reads as four years rather than a range.
+_EXPERIENCE_RANGE = re.compile(
+    r"\b(\d{1,2})\s*(?:[-–]|to)\s*(\d{1,2})\s*\+?\s*years?\b"
+    r"|\b(\d{1,2})\s*\+\s*years?\b"
+    r"|\b(\d{1,2})\s*years?\s+(?:of\s+)?exp"
+)
+
 #: "6 months", "3-month" — a stated length is a fixed period.
 _DURATION = re.compile(r"\b(\d{1,2})\s*[-–]?\s*(month|months|week|weeks|year|years)\b")
+
+
+def _overlaps(left: tuple[int, int], right: tuple[int, int]) -> bool:
+    return left[0] < right[1] and right[0] < left[1]
+
+
+def _hyphenated(text: str) -> str:
+    """Lowercased, but with hyphens kept so numeric ranges survive."""
+
+    return re.sub(r"[^a-z0-9+–-]+", " ", text.lower()).strip()
 
 
 def _normalise(text: str) -> str:
@@ -97,7 +135,9 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
     if not title or not title.strip():
         return TitleSignals()
 
-    haystack = _normalise(f"{title} {extra_text or ''}")
+    combined = f"{title} {extra_text or ''}"
+    haystack = _normalise(combined)
+    hyphenated = _hyphenated(combined)
     padded = f" {haystack} "
     settled: dict[str, object] = {}
     suggested: dict[str, object] = {}
@@ -124,7 +164,32 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
         # so the alternatives are offered rather than one of them picked.
         suggested["primary_role_key_options"] = matched_roles
 
-    duration = _DURATION.search(haystack)
+    # A stated range wins over a word: "senior, 2-4 years" means 2-4.
+    experience = _EXPERIENCE_RANGE.search(hyphenated)
+    if experience:
+        low, high, plus, single = experience.groups()
+        if low and high:
+            settled["experience_level"] = f"{low}–{high} years"
+        else:
+            base = int(plus or single)
+            settled["experience_level"] = f"{base}–{base + 3} years"
+    else:
+        for word, value in _EXPERIENCE_WORDS:
+            if f" {_normalise(word)} " in padded:
+                settled["experience_level"] = value
+                break
+
+    for niche in CREATOR_CONTENT_NICHES:
+        # Suggested, never settled: a post can mention a sector in passing, and
+        # the recruiter confirming one chip is cheaper than an unwanted claim.
+        if f" {_normalise(niche)} " in padded:
+            suggested.setdefault("content_niches", []).append(niche)  # type: ignore[union-attr]
+
+    # Years spent working are not the length of the contract. Without this, a
+    # title asking for "2-4 years experience" produced a four-year engagement.
+    duration = _DURATION.search(hyphenated)
+    if duration and experience and _overlaps(duration.span(), experience.span()):
+        duration = None
     if duration:
         amount, unit = duration.groups()
         settled["duration_type"] = "fixed_period"

@@ -22,6 +22,7 @@ import {
   ConversationComplete,
   ConversationTurn,
   RecruiterReply,
+  TypingBubble,
 } from "./ConversationTurn.tsx";
 import { answerOptionsFor, questionPhraseFor } from "../../../lib/jobImportAnswerOptions.ts";
 import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
@@ -160,13 +161,48 @@ export function DraftAssistantCanvas({
     ? jobImportDelayMessage(progress, sourceCharacterCount)
     : null;
 
+  // Keep the newest turn in view. Scrolling the pane rather than the page is
+  // what stops the live question from drifting below the fold.
+  const transcriptRef = React.useRef<HTMLDivElement | null>(null);
+  const answeredCount = answeredEntries.length;
+  React.useEffect(() => {
+    const node = transcriptRef.current;
+    if (!node) return;
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [answeredCount]);
+
+  // The composing indicator appears below the controls, so the live pane has to
+  // follow it — otherwise the one signal that work is under way is the one part
+  // scrolled out of sight.
+  const liveRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const node = liveRef.current;
+    if (!node || !busy) return;
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [busy]);
+
   return (
     <div
       className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
       data-testid="draft-assistant-canvas"
     >
+      {/* On a large screen this is a chat column of fixed height, not a growing
+          card: header and progress pinned, transcript flexing, the live question
+          always at the bottom and always reachable. Left to normal flow the
+          option chips fell below the fold and the recruiter had to scroll the
+          page to answer — which is exactly what a chat layout exists to avoid. */}
       <section
-        className={`${panel} min-w-0`}
+        className={`${panel} flex min-w-0 flex-col lg:h-[calc(100dvh-9.5rem)] lg:max-h-[880px] lg:min-h-[540px]`}
         aria-labelledby="draft-assistant-heading"
       >
         <header className="flex min-w-0 items-center justify-between gap-3">
@@ -208,13 +244,32 @@ export function DraftAssistantCanvas({
           {active ? `. ${active.label}` : ""}
         </p>
 
-        <ProgressBar ratio={ratio} stages={stages} />
+        <div className="shrink-0">
+          <ProgressBar ratio={ratio} stages={stages} />
+        </div>
 
-        <div className="mt-5 space-y-3">
+        {/* A chat pane, not a growing page. The transcript scrolls inside its own
+            bounded region so that the thing the recruiter has to act on stays put
+            instead of being pushed further down every time a turn is added. */}
+        <div className="mt-5 flex min-h-0 flex-1 flex-col gap-3">
           {conversation && answeredEntries.length > 0 ? (
-            <AnswerTranscript entries={answeredEntries} />
+            <div
+              ref={transcriptRef}
+              className="chat-scroll max-h-[min(30vh,240px)] shrink space-y-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none lg:flex-1"
+              data-testid="conversation-scroll"
+            >
+              <AnswerTranscript entries={answeredEntries} />
+            </div>
           ) : null}
 
+          {/* The live turn. Never allowed to shrink, and given its own scroll for
+              the rare question with many options, so the controls the recruiter
+              needs are always on screen no matter how long the history gets. */}
+          <div
+            ref={liveRef}
+            className="chat-scroll shrink-0 overflow-y-auto overscroll-contain pr-1 lg:max-h-[78%]"
+            data-testid="conversation-live"
+          >
           {progress.failed ? (
             <FailureMessage error={error} />
           ) : conversation?.ready_for_draft && onOpenDraft ? (
@@ -253,8 +308,10 @@ export function DraftAssistantCanvas({
               activeLabel={active?.activeLabel ?? null}
               sourceType={sourceType}
               delayMessage={delayMessage}
+              conversational={Boolean(conversation && answeredEntries.length > 0)}
             />
           )}
+          </div>
         </div>
 
         {conversation && !conversation.ready_for_draft && onContinueManually ? (
@@ -357,11 +414,27 @@ function WorkingMessage({
   activeLabel,
   sourceType,
   delayMessage,
+  conversational = false,
 }: {
   activeLabel: string | null;
   sourceType: JobImportSourceType;
   delayMessage: string | null;
+  conversational?: boolean;
 }) {
+  // Mid-conversation the assistant is a participant, so silence between turns
+  // has to look like someone composing rather than like a stalled screen. The
+  // opening state keeps the fuller heading: there is no conversation yet to
+  // belong to.
+  if (conversational) {
+    return (
+      <>
+        <h2 id="draft-assistant-heading" className="sr-only">
+          {activeLabel ?? "Preparing your draft"}
+        </h2>
+        <TypingBubble label={activeLabel ?? "Working on your draft"} />
+      </>
+    );
+  }
   return (
     <div className="ui-rise">
       <h2 id="draft-assistant-heading" className="text-xl font-semibold text-white">

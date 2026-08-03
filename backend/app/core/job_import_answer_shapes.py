@@ -22,7 +22,12 @@ from typing import Any, Literal
 
 from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 
-from app.core.job_domain_taxonomy import CREATOR_JOB_FORMATS, CREATOR_JOB_PLATFORMS
+from app.core.job_domain_taxonomy import (
+    CREATOR_CONTENT_NICHES,
+    CREATOR_EXPERIENCE_BANDS,
+    CREATOR_JOB_FORMATS,
+    CREATOR_JOB_PLATFORMS,
+)
 from app.schemas.job import JobCreate
 
 AnswerKind = Literal["choice", "multi_choice", "number", "text", "url", "date", "unknown"]
@@ -74,7 +79,12 @@ class AnswerShape:
 _CATALOG_CHOICES: dict[str, tuple[str, ...]] = {
     "platforms": CREATOR_JOB_PLATFORMS,
     "formats_hired_for": CREATOR_JOB_FORMATS,
+    "content_niches": CREATOR_CONTENT_NICHES,
+    "experience_level": CREATOR_EXPERIENCE_BANDS,
 }
+
+#: Catalog fields that hold a single value rather than a list.
+_SINGLE_VALUE_CATALOGS: frozenset[str] = frozenset({"experience_level"})
 
 _CATALOG_LABELS: dict[str, dict[str, str]] = {
     "platforms": {"youtube": "YouTube", "instagram": "Instagram"},
@@ -170,10 +180,11 @@ def answer_shape_for(field_path: str) -> AnswerShape:
 
     if field_path in _CATALOG_CHOICES:
         choices = list(_CATALOG_CHOICES[field_path])
+        single = field_path in _SINGLE_VALUE_CATALOGS
         return AnswerShape(
-            kind="multi_choice",
+            kind="choice" if single else "multi_choice",
             choices=choices,
-            is_list=True,
+            is_list=not single,
             labels={
                 value: _CATALOG_LABELS.get(field_path, {}).get(value, _titlecase(value))
                 for value in choices

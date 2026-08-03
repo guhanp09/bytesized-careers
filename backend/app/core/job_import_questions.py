@@ -79,6 +79,12 @@ PLATFORM_DECIDED_FIELDS: Final[frozenset[str]] = frozenset(
 #: Every one of these makes a listing better without being needed to understand
 #: it, so each is skippable and none may block the handoff.
 OPTIONAL_CONVERSATION_FIELDS: Final[tuple[str, ...]] = (
+    # First, because these two are the attributes candidates filter on hardest
+    # and both are visible on the earliest Post Job pages. Optional rather than
+    # essential: a listing still reads correctly without them, so they may be
+    # offered but must never hold up the handoff.
+    "experience_level",
+    "content_niches",
     "deliverables",
     "source_inputs",
     "revision_policy",
@@ -221,6 +227,10 @@ _REQUIREMENT_PRIORITY: Final[dict[str, int]] = {
 
 _CONFLICT_PRIORITY: Final[int] = 0
 
+#: Where a conflict lands when the field itself is only ever an offer. Behind
+#: every requirement, so an optional contradiction can never lead the queue.
+_OPTIONAL_PRIORITY: Final[int] = 50
+
 
 @dataclass(frozen=True)
 class QueueCandidate:
@@ -271,9 +281,16 @@ def deterministic_question_queue(
         # routing purely for being a conflict. Post Job's review still surfaces
         # it; it just does not stop the assistant.
         policy = JOB_IMPORT_FIELD_POLICIES[path]
-        if conversation_question_kind(path, policy.missing_requirement) is None:
+        kind = conversation_question_kind(path, policy.missing_requirement)
+        if kind is None:
             continue
         seen.add(path)
+        if kind == "optional":
+            # Being contradicted does not promote a field the listing reads
+            # fine without. It is still worth raising, but behind everything
+            # the source genuinely has to settle.
+            candidates.append(QueueCandidate(path, "optional", _OPTIONAL_PRIORITY))
+            continue
         candidates.append(QueueCandidate(path, "confirmation", _CONFLICT_PRIORITY))
 
     for path, requirement in sorted(missing_fields.items()):

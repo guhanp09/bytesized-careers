@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-
 CREATOR_JOB_PLATFORMS: Final[tuple[str, ...]] = (
     "youtube",
     "instagram",
@@ -324,3 +323,42 @@ AI_FIELD_CONFIRMATION_POLICY: Final[dict[str, AIConfirmationPolicy]] = {
     "featured_until": "server_owned_never_infer",
     "hiring_verification_status_snapshot": "server_owned_never_infer",
 }
+
+
+#: Content niches offered by the Post Job editor.
+#:
+#: Mirrors ``CONTENT_NICHE_SUGGESTIONS`` in ``lib/jobCreatorContext.ts``; the
+#: schema types this field as a plain list of strings, so without the catalog the
+#: assistant offers a text box and a niche the editor knows ("Education") can be
+#: neither suggested nor matched. Parity is enforced by test.
+CREATOR_CONTENT_NICHES: tuple[str, ...] = (
+    "Tech",
+    "Finance",
+    "Gaming",
+    "Education",
+    "Food",
+    "Fitness",
+    "Beauty",
+    "Fashion",
+    "Travel",
+    "Business",
+    "Comedy",
+    "News",
+    "Entertainment",
+    "Sports",
+    "Parenting",
+    "Real estate",
+    "Spirituality",
+)
+
+#: Experience bands, written exactly as the Post Job editor parses them.
+#:
+#: The editor reads ``experience_level`` with /(\d+)\s*[-\u2013]\s*(\d+)/ into a
+#: min/max years pair, so a band that does not match that shape reaches the
+#: editor and renders as nothing at all. These do.
+CREATOR_EXPERIENCE_BANDS: tuple[str, ...] = (
+    "0\u20131 years",
+    "1\u20133 years",
+    "3\u20135 years",
+    "5\u20138 years",
+)
