@@ -12,6 +12,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.job_domain_taxonomy import (
     CREATIVE_AUTONOMY_LEVELS,
+    CREATOR_CONTENT_NICHES,
+    CREATOR_EXPERIENCE_BANDS,
     CREATOR_JOB_FORMATS,
     CREATOR_JOB_PLATFORMS,
     DELIVERABLE_FREQUENCIES,
@@ -541,6 +543,8 @@ class JobImportService:
             "roles": [role.slug for role in roles],
             "platforms": list(CREATOR_JOB_PLATFORMS),
             "formats": list(CREATOR_JOB_FORMATS),
+            "content_niches": list(CREATOR_CONTENT_NICHES),
+            "experience_levels": list(CREATOR_EXPERIENCE_BANDS),
             "compensation_modes": list(COMPENSATION_MODES),
             "compensation_units": list(COMPENSATION_UNITS),
             "engagement_types": list(ENGAGEMENT_TYPES),
@@ -1014,6 +1018,132 @@ class JobImportService:
         retrieval = source.retrieval_metadata if isinstance(source.retrieval_metadata, dict) else {}
         structured = retrieval.get("structured_context")
         context = structured if isinstance(structured, dict) else {}
+        missing_fields = list(response.missing_fields)
+
+        def append_context_field(field: JobImportExtractionField) -> None:
+            nonlocal missing_fields
+            if field.field_path in by_path or len(fields) >= 100:
+                return
+            fields.append(field)
+            by_path[field.field_path] = field
+            missing_fields = [
+                item for item in missing_fields if item.field_path != field.field_path
+            ]
+
+        structured_role_location = context.get("role_location")
+        if location_field is None and isinstance(structured_role_location, str):
+            evidence = cls._structured_source_evidence(
+                source,
+                label="Structured role location",
+                value=structured_role_location,
+            )
+            if evidence:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="location",
+                        value=structured_role_location,
+                        provenance="extracted_from_source",
+                        evidence=evidence,
+                    )
+                )
+                location_field = by_path.get("location")
+
+        structured_industry = context.get("industry")
+        if "content_niches" not in by_path and isinstance(structured_industry, str):
+            industry_tokens = {
+                token.strip().casefold()
+                for token in re.split(r"[,/|;&]+", structured_industry)
+                if token.strip()
+            }
+            matched_niches = [
+                niche for niche in CREATOR_CONTENT_NICHES if niche.casefold() in industry_tokens
+            ]
+            evidence = cls._structured_source_evidence(
+                source,
+                label="Structured industry",
+                value=structured_industry,
+            )
+            if matched_niches and evidence:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="content_niches",
+                        value=matched_niches,
+                        provenance="suggested_inference",
+                        evidence=evidence,
+                        explanation=(
+                            "The structured job industry exactly matches a CreatorJobs niche."
+                        ),
+                        provider_confidence=JobImportProviderConfidence(
+                            score=0.7,
+                            label="medium",
+                            metadata={
+                                "origin": "contextual_inference",
+                                "rationale_code": "industry_exact_niche_match",
+                            },
+                        ),
+                    )
+                )
+
+        structured_experience = context.get("experience_requirement")
+        if "experience_level" not in by_path and isinstance(structured_experience, str):
+            experience_value: str | None = None
+            provenance = "extracted_from_source"
+            explanation: str | None = None
+            provider_confidence: JobImportProviderConfidence | None = None
+            if re.fullmatch(
+                r"\d{1,2}\u2013\d{1,2} years of experience",
+                structured_experience,
+            ):
+                experience_value = structured_experience
+            else:
+                months_match = re.fullmatch(
+                    r"At least (\d{1,3}) months of experience",
+                    structured_experience,
+                )
+                if months_match:
+                    months = int(months_match.group(1))
+                    experience_value = (
+                        CREATOR_EXPERIENCE_BANDS[0]
+                        if months < 12
+                        else CREATOR_EXPERIENCE_BANDS[1]
+                        if months < 36
+                        else CREATOR_EXPERIENCE_BANDS[2]
+                        if months < 60
+                        else CREATOR_EXPERIENCE_BANDS[3]
+                        if months < 96
+                        else None
+                    )
+                    if experience_value is not None:
+                        provenance = "suggested_inference"
+                        explanation = (
+                            "The structured minimum months fit this supported experience band."
+                        )
+                        provider_confidence = JobImportProviderConfidence(
+                            score=0.7,
+                            label="medium",
+                            metadata={
+                                "origin": "contextual_inference",
+                                "rationale_code": "minimum_months_experience_band",
+                                "minimum_months": months,
+                            },
+                        )
+            evidence = cls._structured_source_evidence(
+                source,
+                label="Structured experience requirement",
+                value=structured_experience,
+            )
+            if experience_value is not None and evidence:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="experience_level",
+                        value=experience_value,
+                        provenance=provenance,
+                        evidence=evidence,
+                        explanation=explanation,
+                        provider_confidence=provider_confidence,
+                    )
+                )
+
         if role_location is None and isinstance(context.get("role_location"), str):
             role_location = context["role_location"]
         employer_location = (
@@ -1089,12 +1219,8 @@ class JobImportService:
                     )
                 )
                 missing_fields = [
-                    item for item in response.missing_fields if item.field_path != "budget_currency"
+                    item for item in missing_fields if item.field_path != "budget_currency"
                 ]
-            else:
-                missing_fields = list(response.missing_fields)
-        else:
-            missing_fields = list(response.missing_fields)
         return JobImportExtractionResponse.model_validate(
             {
                 **response.model_dump(mode="json"),

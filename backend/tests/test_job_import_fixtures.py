@@ -56,6 +56,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "thumbnail-designer",
         "scriptwriter",
         "clean-import",
+        "shine-school-editor",
         "checkpoint-currency",
         "checkpoint-trial",
     }
@@ -105,6 +106,7 @@ async def test_processed_scenarios_produce_a_reviewable_draft(
         "thumbnail-designer",
         "scriptwriter",
         "clean-import",
+        "shine-school-editor",
         "checkpoint-currency",
         "checkpoint-trial",
     ):
@@ -117,6 +119,30 @@ async def test_processed_scenarios_produce_a_reviewable_draft(
             "ready_to_apply",
         }
         assert draft["fields"], f"{scenario} should have review fields"
+
+
+@pytest.mark.anyio
+async def test_shine_school_editor_fixture_preserves_url_context_without_provider(
+    client: AsyncClient,
+) -> None:
+    headers = await _auth(client, "fixture-shine-school-editor")
+    response = await _fixture(client, headers, "shine-school-editor")
+    assert response.status_code == 200, response.text
+    draft = response.json()["draft"]
+    fields = {field["field_path"]: field for field in draft["fields"]}
+    assert fields["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
+    assert fields["content_niches"]["proposed_value"] == ["Education"]
+    assert fields["experience_level"]["effective_value"] == "1\u20137 years of experience"
+
+    source_id = draft["source_id"]
+    source = await client.get(f"/api/v1/job-imports/sources/{source_id}", headers=headers)
+    assert source.status_code == 200, source.text
+    source_body = source.json()
+    assert source_body["source_type"] == "public_url"
+    assert source_body["retrieval_metadata"]["structured_context"]["industry"] == (
+        "Education / Training"
+    )
+    assert "Structured skills: Video Editing" in source_body["original_text"]
 
 
 @pytest.mark.anyio

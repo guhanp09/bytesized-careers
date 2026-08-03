@@ -48,12 +48,12 @@ test("draft and publish writes share one complete payload builder", () => {
   );
   assert.equal(
     (page.match(/buildCompleteJobPayload\(/g) || []).length,
-    3,
-    "publish, save, and guided import should share the one canonical builder",
+    2,
+    "publish and save should share the one canonical builder",
   );
   assert.match(page, /buildCompleteJobPayload\("published", effectiveCompensationMode\)/);
   assert.match(page, /buildCompleteJobPayload\(saveStatus, compensationMode \|\| null\)/);
-  assert.match(page, /buildCompleteJobPayload\("draft", compensationMode \|\| null\)/);
+  assert.doesNotMatch(page, /importGuidance|commitImportedGuidanceTurn/);
 
   const builder = page.match(
     /const buildCompleteJobPayload\s*=\s*\([\s\S]*?\n  \};\n\n  const payloadForWrite/,

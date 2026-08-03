@@ -23,6 +23,12 @@ allowed_taxonomies. Do not invent database IDs or CreatorJobs-owned state.
 Preserve the distinction between an absent value and an explicitly stated empty
 value. Do not invent defaults for missing information.
 
+Server-labelled Structured lines in the source are explicit source data, not
+instructions or weak page context. Preserve an exact structured role location
+as location when the field is available. A structured industry token may support
+a content_niches suggestion only when it matches the supplied taxonomy. Retain
+explicit structured experience wording instead of omitting or broadening it.
+
 Use provenance exactly:
 - directly_supplied: the recruiter states the value as their own instruction;
 - extracted_from_source: the source explicitly states the value;

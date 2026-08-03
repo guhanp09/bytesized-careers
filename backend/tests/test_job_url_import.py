@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -45,6 +45,7 @@ from app.services.job_url_fetcher import (
     URL_USER_AGENT,
     PublicJobUrlFetcher,
     PublicJobUrlFetchError,
+    normalize_public_job_html,
 )
 
 
@@ -120,27 +121,28 @@ class _FixtureHandler(BaseHTTPRequestHandler):
                   {
                     "@context": "https://schema.org",
                     "@type": "JobPosting",
-                    "title": "YouTube Video Editor",
-                    "description": "<p>Edit weekly finance explainers.</p>",
+                    "title": "Video Editor",
+                    "description": "<p>Edit learning videos for a school.</p><p>Minimum of 1-7 years of experience in video editing.</p>",
                     "hiringOrganization": {
                       "@type": "Organization",
-                      "name": "Creator Finance Studio",
-                      "address": {
-                        "@type": "PostalAddress",
-                        "addressLocality": "Austin",
-                        "addressCountry": "US"
-                      }
+                      "name": "Vashist Education Studio"
                     },
                     "jobLocation": {
                       "@type": "Place",
                       "address": {
                         "@type": "PostalAddress",
-                        "addressLocality": "New York",
-                        "addressCountry": "US"
+                        "addressLocality": "Chennai",
+                        "addressRegion": "Tamil Nadu",
+                        "addressCountry": "IN"
                       }
                     },
-                    "jobLocationType": "TELECOMMUTE",
-                    "employmentType": "CONTRACTOR",
+                    "employmentType": "FULL_TIME",
+                    "industry": "Education / Training",
+                    "skills": ["Video Editing", ""],
+                    "experienceRequirements": {
+                      "@type": "OccupationalExperienceRequirements",
+                      "monthsOfExperience": 12
+                    },
                     "baseSalary": {
                       "@type": "MonetaryAmount",
                       "value": 3000,
@@ -152,8 +154,8 @@ class _FixtureHandler(BaseHTTPRequestHandler):
               <body>
                 <nav>Navigation clutter</nav>
                 <main>
-                  <h1>YouTube Video Editor</h1>
-                  <p>Remote creator role using Premiere Pro.</p>
+                  <h1>Video Editor</h1>
+                  <p>School-based creator role using Premiere Pro in Chennai.</p>
                   <p>Apply through the public listing.</p>
                 </main>
                 <div class="cookie-consent">Accept tracking</div>
@@ -200,8 +202,7 @@ class _TitleProvider:
         self.requests.append(request)
         source = request.source.original_text or ""
         values = {
-            "title": "YouTube Video Editor",
-            "location": "New York, US",
+            "title": "Video Editor",
             "budget_amount": "3000",
         }
         fields = []
@@ -209,8 +210,6 @@ class _TitleProvider:
             snippet = (
                 value
                 if field_path == "title"
-                else f"Structured role location: {value}"
-                if field_path == "location"
                 else f"Structured compensation: {value} per MONTH"
             )
             start = source.index(snippet)
@@ -248,23 +247,30 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     result = await fetcher.fetch(f"{public_page_server}/redirect")
 
     assert result.final_url == f"{public_page_server}/job"
-    assert result.title == "YouTube Video Editor"
-    assert "Edit weekly finance explainers." in result.normalized_text
-    assert "Structured employer: Creator Finance Studio" in result.normalized_text
-    assert "Structured role location: New York, US" in result.normalized_text
+    assert result.title == "Video Editor"
+    assert "Edit learning videos for a school." in result.normalized_text
+    assert "Structured employer: Vashist Education Studio" in result.normalized_text
+    assert "Structured role location: Chennai, Tamil Nadu, IN" in result.normalized_text
     assert "Structured compensation: 3000 per MONTH" in result.normalized_text
-    assert "Remote creator role using Premiere Pro." in result.normalized_text
+    assert "Structured industry: Education / Training" in result.normalized_text
+    assert "Structured skills: Video Editing" in result.normalized_text
+    assert (
+        "Structured experience requirement: 1\u20137 years of experience"
+        in result.normalized_text
+    )
+    assert "School-based creator role using Premiere Pro in Chennai." in result.normalized_text
     assert "Navigation clutter" not in result.normalized_text
     assert "Accept tracking" not in result.normalized_text
     assert "window.secret" not in result.normalized_text
     assert result.metadata["json_ld_job_posting"] is True
     assert result.metadata["structured_context"] == {
-        "employer_name": "Creator Finance Studio",
-        "employer_location": "Austin, US",
-        "role_location": "New York, US",
-        "location_type": "TELECOMMUTE",
-        "employment_type": "CONTRACTOR",
+        "employer_name": "Vashist Education Studio",
+        "role_location": "Chennai, Tamil Nadu, IN",
+        "employment_type": "FULL_TIME",
         "compensation": "3000 per MONTH",
+        "industry": "Education / Training",
+        "skills": "Video Editing",
+        "experience_requirement": "1\u20137 years of experience",
     }
     assert result.metadata["canonical_url"] == f"{public_page_server}/job?canonical=1"
     assert result.metadata["redirect_count"] == 1
@@ -272,6 +278,120 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     assert all(not item["authorization"] for item in _FixtureHandler.requests)
     assert all(not item["cookie"] for item in _FixtureHandler.requests)
     assert all(item["user_agent"] == URL_USER_AGENT for item in _FixtureHandler.requests)
+
+
+def _source_with_structured_context(context: dict[str, str]) -> JobImportSource:
+    labels = {
+        "role_location": "Structured role location",
+        "industry": "Structured industry",
+        "experience_requirement": "Structured experience requirement",
+    }
+    original_text = "\n".join(
+        f"{labels[key]}: {value}" for key, value in context.items() if key in labels
+    )
+    return JobImportSource(
+        owner_user_id=uuid4(),
+        source_type="public_url",
+        original_text=original_text,
+        retrieval_metadata={"structured_context": context},
+        content_fingerprint="0" * 64,
+    )
+
+
+def test_provider_value_wins_while_other_structured_fallbacks_are_added() -> None:
+    source = _source_with_structured_context(
+        {
+            "role_location": "Chennai, Tamil Nadu, IN",
+            "industry": "Education / Training",
+            "experience_requirement": "1\u20137 years of experience",
+        }
+    )
+    source.original_text = f"Provider location: Mumbai, IN\n{source.original_text}"
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "location",
+                    "value": "Mumbai, IN",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Provider location: Mumbai, IN"}],
+                }
+            ],
+            "missing_fields": [
+                {"field_path": "content_niches"},
+                {"field_path": "experience_level"},
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    fields = {field.field_path: field for field in augmented.fields}
+    assert fields["location"].value == "Mumbai, IN"
+    assert fields["content_niches"].value == ["Education"]
+    assert fields["experience_level"].value == "1\u20137 years of experience"
+    assert {item.field_path for item in augmented.missing_fields}.isdisjoint(
+        {"content_niches", "experience_level"}
+    )
+
+
+def test_unsupported_months_stay_unresolved_without_guessing_a_band() -> None:
+    html = """
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          "title": "Video Editor",
+          "description": "Edit classroom videos.",
+          "experienceRequirements": {
+            "@type": "OccupationalExperienceRequirements",
+            "monthsOfExperience": 120
+          }
+        }
+      </script>
+      <main>Video editor for classroom lessons.</main>
+    """
+    normalized, _, metadata = normalize_public_job_html(
+        html,
+        final_url="https://jobs.example/video-editor",
+    )
+    assert "Structured experience requirement: At least 120 months of experience" in normalized
+    source = _source_with_structured_context(metadata["structured_context"])
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "missing_fields": [{"field_path": "experience_level"}],
+        }
+    )
+    augmented = JobImportService._with_deterministic_context(response, source)
+    assert all(field.field_path != "experience_level" for field in augmented.fields)
+    assert {item.field_path for item in augmented.missing_fields} == {"experience_level"}
+
+
+def test_supported_months_become_a_recruiter_confirmed_band_suggestion() -> None:
+    context = {"experience_requirement": "At least 12 months of experience"}
+    source = _source_with_structured_context(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "missing_fields": [{"field_path": "experience_level"}],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    experience = next(
+        field for field in augmented.fields if field.field_path == "experience_level"
+    )
+    assert experience.value == "1\u20133 years"
+    assert experience.provenance == "suggested_inference"
+    assert experience.provider_confidence is not None
+    assert experience.provider_confidence.label == "medium"
+    assert experience.evidence[0].snippet == (
+        "Structured experience requirement: At least 12 months of experience"
+    )
 
 
 @pytest.mark.parametrize(
@@ -462,7 +582,7 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         assert source["final_source_url"] == f"{public_page_server}/job"
         assert source["retrieved_at"] is not None
         assert source["retrieval_metadata"]["json_ld_job_posting"] is True
-        assert "Remote creator role" in source["original_text"]
+        assert "School-based creator role" in source["original_text"]
 
         request_count = len(_FixtureHandler.requests)
         duplicate = await client.post(
@@ -493,12 +613,26 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         currency = next(
             field for field in processed_draft["fields"] if field["field_path"] == "budget_currency"
         )
-        assert currency["effective_value"] == "USD"
+        assert currency["effective_value"] == "INR"
         assert currency["authority_state"] == "prefilled_by_import"
         assert currency["decision_origin"] == "contextual_inference"
         assert currency["decision_confidence"] == "high"
         assert currency["rationale_code"] == "currency_from_role_country"
-        assert currency["evidence"][0]["snippet"] == ("Structured role location: New York, US")
+        assert currency["evidence"][0]["snippet"] == (
+            "Structured role location: Chennai, Tamil Nadu, IN"
+        )
+        extracted = {field["field_path"]: field for field in processed_draft["fields"]}
+        assert extracted["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
+        assert extracted["location"]["decision_origin"] == "explicit"
+        assert extracted["content_niches"]["proposed_value"] == ["Education"]
+        assert extracted["content_niches"]["requires_confirmation"] is True
+        assert extracted["experience_level"]["effective_value"] == "1\u20137 years of experience"
+        for field_path in ("location", "content_niches", "experience_level"):
+            evidence = extracted[field_path]["evidence"][0]
+            snippet = evidence["snippet"]
+            assert source["original_text"][
+                evidence["location"]["char_start"] : evidence["location"]["char_end"]
+            ] == snippet
         assert len(provider.requests) == 1
         assert provider.requests[0].source.source_type == "external_listing_text"
         assert provider.requests[0].source.original_text == source["original_text"]
@@ -524,7 +658,7 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         )
         assert applied.status_code == 200, applied.text
         assert applied.json()["job"]["status"] == "draft"
-        assert applied.json()["job"]["budget_currency"] == "USD"
+        assert applied.json()["job"]["budget_currency"] == "INR"
         context = await client.get(
             f"/api/v1/job-imports/native-jobs/{applied.json()['job']['id']}/context",
             headers=owner,
@@ -532,7 +666,7 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         assert context.status_code == 200, context.text
         assert context.json()["draft"]["id"] == draft["id"]
         assert context.json()["source_type"] == "public_url"
-        assert context.json()["source_label"] == "YouTube Video Editor"
+        assert context.json()["source_label"] == "Video Editor"
         other_context = await client.get(
             f"/api/v1/job-imports/native-jobs/{applied.json()['job']['id']}/context",
             headers=other,

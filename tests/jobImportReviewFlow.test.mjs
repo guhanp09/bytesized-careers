@@ -87,5 +87,7 @@ test("development example is explicit and cannot be mistaken for a live provider
   assert.match(fixture, /Development-only processed job-import fixture/);
   assert.match(fixture, /thumbnail-designer/);
   assert.match(fixture, /clean-import/);
+  assert.match(fixture, /shine-school-editor/);
+  assert.match(page, /URL import · Chennai school editor/);
   assert.doesNotMatch(fixture, /api_key|OpenAIJobImportAdapter/);
 });

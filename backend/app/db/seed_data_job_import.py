@@ -14,6 +14,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "thumbnail-designer",
     "scriptwriter",
     "clean-import",
+    "shine-school-editor",
     # Checkpointed conversation: these land in waiting_for_recruiter so the
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
@@ -33,6 +34,30 @@ IN_FLIGHT_IMPORT_SCENARIOS = frozenset(
     {"delayed-processing", "refresh-resume", "answer-precedence"}
 )
 
+SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT = {
+    "employer_name": "Vashist Education Studio",
+    "role_location": "Chennai, Tamil Nadu, IN",
+    "employment_type": "FULL_TIME",
+    "industry": "Education / Training",
+    "skills": "Video Editing",
+    "experience_requirement": "1\u20137 years of experience",
+}
+
+SHINE_SCHOOL_EDITOR_SOURCE_TEXT = "\n".join(
+    (
+        "Video Editor",
+        "Structured employer: Vashist Education Studio",
+        "Structured role location: Chennai, Tamil Nadu, IN",
+        "Structured employment type: FULL_TIME",
+        "Structured industry: Education / Training",
+        "Structured skills: Video Editing",
+        "Structured experience requirement: 1\u20137 years of experience",
+        "Edit learning videos for a school-based education channel.",
+        "The role is based at our school in Chennai.",
+        "Minimum of 1-7 years of experience in video editing.",
+    )
+)
+
 
 def processed_review_fixture(
     scenario: str = "strong-decisions",
@@ -41,6 +66,8 @@ def processed_review_fixture(
         return _thumbnail_designer_fixture()
     if scenario == "clean-import":
         return _clean_import_fixture()
+    if scenario == "shine-school-editor":
+        return _shine_school_editor_fixture()
     if scenario == "scriptwriter":
         return _scriptwriter_fixture()
     if scenario == "checkpoint-currency":
@@ -270,6 +297,100 @@ def processed_review_fixture(
                 {
                     "code": "development_fixture",
                     "message": "This local example contains demonstration data only.",
+                }
+            ],
+        }
+    )
+
+
+def _shine_school_editor_fixture() -> JobImportExtractionResponse:
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Video Editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Video Editor"}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured skills: Video Editing"}],
+                    "explanation": "The stated work most closely matches Video Editor.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "location",
+                    "value": "Chennai, Tamil Nadu, IN",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Structured role location: Chennai, Tamil Nadu, IN"}
+                    ],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "onsite",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "The role is based at our school in Chennai."}
+                    ],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "full_time",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Structured employment type: FULL_TIME"}],
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": ["Education"],
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured industry: Education / Training"}],
+                    "explanation": "Education exactly matches the supported niche catalog.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "experience_level",
+                    "value": "1\u20137 years of experience",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Structured experience requirement: 1\u20137 years of experience"}
+                    ],
+                },
+                {
+                    "field_path": "requirements",
+                    "value": ["1\u20137 years of video editing experience"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Minimum of 1-7 years of experience in video editing."}
+                    ],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": ["Edit learning videos for a school-based education channel"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Edit learning videos for a school-based education channel."}
+                    ],
+                },
+            ],
+            "missing_fields": [
+                {"field_path": "platforms"},
+                {"field_path": "about_channel"},
+                {"field_path": "expected_weekly_hours_min"},
+                {"field_path": "start_timeframe"},
+                {"field_path": "application_mode"},
+                {"field_path": "compensation_mode"},
+                {"field_path": "budget_unit"},
+            ],
+            "warnings": [
+                {
+                    "code": "development_fixture",
+                    "message": "This local URL-shaped example does not call a provider.",
                 }
             ],
         }

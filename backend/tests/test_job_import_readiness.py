@@ -496,6 +496,8 @@ async def test_internal_processing_contract_and_failure_transition_are_provider_
         assert request.source.original_text == source["original_text"]
         assert "video-editor" in request.allowed_taxonomies["roles"]
         assert "per video" in request.allowed_taxonomies["compensation_units"]
+        assert "Education" in request.allowed_taxonomies["content_niches"]
+        assert "1\u20133 years" in request.allowed_taxonomies["experience_levels"]
         assert "primary_role_key" in {
             definition.field_path for definition in request.field_definitions
         }

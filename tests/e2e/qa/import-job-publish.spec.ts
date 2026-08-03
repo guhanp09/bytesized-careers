@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const CONTROLLER_EMAIL = "qa-controller@example.com";
 const CONTROLLER_PASSWORD = "LocalQaController123!";
@@ -59,26 +59,76 @@ async function completeAssistant(page: Page) {
       return;
     }
     const turn = page.getByTestId("conversation-turn");
-    if (!(await turn.count())) return;
+    if (!(await turn.isVisible())) {
+      await done
+        .or(turn)
+        .first()
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .catch(() => undefined);
+      if (await done.isVisible()) {
+        await done.click();
+        return;
+      }
+      continue;
+    }
 
-    const field = await turn.locator("[data-field]").first().getAttribute("data-field");
+    const turnSignature = await turn.textContent({ timeout: 1_000 }).catch(() => null);
+    if (!turnSignature) continue;
 
     const skip = page.getByTestId("conversation-skip-remaining");
-    if (await skip.count()) {
-      await skip.click();
+    if (await skip.isVisible()) {
+      await expect
+        .poll(
+          async () =>
+            (await done.isVisible()) ||
+            !(await skip.isVisible()) ||
+            (await skip.isEnabled()),
+          { timeout: 5_000 }
+        )
+        .toBe(true);
+      if (await done.isVisible()) continue;
+      if (await skip.isVisible()) {
+        await skip.click();
+      } else {
+        continue;
+      }
     } else {
       // A conflict renders the source's own candidate answers instead of a
       // menu or a text box, so it needs its own branch.
       const alternative = turn.locator('[data-testid^="conversation-alternative-"]').first();
+      const chip = turn.locator('[data-testid^="conversation-chip-"]').first();
       const option = turn.locator('[data-testid^="conversation-option-"]').first();
       const suggestion = page.getByTestId("conversation-accept-suggestion");
       const input = page.getByTestId("conversation-text-answer");
+      const activateCurrent = async (control: Locator) => {
+        await expect
+          .poll(
+            async () => {
+              if (await done.isVisible()) return true;
+              const current = await turn.textContent({ timeout: 500 }).catch(() => null);
+              if (!current || current !== turnSignature) return true;
+              return (await control.isVisible()) && (await control.isEnabled());
+            },
+            { timeout: 5_000 }
+          )
+          .toBe(true);
+        if (await done.isVisible()) return false;
+        const current = await turn.textContent({ timeout: 500 }).catch(() => null);
+        if (!current || current !== turnSignature) return false;
+        return control
+          .click({ timeout: 2_000 })
+          .then(() => true)
+          .catch(() => false);
+      };
       if (await alternative.count()) {
-        await alternative.click();
+        if (!(await activateCurrent(alternative))) continue;
+      } else if (await chip.count()) {
+        if (!(await activateCurrent(chip))) continue;
+        if (!(await activateCurrent(page.getByTestId("conversation-multiselect-submit")))) continue;
       } else if (await suggestion.count()) {
-        await suggestion.click();
+        if (!(await activateCurrent(suggestion))) continue;
       } else if (await option.count()) {
-        await option.click();
+        if (!(await activateCurrent(option))) continue;
       } else if (await input.count()) {
         const numeric = (await input.getAttribute("inputmode")) === "numeric";
         await input.fill(numeric ? "5" : "Provided during QA");
@@ -93,14 +143,14 @@ async function completeAssistant(page: Page) {
     await expect
       .poll(
         async () => {
-          if (await page.getByTestId("conversation-open-draft").count()) return "done";
+          if (await page.getByTestId("conversation-open-draft").isVisible()) return "done";
           const next = page.getByTestId("conversation-turn");
-          if (!(await next.count())) return "gone";
-          return await next.locator("[data-field]").first().getAttribute("data-field");
+          if (!(await next.isVisible())) return "gone";
+          return (await next.textContent({ timeout: 500 }).catch(() => null)) ?? "gone";
         },
         { timeout: 20_000 }
       )
-      .not.toBe(field);
+      .not.toBe(turnSignature);
   }
 }
 

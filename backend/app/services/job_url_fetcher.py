@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import math
 import re
 import socket
 from collections.abc import Awaitable, Callable
@@ -273,6 +274,61 @@ def _structured_compensation(value: object) -> str | None:
     return " ".join(part for part in parts if part) or None
 
 
+def _bounded_structured_values(
+    value: object,
+    *,
+    maximum_items: int = 12,
+    maximum_item_length: int = 96,
+    maximum_total_length: int = 500,
+) -> str | None:
+    raw_values = value if isinstance(value, list) else [value]
+    values: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        cleaned = _bounded_structured_text(raw, maximum_item_length)
+        if not cleaned or cleaned.casefold() in seen:
+            continue
+        seen.add(cleaned.casefold())
+        values.append(cleaned)
+        if len(values) >= maximum_items:
+            break
+    return ", ".join(values)[:maximum_total_length] or None
+
+
+_EXPLICIT_EXPERIENCE_RANGE = re.compile(
+    r"\b(?P<minimum>\d{1,2})\s*(?:-|\u2013|\u2014|to)\s*"
+    r"(?P<maximum>\d{1,2})\s+years?\s+of(?:\s+[\w-]+){0,3}\s+experience\b",
+    re.IGNORECASE,
+)
+
+
+def _structured_experience_requirement(job_posting: dict[str, object]) -> str | None:
+    description = job_posting.get("description")
+    if isinstance(description, str):
+        readable_description = _strip_html_fragment(description)
+        match = _EXPLICIT_EXPERIENCE_RANGE.search(readable_description)
+        if match is not None:
+            minimum = int(match.group("minimum"))
+            maximum = int(match.group("maximum"))
+            if 0 <= minimum <= maximum <= 60:
+                return f"{minimum}\u2013{maximum} years of experience"
+
+    requirement = job_posting.get("experienceRequirements")
+    if not isinstance(requirement, dict):
+        return None
+    months = requirement.get("monthsOfExperience")
+    if (
+        not isinstance(months, (int, float))
+        or isinstance(months, bool)
+        or not math.isfinite(months)
+        or months < 0
+        or months > 600
+        or not float(months).is_integer()
+    ):
+        return None
+    return f"At least {int(months)} months of experience"
+
+
 def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, str]:
     if job_posting is None:
         return {}
@@ -308,6 +364,15 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, str
     compensation = _structured_compensation(job_posting.get("baseSalary"))
     if compensation:
         context["compensation"] = compensation
+    industry = _bounded_structured_values(job_posting.get("industry"))
+    if industry:
+        context["industry"] = industry
+    skills = _bounded_structured_values(job_posting.get("skills"))
+    if skills:
+        context["skills"] = skills
+    experience_requirement = _structured_experience_requirement(job_posting)
+    if experience_requirement:
+        context["experience_requirement"] = experience_requirement
     return context
 
 
@@ -320,6 +385,9 @@ def _structured_context_lines(context: dict[str, str]) -> list[str]:
         "location_type": "Structured work location type",
         "employment_type": "Structured employment type",
         "compensation": "Structured compensation",
+        "industry": "Structured industry",
+        "skills": "Structured skills",
+        "experience_requirement": "Structured experience requirement",
     }
     return [f"{labels[key]}: {value}" for key, value in context.items() if key in labels]
 

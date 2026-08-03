@@ -226,6 +226,98 @@ test.describe("completion and handoff", () => {
     await expect(page.getByText("Review flagged fields")).toHaveCount(0);
     await expect(page.getByText("Optional details not found")).toHaveCount(0);
   });
+
+  for (const viewport of [
+    { name: "desktop", width: 1280, height: 900 },
+    { name: "mobile-390", width: 390, height: 844 },
+  ]) {
+    test(`the Shine-shaped URL fixture keeps its facts through ${viewport.name} handoff`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await loginController(page);
+      await openFixture(page, "shine-school-editor");
+
+      await expect(page.getByTestId("conversation-turn")).toBeVisible({ timeout: 30_000 });
+      const assistantText = page.locator("body");
+      await expect(assistantText).toContainText("Chennai");
+
+      for (let step = 0; step < 25; step += 1) {
+        if (await page.getByTestId("conversation-open-draft").isVisible()) break;
+        const turn = page.getByTestId("conversation-turn");
+        await expect(turn).toBeVisible();
+        const previousTurn = await turn.innerText();
+        const suggestion = page.getByTestId("conversation-accept-suggestion");
+        const alternative = turn.locator('[data-testid^="conversation-alternative-"]').first();
+        const chip = turn.locator('[data-testid^="conversation-chip-"]').first();
+        const option = turn.locator('[data-testid^="conversation-option-"]').first();
+        const input = page.getByTestId("conversation-text-answer");
+        const skip = page.getByTestId("conversation-skip");
+        if (await suggestion.isVisible()) {
+          await expect(suggestion).toBeEnabled();
+          await suggestion.click();
+        } else if (await alternative.isVisible()) {
+          await alternative.click();
+        } else if (await chip.isVisible()) {
+          await chip.click();
+          await page.getByTestId("conversation-multiselect-submit").click();
+        } else if (await option.isVisible()) {
+          await option.click();
+        } else if (await input.isVisible()) {
+          await input.fill(
+            (await input.getAttribute("inputmode")) === "numeric"
+              ? "40"
+              : "A school-led education channel creating clear learning videos."
+          );
+          await page.getByTestId("conversation-submit").click();
+        } else if (await skip.isVisible()) {
+          await skip.click();
+        }
+        await expect
+          .poll(async () => {
+            if (await page.getByTestId("conversation-open-draft").isVisible()) return "done";
+            const next = page.getByTestId("conversation-turn");
+            return (await next.isVisible()) ? await next.innerText() : "gone";
+          })
+          .not.toBe(previousTurn);
+      }
+      await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.getByTestId("conversation-open-draft").click();
+      await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
+      await expect(page.getByRole("heading", { name: "THE ROLE" })).toBeVisible();
+      await expect(page.getByLabel("Job title")).toHaveValue("Video Editor");
+
+      const nativeDraftId = new URL(page.url()).searchParams.get("draftId");
+      expect(nativeDraftId).toBeTruthy();
+      const session = await (await page.request.get("/api/auth/session")).json();
+      const jobsResponse = await page.request.get(
+        "http://127.0.0.1:8100/api/v1/me/jobs",
+        { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+      );
+      expect(jobsResponse.ok()).toBe(true);
+      const nativeDraft = (await jobsResponse.json()).find(
+        (job: { id: string }) => job.id === nativeDraftId
+      );
+      expect(nativeDraft.experience_level).toBe("1\u20137 years of experience");
+      const contextResponse = await page.request.get(
+        `http://127.0.0.1:8100/api/v1/job-imports/native-jobs/${nativeDraftId}/context`,
+        { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+      );
+      expect(contextResponse.ok()).toBe(true);
+      const importFields = (await contextResponse.json()).draft.fields;
+      const niche = importFields.find(
+        (field: { field_path: string }) => field.field_path === "content_niches"
+      );
+      expect(niche.proposed_value).toEqual(["Education"]);
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      );
+      expect(overflow, `horizontal overflow after ${viewport.name} handoff`).toBe(false);
+    });
+  }
 });
 
 test.describe("actual failure", () => {

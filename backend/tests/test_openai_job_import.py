@@ -458,6 +458,8 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert "language_requirements" in str(call["instructions"])
     assert "chain-of-thought" in str(call["instructions"])
     assert "never repeat an ID" in str(call["instructions"])
+    assert "Server-labelled Structured lines" in str(call["instructions"])
+    assert "structured role location" in str(call["instructions"])
 
 
 def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:

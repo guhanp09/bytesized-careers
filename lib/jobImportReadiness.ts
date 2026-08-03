@@ -732,6 +732,7 @@ export type DevelopmentJobImportScenario =
   | "thumbnail-designer"
   | "scriptwriter"
   | "clean-import"
+  | "shine-school-editor"
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"
