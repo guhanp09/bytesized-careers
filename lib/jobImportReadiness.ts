@@ -273,6 +273,8 @@ export type JobImportActiveQuestion = {
     max_length?: number;
     is_list?: boolean;
     item_key?: string;
+    /** Display text per value. A slug identifies; a name reads. */
+    labels?: Record<string, string>;
   };
 };
 

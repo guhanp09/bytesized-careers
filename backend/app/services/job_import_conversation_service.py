@@ -44,6 +44,7 @@ from app.core.job_import_questions import (
     essential_work_remains,
     validate_proposed_question,
 )
+from app.core.job_import_title_signals import title_signals
 from app.models import JobImportDraft
 from app.services.job_import_service import JobImportError, JobImportService
 
@@ -191,21 +192,27 @@ class JobImportConversationService:
         draft = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
         snapshot = self._snapshot_of(draft)
 
-        if not snapshot.waiting or snapshot.active_question is None:
-            raise JobImportError(
-                "JOB_IMPORT_NO_ACTIVE_QUESTION",
-                "There is no question waiting for an answer right now.",
-                status_code=409,
-            )
-
-        active_path = snapshot.active_question.get("field_path")
+        # A click can land a moment after the conversation moved on — the poll
+        # refreshes on a timer, so the button the recruiter pressed may already
+        # be one step behind. Refusing it would blame them for the delay, so an
+        # answer to any field still worth answering is simply accepted.
+        active_path = (
+            snapshot.active_question.get("field_path")
+            if snapshot.active_question
+            else None
+        )
         if active_path != field_path:
-            raise JobImportError(
-                "JOB_IMPORT_QUESTION_MISMATCH",
-                "That answer does not match the question currently being asked.",
-                status_code=409,
-                details={"expected_field_path": active_path},
-            )
+            already_answered = field_path in self._stored_answers(draft)
+            if already_answered:
+                # Genuinely settled, so the click was a duplicate. Report the
+                # current state rather than an error about it.
+                return snapshot
+            if field_path not in JOB_IMPORT_FIELD_POLICIES:
+                raise JobImportError(
+                    "JOB_IMPORT_UNSUPPORTED_FIELD",
+                    "That detail cannot be answered here.",
+                    status_code=422,
+                )
 
         if (
             expected_context_version is not None
@@ -362,6 +369,69 @@ class JobImportConversationService:
         )
         return True
 
+    async def _apply_title_signals(self, draft: JobImportDraft) -> bool:
+        """Stop asking for what the title already says.
+
+        "…intern - 6 months onsite" states the engagement, the duration and the
+        work mode in its own headline. Asking the recruiter for those is the
+        clearest way to look like a scraper: the answer was in the first line of
+        what they handed over.
+
+        Only settled signals are applied. A role word is left as a suggestion,
+        because a title routinely names two crafts.
+        """
+
+        answers = self._stored_answers(draft)
+        fields = await self.import_service.repository.list_fields(draft.id)
+        known = {
+            item.field_path
+            for item in fields
+            if item.provenance_state != "missing" or item.review_status != "pending"
+        }
+
+        title = next(
+            (
+                item.proposed_value
+                for item in fields
+                if item.field_path == "title" and isinstance(item.proposed_value, str)
+            ),
+            None,
+        ) or (answers.get("title") if isinstance(answers.get("title"), str) else None)
+
+        signals = title_signals(title)
+        # Never override the source, and never re-decide something answered.
+        fresh = {
+            path: value
+            for path, value in signals.settled.items()
+            if path not in answers and path not in known
+        }
+        if not fresh:
+            return False
+
+        await self._store(
+            draft,
+            {
+                "recruiter_prefill": {**answers, **fresh},
+                "recruiter_prefill_updated_at": datetime.now(UTC),
+            },
+        )
+        return True
+
+    async def _title_role_options(self, draft: JobImportDraft) -> list[str]:
+        """The crafts the title names, when it names more than one."""
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        title = next(
+            (
+                item.proposed_value
+                for item in fields
+                if item.field_path == "title" and isinstance(item.proposed_value, str)
+            ),
+            None,
+        )
+        options = title_signals(title).suggested.get("primary_role_key_options")
+        return list(options) if isinstance(options, list) else []
+
     async def _advance(
         self,
         draft: JobImportDraft,
@@ -376,9 +446,10 @@ class JobImportConversationService:
         explicitly gated step.
         """
 
-        if await self._resolve_pay_range(draft):
-            # The pay question no longer exists; rebuild without it.
-            pass
+        # Read the title before deciding what to ask; anything it settles is
+        # not a question.
+        await self._apply_title_signals(draft)
+        await self._resolve_pay_range(draft)
         queue = await self._queue_for(draft)
         candidate = queue[0] if queue else None
 
@@ -416,13 +487,19 @@ class JobImportConversationService:
         # The creator role is the one field whose allowed values live in the
         # roles catalog rather than the job schema, so they are read from there.
         role_choices: list[str] = []
+        role_labels: dict[str, str] = {}
         if candidate.field_path == "primary_role_key":
-            role_choices = [
-                role.slug
-                for role in await self.import_service.repository.list_active_roles()
-            ][:40]
+            roles = await self.import_service.repository.list_active_roles()
+            by_slug = {role.slug: role.name for role in roles}
+            # A title naming two crafts has already narrowed this to two. Showing
+            # thirty buttons instead would discard what the recruiter wrote.
+            named = [slug for slug in await self._title_role_options(draft) if slug in by_slug]
+            for slug in named or list(by_slug)[:40]:
+                role_choices.append(slug)
+                # A slug identifies; a name reads. The buttons need the name.
+                role_labels[slug] = by_slug[slug]
         question = self._build_question(
-            draft, candidate, pending_suggestion, field_row, role_choices
+            draft, candidate, pending_suggestion, field_row, role_choices, role_labels
         )
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
@@ -524,6 +601,7 @@ class JobImportConversationService:
         suggestion: AnswerSuggestion | None,
         field_row: Any | None = None,
         role_choices: list[str] | None = None,
+        role_labels: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Shape the one active question. Presentation copy lives on the client."""
 
@@ -532,7 +610,12 @@ class JobImportConversationService:
         # one after the recruiter has typed it.
         shape = answer_shape_for(candidate.field_path)
         if role_choices:
-            shape = replace(shape, kind="choice", choices=role_choices)
+            shape = replace(
+                shape,
+                kind="choice",
+                choices=role_choices,
+                labels=role_labels or {},
+            )
         question: dict[str, Any] = {
             "field_path": candidate.field_path,
             "kind": candidate.kind,

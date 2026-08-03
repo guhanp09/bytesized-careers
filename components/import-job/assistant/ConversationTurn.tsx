@@ -115,7 +115,7 @@ export function AssistantMessage({
       </div>
       <div
         className={[
-          "min-w-0 flex-1 rounded-2xl rounded-tl-md px-4 py-3",
+          "min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 break-words [overflow-wrap:anywhere]",
           muted ? "bg-white/[0.035] text-white/55" : "bg-white/[0.06] text-white/85",
         ].join(" ")}
       >
@@ -130,7 +130,7 @@ export function RecruiterReply({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex justify-end pl-6 sm:pl-11">
       <div
-        className="max-w-[85%] rounded-2xl rounded-br-md bg-[color:var(--color-state-review,#8ec5ff)]/15 px-4 py-2.5 text-sm text-white/90"
+        className="max-w-[85%] overflow-hidden rounded-2xl rounded-br-md bg-[color:var(--color-state-review,#8ec5ff)]/15 px-4 py-2.5 text-sm break-words [overflow-wrap:anywhere] text-white/90"
         data-testid="conversation-reply"
       >
         {children}
@@ -178,6 +178,7 @@ export function ConversationTurn({
   const serverChoices = shape?.choices ?? [];
   const labelled = answerOptionsFor(question.field_path, { jobTitle, roleName });
   const labelFor = (value: string) =>
+    shape?.labels?.[value] ??
     labelled.find((option) => option.value === value)?.label ??
     multiSelectOptionsFor(question.field_path).find((option) => option.value === value)
       ?.label ??

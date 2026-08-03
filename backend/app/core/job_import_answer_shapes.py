@@ -22,6 +22,7 @@ from typing import Any, Literal
 
 from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 
+from app.core.job_domain_taxonomy import CREATOR_JOB_FORMATS, CREATOR_JOB_PLATFORMS
 from app.schemas.job import JobCreate
 
 AnswerKind = Literal["choice", "multi_choice", "number", "text", "url", "date", "unknown"]
@@ -42,6 +43,9 @@ class AnswerShape:
     is_list: bool = False
     #: The key each picked value sits under, for structured rows.
     item_key: str | None = None
+    #: Display text per value. A slug is an identifier, not a label — showing
+    #: "Long-form-editor" as a button is the catalog leaking into the interface.
+    labels: dict[str, str] = field(default_factory=dict)
 
     def as_payload(self) -> dict[str, Any]:
         """Bounded, JSON-safe, and free of anything internal."""
@@ -55,7 +59,26 @@ class AnswerShape:
                 payload[name] = value
         if self.is_list:
             payload["is_list"] = True
+        if self.labels:
+            payload["labels"] = {
+                value: self.labels[value] for value in payload.get("choices", [])
+                if value in self.labels
+            }
         return payload
+
+
+#: Values that live in a product catalog rather than the job schema.
+#:
+#: The schema types these as plain lists of strings, so they would otherwise get
+#: a free-text box — which is how a platform question came to accept "Ajajjaja".
+_CATALOG_CHOICES: dict[str, tuple[str, ...]] = {
+    "platforms": CREATOR_JOB_PLATFORMS,
+    "formats_hired_for": CREATOR_JOB_FORMATS,
+}
+
+_CATALOG_LABELS: dict[str, dict[str, str]] = {
+    "platforms": {"youtube": "YouTube", "instagram": "Instagram"},
+}
 
 
 #: Structured list fields, and the key each chosen value sits under.
@@ -68,6 +91,18 @@ _STRUCTURED_ROWS: dict[str, tuple[str, str]] = {
     "source_inputs": ("source_inputs", "type"),
     "deliverables": ("deliverables", "type"),
 }
+
+
+def _titlecase(value: str) -> str:
+    """Turn a slug into something a person would read.
+
+    Values that are already written for people — "Shorts/Reels", "Long-form
+    video" — are left exactly as they are; only lowercase slugs are rewritten.
+    """
+
+    if value != value.lower() or not any(mark in value for mark in "-_"):
+        return value
+    return value.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
 def _literals(annotation: Any) -> list[str]:
@@ -132,6 +167,18 @@ def answer_shape_for(field_path: str) -> AnswerShape:
             return AnswerShape(
                 kind="multi_choice", choices=choices, is_list=True, item_key=key
             )
+
+    if field_path in _CATALOG_CHOICES:
+        choices = list(_CATALOG_CHOICES[field_path])
+        return AnswerShape(
+            kind="multi_choice",
+            choices=choices,
+            is_list=True,
+            labels={
+                value: _CATALOG_LABELS.get(field_path, {}).get(value, _titlecase(value))
+                for value in choices
+            },
+        )
 
     model_field = JobCreate.model_fields.get(field_path)
     if model_field is None:

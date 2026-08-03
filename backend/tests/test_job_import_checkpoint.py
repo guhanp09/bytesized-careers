@@ -1251,3 +1251,118 @@ def test_no_recruiter_facing_message_names_the_provider() -> None:
         if stripped.startswith('"') and stripped.endswith('",'):
             assert "OpenAI" not in stripped, stripped
             assert "GPT" not in stripped, stripped
+
+
+# ---------------------------------------------------------------------------
+# Reading the title, and tolerating a late click
+# ---------------------------------------------------------------------------
+
+
+def test_a_title_settles_what_it_plainly_states() -> None:
+    """The reported case: everything asked was in the first line of the post."""
+
+    from app.core.job_import_title_signals import title_signals
+
+    signals = title_signals(
+        "AI graphics designer and video editor intern - 6 months onsite"
+    )
+    assert signals.settled["engagement_type"] == "internship"
+    assert signals.settled["work_mode"] == "onsite"
+    assert signals.settled["duration_type"] == "fixed_period"
+    assert signals.settled["duration_value"] == 6
+    assert signals.settled["duration_unit"] == "months"
+
+    # Two crafts named, so the role is offered rather than chosen.
+    assert signals.suggested["primary_role_key_options"] == [
+        "graphic-designer",
+        "video-editor",
+    ]
+    assert "primary_role_key" not in signals.settled
+
+
+def test_one_named_craft_is_a_suggestion_not_a_decision() -> None:
+    from app.core.job_import_title_signals import title_signals
+
+    signals = title_signals("Scriptwriter for a long-form history channel")
+    # A title is a headline, not a taxonomy entry, so the role stays a proposal.
+    assert signals.suggested["primary_role_key"] == "scriptwriter"
+    assert "primary_role_key" not in signals.settled
+
+
+def test_a_title_that_says_nothing_settles_nothing() -> None:
+    from app.core.job_import_title_signals import title_signals
+
+    assert title_signals("Video editor").settled == {}
+    assert title_signals("").is_empty()
+    assert title_signals(None).is_empty()
+
+
+def test_title_signals_only_ever_describe_the_job() -> None:
+    """The guardrail: nothing here may express anything about a person."""
+
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+    from app.core.job_import_title_signals import title_signals
+
+    signals = title_signals(
+        "Senior remote full-time video editor intern 3 months hybrid onsite"
+    )
+    for path in signals.settled:
+        assert path in JOB_IMPORT_FIELD_POLICIES, path
+
+
+def test_catalog_backed_fields_are_picked_with_readable_labels() -> None:
+    """platforms is list[str] in the schema, which is how it got a text box that
+    accepted nonsense."""
+
+    from app.core.job_import_answer_shapes import answer_shape_for
+
+    platforms = answer_shape_for("platforms")
+    assert platforms.kind == "multi_choice"
+    assert "youtube" in platforms.choices
+    # A slug identifies; a name reads.
+    assert platforms.labels["youtube"] == "YouTube"
+
+    # Values already written for people are left exactly as they are.
+    formats = answer_shape_for("formats_hired_for")
+    assert formats.labels["Shorts/Reels"] == "Shorts/Reels"
+
+
+@pytest.mark.anyio
+async def test_a_late_answer_is_accepted_rather_than_refused(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """A click can land after the poll moved the conversation on. Refusing it
+    blames the recruiter for the delay."""
+
+    headers, owner_id = await _auth(client, "late-click")
+    draft_id = await _prepared_draft(client, headers, owner_id, "late-click")
+    first = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+    asked = first["active_question"]["field_path"]
+
+    # Answer it, so the conversation moves to the next question.
+    await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={"field_path": asked, "value": _answer_for(asked)},
+    )
+
+    # The same click arriving a moment late is a no-op, not an error.
+    late = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={"field_path": asked, "value": _answer_for(asked)},
+    )
+    assert late.status_code == 200, late.text
+
+    # And an answer to a different pending field is simply accepted.
+    other = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={"field_path": "work_mode", "value": "remote"},
+    )
+    assert other.status_code == 200, other.text
+    assert counting_provider.calls == 0

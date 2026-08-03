@@ -150,6 +150,7 @@ export default function ImportJobPageClient() {
   const requestControllerRef = React.useRef<AbortController | null>(null);
   const requestIdRef = React.useRef<string | null>(null);
   const startedAtRef = React.useRef(0);
+  const answeringRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!["creating", "processing"].includes(phase)) {
@@ -249,6 +250,7 @@ export default function ImportJobPageClient() {
           describeActionError(caught, "That answer could not be saved. Try again.")
         );
       } finally {
+        answeringRef.current = false;
         setAnsweringEarlyQuestion(false);
       }
     },
@@ -260,9 +262,12 @@ export default function ImportJobPageClient() {
     let cancelled = false;
 
     const read = async () => {
+      // Never refresh over an answer in flight; the response for that answer is
+      // newer than anything this poll can return.
+      if (answeringRef.current) return;
       try {
         const next = await getJobImportConversation(accessToken, draft.id);
-        if (!cancelled) setConversation(next);
+        if (!cancelled && !answeringRef.current) setConversation(next);
       } catch {
         // The conversation is additive: a draft without one still renders.
       }
@@ -319,6 +324,7 @@ export default function ImportJobPageClient() {
   const conversationAction = React.useCallback(
     async (run: (token: string, draftId: string) => Promise<JobImportConversation>) => {
       if (!accessToken || !draft) return;
+      answeringRef.current = true;
       setAnsweringEarlyQuestion(true);
       setError("");
       try {
@@ -330,6 +336,7 @@ export default function ImportJobPageClient() {
       } catch (caught) {
         setError(describeActionError(caught, "That could not be saved. Try again."));
       } finally {
+        answeringRef.current = false;
         setAnsweringEarlyQuestion(false);
       }
     },
