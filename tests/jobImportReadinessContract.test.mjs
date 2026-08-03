@@ -36,8 +36,6 @@ test("job-import readiness client owns the private typed contract", () => {
     "initializeJobImportDraft",
     "getJobImportDraft",
     "processJobImportDraft",
-    "reviewJobImportField",
-    "resolveJobImportConflict",
     "discardJobImportDraft",
     "deleteJobImportDraft",
     "applyJobImportDraft",
@@ -93,10 +91,10 @@ test("the user-facing import flow uses the private readiness substrate without p
     .join("\n");
 
   assert.match(userFacingSource, /jobImportReadiness/);
-  assert.match(userFacingSource, /I’ve built a strong first draft/);
-  assert.match(userFacingSource, /ImportedDraftConversation/);
+  assert.match(userFacingSource, /DraftAssistantCanvas/);
+  assert.match(userFacingSource, /answerJobImportQuestion/);
   assert.match(userFacingSource, /getJobImportContextForNativeJob/);
-  assert.match(userFacingSource, /What I found/);
+  assert.doesNotMatch(userFacingSource, /ImportedDraftConversation|jobImportConversation/);
   assert.doesNotMatch(userFacingSource, /Review flagged fields|Optional details not found/);
   assert.doesNotMatch(userFacingSource, /Create with AI/);
   assert.doesNotMatch(userFacingSource, /Process with AI/);

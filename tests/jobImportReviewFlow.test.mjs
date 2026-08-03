@@ -30,27 +30,26 @@ test("text import processes and applies a private draft into the normal Post Job
   assert.doesNotMatch(importPage, /OpenAI|GPT-|model selector/i);
 });
 
-test("uncertainty becomes one contextual conversation turn above the canonical form", () => {
-  const notice = read("components/import-job/ImportedDraftConversation.tsx");
-  const guidance = read("lib/importedDraftGuidance.ts");
-  const conversation = read("lib/jobImportConversation.ts");
+test("questions exist only on the checkpointed assistant canvas before handoff", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  const importPage = read("components/import-job/ImportJobPageClient.tsx");
+  const postJob = read("components/PostJobPage.tsx");
 
-  // The assistant is named consistently across the canvas and the editor; a
-  // generic label in one place and a character in the other read as two
-  // different systems.
-  assert.match(notice, /Bea/);
-  assert.match(notice, /DraftAssistantRobot/);
-  assert.match(notice, /What I found/);
-  assert.match(notice, /one decision still needs your expertise/i);
-  assert.match(notice, /Use the normal Post Job field directly below/);
-  assert.match(notice, /Use the full editor/);
-  assert.match(notice, /Not now/);
-  assert.doesNotMatch(notice, /Review flagged fields|Optional details not found|Review field|Why was this filled\?|legacy/i);
-  assert.match(guidance, /firstImportAttentionScreen/);
-  assert.match(guidance, /manuallyChanged/);
-  assert.match(conversation, /buildJobImportGuidanceTurns/);
-  assert.match(conversation, /JOB_FIELD_REGISTRY/);
-  assert.doesNotMatch(notice, /JSON\.stringify|chain.of.thought/i);
+  assert.match(canvas, /ConversationTurn/);
+  assert.match(canvas, /DraftAssistantRobot/);
+  assert.match(canvas, /onAnswerQuestion/);
+  assert.match(importPage, /answerJobImportQuestion/);
+  assert.match(turn, /question/);
+  for (const removed of [
+    "components/import-job/ImportedDraftConversation.tsx",
+    "lib/jobImportConversation.ts",
+    "lib/jobImportRoleGuidance.ts",
+  ]) {
+    assert.equal(exists(removed), false, `${removed} should remain deleted`);
+  }
+  assert.doesNotMatch(postJob, /jobImportConversation|ImportedDraftConversation|importGuidance/);
+  assert.doesNotMatch(postJob, /reviewJobImportField|resolveJobImportConflict/);
 });
 
 test("screening questions and suggestions use the normal form model and save path", () => {
@@ -58,8 +57,7 @@ test("screening questions and suggestions use the normal form model and save pat
   const formModel = read("lib/jobPostingForm.ts");
 
   assert.match(postJob, /setDomain\(hydrateJobPostingDomain\(values as unknown as BackendJob\)\)/);
-  assert.match(postJob, /reviewJobImportField/);
-  assert.match(postJob, /applyImportedSuggestionValue/);
+  assert.match(postJob, /attachJobImportDraft/);
   assert.match(formModel, /screening_questions: screeningQuestions/);
   assert.match(formModel, /job\.screening_questions\.map/);
   assert.match(postJob, /buildCompleteJobPayload\("published"/);
@@ -74,7 +72,7 @@ test("reopened native drafts treat filled formerly-missing fields as authoritati
   // the screen that needs attention. An imported draft opens at the beginning,
   // like every other draft, so the recruiter reviews what was filled in.
   assert.match(postJob, /setManuallyChangedImportFields/);
-  assert.doesNotMatch(postJob, /firstImportAttentionScreen/);
+  assert.doesNotMatch(postJob, /firstImportAttentionScreen|importGuidance/);
 });
 
 test("development example is explicit and cannot be mistaken for a live provider call", () => {

@@ -485,25 +485,6 @@ export async function processJobImportDraft(
   };
 }
 
-export async function reviewJobImportField(
-  accessToken: string,
-  draftId: string,
-  fieldPath: string,
-  payload:
-    | { action: "accept" | "reject" | "reset" }
-    | { action: "edit"; edited_value: JobImportNonNullJsonValue }
-): Promise<JobImportDraft> {
-  const response = await requestJson<unknown>(
-    `/job-imports/drafts/${encodeURIComponent(draftId)}/fields/${encodeURIComponent(fieldPath)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-      accessToken,
-    }
-  );
-  return decodeJobImportDraft(response);
-}
-
 /**
  * Answer a recruiter-owned detail while the draft is still being prepared.
  *
@@ -643,25 +624,6 @@ export async function pauseJobImportConversation(
       { method: "POST", accessToken }
     )
   );
-}
-
-export async function resolveJobImportConflict(
-  accessToken: string,
-  draftId: string,
-  fieldPath: string,
-  payload:
-    | { selected_value_index: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 }
-    | { replacement_value: JobImportNonNullJsonValue }
-): Promise<JobImportDraft> {
-  const response = await requestJson<unknown>(
-    `/job-imports/drafts/${encodeURIComponent(draftId)}/fields/${encodeURIComponent(fieldPath)}/resolve`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-      accessToken,
-    }
-  );
-  return decodeJobImportDraft(response);
 }
 
 export async function discardJobImportDraft(

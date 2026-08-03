@@ -65,7 +65,10 @@ test("the obsolete sessionStorage import branch cannot come back", () => {
     "lib/importJob/parseJobPost.ts",
     "lib/importJob/types.ts",
     "lib/jobImportReview.ts",
+    "lib/jobImportConversation.ts",
+    "lib/jobImportRoleGuidance.ts",
     "components/import-job/ImportReviewBanner.tsx",
+    "components/import-job/ImportedDraftConversation.tsx",
   ]) {
     assert.equal(exists(removed), false, `${removed} should have been removed`);
   }
@@ -77,6 +80,7 @@ test("exactly one import journey reaches Post Job", () => {
   // attaches after the ordinary save. Nothing else.
   assert.match(page, /searchParams\.get\("draftId"\)/);
   assert.match(page, /searchParams\.get\("importDraftId"\)/);
+  assert.doesNotMatch(page, /importGuidance|reviewJobImportField|resolveJobImportConflict/);
 
   const client = read("components/import-job/ImportJobPageClient.tsx");
   assert.match(client, /\/post-job\?draftId=/);

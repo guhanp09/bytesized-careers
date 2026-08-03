@@ -53,22 +53,9 @@ import {
   getJobImportContextForNativeJob,
   getJobImportDraft,
   getJobImportSource,
-  reviewJobImportField,
-  resolveJobImportConflict,
-  type JobImportDraft,
   type JobImportDraftContext,
-  type JobImportField,
-  type JobImportNonNullJsonValue,
 } from "../lib/jobImportReadiness";
-import {
-  importDraftSummary,
-  nativeFieldForImport,
-} from "../lib/importedDraftGuidance";
-import {
-  buildJobImportGuidanceTurns,
-  nextJobImportGuidanceTurn,
-  type JobImportGuidanceTurn,
-} from "../lib/jobImportConversation";
+import { nativeFieldForImport } from "../lib/importedDraftGuidance";
 import {
   jobImportValueWasRemoved,
   trackJobImportEvent,
@@ -95,9 +82,8 @@ import {
   validateRepeatableDomainRows,
   type JobPostingDomainState,
   type RecruiterJobScreen,
-  type RecruiterJobStep,
 } from "../lib/jobPostingForm";
-import { jobFieldEntry, screenForField, type JobFieldName } from "../lib/jobFieldRegistry";
+import { screenForField, type JobFieldName } from "../lib/jobFieldRegistry";
 
 type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type Turnaround = { value: number; unit: TurnaroundUnit | ""; basis: TurnaroundBasis | "" } | null;
@@ -1353,11 +1339,6 @@ export default function PostJobPage() {
   const [primaryRoleId, setPrimaryRoleId] = useState("");
   const [roleSpecialization, setRoleSpecialization] = useState("");
   const [importContext, setImportContext] = useState<JobImportDraftContext | null>(null);
-  const [importGuidanceEnabled, setImportGuidanceEnabled] = useState(true);
-  const [activeImportGuidanceTurnId, setActiveImportGuidanceTurnId] = useState<string | null>(null);
-  const [importGuidanceBusy, setImportGuidanceBusy] = useState(false);
-  const [importGuidanceError, setImportGuidanceError] = useState<string | null>(null);
-  const [importGuidanceAnnouncement, setImportGuidanceAnnouncement] = useState("");
   const [manuallyChangedImportFields, setManuallyChangedImportFields] = useState<Set<string>>(
     () => new Set()
   );
@@ -1877,12 +1858,8 @@ export default function PostJobPage() {
       .then((context) => {
         if (cancelled) return;
         setImportContext(context);
-        setImportGuidanceEnabled(true);
-        setActiveImportGuidanceTurnId(null);
-        setImportGuidanceError(null);
         setManuallyChangedImportFields(new Set());
         importEditAnalyticsRef.current.clear();
-        setActiveImportGuidanceTurnId(null);
       })
       .catch(() => {
         // Ordinary manually-created drafts do not have import context.
@@ -2077,9 +2054,6 @@ export default function PostJobPage() {
             (importSource.source_type === "public_url" ? "Public job post" : "Pasted job post"),
           source_url: importSource.final_source_url || importSource.source_url,
         });
-        setImportGuidanceEnabled(true);
-        setImportGuidanceError(null);
-        setActiveImportGuidanceTurnId(null);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -2928,35 +2902,6 @@ export default function PostJobPage() {
     window.setTimeout(() => tryFocus(0), delays[0]);
   };
 
-  const focusImportedGuidanceTarget = (targetId?: string) => {
-    if (!targetId) return;
-    const requestId = ++focusRequestRef.current;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const delays = [0, 80, 220];
-    const tryFocus = (attempt: number) => {
-      if (focusRequestRef.current !== requestId) return;
-      const target =
-        document.querySelector<HTMLElement>(`[data-quality-target="${targetId}"]`) ||
-        document.getElementById(targetId);
-      if (!target) {
-        if (attempt < delays.length - 1) {
-          window.setTimeout(() => tryFocus(attempt + 1), delays[attempt + 1] - delays[attempt]);
-        }
-        return;
-      }
-      target.scrollIntoView({
-        block: "center",
-        behavior: reducedMotion ? "auto" : "smooth",
-      });
-      const focusable =
-        target.matches("button, input, select, textarea, [tabindex]")
-          ? target
-          : target.querySelector<HTMLElement>("button, input, select, textarea, [tabindex]");
-      focusable?.focus({ preventScroll: true });
-    };
-    window.setTimeout(() => tryFocus(0), delays[0]);
-  };
-
   const goToJobQualityItem = (item: JobQualityItem) => {
     setPublishReadyOpen(false);
     setDirection(STEPS.indexOf(item.step) < STEPS.indexOf(step) ? "back" : "forward");
@@ -3643,576 +3588,8 @@ export default function PostJobPage() {
     setStep(STEPS[idx - 1]);
   };
 
-  const applyImportedSuggestionValue = (field: JobImportField, value: unknown): boolean => {
-    const nativeField = nativeFieldForImport(field.field_path);
-    if (!nativeField || value === null || value === undefined) return false;
-    const dirty = () => markPayloadDirty(nativeField);
-    const numberText =
-      typeof value === "number" ||
-      (typeof value === "string" && value.trim() && Number.isFinite(Number(value)))
-        ? String(value)
-        : "";
-    const stringList = Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === "string")
-      : [];
-
-    if (field.field_path === "primary_role_key" && typeof value === "string") {
-      const role = roles.find((item) => item.slug === value);
-      if (!role) return false;
-      setPrimaryRoleId(role.id);
-      dirty();
-      return true;
-    }
-
-    switch (nativeField) {
-      case "title":
-        if (typeof value !== "string") return false;
-        setTitle(value);
-        break;
-      case "role_specialization":
-        if (typeof value !== "string") return false;
-        setRoleSpecialization(value);
-        break;
-      case "location":
-        if (typeof value !== "string") return false;
-        if (workMode !== "Remote") setCity(value);
-        break;
-      case "compensation_mode":
-        if (!["fixed", "range", "negotiable"].includes(String(value))) return false;
-        setCompensationMode(value as CompensationMode);
-        break;
-      case "budget_amount":
-        if (!numberText) return false;
-        setBudgetMin(numberText);
-        break;
-      case "budget_max":
-        if (!numberText) return false;
-        setBudgetMax(numberText);
-        break;
-      case "budget_note":
-        if (typeof value !== "string") return false;
-        setBudgetNote(value);
-        break;
-      case "budget_currency":
-        if (typeof value !== "string") return false;
-        setBudgetCurrency(value);
-        break;
-      case "budget_unit":
-        if (!COMPENSATION_UNITS.includes(value as CompensationUnit)) return false;
-        setBudgetUnit(value as CompensationUnit);
-        setLegacyBudgetUnit(null);
-        break;
-      case "budget_unit_custom":
-        if (typeof value !== "string") return false;
-        setBudgetUnitCustom(value);
-        break;
-      case "experience_level": {
-        if (typeof value !== "string") return false;
-        const range = value.match(/(\d+)\s*[–-]\s*(\d+)/);
-        const single = value.match(/(\d+)\+?/);
-        if (!range && !single) return false;
-        setExpMin(range?.[1] ?? single?.[1] ?? "");
-        setExpMax(range?.[2] ?? single?.[1] ?? "");
-        break;
-      }
-      case "platforms": {
-        const next = normalizeJobPlatforms(stringList);
-        if (!next.length) return false;
-        setPlatforms(next);
-        setPlatform(next[0]);
-        break;
-      }
-      case "start_timeframe":
-        if (typeof value !== "string") return false;
-        setStartWithin(value as StartTimeframe);
-        break;
-      case "work_mode": {
-        const next: WorkMode =
-          value === "remote"
-            ? "Remote"
-            : value === "hybrid"
-              ? "Hybrid"
-              : value === "onsite"
-                ? "On-site"
-                : "";
-        if (!next) return false;
-        setWorkMode(next);
-        if (next === "Remote") setCity("");
-        break;
-      }
-      case "engagement_type":
-        if (!ENGAGEMENT_TYPES.includes(value as EngagementType)) return false;
-        setEngagementType(value as EngagementType);
-        break;
-      case "expected_weekly_hours_min":
-        if (!numberText) return false;
-        setExpectedWeeklyHoursMin(numberText);
-        break;
-      case "expected_weekly_hours_max":
-        if (!numberText) return false;
-        setExpectedWeeklyHoursMax(numberText);
-        break;
-      case "turnaround_value":
-      case "turnaround_unit":
-      case "turnaround_basis": {
-        const imported = (path: string) =>
-          path === field.field_path
-            ? value
-            : importContext?.draft.fields.find((item) => item.field_path === path)
-                ?.effective_value;
-        const amount = Number(imported("turnaround_value"));
-        const unit = imported("turnaround_unit");
-        const basis = imported("turnaround_basis");
-        if (!Number.isFinite(amount) || amount <= 0) return false;
-        setTurnaround({
-          value: amount,
-          unit: ["hours", "business_days", "calendar_days", "weeks"].includes(String(unit))
-            ? (unit as TurnaroundUnit)
-            : "",
-          basis: ["per_deliverable", "batch", "first_draft", "final_delivery"].includes(
-            String(basis)
-          )
-            ? (basis as TurnaroundBasis)
-            : "",
-        });
-        break;
-      }
-      case "about_channel":
-        if (typeof value !== "string") return false;
-        setAbout(value);
-        break;
-      case "responsibilities":
-        setResponsibilities(stringList.join("\n"));
-        break;
-      case "requirements":
-        setRequirements(stringList.join("\n"));
-        break;
-      case "application_requirements":
-        setApplicationRequirements(sanitizeRequirementKeys(stringList, "job"));
-        setNoFirstMessageRequirements(false);
-        break;
-      case "how_to_apply":
-        if (typeof value !== "string") return false;
-        setHowToApply(value);
-        updateDomain({ howToApply: value }, ["how_to_apply"]);
-        return true;
-      case "reference_videos":
-        if (!Array.isArray(value)) return false;
-        setRefVideos(
-          value
-            .map((entry) => normalizeReferenceVideo(entry))
-            .filter((entry): entry is ReferenceVideo => Boolean(entry))
-        );
-        break;
-      case "tags":
-        setTags(stringList);
-        break;
-      case "content_niches":
-        setContentNiches(normalizeCreatorContextList(stringList));
-        break;
-      case "content_genres":
-        setContentGenres(normalizeCreatorContextList(stringList));
-        break;
-      case "formats_hired_for":
-        setFormatsHiredFor(normalizeCreatorContextList(stringList));
-        break;
-      case "required_tool_keys":
-      case "other_required_tools": {
-        const imported = (path: string): string[] => {
-          const candidate =
-            path === field.field_path
-              ? value
-              : importContext?.draft.fields.find((item) => item.field_path === path)
-                  ?.effective_value;
-          return Array.isArray(candidate)
-            ? candidate.filter((item): item is string => typeof item === "string")
-            : [];
-        };
-        setTools([
-          ...imported("required_tool_keys").map(
-            (key) => findToolCatalogEntry(key)?.name ?? key
-          ),
-          ...imported("other_required_tools"),
-        ]);
-        setToolsConfirmed(true);
-        break;
-      }
-      default: {
-        const serialized = serializeJobPostingDomain(domain) as Record<string, unknown>;
-        if (!Object.prototype.hasOwnProperty.call(serialized, nativeField)) return false;
-        setDomain(
-          hydrateJobPostingDomain({
-            ...serialized,
-            [nativeField]: value,
-          } as unknown as BackendJob)
-        );
-        break;
-      }
-    }
-    dirty();
-    return true;
-  };
-
-  const currentImportCanonicalValues = (): Record<string, unknown> => {
-    const payload = buildCompleteJobPayload("draft", compensationMode || null) as Record<
-      string,
-      unknown
-    >;
-    const selectedRole = roles.find((role) => role.id === primaryRoleId);
-    return {
-      ...payload,
-      primary_role_key: selectedRole?.slug ?? null,
-      role_specialization: roleSpecialization || null,
-    };
-  };
-
-  const persistedImportValue = (field: JobImportField, value: unknown): unknown => {
-    const nativeField = nativeFieldForImport(field.field_path);
-    if (!nativeField) return undefined;
-    if (field.field_path === "primary_role_key") {
-      return roles.find((role) => role.slug === value)?.id ?? null;
-    }
-    if (nativeField === "application_requirements") {
-      return sanitizeRequirementKeys(
-        Array.isArray(value)
-          ? value.filter((item): item is string => typeof item === "string")
-          : [],
-        "job"
-      );
-    }
-    return value;
-  };
-
-  const selectImportGuidanceTurn = (
-    turn: JobImportGuidanceTurn,
-    focusQuestion = false
-  ) => {
-    setActiveImportGuidanceTurnId(turn.id);
-    setDirection(STEPS.indexOf(turn.screen) < STEPS.indexOf(step) ? "back" : "forward");
-    setStep(turn.screen);
-    setImportGuidanceError(null);
-    if (focusQuestion) {
-      window.requestAnimationFrame(() => {
-        document.getElementById("import-guidance-question")?.focus({ preventScroll: true });
-      });
-    }
-  };
-
-  const advanceImportGuidance = (
-    completedTurn: JobImportGuidanceTurn,
-    nextDraft: JobImportDraftContext["draft"],
-    canonicalOverrides: Record<string, unknown> = {}
-  ) => {
-    if (!importContext) return;
-    const nextTurns = buildJobImportGuidanceTurns(nextDraft, {
-      jobTitle: title,
-      roleName:
-        roles.find((role) => role.id === primaryRoleId)?.name ||
-        loadedJobRef.current?.primary_role_name_snapshot ||
-        null,
-      employerName: activeHiringDisplayName,
-      sourceLabel: importContext.source_label,
-      canonicalValues: {
-        ...currentImportCanonicalValues(),
-        ...canonicalOverrides,
-      },
-      manuallyChanged: manuallyChangedImportFields,
-    });
-    const nextTurn = nextJobImportGuidanceTurn(nextTurns, completedTurn.id);
-    setActiveImportGuidanceTurnId(nextTurn?.id ?? null);
-    if (nextTurn) {
-      setDirection(STEPS.indexOf(nextTurn.screen) < STEPS.indexOf(step) ? "back" : "forward");
-      setStep(nextTurn.screen);
-      window.requestAnimationFrame(() => {
-        document.getElementById("import-guidance-question")?.focus({ preventScroll: true });
-      });
-    } else {
-      setDirection("forward");
-      setStep("review");
-      window.requestAnimationFrame(() => {
-        document.getElementById("import-guidance-title")?.focus({ preventScroll: true });
-      });
-    }
-  };
-
-  const handleImportedSuggestion = async (
-    field: JobImportField,
-    guidanceTurn?: JobImportGuidanceTurn
-  ) => {
-    if (!importContext || field.proposed_value === null || field.proposed_value === undefined) {
-      return;
-    }
-    setSubmitError(null);
-    setImportGuidanceError(null);
-    setImportGuidanceBusy(true);
-    try {
-      const nextDraft = await withFreshBackendToken(async (token) => {
-        const reviewed = await reviewJobImportField(
-          token,
-          importContext.draft.id,
-          field.field_path,
-          { action: "accept" }
-        );
-        const accepted = reviewed.fields.find(
-          (item) => item.field_path === field.field_path
-        );
-        const acceptedValue = accepted?.effective_value ?? field.proposed_value;
-        const nativeField = nativeFieldForImport(field.field_path);
-        if (draftId && nativeField) {
-          let persistedValue = acceptedValue;
-          if (field.field_path === "primary_role_key") {
-            persistedValue =
-              roles.find((role) => role.slug === acceptedValue)?.id ?? null;
-          } else if (nativeField === "application_requirements") {
-            persistedValue = sanitizeRequirementKeys(
-              Array.isArray(acceptedValue)
-                ? acceptedValue.filter(
-                    (item): item is string => typeof item === "string"
-                  )
-                : [],
-              "job"
-            );
-          }
-          if (persistedValue !== null && persistedValue !== undefined) {
-            await updateJob(token, draftId, {
-              [nativeField]: persistedValue,
-            } as Partial<BackendCreateJobPayload>);
-          }
-        }
-        return reviewed;
-      });
-      const accepted = nextDraft.fields.find((item) => item.field_path === field.field_path);
-      const acceptedValue = accepted?.effective_value ?? field.proposed_value;
-      if (!applyImportedSuggestionValue(accepted ?? field, acceptedValue)) {
-        throw new Error("Open the field and enter the value in the format shown.");
-      }
-      setImportContext((previous) =>
-        previous ? { ...previous, draft: nextDraft } : previous
-      );
-      if (guidanceTurn) {
-        advanceImportGuidance(guidanceTurn, nextDraft, {
-          [field.field_path]: acceptedValue,
-        });
-      }
-    } catch (error) {
-      const message =
-        describeActionError(error, "This suggestion could not be applied. Review the field instead.")
-      setSubmitError(message);
-      setImportGuidanceError(message);
-    } finally {
-      setImportGuidanceBusy(false);
-    }
-  };
-
-  const handleImportedConflict = async (
-    turn: JobImportGuidanceTurn,
-    field: JobImportField,
-    alternativeIndex: number
-  ) => {
-    if (!importContext) return;
-    setImportGuidanceBusy(true);
-    setImportGuidanceError(null);
-    setSubmitError(null);
-    try {
-      const nextDraft = await withFreshBackendToken(async (token) => {
-        const reviewed = await resolveJobImportConflict(
-          token,
-          importContext.draft.id,
-          field.field_path,
-          { selected_value_index: alternativeIndex as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 }
-        );
-        const resolved = reviewed.fields.find(
-          (item) => item.field_path === field.field_path
-        );
-        const resolvedValue = resolved?.effective_value;
-        const nativeField = nativeFieldForImport(field.field_path);
-        const persistedValue = persistedImportValue(field, resolvedValue);
-        if (draftId && nativeField && persistedValue !== null && persistedValue !== undefined) {
-          await updateJob(token, draftId, {
-            [nativeField]: persistedValue,
-          } as Partial<BackendCreateJobPayload>);
-        }
-        return { reviewed, resolvedValue };
-      });
-      const resolvedField = nextDraft.reviewed.fields.find(
-        (item) => item.field_path === field.field_path
-      );
-      if (
-        nextDraft.resolvedValue !== null &&
-        nextDraft.resolvedValue !== undefined &&
-        !applyImportedSuggestionValue(resolvedField ?? field, nextDraft.resolvedValue)
-      ) {
-        throw new Error("Open the field and enter the value in the format shown.");
-      }
-      setImportContext((previous) =>
-        previous ? { ...previous, draft: nextDraft.reviewed } : previous
-      );
-      advanceImportGuidance(turn, nextDraft.reviewed, {
-        [field.field_path]: nextDraft.resolvedValue,
-      });
-    } catch (error) {
-      const message = describeActionError(
-        error,
-        "That answer could not be saved. Try again or enter it in the draft."
-      );
-      setImportGuidanceError(message);
-      setSubmitError(message);
-    } finally {
-      setImportGuidanceBusy(false);
-    }
-  };
-
-  const skipImportedGuidanceTurns = async (
-    turns: readonly JobImportGuidanceTurn[]
-  ) => {
-    if (!importContext || !turns.length) return;
-    setImportGuidanceBusy(true);
-    setImportGuidanceError(null);
-    try {
-      let nextDraft = importContext.draft;
-      await withFreshBackendToken(async (token) => {
-        for (const turn of turns) {
-          for (const fieldPath of turn.fieldPaths) {
-            const field = nextDraft.fields.find((item) => item.field_path === fieldPath);
-            if (!field || field.review_status !== "pending") continue;
-            nextDraft = await reviewJobImportField(
-              token,
-              nextDraft.id,
-              field.field_path,
-              { action: "reject" }
-            );
-          }
-        }
-      });
-      setImportContext((previous) =>
-        previous ? { ...previous, draft: nextDraft } : previous
-      );
-      advanceImportGuidance(turns[turns.length - 1], nextDraft);
-    } catch (error) {
-      const message = describeActionError(
-        error,
-        "That preference could not be saved. Try again or continue in the full editor."
-      );
-      setImportGuidanceError(message);
-    } finally {
-      setImportGuidanceBusy(false);
-    }
-  };
-
-  const commitImportedGuidanceTurn = async (turn: JobImportGuidanceTurn) => {
-    if (!importContext) return;
-    const canonicalValues = currentImportCanonicalValues();
-    const fields = importContext.draft.fields.filter((field) =>
-      turn.fieldPaths.includes(field.field_path)
-    );
-    const editable = fields.filter((field) => {
-      const native = nativeFieldForImport(field.field_path);
-      return (
-        field.review_status === "pending" &&
-        (manuallyChangedImportFields.has(field.field_path) ||
-          Boolean(native && manuallyChangedImportFields.has(native)))
-      );
-    });
-    const stillWaiting = fields.filter(
-      (field) =>
-        field.review_status === "pending" &&
-        !editable.includes(field) &&
-        (field.provenance_state === "missing" ||
-          field.provenance_state === "conflicting_source_values" ||
-          field.needs_review)
-    );
-    if (stillWaiting.length) {
-      setImportGuidanceError("Choose or enter an answer before continuing. You can also save the private draft and finish later.");
-      const first = stillWaiting[0];
-      const native = nativeFieldForImport(first.field_path);
-      if (native) {
-        const target = jobFieldEntry(native).target;
-        if (target) focusImportedGuidanceTarget(target);
-      }
-      return;
-    }
-    const values = editable.map((field) => ({
-      field,
-      value: canonicalValues[field.field_path],
-    }));
-    if (values.some(({ value }) => jobImportValueWasRemoved(value))) {
-      setImportGuidanceError("Complete the answer in the Post Job field below before continuing.");
-      return;
-    }
-    if (!editable.length) {
-      const nextTurn = nextJobImportGuidanceTurn(importGuidanceTurns, turn.id);
-      if (nextTurn) selectImportGuidanceTurn(nextTurn, true);
-      else {
-        setActiveImportGuidanceTurnId(null);
-        setStep("review");
-      }
-      return;
-    }
-
-    setImportGuidanceBusy(true);
-    setImportGuidanceError(null);
-    try {
-      let nextDraft = importContext.draft;
-      await withFreshBackendToken(async (token) => {
-        const nativePatch: Partial<BackendCreateJobPayload> = {};
-        for (const { field, value } of values) {
-          nextDraft = await reviewJobImportField(
-            token,
-            nextDraft.id,
-            field.field_path,
-            { action: "edit", edited_value: value as JobImportNonNullJsonValue }
-          );
-          const native = nativeFieldForImport(field.field_path);
-          const persistedValue = persistedImportValue(field, value);
-          if (native && persistedValue !== undefined) {
-            Object.assign(nativePatch, { [native]: persistedValue });
-          }
-        }
-        if (draftId && Object.keys(nativePatch).length) {
-          await updateJob(token, draftId, nativePatch);
-        }
-      });
-      setImportContext((previous) =>
-        previous ? { ...previous, draft: nextDraft } : previous
-      );
-      setImportGuidanceAnnouncement("Answer saved. Moving to the next guided decision.");
-      advanceImportGuidance(turn, nextDraft, canonicalValues);
-    } catch (error) {
-      const message = describeActionError(
-        error,
-        "This answer could not be saved. Check the field and try again."
-      );
-      setImportGuidanceError(message);
-      setSubmitError(message);
-    } finally {
-      setImportGuidanceBusy(false);
-    }
-  };
-
-  const canUseImportedSuggestion = (field: JobImportField): boolean => {
-    if (field.field_path === "experience_level") return false;
-    if (field.field_path === "location" && workMode === "Remote") return false;
-    if (field.field_path === "primary_role_key") {
-      return roles.some((role) => role.slug === field.proposed_value);
-    }
-    if (!field.field_path.startsWith("turnaround_")) return true;
-    const candidate = (path: string) => {
-      const related = importContext?.draft.fields.find((item) => item.field_path === path);
-      return path === field.field_path
-        ? field.proposed_value
-        : related?.effective_value;
-    };
-    return (
-      Number(candidate("turnaround_value")) > 0 &&
-      ["hours", "business_days", "calendar_days", "weeks"].includes(
-        String(candidate("turnaround_unit"))
-      ) &&
-      ["per_deliverable", "batch", "first_draft", "final_delivery"].includes(
-        String(candidate("turnaround_basis"))
-      )
-    );
-  };
-
+  /* Import questions are resolved in DraftAssistantCanvas before handoff.
+   * An imported native draft uses the standard Post Job editor from here. */
   const hiringIdentityPanel = (
     <section className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -4306,24 +3683,6 @@ export default function PostJobPage() {
     domain,
   } as const;
 
-  const importCanonicalValues = importContext ? currentImportCanonicalValues() : {};
-  const importGuidanceTurns = importContext
-    ? buildJobImportGuidanceTurns(importContext.draft, {
-        jobTitle: title,
-        roleName: selectedRoleName,
-        employerName: activeHiringDisplayName,
-        sourceLabel: importContext.source_label,
-        canonicalValues: importCanonicalValues,
-        manuallyChanged: manuallyChangedImportFields,
-      })
-    : [];
-  const activeImportGuidanceTurn =
-    importGuidanceTurns.find((turn) => turn.id === activeImportGuidanceTurnId) ??
-    nextJobImportGuidanceTurn(importGuidanceTurns);
-  const importSummary = importContext
-    ? importDraftSummary(importContext.draft, manuallyChangedImportFields)
-    : null;
-
   return (
     <main className="min-h-screen text-white bg-[#0b0b0f]">
       <HiringIdentityModal
@@ -4359,18 +3718,7 @@ export default function PostJobPage() {
               totalSteps={STEPS.length}
               hasNext={hasNext}
               hasBack={hasBack}
-              onNext={(current) => {
-                if (
-                  importContext &&
-                  importGuidanceEnabled &&
-                  activeImportGuidanceTurn &&
-                  activeImportGuidanceTurn.screen === current
-                ) {
-                  void commitImportedGuidanceTurn(activeImportGuidanceTurn);
-                  return;
-                }
-                goNext(current);
-              }}
+              onNext={goNext}
               onBack={goBack}
               basicsErrors={basicsErrorMap}
               title={title}
