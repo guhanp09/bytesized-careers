@@ -197,6 +197,54 @@ def _location_effects(
     )
 
 
+#: Fields a numeric pay conflict resolves on the recruiter's behalf.
+_PAY_RANGE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"compensation_mode", "budget_amount", "budget_max"}
+)
+
+
+def pay_range_from_conflict(values: list[object]) -> dict[str, object] | None:
+    """Turn two stated pay figures into the range they describe.
+
+    A post that says 30,000 in one line and 35,000 in another is not really
+    contradicting itself — it is describing a band, and both numbers came from
+    the recruiter. Asking them to pick one discards half of what they wrote,
+    so the range is built from both and shown in the editor for them to keep or
+    change. Nothing is invented: the bounds are exactly the figures found.
+
+    Returns None unless there are at least two distinct numbers, because a
+    single figure is not a range and non-numeric alternatives are a genuine
+    disagreement the recruiter has to settle.
+    """
+
+    numbers: list[float] = []
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            numbers.append(float(value))
+            continue
+        if isinstance(value, str):
+            cleaned = value.replace(",", "").strip()
+            try:
+                numbers.append(float(cleaned))
+            except ValueError:
+                # A worded alternative means the source disagrees about more
+                # than the amount, which is not something to resolve silently.
+                return None
+    distinct = sorted(set(numbers))
+    if len(distinct) < 2:
+        return None
+
+    low, high = distinct[0], distinct[-1]
+    as_int = lambda number: int(number) if number.is_integer() else number  # noqa: E731
+    return {
+        "compensation_mode": "range",
+        "budget_amount": as_int(low),
+        "budget_max": as_int(high),
+    }
+
+
 def suppressed_by_answers(
     answers: dict[str, object],
     *,

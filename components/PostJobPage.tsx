@@ -61,7 +61,6 @@ import {
   type JobImportNonNullJsonValue,
 } from "../lib/jobImportReadiness";
 import {
-  firstImportAttentionScreen,
   importDraftSummary,
   nativeFieldForImport,
 } from "../lib/importedDraftGuidance";
@@ -180,31 +179,6 @@ const comparableImportValue = (value: unknown): unknown => {
 
 const importValuesMatch = (left: unknown, right: unknown): boolean =>
   JSON.stringify(comparableImportValue(left)) === JSON.stringify(comparableImportValue(right));
-
-const initialImportGuidanceTurn = (
-  draft: JobImportDraft,
-  sourceLabel: string
-): JobImportGuidanceTurn | null => {
-  const canonicalValues = Object.fromEntries(
-    draft.fields
-      .filter((field) => field.effective_value !== null && field.effective_value !== undefined)
-      .map((field) => [field.field_path, field.effective_value])
-  );
-  const jobTitle = typeof canonicalValues.title === "string" ? canonicalValues.title : null;
-  const roleName =
-    typeof canonicalValues.primary_role_key === "string"
-      ? canonicalValues.primary_role_key.replaceAll("-", " ")
-      : null;
-  return nextJobImportGuidanceTurn(
-    buildJobImportGuidanceTurns(draft, {
-      jobTitle,
-      roleName,
-      sourceLabel,
-      canonicalValues,
-      manuallyChanged: new Set(),
-    })
-  );
-};
 
 type SavedBasics = {
   title: string;
@@ -1889,9 +1863,9 @@ export default function PostJobPage() {
     });
     if (!changed.size) return;
     setManuallyChangedImportFields((previous) => new Set([...previous, ...changed]));
-    const attentionScreen = firstImportAttentionScreen(importContext.draft, STEPS, changed);
-    setDirection("forward");
-    setStep(attentionScreen ?? "review");
+    // Deliberately no step jump. An imported draft opens exactly like any other
+    // draft — at the beginning — so the recruiter reviews what was filled in
+    // rather than being dropped into the middle of their own job post.
   }, [draftLoading, importContext, roles]);
 
   React.useEffect(() => {
@@ -1908,10 +1882,7 @@ export default function PostJobPage() {
         setImportGuidanceError(null);
         setManuallyChangedImportFields(new Set());
         importEditAnalyticsRef.current.clear();
-        const firstTurn = initialImportGuidanceTurn(context.draft, context.source_label);
-        setActiveImportGuidanceTurnId(firstTurn?.id ?? null);
-        setDirection("forward");
-        setStep(firstTurn?.screen ?? "review");
+        setActiveImportGuidanceTurnId(null);
       })
       .catch(() => {
         // Ordinary manually-created drafts do not have import context.
@@ -2108,10 +2079,7 @@ export default function PostJobPage() {
         });
         setImportGuidanceEnabled(true);
         setImportGuidanceError(null);
-        const firstTurn = initialImportGuidanceTurn(importDraft, importSource.source_title ||
-          (importSource.source_type === "public_url" ? "Public job post" : "Pasted job post"));
-        setActiveImportGuidanceTurnId(firstTurn?.id ?? null);
-        setStep(firstTurn?.screen ?? "review");
+        setActiveImportGuidanceTurnId(null);
       })
       .catch((error) => {
         if (!cancelled) {

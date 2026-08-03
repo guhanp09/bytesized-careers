@@ -100,6 +100,16 @@ _VALID_ANSWERS: dict[str, object] = {
     "budget_unit": "per video",
     "start_timeframe": "ASAP",
     "platforms": ["youtube"],
+    "revision_policy": "fixed",
+    "revision_rounds": 2,
+    "creative_autonomy": "guided_by_references",
+    "duration_type": "ongoing",
+    "hiring_process": [{"stage": "interview"}],
+    "source_inputs": [{"type": "raw_footage"}],
+    "deliverables": [{"type": "long_form_video", "quantity": 1, "frequency": "per_month"}],
+    "budget_max": 2000,
+    "turnaround_value": 3,
+    "location": "Bengaluru, India",
 }
 
 
@@ -941,3 +951,106 @@ def test_a_senior_title_recommends_the_senior_alternative() -> None:
         )
         == "Senior, 5+ years"
     )
+
+
+# ---------------------------------------------------------------------------
+# Two figures are a range, not a question
+# ---------------------------------------------------------------------------
+
+
+def test_two_pay_figures_become_the_range_they_describe() -> None:
+    """A post saying 30,000 and 35,000 is describing a band, not contradicting
+    itself. Making the recruiter pick one discards half of what they wrote."""
+
+    from app.core.job_import_answer_effects import pay_range_from_conflict
+
+    assert pay_range_from_conflict([30000, 35000]) == {
+        "compensation_mode": "range",
+        "budget_amount": 30000,
+        "budget_max": 35000,
+    }
+    # Formatting in the source must not defeat it.
+    assert pay_range_from_conflict(["30,000", "35000"])["budget_max"] == 35000
+    # Order does not matter; the band is low to high.
+    assert pay_range_from_conflict([35000, 30000])["budget_amount"] == 30000
+
+
+def test_a_range_is_only_built_from_genuine_numbers() -> None:
+    from app.core.job_import_answer_effects import pay_range_from_conflict
+
+    # One figure is not a range.
+    assert pay_range_from_conflict([30000]) is None
+    assert pay_range_from_conflict([30000, 30000]) is None
+    # A worded alternative means the source disagrees about more than the
+    # amount, which is a real decision rather than a band.
+    assert pay_range_from_conflict([30000, "Negotiable"]) is None
+    assert pay_range_from_conflict([]) is None
+
+
+@pytest.mark.anyio
+async def test_a_pay_conflict_is_resolved_instead_of_asked(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "pay-range")
+    draft_id = await _prepared_draft(client, headers, owner_id, "pay-range")
+
+    # Give the draft the two-figure conflict the reported job had.
+    async with TestSessionLocal() as session:
+        from sqlalchemy import select
+
+        from app.models import JobImportField as Field
+
+        row = (
+            await session.execute(
+                select(Field).where(
+                    Field.draft_id == UUID(draft_id),
+                    Field.field_path == "budget_amount",
+                )
+            )
+        ).scalar_one_or_none()
+        assert row is not None, "fixture should track budget_amount"
+        row.provenance_state = "conflicting_source_values"
+        row.review_status = "pending"
+        row.conflicting_values = [
+            {"value": 30000, "evidence": []},
+            {"value": 35000, "evidence": []},
+        ]
+        await session.commit()
+
+    state = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+
+    # The recruiter is never asked to choose between their own two figures.
+    seen = []
+    for _ in range(12):
+        question = state.get("active_question")
+        if state["ready_for_draft"] or question is None:
+            break
+        seen.append(question["field_path"])
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={
+                "field_path": question["field_path"],
+                "value": _answer_for(question["field_path"]),
+            },
+        )
+        if response.status_code != 200:
+            break
+        state = response.json()
+
+    assert "budget_amount" not in seen
+    assert "budget_max" not in seen
+
+    draft = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    prefill = draft["recruiter_prefill"]
+    assert prefill["compensation_mode"] == "range"
+    assert prefill["budget_amount"] == 30000
+    assert prefill["budget_max"] == 35000
+    # Reading the post is free.
+    assert counting_provider.calls == 0

@@ -23,6 +23,7 @@ from uuid import UUID, uuid4
 from app.core.job_import_answer_effects import (
     AnswerSuggestion,
     effects_for_answer,
+    pay_range_from_conflict,
     suppressed_by_answers,
 )
 from app.core.job_import_conversation import (
@@ -318,6 +319,48 @@ class JobImportConversationService:
     # The loop
     # ------------------------------------------------------------------
 
+    async def _resolve_pay_range(self, draft: JobImportDraft) -> bool:
+        """Settle a two-figure pay conflict as a range instead of asking.
+
+        Both numbers came from the recruiter's own post, so a band spanning them
+        discards nothing and is shown in the editor for them to keep or change.
+        Returns True when something was resolved, so the caller rebuilds the
+        queue without the question.
+        """
+
+        answers = self._stored_answers(draft)
+        if any(path in answers for path in ("budget_amount", "budget_max")):
+            return False
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        conflict = next(
+            (
+                field
+                for field in fields
+                if field.field_path == "budget_amount"
+                and field.provenance_state == "conflicting_source_values"
+                and field.review_status == "pending"
+            ),
+            None,
+        )
+        if conflict is None or not conflict.conflicting_values:
+            return False
+
+        resolved = pay_range_from_conflict(
+            [item.get("value") for item in conflict.conflicting_values if isinstance(item, dict)]
+        )
+        if resolved is None:
+            return False
+
+        await self._store(
+            draft,
+            {
+                "recruiter_prefill": {**answers, **resolved},
+                "recruiter_prefill_updated_at": datetime.now(UTC),
+            },
+        )
+        return True
+
     async def _advance(
         self,
         draft: JobImportDraft,
@@ -332,6 +375,9 @@ class JobImportConversationService:
         explicitly gated step.
         """
 
+        if await self._resolve_pay_range(draft):
+            # The pay question no longer exists; rebuild without it.
+            pass
         queue = await self._queue_for(draft)
         candidate = queue[0] if queue else None
 

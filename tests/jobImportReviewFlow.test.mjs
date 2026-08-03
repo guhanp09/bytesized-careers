@@ -69,10 +69,12 @@ test("screening questions and suggestions use the normal form model and save pat
 test("reopened native drafts treat filled formerly-missing fields as authoritative", () => {
   const postJob = read("components/PostJobPage.tsx");
   assert.match(postJob, /jobImportValueWasRemoved\(currentValue\)/);
-  assert.match(
-    postJob,
-    /firstImportAttentionScreen\(importContext\.draft, STEPS, changed\)/
-  );
+  // The reconciliation still runs — a value the recruiter has since changed is
+  // never overwritten by import context — but it no longer jumps the flow to
+  // the screen that needs attention. An imported draft opens at the beginning,
+  // like every other draft, so the recruiter reviews what was filled in.
+  assert.match(postJob, /setManuallyChangedImportFields/);
+  assert.doesNotMatch(postJob, /firstImportAttentionScreen/);
 });
 
 test("development example is explicit and cannot be mistaken for a live provider call", () => {
