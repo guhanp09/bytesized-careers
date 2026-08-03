@@ -49,6 +49,14 @@ class OpenAIJobImportConfig:
     instruction_version: str
 
 
+#: Recruiter-facing text for an unusable reply.
+#:
+#: The provider is an implementation detail. Naming it tells the recruiter
+#: nothing they can act on and breaks the rule the rest of the flow keeps —
+#: the private diagnostic still carries the real reason.
+_UNUSABLE_REPLY_MESSAGE = "The job details could not be read this time."
+
+
 class OpenAIJobImportAdapter:
     """Text-only OpenAI adapter behind CreatorJobs' provider-neutral boundary."""
 
@@ -67,7 +75,7 @@ class OpenAIJobImportAdapter:
         if not self.config.api_key:
             raise self._provider_error(
                 "OPENAI_NOT_CONFIGURED",
-                "Text extraction is temporarily unavailable because OpenAI is not configured.",
+                "Draft preparation is temporarily unavailable.",
                 status_code=503,
             )
         if self._client is None:
@@ -94,7 +102,7 @@ class OpenAIJobImportAdapter:
         ):
             raise self._provider_error(
                 "JOB_IMPORT_TEXT_SOURCE_REQUIRED",
-                "OpenAI processing currently supports normalized text sources only.",
+                "This kind of source cannot be read yet.",
                 status_code=422,
             )
 
@@ -151,7 +159,7 @@ class OpenAIJobImportAdapter:
         if response is None and raw_response is None:
             raise self._provider_error(
                 "OPENAI_EMPTY_RESPONSE",
-                "OpenAI returned no extraction response.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
             )
@@ -162,7 +170,7 @@ class OpenAIJobImportAdapter:
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise self._provider_error(
                     "OPENAI_MALFORMED_RESPONSE",
-                    "OpenAI returned an unreadable extraction response.",
+                    _UNUSABLE_REPLY_MESSAGE,
                     status_code=502,
                     retry_count=retries_used,
                     metadata=self._raw_failure_metadata(
@@ -198,7 +206,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_INCOMPLETE_RESPONSE",
-                "OpenAI did not complete the extraction response.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=incomplete_metadata,
@@ -213,7 +221,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_REFUSED",
-                "OpenAI declined to process this source.",
+                "The job details could not be read this time.",
                 status_code=422,
                 retry_count=retries_used,
                 metadata=refusal_metadata,
@@ -235,7 +243,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
-                "OpenAI returned an extraction response that failed CreatorJobs validation.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=mismatch_metadata,
@@ -250,7 +258,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_MALFORMED_RESPONSE",
-                "OpenAI returned an unreadable extraction response.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=malformed_metadata,
@@ -288,7 +296,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_EVIDENCE_INVALID",
-                "OpenAI returned evidence references that could not be resolved safely.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=evidence_metadata,
@@ -303,7 +311,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
-                "OpenAI returned an extraction response that failed CreatorJobs validation.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=mismatch_metadata,
@@ -320,7 +328,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
-                "OpenAI returned an extraction response that failed CreatorJobs validation.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=mismatch_metadata,
@@ -335,7 +343,7 @@ class OpenAIJobImportAdapter:
             )
             raise self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
-                "OpenAI returned an extraction response that failed CreatorJobs validation.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retries_used,
                 metadata=mismatch_metadata,
@@ -637,7 +645,7 @@ class OpenAIJobImportAdapter:
             status_code = getattr(response, "status_code", None)
             return self._provider_error(
                 "OPENAI_SCHEMA_MISMATCH",
-                "OpenAI returned an extraction response that failed CreatorJobs validation.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retry_count,
                 metadata=JobImportProviderMetadata(
@@ -662,42 +670,42 @@ class OpenAIJobImportAdapter:
         if isinstance(exc, openai.LengthFinishReasonError):
             return self._provider_error(
                 "OPENAI_INCOMPLETE_RESPONSE",
-                "OpenAI did not complete the extraction response.",
+                _UNUSABLE_REPLY_MESSAGE,
                 status_code=502,
                 retry_count=retry_count,
             )
         if isinstance(exc, openai.ContentFilterFinishReasonError):
             return self._provider_error(
                 "OPENAI_REFUSED",
-                "OpenAI declined to process this source.",
+                "The job details could not be read this time.",
                 status_code=422,
                 retry_count=retry_count,
             )
         if isinstance(exc, openai.AuthenticationError):
             return self._provider_error(
                 "OPENAI_AUTHENTICATION_FAILED",
-                "OpenAI authentication failed. Text extraction is temporarily unavailable.",
+                "Draft preparation is temporarily unavailable.",
                 status_code=503,
                 retry_count=retry_count,
             )
         if isinstance(exc, openai.PermissionDeniedError):
             return self._provider_error(
                 "OPENAI_PERMISSION_DENIED",
-                "The configured OpenAI project cannot use this extraction model.",
+                "Draft preparation is temporarily unavailable.",
                 status_code=503,
                 retry_count=retry_count,
             )
         if isinstance(exc, openai.NotFoundError):
             return self._provider_error(
                 "OPENAI_MODEL_UNAVAILABLE",
-                "The configured OpenAI extraction model is unavailable.",
+                "Draft preparation is temporarily unavailable.",
                 status_code=503,
                 retry_count=retry_count,
             )
         if isinstance(exc, openai.RateLimitError):
             return self._provider_error(
                 "OPENAI_RATE_LIMITED",
-                "OpenAI is rate limiting text extraction. Please retry shortly.",
+                "Draft preparation is busy right now. Please retry shortly.",
                 status_code=429,
                 retryable=True,
                 retry_count=retry_count,
@@ -705,7 +713,7 @@ class OpenAIJobImportAdapter:
         if isinstance(exc, openai.APITimeoutError):
             return self._provider_error(
                 "OPENAI_TIMEOUT",
-                "OpenAI text extraction timed out. Please retry.",
+                "Reading the job details took too long. Please retry.",
                 status_code=504,
                 retryable=True,
                 retry_count=retry_count,
@@ -716,7 +724,7 @@ class OpenAIJobImportAdapter:
         ):
             return self._provider_error(
                 "OPENAI_TEMPORARILY_UNAVAILABLE",
-                "OpenAI text extraction is temporarily unavailable. Please retry.",
+                "Draft preparation is temporarily unavailable. Please retry.",
                 status_code=503,
                 retryable=True,
                 retry_count=retry_count,
@@ -724,7 +732,7 @@ class OpenAIJobImportAdapter:
         if isinstance(exc, openai.APIStatusError) and exc.status_code >= 500:
             return self._provider_error(
                 "OPENAI_TEMPORARILY_UNAVAILABLE",
-                "OpenAI text extraction is temporarily unavailable. Please retry.",
+                "Draft preparation is temporarily unavailable. Please retry.",
                 status_code=503,
                 retryable=True,
                 retry_count=retry_count,
@@ -732,13 +740,13 @@ class OpenAIJobImportAdapter:
         if isinstance(exc, openai.BadRequestError):
             return self._provider_error(
                 "OPENAI_REQUEST_REJECTED",
-                "OpenAI rejected the server-owned extraction request.",
+                "The job details could not be read this time.",
                 status_code=502,
                 retry_count=retry_count,
             )
         return self._provider_error(
             "OPENAI_REQUEST_FAILED",
-            "OpenAI text extraction failed.",
+            "The job details could not be read this time.",
             status_code=502,
             retry_count=retry_count,
         )

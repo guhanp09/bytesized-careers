@@ -3,7 +3,11 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
-import { BackendRequestError, describeActionError } from "../../lib/backendClient";
+import {
+  BackendRequestError,
+  describeActionError,
+  isBackendUnreachableError,
+} from "../../lib/backendClient";
 import { trackJobImportEvent } from "../../lib/jobImportAnalytics";
 import {
   applyJobImportDraft,
@@ -82,12 +86,15 @@ function readableImportError(error: unknown, sourceType: EntryMode): string {
   if (/api key|configuration|configured/i.test(String((error as Error)?.message ?? ""))) {
     return "Draft preparation is temporarily unavailable. Your source remains private; try again later.";
   }
-  return describeActionError(
-    error,
-    sourceType === "url"
-      ? "We couldn’t prepare a draft from that page. Try again or paste the job text."
-      : "We couldn’t prepare a draft from that text. Try again or continue manually."
-  );
+  if (isBackendUnreachableError(error)) {
+    return describeActionError(error);
+  }
+  // Import failures never render the backend's own prose. Those messages are
+  // written for operators and have carried implementation detail into the
+  // recruiter's view; the code is enough to choose copy they can act on.
+  return sourceType === "url"
+    ? "We couldn’t prepare a draft from that page. Try again or paste the job text."
+    : "We couldn’t prepare a draft from that text. Try again or continue manually.";
 }
 
 function importCounts(draft: JobImportDraft) {

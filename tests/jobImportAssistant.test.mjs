@@ -405,3 +405,12 @@ test("the thinking dots stop under reduced motion", () => {
   const block = css.slice(css.indexOf("@keyframes bea-dot"));
   assert.match(block, /prefers-reduced-motion[\s\S]*\.bea-dot[\s\S]*animation: none/);
 });
+
+test("no provider name can reach the recruiter, whatever the backend says", () => {
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  // Import failures choose copy from the failure kind rather than rendering the
+  // backend's own prose, which is written for operators and has carried
+  // implementation detail into the recruiter's view.
+  assert.doesNotMatch(client, /describeActionError\(\s*error,\s*\n\s*sourceType/);
+  assert.match(client, /never render the backend/);
+});

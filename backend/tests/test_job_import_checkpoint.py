@@ -1155,3 +1155,99 @@ async def test_every_question_describes_a_control_that_can_answer_it(
         state = response.json()
 
     assert counting_provider.calls == 0
+
+
+# ---------------------------------------------------------------------------
+# An unusable provider reply must not end the import
+# ---------------------------------------------------------------------------
+
+
+class UnusableReplyProvider:
+    """Returns something the schema cannot accept, every time."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def extract(self, request):  # noqa: ANN001 - protocol shape
+        from app.services.job_import_provider import JobImportProviderError
+
+        self.calls += 1
+        raise JobImportProviderError(
+            "OPENAI_SCHEMA_MISMATCH",
+            "The job details could not be read this time.",
+            status_code=502,
+        )
+
+
+@pytest.mark.anyio
+async def test_an_unusable_reply_still_produces_a_working_draft(
+    client: AsyncClient,
+) -> None:
+    """The recruiter already handed over a job post. Losing it to a bad reply
+    they cannot act on is the interruption this guards against."""
+
+    from app.api.deps import get_job_import_provider
+
+    provider = UnusableReplyProvider()
+    app.dependency_overrides[get_job_import_provider] = lambda: provider
+    try:
+        headers, owner_id = await _auth(client, "unusable")
+        source = await client.post(
+            "/api/v1/job-imports/sources",
+            headers=headers,
+            json={
+                "source_type": "pasted_text",
+                "source_title": "unusable",
+                "original_text": "Hiring a video editor for our weekly channel.",
+                "idempotency_key": "src-unusable",
+            },
+        )
+        draft = await client.post(
+            f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+            headers=headers,
+            json={
+                "extraction_schema_version": 1,
+                "target_listing_schema_version": 3,
+                "idempotency_key": "drf-unusable",
+            },
+        )
+        draft_id = draft.json()["id"]
+
+        processed = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/process",
+            headers=headers,
+            json={},
+        )
+        # Not a dead end: the draft exists and is reviewable.
+        assert processed.status_code == 200, processed.text
+        body = processed.json()
+        assert body["outcome"] == "processed"
+        assert body["draft"]["processing_status"] in {
+            "awaiting_recruiter_review",
+            "partially_reviewed",
+            "ready_to_apply",
+        }
+
+        # And the conversation takes over, asking for what could not be read.
+        begun = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+        assert begun.status_code == 200
+        assert begun.json()["active_question"] is not None
+    finally:
+        app.dependency_overrides.pop(get_job_import_provider, None)
+
+
+def test_no_recruiter_facing_message_names_the_provider() -> None:
+    """The provider is an implementation detail; naming it tells the recruiter
+    nothing they can act on."""
+
+    from pathlib import Path
+
+    adapter = Path("app/integrations/openai/job_import_adapter.py").read_text()
+    # Messages are the second positional argument to _provider_error.
+    for line in adapter.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('"') and stripped.endswith('",'):
+            assert "OpenAI" not in stripped, stripped
+            assert "GPT" not in stripped, stripped

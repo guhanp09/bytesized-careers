@@ -3,8 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.models import JobImportDraft
-from app.schemas.job_import import JobImportProviderMetadata
+from app.schemas.job_import import (
+    CURRENT_EXTRACTION_SCHEMA_VERSION,
+    JobImportExtractionResponse,
+    JobImportProviderMetadata,
+)
 from app.services.job_import_provider import (
     JobImportExtractionProvider,
     JobImportProviderError,
@@ -31,6 +36,24 @@ class JobImportProcessingService:
         "discarded",
         "superseded",
     }
+    #: Provider failures that mean "the reply was the wrong shape", not "the
+    #: service is unavailable". These are recoverable: the source is intact, so
+    #: the draft can still be built and the assistant asks for what it needs.
+    #:
+    #: Two neighbours are deliberately excluded. OPENAI_EVIDENCE_INVALID means
+    #: cited provenance did not resolve, and OPENAI_REFUSED is a content-policy
+    #: signal — both are integrity events worth surfacing rather than smoothing
+    #: over, and both are rare enough not to be the interruption this addresses.
+    _UNUSABLE_REPLY_CODES = {
+        "OPENAI_SCHEMA_MISMATCH",
+        "OPENAI_MALFORMED_RESPONSE",
+        "OPENAI_EMPTY_RESPONSE",
+        "OPENAI_INCOMPLETE_RESPONSE",
+        "OPENAI_MAX_OUTPUT_TOKENS",
+        "JOB_IMPORT_EXTRACTION_SCHEMA_MISMATCH",
+        "JOB_IMPORT_TARGET_SCHEMA_MISMATCH",
+    }
+
     _TEXT_SOURCE_TYPES = {
         "pasted_text",
         "rough_description",
@@ -95,6 +118,18 @@ class JobImportProcessingService:
         try:
             provider_result = await self.provider.extract(request)
         except JobImportProviderError as error:
+            if error.code in self._UNUSABLE_REPLY_CODES:
+                # The reply was unusable, but the source is intact and the
+                # recruiter is mid-flow. Failing here would throw away a job
+                # post they already gave us over something they cannot act on,
+                # so the draft is built empty and the assistant asks for what it
+                # needs — the same conversation it would have had anyway.
+                return await self._record_unusable_reply(
+                    draft_id,
+                    owner_user_id=owner_user_id,
+                    processing_attempt_id=processing_attempt_id,
+                    error=error,
+                )
             await self._mark_failed_if_current(
                 draft_id,
                 owner_user_id=owner_user_id,
@@ -179,6 +214,57 @@ class JobImportProcessingService:
                 "The extraction result could not be persisted.",
                 status_code=500,
             ) from error
+        return JobImportProcessResult(outcome="processed", draft=completed)
+
+    async def _record_unusable_reply(
+        self,
+        draft_id: UUID,
+        *,
+        owner_user_id: UUID,
+        processing_attempt_id: UUID,
+        error: JobImportProviderError,
+    ) -> JobImportProcessResult:
+        """Turn an unusable provider reply into an empty but working draft.
+
+        Nothing is invented: the draft simply has no extracted values, so every
+        field the assistant needs becomes a question it asks. The private
+        diagnostic is retained on the draft for debugging, and never shown.
+        """
+
+        empty = JobImportExtractionResponse.model_validate(
+            {
+                "extraction_schema_version": CURRENT_EXTRACTION_SCHEMA_VERSION,
+                "target_listing_schema_version": CURRENT_LISTING_SCHEMA_VERSION,
+                "fields": [],
+                "conflicts": [],
+                "missing_fields": [],
+                "warnings": [
+                    {
+                        "code": "provider_reply_unusable",
+                        "message": (
+                            "The draft was prepared without extracted values; "
+                            "the assistant will ask for the details."
+                        ),
+                    }
+                ],
+            }
+        )
+        metadata = error.metadata or JobImportProviderMetadata()
+        completed = await self.import_service.record_extraction_result(
+            draft_id,
+            empty,
+            owner_user_id=owner_user_id,
+            provider_metadata=metadata.model_copy(
+                update={
+                    "metadata": {
+                        **metadata.metadata,
+                        "processing_outcome": "recovered_unusable_reply",
+                        "failure_code": error.code,
+                    }
+                }
+            ),
+            expected_processing_attempt_id=processing_attempt_id,
+        )
         return JobImportProcessResult(outcome="processed", draft=completed)
 
     @classmethod
