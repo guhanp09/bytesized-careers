@@ -39,6 +39,7 @@ from app.core.job_import_conversation import (
     may_start_provider_stage,
     resume_state_for,
 )
+from app.core.job_import_location_resolution import resolve_locations
 from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_questions import (
     ProposedQuestion,
@@ -878,11 +879,20 @@ class JobImportConversationService:
                 ]
             else:
                 alternatives = raw
+            if candidate.field_path == "location":
+                # Two stated locations usually describe one office at different
+                # levels of detail — a renamed city, or a neighbourhood inside
+                # the city the other named. Arbitrating between them is not the
+                # recruiter's job; confirming a sensible answer in one click is.
+                alternatives = self._location_alternatives(
+                    draft, alternatives, question
+                )
             if alternatives:
                 question["alternatives"] = alternatives
-                recommended = self._recommended_alternative(draft, alternatives)
-                if recommended is not None:
-                    question["recommended_value"] = recommended
+                if "recommended_value" not in question:
+                    recommended = self._recommended_alternative(draft, alternatives)
+                    if recommended is not None:
+                        question["recommended_value"] = recommended
         if "recommended_value" not in question:
             if (
                 field_row is not None
@@ -904,6 +914,73 @@ class JobImportConversationService:
             question["explanation"] = suggestion.explanation
             question["kind"] = "confirmation"
         return question
+
+    def _location_alternatives(
+        self,
+        draft: JobImportDraft,
+        alternatives: list[dict[str, Any]],
+        question: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Offer a normalised location instead of two half-written ones.
+
+        The evidence for each source reading is preserved: the recommendation is
+        added alongside them, never in place of them, so the recruiter can still
+        pick exactly what the page said. A location is consequential, so nothing
+        is applied without them choosing it.
+        """
+
+        stated = [
+            item["value"]
+            for item in alternatives
+            if isinstance(item.get("value"), str) and item["value"].strip()
+        ]
+        if len(stated) < 2:
+            return alternatives
+
+        answers = self._stored_answers(draft)
+        work_mode = answers.get("work_mode")
+        if not isinstance(work_mode, str):
+            work_mode = None
+
+        resolution = resolve_locations(stated, work_mode=work_mode)
+        # Kept privately for support and development, never rendered.
+        question["location_audit"] = resolution.audit()
+
+        if resolution.recommended is None:
+            return alternatives
+
+        evidence: list[Any] = []
+        for item in alternatives:
+            for entry in item.get("evidence") or []:
+                if entry not in evidence:
+                    evidence.append(entry)
+
+        offered: list[dict[str, Any]] = [
+            {"value": resolution.recommended, "evidence": evidence[:5]}
+        ]
+        for value in resolution.alternatives:
+            if value == resolution.recommended:
+                continue
+            match = next(
+                (item for item in alternatives if item.get("value") == value), None
+            )
+            offered.append(match or {"value": value, "evidence": evidence[:5]})
+        for item in alternatives:
+            if all(item.get("value") != entry["value"] for entry in offered):
+                offered.append(item)
+
+        question["recommended_value"] = resolution.recommended
+        if resolution.relation == "same_city_different_specificity":
+            question["explanation"] = (
+                "The post names this office at two levels of detail. "
+                "What should candidates see?"
+            )
+        elif resolution.relation in {"alias_equivalent", "normalized_equivalent"}:
+            question["explanation"] = (
+                "The post writes this location two ways. They appear to be the "
+                "same place."
+            )
+        return offered[:8]
 
     def _recommended_alternative(
         self, draft: JobImportDraft, alternatives: list[dict[str, Any]]
