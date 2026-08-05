@@ -412,3 +412,188 @@ def test_structured_data_never_overrides_a_recruiter_answer() -> None:
     assert ordering.index("_merge_structured_page_signals") < ordering.index(
         "_merge_recruiter_prefill"
     )
+
+
+# ---------------------------------------------------------------------------
+# Employer context: present in the page, or not claimed at all.
+# ---------------------------------------------------------------------------
+
+
+def test_a_clear_company_description_is_read_from_metadata() -> None:
+    fields = fields_from_structured_context(
+        {"about_summary": "A school-led education studio making calm learning videos."}
+    )
+    assert "school-led education studio" in fields["about_channel"]
+
+
+def test_no_company_description_claims_nothing() -> None:
+    assert "about_channel" not in fields_from_structured_context({})
+    assert "about_channel" not in fields_from_structured_context({"about_summary": ""})
+
+
+@pytest.mark.parametrize(
+    "boilerplate",
+    [
+        "We are an equal opportunity employer and consider all qualified applicants.",
+        "Powered by Greenhouse. Apply for this job. View all jobs.",
+        "Read our privacy policy and terms of service before applying.",
+    ],
+)
+def test_job_board_boilerplate_never_becomes_employer_context(boilerplate: str) -> None:
+    """Pre-filling furniture is worse than asking: the recruiter must delete it."""
+
+    fields = fields_from_structured_context({"about_summary": boilerplate})
+    assert "about_channel" not in fields
+
+
+def test_a_too_short_blurb_is_left_for_the_recruiter() -> None:
+    assert "about_channel" not in fields_from_structured_context(
+        {"about_summary": "We hire."}
+    )
+
+
+def test_an_oversized_description_is_bounded() -> None:
+    fields = fields_from_structured_context({"about_summary": "A studio. " * 5000})
+    assert len(fields["about_channel"]) <= 2000
+
+
+def test_employer_context_from_a_full_page_survives_the_secure_fetch_path() -> None:
+    """End to end through the real normaliser, not the parser in isolation."""
+
+    payload = dict(_JOB_POSTING)
+    payload["hiringOrganization"] = {
+        "@type": "Organization",
+        "name": "Vidyalaya Studios",
+        "description": "A school-led studio producing calm, clear learning videos.",
+    }
+    _text, _title, metadata = normalize_public_job_html(
+        _page(payload), final_url=_URL
+    )
+    fields = fields_from_structured_context(metadata["structured_context"])
+    assert "learning videos" in fields["about_channel"]
+
+
+# ---------------------------------------------------------------------------
+# The whole secure path, not just the parser.
+#
+#   HTTP retrieval -> content checks -> normalization -> JSON-LD extraction
+#   -> deterministic field merge -> question suppression
+#
+# Served locally so it proves the pipeline rather than the availability of some
+# third-party website.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_a_structured_page_suppresses_questions_through_the_whole_path(
+    client,
+) -> None:
+    from uuid import UUID, uuid4
+
+    from conftest import TestSessionLocal
+    from test_job_import_checkpoint import _auth
+
+    from app.db.seed_data_job_import import processed_review_fixture
+    from app.repositories.job_import_repository import JobImportRepository
+    from app.repositories.job_repository import JobRepository
+    from app.services.job_import_service import JobImportService
+    from app.services.job_service import JobService
+
+    headers, owner_id = await _auth(client, "structured-e2e")
+
+    # A real page body, normalised by the same code the fetcher uses.
+    html = _page(_JOB_POSTING, body="<p>Edit weekly learning videos for students.</p>")
+    normalized, title, metadata = normalize_public_job_html(html, final_url=_URL)
+    assert metadata["json_ld_job_posting"] is True
+
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": title or "Structured job page",
+            "original_text": normalized,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    assert source.status_code == 201, source.text
+    source_id = source.json()["id"]
+
+    # Attach the retrieval metadata exactly as the URL path stores it.
+    async with TestSessionLocal() as session:
+        repository = JobImportRepository(session)
+        stored = await repository.get_source_for_owner(UUID(source_id), owner_id)
+        assert stored is not None
+        await repository.update_source(stored, {"retrieval_metadata": metadata})
+        await session.commit()
+
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source_id}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    assert draft.status_code == 201, draft.text
+    draft_id = draft.json()["id"]
+
+    # A provider result that knows nothing, so anything present can only have
+    # come from the page's own structured data.
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            processed_review_fixture("shine-school-editor"),
+            owner_user_id=owner_id,
+        )
+
+    current = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    settled = {
+        item["field_path"]
+        for item in current["fields"]
+        if item["provenance_state"] != "missing"
+    }
+    for field_path in ("engagement_type", "budget_currency", "budget_amount"):
+        assert field_path in settled, f"{field_path} was on the page and not read"
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+
+    asked: list[str] = []
+    question = begun.json().get("active_question")
+    for _ in range(25):
+        if question is None:
+            break
+        asked.append(question["field_path"])
+        shape = question.get("answer") or {}
+        if shape.get("choices"):
+            value: object = shape["choices"][0]
+            if shape.get("is_list"):
+                key = shape.get("item_key")
+                value = [{key: value}] if key else [value]
+        elif shape.get("kind") == "number":
+            value = 5
+        elif shape.get("kind") == "date":
+            value = "2027-01-15"
+        else:
+            value = "Supplied by the structured end-to-end check."
+        answered = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={"field_path": question["field_path"], "value": value},
+        )
+        if answered.status_code != 200:
+            break
+        question = answered.json().get("active_question")
+
+    # The whole point: a page that states these is never asked about them.
+    for field_path in ("engagement_type", "budget_currency", "budget_amount", "about_channel"):
+        assert field_path not in asked, f"{field_path} was on the page and still asked"

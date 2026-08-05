@@ -22,6 +22,8 @@ from __future__ import annotations
 import re
 from typing import Any, Final
 
+from app.core.job_import_field_descriptions import looks_like_boilerplate
+
 #: schema.org employmentType values, mapped onto CreatorJobs engagement types.
 #:
 #: Only unambiguous mappings appear. "OTHER" and "PER_DIEM" are deliberately
@@ -160,9 +162,12 @@ def fields_from_structured_context(context: dict[str, object]) -> dict[str, obje
         fields["title"] = title[:120]
 
     about = _text(context.get("about_summary"))
-    if len(about) >= 20:
-        # The editor requires at least 20 characters here, so a shorter blurb
-        # would only produce a value the recruiter has to fix.
+    if len(about) >= 20 and not looks_like_boilerplate(about):
+        # The editor requires at least 20 characters, so a shorter blurb would
+        # only give the recruiter something to fix. Job-board furniture — equal
+        # opportunity notices, "powered by" footers, apply prompts — is rejected
+        # outright: pre-filling it is worse than asking, because the recruiter
+        # then has to notice it and delete it.
         fields["about_channel"] = about[:2000]
 
     employment = _text(context.get("employment_type")).upper().replace(" ", "_")
