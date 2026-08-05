@@ -43,6 +43,38 @@ async function backendSession(page: Page) {
  * everything it identified first. These specs care about what happens *after*
  * that conversation, so this walks it to the end the way a recruiter would.
  */
+/**
+ * Press "Open job draft" and prove it did something.
+ *
+ * The previous version clicked and returned, so a click that landed on a node
+ * mid-re-render — or while the control was momentarily disabled during a save —
+ * looked identical to success, and the caller then failed on the URL assertion
+ * with no clue why. Opening the draft is an async round trip followed by a
+ * route change, so the only honest completion signal is the route itself.
+ */
+async function finishAssistant(page: Page) {
+  const done = page.getByTestId("conversation-open-draft");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    // The control disables itself while an answer or conversion is in flight.
+    await expect(done).toBeEnabled({ timeout: 15_000 });
+    await done.click({ timeout: 10_000 }).catch(() => undefined);
+    // The route is the only honest signal. The completion card can re-render
+    // and take the button with it without anything having happened, so treating
+    // its disappearance as success is exactly how this failure stayed invisible.
+    const opened = await page
+      .waitForURL(/\/post-job\?(draftId|importDraftId)=/, { timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) return;
+    // Re-rendered without navigating: let the canvas settle, then press again.
+    await page
+      .getByTestId("conversation-open-draft")
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .catch(() => undefined);
+  }
+  throw new Error("Open job draft never produced a handoff");
+}
+
 async function completeAssistant(page: Page) {
   // Give the canvas a chance to appear at all; a clean import may skip it.
   await page
@@ -54,8 +86,8 @@ async function completeAssistant(page: Page) {
 
   for (let step = 0; step < 25; step += 1) {
     const done = page.getByTestId("conversation-open-draft");
-    if (await done.count()) {
-      await done.click();
+    if (await done.isVisible().catch(() => false)) {
+      await finishAssistant(page);
       return;
     }
     const turn = page.getByTestId("conversation-turn");
@@ -66,7 +98,7 @@ async function completeAssistant(page: Page) {
         .waitFor({ state: "visible", timeout: 5_000 })
         .catch(() => undefined);
       if (await done.isVisible()) {
-        await done.click();
+        await finishAssistant(page);
         return;
       }
       continue;
@@ -100,6 +132,7 @@ async function completeAssistant(page: Page) {
       const option = turn.locator('[data-testid^="conversation-option-"]').first();
       const suggestion = page.getByTestId("conversation-accept-suggestion");
       const input = page.getByTestId("conversation-text-answer");
+      const dateInput = page.getByTestId("conversation-date-answer");
       const activateCurrent = async (control: Locator) => {
         await expect
           .poll(
@@ -129,12 +162,26 @@ async function completeAssistant(page: Page) {
         if (!(await activateCurrent(suggestion))) continue;
       } else if (await option.count()) {
         if (!(await activateCurrent(option))) continue;
+      } else if (await dateInput.count()) {
+        // A date field has its own control. Without this branch the helper fell
+        // through to the silent return below and never pressed Open job draft,
+        // which surfaced as an unexplained URL assertion failure.
+        await dateInput.fill("2027-01-15");
+        await page.getByTestId("conversation-submit").click();
       } else if (await input.count()) {
         const numeric = (await input.getAttribute("inputmode")) === "numeric";
         await input.fill(numeric ? "5" : "Provided during QA");
         await page.getByTestId("conversation-submit").click();
-      } else {
+      } else if (await done.isVisible().catch(() => false)) {
+        await finishAssistant(page);
         return;
+      } else {
+        // Never return quietly. A turn this helper cannot answer is a gap in
+        // the helper or a new control in the product, and both need saying.
+        const shown = (await turn.textContent().catch(() => "")) ?? "";
+        throw new Error(
+          `completeAssistant cannot answer this turn: ${shown.slice(0, 200)}`
+        );
       }
     }
 
