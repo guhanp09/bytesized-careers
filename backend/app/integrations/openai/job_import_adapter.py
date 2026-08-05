@@ -11,6 +11,7 @@ import openai
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
+from app.core.job_import_request_compaction import compact_provider_request
 from app.integrations.openai.job_import_instructions import (
     build_job_import_instructions,
 )
@@ -360,8 +361,6 @@ class OpenAIJobImportAdapter:
         *,
         span_set: EvidenceSpanSet,
     ) -> list[dict[str, object]]:
-        policy_request = request.model_copy(deep=True)
-        policy_request.source.original_text = None
         return [
             {
                 "role": "user",
@@ -369,9 +368,13 @@ class OpenAIJobImportAdapter:
                     {
                         "type": "input_text",
                         "text": (
-                            "CreatorJobs extraction policy JSON. The server-owned "
+                            "CreatorJobs extraction request JSON. The server-owned "
                             "evidence spans are in the next input-text block.\n"
-                            f"{policy_request.model_dump_json()}"
+                            + json.dumps(
+                                compact_provider_request(request),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            )
                         ),
                     },
                     {
