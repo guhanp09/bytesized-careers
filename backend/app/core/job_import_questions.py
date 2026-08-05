@@ -141,6 +141,11 @@ def conversation_question_kind(
         # Resolved internally or left to the editor's own control. Never a
         # question, however the requirement is classified.
         return None
+    if value == "leave_for_post_job":
+        # Deliberately outranks the publication-blocker fallback below. Being
+        # required to publish is not a reason to interrupt preparation: the
+        # editor asks for it in context, with room to answer properly.
+        return None
     if field_path in ESSENTIAL_CONVERSATION_FIELDS or value == "essential_now":
         return "mandatory"
     if field_path in OPTIONAL_CONVERSATION_FIELDS or value == "helpful_optional":

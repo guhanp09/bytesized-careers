@@ -242,6 +242,11 @@ class JobImportConversationService:
             if lowered in {"yes", "no"}:
                 value = lowered == "yes"
 
+        grouped_extras = self._grouped_side_effects(
+            draft.active_question if isinstance(draft.active_question, dict) else None,
+            value,
+        )
+
         normalized, errors = await self.import_service._validate_field_value(policy, value)
         errors.extend(conversation_answer_errors(field_path, normalized))
         if errors:
@@ -256,6 +261,22 @@ class JobImportConversationService:
 
         # Conversion reads field rows, so the answer has to become one.
         await self._persist_answer(draft, field_path, normalized)
+
+        # One choice, both fields. Validated exactly as any other answer, so a
+        # grouped option can never write something the field would refuse.
+        for extra_path, extra_value in grouped_extras.items():
+            extra_policy = JOB_IMPORT_FIELD_POLICIES.get(extra_path)
+            if extra_policy is None:
+                continue
+            extra_normalized, extra_errors = (
+                await self.import_service._validate_field_value(
+                    extra_policy, extra_value
+                )
+            )
+            if extra_errors:
+                continue
+            answers[extra_path] = extra_normalized
+            await self._persist_answer(draft, extra_path, extra_normalized)
 
         # The answer is authoritative from this moment. Bumping the version is
         # what makes any provider result issued before now provably stale.
@@ -702,6 +723,7 @@ class JobImportConversationService:
             role_labels,
             await self._title_suggestions(draft),
         )
+        await self._group_workplace_question(draft, question)
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
         target_state: ConversationState = (
@@ -927,6 +949,127 @@ class JobImportConversationService:
             question["explanation"] = suggestion.explanation
             question["kind"] = "confirmation"
         return question
+
+    async def _group_workplace_question(
+        self, draft: JobImportDraft, question: dict[str, Any]
+    ) -> None:
+        """Ask about the workplace once, not twice.
+
+        Work mode and location are one fact from a candidate's side: "remote
+        within the United States" and "on-site in San Francisco" are single
+        answers, and a page that is unclear about one is almost always unclear
+        about the other. Asking them as separate turns made the recruiter take
+        two decisions to describe one arrangement, and invited the pair to
+        disagree.
+
+        The grouped answer carries both values, so choosing once populates work
+        mode and location together.
+        """
+
+        asked_path = question.get("field_path")
+        if asked_path not in {"work_mode", "location"}:
+            return
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        by_path = {item.field_path: item for item in fields}
+        answers = self._stored_answers(draft)
+
+        def unresolved(path: str) -> bool:
+            row = by_path.get(path)
+            return (
+                path not in answers
+                and row is not None
+                and row.provenance_state in {"missing", "conflicting_source_values"}
+            )
+
+        # Only worth grouping while both halves are genuinely open. If one is
+        # already settled the other is an ordinary single question.
+        if not (unresolved("work_mode") and unresolved("location")):
+            return
+
+        location_row = by_path["location"]
+        # Whichever half the queue reached first, the arrangement is the
+        # decision being made, so that is what gets asked.
+        question["field_path"] = "work_mode"
+        question["answer"] = answer_shape_for("work_mode").as_payload()
+        question.pop("alternatives", None)
+        question.pop("recommended_value", None)
+
+        places: list[str] = []
+        for entry in self._conflicting_values(location_row):
+            if isinstance(entry, str) and entry.strip() and entry not in places:
+                places.append(entry.strip())
+        if isinstance(location_row.proposed_value, str) and location_row.proposed_value:
+            if location_row.proposed_value not in places:
+                places.append(location_row.proposed_value)
+
+        resolution = resolve_locations(places) if len(places) > 1 else None
+        primary = (
+            resolution.recommended
+            if resolution and resolution.recommended
+            else (places[0] if places else None)
+        )
+
+        options: list[dict[str, Any]] = []
+        if primary:
+            options.append(
+                {
+                    "value": "remote",
+                    "label": f"Remote, based around {primary}",
+                    "applies": {"work_mode": "remote"},
+                }
+            )
+            options.append(
+                {
+                    "value": "hybrid",
+                    "label": f"Hybrid in {primary}",
+                    "applies": {"work_mode": "hybrid", "location": primary},
+                }
+            )
+            options.append(
+                {
+                    "value": "onsite",
+                    "label": f"On-site in {primary}",
+                    "applies": {"work_mode": "onsite", "location": primary},
+                }
+            )
+        else:
+            options.append(
+                {"value": "remote", "label": "Fully remote", "applies": {"work_mode": "remote"}}
+            )
+        if not options:
+            return
+
+        question["grouped_fields"] = ["work_mode", "location"]
+        question["grouped_options"] = options
+        question["heading"] = "How should candidates understand where this work happens?"
+        if len(places) > 1:
+            question["explanation"] = (
+                "The post describes the arrangement in more than one way. "
+                "Choosing here settles both the work setup and the place."
+            )
+        else:
+            question["explanation"] = (
+                "Choosing here settles both the work setup and the place."
+            )
+
+    def _grouped_side_effects(
+        self, question: dict[str, Any] | None, value: object
+    ) -> dict[str, object]:
+        """Extra fields a grouped answer settles alongside the one asked."""
+
+        if not isinstance(question, dict) or not question.get("grouped_options"):
+            return {}
+        for option in question["grouped_options"]:
+            if option.get("value") != value:
+                continue
+            applies = option.get("applies") or {}
+            return {
+                path: applied
+                for path, applied in applies.items()
+                if path != question.get("field_path")
+            }
+        return {}
 
     def _location_alternatives(
         self,

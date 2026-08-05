@@ -352,6 +352,30 @@ const QUESTION_PHRASES: Readonly<Record<string, { heading: string; prompt: strin
     heading: "Which date should it start on?",
     prompt: "You chose a specific date, so this is the one candidates will see.",
   },
+  location: {
+    heading: "Where is this role based?",
+    prompt: "It decides who can realistically apply.",
+  },
+  experience_level: {
+    heading: "How much experience should candidates already have?",
+    prompt: "Candidates filter on this before they read anything else.",
+  },
+  content_niches: {
+    heading: "What subjects does this content cover?",
+    prompt: "Editors who know the subject need far less direction.",
+  },
+  trial_work_usage: {
+    heading: "Can you use the work from the trial?",
+    prompt: "Unpaid work someone else publishes is the thing candidates check for.",
+  },
+  trial_portfolio_permission: {
+    heading: "Can candidates show their trial work in their portfolio?",
+    prompt: "For a freelancer, work they cannot show is worth much less.",
+  },
+  unpaid_trial_confirmed: {
+    heading: "Confirm this trial is unpaid",
+    prompt: "Unpaid work has to be stated plainly before anyone commits time.",
+  },
   work_mode: {
     heading: "Where will this person work?",
     prompt: "It decides who can realistically apply.",

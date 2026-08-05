@@ -523,6 +523,14 @@ function EarlyQuestionTurn({
  * cabinet. Replies belong in the stream, above the question being asked, the
  * way any chat keeps its history.
  */
+/** A stored value written the way the recruiter saw it on the button. */
+function readableAnswer(raw: string): string {
+  if (!raw) return raw;
+  if (raw !== raw.toLowerCase()) return raw;
+  const spaced = raw.replace(/[_-]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function transcriptValue(fieldPath: string, value: unknown): string {
   const options = [
     ...answerOptionsFor(fieldPath),
@@ -537,7 +545,15 @@ function transcriptValue(fieldPath: string, value: unknown): string {
   });
   if (!rawValues.length) return "Saved";
   return rawValues
-    .map((raw) => options.find((option) => option.value === raw)?.label ?? raw)
+    .map(
+      (raw) =>
+        options.find((option) => option.value === raw)?.label ??
+        // Never echo a stored value back at the recruiter. A field whose values
+        // come from the schema rather than a local option list has no label
+        // here, and the transcript was showing "evaluation_only" beside a
+        // button that had said "Evaluation only".
+        readableAnswer(raw)
+    )
     .join(", ");
 }
 

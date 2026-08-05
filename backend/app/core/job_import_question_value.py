@@ -79,6 +79,21 @@ WORTH_OFFERING: Final[frozenset[str]] = frozenset(
     }
 )
 
+#: Prose the recruiter would have to compose, which chat is the wrong place for.
+#:
+#: These are publication blockers, and they are still required — by Post Job, at
+#: publish time, in a textarea with room to write and the listing visible beside
+#: it. Asking for a paragraph inside a chat bubble to satisfy that validation
+#: early turns preparation into a writing exercise, and it is the one shape of
+#: question most likely to make someone abandon the flow.
+#:
+#: ``about_channel`` is the case that forced the decision. Employer context
+#: raises candidate confidence; it does not change what the offer *is*, so
+#: nothing about the listing is misread without it.
+LONG_FORM_DEFERRED: Final[frozenset[str]] = frozenset(
+    {"about_channel", "responsibilities", "requirements"}
+)
+
 #: Resolved internally rather than asked about.
 #:
 #: ``primary_role_key`` is the case that made this necessary. Its values are an
@@ -103,6 +118,8 @@ def question_value(field_path: str, *, is_conflict: bool = False) -> QuestionVal
         return "essential_now"
     if field_path in RESOLVED_INTERNALLY:
         return "deterministic_fallback"
+    if field_path in LONG_FORM_DEFERRED:
+        return "leave_for_post_job"
     if field_path in INTERPRETATION_CRITICAL:
         return "essential_now"
     if field_path in WORTH_OFFERING:
