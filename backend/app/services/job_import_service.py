@@ -2514,6 +2514,31 @@ class JobImportService:
             if isinstance(field_path, str) and field_path in JOB_IMPORT_FIELD_POLICIES
         }
 
+    @staticmethod
+    def _structured_value_may_fill(existing: dict[str, Any]) -> bool:
+        """Whether a machine-readable page fact may take this row.
+
+        A page's own ``JobPosting`` block is explicit publisher data, so it
+        outranks an unconfirmed *guess* about the same field — especially one the
+        field policy has already refused. Without this, an inference that could
+        never be used still occupied the row, the explicit value was skipped, and
+        the field reached the draft empty.
+
+        It never displaces a settled reading of the source, and never a recruiter.
+        """
+
+        state = existing.get("provenance_state")
+        if state == "missing":
+            return True
+        if state != "suggested_inference":
+            return False
+        if existing.get("review_status") != "pending":
+            return False
+        # Only where the guess is unusable anyway: rejected, or holding nothing.
+        return bool(existing.get("validation_errors")) or existing.get(
+            "proposed_value"
+        ) in (None, "")
+
     async def _merge_structured_page_signals(
         self,
         draft: JobImportDraft,
@@ -2561,8 +2586,7 @@ class JobImportService:
             if policy is None:
                 continue
             existing = by_path.get(field_path)
-            # Only speak where the machine was silent.
-            if existing is not None and existing.get("provenance_state") != "missing":
+            if existing is not None and not self._structured_value_may_fill(existing):
                 continue
 
             normalized, errors = await self._validate_field_value(policy, value)

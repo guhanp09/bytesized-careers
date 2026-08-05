@@ -518,9 +518,22 @@ class JobImportConversationService:
             # machine interpretation.
             if (
                 existing.provenance_state == "suggested_inference"
-                and existing.review_status == "pending"
-                and existing.proposed_value == value
+                and existing.reviewed_by_user_id is None
             ):
+                # A guess nobody confirmed yields to what the title says outright.
+                #
+                # The status matters less than who set it: an inference may be
+                # auto-confirmed by the pipeline, which is not the same as a
+                # recruiter agreeing to it. Only a row an actual person reviewed
+                # is safe from this, and that case is caught by the answers check
+                # above.
+                #
+                # A page titled "...Intern 6 months onsite" whose structured data
+                # claims FULL_TIME is not ambiguous — boards default that field,
+                # and the headline is the posting's own words. Leaving the guess
+                # in place shipped a draft that called an internship a full-time
+                # job, which is worse than any question: nobody is asked to check
+                # a value that looks settled.
                 fresh[path] = value
                 continue
             # Resolve a contradiction the title already decides.

@@ -407,8 +407,22 @@ def test_structured_data_never_overrides_a_recruiter_answer() -> None:
 
     from app.services.job_import_service import JobImportService
 
-    source = inspect.getsource(JobImportService._merge_structured_page_signals)
-    assert 'existing.get("provenance_state") != "missing"' in source
+    # Asserted as behaviour rather than as a source string: the merge may only
+    # take a row nobody has reviewed, so a recruiter can never be overwritten.
+    may_fill = JobImportService._structured_value_may_fill
+    assert may_fill({"provenance_state": "missing"}) is True
+    assert may_fill({"provenance_state": "extracted_from_source"}) is False
+    assert may_fill({"provenance_state": "directly_supplied"}) is False
+    assert (
+        may_fill(
+            {
+                "provenance_state": "suggested_inference",
+                "review_status": "edited",
+                "proposed_value": "kept",
+            }
+        )
+        is False
+    )
     ordering = inspect.getsource(JobImportService._record_extraction_result_claimed)
     assert ordering.index("_merge_structured_page_signals") < ordering.index(
         "_merge_recruiter_prefill"
