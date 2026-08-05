@@ -19,12 +19,12 @@ import json
 import pytest
 
 from app.core.job_import_field_descriptions import FIELD_DESCRIPTIONS, describe
+from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_request_compaction import (
     SERVER_ENFORCED_KEYS,
     compact_field_definition,
     compact_provider_request,
 )
-from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 
 
 class _Definition:
