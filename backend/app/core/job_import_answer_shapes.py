@@ -15,22 +15,32 @@ so the interface can make an invalid one unexpressible instead of rejecting it.
 
 from __future__ import annotations
 
+import re
 import typing
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 
 from app.core.job_domain_taxonomy import (
     CREATOR_CONTENT_NICHES,
     CREATOR_EXPERIENCE_BANDS,
+    CREATOR_JOB_CURRENCIES,
     CREATOR_JOB_FORMATS,
     CREATOR_JOB_PLATFORMS,
 )
 from app.schemas.job import JobCreate
 
 AnswerKind = Literal["choice", "multi_choice", "number", "text", "url", "date", "unknown"]
+
+START_TIMEFRAME_CHOICES: Final[tuple[str, ...]] = (
+    "ASAP",
+    "<1mo",
+    "<2mo",
+    "<3mo",
+    "Flexible",
+)
 
 
 @dataclass(frozen=True)
@@ -81,13 +91,37 @@ _CATALOG_CHOICES: dict[str, tuple[str, ...]] = {
     "formats_hired_for": CREATOR_JOB_FORMATS,
     "content_niches": CREATOR_CONTENT_NICHES,
     "experience_level": CREATOR_EXPERIENCE_BANDS,
+    # These are the canonical values already used by native job records. Keeping
+    # the choice here (rather than tightening the legacy database column) makes
+    # invalid conversation answers impossible without breaking old listings.
+    "start_timeframe": START_TIMEFRAME_CHOICES,
+    # Currency is a bare three-character string in the job schema, so without a
+    # catalog it fell through to a free text box — and a live run confirmed the
+    # result: anything typed there came back "That answer is not valid for this
+    # detail". A currency is a pick, never a sentence.
+    "budget_currency": CREATOR_JOB_CURRENCIES,
+    "trial_compensation_currency": CREATOR_JOB_CURRENCIES,
 }
 
 #: Catalog fields that hold a single value rather than a list.
-_SINGLE_VALUE_CATALOGS: frozenset[str] = frozenset({"experience_level"})
+_SINGLE_VALUE_CATALOGS: frozenset[str] = frozenset(
+    {
+        "experience_level",
+        "start_timeframe",
+        "budget_currency",
+        "trial_compensation_currency",
+    }
+)
 
 _CATALOG_LABELS: dict[str, dict[str, str]] = {
     "platforms": {"youtube": "YouTube", "instagram": "Instagram"},
+    "start_timeframe": {
+        "ASAP": "As soon as possible",
+        "<1mo": "Within one month",
+        "<2mo": "Within two months",
+        "<3mo": "Within three months",
+        "Flexible": "Flexible",
+    },
 }
 
 
@@ -222,6 +256,18 @@ def answer_shape_for(field_path: str) -> AnswerShape:
     ]
     primitive = flattened[0] if flattened else unwrap(annotation)
 
+    # A yes/no field is two buttons, not a sentence. Checked before the numeric
+    # branch because bool is a subclass of int and would otherwise be offered a
+    # number pad — and before the text fallback, which would invite prose that
+    # the field can only ever reject.
+    if primitive is bool:
+        return AnswerShape(
+            kind="choice",
+            choices=["yes", "no"],
+            labels={"yes": "Yes", "no": "No"},
+            **bounds,
+        )
+
     # Money is stored as Decimal, so a bare int/float check missed every
     # compensation field and left them without a numeric control.
     if primitive in (int, float, Decimal):
@@ -233,6 +279,81 @@ def answer_shape_for(field_path: str) -> AnswerShape:
     if primitive is str or is_list:
         return AnswerShape(kind="text", is_list=is_list, **bounds)
     return AnswerShape(kind="unknown", is_list=is_list, **bounds)
+
+
+_DESCRIPTIVE_LIST_FIELDS: Final[frozenset[str]] = frozenset(
+    {"responsibilities", "requirements"}
+)
+_MEANINGLESS_PHRASES: Final[frozenset[str]] = frozenset(
+    {
+        "asdf",
+        "blah",
+        "blah blah",
+        "dummy text",
+        "i dont know",
+        "idk",
+        "lorem ipsum",
+        "n a",
+        "na",
+        "none",
+        "not sure",
+        "provided during qa",
+        "test",
+        "test answer",
+        "tbd",
+        "todo",
+        "unknown",
+    }
+)
+
+
+def conversation_answer_errors(field_path: str, value: object) -> list[str]:
+    """Return conversation-only errors for candidate-facing recruiter answers.
+
+    Native drafts stay permissive for legacy compatibility. The assistant is a
+    narrower interface and must not turn keyboard noise into a public duty,
+    qualification, or start commitment.
+    """
+
+    if field_path == "start_timeframe":
+        if not isinstance(value, str) or value not in START_TIMEFRAME_CHOICES:
+            return ["Select one of the available start timeframes."]
+        return []
+
+    if field_path not in _DESCRIPTIVE_LIST_FIELDS:
+        return []
+    if not isinstance(value, list) or not value:
+        return ["Add at least one descriptive phrase."]
+
+    errors: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            continue  # Canonical field validation reports the shape error.
+        normalized = " ".join(item.split()).strip()
+        folded = " ".join(normalized.casefold().split())
+        words = re.findall(r"[^\W_]+(?:['’-][^\W_]+)?", folded, flags=re.UNICODE)
+        compact = "".join(character for character in folded if character.isalnum())
+        phrase_key = re.sub(
+            r"[^\w]+",
+            " ",
+            re.sub(r"['’]", "", folded),
+            flags=re.UNICODE,
+        ).strip()
+        if phrase_key in _MEANINGLESS_PHRASES:
+            errors.append(f"Item {index + 1} needs a real job-specific detail.")
+            continue
+        if len(normalized) < 8:
+            errors.append(f"Item {index + 1} needs at least 8 characters.")
+            continue
+        if len(words) < 2 or len({word.casefold() for word in words}) < 2:
+            errors.append(f"Item {index + 1} needs a short descriptive phrase.")
+            continue
+        if re.search(r"(.)\1{4,}", compact):
+            errors.append(f"Item {index + 1} looks like repeated-character text.")
+            continue
+        if len(compact) >= 8 and len(set(compact)) <= 3:
+            errors.append(f"Item {index + 1} looks like placeholder text.")
+    return errors
 
 
 def matching_choices(field_path: str, values: list[Any]) -> list[str]:

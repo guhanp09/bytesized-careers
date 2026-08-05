@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.job_import_answer_effects import (
@@ -26,7 +26,11 @@ from app.core.job_import_answer_effects import (
     pay_range_from_conflict,
     suppressed_by_answers,
 )
-from app.core.job_import_answer_shapes import answer_shape_for, matching_choices
+from app.core.job_import_answer_shapes import (
+    answer_shape_for,
+    conversation_answer_errors,
+    matching_choices,
+)
 from app.core.job_import_conversation import (
     MAX_PROVIDER_CONTINUATIONS,
     ConversationState,
@@ -45,7 +49,7 @@ from app.core.job_import_questions import (
     validate_proposed_question,
 )
 from app.core.job_import_title_signals import title_signals
-from app.models import JobImportDraft, JobImportField
+from app.models import JobImportDraft
 from app.services.job_import_service import JobImportError, JobImportService
 
 
@@ -78,34 +82,6 @@ class ConversationSnapshot:
 #: Marker stored on the draft when the recruiter chooses manual editing.
 #: It is the one normal route that may hand off with questions still open.
 _MANUAL_CONTINUATION = "manual_continuation"
-
-
-#: Extracted fields whose text can state a sector or a seniority in passing.
-_CONTEXT_FIELDS: Final[tuple[str, ...]] = (
-    "description",
-    "role_summary",
-    "responsibilities",
-    "requirements",
-)
-
-
-def _source_context(fields: list[JobImportField]) -> str:
-    """Descriptive text the assistant may read for hints.
-
-    A niche is rarely in the title — "Vashist Pvt Ltd, an education company"
-    sits in the body. This reads only fields already extracted, stays local, and
-    never reaches a provider.
-    """
-
-    parts: list[str] = []
-    for item in fields:
-        if item.field_path not in _CONTEXT_FIELDS:
-            continue
-        value = item.edited_value or item.confirmed_value or item.proposed_value
-        if isinstance(value, str):
-            parts.append(value)
-    # Bounded: this only ever feeds substring matching against small catalogs.
-    return " ".join(parts)[:4000]
 
 
 class JobImportConversationService:
@@ -257,7 +233,16 @@ class JobImportConversationService:
                 "That detail cannot be answered here.",
                 status_code=422,
             )
+        # A yes/no control sends the word it displayed. Translating it back here
+        # keeps the control honest — the alternative is offering two buttons and
+        # then rejecting whichever one is pressed.
+        if answer_shape_for(field_path).choices == ["yes", "no"] and isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"yes", "no"}:
+                value = lowered == "yes"
+
         normalized, errors = await self.import_service._validate_field_value(policy, value)
+        errors.extend(conversation_answer_errors(field_path, normalized))
         if errors:
             raise JobImportError(
                 "JOB_IMPORT_FIELD_INVALID",
@@ -402,7 +387,9 @@ class JobImportConversationService:
         )
         return True
 
-    async def _apply_title_signals(self, draft: JobImportDraft) -> bool:
+    async def _apply_title_signals(
+        self, draft: JobImportDraft, *, owner_user_id: UUID
+    ) -> bool:
         """Stop asking for what the title already says.
 
         "…intern - 6 months onsite" states the engagement, the duration and the
@@ -410,17 +397,14 @@ class JobImportConversationService:
         clearest way to look like a scraper: the answer was in the first line of
         what they handed over.
 
-        Only settled signals are applied. A role word is left as a suggestion,
-        because a title routinely names two crafts.
+        Only settled signals are applied. They remain machine interpretations:
+        unlike a recruiter reply, they never enter recruiter_prefill and never
+        receive a reviewed_by_user marker.
         """
 
         answers = self._stored_answers(draft)
         fields = await self.import_service.repository.list_fields(draft.id)
-        known = {
-            item.field_path
-            for item in fields
-            if item.provenance_state != "missing" or item.review_status != "pending"
-        }
+        by_path = {item.field_path: item for item in fields}
 
         title = next(
             (
@@ -431,25 +415,70 @@ class JobImportConversationService:
             None,
         ) or (answers.get("title") if isinstance(answers.get("title"), str) else None)
 
-        signals = title_signals(title, extra_text=_source_context(fields))
+        # Settled inferences use title evidence only. Body text can mention a
+        # remote team, a six-month project, or another craft without describing
+        # this role's actual terms.
+        signals = title_signals(title)
         # Never override the source, and never re-decide something answered.
-        fresh = {
-            path: value
-            for path, value in signals.settled.items()
-            if path not in answers and path not in known
-        }
+        fresh: dict[str, object] = {}
+        for path, value in signals.settled.items():
+            if path in answers:
+                continue
+            existing = by_path.get(path)
+            if existing is None or existing.provenance_state == "missing":
+                fresh[path] = value
+                continue
+            # Upgrade the same pending semantic suggestion when the exact title
+            # settles it. Never overwrite explicit source wording or a different
+            # machine interpretation.
+            if (
+                existing.provenance_state == "suggested_inference"
+                and existing.review_status == "pending"
+                and existing.proposed_value == value
+            ):
+                fresh[path] = value
         if not fresh:
             return False
 
         for path, value in fresh.items():
-            await self._persist_answer(draft, path, value)
-        await self._store(
-            draft,
-            {
-                "recruiter_prefill": {**answers, **fresh},
-                "recruiter_prefill_updated_at": datetime.now(UTC),
-            },
+            policy = JOB_IMPORT_FIELD_POLICIES[path]
+            normalized, errors = await self.import_service._validate_field_value(policy, value)
+            if errors:
+                continue
+            existing = by_path.get(path)
+            title_field = by_path.get("title")
+            row = {
+                "proposed_value": normalized,
+                "provenance_state": "suggested_inference",
+                "evidence": list(title_field.evidence or []) if title_field is not None else [],
+                "conflicting_values": [],
+                "explanation": "Interpreted from exact wording in the job title.",
+                "provider_confidence": {
+                    "origin": "semantic_inference",
+                    "confidence": "high",
+                    "rationale_code": "exact_title_signal",
+                    "needs_review": False,
+                    "risk": policy.inference_risk,
+                },
+                "review_status": "confirmed",
+                "confirmed_value": normalized,
+                "edited_value": None,
+                "missing_requirement": policy.missing_requirement,
+                "requires_confirmation": False,
+                "validation_errors": [],
+                "reviewed_by_user_id": None,
+                "reviewed_at": None,
+            }
+            if existing is not None:
+                await self.import_service.repository.update_field(existing, row)
+            else:
+                await self.import_service.repository.create_fields(
+                    [{"draft_id": draft.id, "field_path": path, **row}]
+                )
+        await self.import_service._refresh_draft_state(
+            draft, owner_user_id=owner_user_id
         )
+        await self.import_service.repository.session.commit()
         return True
 
     async def _title_role_options(self, draft: JobImportDraft) -> list[str]:
@@ -464,9 +493,7 @@ class JobImportConversationService:
             ),
             None,
         )
-        options = title_signals(
-            title, extra_text=_source_context(fields)
-        ).suggested.get("primary_role_key_options")
+        options = title_signals(title).suggested.get("primary_role_key_options")
         return list(options) if isinstance(options, list) else []
 
     async def _title_suggestions(self, draft: JobImportDraft) -> dict[str, object]:
@@ -481,9 +508,7 @@ class JobImportConversationService:
             ),
             None,
         )
-        return dict(
-            title_signals(title, extra_text=_source_context(fields)).suggested
-        )
+        return dict(title_signals(title).suggested)
 
     async def _advance(
         self,
@@ -501,7 +526,7 @@ class JobImportConversationService:
 
         # Read the title before deciding what to ask; anything it settles is
         # not a question.
-        await self._apply_title_signals(draft)
+        await self._apply_title_signals(draft, owner_user_id=owner_user_id)
         await self._resolve_pay_range(draft)
         queue = await self._queue_for(draft)
         candidate = queue[0] if queue else None
@@ -577,9 +602,17 @@ class JobImportConversationService:
         self, draft: JobImportDraft, proposal: ProposedQuestion
     ):
         answers = self._stored_answers(draft)
+        fields = await self.import_service.repository.list_fields(draft.id)
+        resolved = frozenset(
+            field.field_path
+            for field in fields
+            if field.review_status in {"confirmed", "edited"}
+            and (field.confirmed_value is not None or field.edited_value is not None)
+        )
         return validate_proposed_question(
             proposal,
             answered_fields=frozenset(answers),
+            resolved_fields=resolved,
             suppressed_fields=suppressed_by_answers(answers),
             active_conditional_fields=await self._active_conditionals(draft),
         )
@@ -599,12 +632,22 @@ class JobImportConversationService:
             for field in fields
             if field.provenance_state == "missing" and field.review_status == "pending"
         }
+        suggested = {
+            field.field_path: field.missing_requirement
+            for field in fields
+            if field.provenance_state == "suggested_inference"
+            and field.review_status == "pending"
+            and field.proposed_value is not None
+            and bool(field.evidence)
+            and not field.validation_errors
+        }
         return deterministic_question_queue(
             conflicted_fields=conflicted,
             missing_fields=missing,
             answered_fields=frozenset(answers),
             suppressed_fields=suppressed_by_answers(answers),
             active_conditional_fields=await self._active_conditionals(draft),
+            suggested_fields=suggested,
             dismissed_fields=frozenset(self._dismissed(draft)),
         )
 
@@ -616,9 +659,12 @@ class JobImportConversationService:
         """
 
         fields = await self.import_service.repository.list_fields(draft.id)
-        values: dict[str, object] = {
-            field.field_path: field.proposed_value for field in fields
-        }
+        values: dict[str, object] = {}
+        for field in fields:
+            if field.review_status == "edited" and field.edited_value is not None:
+                values[field.field_path] = field.edited_value
+            elif field.review_status == "confirmed" and field.confirmed_value is not None:
+                values[field.field_path] = field.confirmed_value
         values.update(self._stored_answers(draft))
 
         active: set[str] = set()
@@ -635,6 +681,8 @@ class JobImportConversationService:
             active.update({"trial_scope", "trial_work_usage", "trial_portfolio_permission"})
         if values.get("trial_status") == "paid":
             active.update({"trial_compensation_amount", "trial_compensation_currency"})
+        if values.get("trial_status") == "unpaid":
+            active.add("unpaid_trial_confirmed")
         if values.get("revision_policy") == "fixed":
             active.add("revision_rounds")
         if values.get("start_timing") == "specific_date":
@@ -732,6 +780,14 @@ class JobImportConversationService:
                 recommended = self._recommended_alternative(draft, alternatives)
                 if recommended is not None:
                     question["recommended_value"] = recommended
+        if "recommended_value" not in question:
+            if (
+                field_row is not None
+                and field_row.provenance_state == "suggested_inference"
+                and field_row.review_status == "pending"
+                and field_row.proposed_value is not None
+            ):
+                question["recommended_value"] = field_row.proposed_value
         if "recommended_value" not in question:
             hint = (suggestions or {}).get(candidate.field_path)
             if hint:

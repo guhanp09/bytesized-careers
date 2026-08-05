@@ -133,7 +133,13 @@ _PUBLICATION_BLOCKERS: Final[frozenset[str]] = frozenset(
         "about_channel",
         "responsibilities",
         "requirements",
-        "start_timeframe",
+        # Publication accepts either start field (see JobService._validate_for_
+        # publication), and start_timing is the one the Post Job editor renders.
+        # Naming the legacy field here made it the tracked blocker, so the
+        # assistant asked for a start window the recruiter could never see or
+        # edit afterwards. Tracking the live field fixes that without changing
+        # what publication actually requires.
+        "start_timing",
         "application_mode",
         "compensation_mode",
         "budget_unit",
@@ -373,20 +379,11 @@ AUTO_TRACKED_MISSING_FIELDS: Final[tuple[str, ...]] = tuple(
     if policy.missing_requirement != "optional"
 )
 
-# Fields the recruiter may answer while provider extraction is still running.
+# Fields an older client may still answer while extraction is running.
 #
-# Eligibility is deliberately narrow. A field qualifies only when answering it
-# early cannot waste the recruiter's time, which requires all three of:
-#
-#   1. the recruiter must confirm it explicitly no matter what the source says,
-#      so an early answer is never discarded by a better extraction;
-#   2. it is not conditional, so no controlling answer has to be known first;
-#   3. it is a routing or identity decision the recruiter owns rather than a
-#      fact about the role that the source is likely to state.
-#
-# Rule 3 is why compensation and trial terms are excluded even though they meet
-# the first two: the source usually states them, so asking early would create
-# work the extraction was about to remove.
+# This remains a narrow, policy-derived compatibility write contract. The
+# native assistant advertises the separate empty exposure set below, so it
+# always reads the source before asking anything.
 _EARLY_RECRUITER_AUTHORITY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         # application_mode used to be here. Applications always run through
@@ -403,12 +400,17 @@ EARLY_RECRUITER_QUESTION_FIELDS: Final[frozenset[str]] = frozenset(
     and policy.missing_requirement != "conditionally_required"
 )
 
+# Extraction always gets the first visible turn. Even recruiter-owned context
+# can be present in the source, so the native assistant advertises no early
+# questions and waits for processed field state before asking anything.
+EXPOSED_EARLY_RECRUITER_QUESTION_FIELDS: Final[frozenset[str]] = frozenset()
+
 
 def import_field_policy(field_path: str) -> JobImportFieldPolicy | None:
     return JOB_IMPORT_FIELD_POLICIES.get(field_path)
 
 
 def is_early_recruiter_question(field_path: str) -> bool:
-    """Answerable before machine output exists, without risking wasted work."""
+    """Whether a field may be answered before source processing completes."""
 
     return field_path in EARLY_RECRUITER_QUESTION_FIELDS

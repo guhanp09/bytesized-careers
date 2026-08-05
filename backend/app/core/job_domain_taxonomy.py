@@ -362,3 +362,12 @@ CREATOR_EXPERIENCE_BANDS: tuple[str, ...] = (
     "3\u20135 years",
     "5\u20138 years",
 )
+
+
+#: Currencies the Post Job editor offers.
+#:
+#: Mirrors the list rendered in ``components/post-job/PostJobForm.tsx``. The job
+#: schema types currency as a bare three-character string, so without this the
+#: assistant offered a free text box for it — and any sentence typed there came
+#: back as "That answer is not valid for this detail". Parity is enforced by test.
+CREATOR_JOB_CURRENCIES: tuple[str, ...] = ("INR", "USD", "EUR", "GBP", "CAD", "AUD")

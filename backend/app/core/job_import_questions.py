@@ -50,18 +50,35 @@ ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
         # Who can actually take the job.
         "work_mode",
         "location",
-        # Whether unpaid work is being asked for, and on what terms.
-        "trial_status",
+        # When a source explicitly says there is a trial, its candidate-safety
+        # terms have to be clear. An absent trial is not itself a question.
         "trial_work_usage",
         "trial_portfolio_permission",
         "unpaid_trial_confirmed",
         # How the engagement is meant to be understood.
         "engagement_type",
+        # When the work starts. ``start_timing`` is the field the Post Job editor
+        # actually renders; ``start_date`` follows only when a specific date was
+        # chosen, and is filtered by the active-conditional set until then.
+        "start_timing",
+        "start_date",
         # Identity of the work itself.
         "title",
         "primary_role_key",
     }
 )
+
+#: Fields a newer field has replaced, so asking about them writes into a control
+#: the recruiter can no longer see.
+#:
+#: ``start_timeframe`` is the case that proved the point: the recruiter chose a
+#: start window in the conversation, the answer was stored and carried into the
+#: job, and the editor rendered nothing — because on a v3 listing that field
+#: exists only as a read-only note for older listings. Publication accepts either
+#: field, so asking the live one costs nothing and is the only one that shows.
+#:
+#: The rule this encodes: never ask for a value the recruiter cannot then edit.
+SUPERSEDED_QUESTION_FIELDS: Final[frozenset[str]] = frozenset({"start_timeframe"})
 
 #: Decided by the platform, so never a question.
 #:
@@ -115,6 +132,11 @@ def conversation_question_kind(field_path: str, requirement: str) -> QuestionKin
         # Not the recruiter's call, so not a question — whatever its
         # publication requirement says.
         return None
+    if field_path in SUPERSEDED_QUESTION_FIELDS:
+        # A successor field owns this now. Asking here would collect an answer
+        # the editor cannot show, which reads to the recruiter as the answer
+        # being ignored.
+        return None
     if field_path in ESSENTIAL_CONVERSATION_FIELDS:
         return "mandatory"
     if requirement == "publication_blocker":
@@ -141,6 +163,7 @@ QuestionRejection = Literal[
     "server_owned_field",
     "legacy_field",
     "already_answered",
+    "already_resolved",
     "suppressed_by_answer",
     "inactive_conditional",
     "answer_shape_mismatch",
@@ -172,6 +195,7 @@ def validate_proposed_question(
     proposal: ProposedQuestion,
     *,
     answered_fields: frozenset[str],
+    resolved_fields: frozenset[str] = frozenset(),
     suppressed_fields: frozenset[str],
     active_conditional_fields: frozenset[str],
 ) -> QuestionValidation:
@@ -183,7 +207,11 @@ def validate_proposed_question(
 
     path = proposal.field_path
 
-    if path in PROHIBITED_QUESTION_FIELDS or path in PLATFORM_DECIDED_FIELDS:
+    if (
+        path in PROHIBITED_QUESTION_FIELDS
+        or path in PLATFORM_DECIDED_FIELDS
+        or path in SUPERSEDED_QUESTION_FIELDS
+    ):
         return QuestionValidation(None, "prohibited_field")
     if path in SYSTEM_OWNED_IMPORT_FIELDS:
         return QuestionValidation(None, "server_owned_field")
@@ -198,6 +226,11 @@ def validate_proposed_question(
         # Re-asking a settled question is the clearest possible signal that the
         # assistant is not listening.
         return QuestionValidation(None, "already_answered")
+    if path in resolved_fields:
+        # Extracted and safely interpreted facts are answers too. A provider is
+        # allowed to improve extraction, but never to turn a settled field back
+        # into administrative work for the recruiter.
+        return QuestionValidation(None, "already_resolved")
     if path in suppressed_fields:
         return QuestionValidation(None, "suppressed_by_answer")
 
@@ -227,6 +260,11 @@ _REQUIREMENT_PRIORITY: Final[dict[str, int]] = {
 
 _CONFLICT_PRIORITY: Final[int] = 0
 
+#: A source-backed machine suggestion for a required field is more useful than
+#: an empty question, but it still needs a person to confirm it when the
+#: confidence policy did not allow automatic settlement.
+_REQUIRED_SUGGESTION_PRIORITY: Final[int] = 5
+
 #: Where a conflict lands when the field itself is only ever an offer. Behind
 #: every requirement, so an optional contradiction can never lead the queue.
 _OPTIONAL_PRIORITY: Final[int] = 50
@@ -246,6 +284,7 @@ def deterministic_question_queue(
     answered_fields: frozenset[str],
     suppressed_fields: frozenset[str],
     active_conditional_fields: frozenset[str],
+    suggested_fields: dict[str, str] | None = None,
     dismissed_fields: frozenset[str] = frozenset(),
 ) -> list[QueueCandidate]:
     """Every field that still legitimately needs a recruiter, best first.
@@ -257,6 +296,7 @@ def deterministic_question_queue(
 
     candidates: list[QueueCandidate] = []
     seen: set[str] = set()
+    suggested_fields = suggested_fields or {}
 
     def eligible(path: str) -> bool:
         if path in seen or path in answered_fields or path in suppressed_fields:
@@ -265,7 +305,7 @@ def deterministic_question_queue(
             return False
         if path in PROHIBITED_QUESTION_FIELDS or path in SYSTEM_OWNED_IMPORT_FIELDS:
             return False
-        if path in PLATFORM_DECIDED_FIELDS:
+        if path in PLATFORM_DECIDED_FIELDS or path in SUPERSEDED_QUESTION_FIELDS:
             return False
         if path in LEGACY_COMPATIBILITY_IMPORT_FIELDS:
             return False
@@ -293,6 +333,29 @@ def deterministic_question_queue(
             continue
         candidates.append(QueueCandidate(path, "confirmation", _CONFLICT_PRIORITY))
 
+    for path, requirement in sorted(suggested_fields.items()):
+        if not eligible(path):
+            continue
+        policy = JOB_IMPORT_FIELD_POLICIES[path]
+        if (
+            policy.missing_requirement == "conditionally_required"
+            and path not in active_conditional_fields
+        ):
+            continue
+        kind = conversation_question_kind(path, requirement)
+        if kind is None:
+            continue
+        seen.add(path)
+        if kind == "optional":
+            # Unlike a blank optional field, this is a grounded interpretation
+            # of source data. Offer it without making it essential; the shared
+            # optional cap still prevents a second form from appearing.
+            candidates.append(QueueCandidate(path, "optional", _OPTIONAL_PRIORITY))
+            continue
+        candidates.append(
+            QueueCandidate(path, "confirmation", _REQUIRED_SUGGESTION_PRIORITY)
+        )
+
     for path, requirement in sorted(missing_fields.items()):
         if not eligible(path):
             continue
@@ -306,6 +369,11 @@ def deterministic_question_queue(
         if kind is None:
             # Not needed to understand the source and not a chosen improvement.
             # Ordinary Post Job editing is the right place for it.
+            continue
+        if kind == "optional":
+            # An absent optional improvement is not a conversation. Optional
+            # conflicts and grounded suggestions can still be offered, but the
+            # assistant never manufactures questions from a blank field.
             continue
         seen.add(path)
         candidates.append(
