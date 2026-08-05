@@ -15,6 +15,8 @@ from app.db import seed_data_personas as personas
 from app.db.seed_data_job_import import (
     DEVELOPMENT_IMPORT_SCENARIOS,
     IN_FLIGHT_IMPORT_SCENARIOS,
+    MULTI_CRAFT_SOURCE_TEXT,
+    MULTI_CRAFT_STRUCTURED_CONTEXT,
     SHINE_SCHOOL_EDITOR_SOURCE_TEXT,
     SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT,
     processed_review_fixture,
@@ -194,6 +196,7 @@ async def create_job_import_review_fixture(
         "scriptwriter": "History scriptwriter job post",
         "clean-import": "Education content strategist job post",
         "shine-school-editor": "Video Editor",
+        "multi-craft": "Visual Content Creator - Video Editing, VFX & Animation",
         "checkpoint-currency": "Finance video editor job post",
         "checkpoint-trial": "Gaming thumbnail designer job post",
         "delayed-processing": "Public job post being read",
@@ -201,35 +204,45 @@ async def create_job_import_review_fixture(
         "answer-precedence": "Weekly review channel job post",
     }
     fixture_run = uuid4().hex[:8] if fresh else "stable"
-    is_shine_scenario = scenario == "shine-school-editor"
+    url_fixtures = {
+        "shine-school-editor": (
+            SHINE_SCHOOL_EDITOR_SOURCE_TEXT,
+            SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT,
+        ),
+        "multi-craft": (
+            MULTI_CRAFT_SOURCE_TEXT,
+            MULTI_CRAFT_STRUCTURED_CONTEXT,
+        ),
+    }
+    url_fixture = url_fixtures.get(scenario)
     source = await service.create_source(
         JobImportSourceCreate(
-            source_type="public_url" if is_shine_scenario else "rough_description",
+            source_type="public_url" if url_fixture else "rough_description",
             source_title=source_titles[scenario],
             original_text=(
-                SHINE_SCHOOL_EDITOR_SOURCE_TEXT
-                if is_shine_scenario
+                url_fixture[0]
+                if url_fixture
                 else (
                     f"Development-only {scenario} private source used to inspect the guided "
                     "recruiter experience without a provider call."
                 )
             ),
             source_url=(
-                "https://example.invalid/development/shine-school-editor"
-                if is_shine_scenario
+                f"https://example.invalid/development/{scenario}"
+                if url_fixture
                 else None
             ),
             idempotency_key=f"ds-{scenario}-{current_user.id}-{fixture_run}",
         ),
         owner_user_id=current_user.id,
     )
-    if is_shine_scenario:
+    if url_fixture:
         source.final_source_url = source.source_url
         source.retrieved_at = datetime.now(UTC)
         source.retrieval_metadata = {
             "development_fixture": True,
             "json_ld_job_posting": True,
-            "structured_context": SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT,
+            "structured_context": url_fixture[1],
         }
         await service.repository.session.commit()
         await service.repository.session.refresh(source)

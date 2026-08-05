@@ -15,6 +15,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "scriptwriter",
     "clean-import",
     "shine-school-editor",
+    "multi-craft",
     # Checkpointed conversation: these land in waiting_for_recruiter so the
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
@@ -32,6 +33,44 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
 #: Scenarios that stay mid-processing rather than recording extraction output.
 IN_FLIGHT_IMPORT_SCENARIOS = frozenset(
     {"delayed-processing", "refresh-resume", "answer-precedence"}
+)
+
+#: The BeBee page a recruiter reported, sanitized to a fixture.
+#:
+#: Kept exactly as the live page presented it, including the district-wrapped
+#: address and the "25 years" requirement, because the point of the scenario is
+#: to watch what reaches the editor rather than to trust that it is right. The
+#: figure is almost certainly a typo for 2-5; correcting it here would hide the
+#: rule that a source typo is the recruiter's call, not ours.
+MULTI_CRAFT_STRUCTURED_CONTEXT = {
+    "job_title": "Visual Content Creator - Video Editing, VFX & Animation",
+    "role_summary": (
+        "Produce visual content for a school: edited films, motion graphics and "
+        "short animated explainers."
+    ),
+    "responsibilities": [
+        "Edit event films and classroom recordings",
+        "Build motion graphics and animated explainers",
+    ],
+    "employer_name": "Adithya Global School",
+    "role_location": "Coimbatore, Coimbatore district, IN",
+    "employment_type": "FULL_TIME",
+    "industry": "Education / Training",
+    "skills": "Video Editing, VFX, Animation, Motion Graphics",
+}
+
+MULTI_CRAFT_SOURCE_TEXT = "\n".join(
+    (
+        "Visual Content Creator - Video Editing, VFX & Animation",
+        "Adithya Global School, Coimbatore, Coimbatore district, IN",
+        "Full time. On campus.",
+        "INR 29167-41667 per MONTH",
+        "Experience",
+        (
+            "25 years of professional experience in Video Editing, Motion "
+            "Graphics, Animation, or Digital Content Creation."
+        ),
+    )
 )
 
 SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT = {
@@ -85,6 +124,8 @@ def processed_review_fixture(
         return _clean_import_fixture()
     if scenario == "shine-school-editor":
         return _shine_school_editor_fixture()
+    if scenario == "multi-craft":
+        return _multi_craft_fixture()
     if scenario == "scriptwriter":
         return _scriptwriter_fixture()
     if scenario == "checkpoint-currency":
@@ -605,6 +646,93 @@ def _clean_import_fixture() -> JobImportExtractionResponse:
                     "code": "development_fixture",
                     "message": "This local example contains demonstration data only.",
                 }
+            ],
+        }
+    )
+
+
+def _multi_craft_fixture() -> JobImportExtractionResponse:
+    """A listing whose title names three crafts and settles on none of them.
+
+    Modelled on a real school posting. It is the case the craft rule used to
+    fall through: too clearly in scope to leave blank, too genuinely ambiguous
+    to decide for the recruiter. The scenario exists so that question can be
+    watched being asked — with the crafts the page named on the buttons, and
+    nothing else.
+
+    The city is deliberately the district-wrapped label the source supplied, so
+    the value reaching the editor can be seen rather than trusted.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Visual Content Creator - Video Editing, VFX & Animation",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Visual Content Creator - Video Editing, VFX & Animation"}
+                    ],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "full_time",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Full time, on campus."}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "onsite",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Full time, on campus."}],
+                },
+                {
+                    "field_path": "location",
+                    "value": "Coimbatore",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Coimbatore, Coimbatore district, IN"}],
+                },
+                {
+                    "field_path": "experience_level",
+                    "value": "5\u20138 years",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "25 years of professional experience in Video Editing"}
+                    ],
+                },
+                {
+                    "field_path": "compensation_mode",
+                    "value": "range",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR 29167-41667 per MONTH"}],
+                },
+                {
+                    "field_path": "budget_currency",
+                    "value": "INR",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR 29167-41667 per MONTH"}],
+                },
+                {
+                    "field_path": "budget_unit",
+                    "value": "per month",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR 29167-41667 per MONTH"}],
+                },
+                {
+                    "field_path": "budget_amount",
+                    "value": "29167",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR 29167-41667 per MONTH"}],
+                },
+                {
+                    "field_path": "budget_max",
+                    "value": "41667",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "INR 29167-41667 per MONTH"}],
+                },
             ],
         }
     )

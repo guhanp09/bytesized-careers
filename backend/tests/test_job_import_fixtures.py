@@ -56,6 +56,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "scriptwriter",
         "clean-import",
         "shine-school-editor",
+        "multi-craft",
         "checkpoint-currency",
         "checkpoint-trial",
     }
@@ -106,6 +107,7 @@ async def test_processed_scenarios_produce_a_reviewable_draft(
         "scriptwriter",
         "clean-import",
         "shine-school-editor",
+        "multi-craft",
         "checkpoint-currency",
         "checkpoint-trial",
     ):

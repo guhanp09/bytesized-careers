@@ -979,6 +979,9 @@ export default function ImportJobPageClient() {
                     <option value="shine-school-editor" className="bg-[#0b0b0f]">
                       URL import · Chennai school editor
                     </option>
+                    <option value="multi-craft" className="bg-[#0b0b0f]">
+                      URL import · title names several crafts
+                    </option>
                     <option value="checkpoint-currency" className="bg-[#0b0b0f]">
                       Checkpoint · pay needs a currency
                     </option>

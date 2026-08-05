@@ -733,6 +733,7 @@ export type DevelopmentJobImportScenario =
   | "scriptwriter"
   | "clean-import"
   | "shine-school-editor"
+  | "multi-craft"
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"
