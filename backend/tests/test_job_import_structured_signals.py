@@ -10,6 +10,7 @@ from __future__ import annotations
 import json as _json
 
 import pytest
+from sqlalchemy import select
 
 from app.core.job_import_structured_fields import fields_from_structured_context
 from app.services.job_url_fetcher import normalize_public_job_html
@@ -597,3 +598,136 @@ async def test_a_structured_page_suppresses_questions_through_the_whole_path(
     # The whole point: a page that states these is never asked about them.
     for field_path in ("engagement_type", "budget_currency", "budget_amount", "about_channel"):
         assert field_path not in asked, f"{field_path} was on the page and still asked"
+
+
+def test_a_board_can_mislabel_its_own_structured_data() -> None:
+    """A real page: titled "...Intern 6 months onsite", published FULL_TIME.
+
+    Indian job boards frequently default employmentType to FULL_TIME regardless
+    of the posting. Reading it literally put the page in disagreement with its
+    own title and body, and the recruiter was asked to settle a question the
+    listing had already answered twice.
+    """
+
+    from app.core.job_import_title_signals import title_signals
+
+    title = "AI Graphics Designer and Video Editor Intern 6 months onsite"
+    structured = fields_from_structured_context(
+        {"job_title": title, "employment_type": "FULL_TIME"}
+    )
+    # Read faithfully on its own: the structured claim is what it is.
+    assert structured["engagement_type"] == "full_time"
+    # But the title states the truth plainly, and unambiguously.
+    assert title_signals(title).settled["engagement_type"] == "internship"
+
+
+@pytest.mark.anyio
+async def test_the_title_settles_a_contradiction_instead_of_asking(client) -> None:
+    """The reported behaviour, end to end.
+
+    Two readings of one page disagree. The title says which is right, so the
+    assistant must not hand the disagreement to the recruiter.
+    """
+
+    from uuid import UUID, uuid4
+
+    from conftest import TestSessionLocal
+    from test_job_import_checkpoint import _auth
+
+    from app.models import JobImportField
+    from app.repositories.job_import_repository import JobImportRepository
+    from app.repositories.job_repository import JobRepository
+    from app.schemas.job_import import JobImportExtractionResponse
+    from app.services.job_import_service import JobImportService
+    from app.services.job_service import JobService
+
+    title = "AI Graphics Designer and Video Editor Intern 6 months onsite"
+    headers, owner_id = await _auth(client, "title-breaks-tie")
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": title,
+            "original_text": f"{title}. Internship Details. Duration: 6 Months.",
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft_id = draft.json()["id"]
+
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            JobImportExtractionResponse.model_validate(
+                {
+                    "extraction_schema_version": 1,
+                    "target_listing_schema_version": 3,
+                    "fields": [
+                        {
+                            "field_path": "title",
+                            "value": title,
+                            "provenance": "extracted_from_source",
+                            "evidence": [{"snippet": title}],
+                        }
+                    ],
+                    "conflicts": [
+                        {
+                            "field_path": "engagement_type",
+                            "values": [
+                                {
+                                    "value": "full_time",
+                                    "evidence": [{"snippet": "Internship Details"}],
+                                },
+                                {
+                                    "value": "internship",
+                                    "evidence": [{"snippet": "Intern 6 months"}],
+                                },
+                            ],
+                            "explanation": "The page disagrees with itself.",
+                        }
+                    ],
+                    "missing_fields": [],
+                    "warnings": [],
+                }
+            ),
+            owner_user_id=owner_id,
+        )
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+
+    asked: list[str] = []
+    question = begun.json().get("active_question")
+    for _ in range(20):
+        if question is None:
+            break
+        asked.append(question["field_path"])
+        break
+
+    assert "engagement_type" not in asked, "the title already said this"
+
+    async with TestSessionLocal() as session:
+        row = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft_id),
+                    JobImportField.field_path == "engagement_type",
+                )
+            )
+        ).scalar_one()
+    effective = row.edited_value or row.confirmed_value or row.proposed_value
+    assert effective == "internship", "the tie was broken the wrong way"

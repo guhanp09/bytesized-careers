@@ -343,6 +343,77 @@ class JobImportConversationService:
     # The loop
     # ------------------------------------------------------------------
 
+    async def _resolve_compensation_mode(self, draft: JobImportDraft) -> bool:
+        """A stated figure already says how the role is paid.
+
+        A page reading "Stipend: 15,000 per month" has answered "how is this
+        role paid?" — the amount and the unit are both there. Asking anyway is
+        the clearest possible way to look like the assistant did not read the
+        post it was given.
+
+        One figure is a fixed rate; two are a range. Nothing is invented: this
+        only names a mode the numbers already imply, and it never runs when the
+        recruiter or the source has settled the mode themselves.
+        """
+
+        answers = self._stored_answers(draft)
+        if "compensation_mode" in answers:
+            return False
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        by_path = {item.field_path: item for item in fields}
+
+        mode = by_path.get("compensation_mode")
+        if mode is not None and mode.provenance_state != "missing":
+            return False
+
+        def known(path: str) -> bool:
+            field = by_path.get(path)
+            if path in answers:
+                return True
+            return field is not None and field.provenance_state not in {
+                "missing",
+                "conflicting_source_values",
+            }
+
+        if not known("budget_amount"):
+            return False
+        implied = "range" if known("budget_max") else "fixed"
+
+        policy = JOB_IMPORT_FIELD_POLICIES["compensation_mode"]
+        normalized, errors = await self.import_service._validate_field_value(policy, implied)
+        if errors:
+            return False
+
+        amount = by_path.get("budget_amount")
+        payload = {
+            "provenance_state": "extracted_from_source",
+            "proposed_value": normalized,
+            "confirmed_value": normalized,
+            "review_status": "confirmed",
+            "requires_confirmation": False,
+            "validation_errors": [],
+            "explanation": "The post states a pay figure, which sets how the role is paid.",
+            "evidence": list(amount.evidence or []) if amount is not None else [],
+            "conflicting_values": [],
+        }
+        if mode is not None:
+            await self.import_service.repository.update_field(mode, payload)
+        else:
+            await self.import_service.repository.create_fields(
+                [
+                    {
+                        "draft_id": draft.id,
+                        "field_path": "compensation_mode",
+                        "provider_confidence": None,
+                        "missing_requirement": policy.missing_requirement,
+                        "edited_value": None,
+                        **payload,
+                    }
+                ]
+            )
+        return True
+
     async def _resolve_pay_range(self, draft: JobImportDraft) -> bool:
         """Settle a two-figure pay conflict as a range instead of asking.
 
@@ -386,6 +457,19 @@ class JobImportConversationService:
             },
         )
         return True
+
+    @staticmethod
+    def _conflicting_values(field: Any) -> list[object]:
+        """The values a contradicted field is actually torn between."""
+
+        raw = field.conflicting_values or []
+        values: list[object] = []
+        for entry in raw:
+            if isinstance(entry, dict) and "value" in entry:
+                values.append(entry["value"])
+            else:
+                values.append(entry)
+        return values
 
     async def _apply_title_signals(
         self, draft: JobImportDraft, *, owner_user_id: UUID
@@ -435,6 +519,24 @@ class JobImportConversationService:
                 existing.provenance_state == "suggested_inference"
                 and existing.review_status == "pending"
                 and existing.proposed_value == value
+            ):
+                fresh[path] = value
+                continue
+            # Resolve a contradiction the title already decides.
+            #
+            # Job boards mislabel their own structured data. A real listing
+            # titled "...Intern 6 months onsite", whose body is headed
+            # "Internship Details", published employmentType FULL_TIME — so the
+            # page disagreed with itself and the recruiter was asked to settle
+            # something their title had already said twice.
+            #
+            # Only when the title's value is one of the values actually in
+            # dispute: this breaks a tie between readings of the source, it
+            # never introduces a third answer of its own.
+            if (
+                existing.provenance_state == "conflicting_source_values"
+                and existing.review_status == "pending"
+                and value in self._conflicting_values(existing)
             ):
                 fresh[path] = value
         if not fresh:
@@ -528,6 +630,7 @@ class JobImportConversationService:
         # not a question.
         await self._apply_title_signals(draft, owner_user_id=owner_user_id)
         await self._resolve_pay_range(draft)
+        await self._resolve_compensation_mode(draft)
         queue = await self._queue_for(draft)
         candidate = queue[0] if queue else None
 
