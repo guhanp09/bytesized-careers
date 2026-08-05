@@ -23,6 +23,7 @@ import re
 from typing import Any, Final
 
 from app.core.job_import_field_descriptions import looks_like_boilerplate
+from app.core.job_import_location_resolution import parse_location
 
 #: schema.org employmentType values, mapped onto CreatorJobs engagement types.
 #:
@@ -188,7 +189,16 @@ def fields_from_structured_context(context: dict[str, object]) -> dict[str, obje
         # A stated physical workplace and no remote signal means on-site.
         fields["work_mode"] = "onsite"
     if role_location and fields.get("work_mode") != "remote":
-        fields["location"] = role_location[:120]
+        # The native field holds a city, not a formatted address. A page stating
+        # "Coimbatore, Coimbatore district, IN" was putting that whole label into
+        # it, and the editor's city validator refused the draft the moment it
+        # opened — a technical mapping fault the recruiter was left to repair.
+        parts = parse_location(role_location)
+        canonical = ", ".join(
+            component for component in (parts.locality, parts.city) if component
+        )
+        if canonical:
+            fields["location"] = canonical[:120]
 
     fields.update(_compensation_fields(_text(context.get("compensation"))))
 

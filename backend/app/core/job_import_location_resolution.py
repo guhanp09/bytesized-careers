@@ -165,6 +165,37 @@ KNOWN_LOCALITIES: Final[dict[str, str]] = {
 }
 
 
+#: Administrative wrappers that are not the name of a city.
+#:
+#: A page stating "Coimbatore, Coimbatore district, IN" names one city twice —
+#: once plainly and once inside its district. Treating the district as the
+#: locality put "Coimbatore district" into a city field, which the native
+#: validator rightly refused.
+_DISTRICT_SUFFIX = re.compile(
+    r"\b(district|dist|county|province|prefecture|metropolitan area)\b",
+    re.IGNORECASE,
+)
+
+#: Words describing an arrangement rather than a place. "Remote, India" names a
+#: country and a working style; it does not name a city.
+_NOT_A_PLACE: Final[frozenset[str]] = frozenset(
+    {
+        "remote",
+        "remote friendly",
+        "anywhere",
+        "work from home",
+        "wfh",
+        "hybrid",
+        "onsite",
+        "on site",
+        "in office",
+        "telecommute",
+        "multiple locations",
+        "various",
+    }
+)
+
+
 @dataclass(frozen=True)
 class LocationParts:
     """One stated location, split into the parts we can reason about."""
@@ -264,13 +295,25 @@ def parse_location(raw: str) -> LocationParts:
             continue
         unclassified.append(part)
 
-    # Whatever is left: the last unclassified component is the city, anything
-    # before it is treated as a more specific part of the same address.
+    # A district or county wrapper is administrative, not a city name.
+    administrative = [part for part in unclassified if _DISTRICT_SUFFIX.search(part)]
+    unclassified = [part for part in unclassified if part not in administrative]
+    if administrative and region is None:
+        region = administrative[0]
+
+    # An arrangement is not a place, however the source ordered its components.
+    unclassified = [
+        part for part in unclassified if part.casefold() not in _NOT_A_PLACE
+    ]
+
+    # What remains reads most specific first, which is how sources write
+    # addresses: "Brookefield, Bengaluru" is a neighbourhood then its city.
     if unclassified:
         if city is None:
-            city = unclassified.pop()
-        if unclassified and locality is None:
-            locality = unclassified[0]
+            city = unclassified[-1] if len(unclassified) > 1 else unclassified[0]
+        remaining = [part for part in unclassified if part != city]
+        if remaining and locality is None:
+            locality = remaining[0]
 
     return LocationParts(
         raw=raw,

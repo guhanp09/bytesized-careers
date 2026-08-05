@@ -41,7 +41,10 @@ def test_a_fully_described_page_answers_the_expensive_questions() -> None:
     # And the rest of the expensive ones.
     assert fields["engagement_type"] == "full_time"
     assert fields["work_mode"] == "onsite"
-    assert fields["location"] == "Chennai, Tamil Nadu, India"
+    # The native control holds a city, so the region and country are dropped
+    # rather than passed through. Handing the editor the whole formatted address
+    # tripped its city validator on arrival.
+    assert fields["location"] == "Chennai"
     assert fields["experience_level"] == "2–4 years"
     assert fields["title"] == "Video Editor"
     assert "about_channel" in fields

@@ -87,6 +87,33 @@ _ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
     ("voice artist", "voice-over-artist"),
     ("community moderator", "community-manager"),
     ("channel operator", "channel-manager"),
+    # Craft named as an activity rather than as a person.
+    #
+    # A title reading "Visual Content Creator - Video Editing, VFX & Animation"
+    # names three crafts and matched none of them, because every entry below was
+    # an agent noun: "editor", "animator", "designer". The role arrived empty and
+    # the recruiter was handed a draft with no craft and no question about it.
+    ("video editing", "video-editor"),
+    ("film editing", "video-editor"),
+    ("motion graphics", "motion-designer"),
+    ("motion design", "motion-designer"),
+    ("animation", "animator"),
+    ("2d animation", "animator"),
+    ("3d animation", "animator"),
+    ("graphic design", "graphic-designer"),
+    ("thumbnail design", "thumbnail-designer"),
+    ("scriptwriting", "scriptwriter"),
+    ("script writing", "scriptwriter"),
+    ("copywriting", "copywriter"),
+    ("audio engineering", "audio-engineer"),
+    ("sound design", "audio-engineer"),
+    ("podcast production", "podcast-producer"),
+    ("illustration", "illustrator"),
+    ("videography", "videographer"),
+    ("voice over", "voice-over-artist"),
+    ("community management", "community-manager"),
+    ("social media management", "social-media-manager"),
+    ("content strategy", "content-strategist"),
 )
 
 #: Role words, longest first so "long-form editor" is not eaten by "editor".
@@ -144,7 +171,7 @@ _EXPERIENCE_WORDS: Final[tuple[tuple[str, str], ...]] = (
 _EXPERIENCE_RANGE = re.compile(
     r"\b(\d{1,2})\s*(?:[-–]|to)\s*(\d{1,2})\s*\+?\s*years?\b"
     r"|\b(\d{1,2})\s*\+\s*years?\b"
-    r"|\b(\d{1,2})\s*years?\s+(?:of\s+)?exp"
+    r"|\b(\d{1,2})\s*years?\s+(?:of\s+)?(?:\w+\s+){0,2}exp"
 )
 
 #: "6 months", "3-month" — a stated length is a fixed period.

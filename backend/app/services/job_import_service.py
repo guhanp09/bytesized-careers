@@ -33,11 +33,13 @@ from app.core.job_domain_taxonomy import (
     TRIAL_STATUSES,
     TRIAL_WORK_USAGE,
 )
+from app.core.job_import_body_sections import experience_from_body
 from app.core.job_import_inference import (
     confidence_at_least,
     infer_compensation_currency,
     provider_confidence_label,
 )
+from app.core.job_import_native_values import coerce_to_native
 from app.core.job_import_policy import (
     AUTO_TRACKED_MISSING_FIELDS,
     JOB_IMPORT_FIELD_POLICIES,
@@ -2317,6 +2319,13 @@ class JobImportService:
             value = self._effective_field_value(field)
             if value is None:
                 continue
+            # A value the editor will refuse is worth less than no value: the
+            # recruiter gets a validation error *and* still has to answer. So a
+            # derived value is either shaped into the native vocabulary or left
+            # out, and never passed through to fail on arrival.
+            value = coerce_to_native(field.field_path, value)
+            if value is None:
+                continue
             policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
             if field.field_path == "primary_role_key":
                 role = await self.repository.get_active_role_by_key(str(value))
@@ -2575,6 +2584,14 @@ class JobImportService:
 
         try:
             structured = fields_from_structured_context(context)
+            # Markup is the better source, so it wins where it speaks at all.
+            # Where it is silent, a plainly stated body requirement is still a
+            # stated fact, and asking for it would be asking the recruiter to
+            # retype something the page put under a heading.
+            if "experience_level" not in structured:
+                stated = experience_from_body(source.original_text)
+                if stated:
+                    structured["experience_level"] = stated
         except Exception:  # pragma: no cover - enrichment must never break import
             # Enrichment is a bonus. A malformed structured block must never
             # turn a successful extraction into a failure.
