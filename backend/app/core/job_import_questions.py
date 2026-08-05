@@ -26,6 +26,7 @@ from app.core.job_import_policy import (
     SYSTEM_OWNED_IMPORT_FIELDS,
     import_field_policy,
 )
+from app.core.job_import_question_value import question_value
 
 QuestionKind = Literal["mandatory", "confirmation", "optional"]
 
@@ -57,14 +58,8 @@ ESSENTIAL_CONVERSATION_FIELDS: Final[frozenset[str]] = frozenset(
         "unpaid_trial_confirmed",
         # How the engagement is meant to be understood.
         "engagement_type",
-        # When the work starts. ``start_timing`` is the field the Post Job editor
-        # actually renders; ``start_date`` follows only when a specific date was
-        # chosen, and is filtered by the active-conditional set until then.
-        "start_timing",
-        "start_date",
         # Identity of the work itself.
         "title",
-        "primary_role_key",
     }
 )
 
@@ -96,6 +91,8 @@ PLATFORM_DECIDED_FIELDS: Final[frozenset[str]] = frozenset(
 #: Every one of these makes a listing better without being needed to understand
 #: it, so each is skippable and none may block the handoff.
 OPTIONAL_CONVERSATION_FIELDS: Final[tuple[str, ...]] = (
+    # Useful for judging availability, never needed to read the offer correctly.
+    "start_timing",
     # First, because these two are the attributes candidates filter on hardest
     # and both are visible on the earliest Post Job pages. Optional rather than
     # essential: a listing still reads correctly without them, so they may be
@@ -119,7 +116,9 @@ OPTIONAL_CONVERSATION_FIELDS: Final[tuple[str, ...]] = (
 MAX_OPTIONAL_SUGGESTIONS: Final[int] = 3
 
 
-def conversation_question_kind(field_path: str, requirement: str) -> QuestionKind | None:
+def conversation_question_kind(
+    field_path: str, requirement: str, *, is_conflict: bool = False
+) -> QuestionKind | None:
     """Classify a field for the assistant conversation, or None to leave it out.
 
     Returning None is the common case and the important one: most of the 91
@@ -137,13 +136,19 @@ def conversation_question_kind(field_path: str, requirement: str) -> QuestionKin
         # the editor cannot show, which reads to the recruiter as the answer
         # being ignored.
         return None
-    if field_path in ESSENTIAL_CONVERSATION_FIELDS:
+    value = question_value(field_path, is_conflict=is_conflict)
+    if value == "deterministic_fallback":
+        # Resolved internally or left to the editor's own control. Never a
+        # question, however the requirement is classified.
+        return None
+    if field_path in ESSENTIAL_CONVERSATION_FIELDS or value == "essential_now":
         return "mandatory"
+    if field_path in OPTIONAL_CONVERSATION_FIELDS or value == "helpful_optional":
+        return "optional"
     if requirement == "publication_blocker":
-        # A blocker the classification above did not name is still something the
-        # recruiter has to decide; asking now is kinder than at publish time.
-        return "mandatory"
-    if field_path in OPTIONAL_CONVERSATION_FIELDS:
+        # A publication blocker nobody classified is still the recruiter's to
+        # decide — but it is an offer, not an interruption. Publication
+        # validation remains the authority and asks again at the right moment.
         return "optional"
     return None
 

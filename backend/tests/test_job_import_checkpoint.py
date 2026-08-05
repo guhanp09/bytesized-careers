@@ -1636,9 +1636,18 @@ async def test_exact_title_role_is_effective_without_becoming_a_recruiter_answer
 
 
 @pytest.mark.anyio
-async def test_a_medium_required_role_suggestion_is_confirmed_not_dropped(
+async def test_a_role_suggestion_is_never_put_to_the_recruiter_as_a_question(
     client: AsyncClient, counting_provider: CountingProvider
 ) -> None:
+    """The creator taxonomy is not a question anyone should be asked.
+
+    Its values are roughly thirty internal craft names. Putting that to someone
+    as chat buttons is a worse version of the picker they are about to see in
+    the editor, and on a job outside the marketplace there is no honest answer
+    at all. It is derived from the title when the title says so, and otherwise
+    left to the editor, which has the real control.
+    """
+
     headers, owner_id = await _auth(client, "medium-role-confirmation")
     draft_id = await _prepared_draft(
         client, headers, owner_id, "medium-role-confirmation"
@@ -1670,10 +1679,40 @@ async def test_a_medium_required_role_suggestion_is_confirmed_not_dropped(
         f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
     )
     assert begun.status_code == 200, begun.text
+    # Derived from the source or left to the editor's own picker, never put to
+    # the recruiter as a chat question about an internal craft taxonomy.
+    asked: list[str] = []
     question = begun.json()["active_question"]
-    assert question["field_path"] == "primary_role_key"
-    assert question["kind"] == "confirmation"
-    assert question["recommended_value"] == "video-editor"
+    for _ in range(20):
+        if question is None:
+            break
+        asked.append(question["field_path"])
+        answered = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={
+                "field_path": question["field_path"],
+                "value": _answer_for(question["field_path"]),
+            },
+        )
+        if answered.status_code != 200:
+            break
+        question = answered.json().get("active_question")
+
+    assert "primary_role_key" not in asked, asked
+
+    # The suggestion itself is untouched and still available to the editor.
+    async with TestSessionLocal() as session:
+        role = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft_id),
+                    JobImportField.field_path == "primary_role_key",
+                )
+            )
+        ).scalar_one()
+    assert role.proposed_value == "video-editor"
+    assert role.reviewed_by_user_id is None
     assert counting_provider.calls == 0
 
 
@@ -1934,7 +1973,7 @@ def test_the_assistant_never_asks_for_a_field_the_editor_cannot_show() -> None:
         conversation_question_kind(
             "start_timing", JOB_IMPORT_FIELD_POLICIES["start_timing"].missing_requirement
         )
-        == "mandatory"
+        == "optional"
     )
 
 
@@ -1977,7 +2016,9 @@ def test_a_specific_start_date_is_asked_only_after_that_choice() -> None:
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset({"start_date"}),
     )
-    assert [item.field_path for item in active] == ["start_date"]
+    # start_date follows a specific-date choice and is never an interruption on
+    # its own; the editor collects it alongside the start timing control.
+    assert [item.field_path for item in active] == []
 
 
 def test_every_askable_field_has_somewhere_to_land() -> None:
@@ -2098,7 +2139,8 @@ async def test_the_start_question_is_the_one_the_editor_renders(
         assert response.status_code == 200, response.text
         question = response.json().get("active_question")
 
-    assert "start_timing" in asked, asked
+    # Offered rather than demanded: a listing without a start date is not
+    # misleading, and the editor asks for it in context.
     assert "start_timeframe" not in asked, asked
 
     applied = await client.post(
@@ -2107,5 +2149,5 @@ async def test_the_start_question_is_the_one_the_editor_renders(
         json={"mode": "create_new"},
     )
     assert applied.status_code == 200, applied.text
-    # The value lands on the field the Post Job editor hydrates and renders.
-    assert applied.json()["job"]["start_timing"] == "immediate"
+    # The legacy start window never reaches the job either.
+    assert not applied.json()["job"].get("start_timeframe")

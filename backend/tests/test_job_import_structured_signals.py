@@ -253,15 +253,13 @@ async def test_a_structured_page_removes_the_questions_end_to_end(
 
     assert len(rich) < len(bare), f"structured page asked as much: {rich} vs {bare}"
     # Every fact the page published outright must be gone from the questions.
-    for settled in (
-        "compensation_mode",
-        "budget_amount",
-        "budget_currency",
-        "budget_unit",
-        "about_channel",
-    ):
+    for settled in ("compensation_mode", "budget_amount", "budget_currency", "budget_unit"):
         assert settled in bare, f"{settled} was expected to be asked without the page data"
         assert settled not in rich, f"{settled} was on the page and still asked"
+    # about_channel is now an offer rather than an interruption, so it may be
+    # absent from both runs; what matters is that the page's own description is
+    # never asked back for.
+    assert "about_channel" not in rich
 
 
 # ---------------------------------------------------------------------------

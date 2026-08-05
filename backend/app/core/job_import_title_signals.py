@@ -61,6 +61,34 @@ _WORK_MODE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("wfh", "remote"),
 )
 
+#: Wording that names a supported craft without using its catalog name.
+#:
+#: Job titles are written for candidates, not for a taxonomy. "YouTube Thumbnail
+#: Artist" is a thumbnail designer; "Short-form Content Editor" is a shorts
+#: editor. Mapping these is what stops the assistant asking a recruiter to
+#: classify a job whose title has already said what it is.
+_ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
+    ("podcast post production", "podcast-producer"),
+    ("podcast post-production", "podcast-producer"),
+    ("podcast editor", "podcast-producer"),
+    ("short form content editor", "shorts-editor"),
+    ("short-form content editor", "shorts-editor"),
+    ("short form editor", "shorts-editor"),
+    ("reels editor", "shorts-editor"),
+    ("thumbnail artist", "thumbnail-designer"),
+    ("motion graphics designer", "motion-designer"),
+    ("motion graphics artist", "motion-designer"),
+    ("content growth consultant", "content-strategist"),
+    ("content growth strategist", "content-strategist"),
+    ("growth strategist", "content-strategist"),
+    ("social media executive", "social-media-manager"),
+    ("social media coordinator", "social-media-manager"),
+    ("voiceover artist", "voice-over-artist"),
+    ("voice artist", "voice-over-artist"),
+    ("community moderator", "community-manager"),
+    ("channel operator", "channel-manager"),
+)
+
 #: Role words, longest first so "long-form editor" is not eaten by "editor".
 _ROLE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("thumbnail designer", "thumbnail-designer"),
@@ -169,11 +197,20 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
             settled["work_mode"] = value
             break
 
+    # Synonyms first, so a specific phrase wins over the general word inside it
+    # and "short-form content editor" is not merely "editor".
     matched_roles = list(
         dict.fromkeys(
-            value
-            for word, value in _ROLE_WORDS
-            if f" {_normalise(word)} " in role_padded
+            [
+                value
+                for phrase, value in _ROLE_SYNONYMS
+                if f" {_normalise(phrase)} " in role_padded
+            ]
+            + [
+                value
+                for word, value in _ROLE_WORDS
+                if f" {_normalise(word)} " in role_padded
+            ]
         )
     )
     if len(matched_roles) == 1:
