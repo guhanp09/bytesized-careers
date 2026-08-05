@@ -279,7 +279,6 @@ export function DraftAssistantCanvas({
           ) : conversation?.ready_for_draft && onOpenDraft ? (
             <ConversationComplete
               filledCount={filledCount}
-              sourceLabel={sourceLabel}
               manual={conversation.manual_continuation}
               onOpenDraft={onOpenDraft}
               busy={busy}

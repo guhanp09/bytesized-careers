@@ -675,13 +675,11 @@ function whyItMatters(
  */
 export function ConversationComplete({
   filledCount,
-  sourceLabel,
   manual,
   onOpenDraft,
   busy,
 }: {
   filledCount: number;
-  sourceLabel: string;
   manual: boolean;
   onOpenDraft: () => void;
   busy: boolean;
@@ -695,8 +693,14 @@ export function ConversationComplete({
         <p className="mt-1.5 text-[13px] leading-5 text-white/55">
           {manual
             ? "I saved everything you decided — you can finish the rest in the editor."
-            : `I filled in what ${sourceLabel} covered and used your answers for the rest.`}
-          {filledCount > 0 ? ` ${filledCount} details are in place.` : ""}
+            : // Naming the source here read badly, because the label is usually
+              // the job title: "I filled in what Visual Content Creator - Video
+              // Editing, VFX & Animation covered". The header already shows
+              // which source this is, so the sentence does not need to.
+              "I filled in what the listing covered and used your answers for the rest."}
+          {filledCount > 0
+            ? ` ${filledCount} ${filledCount === 1 ? "detail is" : "details are"} in place.`
+            : ""}
         </p>
       </AssistantMessage>
       <div className="pl-0 sm:pl-11">
