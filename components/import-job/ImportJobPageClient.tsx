@@ -7,6 +7,8 @@ import {
   BackendRequestError,
   describeActionError,
   isBackendUnreachableError,
+  listRoles,
+  type BackendRole,
 } from "../../lib/backendClient";
 import { trackJobImportEvent } from "../../lib/jobImportAnalytics";
 import {
@@ -38,6 +40,7 @@ import { DraftAssistantRobot } from "./assistant/DraftAssistantRobot";
 import RecruiterJobPreview from "../post-job/RecruiterJobPreview";
 import {
   importPreviewProps,
+  importPreviewRoleName,
   importPreviewSnapshot,
 } from "../../lib/jobImportPreview";
 import {
@@ -65,7 +68,15 @@ function setDraftLocation(draftId: string | null) {
   const next = new URL(window.location.href);
   if (draftId) next.searchParams.set("draft", draftId);
   else next.searchParams.delete("draft");
-  window.history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
+  // Pass a fresh public state value through Next's patched history API. The
+  // patch copies its private router state and updates the canonical URL; passing
+  // `window.history.state` bypasses that integration and Next restores the old
+  // URL on its next update, silently dropping the draft id.
+  window.history.replaceState(
+    null,
+    "",
+    `${next.pathname}${next.search}${next.hash}`
+  );
 }
 
 function readableImportError(error: unknown, sourceType: EntryMode): string {
@@ -122,6 +133,15 @@ function importCounts(draft: JobImportDraft) {
   );
 }
 
+/** What a genuine processing failure says.
+ *
+ * Plain about what happened, and it names the ways forward rather than leaving
+ * the recruiter to guess. It deliberately does not blame the source or the
+ * recruiter: nothing they did caused it, and nothing they retype would fix it.
+ */
+const FAILURE_MESSAGE =
+  "We couldn’t finish reading this page. Nothing you entered was lost — retry, paste the job text instead, or continue manually.";
+
 export default function ImportJobPageClient() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
@@ -143,6 +163,7 @@ export default function ImportJobPageClient() {
   const [conversation, setConversation] = React.useState<JobImportConversation | null>(
     null
   );
+  const [roleCatalog, setRoleCatalog] = React.useState<BackendRole[]>([]);
   const accessToken = session?.backendAccessToken ?? "";
   const restoredRef = React.useRef(false);
   const processingRef = React.useRef(false);
@@ -151,6 +172,22 @@ export default function ImportJobPageClient() {
   const requestIdRef = React.useRef<string | null>(null);
   const startedAtRef = React.useRef(0);
   const answeringRef = React.useRef(false);
+  const readbackPendingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void listRoles()
+      .then((response) => {
+        if (!cancelled) setRoleCatalog(response.items);
+      })
+      .catch(() => {
+        // Role labels improve the live preview, but a temporary catalog failure
+        // must never block importing or discard a stable role key.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!["creating", "processing"].includes(phase)) {
@@ -191,6 +228,14 @@ export default function ImportJobPageClient() {
           );
           return;
         }
+        // Completion is a message and a choice, not an automatic navigation.
+        // Keep the recruiter in the conversation so they can see what was
+        // prepared, then let the explicit "Open job draft" action perform the
+        // native conversion below through `openNativeDraft`.
+        setDraft(readyDraft);
+        setPhase("processing");
+        setAnnouncement("Your private draft is ready to review.");
+        return;
       } catch {
         // The conversation is additive; without it the ordinary handoff stands.
       }
@@ -215,13 +260,15 @@ export default function ImportJobPageClient() {
         router.replace(
           `/post-job?draftId=${encodeURIComponent(String(result.job.id))}&imported=1`
         );
-      } catch (caught) {
-        setPhase("failure");
-        setError(readableImportError(caught, entryMode));
-        trackJobImportEvent("job_import.failed", {
+      } catch {
+        // Same rule as the explicit handoff: a failed conversion is not the end
+        // of the import. The editor hydrates from the import draft directly, so
+        // the recruiter continues with everything they supplied.
+        trackJobImportEvent("job_import.completed", {
           sourceType: entryMode,
           durationMs: Math.max(0, Date.now() - startedAtRef.current),
         });
+        router.replace(`/post-job?importDraftId=${encodeURIComponent(readyDraft.id)}`);
       } finally {
         finishingRef.current = false;
       }
@@ -257,19 +304,32 @@ export default function ImportJobPageClient() {
     [accessToken, draft]
   );
 
+  const activeDraftId = draft?.id ?? null;
   React.useEffect(() => {
-    if (!accessToken || !draft) return;
+    if (!accessToken || !activeDraftId) return;
     let cancelled = false;
+    const draftId = activeDraftId;
 
     const read = async () => {
       // Never refresh over an answer in flight; the response for that answer is
       // newer than anything this poll can return.
       if (answeringRef.current) return;
-      try {
-        const next = await getJobImportConversation(accessToken, draft.id);
-        if (!cancelled && !answeringRef.current) setConversation(next);
-      } catch {
-        // The conversation is additive: a draft without one still renders.
+      const [conversationResult, draftResult] = await Promise.allSettled([
+        getJobImportConversation(accessToken, draftId),
+        getJobImportDraft(accessToken, draftId),
+      ]);
+      if (cancelled || answeringRef.current) return;
+      // Reconcile these independently. A temporary failure reading one view of
+      // the same committed answer must not make the other one stale too.
+      if (draftResult.status === "fulfilled") {
+        setDraft(draftResult.value);
+        if (readbackPendingRef.current) {
+          readbackPendingRef.current = false;
+          setAnnouncement("Draft refreshed.");
+        }
+      }
+      if (conversationResult.status === "fulfilled") {
+        setConversation(conversationResult.value);
       }
     };
     void read();
@@ -281,7 +341,7 @@ export default function ImportJobPageClient() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [accessToken, draft]);
+  }, [accessToken, activeDraftId]);
 
   // Leaving while a question is open records the pause so returning restores it.
   React.useEffect(() => {
@@ -296,7 +356,26 @@ export default function ImportJobPageClient() {
 
   /** Hand off to the ordinary editor. Always an explicit recruiter action. */
   const openNativeDraft = React.useCallback(async () => {
-    if (!accessToken || !draft) return;
+    if (!draft) {
+      // The completion card is rendered from the conversation, so it can be on
+      // screen while the draft snapshot is briefly absent — a refresh that
+      // failed, a token that rotated. Returning here made "Open job draft" a
+      // button that did nothing, which is indistinguishable from a broken app.
+      // The id is in the address bar; use it.
+      const fallbackId = new URL(window.location.href).searchParams.get("draft");
+      if (fallbackId) {
+        router.replace(`/post-job?importDraftId=${encodeURIComponent(fallbackId)}`);
+      }
+      return;
+    }
+    if (!accessToken) {
+      // No usable token here — a persona switch or an expired session. Returning
+      // silently would leave "Open job draft" doing nothing at all, which is the
+      // worst possible ending after a completed conversation. The editor loads
+      // the import draft with its own session, so hand off and let it.
+      router.replace(`/post-job?importDraftId=${encodeURIComponent(draft.id)}`);
+      return;
+    }
     setAnsweringEarlyQuestion(true);
     try {
       if (draft.target_job_id) {
@@ -313,8 +392,12 @@ export default function ImportJobPageClient() {
       router.replace(
         `/post-job?draftId=${encodeURIComponent(String(result.job.id))}&imported=1`
       );
-    } catch (caught) {
-      setError(describeActionError(caught, "That draft could not be opened."));
+    } catch {
+      // Conversion is a convenience, not the only way through. Every answer is
+      // already stored on the import draft, and the editor can hydrate straight
+      // from it — so a failed conversion hands off rather than stranding the
+      // recruiter on a completion screen with an error and nowhere to go.
+      router.replace(`/post-job?importDraftId=${encodeURIComponent(draft.id)}`);
     } finally {
       setAnsweringEarlyQuestion(false);
     }
@@ -328,11 +411,23 @@ export default function ImportJobPageClient() {
       setAnsweringEarlyQuestion(true);
       setError("");
       try {
-        setConversation(await run(accessToken, draft.id));
+        const nextConversation = await run(accessToken, draft.id);
         // The answers live on the draft, and the transcript and preview both
-        // read from it — refreshing only the conversation left the reply the
-        // recruiter just gave invisible.
-        setDraft(await getJobImportDraft(accessToken, draft.id));
+        // read from it. Reconcile both snapshots together: advancing the
+        // conversation first briefly showed the next question before the reply
+        // that caused it, which made a successful exchange look out of order.
+        try {
+          const nextDraft = await getJobImportDraft(accessToken, draft.id);
+          setDraft(nextDraft);
+          setConversation(nextConversation);
+        } catch {
+          // The write already committed. Advance truthfully and let the paired
+          // read heartbeat restore the transcript/preview; saying "not saved"
+          // here would invite a duplicate answer to a question already settled.
+          setConversation(nextConversation);
+          readbackPendingRef.current = true;
+          setAnnouncement("Answer saved. Refreshing your draft…");
+        }
       } catch (caught) {
         setError(describeActionError(caught, "That could not be saved. Try again."));
       } finally {
@@ -353,15 +448,18 @@ export default function ImportJobPageClient() {
     if (!draft) return { node: null, provisionalCount: 0 };
     const snapshot = importPreviewSnapshot(draft);
     const filled = snapshot.recruiterFields.length + snapshot.provisionalFields.length;
-    if (filled === 0) return { node: null, provisionalCount: 0 };
+    const roleName = importPreviewRoleName(snapshot, roleCatalog);
+    if (filled === 0) return { node: null, provisionalCount: 0, roleName };
     const props = importPreviewProps(snapshot, {
       employerName: session?.user?.name ?? "Your channel",
+      roleName,
     });
     return {
       node: <RecruiterJobPreview {...props} previewMode="rail" />,
       provisionalCount: snapshot.provisionalFields.length,
+      roleName,
     };
-  }, [draft, session?.user?.name]);
+  }, [draft, roleCatalog, session?.user?.name]);
 
   const processDraft = React.useCallback(
     async (current: JobImportDraft, signal?: AbortSignal) => {
@@ -415,8 +513,12 @@ export default function ImportJobPageClient() {
           if (terminalDraftStatuses.has(next.processing_status)) {
             void openCanonicalDraft(next);
           } else if (next.processing_status === "processing_failed") {
+            // A failed attempt is shown as a failure. Retrying silently here
+            // would hide a genuine outage behind a spinner, and retrying into a
+            // manufactured empty draft is precisely the behaviour that turned a
+            // provider timeout into the recruiter's data-entry job.
             setPhase("failure");
-            setError("We couldn’t finish this draft. Retry, or continue manually.");
+            setError(FAILURE_MESSAGE);
           }
         })
         .catch(() => undefined);
@@ -458,7 +560,7 @@ export default function ImportJobPageClient() {
           setAnnouncement("Matching job details to CreatorJobs.");
         } else if (loaded.processing_status === "processing_failed") {
           setPhase("failure");
-          setError("We couldn’t finish this draft. Retry, or continue manually.");
+          setError(FAILURE_MESSAGE);
         } else {
           await processDraft(loaded);
         }
@@ -905,7 +1007,8 @@ export default function ImportJobPageClient() {
               draft,
               sourceCreated: source !== null,
               nativeDraftReady: phase === "applying" && Boolean(draft?.target_job_id),
-              waitingForRecruiter: conversation?.waiting ?? false,
+              waitingForRecruiter:
+                (conversation?.waiting ?? false) && !answeringEarlyQuestion,
             }}
             sourceType={entryMode === "url" ? "public_url" : "pasted_text"}
             sourceLabel={
@@ -930,7 +1033,9 @@ export default function ImportJobPageClient() {
             delayed={delayed}
             preview={livePreview.node}
             provisionalCount={livePreview.provisionalCount}
-            waitingForRecruiter={conversation?.waiting ?? false}
+            waitingForRecruiter={
+              (conversation?.waiting ?? false) && !answeringEarlyQuestion
+            }
             conversation={conversation}
             jobTitle={
               typeof draft?.fields.find((f) => f.field_path === "title")
@@ -939,6 +1044,7 @@ export default function ImportJobPageClient() {
                     ?.effective_value as string)
                 : null
             }
+            roleName={livePreview.roleName}
             filledCount={livePreview.provisionalCount + Object.keys(draft?.recruiter_prefill ?? {}).length}
             onAnswerQuestion={(fieldPath, value: string | string[] | number) =>
               void conversationAction((token, id) =>

@@ -303,7 +303,7 @@ def _adapter(
             model="gpt-5.6-luna",
             request_timeout_seconds=30,
             max_retries=max_retries,
-            instruction_version="job-import-text-v3",
+            instruction_version="job-import-text-v4",
         ),
         client=FakeOpenAIClient(outcomes),
         sleep=record_sleep,
@@ -341,7 +341,7 @@ def _raw_response_adapter(raw_response: FakeRawResponse) -> OpenAIJobImportAdapt
             model="gpt-5.6-luna",
             request_timeout_seconds=30,
             max_retries=0,
-            instruction_version="job-import-text-v3",
+            instruction_version="job-import-text-v4",
         ),
         client=FakeRawOpenAIClient([raw_response]),
     )
@@ -426,7 +426,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert result.metadata.provider_name == "openai"
     assert result.metadata.model_name == "gpt-5.6-luna"
     assert result.metadata.model_version == "gpt-5.6-luna-2026-07-01"
-    assert result.metadata.instruction_version == "job-import-text-v3"
+    assert result.metadata.instruction_version == "job-import-text-v4"
     assert result.metadata.metadata["request_id"] == "req_openai_test"
     assert result.metadata.metadata["usage"] == {
         "input_tokens": 101,
@@ -460,6 +460,10 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert "never repeat an ID" in str(call["instructions"])
     assert "Server-labelled Structured lines" in str(call["instructions"])
     assert "structured role location" in str(call["instructions"])
+    assert "exactly once across fields, conflicts, and missing_fields" in str(call["instructions"])
+    assert "Structured job title" in str(call["instructions"])
+    assert "qualification/requirement lines" in str(call["instructions"])
+    assert 'exact "Video Editor" title maps to video-editor' in str(call["instructions"])
 
 
 def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:
@@ -656,7 +660,6 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
         ("missing_required_evidence", "missing_required_evidence"),
         ("invalid_json_value", "invalid_json_value"),
         ("invalid_field_path", "invalid_field_path"),
-        ("duplicate_field_path", "duplicate_field_path"),
         ("invalid_conflict_evidence", "unknown_span_id"),
         ("invalid_warning_evidence", "unknown_span_id"),
         ("evidence_not_allowed", "evidence_not_allowed"),
@@ -704,6 +707,105 @@ async def test_raw_http_200_post_response_failures_retain_safe_diagnostics(
     assert SOURCE_TEXT not in serialized
     assert "test-placeholder-not-a-real-key" not in serialized
     assert "output" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_identical_duplicate_provider_fields_are_collapsed_safely() -> None:
+    payload = _post_response_failure_payload("duplicate_field_path")
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    assert [field.field_path for field in result.extraction.fields] == ["title"]
+    assert result.extraction.missing_fields == []
+    warning = result.extraction.warnings[0]
+    assert warning.code == "provider_duplicate_path_normalized"
+    assert warning.field_path == "title"
+
+
+@pytest.mark.asyncio
+async def test_semantically_identical_fields_merge_distinct_valid_evidence_safely() -> None:
+    source_text = "Video editor.\nWeekly YouTube videos."
+    payload = _wire_extraction(
+        _extraction(
+            source_text=source_text,
+            value="video-editor",
+            evidence_snippet="Video editor.",
+        ),
+        source_text=source_text,
+    ).model_dump(mode="json")
+    first = payload["fields"][0]
+    first["provenance"] = "suggested_inference"
+    first["explanation"] = "The first source span supports this role."
+    first["provider_confidence"] = {"score": 0.95, "label": "high"}
+    duplicate = dict(first)
+    duplicate["evidence_span_ids"] = ["E0002"]
+    duplicate["explanation"] = "A second source span supports the same role."
+    duplicate["provider_confidence"] = {"score": 0.7, "label": "medium"}
+    payload["fields"].append(duplicate)
+
+    result = await _raw_adapter(payload).extract(_request(source_text))
+
+    assert [field.field_path for field in result.extraction.fields] == ["title"]
+    field = result.extraction.fields[0]
+    assert field.value == "video-editor"
+    assert [evidence.snippet for evidence in field.evidence] == [
+        "Video editor.",
+        "Weekly YouTube videos.",
+    ]
+    assert field.explanation == "The first source span supports this role."
+    assert field.provider_confidence is not None
+    assert field.provider_confidence.label == "medium"
+    assert result.extraction.warnings[0].field_path == "title"
+
+
+@pytest.mark.asyncio
+async def test_extracted_field_beats_duplicate_missing_provider_entry() -> None:
+    payload = _wire_extraction().model_dump(mode="json")
+    payload["missing_fields"] = [{"field_path": "title", "explanation": "Not found."}]
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    assert [field.field_path for field in result.extraction.fields] == ["title"]
+    assert result.extraction.missing_fields == []
+    assert result.extraction.warnings[0].field_path == "title"
+
+
+@pytest.mark.asyncio
+async def test_conflict_beats_duplicate_missing_provider_entry() -> None:
+    payload = _wire_extraction().model_dump(mode="json")
+    payload["fields"] = []
+    payload["conflicts"] = [
+        {
+            "field_path": "budget_amount",
+            "values": [
+                {"value_json": "10", "evidence_span_ids": ["E0001"]},
+                {"value_json": "20", "evidence_span_ids": ["E0001"]},
+            ],
+            "explanation": "Two source amounts.",
+            "provider_confidence": None,
+        }
+    ]
+    payload["missing_fields"] = [{"field_path": "budget_amount", "explanation": "Not found."}]
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    assert [conflict.field_path for conflict in result.extraction.conflicts] == ["budget_amount"]
+    assert result.extraction.missing_fields == []
+    assert result.extraction.warnings[0].field_path == "budget_amount"
+
+
+@pytest.mark.asyncio
+async def test_distinct_duplicate_provider_fields_remain_rejected() -> None:
+    payload = _wire_extraction().model_dump(mode="json")
+    duplicate = dict(payload["fields"][0])
+    duplicate["value_json"] = '"A different title"'
+    payload["fields"].append(duplicate)
+
+    with pytest.raises(JobImportProviderError) as caught:
+        await _raw_adapter(payload).extract(_request())
+
+    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
+    assert caught.value.metadata.metadata["failure_subreason"] == "duplicate_field_path"
 
 
 @pytest.mark.asyncio
@@ -969,18 +1071,12 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
 
     failed = await client.post(path, headers=owner_headers, json={})
 
+    # A citation the server cannot verify means the reply is not trustworthy.
+    # None of it is written, and the attempt fails rather than presenting an
+    # empty draft as a completed one.
     assert failed.status_code == 502
-    api_error = failed.json()["error"]
-    assert api_error["code"] == "OPENAI_EVIDENCE_INVALID"
-    diagnostic = api_error["details"]["details"]
-    assert diagnostic["request_id"] == "req_openai_test"
-    assert diagnostic["processing_stage"] == "evidence_span_resolution"
-    assert diagnostic["failure_subreason"] == "unknown_span_id"
-    assert diagnostic["provider_http_status"] == 200
-    assert diagnostic["span_count"] == 1
-    assert diagnostic["returned_evidence_id_count"] == 1
-    assert diagnostic["unknown_evidence_id_count"] == 1
-    assert diagnostic["invalid_evidence_span_ids"] == ["E9999"]
+    assert failed.json()["error"]["code"] == "OPENAI_EVIDENCE_INVALID"
+
     current = await client.get(
         f"/api/v1/job-imports/drafts/{draft['id']}",
         headers=owner_headers,
@@ -988,6 +1084,9 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     assert current.status_code == 200
     body = current.json()
     assert body["processing_status"] == "processing_failed"
+    assert body["fields"] == []
+    assert body["provider_metadata"]["processing_stage"] == "evidence_span_resolution"
+    assert body["provider_metadata"]["invalid_evidence_span_ids"] == ["E9999"]
     assert body["model_name"] == "gpt-5.6-luna"
     assert body["model_version"] == "gpt-5.6-luna-2026-07-01"
     assert body["provider_metadata"]["request_id"] == "req_openai_test"
@@ -1015,6 +1114,7 @@ async def test_post_parse_evidence_failure_persists_only_safe_private_metadata(
     async with TestSessionLocal() as session:
         stored = await session.get(JobImportDraft, UUID(str(draft["id"])))
         assert stored is not None and stored.owner_user_id == owner_id
+        # Nothing is persisted from a reply the server refused.
         assert stored.machine_output is None
     cross_account = await client.get(
         f"/api/v1/job-imports/drafts/{draft['id']}",
@@ -1201,16 +1301,20 @@ async def test_process_failure_is_private_recoverable_and_retryable(
     provider = provider_override(FakeProvider([failure, _provider_result()]))
     path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
 
+    # A timed-out provider ends this attempt honestly. Manufacturing an empty
+    # "successful" draft here is what turned a provider outage into a data-entry
+    # task for the recruiter.
     failed = await client.post(path, headers=headers, json={})
     assert failed.status_code == 504
     assert failed.json()["error"]["code"] == "OPENAI_TIMEOUT"
-    assert failed.json()["error"]["message"] == "OpenAI text extraction timed out. Please retry."
     current = await client.get(
         f"/api/v1/job-imports/drafts/{draft['id']}",
         headers=headers,
     )
     assert current.json()["processing_status"] == "processing_failed"
+    assert current.json()["fields"] == []
     assert current.json()["validation_errors"]["processing"]["code"] == "OPENAI_TIMEOUT"
+
     retried = await client.post(path, headers=headers, json={})
     assert retried.status_code == 200, retried.text
     assert retried.json()["outcome"] == "processed"
@@ -1241,6 +1345,8 @@ async def test_unexpected_provider_failure_is_sanitized_and_recoverable(
         headers=headers,
     )
     assert current.json()["processing_status"] == "processing_failed"
+    # The privacy guarantee is unchanged: the source never reaches a log or a
+    # response, however the failure is handled.
     assert SOURCE_TEXT not in str(current.json()["validation_errors"])
     assert SOURCE_TEXT not in caplog.text
 
@@ -1404,6 +1510,8 @@ async def test_provider_cannot_inject_unsupported_or_creatorjobs_owned_fields(
         json={},
     )
 
+    # The whole extraction is refused: nothing the provider tried to inject
+    # lands, and the import stops rather than reporting a zero-field success.
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "JOB_IMPORT_UNSUPPORTED_FIELD"
     current = await client.get(
@@ -1546,3 +1654,159 @@ def test_openai_provider_types_do_not_leak_into_core_contract() -> None:
     assert annotations["provider"].__name__ == "JobImportExtractionProvider"
     assert "openai" not in JobImportExtractionRequest.__module__
     assert "openai" not in JobImportExtractionResponse.__module__
+
+
+
+
+# ---------------------------------------------------------------------------
+# The reported production defect, pinned end to end.
+#
+#   A 30s timeout killed a ~33s extraction. The failure was then turned into an
+#   "empty successful" draft, and the assistant asked the recruiter for every
+#   fact the page already stated — while the system reported success.
+#
+#   The invariant these tests hold:  provider failure != zero-field extraction.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "code",
+    [
+        "OPENAI_TIMEOUT",
+        "OPENAI_RATE_LIMITED",
+        "OPENAI_TEMPORARILY_UNAVAILABLE",
+        "OPENAI_REFUSED",
+        "OPENAI_EVIDENCE_INVALID",
+        "OPENAI_SCHEMA_MISMATCH",
+        "OPENAI_AUTHENTICATION_FAILED",
+    ],
+)
+async def test_provider_failure_never_becomes_an_empty_successful_import(
+    client: AsyncClient,
+    provider_override,
+    code: str,
+) -> None:
+    label = f"nofalse-{code.lower().replace('_', '-')}"
+    headers, _owner_id = await _auth(client, label)
+    _source, draft = await _source_and_draft(client, headers, label)
+    provider_override(
+        FakeProvider(
+            [
+                JobImportProviderError(
+                    code,
+                    "The provider could not complete this request.",
+                    status_code=502,
+                    metadata=JobImportProviderMetadata(provider_name="openai"),
+                )
+            ]
+        )
+    )
+
+    response = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/process", headers=headers, json={}
+    )
+
+    # A failure is reported as a failure.
+    assert response.status_code >= 400, f"{code} reported success: {response.text}"
+
+    current = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers
+        )
+    ).json()
+    assert current["processing_status"] == "processing_failed", code
+    # No manufactured extraction, and therefore no wall of invented questions.
+    assert current["fields"] == [], code
+    # The private source survives so a retry costs the recruiter nothing.
+    assert current["validation_errors"]["processing"]["code"] == code
+
+
+@pytest.mark.asyncio
+async def test_a_short_timeout_fails_then_a_longer_one_extracts(
+    client: AsyncClient,
+    provider_override,
+) -> None:
+    """The production sequence, reproduced: kill the call, then let it finish.
+
+    First attempt times out the way a 30s ceiling did against a ~33s call. It
+    must fail rather than fabricate an empty draft. The retry, with the call
+    allowed to complete, must populate the very fields the recruiter would
+    otherwise have been asked to type in.
+    """
+
+    headers, _owner_id = await _auth(client, "timeout-then-success")
+    _source, draft = await _source_and_draft(client, headers, "timeout-then-success")
+    timeout = JobImportProviderError(
+        "OPENAI_TIMEOUT",
+        "OpenAI text extraction timed out. Please retry.",
+        status_code=504,
+        retryable=True,
+        metadata=JobImportProviderMetadata(provider_name="openai"),
+    )
+    provider = provider_override(FakeProvider([timeout, _provider_result()]))
+    path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
+
+    failed = await client.post(path, headers=headers, json={})
+    assert failed.status_code == 504
+    after_failure = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers)
+    ).json()
+    assert after_failure["processing_status"] == "processing_failed"
+    assert after_failure["fields"] == []
+
+    retried = await client.post(path, headers=headers, json={})
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["outcome"] == "processed"
+
+    recovered = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers)
+    ).json()
+    assert recovered["processing_status"] != "processing_failed"
+    extracted = {
+        item["field_path"]
+        for item in recovered["fields"]
+        if item["provenance_state"] == "extracted_from_source"
+    }
+    assert extracted, "the retry produced nothing to show for itself"
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_attempt_keeps_answers_the_recruiter_already_gave(
+    client: AsyncClient,
+    provider_override,
+) -> None:
+    """A timeout must not cost the recruiter work they had already done."""
+
+    headers, _owner_id = await _auth(client, "failure-keeps-answers")
+    _source, draft = await _source_and_draft(client, headers, "failure-keeps-answers")
+
+    answered = await client.put(
+        f"/api/v1/job-imports/drafts/{draft['id']}/prefill/employer_context_type",
+        headers=headers,
+        json={"value": "agency"},
+    )
+    assert answered.status_code == 200, answered.text
+
+    provider_override(
+        FakeProvider(
+            [
+                JobImportProviderError(
+                    "OPENAI_TIMEOUT",
+                    "Timed out.",
+                    status_code=504,
+                    metadata=JobImportProviderMetadata(provider_name="openai"),
+                )
+            ]
+        )
+    )
+    failure = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/process", headers=headers, json={}
+    )
+    assert failure.status_code == 504
+
+    current = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers)
+    ).json()
+    assert current["recruiter_prefill"] == {"employer_context_type": "agency"}

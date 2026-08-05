@@ -47,6 +47,8 @@ from app.core.job_import_policy import (
     import_field_policy,
     is_early_recruiter_question,
 )
+from app.core.job_import_structured_fields import fields_from_structured_context
+from app.core.job_import_title_signals import title_signals
 from app.core.job_taxonomy import (
     COMPENSATION_MODES,
     COMPENSATION_UNITS,
@@ -118,6 +120,35 @@ _CUSTOM_LABEL_LIST_FIELDS = frozenset(
     }
 )
 _CREATOR_CONTEXT_FIELDS = frozenset({"content_niches", "content_genres", "formats_hired_for"})
+_STRUCTURED_EMPLOYMENT_ALIASES = {
+    "full_time": ("full time", "fulltime"),
+    "part_time": ("part time", "parttime"),
+    "internship": ("intern", "internship"),
+}
+
+
+def _structured_engagement_matches(value: object) -> set[str]:
+    raw_values = value if isinstance(value, list) else [value]
+    normalized = " ".join(item for item in raw_values if isinstance(item, str))
+    padded = f" {re.sub(r'[^a-z]+', ' ', normalized.casefold()).strip()} "
+    return {
+        engagement
+        for engagement, aliases in _STRUCTURED_EMPLOYMENT_ALIASES.items()
+        if any(f" {alias} " in padded for alias in aliases)
+    }
+
+
+def _structured_engagement_type(value: object) -> str | None:
+    matches = _structured_engagement_matches(value)
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def _valid_import_string_list(value: object) -> bool:
+    return bool(
+        isinstance(value, list)
+        and value
+        and all(isinstance(item, str) and item.strip() for item in value)
+    )
 
 
 class JobImportError(Exception):
@@ -990,11 +1021,17 @@ class JobImportService:
         cls,
         response: JobImportExtractionResponse,
         source: JobImportSource,
+        *,
+        allowed_role_keys: set[str] | frozenset[str] | None = None,
     ) -> JobImportExtractionResponse:
         """Add only server-owned, policy-approved contextual decisions."""
 
         fields = list(response.fields)
         by_path = {field.field_path: field for field in fields}
+        occupied_paths = {
+            *by_path,
+            *(conflict.field_path for conflict in response.conflicts),
+        }
         amount_present = any(
             isinstance(field.value, (int, float, str))
             and not isinstance(field.value, bool)
@@ -1019,37 +1056,498 @@ class JobImportService:
         structured = retrieval.get("structured_context")
         context = structured if isinstance(structured, dict) else {}
         missing_fields = list(response.missing_fields)
+        warnings = list(response.warnings)
 
         def append_context_field(field: JobImportExtractionField) -> None:
             nonlocal missing_fields
-            if field.field_path in by_path or len(fields) >= 100:
+            if field.field_path in occupied_paths or len(fields) >= 100:
                 return
             fields.append(field)
             by_path[field.field_path] = field
+            occupied_paths.add(field.field_path)
             missing_fields = [
                 item for item in missing_fields if item.field_path != field.field_path
             ]
 
+        def upgrade_exact_context_match(
+            field_path: str,
+            expected_value: object,
+            *,
+            evidence: list[JobImportEvidence],
+            origin: str,
+            rationale_code: str,
+            explanation: str,
+        ) -> bool:
+            existing = by_path.get(field_path)
+            if (
+                existing is None
+                or existing.provenance != "suggested_inference"
+                or existing.value != expected_value
+                or not evidence
+            ):
+                return False
+
+            merged_evidence: list[JobImportEvidence] = []
+            seen_evidence: set[str] = set()
+            for item in [*existing.evidence, *evidence]:
+                fingerprint = json.dumps(
+                    item.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                if fingerprint in seen_evidence:
+                    continue
+                seen_evidence.add(fingerprint)
+                merged_evidence.append(item)
+                if len(merged_evidence) >= 5:
+                    break
+
+            previous_confidence = existing.provider_confidence
+            metadata = dict(previous_confidence.metadata) if previous_confidence else {}
+            if previous_confidence is not None:
+                if previous_confidence.score is not None:
+                    metadata["provider_reported_score"] = previous_confidence.score
+                if previous_confidence.label:
+                    metadata["provider_reported_label"] = previous_confidence.label
+            metadata.update(
+                {
+                    "origin": origin,
+                    "rationale_code": rationale_code,
+                    "server_grounded_match": True,
+                }
+            )
+            upgraded = existing.model_copy(
+                update={
+                    "evidence": merged_evidence,
+                    "explanation": existing.explanation or explanation,
+                    "provider_confidence": JobImportProviderConfidence(
+                        score=0.99,
+                        label="high",
+                        metadata=metadata,
+                    ),
+                }
+            )
+            field_index = next(
+                index for index, item in enumerate(fields) if item is existing
+            )
+            fields[field_index] = upgraded
+            by_path[field_path] = upgraded
+            return True
+
+        def replace_invalid_context_field(
+            field_path: str,
+            value: object,
+            *,
+            provenance: str,
+            evidence: list[JobImportEvidence],
+            explanation: str | None = None,
+            origin: str | None = None,
+            rationale_code: str,
+            confidence_score: float = 0.99,
+            confidence_label: str = "high",
+        ) -> bool:
+            existing = by_path.get(field_path)
+            if existing is None or not evidence:
+                return False
+            provider_confidence = (
+                JobImportProviderConfidence(
+                    score=confidence_score,
+                    label=confidence_label,
+                    metadata={
+                        "origin": origin,
+                        "rationale_code": rationale_code,
+                        "server_grounded_match": True,
+                    },
+                )
+                if provenance == "suggested_inference" and origin is not None
+                else None
+            )
+            replacement = JobImportExtractionField(
+                field_path=field_path,
+                value=value,
+                provenance=provenance,
+                evidence=evidence[:5],
+                explanation=explanation,
+                provider_confidence=provider_confidence,
+            )
+            field_index = next(
+                index for index, item in enumerate(fields) if item is existing
+            )
+            fields[field_index] = replacement
+            by_path[field_path] = replacement
+            if len(warnings) < 30:
+                warnings.append(
+                    JobImportProcessingWarning(
+                        code="structured_context_provider_value_repaired",
+                        message=(
+                            "A provider value was normalized or replaced with exact "
+                            "structured source data."
+                        ),
+                        field_path=field_path,
+                        evidence=evidence[:3],
+                    )
+                )
+            return True
+
+        structured_title = context.get("job_title")
+        title_evidence: list[JobImportEvidence] = []
+        if isinstance(structured_title, str):
+            title_evidence = cls._structured_source_evidence(
+                source,
+                label="Structured job title",
+                value=structured_title,
+            )
+            existing_title = by_path.get("title")
+            if existing_title is not None and (
+                not isinstance(existing_title.value, str)
+                or len(existing_title.value.strip()) < 3
+            ):
+                replace_invalid_context_field(
+                    "title",
+                    structured_title,
+                    provenance="extracted_from_source",
+                    evidence=title_evidence,
+                    rationale_code="structured_title_malformed_provider_value",
+                )
+            elif "title" not in occupied_paths and title_evidence:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="title",
+                        value=structured_title,
+                        provenance="extracted_from_source",
+                        evidence=title_evidence,
+                    )
+                )
+
+        if isinstance(structured_title, str):
+            role_signals = title_signals(structured_title)
+            role_key = role_signals.settled.get(
+                "primary_role_key",
+                role_signals.suggested.get("primary_role_key"),
+            )
+            role_key_is_allowed = bool(
+                isinstance(role_key, str)
+                and (allowed_role_keys is None or role_key in allowed_role_keys)
+            )
+            if role_key_is_allowed and isinstance(role_key, str) and title_evidence:
+                role_explanation = (
+                    "The structured job title names exactly one CreatorJobs role."
+                )
+                existing_role = by_path.get("primary_role_key")
+                existing_role_token = (
+                    re.sub(r"[^a-z0-9]+", "-", existing_role.value.casefold()).strip("-")
+                    if existing_role is not None and isinstance(existing_role.value, str)
+                    else None
+                )
+                existing_role_is_unknown = bool(
+                    existing_role is not None
+                    and isinstance(existing_role.value, str)
+                    and allowed_role_keys is not None
+                    and existing_role.value not in allowed_role_keys
+                )
+                repaired_role = bool(
+                    existing_role is not None
+                    and (
+                        not isinstance(existing_role.value, str)
+                        or existing_role_is_unknown
+                        or (
+                            existing_role.value != role_key
+                            and existing_role_token == role_key
+                        )
+                    )
+                    and replace_invalid_context_field(
+                        "primary_role_key",
+                        role_key,
+                        provenance="suggested_inference",
+                        evidence=title_evidence,
+                        explanation=role_explanation,
+                        origin="semantic_inference",
+                        rationale_code="structured_title_role_normalized",
+                    )
+                )
+                if not repaired_role and not upgrade_exact_context_match(
+                    "primary_role_key",
+                    role_key,
+                    evidence=title_evidence,
+                    origin="semantic_inference",
+                    rationale_code="structured_title_single_role",
+                    explanation=role_explanation,
+                ):
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="primary_role_key",
+                            value=role_key,
+                            provenance="suggested_inference",
+                            evidence=title_evidence,
+                            explanation=role_explanation,
+                            provider_confidence=JobImportProviderConfidence(
+                                score=0.99,
+                                label="high",
+                                metadata={
+                                    "origin": "semantic_inference",
+                                    "rationale_code": "structured_title_single_role",
+                                },
+                            ),
+                        ),
+                    )
+
+        structured_employment = context.get("employment_type")
+        if isinstance(structured_employment, (str, list)):
+            engagement_type = _structured_engagement_type(structured_employment)
+            employment_values = (
+                [structured_employment]
+                if isinstance(structured_employment, str)
+                else [item for item in structured_employment if isinstance(item, str)][:5]
+            )
+            evidence = [
+                evidence_item
+                for value in employment_values
+                for evidence_item in cls._structured_source_evidence(
+                    source,
+                    label="Structured employment type",
+                    value=value,
+                )
+            ][:5]
+            if engagement_type is not None and evidence:
+                engagement_explanation = (
+                    "The structured employment type maps exactly to this engagement."
+                )
+                existing_engagement = by_path.get("engagement_type")
+                existing_engagement_matches = (
+                    _structured_engagement_matches(existing_engagement.value)
+                    if existing_engagement is not None
+                    else set()
+                )
+                normalized_existing_engagement = (
+                    next(iter(existing_engagement_matches))
+                    if len(existing_engagement_matches) == 1
+                    else None
+                )
+                existing_engagement_is_canonical = bool(
+                    existing_engagement is not None
+                    and isinstance(existing_engagement.value, str)
+                    and existing_engagement.value in ENGAGEMENT_TYPES
+                )
+                repaired_engagement = bool(
+                    existing_engagement is not None
+                    and (
+                        (
+                            normalized_existing_engagement == engagement_type
+                            and existing_engagement.value != engagement_type
+                        )
+                        or (
+                            not existing_engagement_is_canonical
+                            and not existing_engagement_matches
+                            and normalized_existing_engagement is None
+                        )
+                    )
+                    and replace_invalid_context_field(
+                        "engagement_type",
+                        engagement_type,
+                        provenance="suggested_inference",
+                        evidence=evidence,
+                        explanation=engagement_explanation,
+                        origin="semantic_inference",
+                        rationale_code="structured_employment_type_normalized",
+                    )
+                )
+                if not repaired_engagement and not upgrade_exact_context_match(
+                    "engagement_type",
+                    engagement_type,
+                    evidence=evidence,
+                    origin="semantic_inference",
+                    rationale_code="structured_employment_type",
+                    explanation=engagement_explanation,
+                ):
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="engagement_type",
+                            value=engagement_type,
+                            provenance="suggested_inference",
+                            evidence=evidence,
+                            explanation=engagement_explanation,
+                            provider_confidence=JobImportProviderConfidence(
+                                score=0.99,
+                                label="high",
+                                metadata={
+                                    "origin": "semantic_inference",
+                                    "rationale_code": "structured_employment_type",
+                                },
+                            ),
+                        ),
+                    )
+
+        def grounded_structured_list(
+            key: str,
+            *,
+            label: str,
+        ) -> tuple[list[str], list[JobImportEvidence]]:
+            raw_values = context.get(key)
+            if not isinstance(raw_values, list):
+                return [], []
+            values: list[str] = []
+            evidence_items: list[JobImportEvidence] = []
+            for raw_value in raw_values[:5]:
+                if not isinstance(raw_value, str) or not raw_value.strip():
+                    continue
+                evidence = cls._structured_source_evidence(
+                    source,
+                    label=label,
+                    value=raw_value,
+                )
+                if not evidence:
+                    continue
+                values.append(raw_value)
+                evidence_items.extend(evidence)
+            return values, evidence_items[:5]
+
+        responsibilities, responsibility_evidence = grounded_structured_list(
+            "responsibilities",
+            label="Structured responsibility",
+        )
+        if responsibilities and responsibility_evidence:
+            existing_responsibilities = by_path.get("responsibilities")
+            repaired_responsibilities = bool(
+                existing_responsibilities is not None
+                and (
+                    not _valid_import_string_list(existing_responsibilities.value)
+                    or (
+                        existing_responsibilities.value == responsibilities
+                        and existing_responsibilities.provenance == "suggested_inference"
+                    )
+                )
+                and replace_invalid_context_field(
+                    "responsibilities",
+                    responsibilities,
+                    provenance="extracted_from_source",
+                    evidence=responsibility_evidence,
+                    rationale_code="structured_responsibilities_repaired",
+                )
+            )
+            if not repaired_responsibilities:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="responsibilities",
+                        value=responsibilities,
+                        provenance="extracted_from_source",
+                        evidence=responsibility_evidence,
+                    )
+                )
+
+        requirements, requirement_evidence = grounded_structured_list(
+            "qualifications",
+            label="Structured qualification",
+        )
+        if requirements and requirement_evidence:
+            existing_requirements = by_path.get("requirements")
+            repaired_requirements = bool(
+                existing_requirements is not None
+                and (
+                    not _valid_import_string_list(existing_requirements.value)
+                    or (
+                        existing_requirements.value == requirements
+                        and existing_requirements.provenance == "suggested_inference"
+                    )
+                )
+                and replace_invalid_context_field(
+                    "requirements",
+                    requirements,
+                    provenance="extracted_from_source",
+                    evidence=requirement_evidence,
+                    rationale_code="structured_requirements_repaired",
+                )
+            )
+            if not repaired_requirements:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="requirements",
+                        value=requirements,
+                        provenance="extracted_from_source",
+                        evidence=requirement_evidence,
+                    )
+                )
+
+        structured_summary = context.get("about_summary")
+        if (
+            isinstance(structured_summary, str)
+            and len(structured_summary.strip()) >= 20
+        ):
+            evidence = cls._structured_source_evidence(
+                source,
+                label="Structured employer summary",
+                value=structured_summary,
+            )
+            if evidence:
+                existing_about = by_path.get("about_channel")
+                repaired_about = bool(
+                    existing_about is not None
+                    and (
+                        not isinstance(existing_about.value, str)
+                        or len(existing_about.value.strip()) < 20
+                    )
+                    and replace_invalid_context_field(
+                        "about_channel",
+                        structured_summary,
+                        provenance="extracted_from_source",
+                        evidence=evidence,
+                        rationale_code="structured_employer_summary_repaired",
+                    )
+                )
+                if not repaired_about:
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="about_channel",
+                            value=structured_summary,
+                            provenance="extracted_from_source",
+                            evidence=evidence,
+                        )
+                    )
+
         structured_role_location = context.get("role_location")
-        if location_field is None and isinstance(structured_role_location, str):
+        if isinstance(structured_role_location, str):
             evidence = cls._structured_source_evidence(
                 source,
                 label="Structured role location",
                 value=structured_role_location,
             )
             if evidence:
-                append_context_field(
-                    JobImportExtractionField(
-                        field_path="location",
-                        value=structured_role_location,
+                existing_location = by_path.get("location")
+                repaired_location = bool(
+                    existing_location is not None
+                    and (
+                        not isinstance(existing_location.value, str)
+                        or not existing_location.value.strip()
+                    )
+                    and replace_invalid_context_field(
+                        "location",
+                        structured_role_location,
                         provenance="extracted_from_source",
                         evidence=evidence,
+                        rationale_code="structured_role_location_repaired",
                     )
                 )
+                if not repaired_location:
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="location",
+                            value=structured_role_location,
+                            provenance="extracted_from_source",
+                            evidence=evidence,
+                        )
+                    )
                 location_field = by_path.get("location")
+                role_location = (
+                    location_field.value
+                    if location_field is not None
+                    and isinstance(location_field.value, str)
+                    and location_field.provenance
+                    in {"directly_supplied", "extracted_from_source"}
+                    else None
+                )
 
         structured_industry = context.get("industry")
-        if "content_niches" not in by_path and isinstance(structured_industry, str):
+        if isinstance(structured_industry, str):
             industry_tokens = {
                 token.strip().casefold()
                 for token in re.split(r"[,/|;&]+", structured_industry)
@@ -1064,28 +1562,62 @@ class JobImportService:
                 value=structured_industry,
             )
             if matched_niches and evidence:
-                append_context_field(
-                    JobImportExtractionField(
-                        field_path="content_niches",
-                        value=matched_niches,
+                niche_explanation = (
+                    "The structured job industry exactly matches a CreatorJobs niche."
+                )
+                existing_niches = by_path.get("content_niches")
+                normalized_existing_niches = (
+                    [existing_niches.value]
+                    if existing_niches is not None
+                    and isinstance(existing_niches.value, str)
+                    and existing_niches.value.casefold()
+                    in {item.casefold() for item in matched_niches}
+                    else None
+                )
+                repaired_niches = bool(
+                    existing_niches is not None
+                    and (
+                        normalized_existing_niches == matched_niches
+                        or not _valid_import_string_list(existing_niches.value)
+                    )
+                    and replace_invalid_context_field(
+                        "content_niches",
+                        matched_niches,
                         provenance="suggested_inference",
                         evidence=evidence,
-                        explanation=(
-                            "The structured job industry exactly matches a CreatorJobs niche."
-                        ),
-                        provider_confidence=JobImportProviderConfidence(
-                            score=0.7,
-                            label="medium",
-                            metadata={
-                                "origin": "contextual_inference",
-                                "rationale_code": "industry_exact_niche_match",
-                            },
-                        ),
+                        explanation=niche_explanation,
+                        origin="contextual_inference",
+                        rationale_code="structured_industry_niche_normalized",
                     )
                 )
+                if not repaired_niches and not upgrade_exact_context_match(
+                    "content_niches",
+                    matched_niches,
+                    evidence=evidence,
+                    origin="contextual_inference",
+                    rationale_code="industry_exact_niche_match",
+                    explanation=niche_explanation,
+                ):
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="content_niches",
+                            value=matched_niches,
+                            provenance="suggested_inference",
+                            evidence=evidence,
+                            explanation=niche_explanation,
+                            provider_confidence=JobImportProviderConfidence(
+                                score=0.99,
+                                label="high",
+                                metadata={
+                                    "origin": "contextual_inference",
+                                    "rationale_code": "industry_exact_niche_match",
+                                },
+                            ),
+                        ),
+                    )
 
         structured_experience = context.get("experience_requirement")
-        if "experience_level" not in by_path and isinstance(structured_experience, str):
+        if isinstance(structured_experience, str):
             experience_value: str | None = None
             provenance = "extracted_from_source"
             explanation: str | None = None
@@ -1133,16 +1665,59 @@ class JobImportService:
                 value=structured_experience,
             )
             if experience_value is not None and evidence:
-                append_context_field(
-                    JobImportExtractionField(
-                        field_path="experience_level",
-                        value=experience_value,
+                existing_experience = by_path.get("experience_level")
+                repaired_experience = bool(
+                    existing_experience is not None
+                    and (
+                        not isinstance(existing_experience.value, str)
+                        or not existing_experience.value.strip()
+                        or (
+                            existing_experience.value == experience_value
+                            and provenance == "extracted_from_source"
+                            and existing_experience.provenance == "suggested_inference"
+                        )
+                    )
+                    and replace_invalid_context_field(
+                        "experience_level",
+                        experience_value,
                         provenance=provenance,
                         evidence=evidence,
                         explanation=explanation,
-                        provider_confidence=provider_confidence,
+                        origin=(
+                            "contextual_inference"
+                            if provenance == "suggested_inference"
+                            else None
+                        ),
+                        rationale_code=(
+                            "minimum_months_experience_band"
+                            if provenance == "suggested_inference"
+                            else "structured_experience_requirement_repaired"
+                        ),
+                        confidence_score=(
+                            provider_confidence.score
+                            if provider_confidence is not None
+                            and provider_confidence.score is not None
+                            else 0.99
+                        ),
+                        confidence_label=(
+                            provider_confidence.label
+                            if provider_confidence is not None
+                            and provider_confidence.label is not None
+                            else "high"
+                        ),
                     )
                 )
+                if not repaired_experience:
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path="experience_level",
+                            value=experience_value,
+                            provenance=provenance,
+                            evidence=evidence,
+                            explanation=explanation,
+                            provider_confidence=provider_confidence,
+                        )
+                    )
 
         if role_location is None and isinstance(context.get("role_location"), str):
             role_location = context["role_location"]
@@ -1159,7 +1734,6 @@ class JobImportService:
             employer_location=employer_location,
         )
 
-        warnings = list(response.warnings)
         if decision.conflict_currency and explicit_currency_field is not None:
             warning_evidence = [
                 *explicit_currency_field.evidence,
@@ -1178,6 +1752,7 @@ class JobImportService:
             )
         if (
             explicit_currency_field is None
+            and "budget_currency" not in occupied_paths
             and decision.currency is not None
             and decision.origin == "contextual_inference"
             and len(fields) < 100
@@ -1196,7 +1771,7 @@ class JobImportService:
                     value=employer_location,
                 )
             if evidence:
-                fields.append(
+                append_context_field(
                     JobImportExtractionField(
                         field_path="budget_currency",
                         value=decision.currency,
@@ -1218,9 +1793,6 @@ class JobImportService:
                         ),
                     )
                 )
-                missing_fields = [
-                    item for item in missing_fields if item.field_path != "budget_currency"
-                ]
         return JobImportExtractionResponse.model_validate(
             {
                 **response.model_dump(mode="json"),
@@ -1505,7 +2077,12 @@ class JobImportService:
                 status_code=409,
             )
         source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
-        response = self._with_deterministic_context(response, source)
+        active_roles = await self.repository.list_active_roles()
+        response = self._with_deterministic_context(
+            response,
+            source,
+            allowed_role_keys={role.slug for role in active_roles},
+        )
         self._validate_evidence_references(response, source)
 
         all_paths = {
@@ -1686,6 +2263,7 @@ class JobImportService:
                 }
             )
 
+        rows = await self._merge_structured_page_signals(draft, rows, owner_user_id)
         rows = self._merge_recruiter_prefill(draft, rows)
 
         await self.repository.create_fields(rows)
@@ -1935,6 +2513,87 @@ class JobImportService:
             for field_path, value in stored.items()
             if isinstance(field_path, str) and field_path in JOB_IMPORT_FIELD_POLICIES
         }
+
+    async def _merge_structured_page_signals(
+        self,
+        draft: JobImportDraft,
+        rows: list[dict[str, Any]],
+        owner_user_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Fill from the page's own machine-readable job data.
+
+        A public job page usually publishes a schema.org ``JobPosting`` block:
+        employment type, salary, location, experience. The fetcher already reads
+        it, but only as text for the model to re-read — so whenever the model
+        missed one, the assistant asked the recruiter for something the page had
+        stated outright. That is the whole reason a URL import could feel like a
+        scraper rather than a reader.
+
+        These values are applied only where the machine produced nothing, so a
+        model reading of the prose still wins, and a recruiter answer still wins
+        over both through the prefill merge that runs after this one. Each value
+        is validated exactly as any other, so nothing can enter here that could
+        not enter through ordinary review.
+        """
+
+        try:
+            source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
+        except JobImportError:
+            # Source retention may have ended. Structured enrichment is a bonus,
+            # never a reason to fail an extraction that already succeeded.
+            return rows
+
+        metadata = source.retrieval_metadata
+        context = metadata.get("structured_context") if isinstance(metadata, dict) else None
+        if not isinstance(context, dict) or not context:
+            return rows
+
+        try:
+            structured = fields_from_structured_context(context)
+        except Exception:  # pragma: no cover - enrichment must never break import
+            # Enrichment is a bonus. A malformed structured block must never
+            # turn a successful extraction into a failure.
+            return rows
+
+        by_path = {row["field_path"]: row for row in rows}
+        for field_path, value in structured.items():
+            policy = JOB_IMPORT_FIELD_POLICIES.get(field_path)
+            if policy is None:
+                continue
+            existing = by_path.get(field_path)
+            # Only speak where the machine was silent.
+            if existing is not None and existing.get("provenance_state") != "missing":
+                continue
+
+            normalized, errors = await self._validate_field_value(policy, value)
+            if errors or normalized is None:
+                continue
+
+            filled = {
+                "provenance_state": "extracted_from_source",
+                "proposed_value": normalized,
+                "confirmed_value": normalized,
+                "review_status": "confirmed",
+                "requires_confirmation": False,
+                "validation_errors": [],
+                "explanation": "Read from the job page's structured details.",
+                "conflicting_values": [],
+            }
+            if existing is not None:
+                existing.update(filled)
+                continue
+            rows.append(
+                {
+                    "draft_id": draft.id,
+                    "field_path": field_path,
+                    "evidence": [],
+                    "provider_confidence": None,
+                    "missing_requirement": policy.missing_requirement,
+                    "edited_value": None,
+                    **filled,
+                }
+            )
+        return rows
 
     @classmethod
     def _merge_recruiter_prefill(

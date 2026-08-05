@@ -100,7 +100,10 @@ _VALID_ANSWERS: dict[str, object] = {
     "requirements": ["Strong pacing judgement"],
     "budget_amount": 1200,
     "budget_unit": "per video",
-    "start_timeframe": "ASAP",
+    # start_timeframe is superseded and no longer asked; start_timing is the
+    # field the editor renders, and start_date follows a specific-date choice.
+    "start_timing": "immediate",
+    "start_date": "2027-01-15",
     "platforms": ["youtube"],
     "revision_policy": "fixed",
     "revision_rounds": 2,
@@ -438,6 +441,17 @@ def test_an_already_answered_question_is_never_asked_again() -> None:
     assert result.rejection == "already_answered"
 
 
+def test_an_extracted_resolved_field_is_never_asked_again() -> None:
+    result = validate_proposed_question(
+        ProposedQuestion("requirements", "What experience?", "because"),
+        answered_fields=frozenset(),
+        resolved_fields=frozenset({"requirements"}),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert result.rejection == "already_resolved"
+
+
 def test_a_suppressed_question_is_never_asked() -> None:
     result = validate_proposed_question(
         ProposedQuestion("trial_scope", "Scope?", "because"),
@@ -592,9 +606,17 @@ def test_only_interpretation_critical_fields_are_essential() -> None:
 
     from app.core.job_import_questions import conversation_question_kind
 
-    # Money, reach and unpaid-work terms change how a listing reads.
-    for path in ("budget_currency", "work_mode", "budget_unit", "trial_status"):
+    # Money and reach change how a listing reads.
+    for path in ("budget_currency", "work_mode", "budget_unit"):
         assert conversation_question_kind(path, "recommended") == "mandatory", path
+
+    # The absence of a trial is not work for the recruiter. Safety details only
+    # become questions after an explicit paid/unpaid trial activates them.
+    assert conversation_question_kind("trial_status", "recommended") is None
+    assert (
+        conversation_question_kind("trial_work_usage", "conditionally_required")
+        == "mandatory"
+    )
 
     # Application routing is decided by the platform, so it is never a question
     # even though it is a publication blocker.
@@ -632,11 +654,8 @@ def test_the_assistant_never_asks_about_most_of_the_field_registry() -> None:
     assert len(asked) < 30, sorted(asked)
 
 
-def test_optional_suggestions_are_capped_and_ranked() -> None:
-    from app.core.job_import_questions import (
-        MAX_OPTIONAL_SUGGESTIONS,
-        deterministic_question_queue,
-    )
+def test_missing_recommendations_do_not_create_an_optional_interview() -> None:
+    from app.core.job_import_questions import deterministic_question_queue
 
     queue = deterministic_question_queue(
         conflicted_fields=frozenset(),
@@ -652,16 +671,10 @@ def test_optional_suggestions_are_capped_and_ranked() -> None:
         suppressed_fields=frozenset(),
         active_conditional_fields=frozenset(),
     )
-    optional = [item for item in queue if item.kind == "optional"]
-    # Three is a suggestion; six would be a second form.
-    assert len(optional) == MAX_OPTIONAL_SUGGESTIONS
-    # Ranked by the product's own ordering, not alphabetically. deliverables,
-    # source_inputs and turnaround are conditional and inactive here, so the
-    # first unconditional suggestion leads.
-    assert optional[0].field_path == "revision_policy"
+    assert queue == []
 
 
-def test_essential_questions_are_always_asked_before_optional_ones() -> None:
+def test_missing_optional_improvements_never_follow_essential_questions() -> None:
     from app.core.job_import_questions import deterministic_question_queue
 
     queue = deterministic_question_queue(
@@ -676,7 +689,7 @@ def test_essential_questions_are_always_asked_before_optional_ones() -> None:
     )
     assert queue[0].field_path == "budget_unit"
     assert queue[0].kind == "mandatory"
-    assert queue[-1].kind == "optional"
+    assert len(queue) == 1
 
 
 def test_a_clean_import_produces_no_questions_at_all() -> None:
@@ -696,6 +709,91 @@ def test_a_clean_import_produces_no_questions_at_all() -> None:
     # assistant finishes immediately rather than manufacturing work.
     assert queue == []
     assert assistant_preparation_complete(queue)
+
+
+def test_purely_optional_missing_fields_are_never_questions() -> None:
+    from app.core.job_import_questions import deterministic_question_queue
+
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={
+            "reference_videos": "optional",
+            "content_genres": "optional",
+            "tags": "optional",
+        },
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert queue == []
+
+
+def test_grounded_optional_suggestions_are_offered_in_a_bounded_queue() -> None:
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+    from app.core.job_import_questions import (
+        MAX_OPTIONAL_SUGGESTIONS,
+        deterministic_question_queue,
+    )
+
+    paths = (
+        "experience_level",
+        "content_niches",
+        "revision_policy",
+        "creative_autonomy",
+        "hiring_process",
+        "reference_videos",
+    )
+    queue = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+        suggested_fields={
+            path: JOB_IMPORT_FIELD_POLICIES[path].missing_requirement for path in paths
+        },
+    )
+    assert len(queue) == MAX_OPTIONAL_SUGGESTIONS
+    assert [candidate.field_path for candidate in queue] == [
+        "experience_level",
+        "content_niches",
+        "revision_policy",
+    ]
+    assert all(candidate.kind == "optional" for candidate in queue)
+
+
+def test_trial_details_only_queue_after_an_explicit_trial_is_active() -> None:
+    from app.core.job_import_questions import deterministic_question_queue
+
+    missing = {
+        "trial_status": "recommended",
+        "trial_work_usage": "conditionally_required",
+        "trial_portfolio_permission": "conditionally_required",
+        "unpaid_trial_confirmed": "conditionally_required",
+    }
+    inactive = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields=missing,
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert inactive == []
+
+    active = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields=missing,
+        answered_fields=frozenset({"trial_status"}),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(
+            {"trial_work_usage", "trial_portfolio_permission", "unpaid_trial_confirmed"}
+        ),
+    )
+    assert {candidate.field_path for candidate in active} == {
+        "trial_work_usage",
+        "trial_portfolio_permission",
+        "unpaid_trial_confirmed",
+    }
 
 
 @pytest.mark.anyio
@@ -1092,6 +1190,11 @@ def test_the_answer_shape_comes_from_the_job_schema() -> None:
     assert hiring.is_list is True
     assert "interview" in hiring.choices
 
+    start = answer_shape_for("start_timeframe")
+    assert start.kind == "choice"
+    assert start.is_list is False
+    assert start.choices == ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"]
+
 
 def test_numeric_fields_carry_their_real_bounds() -> None:
     from app.core.job_import_answer_shapes import answer_shape_for
@@ -1114,6 +1217,112 @@ def test_text_fields_carry_their_length_limits() -> None:
     assert title.kind == "text"
     assert title.min_length == 3
     assert title.max_length == 255
+
+
+def test_candidate_facing_conversation_answers_reject_placeholder_text() -> None:
+    from app.core.job_import_answer_shapes import conversation_answer_errors
+
+    assert conversation_answer_errors("requirements", ["Video editing"]) == []
+    assert conversation_answer_errors(
+        "responsibilities", ["Edit weekly learning videos"]
+    ) == []
+    for field_path, value in (
+        ("requirements", ["a a"]),
+        ("responsibilities", ["hi hi"]),
+        ("requirements", ["foo bar"]),
+        ("requirements", ["Kjkklaamaja"]),
+        ("responsibilities", ["Aaaaaaaaaaaa"]),
+        ("requirements", ["aaa bbb aaa"]),
+        ("responsibilities", ["Provided during QA"]),
+        ("requirements", ["I don't know"]),
+    ):
+        assert conversation_answer_errors(field_path, value), (field_path, value)
+
+    assert conversation_answer_errors("start_timeframe", "ASAP") == []
+    assert conversation_answer_errors("start_timeframe", "Aaaaaaaaaaa")
+
+
+@pytest.mark.anyio
+async def test_invalid_conversation_answers_leave_the_checkpoint_unchanged(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "answer-integrity")
+    draft_id = await _prepared_draft(client, headers, owner_id, "answer-integrity")
+    before_response = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert before_response.status_code == 200, before_response.text
+    before = before_response.json()
+
+    invalid_answers = (
+        ("requirements", ["a a"]),
+        ("responsibilities", ["hi hi"]),
+        ("requirements", ["foo bar"]),
+        ("requirements", ["Kjkklaamaja"]),
+        ("responsibilities", ["Aaaaaaaaaaaa"]),
+        ("requirements", ["aaa bbb aaa"]),
+        ("responsibilities", ["Provided during QA"]),
+        ("requirements", ["I don't know"]),
+        ("start_timeframe", "Aaaaaaaaaaa"),
+    )
+    for field_path, value in invalid_answers:
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={
+                "field_path": field_path,
+                "value": value,
+                "expected_context_version": before["recruiter_context_version"],
+            },
+        )
+        assert response.status_code == 422, (field_path, response.text)
+        assert response.json()["error"]["code"] == "JOB_IMPORT_FIELD_INVALID"
+
+        current = await client.get(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation", headers=headers
+        )
+        assert current.status_code == 200
+        assert current.json() == before
+
+    draft = await client.get(
+        f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
+    )
+    assert draft.status_code == 200
+    for field_path, _value in invalid_answers:
+        assert field_path not in draft.json()["recruiter_prefill"]
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_a_canonical_start_timeframe_advances_the_checkpoint(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "answer-start")
+    draft_id = await _prepared_draft(client, headers, owner_id, "answer-start")
+    before = (
+        await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        )
+    ).json()
+
+    response = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={
+            "field_path": "start_timeframe",
+            "value": "<1mo",
+            "expected_context_version": before["recruiter_context_version"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["recruiter_context_version"] == (
+        before["recruiter_context_version"] + 1
+    )
+    draft = await client.get(
+        f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
+    )
+    assert draft.json()["recruiter_prefill"]["start_timeframe"] == "<1mo"
+    assert counting_provider.calls == 0
 
 
 def test_conflicting_source_wording_is_mapped_onto_real_values() -> None:
@@ -1196,11 +1405,17 @@ class UnusableReplyProvider:
 
 
 @pytest.mark.anyio
-async def test_an_unusable_reply_still_produces_a_working_draft(
+async def test_an_unusable_reply_fails_rather_than_faking_success(
     client: AsyncClient,
 ) -> None:
-    """The recruiter already handed over a job post. Losing it to a bad reply
-    they cannot act on is the interruption this guards against."""
+    """A reply the server cannot use is a failed attempt, not a prepared draft.
+
+    This test previously asserted the opposite. Building an empty draft looked
+    like resilience and behaved like data loss: the recruiter was shown a
+    "prepared" draft containing nothing and an assistant asking about every
+    field, while the system reported success. A failure now reads as a failure,
+    the private source is kept, and a retry costs the recruiter nothing.
+    """
 
     from app.api.deps import get_job_import_provider
 
@@ -1234,22 +1449,21 @@ async def test_an_unusable_reply_still_produces_a_working_draft(
             headers=headers,
             json={},
         )
-        # Not a dead end: the draft exists and is reviewable.
-        assert processed.status_code == 200, processed.text
-        body = processed.json()
-        assert body["outcome"] == "processed"
-        assert body["draft"]["processing_status"] in {
-            "awaiting_recruiter_review",
-            "partially_reviewed",
-            "ready_to_apply",
-        }
+        assert processed.status_code >= 400, processed.text
 
-        # And the conversation takes over, asking for what could not be read.
-        begun = await client.post(
-            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+        current = await client.get(
+            f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
         )
-        assert begun.status_code == 200
-        assert begun.json()["active_question"] is not None
+        assert current.json()["processing_status"] == "processing_failed"
+        # No manufactured extraction, so no manufactured questions.
+        assert current.json()["fields"] == []
+
+        # The private source survives, so retrying is free for the recruiter.
+        retained = await client.get(
+            f"/api/v1/job-imports/sources/{source.json()['id']}", headers=headers
+        )
+        assert retained.status_code == 200
+        assert retained.json()["original_text"]
     finally:
         app.dependency_overrides.pop(get_job_import_provider, None)
 
@@ -1296,21 +1510,248 @@ def test_a_title_settles_what_it_plainly_states() -> None:
     assert "primary_role_key" not in signals.settled
 
 
-def test_one_named_craft_is_a_suggestion_not_a_decision() -> None:
+def test_one_exact_named_craft_is_settled_without_another_question() -> None:
     from app.core.job_import_title_signals import title_signals
 
     signals = title_signals("Scriptwriter for a long-form history channel")
-    # A title is a headline, not a taxonomy entry, so the role stays a proposal.
-    assert signals.suggested["primary_role_key"] == "scriptwriter"
-    assert "primary_role_key" not in signals.settled
+    assert signals.settled["primary_role_key"] == "scriptwriter"
+    assert "primary_role_key" not in signals.suggested
 
 
-def test_a_title_that_says_nothing_settles_nothing() -> None:
+def test_exact_video_editor_settles_while_vague_titles_do_not() -> None:
     from app.core.job_import_title_signals import title_signals
 
-    assert title_signals("Video editor").settled == {}
+    assert title_signals("Video editor").settled["primary_role_key"] == "video-editor"
+    assert title_signals("Creative teammate").settled == {}
     assert title_signals("").is_empty()
     assert title_signals(None).is_empty()
+
+
+def test_every_seeded_role_has_an_exact_title_signal() -> None:
+    import re
+
+    from app.core.job_import_title_signals import title_signals
+    from app.db.seed_data_roles import ROLE_CATALOG
+
+    for role in ROLE_CATALOG:
+        expected_slug = re.sub(r"[^a-z0-9]+", "-", role["name"].lower()).strip("-")
+        assert title_signals(role["name"]).settled.get("primary_role_key") == (
+            expected_slug
+        ), role["name"]
+
+
+def test_body_mentions_never_settle_title_only_job_terms() -> None:
+    from app.core.job_import_title_signals import title_signals
+
+    signals = title_signals(
+        "Creative specialist",
+        extra_text=(
+            "Collaborate with our remote full-time video editor on a six-month "
+            "Education campaign."
+        ),
+    )
+    for path in (
+        "primary_role_key",
+        "engagement_type",
+        "work_mode",
+        "duration_type",
+    ):
+        assert path not in signals.settled
+    assert signals.suggested["content_niches"] == ["Education"]
+
+
+@pytest.mark.anyio
+async def test_exact_title_role_is_effective_without_becoming_a_recruiter_answer(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "title-role-provenance")
+    draft_id = await _prepared_draft(
+        client, headers, owner_id, "title-role-provenance"
+    )
+    async with TestSessionLocal() as session:
+        fields = (
+            await session.execute(
+                select(JobImportField).where(JobImportField.draft_id == UUID(draft_id))
+            )
+        ).scalars().all()
+        title = next(field for field in fields if field.field_path == "title")
+        title.proposed_value = "Video Editor"
+        title.confirmed_value = "Video Editor"
+        await session.commit()
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    active = begun.json()["active_question"]
+    assert active is None or active["field_path"] != "primary_role_key"
+
+    draft = await client.get(
+        f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
+    )
+    assert draft.status_code == 200
+    body = draft.json()
+    role = next(
+        field for field in body["fields"] if field["field_path"] == "primary_role_key"
+    )
+    assert role["effective_value"] == "video-editor"
+    assert role["review_status"] == "confirmed"
+    assert role["provenance_state"] == "suggested_inference"
+    assert role["rationale_code"] == "exact_title_signal"
+    assert role["reviewed_at"] is None
+    assert "primary_role_key" not in body["recruiter_prefill"]
+    assert all(
+        item["field_path"] != "primary_role_key" for item in body["missing_fields"]
+    )
+    assert all(
+        "primary_role_key" not in section["fields"]
+        for section in body["review_sections"]
+    )
+    assert "primary_role_id" not in body["validation_errors"].get("publication", {})
+
+    reloaded = (
+        await client.get(
+            f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
+        )
+    ).json()
+    for metadata_key in (
+        "missing_fields",
+        "review_sections",
+        "validation_errors",
+        "can_apply_to_native_draft",
+    ):
+        assert reloaded[metadata_key] == body[metadata_key]
+
+    async with TestSessionLocal() as session:
+        stored = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft_id),
+                    JobImportField.field_path == "primary_role_key",
+                )
+            )
+        ).scalar_one()
+        assert stored.reviewed_by_user_id is None
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_a_medium_required_role_suggestion_is_confirmed_not_dropped(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "medium-role-confirmation")
+    draft_id = await _prepared_draft(
+        client, headers, owner_id, "medium-role-confirmation"
+    )
+    async with TestSessionLocal() as session:
+        fields = (
+            await session.execute(
+                select(JobImportField).where(JobImportField.draft_id == UUID(draft_id))
+            )
+        ).scalars().all()
+        title = next(field for field in fields if field.field_path == "title")
+        title.proposed_value = "Creative specialist"
+        title.confirmed_value = "Creative specialist"
+        role = next(field for field in fields if field.field_path == "primary_role_key")
+        role.proposed_value = "video-editor"
+        role.provenance_state = "suggested_inference"
+        role.review_status = "pending"
+        role.confirmed_value = None
+        role.edited_value = None
+        role.evidence = [{"snippet": "The work includes editing weekly videos."}]
+        role.provider_confidence = {
+            "origin": "semantic_inference",
+            "confidence": "medium",
+            "needs_review": True,
+        }
+        await session.commit()
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    question = begun.json()["active_question"]
+    assert question["field_path"] == "primary_role_key"
+    assert question["kind"] == "confirmation"
+    assert question["recommended_value"] == "video-editor"
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_a_grounded_experience_suggestion_reaches_the_native_draft(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "experience-suggestion")
+    draft_id = await _prepared_draft(
+        client, headers, owner_id, "experience-suggestion"
+    )
+    async with TestSessionLocal() as session:
+        fields = (
+            await session.execute(
+                select(JobImportField).where(JobImportField.draft_id == UUID(draft_id))
+            )
+        ).scalars().all()
+        # Isolate the grounded optional offer from unrelated publication gaps.
+        for field in fields:
+            if field.provenance_state == "missing":
+                field.review_status = "rejected"
+        await JobImportRepository(session).create_fields(
+            [
+                {
+                    "draft_id": UUID(draft_id),
+                    "field_path": "experience_level",
+                    "proposed_value": "1–3 years",
+                    "provenance_state": "suggested_inference",
+                    "review_status": "pending",
+                    "evidence": [
+                        {"snippet": "Structured minimum experience: 12 months"}
+                    ],
+                    "conflicting_values": [],
+                    "explanation": "Twelve months fits the supported 1–3 years band.",
+                    "provider_confidence": {
+                        "origin": "contextual_inference",
+                        "confidence": "medium",
+                        "needs_review": True,
+                    },
+                    "confirmed_value": None,
+                    "edited_value": None,
+                    "missing_requirement": "optional",
+                    "requires_confirmation": True,
+                    "validation_errors": [],
+                }
+            ]
+        )
+        await session.commit()
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    question = begun.json()["active_question"]
+    assert begun.json()["phase"] == "optional"
+    assert question["field_path"] == "experience_level"
+    assert question["kind"] == "optional"
+    assert question["recommended_value"] == "1–3 years"
+
+    answered = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={
+            "field_path": "experience_level",
+            "value": "1–3 years",
+            "expected_context_version": begun.json()["recruiter_context_version"],
+        },
+    )
+    assert answered.status_code == 200, answered.text
+
+    converted = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert converted.status_code == 200, converted.text
+    assert converted.json()["job"]["experience_level"] == "1–3 years"
+    assert counting_provider.calls == 0
 
 
 def test_title_signals_only_ever_describe_the_job() -> None:
@@ -1450,3 +1891,221 @@ async def test_an_answer_reaches_the_native_draft(
         # A recruiter-supplied value is not a machine proposal awaiting review.
         assert row.review_status == "edited", field_path
         assert row.validation_errors == [], field_path
+
+
+def test_the_assistant_never_asks_for_a_field_the_editor_cannot_show() -> None:
+    """The rule behind the start-window bug: ask only what the recruiter can edit.
+
+    ``start_timeframe`` was a publication blocker, so it was asked as mandatory.
+    The answer was stored, carried into the native job, and then rendered
+    nowhere: on a v3 listing that field survives only as a read-only note for
+    older listings. To the recruiter that is indistinguishable from the
+    assistant ignoring them.
+
+    Superseded fields must therefore be unaskable by every route, and their
+    living successor must be the field that gets asked.
+    """
+
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+    from app.core.job_import_questions import (
+        SUPERSEDED_QUESTION_FIELDS,
+        conversation_question_kind,
+        deterministic_question_queue,
+    )
+
+    assert "start_timeframe" in SUPERSEDED_QUESTION_FIELDS
+
+    for path in SUPERSEDED_QUESTION_FIELDS:
+        policy = JOB_IMPORT_FIELD_POLICIES[path]
+        # Unaskable even though the requirement alone would have promoted it.
+        assert conversation_question_kind(path, policy.missing_requirement) is None, path
+        # And unreachable through the deterministic fallback queue.
+        queue = deterministic_question_queue(
+            conflicted_fields=frozenset({path}),
+            missing_fields={path: "publication_blocker"},
+            answered_fields=frozenset(),
+            suppressed_fields=frozenset(),
+            active_conditional_fields=frozenset({path}),
+        )
+        assert [item.field_path for item in queue] == [], path
+
+    # The successor is the one that gets asked.
+    assert (
+        conversation_question_kind(
+            "start_timing", JOB_IMPORT_FIELD_POLICIES["start_timing"].missing_requirement
+        )
+        == "mandatory"
+    )
+
+
+def test_a_superseded_field_cannot_be_reintroduced_by_a_model_proposal() -> None:
+    from app.core.job_import_questions import (
+        SUPERSEDED_QUESTION_FIELDS,
+        ProposedQuestion,
+        validate_proposed_question,
+    )
+
+    for path in SUPERSEDED_QUESTION_FIELDS:
+        result = validate_proposed_question(
+            ProposedQuestion(path, "When should this start?", "Because."),
+            answered_fields=frozenset(),
+            suppressed_fields=frozenset(),
+            active_conditional_fields=frozenset({path}),
+        )
+        assert not result.ok, path
+        assert result.rejection == "prohibited_field", path
+
+
+def test_a_specific_start_date_is_asked_only_after_that_choice() -> None:
+    """start_date follows start_timing, and never appears on its own."""
+
+    from app.core.job_import_questions import deterministic_question_queue
+
+    inactive = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={"start_date": "conditionally_required"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+    )
+    assert [item.field_path for item in inactive] == []
+
+    active = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={"start_date": "conditionally_required"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset({"start_date"}),
+    )
+    assert [item.field_path for item in active] == ["start_date"]
+
+
+def test_every_askable_field_has_somewhere_to_land() -> None:
+    """An answer with no native field is collected and then dropped.
+
+    Conversion writes ``policy.native_field``; a question whose field has none
+    would be answered, stored, and silently lost on the way to Post Job.
+    ``primary_role_key`` is the one deliberate exception — it resolves through
+    the roles catalog into ``primary_role_id``.
+    """
+
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+    from app.core.job_import_questions import conversation_question_kind
+
+    unmapped = [
+        path
+        for path, policy in JOB_IMPORT_FIELD_POLICIES.items()
+        if conversation_question_kind(path, policy.missing_requirement)
+        and policy.native_field is None
+        and path != "primary_role_key"
+    ]
+    assert unmapped == [], f"asked but cannot be carried into the job: {unmapped}"
+
+
+@pytest.mark.anyio
+async def test_every_answer_reaches_the_created_job(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The end-to-end guarantee, asserted on the job rather than on field rows.
+
+    The earlier regression test stops at the field row, which is one link short:
+    a row can exist and still not reach the editor if the policy has no native
+    field for it. This walks the whole conversation and then reads the job the
+    recruiter actually opens.
+    """
+
+    headers, owner_id = await _auth(client, "cp-tojob")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cp-tojob")
+    begin = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+
+    answered: dict[str, object] = {}
+    question = begin.json().get("active_question")
+    for _ in range(25):
+        if question is None:
+            break
+        field_path = question["field_path"]
+        value = _answer_for(field_path)
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={"field_path": field_path, "value": value},
+        )
+        assert response.status_code == 200, response.text
+        answered[field_path] = value
+        question = response.json().get("active_question")
+
+    assert answered, "the conversation asked nothing, so this proves nothing"
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert applied.status_code == 200, applied.text
+    job = applied.json()["job"]
+
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
+
+    for field_path, value in answered.items():
+        native = JOB_IMPORT_FIELD_POLICIES[field_path].native_field
+        if native is None:
+            # primary_role_key resolves through the catalog instead.
+            assert job.get("primary_role_id"), field_path
+            continue
+        actual = job.get(native, "<<absent>>")
+        if isinstance(value, list):
+            assert actual == value, f"{field_path}: {actual!r} != {value!r}"
+        elif isinstance(value, (int, float)):
+            # Money is a Decimal column, so 1200 comes back as "1200.00".
+            assert float(str(actual)) == float(value), (
+                f"{field_path}: {actual!r} != {value!r}"
+            )
+        else:
+            assert str(actual) == str(value), f"{field_path}: {actual!r} != {value!r}"
+
+
+@pytest.mark.anyio
+async def test_the_start_question_is_the_one_the_editor_renders(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The user-reported bug, end to end.
+
+    Choosing a start in the conversation used to write ``start_timeframe``,
+    which a v3 listing renders only as a read-only note for older listings — so
+    the editor opened with the start blank and the answer apparently ignored.
+    """
+
+    headers, owner_id = await _auth(client, "cp-start")
+    draft_id = await _prepared_draft(client, headers, owner_id, "cp-start")
+    begin = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+
+    asked: list[str] = []
+    question = begin.json().get("active_question")
+    for _ in range(25):
+        if question is None:
+            break
+        field_path = question["field_path"]
+        asked.append(field_path)
+        response = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={"field_path": field_path, "value": _answer_for(field_path)},
+        )
+        assert response.status_code == 200, response.text
+        question = response.json().get("active_question")
+
+    assert "start_timing" in asked, asked
+    assert "start_timeframe" not in asked, asked
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert applied.status_code == 200, applied.text
+    # The value lands on the field the Post Job editor hydrates and renders.
+    assert applied.json()["job"]["start_timing"] == "immediate"
