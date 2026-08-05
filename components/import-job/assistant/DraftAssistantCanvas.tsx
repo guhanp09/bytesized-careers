@@ -72,6 +72,8 @@ export type DraftAssistantCanvasProps = {
    * this surface never guesses.
    */
   delayed?: boolean;
+  /** The wait has outlasted one provider attempt, so a second one is likely. */
+  retrying?: boolean;
   /** The real candidate preview, once there are values worth showing. */
   preview?: React.ReactNode | null;
   /** How many shown values are imported but not yet confirmed. */
@@ -105,6 +107,7 @@ export function DraftAssistantCanvas({
   busy = false,
   error = null,
   delayed = false,
+  retrying = false,
   preview = null,
   provisionalCount = 0,
   waitingForRecruiter = false,
@@ -166,9 +169,13 @@ export function DraftAssistantCanvas({
     }
   };
 
-  const delayMessage = delayed
-    ? jobImportDelayMessage(progress, sourceCharacterCount)
-    : null;
+  const delayMessage = retrying
+    ? // Truthful about what is happening without naming a provider or a code:
+      // the first read did not come back, so the source is being read again.
+      "This is taking longer than usual, so I\u2019m reading the source again. Nothing you\u2019ve entered is lost."
+    : delayed
+      ? jobImportDelayMessage(progress, sourceCharacterCount)
+      : null;
 
   // History, the current turn and the assistant's composing state belong to one
   // chronological stream. Keeping one scroll owner is what places the dots

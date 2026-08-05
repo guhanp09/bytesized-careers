@@ -154,6 +154,8 @@ export default function ImportJobPageClient() {
   const [source, setSource] = React.useState<JobImportSource | null>(null);
   const [error, setError] = React.useState("");
   const [delayed, setDelayed] = React.useState(false);
+  /** True once the wait has outlasted a single provider attempt. */
+  const [retrying, setRetrying] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
   const [developmentScenario, setDevelopmentScenario] =
     React.useState<DevelopmentJobImportScenario>("strong-decisions");
@@ -192,10 +194,20 @@ export default function ImportJobPageClient() {
   React.useEffect(() => {
     if (!["creating", "processing"].includes(phase)) {
       setDelayed(false);
+      setRetrying(false);
       return;
     }
     const timer = window.setTimeout(() => setDelayed(true), 8_000);
-    return () => window.clearTimeout(timer);
+    // A first attempt can run to 90 seconds, and one transient retry can follow
+    // it. Past the first ceiling the honest thing to say is that this is taking
+    // longer than usual and the source is being read again — not to keep
+    // repeating the eight-second message as though nothing had changed, and not
+    // to imply anything finished.
+    const secondAttempt = window.setTimeout(() => setRetrying(true), 95_000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(secondAttempt);
+    };
   }, [phase]);
 
   const openCanonicalDraft = React.useCallback(
@@ -1031,6 +1043,7 @@ export default function ImportJobPageClient() {
             busy={answeringEarlyQuestion}
             error={error || null}
             delayed={delayed}
+            retrying={retrying}
             preview={livePreview.node}
             provisionalCount={livePreview.provisionalCount}
             waitingForRecruiter={
