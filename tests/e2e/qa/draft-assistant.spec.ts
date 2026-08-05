@@ -391,9 +391,14 @@ test.describe("completion and handoff", () => {
         (job: { id: string }) => job.id === nativeDraftId
       );
       expect(nativeDraft.primary_role_name_snapshot).toBe("Video Editor");
-      expect(nativeDraft.location).toBe("Chennai, Tamil Nadu, IN");
+      // Both of these used to arrive in the source's vocabulary rather than the
+      // editor's \u2014 a formatted address in a city field, and a free-form phrase
+      // in a field holding one of four bands. The editor refused both, so a
+      // fact the page stated became something the recruiter had to retype.
+      expect(nativeDraft.location).toBe("Chennai");
       expect(nativeDraft.engagement_type).toBe("full_time");
-      expect(nativeDraft.experience_level).toBe("1\u20137 years of experience");
+      // "1\u20137 years" is a minimum of one year, and that is the band holding it.
+      expect(nativeDraft.experience_level).toBe("1\u20133 years");
       expect(nativeDraft.content_niches).toContain("Education");
       expect(nativeDraft.responsibilities).toContain(
         "Edit learning videos for a school-based education channel"

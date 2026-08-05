@@ -35,6 +35,7 @@ import re
 from typing import Final
 
 from app.core.job_import_answer_shapes import answer_shape_for
+from app.core.job_import_location_resolution import parse_location
 
 #: A choice that names a numeric band: "0–1 years", "3–5 years", "5+ years".
 _BAND = re.compile(r"^\s*(\d{1,3})\s*(?:[-–—]\s*(\d{1,3})|(\+))?\s*(\w+)?\s*$")
@@ -84,6 +85,17 @@ def coerce_to_native(field_path: str, value: object) -> object | None:
     it askable and leaves the editor clean, rather than handing the editor a
     value it will refuse.
     """
+
+    if field_path == "location" and isinstance(value, str):
+        # A city field, reached by several routes: structured markup, model
+        # extraction, or the recruiter's own typing. Canonicalising at the
+        # mapper covered only the first, so a formatted address arriving any
+        # other way still reached the editor and still failed there.
+        parts = parse_location(value)
+        canonical = ", ".join(
+            component for component in (parts.locality, parts.city) if component
+        )
+        return canonical[:120] if canonical else None
 
     shape = answer_shape_for(field_path)
     if shape is None or shape.kind != "choice" or shape.is_list:
