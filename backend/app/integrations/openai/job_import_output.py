@@ -541,6 +541,9 @@ class OpenAIJobImportExtractionResponse(BaseModel):
 
         normalized_paths: set[str] = set()
         first_field_by_path: dict[str, dict[str, object]] = {}
+        #: Paths whose repeated, disagreeing values become a conflict below.
+        promoted_duplicates: dict[str, dict[str, object]] = {}
+        promoted_duplicates_extra: dict[str, list[dict[str, object]]] = {}
         normalized_fields: list[object] = []
         for raw_field in fields:
             if not isinstance(raw_field, dict):
@@ -562,9 +565,110 @@ class OpenAIJobImportExtractionResponse(BaseModel):
                 merge_ancillary_values(previous, raw_field)
                 normalized_paths.add(field_path)
                 continue
-            # Keep distinct duplicates so the strict domain validator rejects
-            # them instead of silently choosing one provider value.
-            normalized_fields.append(raw_field)
+            # Two evidenced values for one field that disagree is not a broken
+            # reply — it is a conflict, which this product already models and
+            # already knows how to put to a recruiter.
+            #
+            # Rejecting the document instead discarded everything else the model
+            # got right. One live import returned twenty-nine good fields and
+            # named one path twice; all twenty-nine were thrown away and the
+            # recruiter was asked to supply them by hand. Nothing is chosen here
+            # and nothing is invented: both values are carried forward with their
+            # own evidence, and the person still decides.
+            promoted_duplicates.setdefault(field_path, previous)
+            promoted_duplicates_extra.setdefault(field_path, []).append(raw_field)
+            normalized_paths.add(field_path)
+
+        # Turn each disagreeing duplicate into a conflict, and take its
+        # now-superseded entry back out of `fields`.
+        promoted_conflicts: list[dict[str, object]] = []
+        if promoted_duplicates:
+            existing_conflict_paths = {
+                item.get("field_path")
+                for item in conflicts
+                if isinstance(item, dict)
+            }
+            for field_path, first_entry in promoted_duplicates.items():
+                normalized_fields = [
+                    item
+                    for item in normalized_fields
+                    if not (isinstance(item, dict) and item.get("field_path") == field_path)
+                ]
+                if field_path in existing_conflict_paths:
+                    # Already stated as a conflict; the duplicate adds nothing.
+                    continue
+                alternatives: list[dict[str, object]] = []
+                seen_values: set[str] = set()
+                for entry in (first_entry, *promoted_duplicates_extra.get(field_path, [])):
+                    fingerprint = canonical(entry.get("value"))
+                    if fingerprint in seen_values:
+                        continue
+                    seen_values.add(fingerprint)
+                    evidence = entry.get("evidence")
+                    # An alternative with no verified evidence is a guess, and a
+                    # guess has no business being offered as a choice.
+                    if not isinstance(evidence, list) or not evidence:
+                        continue
+                    alternatives.append(
+                        {
+                            "value": entry.get("value"),
+                            "evidence": evidence[:MAX_EVIDENCE_SPANS_PER_REFERENCE],
+                        }
+                    )
+                    if len(alternatives) >= 8:
+                        break
+                # A conflict needs at least two evidenced alternatives to be one.
+                if len(alternatives) >= 2:
+                    promoted_conflicts.append(
+                        {
+                            "field_path": field_path,
+                            "values": alternatives,
+                            "explanation": (
+                                "The source was read two different ways for this "
+                                "detail."
+                            ),
+                        }
+                    )
+        if promoted_conflicts:
+            conflicts = [*conflicts, *promoted_conflicts]
+
+        # A path may appear only once across fields, conflicts and missing.
+        # Providers routinely state the same detail in two places — a value in
+        # `fields` and the same path again as a conflict, or one conflict twice.
+        # Refusing the reply for that discarded everything else it got right.
+        deduped_conflicts: list[object] = []
+        conflict_paths: set[str] = set()
+        for raw_conflict in conflicts:
+            if not isinstance(raw_conflict, dict):
+                deduped_conflicts.append(raw_conflict)
+                continue
+            conflict_path = raw_conflict.get("field_path")
+            if not isinstance(conflict_path, str):
+                deduped_conflicts.append(raw_conflict)
+                continue
+            if conflict_path in conflict_paths:
+                # The same disagreement stated twice adds nothing.
+                normalized_paths.add(conflict_path)
+                continue
+            conflict_paths.add(conflict_path)
+            deduped_conflicts.append(raw_conflict)
+        conflicts = deduped_conflicts
+
+        # A conflict is the richer statement: it says the source disagreed with
+        # itself, and the recruiter still chooses. A settled value for the same
+        # path is the weaker claim, so it gives way.
+        if conflict_paths:
+            kept_fields: list[object] = []
+            for item in normalized_fields:
+                if (
+                    isinstance(item, dict)
+                    and isinstance(item.get("field_path"), str)
+                    and item["field_path"] in conflict_paths
+                ):
+                    normalized_paths.add(item["field_path"])
+                    continue
+                kept_fields.append(item)
+            normalized_fields = kept_fields
 
         occupied_paths = {
             item.get("field_path")
@@ -594,6 +698,7 @@ class OpenAIJobImportExtractionResponse(BaseModel):
         normalized = {
             **payload,
             "fields": normalized_fields,
+            "conflicts": conflicts,
             "missing_fields": normalized_missing,
         }
         normalized_warnings = list(warnings)
@@ -624,20 +729,59 @@ class OpenAIJobImportExtractionResponse(BaseModel):
 
     def to_domain_response(self, *, span_set: EvidenceSpanSet) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
+        # One unreadable field is a quality problem, not an unusable reply.
+        #
+        # This used to abort the whole extraction, so a single malformed value
+        # cost every other field the model got right and the recruiter was asked
+        # to supply them by hand. A field that cannot be read is dropped and
+        # recorded; the rest of the job survives.
+        #
+        # Deliberately narrow: this covers values the server cannot parse. A
+        # provider returning a field it is not allowed to touch, or evidence
+        # pointing outside the source it was given, is an integrity event and
+        # still refuses the entire reply.
+        readable_fields: list[dict[str, object]] = []
+        unreadable: list[dict[str, object]] = []
         for field_index, field in enumerate(payload["fields"]):
             field_context = {
                 "affected_structure": "fields",
                 "affected_structure_index": field_index,
                 "affected_field_path": field["field_path"],
             }
-            field["value"] = self._decode_value(
-                field.pop("value_json"),
-                diagnostic_context=field_context,
-            )
+            try:
+                field["value"] = self._decode_value(
+                    field.pop("value_json"),
+                    diagnostic_context=field_context,
+                )
+            except OpenAIJobImportPostParseError as unreadable_value:
+                unreadable.append(
+                    {
+                        "field_path": field["field_path"],
+                        "reason": unreadable_value.reason,
+                    }
+                )
+                continue
             field["evidence"] = self._resolve_evidence(
                 field.pop("evidence_span_ids"),
                 span_set=span_set,
                 diagnostic_context=field_context,
+            )
+            readable_fields.append(field)
+        payload["fields"] = readable_fields
+        for dropped in unreadable[:30]:
+            if len(payload["warnings"]) >= 30:
+                break
+            payload["warnings"].append(
+                {
+                    "code": "provider_field_unreadable",
+                    "message": (
+                        "One returned value could not be read and was left for "
+                        "the assistant to ask about."
+                    ),
+                    "field_path": dropped["field_path"],
+                    # Wire shape: the loop below resolves this into evidence.
+                    "evidence_span_ids": [],
+                }
             )
         for conflict_index, conflict in enumerate(payload["conflicts"]):
             for alternative_index, alternative in enumerate(conflict["values"]):

@@ -658,7 +658,6 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
         ("duplicate_span_id", "duplicate_span_id"),
         ("excessive_span_ids", "excessive_span_ids"),
         ("missing_required_evidence", "missing_required_evidence"),
-        ("invalid_json_value", "invalid_json_value"),
         ("invalid_field_path", "invalid_field_path"),
         ("invalid_conflict_evidence", "unknown_span_id"),
         ("invalid_warning_evidence", "unknown_span_id"),
@@ -795,28 +794,100 @@ async def test_conflict_beats_duplicate_missing_provider_entry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_distinct_duplicate_provider_fields_remain_rejected() -> None:
+async def test_a_field_returned_twice_with_two_values_becomes_a_conflict() -> None:
+    """The reply is self-contradicting, not unusable.
+
+    This previously discarded the entire extraction. One live import returned
+    twenty-nine good fields and named a single path twice; all twenty-nine were
+    thrown away and the recruiter was asked to type them in — a model slip
+    turned into their workload.
+
+    Two evidenced values that disagree is exactly what a conflict is, and this
+    product already knows how to put one to a person. Nothing is chosen here:
+    both values survive with their own evidence, and the recruiter still picks.
+    """
+
     payload = _wire_extraction().model_dump(mode="json")
     duplicate = dict(payload["fields"][0])
     duplicate["value_json"] = '"A different title"'
     payload["fields"].append(duplicate)
+    field_path = payload["fields"][0]["field_path"]
 
-    with pytest.raises(JobImportProviderError) as caught:
-        await _raw_adapter(payload).extract(_request())
+    result = await _raw_adapter(payload).extract(_request())
 
-    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
-    assert caught.value.metadata.metadata["failure_subreason"] == "duplicate_field_path"
+    extraction = result.extraction
+    # The contradicted path is no longer claimed as a settled value...
+    assert all(item.field_path != field_path for item in extraction.fields)
+    # ...it is offered as a choice between what the source appeared to say.
+    conflict = next(
+        item for item in extraction.conflicts if item.field_path == field_path
+    )
+    assert len(conflict.values) == 2
+    for alternative in conflict.values:
+        assert alternative.evidence, "an alternative without evidence is a guess"
 
 
 @pytest.mark.asyncio
-async def test_openai_adapter_rejects_invalid_wire_value_json() -> None:
+async def test_the_rest_of_a_self_contradicting_reply_survives() -> None:
+    """The whole point: one bad path must not cost every good one."""
+
+    payload = _wire_extraction().model_dump(mode="json")
+    duplicate = dict(payload["fields"][0])
+    duplicate["value_json"] = '"A different title"'
+    payload["fields"].append(duplicate)
+    other_paths = {
+        item["field_path"]
+        for item in payload["fields"]
+        if item["field_path"] != payload["fields"][0]["field_path"]
+    }
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    kept = {item.field_path for item in result.extraction.fields}
+    assert other_paths <= kept, "good fields were discarded with the bad one"
+
+
+@pytest.mark.asyncio
+async def test_one_unreadable_value_is_dropped_and_the_rest_survive() -> None:
+    """A value the server cannot parse costs that field, and only that field.
+
+    Aborting the extraction meant one malformed value discarded everything else
+    the model read correctly, and the recruiter was asked to type it all in.
+    The field is dropped, recorded as a warning, and the assistant asks about
+    that one detail — which is exactly what it is for.
+    """
+
     wire = _wire_extraction().model_copy(deep=True)
+    broken_path = wire.fields[0].field_path
     wire.fields[0].value_json = "not-json"
+    other_paths = {item.field_path for item in wire.fields[1:]}
+
+    result = await _adapter([_openai_response(parsed=wire)]).extract(_request())
+
+    kept = {item.field_path for item in result.extraction.fields}
+    assert broken_path not in kept
+    assert other_paths <= kept, "readable fields were discarded with the broken one"
+    assert any(
+        warning.code == "provider_field_unreadable"
+        for warning in result.extraction.warnings
+    ), "a dropped field must leave a record"
+
+
+@pytest.mark.asyncio
+async def test_an_integrity_failure_still_refuses_the_whole_reply() -> None:
+    """Salvage is for quality, never for integrity.
+
+    A provider citing evidence outside the source it was given is not one bad
+    field — it is a reply that cannot be trusted at all, and none of it is kept.
+    """
+
+    wire = _wire_extraction().model_copy(deep=True)
+    wire.fields[0].evidence_span_ids = ["E9999"]
 
     with pytest.raises(JobImportProviderError) as caught:
-        await _adapter([_openai_response(parsed=wire)]).extract(_request())
+        await _adapter([_openai_response(parsed=wire)], max_retries=0).extract(_request())
 
-    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
+    assert caught.value.code == "OPENAI_EVIDENCE_INVALID"
 
 
 @pytest.mark.asyncio
@@ -1810,3 +1881,60 @@ async def test_a_failed_attempt_keeps_answers_the_recruiter_already_gave(
         await client.get(f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers)
     ).json()
     assert current["recruiter_prefill"] == {"employer_context_type": "agency"}
+
+
+@pytest.mark.asyncio
+async def test_a_path_stated_as_both_a_value_and_a_conflict_is_reconciled() -> None:
+    """The live failure, reproduced exactly.
+
+    A provider stated one detail in two places: a settled value in `fields` and
+    the same path again as a conflict. The contract allows a path to appear once
+    across fields, conflicts and missing_fields, so the whole reply was refused —
+    twenty-nine good fields discarded, and the recruiter asked to supply them.
+
+    The conflict is the richer statement: it says the source disagreed with
+    itself and leaves the choice to a person. The settled value gives way, and
+    everything else survives.
+    """
+
+    payload = _wire_extraction().model_dump(mode="json")
+    contested = payload["fields"][0]["field_path"]
+    spans = payload["fields"][0]["evidence_span_ids"]
+    payload["conflicts"].append(
+        {
+            "field_path": contested,
+            "values": [
+                {"value_json": '"One reading"', "evidence_span_ids": spans},
+                {"value_json": '"Another reading"', "evidence_span_ids": spans},
+            ],
+            "explanation": "The source was read two ways.",
+        }
+    )
+    other_paths = {item["field_path"] for item in payload["fields"][1:]}
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    kept = {item.field_path for item in result.extraction.fields}
+    assert contested not in kept, "the weaker settled value should give way"
+    assert other_paths <= kept, "unrelated fields were discarded"
+    assert any(item.field_path == contested for item in result.extraction.conflicts)
+
+
+@pytest.mark.asyncio
+async def test_the_same_conflict_stated_twice_is_not_fatal() -> None:
+    payload = _wire_extraction().model_dump(mode="json")
+    spans = payload["fields"][0]["evidence_span_ids"]
+    duplicate_conflict = {
+        "field_path": "work_mode",
+        "values": [
+            {"value_json": '"remote"', "evidence_span_ids": spans},
+            {"value_json": '"onsite"', "evidence_span_ids": spans},
+        ],
+        "explanation": "Stated twice.",
+    }
+    payload["conflicts"].extend([duplicate_conflict, dict(duplicate_conflict)])
+
+    result = await _raw_adapter(payload).extract(_request())
+
+    paths = [item.field_path for item in result.extraction.conflicts]
+    assert paths.count("work_mode") == 1
