@@ -42,7 +42,7 @@ def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
     settings = config.Settings(
         OPENAI_API_KEY="test-placeholder-not-a-real-key",
         OPENAI_MODEL="gpt-5.6-luna",
-        OPENAI_REQUEST_TIMEOUT_SECONDS=30,
+        OPENAI_REQUEST_TIMEOUT_SECONDS=60,
         OPENAI_MAX_RETRIES=2,
         JOB_IMPORT_PROMPT_VERSION="job-import-text-v1",
     )
@@ -54,19 +54,32 @@ def test_openai_configuration_is_server_owned_bounded_and_secret() -> None:
         == "test-placeholder-not-a-real-key"
     )
     assert settings.openai_model == "gpt-5.6-luna"
-    assert settings.openai_request_timeout_seconds == 30
+    assert settings.openai_request_timeout_seconds == 60
     assert (
         config.Settings.model_fields["openai_request_timeout_seconds"].default
-        == 60
+        == 90
     )
+    # Measured against a real job page: extraction takes ~33s, so a 30s timeout
+    # kills a call that was about to succeed and the recruiter is then asked for
+    # everything the page already stated. An existing deployment must keep
+    # booting, so the floor is applied where the provider is built rather than
+    # rejected here — but it must never be skipped.
+    from app.api.deps import (
+        MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS,
+        _viable_timeout_seconds,
+    )
+
+    assert MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS >= 45
+    assert _viable_timeout_seconds(30) == MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS
+    assert _viable_timeout_seconds(120) == 120
 
     with pytest.raises(ValueError):
         config.Settings(OPENAI_MAX_RETRIES=4)
     with pytest.raises(ValueError):
-        config.Settings(OPENAI_REQUEST_TIMEOUT_SECONDS=121)
+        config.Settings(OPENAI_REQUEST_TIMEOUT_SECONDS=181)
 
     assert config.Settings.model_fields["job_import_prompt_version"].default == (
-        "job-import-text-v3"
+        "job-import-text-v4"
     )
 
 

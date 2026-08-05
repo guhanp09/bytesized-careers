@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
@@ -42,6 +43,8 @@ from app.services.me_service import MeService
 from app.services.profile_service import ProfileService
 from app.services.search_service import SearchService
 
+logger = logging.getLogger(__name__)
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -67,6 +70,33 @@ async def get_job_import_service(
     )
 
 
+#: The shortest extraction timeout that can actually succeed.
+#:
+#: Measured against a real 16k-character public job page: extraction takes about
+#: 33 seconds. A deployment configured at 30 seconds therefore killed every real
+#: import roughly three seconds before its answer arrived, and the recruiter met
+#: an assistant asking about everything the page already stated.
+#:
+#: Enforced here rather than in the settings bounds so an existing deployment
+#: keeps booting — but never silently, because silence is how this survived.
+MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS = 45.0
+
+
+def _viable_timeout_seconds(configured: float) -> float:
+    """Never run an extraction with a timeout that cannot finish one."""
+
+    if configured >= MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS:
+        return configured
+    logger.warning(
+        "job_import_extraction_timeout_too_low",
+        extra={
+            "configured_seconds": configured,
+            "applied_seconds": MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS,
+        },
+    )
+    return MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS
+
+
 def get_job_import_provider() -> JobImportExtractionProvider:
     api_key = (
         settings.openai_api_key.get_secret_value()
@@ -77,7 +107,9 @@ def get_job_import_provider() -> JobImportExtractionProvider:
         OpenAIJobImportConfig(
             api_key=api_key,
             model=settings.openai_model,
-            request_timeout_seconds=settings.openai_request_timeout_seconds,
+            request_timeout_seconds=_viable_timeout_seconds(
+                settings.openai_request_timeout_seconds
+            ),
             max_retries=settings.openai_max_retries,
             instruction_version=settings.job_import_prompt_version,
         )

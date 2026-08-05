@@ -63,20 +63,41 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
         alias="OPENAI_MODEL",
     )
+    #: How long one extraction call may take before it is abandoned.
+    #:
+    #: Measured, not guessed. A real 16k-character job page takes this provider
+    #: about 33 seconds to extract ~27 fields from. The deployment was running
+    #: at 30 seconds, so every real page timed out roughly three seconds before
+    #: its answer arrived: the extraction succeeded and was thrown away, and the
+    #: recruiter met an assistant asking about everything the page already said.
+    #:
+    #: A configured value below MIN_VIABLE_EXTRACTION_TIMEOUT_SECONDS is raised
+    #: to that floor at the point the provider is built, with a warning — an
+    #: existing deployment must not stop booting, but nor should it keep
+    #: quietly destroying every import.
     openai_request_timeout_seconds: float = Field(
-        default=60.0,
+        default=90.0,
         ge=5.0,
-        le=120.0,
+        le=180.0,
         alias="OPENAI_REQUEST_TIMEOUT_SECONDS",
     )
+    #: Retries for genuinely transient provider failures only.
+    #:
+    #: One, deliberately. A retry exists to survive a blip, and the adapter only
+    #: retries timeouts, rate limits and temporary outages — never a schema,
+    #: auth or refusal failure, which would return the same answer more slowly.
+    #:
+    #: Two retries at the 90-second ceiling is a four-and-a-half minute worst
+    #: case spent in front of a recruiter watching a progress bar, which is a
+    #: worse outcome than telling them promptly that it did not work.
     openai_max_retries: int = Field(
-        default=2,
+        default=1,
         ge=0,
         le=3,
         alias="OPENAI_MAX_RETRIES",
     )
     job_import_prompt_version: str = Field(
-        default="job-import-text-v3",
+        default="job-import-text-v4",
         min_length=1,
         max_length=80,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
