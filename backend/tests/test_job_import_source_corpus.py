@@ -37,10 +37,47 @@ _EMPTY_EXTRACTION = {
 }
 
 
-async def _prepare(client: AsyncClient, source: GoldenSource) -> tuple[str, dict, str]:
-    """Ingest one corpus source exactly as the product would, model output aside."""
+def _extraction_for(source: GoldenSource) -> dict:
+    """The machine result for a run: nothing, or a realistic reading of the prose.
 
-    headers, owner_id = await _auth(client, f"corpus-{source.key.replace('_', '-')}")
+    Modelled rather than live so the corpus is deterministic, but shaped exactly
+    like a real reply — evidenced fields and evidenced conflicts — so precedence
+    between a visible statement and a structured claim is genuinely exercised.
+    """
+
+    fields = [
+        {
+            "field_path": path,
+            "value": value,
+            "provenance": "extracted_from_source",
+            "evidence": [{"snippet": f"{path} stated in the source"}],
+        }
+        for path, value in source.model_fields.items()
+    ]
+    conflicts = [
+        {
+            "field_path": path,
+            "values": [
+                {
+                    "value": value,
+                    "evidence": [{"snippet": f"{path} reading {index + 1}"}],
+                }
+                for index, value in enumerate(values)
+            ],
+            "explanation": "The source was read two ways.",
+        }
+        for path, values in source.model_conflicts.items()
+    ]
+    return {**_EMPTY_EXTRACTION, "fields": fields, "conflicts": conflicts}
+
+
+async def _prepare(
+    client: AsyncClient, source: GoldenSource, *, with_model: bool = False
+) -> tuple[str, dict, str]:
+    """Ingest one corpus source exactly as the product would."""
+
+    label = f"corpus-{source.key.replace('_', '-')}{'-m' if with_model else ''}"
+    headers, owner_id = await _auth(client, label)
 
     metadata: dict = {}
     if source.html is not None:
@@ -85,14 +122,14 @@ async def _prepare(client: AsyncClient, source: GoldenSource) -> tuple[str, dict
     assert draft.status_code == 201, draft.text
     draft_id = draft.json()["id"]
 
-    # Deliberately empty: the model contributed nothing to this draft.
+    payload = _extraction_for(source) if with_model else _EMPTY_EXTRACTION
     async with TestSessionLocal() as session:
         service = JobImportService(
             JobImportRepository(session), JobService(JobRepository(session))
         )
         await service.record_extraction_result(
             UUID(draft_id),
-            JobImportExtractionResponse.model_validate(_EMPTY_EXTRACTION),
+            JobImportExtractionResponse.model_validate(payload),
             owner_user_id=owner_id,
         )
 
@@ -261,3 +298,114 @@ async def test_a_page_that_says_nothing_is_still_allowed_to_ask(
     draft_id, headers, _title = await _prepare(client, sparse)
     asked = await _walk(client, draft_id, headers)
     assert asked, "a listing that states nothing must still be asked about"
+
+
+# ---------------------------------------------------------------------------
+# The same sources, read as a working model would read them.
+#
+# Facts that only exist in prose cannot reach a draft deterministically, so they
+# are declared separately and asserted here. This is where precedence between a
+# visible statement and a structured claim is actually exercised.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source", CORPUS, ids=lambda item: item.key)
+async def test_prose_facts_reach_the_draft_and_are_not_asked_back(
+    client: AsyncClient, source: GoldenSource
+) -> None:
+    expected = {**source.established, **source.established_with_model}
+    if not expected:
+        pytest.skip(f"{source.key} has nothing to establish from prose")
+
+    draft_id, headers, _title = await _prepare(client, source, with_model=True)
+    asked = await _walk(client, draft_id, headers)
+
+    false_questions = [path for path in asked if path in expected]
+    assert not false_questions, (
+        f"{source.key}: asked for facts the source states — {false_questions}. "
+        f"{source.note}"
+    )
+
+    current = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    settled = {
+        item["field_path"]: item["effective_value"]
+        for item in current["fields"]
+        if item["provenance_state"] != "missing"
+    }
+    for field_path, value in expected.items():
+        if field_path in source.contested:
+            continue
+        assert field_path in settled, (
+            f"{source.key}: {field_path} is in the source and not in the draft. "
+            f"{source.note}"
+        )
+        actual = settled[field_path]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            assert float(str(actual)) == float(value), f"{source.key}.{field_path}"
+        elif isinstance(value, list):
+            assert set(actual or []) >= set(value), f"{source.key}.{field_path}"
+        elif isinstance(value, str) and isinstance(actual, str):
+            assert value.casefold() in actual.casefold(), (
+                f"{source.key}.{field_path}: {actual!r} does not reflect {value!r}"
+            )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "source",
+    [item for item in CORPUS if item.contested],
+    ids=lambda item: item.key,
+)
+async def test_a_genuine_conflict_is_offered_as_clickable_choices(
+    client: AsyncClient, source: GoldenSource
+) -> None:
+    """A recruiter should never retype a value the page already contains."""
+
+    draft_id, headers, _title = await _prepare(client, source, with_model=True)
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+
+    seen: dict[str, dict] = {}
+    question = begun.json().get("active_question")
+    for _ in range(20):
+        if question is None:
+            break
+        if question["field_path"] in source.contested:
+            seen[question["field_path"]] = question
+        shape = question.get("answer") or {}
+        alternatives = question.get("alternatives") or []
+        if alternatives:
+            value: object = alternatives[0]["value"]
+        elif shape.get("choices"):
+            value = shape["choices"][0]
+            if shape.get("is_list"):
+                key = shape.get("item_key")
+                value = [{key: value}] if key else [value]
+        elif shape.get("kind") == "number":
+            value = 5
+        elif shape.get("kind") == "date":
+            value = "2027-01-15"
+        else:
+            value = "Supplied by the corpus conflict run."
+        answered = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={"field_path": question["field_path"], "value": value},
+        )
+        if answered.status_code != 200:
+            break
+        question = answered.json().get("active_question")
+
+    for field_path in source.contested:
+        assert field_path in seen, f"{source.key}: {field_path} was never put to anyone"
+        offered = seen[field_path].get("alternatives") or []
+        choices = seen[field_path].get("answer", {}).get("choices") or []
+        assert offered or choices, (
+            f"{source.key}.{field_path}: a conflict with no clickable options makes "
+            "the recruiter retype something the page already contains"
+        )

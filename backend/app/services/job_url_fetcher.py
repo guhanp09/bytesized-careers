@@ -254,6 +254,12 @@ def _structured_location_requirement(value: object) -> str | None:
 
 
 def _structured_compensation(value: object) -> str | None:
+    # Publishers also state pay as plain wording — "Not disclosed", "Negotiable".
+    # Returning nothing for those lost the fact that the page had answered, and
+    # the recruiter was asked how the role is paid by a page that said it would
+    # not say.
+    if isinstance(value, str):
+        return _bounded_structured_text(value, 120)
     if not isinstance(value, dict):
         return None
     currency = _bounded_structured_text(value.get("currency"), 3)
@@ -269,6 +275,14 @@ def _structured_compensation(value: object) -> str | None:
             amount = str(minimum)
             if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
                 amount = f"{amount}-{maximum}"
+        else:
+            # A single figure lives in `value`, not `minValue`. Reading only the
+            # range keys dropped the amount from every page that states one
+            # salary — the common case — leaving currency and period behind and
+            # the recruiter asked to supply a number the page had printed.
+            single = raw_amount.get("value")
+            if isinstance(single, (int, float)) and not isinstance(single, bool):
+                amount = str(single)
         unit = unit or _bounded_structured_text(raw_amount.get("unitText"), 32)
     parts = [currency, amount, f"per {unit}" if unit else None]
     return " ".join(part for part in parts if part) or None

@@ -37,6 +37,19 @@ class GoldenSource:
     absent: tuple[str, ...] = ()
     #: Fields the page states two ways. A one-click choice is legitimate.
     contested: tuple[str, ...] = ()
+    #: A realistic reading of the page's prose, as a model would return it.
+    #:
+    #: The corpus runs twice: once with nothing from the model, proving the
+    #: deterministic layer alone carries the draft; and once with this, proving
+    #: precedence between a visible statement and a structured claim. Facts that
+    #: only exist in prose are declared here rather than pretended to be
+    #: deterministic.
+    model_fields: dict[str, object] = field(default_factory=dict)
+    #: Values the page states two ways, as competing candidates with evidence.
+    model_conflicts: dict[str, tuple[object, ...]] = field(default_factory=dict)
+    #: Facts only reachable once the model has read the prose.
+    established_with_model: dict[str, object] = field(default_factory=dict)
+
     #: Notes for whoever reads a failure.
     note: str = ""
 
@@ -131,8 +144,12 @@ MISLABELLED_INTERNSHIP = GoldenSource(
         "work_mode": "onsite",
         "duration_value": 6,
     },
+    model_conflicts={
+        "location": ("Bangalore, Karnataka, IN", "Brookefield, Bengaluru"),
+    },
     contested=("location",),
-    note="The real reported page. Its own structured data mislabels the engagement.",
+    note="The real reported page. Its own structured data mislabels the engagement, "
+    "and names the office at two levels of detail.",
 )
 
 SPARSE_LISTING = GoldenSource(
@@ -215,13 +232,367 @@ MALFORMED_STRUCTURED_DATA = GoldenSource(
     note="A broken block must cost nothing and must not be treated as facts.",
 )
 
+# ---------------------------------------------------------------------------
+# Board shapes without structured data: the model reads the prose, and the
+# deterministic layer must not contradict or discard it.
+# ---------------------------------------------------------------------------
+
+GREENHOUSE_NO_JSONLD = GoldenSource(
+    key="greenhouse_no_jsonld",
+    title="Podcast Editor",
+    html=(
+        "<html><head><title>Podcast Editor</title></head><body>"
+        "<h1>Podcast Editor</h1>"
+        "<div><h2>About Northwind Audio</h2><p>We produce a weekly interview "
+        "podcast about climate technology for a general audience.</p></div>"
+        "<h2>What you'll do</h2><ul><li>Edit two episodes per week</li>"
+        "<li>Clean dialogue and balance levels</li></ul>"
+        "<h2>Details</h2><p>Full-time. Remote. USD 4,000 per month.</p>"
+        + _BOILERPLATE
+        + "</body></html>"
+    ),
+    model_fields={
+        "engagement_type": "full_time",
+        "work_mode": "remote",
+        "budget_amount": 4000,
+        "budget_currency": "USD",
+        "budget_unit": "per month",
+        "about_channel": "We produce a weekly interview podcast about climate technology.",
+    },
+    established_with_model={
+        "engagement_type": "full_time",
+        "work_mode": "remote",
+        "budget_amount": 4000,
+        "budget_currency": "USD",
+        "budget_unit": "per month",
+        "compensation_mode": "fixed",
+    },
+    absent=("start_timing", "platforms"),
+    note="A board page with no machine-readable data at all.",
+)
+
+GREENHOUSE_CONTRADICTORY = GoldenSource(
+    key="greenhouse_contradictory",
+    title="Scriptwriter",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting","title":"Scriptwriter",
+        "employmentType":"FULL_TIME","jobLocationType":"TELECOMMUTE"}""",
+        "<h1>Scriptwriter</h1><p>This is a part-time contract role, three days "
+        "a week onsite in our Pune studio.</p>" + _BOILERPLATE,
+        "Scriptwriter",
+    ),
+    model_conflicts={
+        "work_mode": ("remote", "onsite"),
+        "engagement_type": ("full_time", "part_time"),
+    },
+    contested=("work_mode", "engagement_type"),
+    absent=("budget_amount",),
+    note="Structured data and visible prose genuinely disagree. Ask, with options.",
+)
+
+LEVER_POSTING = GoldenSource(
+    key="lever_posting",
+    title="Social Media Manager",
+    html=(
+        "<html><head><title>Social Media Manager</title></head><body>"
+        "<div class='posting-headline'><h2>Social Media Manager</h2>"
+        "<div class='sort-by-time'><span>Bengaluru</span><span>Marketing</span>"
+        "<span>Full-time</span></div></div>"
+        "<div class='section'><h3>About us</h3><p>Loop Studio runs short-form "
+        "channels for consumer brands across Instagram and YouTube.</p></div>"
+        "<div class='section'><h3>Requirements</h3><ul><li>Three years managing "
+        "brand social accounts</li></ul></div>"
+        "<div class='section'><h3>Compensation</h3><p>INR 90,000 per month</p></div>"
+        "<footer>Powered by Lever. Privacy policy.</footer></body></html>"
+    ),
+    model_fields={
+        "engagement_type": "full_time",
+        "location": "Bengaluru",
+        "budget_amount": 90000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "platforms": ["instagram", "youtube"],
+    },
+    established_with_model={
+        "engagement_type": "full_time",
+        "budget_amount": 90000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "compensation_mode": "fixed",
+        "platforms": ["instagram", "youtube"],
+    },
+    absent=("start_timing",),
+    note="Lever's grouped-section shape with board furniture in the footer.",
+)
+
+ASHBY_POSTING = GoldenSource(
+    key="ashby_posting",
+    title="Creator Strategist",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Creator Strategist","employmentType":"FULL_TIME",
+        "jobLocationType":"TELECOMMUTE",
+        "hiringOrganization":{"@type":"Organization",
+        "description":"A creator-economy studio helping founders build audiences."},
+        "baseSalary":{"@type":"MonetaryAmount","currency":"USD","value":
+        {"@type":"QuantitativeValue","value":90000,"unitText":"YEAR"}}}""",
+        "<h1>Creator Strategist</h1><p>Own channel strategy end to end.</p>"
+        "<footer>Powered by Ashby</footer>",
+        "Creator Strategist",
+    ),
+    established={
+        "engagement_type": "full_time",
+        "work_mode": "remote",
+        "budget_amount": 90000,
+        "budget_currency": "USD",
+        "budget_unit": "per year",
+        "compensation_mode": "fixed",
+    },
+    absent=("platforms",),
+    note="A single salary figure must settle fixed mode without asking.",
+)
+
+WORKDAY_SHELL = GoldenSource(
+    key="workday_shell",
+    title="Motion Designer",
+    html=_page(
+        """{"@context":"https://schema.org","@graph":[
+        {"@type":"BreadcrumbList"},
+        {"@type":"JobPosting","title":"Motion Designer","employmentType":"PART_TIME",
+        "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+        "addressLocality":"Gurgaon","addressRegion":"Haryana","addressCountry":"IN"}},
+        "hiringOrganization":{"@type":"Organization",
+        "description":"An in-house brand team producing campaign films."}}]}""",
+        "<div id='root'></div><noscript>Enable JavaScript</noscript>"
+        "<h1>Motion Designer</h1><p>Requisition R-4471. Gurgaon. Gurgaon.</p>"
+        + _BOILERPLATE,
+        "Motion Designer",
+    ),
+    established={"engagement_type": "part_time", "work_mode": "onsite"},
+    absent=("budget_amount", "start_timing"),
+    note="A client-rendered shell whose public payload is still readable, with "
+    "a repeated location that must not become a conflict.",
+)
+
+SMARTRECRUITERS_POSTING = GoldenSource(
+    key="smartrecruiters_posting",
+    title="Graphic Designer",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Graphic Designer","employmentType":"CONTRACTOR",
+        "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+        "addressLocality":"Chennai","addressCountry":"IN"}},
+        "datePosted":"2026-07-01","validThrough":"2026-09-30",
+        "hiringOrganization":{"@type":"Organization",
+        "description":"A design studio serving education publishers."}}""",
+        "<h1>Graphic Designer</h1><h2>Job Description</h2><p>Design covers and "
+        "social assets.</p><h2>Qualifications</h2><p>Two years in publishing.</p>"
+        + _BOILERPLATE,
+        "Graphic Designer",
+    ),
+    established={"engagement_type": "ongoing_freelance", "work_mode": "onsite"},
+    absent=("budget_amount",),
+    note="Description and qualifications must survive boilerplate stripping.",
+)
+
+CUSTOM_PROSE_PAGE = GoldenSource(
+    key="custom_prose_page",
+    title="Video Editor for a cooking channel",
+    html=(
+        "<html><head><title>Video Editor for a cooking channel</title></head><body>"
+        "<nav>Home About Careers</nav>"
+        "<h1>Video Editor for a cooking channel</h1>"
+        "<h2>About Saffron Kitchen</h2><p>We publish weekly recipe films on "
+        "YouTube for home cooks in India.</p>"
+        "<h2>The work</h2><ul><li>Edit one 12-minute film each week</li>"
+        "<li>Cut three Shorts from each film</li></ul>"
+        "<h2>Terms</h2><p>We pay 35,000 rupees per month. Fully remote within "
+        "India. Start as soon as possible.</p>"
+        "<footer>Privacy policy. Terms of service.</footer></body></html>"
+    ),
+    model_fields={
+        "budget_amount": 35000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "work_mode": "remote",
+        "start_timing": "immediate",
+        "platforms": ["youtube"],
+        "about_channel": "We publish weekly recipe films on YouTube for home cooks.",
+    },
+    established_with_model={
+        "budget_amount": 35000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "compensation_mode": "fixed",
+        "work_mode": "remote",
+        "start_timing": "immediate",
+        "platforms": ["youtube"],
+    },
+    absent=("engagement_type",),
+    note="A custom employer page with no structured data and pay in prose.",
+)
+
+AMOUNT_WITHOUT_CURRENCY = GoldenSource(
+    key="amount_without_currency",
+    title="Thumbnail Designer",
+    pasted_text=(
+        "Thumbnail Designer for a gaming channel.\n"
+        "We pay 500 per thumbnail. Remote."
+    ),
+    model_fields={"budget_amount": 500, "budget_unit": "per thumbnail", "work_mode": "remote"},
+    established_with_model={
+        "budget_amount": 500,
+        "budget_unit": "per thumbnail",
+        "compensation_mode": "fixed",
+    },
+    absent=("budget_currency",),
+    note="Amount and unit known, currency genuinely absent: ask only currency.",
+)
+
+CURRENCY_WITHOUT_UNIT = GoldenSource(
+    key="currency_without_unit",
+    title="Scriptwriter",
+    pasted_text="Scriptwriter wanted. Budget is INR 20,000. Remote role.",
+    model_fields={"budget_amount": 20000, "budget_currency": "INR", "work_mode": "remote"},
+    established_with_model={
+        "budget_amount": 20000,
+        "budget_currency": "INR",
+        "compensation_mode": "fixed",
+    },
+    absent=("budget_unit",),
+    note="Amount and currency known, unit genuinely absent: ask only the unit.",
+)
+
+PAY_RANGE_PASTE = GoldenSource(
+    key="pay_range_paste",
+    title="Creator Strategist",
+    pasted_text=(
+        "Creator Strategist. Compensation: USD 80,000 to 100,000 per year. "
+        "Fully remote."
+    ),
+    model_fields={
+        "budget_amount": 80000,
+        "budget_max": 100000,
+        "budget_currency": "USD",
+        "budget_unit": "per year",
+        "work_mode": "remote",
+    },
+    established_with_model={
+        "budget_amount": 80000,
+        "budget_max": 100000,
+        "compensation_mode": "range",
+        "budget_currency": "USD",
+    },
+    note="Two ordered amounts settle range mode without asking.",
+)
+
+NEGOTIABLE_PAY = GoldenSource(
+    key="negotiable_pay",
+    title="Social Media Manager",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Social Media Manager","employmentType":"PART_TIME",
+        "baseSalary":"Not disclosed",
+        "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+        "addressLocality":"Mumbai","addressCountry":"IN"}}}""",
+        "<h1>Social Media Manager</h1><p>Pay is negotiable.</p>" + _BOILERPLATE,
+        "Social Media Manager",
+    ),
+    established={"compensation_mode": "negotiable", "engagement_type": "part_time"},
+    absent=("budget_amount",),
+    note="A page that declines to state pay has answered the question.",
+)
+
+NON_CREATOR_ROLE = GoldenSource(
+    key="non_creator_role",
+    title="Financial Analyst",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Financial Analyst","employmentType":"FULL_TIME",
+        "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+        "addressLocality":"Hyderabad","addressCountry":"IN"}},
+        "hiringOrganization":{"@type":"Organization",
+        "description":"A treasury services firm serving mid-market lenders."}}""",
+        "<h1>Financial Analyst</h1><p>Build cash-flow models.</p>" + _BOILERPLATE,
+        "Financial Analyst",
+    ),
+    established={"engagement_type": "full_time", "work_mode": "onsite"},
+    absent=("primary_role_key", "platforms"),
+    note="No creator craft applies. The role must not be forced to one.",
+)
+
+DEADLINE_AND_START = GoldenSource(
+    key="deadline_and_start",
+    title="Video Editor",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting","title":"Video Editor",
+        "employmentType":"CONTRACTOR","validThrough":"2026-12-31",
+        "jobLocationType":"TELECOMMUTE",
+        "baseSalary":{"@type":"MonetaryAmount","currency":"GBP","value":
+        {"@type":"QuantitativeValue","value":250,"unitText":"DAY"}}}""",
+        "<h1>Video Editor</h1><p>Freelance cover for parental leave.</p>"
+        + _BOILERPLATE,
+        "Video Editor",
+    ),
+    established={
+        "engagement_type": "ongoing_freelance",
+        "work_mode": "remote",
+        "budget_currency": "GBP",
+        "budget_amount": 250,
+        "budget_unit": "per day",
+        "compensation_mode": "fixed",
+    },
+    absent=("start_timing",),
+    note="A daily rate in a non-INR currency.",
+)
+
+NO_TRIAL_PASTE = GoldenSource(
+    key="no_trial_paste",
+    title="Podcast Editor",
+    pasted_text=(
+        "Podcast Editor for a weekly show. Remote. INR 25,000 per month. "
+        "There is no trial task. Apply through CreatorJobs."
+    ),
+    model_fields={
+        "budget_amount": 25000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "work_mode": "remote",
+        "trial_status": "none",
+        "application_mode": "internal",
+    },
+    established_with_model={
+        "budget_amount": 25000,
+        "budget_currency": "INR",
+        "compensation_mode": "fixed",
+        "trial_status": "none",
+    },
+    absent=("engagement_type",),
+    note="No trial must suppress every trial descendant.",
+)
+
+
 CORPUS: tuple[GoldenSource, ...] = (
     GREENHOUSE_FULL,
+    GREENHOUSE_NO_JSONLD,
+    GREENHOUSE_CONTRADICTORY,
+    LEVER_POSTING,
+    ASHBY_POSTING,
+    WORKDAY_SHELL,
+    SMARTRECRUITERS_POSTING,
     SCHEMA_ORG_REMOTE,
     MISLABELLED_INTERNSHIP,
+    CUSTOM_PROSE_PAGE,
     SPARSE_LISTING,
     DETAILED_PASTE,
     BOILERPLATE_ONLY,
     MULTI_JOB_PAGE,
     MALFORMED_STRUCTURED_DATA,
+    AMOUNT_WITHOUT_CURRENCY,
+    CURRENCY_WITHOUT_UNIT,
+    PAY_RANGE_PASTE,
+    NEGOTIABLE_PAY,
+    NON_CREATOR_ROLE,
+    DEADLINE_AND_START,
+    NO_TRIAL_PASTE,
 )
