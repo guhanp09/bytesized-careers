@@ -22,7 +22,7 @@
 
 import { hydrateJobPostingDomain, type JobPostingDomainState } from "./jobPostingForm.ts";
 import { ENGAGEMENT_TYPES, type CompensationMode, type EngagementType } from "./jobContract.ts";
-import type { BackendJob } from "./backendClient.ts";
+import type { BackendJob, BackendRole } from "./backendClient.ts";
 import type { JobImportDraft, JobImportField } from "./jobImportReadiness.ts";
 
 export type PreviewValueState =
@@ -141,6 +141,44 @@ export function importPreviewSnapshot(
  */
 export function importPreviewFilledCount(snapshot: ImportPreviewSnapshot): number {
   return snapshot.recruiterFields.length + snapshot.provisionalFields.length;
+}
+
+/** Resolve the import's stable role key through the same public catalog as Post Job. */
+export function importPreviewRoleName(
+  snapshot: ImportPreviewSnapshot,
+  roles: readonly BackendRole[]
+): string | null {
+  const key = snapshot.values.primary_role_key;
+  if (typeof key !== "string" || !key.trim()) return null;
+  const normalized = key.trim().toLocaleLowerCase();
+  const catalogName = roles.find(
+    (role) =>
+      role.id.toLocaleLowerCase() === normalized ||
+      role.slug?.toLocaleLowerCase() === normalized
+  )?.name;
+  if (catalogName) return catalogName;
+
+  // The catalog request and the draft request resolve independently. A stable
+  // slug is already enough to avoid a false "role not selected" flash while the
+  // display name is loading; opaque ids deliberately stay blank until resolved.
+  if (
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalized) ||
+    /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(normalized)
+  ) {
+    return null;
+  }
+  const acronyms: Readonly<Record<string, string>> = {
+    ai: "AI",
+    seo: "SEO",
+    ugc: "UGC",
+  };
+  return normalized
+    .split("-")
+    .map(
+      (part) =>
+        acronyms[part] ?? part.replace(/^./, (letter) => letter.toLocaleUpperCase())
+    )
+    .join(" ");
 }
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");

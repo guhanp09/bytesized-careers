@@ -24,7 +24,7 @@ from app.core.job_import_inference import (
     ImportDecisionOrigin,
 )
 from app.core.job_import_policy import (
-    EARLY_RECRUITER_QUESTION_FIELDS,
+    EXPOSED_EARLY_RECRUITER_QUESTION_FIELDS,
     MissingRequirement,
     ReviewSection,
 )
@@ -706,7 +706,7 @@ class JobImportDraftRead(BaseModel):
     # Server-owned: which details the client may ask about before the draft is
     # prepared. The client must not infer this set for itself.
     early_question_fields: list[str] = Field(
-        default_factory=lambda: sorted(EARLY_RECRUITER_QUESTION_FIELDS)
+        default_factory=lambda: sorted(EXPOSED_EARLY_RECRUITER_QUESTION_FIELDS)
     )
 
 

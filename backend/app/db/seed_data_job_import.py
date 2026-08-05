@@ -21,9 +21,9 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "checkpoint-trial",
     # Failure surface: a real 503, never a fake stalled progress bar.
     "processing-failure",
-    # In-flight drafts: left in `processing` so the assistant's staged behaviour
-    # (early questions, resume, recruiter precedence) can be inspected without a
-    # provider call. These are not processed and have no fields yet.
+    # In-flight drafts: left in `processing` so the source-first pause and resume
+    # states can be inspected without a provider call. These are not processed,
+    # have no fields yet, and deliberately ask no recruiter question.
     "delayed-processing",
     "refresh-resume",
     "answer-precedence",
@@ -35,6 +35,15 @@ IN_FLIGHT_IMPORT_SCENARIOS = frozenset(
 )
 
 SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT = {
+    "job_title": "Video Editor",
+    "role_summary": "As a Video Editor at our school, you will create engaging learning videos.",
+    "responsibilities": [
+        "Edit learning videos for a school-based education channel",
+    ],
+    "qualifications": [
+        "Minimum of 1-7 years of experience in video editing",
+        "Proficiency in video editing software and tools",
+    ],
     "employer_name": "Vashist Education Studio",
     "role_location": "Chennai, Tamil Nadu, IN",
     "employment_type": "FULL_TIME",
@@ -46,6 +55,14 @@ SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT = {
 SHINE_SCHOOL_EDITOR_SOURCE_TEXT = "\n".join(
     (
         "Video Editor",
+        "Structured job title: Video Editor",
+        (
+            "Structured role summary: As a Video Editor at our school, you will "
+            "create engaging learning videos."
+        ),
+        "Structured responsibility: Edit learning videos for a school-based education channel",
+        "Structured qualification: Minimum of 1-7 years of experience in video editing",
+        "Structured qualification: Proficiency in video editing software and tools",
         "Structured employer: Vashist Education Studio",
         "Structured role location: Chennai, Tamil Nadu, IN",
         "Structured employment type: FULL_TIME",
@@ -165,8 +182,8 @@ def processed_review_fixture(
                     ],
                 },
                 {
-                    "field_path": "start_timeframe",
-                    "value": "ASAP",
+                    "field_path": "start_timing",
+                    "value": "immediate",
                     "provenance": "directly_supplied",
                     "evidence": [{"snippet": "Looking to start as soon as possible."}],
                 },
@@ -321,7 +338,7 @@ def _shine_school_editor_fixture() -> JobImportExtractionResponse:
                     "provenance": "suggested_inference",
                     "evidence": [{"snippet": "Structured skills: Video Editing"}],
                     "explanation": "The stated work most closely matches Video Editor.",
-                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                    "provider_confidence": {"score": 0.96, "label": "high"},
                 },
                 {
                     "field_path": "location",
@@ -351,7 +368,7 @@ def _shine_school_editor_fixture() -> JobImportExtractionResponse:
                     "provenance": "suggested_inference",
                     "evidence": [{"snippet": "Structured industry: Education / Training"}],
                     "explanation": "Education exactly matches the supported niche catalog.",
-                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                    "provider_confidence": {"score": 0.96, "label": "high"},
                 },
                 {
                     "field_path": "experience_level",
@@ -382,7 +399,7 @@ def _shine_school_editor_fixture() -> JobImportExtractionResponse:
                 {"field_path": "platforms"},
                 {"field_path": "about_channel"},
                 {"field_path": "expected_weekly_hours_min"},
-                {"field_path": "start_timeframe"},
+                {"field_path": "start_timing"},
                 {"field_path": "application_mode"},
                 {"field_path": "compensation_mode"},
                 {"field_path": "budget_unit"},
@@ -466,8 +483,8 @@ def _thumbnail_designer_fixture() -> JobImportExtractionResponse:
                     "evidence": [{"snippet": "Share a portfolio with strong visual hierarchy."}],
                 },
                 {
-                    "field_path": "start_timeframe",
-                    "value": "Within 2 weeks",
+                    "field_path": "start_timing",
+                    "value": "within_two_weeks",
                     "provenance": "directly_supplied",
                     "evidence": [{"snippet": "We hope to start within two weeks."}],
                 },
@@ -570,7 +587,7 @@ def _clean_import_fixture() -> JobImportExtractionResponse:
                 {"field_path": "about_channel", "value": "A growing education brand helping early-career professionals learn practical business and technology skills.", "provenance": "extracted_from_source", "evidence": [{"snippet": "We teach practical business and technology skills."}]},
                 {"field_path": "responsibilities", "value": ["Own the multi-platform content strategy", "Turn audience insights into monthly programming plans"], "provenance": "extracted_from_source", "evidence": [{"snippet": "Own strategy and monthly programming."}]},
                 {"field_path": "requirements", "value": ["Experience translating audience research into creator-led programming"], "provenance": "extracted_from_source", "evidence": [{"snippet": "Translate audience research into creator-led programming."}]},
-                {"field_path": "start_timeframe", "value": "Within 1 month", "provenance": "directly_supplied", "evidence": [{"snippet": "Start within one month."}]},
+                {"field_path": "start_timing", "value": "flexible", "provenance": "directly_supplied", "evidence": [{"snippet": "Start within one month."}]},
                 {"field_path": "application_mode", "value": "internal", "provenance": "directly_supplied", "evidence": [{"snippet": "Apply through CreatorJobs."}]},
                 {"field_path": "deadline_at", "value": "2035-12-01T12:00:00Z", "provenance": "directly_supplied", "evidence": [{"snippet": "Applications close 1 December 2035."}]},
                 {"field_path": "compensation_mode", "value": "range", "provenance": "extracted_from_source", "evidence": [{"snippet": "INR 90,000–120,000 per month."}]},
@@ -869,10 +886,11 @@ def _checkpoint_currency_fixture() -> JobImportExtractionResponse:
 
 
 def _checkpoint_trial_fixture() -> JobImportExtractionResponse:
-    """Silent about trials, so the assistant has to ask.
+    """Explicitly paid trial with candidate-safety terms still unstated.
 
-    Answering "no trial" must remove every downstream trial question at once —
-    the visible proof that an answer is treated as a fact rather than a message.
+    Silence about whether a trial exists is never a reason to ask. This scenario
+    pauses only because the source affirmatively says there is a paid trial and
+    omits how the work may be used and whether the candidate may show it.
     """
 
     return JobImportExtractionResponse.model_validate(
@@ -958,12 +976,22 @@ def _checkpoint_trial_fixture() -> JobImportExtractionResponse:
                     "provenance": "extracted_from_source",
                     "evidence": [{"snippet": "per month"}],
                 },
+                {
+                    "field_path": "trial_status",
+                    "value": "paid",
+                    "provenance": "directly_supplied",
+                    "evidence": [{"snippet": "The final stage is a paid trial."}],
+                },
             ],
             "conflicts": [],
             "missing_fields": [
                 {
-                    "field_path": "trial_status",
-                    "explanation": "The post does not say whether there is a trial assignment.",
+                    "field_path": "trial_work_usage",
+                    "explanation": "The paid-trial work usage is not stated.",
+                },
+                {
+                    "field_path": "trial_portfolio_permission",
+                    "explanation": "Portfolio permission for the paid trial is not stated.",
                 },
             ],
             "warnings": [

@@ -5,6 +5,8 @@ import * as React from "react";
 import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
 import {
   answerOptionsFor,
+  controlledAnswerOptionsFor,
+  isMeaningfulImportAnswer,
   minimumAnswerLength,
   multiSelectOptionsFor,
   questionPhraseFor,
@@ -55,6 +57,17 @@ const NUMBER_FIELDS: ReadonlySet<string> = new Set([
   "trial_effort_value",
   "trial_compensation_amount",
 ]);
+
+/**
+ * Today, as the `YYYY-MM-DD` a date input speaks.
+ *
+ * Used only to floor a start date: a collaboration cannot begin in the past, and
+ * refusing to offer those days is quieter than rejecting one afterwards. This is
+ * a calendar bound, not a timer — nothing here re-renders on a clock.
+ */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /**
  * Shape a typed answer for the field it belongs to.
@@ -142,7 +155,13 @@ export function TypingBubble({
   testId?: string;
 }) {
   return (
-    <div className="ui-bubble-in flex items-start gap-3" data-testid={testId}>
+    <div
+      className="ui-bubble-in flex items-start gap-3"
+      data-testid={testId}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <div className="hidden w-8 shrink-0 sm:block">
         {showAvatar ? (
           <DraftAssistantRobot state="thinking" size={32} className="mt-0.5" />
@@ -189,6 +208,7 @@ export type ConversationTurnProps = {
   onAnswer: (fieldPath: string, value: string | string[] | number) => void;
   onSkip: () => void;
   onSkipRemaining: () => void;
+  onLayoutChange?: () => void;
 };
 
 export function ConversationTurn({
@@ -200,9 +220,13 @@ export function ConversationTurn({
   onAnswer,
   onSkip,
   onSkipRemaining,
+  onLayoutChange,
 }: ConversationTurnProps) {
   const [text, setText] = React.useState("");
   const [picked, setPicked] = React.useState<string[]>([]);
+  const [submittedReply, setSubmittedReply] = React.useState<string | null>(null);
+  const submittedReplyRef = React.useRef<string | null>(null);
+  const requestWasBusyRef = React.useRef(false);
   const label = importFieldLabel(question.field_path)
     .replace(/\s*\([^)]*\)\s*$/, "")
     .trim();
@@ -212,6 +236,11 @@ export function ConversationTurn({
   // friendlier labels for values it already knows.
   const serverChoices = shape?.choices ?? [];
   const labelled = answerOptionsFor(question.field_path, { jobTitle, roleName });
+  const controlled = controlledAnswerOptionsFor(
+    question.field_path,
+    shape?.kind,
+    { jobTitle, roleName }
+  );
   const labelFor = (value: string) =>
     shape?.labels?.[value] ??
     labelled.find((option) => option.value === value)?.label ??
@@ -228,20 +257,29 @@ export function ConversationTurn({
           value,
           label: labelFor(value),
           detail: detailFor(value),
+          recommended:
+            question.recommended_value !== undefined &&
+            String(question.recommended_value) === value,
         }))
-      : shape
-        ? []
-        : labelled;
+          .sort((left, right) => Number(right.recommended) - Number(left.recommended))
+      : controlled;
   const multi = isMulti
     ? serverChoices.map((value) => ({ value, label: labelFor(value) }))
     : shape
       ? []
       : multiSelectOptionsFor(question.field_path);
+  const recommendedMulti = isMulti && Array.isArray(question.recommended_value)
+    ? question.recommended_value.filter(
+        (value): value is string =>
+          typeof value === "string" && serverChoices.includes(value)
+      )
+    : [];
   const phrase = questionPhraseFor(question.field_path);
   const alternatives = question.alternatives ?? [];
   // Bounds come from the schema where the server supplied them, so the control
   // enforces exactly what the field accepts.
   const isNumber = shape?.kind === "number";
+  const isDate = shape?.kind === "date";
   const minLength = shape?.min_length ?? minimumAnswerLength(question.field_path);
   const maxLength = shape?.max_length;
   const trimmed = text.trim();
@@ -252,22 +290,61 @@ export function ConversationTurn({
       Number.isFinite(numeric) &&
       (shape?.minimum === undefined || numeric >= shape.minimum) &&
       (shape?.maximum === undefined || numeric <= shape.maximum));
+  const meaningful = isMeaningfulImportAnswer(question.field_path, trimmed);
   // Send stays disabled until the answer would be accepted, so the recruiter is
   // never told afterwards that what they wrote could not be used.
-  const canSend =
+  const canSend = isDate
+    ? /^\d{4}-\d{2}-\d{2}$/.test(trimmed) && trimmed >= todayIso()
+    :
     trimmed.length >= (isNumber ? 1 : minLength) &&
     (maxLength === undefined || trimmed.length <= maxLength) &&
-    withinNumeric;
+    withinNumeric &&
+    meaningful;
 
   const heading = phrase?.heading ?? `What should ${label.toLowerCase()} be?`;
   const why =
     question.explanation ??
     whyItMatters(phrase?.prompt, roleName, jobTitle);
 
+  const beginReply = (
+    value: string | string[] | number,
+    displayValue: string
+  ) => {
+    if (busy || submittedReplyRef.current) return;
+    submittedReplyRef.current = displayValue;
+    setSubmittedReply(displayValue);
+    onAnswer(question.field_path, value);
+  };
+
+  const beginAction = (displayValue: string, action: () => void) => {
+    if (busy || submittedReplyRef.current) return;
+    submittedReplyRef.current = displayValue;
+    setSubmittedReply(displayValue);
+    action();
+  };
+
   const submit = () => {
     if (!canSend || busy) return;
-    onAnswer(question.field_path, shapeAnswer(question.field_path, trimmed, shape));
+    beginReply(
+      shapeAnswer(question.field_path, trimmed, shape),
+      trimmed
+    );
   };
+
+  // A failed or stale no-op request keeps the same keyed turn mounted. Put its
+  // composer back when that request settles; a successful advancing response
+  // replaces this keyed turn, and the persisted reply takes over in history.
+  React.useEffect(() => {
+    if (busy) {
+      requestWasBusyRef.current = true;
+      return;
+    }
+    if (!requestWasBusyRef.current || !submittedReplyRef.current) return;
+    requestWasBusyRef.current = false;
+    submittedReplyRef.current = null;
+    setSubmittedReply(null);
+    onLayoutChange?.();
+  }, [busy, error, onLayoutChange]);
 
   const toggle = (value: string) =>
     setPicked((current) =>
@@ -292,6 +369,14 @@ export function ConversationTurn({
         <p className="mt-1.5 text-[13px] leading-5 text-white/55">{why}</p>
       </AssistantMessage>
 
+      {submittedReply ? (
+        <>
+          <RecruiterReply>{submittedReply}</RecruiterReply>
+          {busy ? (
+            <TypingBubble testId="conversation-thinking" label="Working on your answer" />
+          ) : null}
+        </>
+      ) : (
       <div className="pl-0 sm:pl-11">
         {alternatives.length ? (
           <div className="space-y-2" data-testid="conversation-alternatives">
@@ -309,7 +394,7 @@ export function ConversationTurn({
                   type="button"
                   disabled={busy}
                   data-testid={`conversation-alternative-${index}`}
-                  onClick={() => onAnswer(question.field_path, value)}
+                  onClick={() => beginReply(value, value)}
                   className={`${optionButton} ${
                     recommended ? "border-white/25 bg-white/[0.09]" : ""
                   }`}
@@ -336,16 +421,47 @@ export function ConversationTurn({
             type="button"
             disabled={busy}
             data-testid="conversation-accept-suggestion"
-            onClick={() => onAnswer(question.field_path, String(question.suggested_value))}
+            onClick={() =>
+              beginReply(
+                String(question.suggested_value),
+                labelFor(String(question.suggested_value))
+              )
+            }
             className={`${optionButton} border-white/25 bg-white/[0.09]`}
           >
-            Yes, use {String(question.suggested_value)}
+            Yes, use {labelFor(String(question.suggested_value))}
           </button>
         ) : multi.length ? (
           <div data-testid="conversation-multiselect">
+            {recommendedMulti.length ? (
+              <button
+                type="button"
+                disabled={busy}
+                data-testid="conversation-accept-multi-recommendation"
+                onClick={() =>
+                  beginReply(
+                    (shape?.item_key
+                      ? shapeRows(recommendedMulti, shape.item_key)
+                      : recommendedMulti) as never,
+                    recommendedMulti.map(labelFor).join(", ")
+                  )
+                }
+                className={`${optionButton} mb-3 border-white/25 bg-white/[0.09]`}
+              >
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium">
+                    Use {recommendedMulti.map(labelFor).join(", ")}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-[color:var(--color-state-review,#8ec5ff)]">
+                    matches your post
+                  </span>
+                </span>
+              </button>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               {multi.map((option) => {
                 const on = picked.includes(option.value);
+                const recommended = recommendedMulti.includes(option.value);
                 return (
                   <button
                     key={option.value}
@@ -358,11 +474,14 @@ export function ConversationTurn({
                       "ui-press cursor-pointer rounded-full border px-3.5 py-2 text-[13px] transition-all duration-150",
                       on
                         ? "border-[color:var(--color-state-review,#8ec5ff)]/50 bg-[color:var(--color-state-review,#8ec5ff)]/18 text-white"
+                        : recommended
+                          ? "border-white/25 bg-white/[0.09] text-white"
                         : "border-white/12 bg-white/[0.04] text-white/70 hover:border-white/25 hover:text-white",
                     ].join(" ")}
                   >
                     {on ? "✓ " : ""}
                     {option.label}
+                    {recommended && !on ? " · suggested" : ""}
                   </button>
                 );
               })}
@@ -371,14 +490,14 @@ export function ConversationTurn({
               type="button"
               disabled={busy || picked.length === 0}
               data-testid="conversation-multiselect-submit"
-              onClick={() =>
-                onAnswer(
-                question.field_path,
-                (shape?.item_key
-                  ? shapeRows(picked, shape.item_key)
-                  : shapeMultiSelect(question.field_path, picked)) as never
-              )
-              }
+              onClick={() => {
+                beginReply(
+                  (shape?.item_key
+                    ? shapeRows(picked, shape.item_key)
+                    : shapeMultiSelect(question.field_path, picked)) as never,
+                  picked.map(labelFor).join(", ")
+                );
+              }}
               className="ui-press mt-3 min-h-11 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
             >
               {picked.length ? `Use ${picked.length} selected` : "Pick at least one"}
@@ -392,10 +511,21 @@ export function ConversationTurn({
                 type="button"
                 disabled={busy}
                 data-testid={`conversation-option-${choice.value}`}
-                onClick={() => onAnswer(question.field_path, choice.value)}
-                className={optionButton}
+                onClick={() => beginReply(choice.value, choice.label)}
+                className={`${optionButton} ${
+                  "recommended" in choice && choice.recommended
+                    ? "border-white/25 bg-white/[0.09]"
+                    : ""
+                }`}
               >
-                <span className="block font-medium">{choice.label}</span>
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium">{choice.label}</span>
+                  {"recommended" in choice && choice.recommended ? (
+                    <span className="shrink-0 text-[11px] text-[color:var(--color-state-review,#8ec5ff)]">
+                      matches your post
+                    </span>
+                  ) : null}
+                </span>
                 {choice.detail ? (
                   <span className="mt-0.5 block text-[11px] leading-4 text-white/45">
                     {choice.detail}
@@ -403,6 +533,28 @@ export function ConversationTurn({
                 ) : null}
               </button>
             ))}
+          </div>
+        ) : isDate ? (
+          <div className="flex items-end gap-2">
+            <input
+              type="date"
+              value={text}
+              min={todayIso()}
+              onChange={(event) => setText(event.target.value)}
+              disabled={busy}
+              aria-label={heading}
+              data-testid="conversation-date-answer"
+              className="h-11 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.05] px-4 text-sm text-white outline-none transition-colors focus:border-white/25 [color-scheme:dark]"
+            />
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !canSend}
+              data-testid="conversation-submit"
+              className="ui-press h-11 shrink-0 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
+            >
+              Send
+            </button>
           </div>
         ) : (
           <div className="flex items-end gap-2">
@@ -427,6 +579,9 @@ export function ConversationTurn({
               aria-label={heading}
               data-testid="conversation-text-answer"
               inputMode={NUMBER_FIELDS.has(question.field_path) ? "numeric" : "text"}
+              aria-invalid={
+                trimmed.length >= minLength && !meaningful ? true : undefined
+              }
               className="min-h-[52px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm leading-5 text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25"
               placeholder={textExampleFor(question.field_path)}
             />
@@ -441,6 +596,15 @@ export function ConversationTurn({
             </button>
           </div>
         )}
+
+        {trimmed.length >= minLength && !meaningful ? (
+          <p
+            className="mt-2 text-[12px] leading-4 text-white/45"
+            data-testid="conversation-answer-guidance"
+          >
+            Add a short, specific phrase that candidates can understand.
+          </p>
+        ) : null}
 
         {/* Kept only for a genuine failure — a network drop or a race. Ordinary
             invalid input can no longer reach here, because Send stays disabled
@@ -460,7 +624,7 @@ export function ConversationTurn({
             <button
               type="button"
               disabled={busy}
-              onClick={onSkip}
+              onClick={() => beginAction("Not now", onSkip)}
               data-testid="conversation-skip"
               className="cursor-pointer text-[12px] text-white/40 transition-colors hover:text-white/75"
             >
@@ -469,7 +633,7 @@ export function ConversationTurn({
             <button
               type="button"
               disabled={busy}
-              onClick={onSkipRemaining}
+              onClick={() => beginAction("Skip suggestions", onSkipRemaining)}
               data-testid="conversation-skip-remaining"
               className="cursor-pointer text-[12px] text-white/40 transition-colors hover:text-white/75"
             >
@@ -478,11 +642,7 @@ export function ConversationTurn({
           </div>
         ) : null}
       </div>
-      {/* The assistant composing its next turn. Tied to a real request in
-          flight, never a timer, so the dots stop exactly when the work does. */}
-      {busy ? (
-        <TypingBubble testId="conversation-thinking" label="Working on your answer" />
-      ) : null}
+      )}
     </div>
   );
 }

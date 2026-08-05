@@ -24,7 +24,11 @@ import {
   RecruiterReply,
   TypingBubble,
 } from "./ConversationTurn.tsx";
-import { answerOptionsFor, questionPhraseFor } from "../../../lib/jobImportAnswerOptions.ts";
+import {
+  answerOptionsFor,
+  multiSelectOptionsFor,
+  questionPhraseFor,
+} from "../../../lib/jobImportAnswerOptions.ts";
 import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
 import {
   DRAFT_ASSISTANT_STATE_LABELS,
@@ -120,6 +124,11 @@ export function DraftAssistantCanvas({
   const question = nextEarlyQuestion(earlyQuestionFields, earlyAnswers, sourceType);
   const [acknowledging, setAcknowledging] = React.useState(false);
   const [pendingValue, setPendingValue] = React.useState<string | null>(null);
+  const [conversationLayoutVersion, setConversationLayoutVersion] = React.useState(0);
+  const handleTurnLayoutChange = React.useCallback(
+    () => setConversationLayoutVersion((current) => current + 1),
+    []
+  );
 
   const answeredEntries = Object.entries(earlyAnswers);
 
@@ -161,12 +170,13 @@ export function DraftAssistantCanvas({
     ? jobImportDelayMessage(progress, sourceCharacterCount)
     : null;
 
-  // Keep the newest turn in view. Scrolling the pane rather than the page is
-  // what stops the live question from drifting below the fold.
-  const transcriptRef = React.useRef<HTMLDivElement | null>(null);
+  // History, the current turn and the assistant's composing state belong to one
+  // chronological stream. Keeping one scroll owner is what places the dots
+  // directly after the recruiter's reply instead of at the foot of the panel.
+  const conversationRef = React.useRef<HTMLDivElement | null>(null);
   const answeredCount = answeredEntries.length;
   React.useEffect(() => {
-    const node = transcriptRef.current;
+    const node = conversationRef.current;
     if (!node) return;
     node.scrollTo({
       top: node.scrollHeight,
@@ -174,22 +184,15 @@ export function DraftAssistantCanvas({
         ? "auto"
         : "smooth",
     });
-  }, [answeredCount]);
-
-  // The composing indicator appears below the controls, so the live pane has to
-  // follow it — otherwise the one signal that work is under way is the one part
-  // scrolled out of sight.
-  const liveRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    const node = liveRef.current;
-    if (!node || !busy) return;
-    node.scrollTo({
-      top: node.scrollHeight,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
-  }, [busy]);
+  }, [
+    answeredCount,
+    busy,
+    conversation?.active_question?.field_path,
+    conversation?.ready_for_draft,
+    conversation?.recruiter_context_version,
+    conversationLayoutVersion,
+    progress.failed,
+  ]);
 
   return (
     <div
@@ -203,7 +206,7 @@ export function DraftAssistantCanvas({
           page to answer — which is exactly what a chat layout exists to avoid. */}
       <section
         className={`${panel} flex min-w-0 flex-col lg:h-[calc(100dvh-9.5rem)] lg:max-h-[880px] lg:min-h-[540px]`}
-        aria-labelledby="draft-assistant-heading"
+        aria-label="Prepare this job draft with Bea"
       >
         <header className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -248,28 +251,22 @@ export function DraftAssistantCanvas({
           <ProgressBar ratio={ratio} stages={stages} />
         </div>
 
-        {/* A chat pane, not a growing page. The transcript scrolls inside its own
-            bounded region so that the thing the recruiter has to act on stays put
-            instead of being pushed further down every time a turn is added. */}
-        <div className="mt-5 flex min-h-0 flex-1 flex-col gap-3">
+        {/* One chronological chat stream. It uses the same convention as Inbox:
+            settled messages, the current turn and typing all share one scroll
+            owner, while the secondary manual action remains outside it. */}
+        <div className="mt-5 flex min-h-0 flex-1 flex-col">
+          <div
+            ref={conversationRef}
+            className="chat-scroll max-h-[min(68dvh,680px)] min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none lg:flex-1"
+            data-testid="conversation-scroll"
+          >
           {conversation && answeredEntries.length > 0 ? (
-            <div
-              ref={transcriptRef}
-              className="chat-scroll max-h-[min(30vh,240px)] shrink space-y-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none lg:flex-1"
-              data-testid="conversation-scroll"
-            >
+            <div>
               <AnswerTranscript entries={answeredEntries} />
             </div>
           ) : null}
 
-          {/* The live turn. Never allowed to shrink, and given its own scroll for
-              the rare question with many options, so the controls the recruiter
-              needs are always on screen no matter how long the history gets. */}
-          <div
-            ref={liveRef}
-            className="chat-scroll shrink-0 overflow-y-auto overscroll-contain pr-1 lg:max-h-[78%]"
-            data-testid="conversation-live"
-          >
+          <div data-testid="conversation-live">
           {progress.failed ? (
             <FailureMessage error={error} />
           ) : conversation?.ready_for_draft && onOpenDraft ? (
@@ -294,6 +291,7 @@ export function DraftAssistantCanvas({
               onAnswer={onAnswerQuestion}
               onSkip={onSkipQuestion ?? (() => undefined)}
               onSkipRemaining={onSkipRemaining ?? (() => undefined)}
+              onLayoutChange={handleTurnLayoutChange}
             />
           ) : question ? (
             <EarlyQuestionTurn
@@ -311,6 +309,7 @@ export function DraftAssistantCanvas({
               conversational={Boolean(conversation && answeredEntries.length > 0)}
             />
           )}
+          </div>
           </div>
         </div>
 
@@ -517,6 +516,24 @@ function EarlyQuestionTurn({
  * cabinet. Replies belong in the stream, above the question being asked, the
  * way any chat keeps its history.
  */
+function transcriptValue(fieldPath: string, value: unknown): string {
+  const options = [
+    ...answerOptionsFor(fieldPath),
+    ...multiSelectOptionsFor(fieldPath),
+  ];
+  const rawValues = (Array.isArray(value) ? value : [value]).flatMap((item) => {
+    if (typeof item === "string" || typeof item === "number") return [String(item)];
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const key = typeof row.stage === "string" ? row.stage : row.type;
+    return typeof key === "string" ? [key] : [];
+  });
+  if (!rawValues.length) return "Saved";
+  return rawValues
+    .map((raw) => options.find((option) => option.value === raw)?.label ?? raw)
+    .join(", ");
+}
+
 function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {
   return (
     <div className="ui-rise space-y-3" data-testid="conversation-transcript">
@@ -525,18 +542,13 @@ function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {
         const heading =
           phrase?.heading ??
           importFieldLabel(fieldPath).replace(/\s*\([^)]*\)\s*$/, "").trim();
-        const option = answerOptionsFor(fieldPath).find(
-          (candidate) => candidate.value === String(value)
-        );
-        const shown = Array.isArray(value)
-          ? value.filter((item) => typeof item === "string").join(", ")
-          : String(value ?? "");
+        const shown = transcriptValue(fieldPath, value);
         return (
           <React.Fragment key={fieldPath}>
             <AssistantMessage showAvatar={index === 0} muted>
               <p className="text-[13px] leading-5">{heading}</p>
             </AssistantMessage>
-            <RecruiterReply>{option?.label ?? shown}</RecruiterReply>
+            <RecruiterReply>{shown}</RecruiterReply>
           </React.Fragment>
         );
       })}

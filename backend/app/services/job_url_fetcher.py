@@ -329,18 +329,178 @@ def _structured_experience_requirement(job_posting: dict[str, object]) -> str | 
     return f"At least {int(months)} months of experience"
 
 
-def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, str]:
+_RESPONSIBILITY_HEADINGS = frozenset(
+    {
+        "responsibilities",
+        "key responsibilities",
+        "job responsibilities",
+        "roles and responsibilities",
+        "duties",
+        "job duties",
+        "what you will do",
+        "what youll do",
+    }
+)
+_QUALIFICATION_HEADINGS = frozenset(
+    {
+        "qualifications",
+        "qualifications required",
+        "required qualifications",
+        "requirements",
+        "job requirements",
+        "candidate requirements",
+        "skills and qualifications",
+        "what we are looking for",
+        "what were looking for",
+    }
+)
+_SECTION_STOP_PREFIXES = (
+    "about ",
+    "apply ",
+    "benefits",
+    "how to apply",
+    "if you ",
+    "please note",
+    "to apply",
+    "we encourage",
+    "what we offer",
+)
+_SECTION_BOUNDARY_HEADINGS = frozenset(
+    {
+        "about",
+        "about company",
+        "benefits",
+        "company profile",
+        "department",
+        "education",
+        "employment type",
+        "experience",
+        "how to apply",
+        "industry type",
+        "key skills",
+        "location",
+        "role",
+        "role category",
+        "salary",
+    }
+)
+
+
+def _normalized_heading(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+
+def _description_section(value: str) -> tuple[str, str | None] | None:
+    heading, separator, remainder = value.partition(":")
+    normalized = _normalized_heading(heading if separator else value.rstrip(":"))
+    if normalized in _RESPONSIBILITY_HEADINGS:
+        section = "responsibilities"
+    elif normalized in _QUALIFICATION_HEADINGS:
+        section = "qualifications"
+    else:
+        return None
+    inline_value = remainder.strip() if separator else ""
+    return section, inline_value or None
+
+
+def _description_section_boundary(value: str) -> bool:
+    normalized = _normalized_heading(value.rstrip(":"))
+    if normalized in _SECTION_BOUNDARY_HEADINGS:
+        return True
+    label, separator, _detail = value.partition(":")
+    return bool(
+        separator and _normalized_heading(label) in _SECTION_BOUNDARY_HEADINGS
+    )
+
+
+def _structured_description_context(description: object) -> dict[str, object]:
+    """Keep bounded, labelled facts from the JobPosting description itself."""
+
+    if not isinstance(description, str):
+        return {}
+    readable = _strip_html_fragment(description)
+    lines = [_clean_text(line) for line in readable.splitlines() if _clean_text(line)]
+    if not lines:
+        return {}
+
+    summary_lines: list[str] = []
+    responsibilities: list[str] = []
+    qualifications: list[str] = []
+    active_section: str | None = None
+    saw_section = False
+    for raw_line in lines:
+        section_line = _description_section(raw_line)
+        if section_line is not None:
+            active_section, inline_value = section_line
+            saw_section = True
+            if inline_value is None:
+                continue
+            raw_line = inline_value
+        if active_section is not None and _description_section_boundary(raw_line):
+            active_section = None
+            continue
+
+        cleaned = re.sub(r"^(?:[-*•–—]+|\d+[.)])\s*", "", raw_line).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.casefold()
+        if active_section is not None and lowered.startswith(_SECTION_STOP_PREFIXES):
+            active_section = None
+            continue
+        if active_section == "responsibilities":
+            if len(responsibilities) < 5:
+                bounded = _bounded_structured_text(cleaned, 300)
+                if bounded and bounded.casefold() not in {
+                    item.casefold() for item in responsibilities
+                }:
+                    responsibilities.append(bounded)
+            continue
+        if active_section == "qualifications":
+            if len(qualifications) < 5:
+                bounded = _bounded_structured_text(cleaned, 300)
+                if bounded and bounded.casefold() not in {
+                    item.casefold() for item in qualifications
+                }:
+                    qualifications.append(bounded)
+            continue
+        if not saw_section and len(summary_lines) < 3:
+            summary_lines.append(cleaned)
+
+    context: dict[str, object] = {}
+    role_summary = _bounded_structured_text(" ".join(summary_lines), 1000)
+    if role_summary:
+        context["role_summary"] = role_summary
+    if responsibilities:
+        context["responsibilities"] = responsibilities
+    if qualifications:
+        context["qualifications"] = qualifications
+    return context
+
+
+def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, object]:
     if job_posting is None:
         return {}
-    context: dict[str, str] = {}
+    context: dict[str, object] = {}
+    job_title = _bounded_structured_text(job_posting.get("title"), 255)
+    if job_title:
+        context["job_title"] = job_title
+    context.update(_structured_description_context(job_posting.get("description")))
     organization = job_posting.get("hiringOrganization")
     if isinstance(organization, dict):
         employer = _bounded_structured_text(organization.get("name"))
         employer_location = _structured_address(organization)
+        raw_about = organization.get("description")
+        about_summary = (
+            _bounded_structured_text(_strip_html_fragment(raw_about), 1000)
+            if isinstance(raw_about, str)
+            else None
+        )
         if employer:
             context["employer_name"] = employer
         if employer_location:
             context["employer_location"] = employer_location
+        if about_summary:
+            context["about_summary"] = about_summary
     role_location = _structured_address(job_posting.get("jobLocation"))
     if role_location:
         context["role_location"] = role_location
@@ -376,8 +536,13 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, str
     return context
 
 
-def _structured_context_lines(context: dict[str, str]) -> list[str]:
+def _structured_context_lines(context: dict[str, object]) -> list[str]:
     labels = {
+        "job_title": "Structured job title",
+        "role_summary": "Structured role summary",
+        "about_summary": "Structured employer summary",
+        "responsibilities": "Structured responsibility",
+        "qualifications": "Structured qualification",
         "employer_name": "Structured employer",
         "employer_location": "Structured employer location",
         "role_location": "Structured role location",
@@ -389,7 +554,16 @@ def _structured_context_lines(context: dict[str, str]) -> list[str]:
         "skills": "Structured skills",
         "experience_requirement": "Structured experience requirement",
     }
-    return [f"{labels[key]}: {value}" for key, value in context.items() if key in labels]
+    lines: list[str] = []
+    for key, value in context.items():
+        label = labels.get(key)
+        if label is None:
+            continue
+        if isinstance(value, str):
+            lines.append(f"{label}: {value}")
+        elif isinstance(value, list):
+            lines.extend(f"{label}: {item}" for item in value if isinstance(item, str))
+    return lines
 
 
 def normalize_public_job_html(

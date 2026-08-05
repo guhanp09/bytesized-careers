@@ -387,6 +387,8 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
   const employerContext = contextLabel(props.employerContext || domain.employerContextType);
   const platform = platformLabel(props.platform);
   const deliverables = domain.deliverables || [];
+  const responsibilities = splitLines(props.responsibilities);
+  const legacyRequirements = splitLines(props.legacyRequirements);
   const requiredSkills = unique([
     ...(domain.requiredSkillKeys || []).map(jobSkillLabel),
     ...(domain.otherRequiredSkills || []),
@@ -399,6 +401,21 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
   const trial = domain.trialStatus ? TRIAL_STATUS_LABELS[domain.trialStatus] : "Trial terms not added";
   const processCount = domain.hiringProcess?.length || 0;
   const applicationCount = (props.applicationRequirements || []).length;
+  const deliverableLines = deliverables.map((item) => {
+    const type = item.type
+      ? item.type === "other"
+        ? text(item.customType) || "Custom deliverable"
+        : jobDeliverableTypeLabel(item.type)
+      : "Deliverable type not chosen";
+    const frequency = item.frequency
+      ? item.frequency === "other"
+        ? text(item.customFrequency) || "Custom frequency"
+        : jobDeliverableFrequencyLabel(item.frequency)
+      : "Frequency not chosen";
+    return `${text(item.quantity) || "Quantity not added"} ${type} · ${frequency}`;
+  });
+  const workItems = unique([...deliverableLines, ...responsibilities]);
+  const mustHaves = unique([...requiredSkills, ...legacyRequirements]);
 
   return (
     <section
@@ -434,35 +451,23 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
         </CompactGroup>
 
         <CompactGroup title="Work">
-          {deliverables.length ? (
-            deliverables.slice(0, 3).map((item, index) => {
-              const type = item.type
-                ? item.type === "other"
-                  ? text(item.customType) || "Custom deliverable"
-                  : jobDeliverableTypeLabel(item.type)
-                : "Deliverable type not chosen";
-              const frequency = item.frequency
-                ? item.frequency === "other"
-                  ? text(item.customFrequency) || "Custom frequency"
-                  : jobDeliverableFrequencyLabel(item.frequency)
-                : "Frequency not chosen";
-              return (
-                <p key={item.id || index} className="flex gap-2">
-                  <span aria-hidden="true" className="mt-[0.55em] h-1 w-1 shrink-0 rounded-full bg-white/30" />
-                  <span>{`${text(item.quantity) || "Quantity not added"} ${type} · ${frequency}`}</span>
-                </p>
-              );
-            })
+          {workItems.length ? (
+            workItems.slice(0, 3).map((item) => (
+              <p key={item} className="flex gap-2">
+                <span aria-hidden="true" className="mt-[0.55em] h-1 w-1 shrink-0 rounded-full bg-white/30" />
+                <span>{item}</span>
+              </p>
+            ))
           ) : (
-            <p className="text-subtle">No deliverables added yet.</p>
+            <p className="text-subtle">No work details added yet.</p>
           )}
-          {deliverables.length > 3 ? <p className="text-subtle">+{deliverables.length - 3} more</p> : null}
+          {workItems.length > 3 ? <p className="text-subtle">+{workItems.length - 3} more</p> : null}
         </CompactGroup>
 
         <CompactGroup title="Candidate fit">
           <CompactLine
             label="Must have"
-            value={requiredSkills.slice(0, 4).join(", ") || "Not added"}
+            value={mustHaves.slice(0, 4).join(", ") || "Not added"}
           />
           <CompactLine
             label="Nice to have"

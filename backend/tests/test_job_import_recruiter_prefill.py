@@ -1,8 +1,8 @@
-"""Recruiter answers given while extraction is still running.
+"""Compatibility writes while extraction is still running.
 
-The assistant asks a small number of recruiter-owned questions before machine
-output exists. These tests pin the two rules that make that safe: the answer is
-durable without a browser tab, and a later provider result can never overwrite it.
+The native assistant no longer asks before it reads the source. The bounded
+legacy endpoint remains safe for older clients: an answer is durable without a
+browser tab, and a later provider result can never overwrite it.
 """
 
 from __future__ import annotations
@@ -116,6 +116,15 @@ def test_early_question_allowlist_is_narrow_and_policy_derived() -> None:
 
 
 @pytest.mark.anyio
+async def test_a_new_draft_advertises_no_early_question(client: AsyncClient) -> None:
+    headers, _ = await _auth(client, "prefill-source-first")
+    draft = await _source_and_draft(client, headers, "prefill-source-first")
+
+    assert draft["early_question_fields"] == []
+    assert draft["recruiter_prefill"] == {}
+
+
+@pytest.mark.anyio
 async def test_prefill_persists_on_the_draft_and_survives_reload(
     client: AsyncClient,
 ) -> None:
@@ -130,8 +139,9 @@ async def test_prefill_persists_on_the_draft_and_survives_reload(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["recruiter_prefill"] == {"employer_context_type": "creator"}
-    # The client is told which questions it may ask; it must not infer the set.
-    assert body["early_question_fields"] == sorted(EARLY_RECRUITER_QUESTION_FIELDS)
+    # Compatibility writes remain accepted, but the native client is no longer
+    # invited to ask anything before it has read the source.
+    assert body["early_question_fields"] == []
 
     # A fresh read is what a refreshed tab sees. No browser state involved.
     reread = await client.get(

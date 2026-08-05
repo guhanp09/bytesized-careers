@@ -5,14 +5,14 @@ states the engagement, the work mode and the duration in its own headline. Askin
 the recruiter for those is the clearest way to look like a scraper rather than a
 reader: the answer was in the first line of what they handed over.
 
-These are read from the title and the role's own description, never from market
-assumptions about the person. Each signal names a job attribute; none of them
-touches anything about a candidate.
+Settled values are read from the title itself, never from market assumptions or
+incidental body text about a collaborator, team, or past project. Each signal
+names a job attribute; none of them touches anything about a candidate.
 
-Confidence is deliberately uneven. "Intern" in a title is unambiguous, so the
-engagement type is settled. A role word is a strong hint but titles routinely
-name two crafts — "graphics designer and video editor" — so the role is proposed
-for confirmation rather than chosen.
+Confidence is deliberately uneven. "Intern" in a title is unambiguous, as is a
+single exact catalog craft such as "Video Editor", so both are settled. Titles
+that name multiple crafts — "graphics designer and video editor" — still leave
+the role for the recruiter to choose.
 """
 
 from __future__ import annotations
@@ -74,9 +74,17 @@ _ROLE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("podcast producer", "podcast-producer"),
     ("audio engineer", "audio-engineer"),
     ("content strategist", "content-strategist"),
+    ("newsletter writer", "newsletter-writer"),
+    ("paid ads specialist", "paid-ads-specialist"),
+    ("seo specialist", "seo-specialist"),
     ("social media manager", "social-media-manager"),
     ("community manager", "community-manager"),
     ("channel manager", "channel-manager"),
+    ("project manager", "project-manager"),
+    ("voice over artist", "voice-over-artist"),
+    ("ugc creator", "ugc-creator"),
+    ("researcher", "researcher"),
+    ("other creator role", "other-creator-role"),
     ("scriptwriter", "scriptwriter"),
     ("script writer", "scriptwriter"),
     ("copywriter", "copywriter"),
@@ -135,10 +143,19 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
     if not title or not title.strip():
         return TitleSignals()
 
-    combined = f"{title} {extra_text or ''}"
-    haystack = _normalise(combined)
-    hyphenated = _hyphenated(combined)
+    # Settlement is title-only. ``extra_text`` may help with non-authoritative
+    # niche suggestions below, but a body mention cannot decide the role's
+    # engagement, work mode, experience, or duration.
+    haystack = _normalise(title)
+    hyphenated = _hyphenated(title)
     padded = f" {haystack} "
+    # Only the title has authority to settle a role. A body sentence such as
+    # "collaborate with our video editor" describes a colleague, not this job.
+    # Ignoring body-only role words is safer than creating a suggestion without
+    # field-specific evidence.
+    role_padded = padded
+    suggestion_text = f"{title} {extra_text or ''}"
+    suggestion_padded = f" {_normalise(suggestion_text)} "
     settled: dict[str, object] = {}
     suggested: dict[str, object] = {}
 
@@ -152,13 +169,18 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
             settled["work_mode"] = value
             break
 
-    matched_roles = [
-        value for word, value in _ROLE_WORDS if f" {_normalise(word)} " in padded
-    ]
+    matched_roles = list(
+        dict.fromkeys(
+            value
+            for word, value in _ROLE_WORDS
+            if f" {_normalise(word)} " in role_padded
+        )
+    )
     if len(matched_roles) == 1:
-        # One craft named: still a suggestion, because a title is a headline
-        # rather than a taxonomy entry and the recruiter may mean a neighbour.
-        suggested["primary_role_key"] = matched_roles[0]
+        # One exact catalog craft is the role the title declares. Asking the
+        # recruiter to select Video Editor after reading "Video Editor" is not
+        # caution; it is duplicated work.
+        settled["primary_role_key"] = matched_roles[0]
     elif len(matched_roles) > 1:
         # "graphics designer and video editor" — the recruiter has to choose,
         # so the alternatives are offered rather than one of them picked.
@@ -182,7 +204,7 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
     for niche in CREATOR_CONTENT_NICHES:
         # Suggested, never settled: a post can mention a sector in passing, and
         # the recruiter confirming one chip is cheaper than an unwanted claim.
-        if f" {_normalise(niche)} " in padded:
+        if f" {_normalise(niche)} " in suggestion_padded:
             suggested.setdefault("content_niches", []).append(niche)  # type: ignore[union-attr]
 
     # Years spent working are not the length of the contract. Without this, a

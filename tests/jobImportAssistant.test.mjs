@@ -201,6 +201,17 @@ test("the manual route out is always available while the assistant is asking", (
   assert.match(canvas, /!conversation\.ready_for_draft/);
 });
 
+test("history, the live turn and typing share one chronological scroll stream", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  assert.match(canvas, /ref=\{conversationRef\}/);
+  assert.doesNotMatch(canvas, /transcriptRef|liveRef/);
+  assert.equal((canvas.match(/data-testid="conversation-scroll"/g) ?? []).length, 1);
+
+  const transcript = canvas.indexOf("<AnswerTranscript");
+  const live = canvas.indexOf('data-testid="conversation-live"');
+  assert.ok(transcript > -1 && live > transcript, "the live turn follows settled replies");
+});
+
 test("the handoff is an explicit action, never automatic", () => {
   const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
   // Completion renders a button; nothing navigates on its own.
@@ -248,6 +259,22 @@ test("fields with a known shape offer answers instead of an empty box", async ()
       assert.ok(option.label.length > 0, `${field} option needs a label`);
     }
   }
+});
+
+test("legacy start-time storage still renders controlled timing choices", async () => {
+  const { controlledAnswerOptionsFor } = await import(
+    "../lib/jobImportAnswerOptions.ts"
+  );
+  const options = controlledAnswerOptionsFor("start_timeframe", "text");
+  assert.deepEqual(
+    options.map((option) => option.value),
+    ["ASAP", "<1mo", "<2mo", "<3mo", "Flexible"]
+  );
+  assert.deepEqual(
+    controlledAnswerOptionsFor("requirements", "text"),
+    [],
+    "genuinely open prose must not be replaced with invented choices"
+  );
 });
 
 test("genuinely open fields stay free text rather than being guessed at", async () => {
@@ -345,7 +372,7 @@ test("an unmapped field still falls back rather than breaking", async () => {
 // ---------------------------------------------------------------------------
 
 test("structured fields are picked, never typed", async () => {
-  const { MULTI_SELECT_FIELDS, multiSelectOptionsFor, shapeMultiSelect, answerOptionsFor } =
+  const { MULTI_SELECT_FIELDS, multiSelectOptionsFor, answerOptionsFor } =
     await import("../lib/jobImportAnswerOptions.ts");
 
   // hiring_process is a list of stage objects. A typed sentence could never be
@@ -372,6 +399,14 @@ test("picked keys are shaped into exactly what the model stores", async () => {
   assert.ok(deliverable.frequency);
 });
 
+test("grounded list suggestions can be accepted without redoing the extraction", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /const recommendedMulti =/);
+  assert.match(turn, /conversation-accept-multi-recommendation/);
+  assert.match(turn, /recommendedMulti\.map\(labelFor\)\.join\(", "\)/);
+  assert.match(turn, /matches your post/);
+});
+
 test("free text shows a concrete example rather than an empty invitation", async () => {
   const { textExampleFor } = await import("../lib/jobImportAnswerOptions.ts");
   for (const field of ["about_channel", "requirements", "responsibilities", "reference_videos"]) {
@@ -388,6 +423,116 @@ test("Send is gated on a usable answer instead of rejecting one afterwards", () 
   assert.match(turn, /const canSend =/);
   assert.match(turn, /disabled=\{busy \|\| !canSend\}/);
   assert.match(turn, /minimumAnswerLength/);
+  assert.match(turn, /isMeaningfulImportAnswer/);
+});
+
+test("candidate-facing work prose rejects obvious filler locally", async () => {
+  const { isMeaningfulImportAnswer } = await import(
+    "../lib/jobImportAnswerOptions.ts"
+  );
+  for (const filler of [
+    "Aaaaaaaaaaaa",
+    "Kjkklaamaja",
+    "aaaaaaaa bbbbbbbb",
+    "edit edit",
+    "Provided during QA",
+    "test answer",
+    "video video",
+    "I don't know",
+  ]) {
+    assert.equal(isMeaningfulImportAnswer("requirements", filler), false, filler);
+    assert.equal(isMeaningfulImportAnswer("responsibilities", filler), false, filler);
+  }
+  assert.equal(
+    isMeaningfulImportAnswer(
+      "requirements",
+      "Strong pacing and clear long-form storytelling"
+    ),
+    true
+  );
+  assert.equal(
+    isMeaningfulImportAnswer(
+      "responsibilities",
+      "Edit one polished education video each week"
+    ),
+    true
+  );
+  assert.equal(
+    isMeaningfulImportAnswer("start_timeframe", "Flexible"),
+    true,
+    "the prose heuristic is scoped only to candidate-facing work lists"
+  );
+});
+
+test("an answer becomes a right-aligned reply before the assistant types", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  const reply = turn.indexOf("<RecruiterReply>{submittedReply}</RecruiterReply>");
+  const typing = turn.indexOf('testId="conversation-thinking"', reply);
+  assert.ok(reply > -1 && typing > reply);
+  assert.match(turn, /setSubmittedReply\(displayValue\)/);
+  assert.match(turn, /picked\.map\(labelFor\)\.join\(", "\)/);
+});
+
+test("a stale successful answer cannot leave the composer permanently hidden", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /requestWasBusyRef\.current = true/);
+  assert.match(
+    turn,
+    /if \(!requestWasBusyRef\.current \|\| !submittedReplyRef\.current\) return/
+  );
+  assert.match(turn, /submittedReplyRef\.current = null/);
+  assert.match(turn, /setSubmittedReply\(null\)/);
+  assert.match(turn, /onLayoutChange\?\.\(\)/);
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  assert.match(canvas, /conversationLayoutVersion/);
+  assert.match(canvas, /onLayoutChange=\{handleTurnLayoutChange\}/);
+});
+
+test("the chat remains named and announces a real typing state", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(canvas, /aria-label="Prepare this job draft with Bea"/);
+  assert.match(turn, /role="status"/);
+  assert.match(turn, /aria-live="polite"/);
+  assert.match(turn, /aria-atomic="true"/);
+});
+
+test("structured recruiter answers remain readable in transcript history", () => {
+  const canvas = read("components/import-job/assistant/DraftAssistantCanvas.tsx");
+  assert.match(canvas, /const row = item as Record<string, unknown>/);
+  assert.match(canvas, /typeof row\.stage === "string" \? row\.stage : row\.type/);
+  assert.match(canvas, /multiSelectOptionsFor\(fieldPath\)/);
+  assert.doesNotMatch(canvas, /value\.filter\(\(item\) => typeof item === "string"\)/);
+});
+
+test("a committed answer is not reported unsaved when only readback fails", () => {
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  assert.match(client, /Answer saved\. Refreshing your draft…/);
+  assert.match(client, /Promise\.allSettled\(\[/);
+  assert.match(client, /setConversation\(nextConversation\)/);
+});
+
+test("an in-flight import keeps its resume URL without erasing Next router state", () => {
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  assert.match(client, /window\.history\.replaceState\(\s*null/);
+  assert.doesNotMatch(client, /window\.history\.replaceState\(\s*window\.history\.state/);
+  assert.doesNotMatch(client, /window\.history\.replaceState\(\{\},/);
+});
+
+test("the live assistant and candidate preview share the resolved role name", () => {
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  assert.match(client, /listRoles\(\)/);
+  assert.match(client, /importPreviewRoleName\(snapshot, roleCatalog\)/);
+  assert.match(client, /roleName=\{livePreview\.roleName\}/);
+  assert.match(client, /roleName,/);
+});
+
+test("the compact candidate preview shows imported work and qualifications", () => {
+  const preview = read("components/post-job/RecruiterJobPreview.tsx");
+  assert.match(preview, /const responsibilities = splitLines\(props\.responsibilities\)/);
+  assert.match(preview, /const legacyRequirements = splitLines\(props\.legacyRequirements\)/);
+  assert.match(preview, /const workItems = unique\(\[\.\.\.deliverableLines, \.\.\.responsibilities\]\)/);
+  assert.match(preview, /const mustHaves = unique\(\[\.\.\.requiredSkills, \.\.\.legacyRequirements\]\)/);
 });
 
 test("the thinking indicator is tied to a real request, not a timer", () => {

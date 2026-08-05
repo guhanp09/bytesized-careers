@@ -253,15 +253,9 @@ async def create_job_import_review_fixture(
                 owner_user_id=current_user.id,
                 processing_attempt_id=uuid4(),
             )
-        if scenario in {"refresh-resume", "answer-precedence"}:
-            # One recruiter answer already saved, so a refresh has something to
-            # restore and a later provider result has something to lose against.
-            await service.set_recruiter_prefill(
-                draft.id,
-                "employer_context_type",
-                "agency",
-                owner_user_id=current_user.id,
-            )
+        # No recruiter question is inserted here. The fixture is intentionally
+        # source-first: processing must finish before any missing detail can be
+        # presented as a question.
         draft = await service.get_draft(draft.id, owner_user_id=current_user.id)
         return DevJobImportFixtureResponse(
             draft=await service.draft_read(draft),

@@ -48,8 +48,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
     processed = {
         scenario
         for scenario in DEVELOPMENT_IMPORT_SCENARIOS
-        if scenario not in IN_FLIGHT_IMPORT_SCENARIOS
-        and scenario != "processing-failure"
+        if scenario not in IN_FLIGHT_IMPORT_SCENARIOS and scenario != "processing-failure"
     }
     assert processed == {
         "strong-decisions",
@@ -131,7 +130,12 @@ async def test_shine_school_editor_fixture_preserves_url_context_without_provide
     draft = response.json()["draft"]
     fields = {field["field_path"]: field for field in draft["fields"]}
     assert fields["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
-    assert fields["content_niches"]["proposed_value"] == ["Education"]
+    assert fields["primary_role_key"]["effective_value"] == "video-editor"
+    assert fields["primary_role_key"]["decision_confidence"] == "high"
+    assert fields["primary_role_key"]["needs_review"] is False
+    assert fields["content_niches"]["effective_value"] == ["Education"]
+    assert fields["content_niches"]["decision_confidence"] == "high"
+    assert fields["content_niches"]["needs_review"] is False
     assert fields["experience_level"]["effective_value"] == "1\u20137 years of experience"
 
     source_id = draft["source_id"]
@@ -142,7 +146,26 @@ async def test_shine_school_editor_fixture_preserves_url_context_without_provide
     assert source_body["retrieval_metadata"]["structured_context"]["industry"] == (
         "Education / Training"
     )
+    assert source_body["retrieval_metadata"]["structured_context"]["job_title"] == ("Video Editor")
+    assert source_body["retrieval_metadata"]["structured_context"]["responsibilities"] == [
+        "Edit learning videos for a school-based education channel"
+    ]
+    assert source_body["retrieval_metadata"]["structured_context"]["qualifications"] == [
+        "Minimum of 1-7 years of experience in video editing",
+        "Proficiency in video editing software and tools",
+    ]
+    assert "Structured job title: Video Editor" in source_body["original_text"]
     assert "Structured skills: Video Editing" in source_body["original_text"]
+
+    converted = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert converted.status_code == 200, converted.text
+    native = converted.json()["job"]
+    assert native["primary_role_name_snapshot"] == "Video Editor"
+    assert native["content_niches"] == ["Education"]
 
 
 @pytest.mark.anyio
@@ -157,14 +180,15 @@ async def test_in_flight_scenarios_stay_genuinely_mid_processing(
         assert response.status_code == 200, f"{scenario}: {response.text}"
         draft = response.json()["draft"]
         assert draft["processing_status"] == "processing", scenario
-        # No machine output yet, so the assistant has nothing to review — which
-        # is exactly the state an early question is supposed to fill.
+        # No machine output yet, so the assistant has nothing to review and asks
+        # nothing until source processing completes.
         assert draft["fields"] == [], scenario
-        assert draft["early_question_fields"], scenario
+        assert draft["early_question_fields"] == [], scenario
+        assert draft["recruiter_prefill"] == {}, scenario
 
 
 @pytest.mark.anyio
-async def test_the_resume_scenario_ships_with_an_answer_already_saved(
+async def test_the_resume_scenario_stays_source_first_while_processing(
     client: AsyncClient,
 ) -> None:
     headers = await _auth(client, "fixture-resume")
@@ -172,8 +196,10 @@ async def test_the_resume_scenario_ships_with_an_answer_already_saved(
     assert response.status_code == 200, response.text
     draft = response.json()["draft"]
 
-    # A refresh has something to restore, and it came from the server.
-    assert draft["recruiter_prefill"] == {"employer_context_type": "agency"}
+    # Refresh restores the processing state without manufacturing a recruiter
+    # answer or showing a question before the source has been read.
+    assert draft["recruiter_prefill"] == {}
+    assert draft["early_question_fields"] == []
     assert draft["processing_status"] == "processing"
 
 
@@ -198,9 +224,7 @@ async def test_unknown_scenarios_are_refused(client: AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_the_fixture_route_requires_authentication(client: AsyncClient) -> None:
-    response = await client.post(
-        "/api/v1/dev/job-import-review?scenario=clean-import&fresh=true"
-    )
+    response = await client.post("/api/v1/dev/job-import-review?scenario=clean-import&fresh=true")
     assert response.status_code in {401, 403}
 
 
@@ -211,10 +235,26 @@ async def test_fixtures_are_owner_private(client: AsyncClient) -> None:
     draft_id = UUID(created.json()["draft"]["id"])
 
     intruder_headers = await _auth(client, "fixture-intruder")
-    response = await client.get(
-        f"/api/v1/job-imports/drafts/{draft_id}", headers=intruder_headers
-    )
+    response = await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=intruder_headers)
     assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_clean_import_hands_off_without_blank_optional_questions(
+    client: AsyncClient,
+) -> None:
+    headers = await _auth(client, "fixture-clean-conversation")
+    created = await _fixture(client, headers, "clean-import")
+    assert created.status_code == 200, created.text
+    draft_id = created.json()["draft"]["id"]
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    assert begun.json()["ready_for_draft"] is True
+    assert begun.json()["active_question"] is None
+    assert begun.json()["phase"] == "complete"
 
 
 @pytest.mark.anyio

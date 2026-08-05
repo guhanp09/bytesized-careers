@@ -35,6 +35,50 @@ async function openFixture(page: Page, scenario: string) {
   await page.getByTestId("open-import-review-fixture").click();
 }
 
+/** Settle whichever supported control the fixture currently presents. */
+async function answerCurrentConversationTurn(page: Page) {
+  const turn = page.getByTestId("conversation-turn");
+  const oneClick = [
+    turn.locator('[data-testid^="conversation-alternative-"]').first(),
+    turn.getByTestId("conversation-accept-suggestion"),
+    turn.getByTestId("conversation-accept-multi-recommendation"),
+    turn.locator('[data-testid^="conversation-option-"]').first(),
+  ];
+  for (const control of oneClick) {
+    if (await control.isVisible()) {
+      await control.click();
+      return;
+    }
+  }
+
+  const chip = turn.locator('[data-testid^="conversation-chip-"]').first();
+  if (await chip.isVisible()) {
+    await chip.click();
+    await turn.getByTestId("conversation-multiselect-submit").click();
+    return;
+  }
+
+  const input = turn.getByTestId("conversation-text-answer");
+  if (await input.isVisible()) {
+    const fieldPath = await turn.locator("[data-field]").getAttribute("data-field");
+    const answers: Record<string, string> = {
+      requirements: "Strong pacing and clear long-form video storytelling",
+      responsibilities: "Edit one polished learning video from footage to final cut",
+      about_channel:
+        "A creator-led channel making clear educational videos for its audience.",
+    };
+    await input.fill(
+      (await input.getAttribute("inputmode")) === "numeric"
+        ? "40"
+        : answers[fieldPath ?? ""] ?? "A clear detail candidates can understand"
+    );
+    await turn.getByTestId("conversation-submit").click();
+    return;
+  }
+
+  throw new Error("The active conversation question has no supported answer control");
+}
+
 test.describe("AI entry", () => {
   test("Prepare with AI opens the assistant canvas, not the old dashboard", async ({
     page,
@@ -111,43 +155,43 @@ test.describe("truthful progress", () => {
   });
 });
 
-test.describe("early questions during processing", () => {
-  test("one question appears, is answerable while work continues, and persists", async ({
+test.describe("source-first processing", () => {
+  test("the assistant reads the source before asking the recruiter anything", async ({
     page,
   }) => {
     await loginController(page);
     await openFixture(page, "delayed-processing");
 
-    const question = page.getByTestId("early-question");
-    await expect(question).toBeVisible();
-
-    // Exactly one decision is active. Never a wall of fields.
-    await expect(page.getByTestId("early-question")).toHaveCount(1);
-
-    // Extraction is still running underneath.
+    // Extraction is still running, and no speculative form is competing with
+    // it. Questions begin only after the page has actually been interpreted.
     await expect(page.getByTestId("draft-assistant-progress")).toHaveAttribute(
       "data-state",
       "active"
     );
-
-    await page.getByTestId("early-question-option-creator").click();
-
-    // The answer is recorded and shown in the compact history.
-    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
+    await expect(page.getByTestId("early-question")).toHaveCount(0);
+    await expect(page.getByTestId("conversation-turn")).toHaveCount(0);
   });
 
-  test("a saved answer survives a full page reload", async ({ page }) => {
+  test("a processing draft survives a full page reload without inventing a question", async ({
+    page,
+  }) => {
     await loginController(page);
     await openFixture(page, "refresh-resume");
 
-    // This fixture ships with one answer already saved server-side.
-    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
+    await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible();
+    await expect(page.getByTestId("early-question")).toHaveCount(0);
+    // The canvas appears as soon as the fixture request begins. Wait until the
+    // server has actually returned its durable draft id before testing resume;
+    // otherwise this reload merely aborts the create request it is meant to
+    // exercise.
+    await expect(page).toHaveURL(/[?&]draft=[^&]+/, { timeout: 12_000 });
 
     await page.reload({ waitUntil: "domcontentloaded" });
 
-    // Restored from the server, with no browser storage involved.
-    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
+    // Restored from the server, with no browser storage and no administrative
+    // question inserted just to occupy the wait.
     await expect(page.getByTestId("draft-assistant-canvas")).toBeVisible();
+    await expect(page.getByTestId("early-question")).toHaveCount(0);
   });
 });
 
@@ -202,18 +246,13 @@ test.describe("completion and handoff", () => {
     await loginController(page);
     await openFixture(page, "clean-import");
 
-    // Even a clean import may have one improvement worth offering; skip it and
-    // take the explicit handoff.
-    const skip = page.getByTestId("conversation-skip-remaining");
-    await skip.waitFor({ state: "visible", timeout: 30_000 }).catch(() => undefined);
-    if (await skip.count()) {
-      await skip.click();
-      await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
-        timeout: 20_000,
-      });
-    }
+    // The source already settled everything important. Blank optional editor
+    // fields do not become a second administrative questionnaire.
+    await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
+      timeout: 30_000,
+    });
     const open = page.getByTestId("conversation-open-draft");
-    if (await open.count()) await open.click();
+    await open.click();
 
     await expect(page).toHaveURL(/\/post-job\?draftId=/, { timeout: 30_000 });
 
@@ -239,48 +278,99 @@ test.describe("completion and handoff", () => {
       await openFixture(page, "shine-school-editor");
 
       await expect(page.getByTestId("conversation-turn")).toBeVisible({ timeout: 30_000 });
-      const assistantText = page.locator("body");
-      await expect(assistantText).toContainText("Chennai");
+      const preview =
+        viewport.name === "mobile-390"
+          ? page
+              .getByTestId("draft-assistant-preview-mobile")
+              .getByLabel("Candidate listing preview")
+          : page
+              .getByTestId("draft-assistant-preview-rail")
+              .getByLabel("Candidate listing preview");
+      if (viewport.name === "mobile-390") {
+        const mobilePreview = page.getByTestId("draft-assistant-preview-mobile");
+        await expect(mobilePreview).toBeVisible();
+        await mobilePreview.locator("summary").click();
+      }
+      await expect(preview).toHaveCount(1);
+      await expect(preview).toBeVisible();
+      await expect(preview).toContainText("Video Editor");
+      await expect(preview).toContainText("Chennai");
+      await expect(preview).toContainText(/Edit learning videos/i);
+      await expect(preview).toContainText(/video editing experience/i);
+      await expect(preview).not.toContainText("Job title not added yet");
+      await expect(preview).not.toContainText("Creator role not selected");
+
+      const sourceSupported = new Set([
+        "title",
+        "primary_role_key",
+        "location",
+        "work_mode",
+        "engagement_type",
+        "content_niches",
+        "experience_level",
+        "requirements",
+        "responsibilities",
+      ]);
+      const choiceAnswers: Record<string, string> = {
+        platforms: "youtube",
+        // start_timeframe is superseded: the editor only renders start_timing,
+        // so that is the field the assistant now asks about.
+        start_timing: "flexible",
+        compensation_mode: "negotiable",
+        budget_unit: "per month",
+      };
+      const textAnswers: Record<string, string> = {
+        about_channel:
+          "A school-led education studio creating clear learning videos for students.",
+        expected_weekly_hours_min: "40",
+      };
+      const deliberateQuestions = new Set([
+        ...Object.keys(choiceAnswers),
+        ...Object.keys(textAnswers),
+      ]);
+      const askedFields: string[] = [];
 
       for (let step = 0; step < 25; step += 1) {
         if (await page.getByTestId("conversation-open-draft").isVisible()) break;
         const turn = page.getByTestId("conversation-turn");
         await expect(turn).toBeVisible();
-        const previousTurn = await turn.innerText();
-        const suggestion = page.getByTestId("conversation-accept-suggestion");
-        const alternative = turn.locator('[data-testid^="conversation-alternative-"]').first();
-        const chip = turn.locator('[data-testid^="conversation-chip-"]').first();
-        const option = turn.locator('[data-testid^="conversation-option-"]').first();
-        const input = page.getByTestId("conversation-text-answer");
-        const skip = page.getByTestId("conversation-skip");
-        if (await suggestion.isVisible()) {
-          await expect(suggestion).toBeEnabled();
-          await suggestion.click();
-        } else if (await alternative.isVisible()) {
-          await alternative.click();
-        } else if (await chip.isVisible()) {
-          await chip.click();
+        const field = await turn.locator("[data-field]").getAttribute("data-field");
+        expect(field, "every assistant question names its canonical field").toBeTruthy();
+        expect(
+          sourceSupported.has(field!),
+          `the assistant re-asked source-supported ${field}`
+        ).toBe(false);
+        expect(
+          deliberateQuestions.has(field!),
+          `the assistant asked an unnecessary Shine question: ${field}`
+        ).toBe(true);
+        askedFields.push(field!);
+
+        const answer = choiceAnswers[field!] ?? textAnswers[field!];
+        if (answer === undefined) {
+          throw new Error(`No deliberate QA answer for unexpected question ${field}`);
+        } else if (await page.getByTestId(`conversation-option-${answer}`).isVisible()) {
+          await page.getByTestId(`conversation-option-${answer}`).click();
+        } else if (await page.getByTestId(`conversation-chip-${answer}`).isVisible()) {
+          await page.getByTestId(`conversation-chip-${answer}`).click();
           await page.getByTestId("conversation-multiselect-submit").click();
-        } else if (await option.isVisible()) {
-          await option.click();
-        } else if (await input.isVisible()) {
-          await input.fill(
-            (await input.getAttribute("inputmode")) === "numeric"
-              ? "40"
-              : "A school-led education channel creating clear learning videos."
-          );
+        } else if (await page.getByTestId("conversation-text-answer").isVisible()) {
+          await page.getByTestId("conversation-text-answer").fill(answer);
           await page.getByTestId("conversation-submit").click();
-        } else if (await skip.isVisible()) {
-          await skip.click();
+        } else {
+          throw new Error(`Question ${field} did not render its declared answer shape`);
         }
         await expect
           .poll(async () => {
             if (await page.getByTestId("conversation-open-draft").isVisible()) return "done";
             const next = page.getByTestId("conversation-turn");
-            return (await next.isVisible()) ? await next.innerText() : "gone";
-          })
-          .not.toBe(previousTurn);
+            return (await next.isVisible())
+              ? await next.locator("[data-field]").getAttribute("data-field")
+              : "gone";
+          }, { timeout: 20_000 })
+          .not.toBe(field);
       }
+      expect(new Set(askedFields).size).toBe(askedFields.length);
       await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
         timeout: 20_000,
       });
@@ -300,7 +390,17 @@ test.describe("completion and handoff", () => {
       const nativeDraft = (await jobsResponse.json()).find(
         (job: { id: string }) => job.id === nativeDraftId
       );
+      expect(nativeDraft.primary_role_name_snapshot).toBe("Video Editor");
+      expect(nativeDraft.location).toBe("Chennai, Tamil Nadu, IN");
+      expect(nativeDraft.engagement_type).toBe("full_time");
       expect(nativeDraft.experience_level).toBe("1\u20137 years of experience");
+      expect(nativeDraft.content_niches).toContain("Education");
+      expect(nativeDraft.responsibilities).toContain(
+        "Edit learning videos for a school-based education channel"
+      );
+      expect(nativeDraft.requirements).toContain(
+        "1\u20137 years of video editing experience"
+      );
       const contextResponse = await page.request.get(
         `http://127.0.0.1:8100/api/v1/job-imports/native-jobs/${nativeDraftId}/context`,
         { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
@@ -440,6 +540,137 @@ test.describe("checkpointed conversation", () => {
     expect(typeof state.active_question.field_path).toBe("string");
   });
 
+  test("a submitted reply is followed immediately by the robot typing", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    const turn = page.getByTestId("conversation-turn");
+    await expect(turn).toBeVisible({ timeout: 30_000 });
+
+    let markRequestHeld!: () => void;
+    const requestHeld = new Promise<void>((resolve) => {
+      markRequestHeld = resolve;
+    });
+    let releaseRequest!: () => void;
+    const requestRelease = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+    await page.route("**/conversation/answer", async (route) => {
+      markRequestHeld();
+      await requestRelease;
+      await route.continue();
+    });
+
+    await answerCurrentConversationTurn(page);
+    await requestHeld;
+
+    const reply = turn.getByTestId("conversation-reply");
+    const typing = turn.getByTestId("conversation-thinking");
+    await expect(reply).toBeVisible();
+    await expect(typing).toBeVisible();
+    await expect(page.getByTestId("conversation-text-answer")).toHaveCount(0);
+
+    const chronological = await turn.evaluate((node) => {
+      const recruiterReply = node.querySelector('[data-testid="conversation-reply"]');
+      const assistantTyping = node.querySelector('[data-testid="conversation-thinking"]');
+      return Boolean(
+        recruiterReply &&
+          assistantTyping &&
+          recruiterReply.compareDocumentPosition(assistantTyping) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    });
+    expect(chronological).toBe(true);
+
+    const replyBox = await reply.boundingBox();
+    const typingBox = await typing.boundingBox();
+    const scrollBox = await page.getByTestId("conversation-scroll").boundingBox();
+    expect(replyBox).not.toBeNull();
+    expect(typingBox).not.toBeNull();
+    expect(scrollBox).not.toBeNull();
+    expect(replyBox!.x).toBeGreaterThan(typingBox!.x);
+    const replyToTypingGap = typingBox!.y - (replyBox!.y + replyBox!.height);
+    expect(replyToTypingGap).toBeGreaterThanOrEqual(0);
+    expect(replyToTypingGap).toBeLessThanOrEqual(24);
+    expect(typingBox!.y).toBeGreaterThanOrEqual(scrollBox!.y - 1);
+    expect(typingBox!.y + typingBox!.height).toBeLessThanOrEqual(
+      scrollBox!.y + scrollBox!.height + 1
+    );
+
+    releaseRequest();
+    await expect(typing).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId("conversation-reply")).toHaveCount(1);
+  });
+
+  test("a saved answer survives a failed draft readback without looking unsaved", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-currency");
+    const turn = page.getByTestId("conversation-turn");
+    await expect(turn).toBeVisible({ timeout: 30_000 });
+    const answeredField = await turn.locator("[data-field]").getAttribute("data-field");
+    expect(answeredField).toBeTruthy();
+
+    let failNextDraftReadback = false;
+    let failedReadbacks = 0;
+    await page.route("**/job-imports/drafts/**", async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname;
+      const isAnswerWrite =
+        request.method() === "POST" && pathname.endsWith("/conversation/answer");
+      if (isAnswerWrite) {
+        // Let the real backend commit first, then arm the one-shot read failure
+        // before the successful response reaches the browser application.
+        const response = await route.fetch();
+        failNextDraftReadback = true;
+        await route.fulfill({ response });
+        return;
+      }
+      const isDraftReadback =
+        request.method() === "GET" &&
+        /\/api\/v1\/job-imports\/drafts\/[^/]+$/.test(pathname);
+      if (failNextDraftReadback && isDraftReadback) {
+        failNextDraftReadback = false;
+        failedReadbacks += 1;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Temporary readback failure" }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await answerCurrentConversationTurn(page);
+
+    await expect.poll(() => failedReadbacks).toBe(1);
+    await expect(
+      page.getByText("Answer saved. Refreshing your draft…", { exact: true })
+    ).toHaveCount(1);
+    await expect(page.getByText(/could not be saved/i)).toHaveCount(0);
+
+    // The failed read was only a presentation refresh. The committed answer
+    // must appear in history and the conversation must move forward without a
+    // second recruiter click.
+    await expect
+      .poll(async () => {
+        if (await page.getByTestId("conversation-open-draft").isVisible()) return "done";
+        const nextTurn = page.getByTestId("conversation-turn");
+        if (!(await nextTurn.isVisible())) return "transitioning";
+        return (
+          (await nextTurn.locator("[data-field]").getAttribute("data-field")) ??
+          "transitioning"
+        );
+      }, { timeout: 20_000 })
+      .not.toBe(answeredField);
+    await expect(page.getByTestId("conversation-reply")).toHaveCount(1, {
+      timeout: 20_000,
+    });
+  });
+
   test("waiting is free: polling, refresh and walking away spend nothing", async ({
     page,
   }) => {
@@ -538,25 +769,8 @@ test.describe("conversational completion", () => {
         await page.waitForTimeout(700);
         continue;
       }
-      const option = page
-        .getByTestId("conversation-turn")
-        .locator('[data-testid^="conversation-option-"]')
-        .first();
-      if (await option.count()) {
-        await option.click();
-        await page.waitForTimeout(700);
-        continue;
-      }
-      const input = page.getByTestId("conversation-text-answer");
-      if (await input.count()) {
-        await input.fill(
-        (await input.getAttribute("inputmode")) === "numeric" ? "5" : "Provided during QA"
-      );
-        await page.getByTestId("conversation-submit").click();
-        await page.waitForTimeout(700);
-        continue;
-      }
-      break;
+      await answerCurrentConversationTurn(page);
+      await page.waitForTimeout(700);
     }
 
     // Bea reports completion; the recruiter has not been moved anywhere yet.
@@ -588,17 +802,13 @@ test.describe("conversational completion", () => {
     await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
   });
 
-  test("a clean import asks nothing essential, only offers", async ({ page }) => {
+  test("a clean import asks nothing the source did not make important", async ({ page }) => {
     await loginController(page);
     await openFixture(page, "clean-import");
 
-    // It genuinely has no revision policy, so offering one is the designed
-    // behaviour — but nothing here is *essential*, and it is skippable.
-    const turn = page.getByTestId("conversation-turn");
-    await expect(turn).toBeVisible({ timeout: 30_000 });
-    await expect(turn).toHaveAttribute("data-kind", "optional");
-
-    await page.getByTestId("conversation-skip-remaining").click();
+    // Blank optional fields stay in the full editor. A URL import should not
+    // manufacture a conversational questionnaire from every possible upgrade.
+    await expect(page.getByTestId("conversation-turn")).toHaveCount(0);
     await expect(page.getByTestId("conversation-complete")).toBeVisible({
       timeout: 20_000,
     });

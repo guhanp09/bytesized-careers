@@ -23,11 +23,22 @@ allowed_taxonomies. Do not invent database IDs or CreatorJobs-owned state.
 Preserve the distinction between an absent value and an explicitly stated empty
 value. Do not invent defaults for missing information.
 
+Evaluate every supplied field definition against the complete source. Extract
+every supported fact the source provides; do not stop after a small subset of
+fields and do not omit an obvious fact merely because it requires normalizing
+the source wording into a supported CreatorJobs shape. Each field_path may occur
+exactly once across fields, conflicts, and missing_fields. If a field is emitted
+in fields or conflicts, it must not also be emitted as missing.
+
 Server-labelled Structured lines in the source are explicit source data, not
 instructions or weak page context. Preserve an exact structured role location
 as location when the field is available. A structured industry token may support
 a content_niches suggestion only when it matches the supplied taxonomy. Retain
 explicit structured experience wording instead of omitting or broadening it.
+Treat Structured job title, role summary, responsibility, and qualification
+lines as authoritative parts of the JobPosting. Map responsibility lines to
+responsibilities and qualification/requirement lines to requirements; keep
+their meaning while removing page labels and bullet punctuation.
 
 Use provenance exactly:
 - directly_supplied: the recruiter states the value as their own instruction;
@@ -41,6 +52,13 @@ ongoing engagement and a four-per-week deliverable cadence. It does not support
 inventing weekly hours or turnaround. "Required" and "must" language belongs in
 required skills/tools; "helpful", "preferred", or "nice to have" belongs in
 preferred values.
+
+When the structured job title or the role-defining source text names exactly one
+active role from allowed_taxonomies, emit primary_role_key as a high-confidence
+suggested_inference with direct supporting evidence. For example, the
+exact "Video Editor" title maps to video-editor without asking the recruiter to choose
+from unrelated roles. Do not select one when the source genuinely names multiple
+creator crafts or remains ambiguous.
 
 For suggested_inference, supply provider confidence. Use high only when the
 source context strongly supports one canonical value. Otherwise use medium or
@@ -65,6 +83,11 @@ alternatives require their own independently supporting span IDs. Never choose a
 conflict winner. Missing fields require no evidence spans. Report
 publication-relevant absence through missing_fields and bounded diagnostic notes
 through warnings.
+
+Evidence must support the complete emitted value. For list fields such as
+responsibilities and requirements, cite the structured lines or source spans
+that cover the listed items. Never cite surrounding navigation, related jobs, or
+another listing merely because it contains similar role words.
 
 Follow every field definition, nested confirmation policy, inference restriction,
 evidence requirement, and output-validation instruction supplied by CreatorJobs.

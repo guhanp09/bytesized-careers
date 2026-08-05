@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import ipaddress
+import json
 import threading
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ import pytest_asyncio
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, active_test_role_id
 from fastapi import Depends
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,10 +123,11 @@ class _FixtureHandler(BaseHTTPRequestHandler):
                     "@context": "https://schema.org",
                     "@type": "JobPosting",
                     "title": "Video Editor",
-                    "description": "<p>Edit learning videos for a school.</p><p>Minimum of 1-7 years of experience in video editing.</p>",
+                    "description": "<p>Produce engaging learning videos aligned with our educational objectives.</p><h2>Key Responsibilities:</h2><ul><li>Edit learning videos for a school.</li><li>Enhance video and audio quality.</li></ul><h2>Qualifications Required:</h2><ul><li>Minimum of 1-7 years of experience in video editing.</li><li>Proficiency with video editing software.</li></ul>",
                     "hiringOrganization": {
                       "@type": "Organization",
-                      "name": "Vashist Education Studio"
+                      "name": "Vashist Education Studio",
+                      "description": "A school-led education studio creating clear learning videos."
                     },
                     "jobLocation": {
                       "@type": "Place",
@@ -136,7 +138,7 @@ class _FixtureHandler(BaseHTTPRequestHandler):
                         "addressCountry": "IN"
                       }
                     },
-                    "employmentType": "FULL_TIME",
+                    "employmentType": ["FULL_TIME", "PERMANENT"],
                     "industry": "Education / Training",
                     "skills": ["Video Editing", ""],
                     "experienceRequirements": {
@@ -208,9 +210,7 @@ class _TitleProvider:
         fields = []
         for field_path, value in values.items():
             snippet = (
-                value
-                if field_path == "title"
-                else f"Structured compensation: {value} per MONTH"
+                value if field_path == "title" else f"Structured compensation: {value} per MONTH"
             )
             start = source.index(snippet)
             fields.append(
@@ -249,14 +249,28 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     assert result.final_url == f"{public_page_server}/job"
     assert result.title == "Video Editor"
     assert "Edit learning videos for a school." in result.normalized_text
+    assert "Structured job title: Video Editor" in result.normalized_text
+    assert (
+        "Structured role summary: Produce engaging learning videos aligned with our "
+        "educational objectives." in result.normalized_text
+    )
+    assert "Structured responsibility: Edit learning videos for a school." in (
+        result.normalized_text
+    )
+    assert "Structured qualification: Proficiency with video editing software." in (
+        result.normalized_text
+    )
+    assert (
+        "Structured employer summary: A school-led education studio creating clear "
+        "learning videos." in result.normalized_text
+    )
     assert "Structured employer: Vashist Education Studio" in result.normalized_text
     assert "Structured role location: Chennai, Tamil Nadu, IN" in result.normalized_text
     assert "Structured compensation: 3000 per MONTH" in result.normalized_text
     assert "Structured industry: Education / Training" in result.normalized_text
     assert "Structured skills: Video Editing" in result.normalized_text
     assert (
-        "Structured experience requirement: 1\u20137 years of experience"
-        in result.normalized_text
+        "Structured experience requirement: 1\u20137 years of experience" in result.normalized_text
     )
     assert "School-based creator role using Premiere Pro in Chennai." in result.normalized_text
     assert "Navigation clutter" not in result.normalized_text
@@ -264,9 +278,22 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     assert "window.secret" not in result.normalized_text
     assert result.metadata["json_ld_job_posting"] is True
     assert result.metadata["structured_context"] == {
+        "job_title": "Video Editor",
+        "role_summary": (
+            "Produce engaging learning videos aligned with our educational objectives."
+        ),
+        "responsibilities": [
+            "Edit learning videos for a school.",
+            "Enhance video and audio quality.",
+        ],
+        "qualifications": [
+            "Minimum of 1-7 years of experience in video editing.",
+            "Proficiency with video editing software.",
+        ],
         "employer_name": "Vashist Education Studio",
+        "about_summary": ("A school-led education studio creating clear learning videos."),
         "role_location": "Chennai, Tamil Nadu, IN",
-        "employment_type": "FULL_TIME",
+        "employment_type": "FULL_TIME, PERMANENT",
         "compensation": "3000 per MONTH",
         "industry": "Education / Training",
         "skills": "Video Editing",
@@ -280,15 +307,92 @@ async def test_fetcher_normalizes_html_json_ld_and_never_forwards_credentials(
     assert all(item["user_agent"] == URL_USER_AGENT for item in _FixtureHandler.requests)
 
 
-def _source_with_structured_context(context: dict[str, str]) -> JobImportSource:
+@pytest.mark.parametrize(
+    "boundary_heading",
+    [
+        "Role",
+        "Industry Type",
+        "Department",
+        "Employment Type",
+        "Role Category",
+        "Education",
+        "Key Skills",
+        "Benefits",
+        "About Company",
+        "How to Apply",
+    ],
+)
+def test_structured_qualification_collection_stops_at_metadata_headings(
+    boundary_heading: str,
+) -> None:
+    posting = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": "Video Editor",
+        "description": (
+            "<h2>Qualifications Required</h2>"
+            "<p>Two years of editing experience.</p>"
+            f"<h2>{boundary_heading}</h2>"
+            "<p>This metadata must not become a qualification.</p>"
+        ),
+    }
+    html = f'<script type="application/ld+json">{json.dumps(posting)}</script>'
+
+    _normalized, _title, metadata = normalize_public_job_html(
+        html,
+        final_url="https://jobs.example/video-editor",
+    )
+
+    assert metadata["structured_context"]["qualifications"] == [
+        "Two years of editing experience."
+    ]
+
+
+def test_structured_inline_section_headings_keep_same_line_fact() -> None:
+    posting = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": "Video Editor",
+        "description": (
+            "<p>Responsibilities: Edit weekly learning videos.</p>"
+            "<p>Qualifications: Two years of editing experience.</p>"
+            "<p>Role: Video Editor</p>"
+        ),
+    }
+    html = f'<script type="application/ld+json">{json.dumps(posting)}</script>'
+
+    _normalized, _title, metadata = normalize_public_job_html(
+        html,
+        final_url="https://jobs.example/video-editor",
+    )
+
+    context = metadata["structured_context"]
+    assert context["responsibilities"] == ["Edit weekly learning videos."]
+    assert context["qualifications"] == ["Two years of editing experience."]
+
+
+def _source_with_structured_context(context: dict[str, object]) -> JobImportSource:
     labels = {
+        "job_title": "Structured job title",
+        "role_summary": "Structured role summary",
+        "about_summary": "Structured employer summary",
+        "responsibilities": "Structured responsibility",
+        "qualifications": "Structured qualification",
+        "employment_type": "Structured employment type",
         "role_location": "Structured role location",
         "industry": "Structured industry",
         "experience_requirement": "Structured experience requirement",
     }
-    original_text = "\n".join(
-        f"{labels[key]}: {value}" for key, value in context.items() if key in labels
-    )
+    lines: list[str] = []
+    for key, value in context.items():
+        label = labels.get(key)
+        if label is None:
+            continue
+        if isinstance(value, str):
+            lines.append(f"{label}: {value}")
+        elif isinstance(value, list):
+            lines.extend(f"{label}: {item}" for item in value if isinstance(item, str))
+    original_text = "\n".join(lines)
     return JobImportSource(
         owner_user_id=uuid4(),
         source_type="public_url",
@@ -334,6 +438,444 @@ def test_provider_value_wins_while_other_structured_fallbacks_are_added() -> Non
     assert {item.field_path for item in augmented.missing_fields}.isdisjoint(
         {"content_niches", "experience_level"}
     )
+
+
+def test_shine_structured_context_recovers_core_fields_without_provider_values() -> None:
+    context: dict[str, object] = {
+        "job_title": "Video Editor",
+        "role_summary": "Edit and enhance learning videos for a school audience.",
+        "about_summary": ("A school-led education studio creating clear learning videos."),
+        "responsibilities": [
+            "Edit videos to ensure a high-quality final product",
+            "Enhance video and audio quality using editing software",
+        ],
+        "qualifications": [
+            "Minimum of 1-7 years of experience in video editing",
+            "Proficiency in video editing software and tools",
+        ],
+        "employment_type": "FULL_TIME",
+        "role_location": "Chennai, Tamil Nadu, IN",
+        "industry": "Education / Training",
+        "experience_requirement": "1\u20137 years of experience",
+    }
+    source = _source_with_structured_context(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "missing_fields": [
+                {"field_path": field_path}
+                for field_path in (
+                    "title",
+                    "primary_role_key",
+                    "engagement_type",
+                    "about_channel",
+                    "responsibilities",
+                    "requirements",
+                    "location",
+                    "content_niches",
+                    "experience_level",
+                )
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    fields = {field.field_path: field for field in augmented.fields}
+
+    assert fields["title"].value == "Video Editor"
+    assert fields["primary_role_key"].value == "video-editor"
+    assert fields["primary_role_key"].provenance == "suggested_inference"
+    assert fields["primary_role_key"].provider_confidence is not None
+    assert fields["primary_role_key"].provider_confidence.label == "high"
+    assert fields["engagement_type"].value == "full_time"
+    assert fields["about_channel"].value == context["about_summary"]
+    assert fields["responsibilities"].value == context["responsibilities"]
+    assert fields["requirements"].value == context["qualifications"]
+    assert fields["location"].value == "Chennai, Tamil Nadu, IN"
+    assert fields["content_niches"].value == ["Education"]
+    assert fields["content_niches"].provider_confidence is not None
+    assert fields["content_niches"].provider_confidence.label == "high"
+    assert fields["experience_level"].value == "1\u20137 years of experience"
+    assert augmented.missing_fields == []
+
+    for field_path in (
+        "title",
+        "primary_role_key",
+        "engagement_type",
+        "about_channel",
+        "responsibilities",
+        "requirements",
+    ):
+        assert fields[field_path].evidence
+        for evidence in fields[field_path].evidence:
+            assert evidence.location is not None
+            assert evidence.location.char_start is not None
+            assert source.original_text is not None
+            assert (
+                source.original_text[evidence.location.char_start : evidence.location.char_end]
+                == evidence.snippet
+            )
+
+
+@pytest.mark.parametrize(
+    ("employment_type", "expected_engagement"),
+    [
+        ("FULL_TIME, PERMANENT", "full_time"),
+        (["FULL_TIME", "PERMANENT"], "full_time"),
+        ("PART_TIME | PERMANENT", "part_time"),
+        ("FULL_TIME, PART_TIME", None),
+        (["FULL_TIME", "INTERN"], None),
+    ],
+)
+def test_structured_employment_maps_only_an_unambiguous_supported_token(
+    employment_type: object,
+    expected_engagement: str | None,
+) -> None:
+    source = _source_with_structured_context({"employment_type": employment_type})
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "missing_fields": [{"field_path": "engagement_type"}],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    engagement = next(
+        (field for field in augmented.fields if field.field_path == "engagement_type"),
+        None,
+    )
+    if expected_engagement is None:
+        assert engagement is None
+        assert [item.field_path for item in augmented.missing_fields] == ["engagement_type"]
+    else:
+        assert engagement is not None
+        assert engagement.value == expected_engagement
+        assert engagement.provider_confidence is not None
+        assert engagement.provider_confidence.label == "high"
+
+
+def test_exact_structured_facts_upgrade_matching_medium_provider_suggestions() -> None:
+    context = {
+        "job_title": "Video Editor",
+        "employment_type": "FULL_TIME, PERMANENT",
+        "industry": "Education / Training",
+    }
+    source = _source_with_structured_context(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured job title: Video Editor"}],
+                    "explanation": "The title suggests this role.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "full_time",
+                    "provenance": "suggested_inference",
+                    "evidence": [
+                        {"snippet": "Structured employment type: FULL_TIME, PERMANENT"}
+                    ],
+                    "explanation": "The employment metadata suggests full-time.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": ["Education"],
+                    "provenance": "suggested_inference",
+                    "evidence": [
+                        {"snippet": "Structured industry: Education / Training"}
+                    ],
+                    "explanation": "The industry suggests Education.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    fields = {field.field_path: field for field in augmented.fields}
+    for field_path in ("primary_role_key", "engagement_type", "content_niches"):
+        field = fields[field_path]
+        assert field.provider_confidence is not None
+        assert field.provider_confidence.label == "high"
+        assert field.provider_confidence.metadata["server_grounded_match"] is True
+        assert field.evidence
+
+
+def test_distinct_valid_provider_suggestions_are_never_upgraded_or_replaced() -> None:
+    context = {
+        "job_title": "Video Editor",
+        "employment_type": "FULL_TIME",
+        "industry": "Education",
+    }
+    source = _source_with_structured_context(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "primary_role_key",
+                    "value": "animator",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured job title: Video Editor"}],
+                    "explanation": "Provider chose another role.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "part_time",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured employment type: FULL_TIME"}],
+                    "explanation": "Provider chose another engagement.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": ["Gaming"],
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured industry: Education"}],
+                    "explanation": "Provider chose another niche.",
+                    "provider_confidence": {"score": 0.7, "label": "medium"},
+                },
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(
+        response,
+        source,
+        allowed_role_keys={"video-editor", "animator"},
+    )
+    fields = {field.field_path: field for field in augmented.fields}
+    assert fields["primary_role_key"].value == "animator"
+    assert fields["engagement_type"].value == "part_time"
+    assert fields["content_niches"].value == ["Gaming"]
+    for field_path in ("primary_role_key", "engagement_type", "content_niches"):
+        assert fields[field_path].provider_confidence is not None
+        assert fields[field_path].provider_confidence.label == "medium"
+    assert all(
+        warning.code != "structured_context_provider_value_repaired"
+        for warning in augmented.warnings
+    )
+
+
+def test_unknown_provider_role_cannot_block_an_exact_catalog_title_role() -> None:
+    source = _source_with_structured_context({"job_title": "Video Editor"})
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "primary_role_key",
+                    "value": "editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured job title: Video Editor"}],
+                    "explanation": "Provider returned a role outside the active catalog.",
+                    "provider_confidence": {"score": 0.8, "label": "high"},
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(
+        response,
+        source,
+        allowed_role_keys={"video-editor", "animator"},
+    )
+
+    role = next(
+        field for field in augmented.fields if field.field_path == "primary_role_key"
+    )
+    assert role.value == "video-editor"
+    assert any(
+        warning.code == "structured_context_provider_value_repaired"
+        and warning.field_path == "primary_role_key"
+        for warning in augmented.warnings
+    )
+
+
+def test_structured_title_never_repairs_to_an_inactive_catalog_role() -> None:
+    source = _source_with_structured_context({"job_title": "Video Editor"})
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "primary_role_key",
+                    "value": "editor",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured job title: Video Editor"}],
+                    "explanation": "Provider returned a role outside the active catalog.",
+                    "provider_confidence": {"score": 0.8, "label": "high"},
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(
+        response,
+        source,
+        allowed_role_keys={"animator"},
+    )
+
+    role = next(
+        field for field in augmented.fields if field.field_path == "primary_role_key"
+    )
+    assert role.value == "editor"
+    assert all(
+        warning.field_path != "primary_role_key"
+        or warning.code != "structured_context_provider_value_repaired"
+        for warning in augmented.warnings
+    )
+
+
+def test_malformed_provider_values_cannot_block_grounded_structured_fallbacks() -> None:
+    context: dict[str, object] = {
+        "job_title": "Video Editor",
+        "about_summary": "An education studio creating clear weekly learning videos.",
+        "responsibilities": ["Edit weekly learning videos."],
+        "qualifications": ["Two years of video editing experience."],
+        "employment_type": "FULL_TIME, PERMANENT",
+        "role_location": "Chennai, Tamil Nadu, IN",
+        "industry": "Education",
+        "experience_requirement": "1–7 years of experience",
+    }
+    source = _source_with_structured_context(context)
+    evidence = [{"snippet": "Structured job title: Video Editor"}]
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "x",
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "Video Editor",
+                    "provenance": "suggested_inference",
+                    "evidence": evidence,
+                    "explanation": "Provider returned a display label.",
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "PERMANENT",
+                    "provenance": "suggested_inference",
+                    "evidence": evidence,
+                    "explanation": "Provider returned an unsupported label.",
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": "Edit weekly learning videos.",
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+                {
+                    "field_path": "requirements",
+                    "value": {"qualification": "Two years"},
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+                {
+                    "field_path": "about_channel",
+                    "value": "too short",
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+                {
+                    "field_path": "location",
+                    "value": ["Chennai"],
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+                {
+                    "field_path": "content_niches",
+                    "value": "Education",
+                    "provenance": "suggested_inference",
+                    "evidence": evidence,
+                    "explanation": "Provider returned a scalar niche.",
+                },
+                {
+                    "field_path": "experience_level",
+                    "value": ["1-7 years"],
+                    "provenance": "extracted_from_source",
+                    "evidence": evidence,
+                },
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    fields = {field.field_path: field for field in augmented.fields}
+    assert fields["title"].value == context["job_title"]
+    assert fields["primary_role_key"].value == "video-editor"
+    assert fields["engagement_type"].value == "full_time"
+    assert fields["responsibilities"].value == context["responsibilities"]
+    assert fields["requirements"].value == context["qualifications"]
+    assert fields["about_channel"].value == context["about_summary"]
+    assert fields["location"].value == context["role_location"]
+    assert fields["content_niches"].value == ["Education"]
+    assert fields["experience_level"].value == context["experience_requirement"]
+    repaired_paths = {
+        warning.field_path
+        for warning in augmented.warnings
+        if warning.code == "structured_context_provider_value_repaired"
+    }
+    assert repaired_paths == {
+        "title",
+        "primary_role_key",
+        "engagement_type",
+        "responsibilities",
+        "requirements",
+        "about_channel",
+        "location",
+        "content_niches",
+        "experience_level",
+    }
+
+
+def test_provider_conflict_is_preserved_instead_of_structured_fallback_override() -> None:
+    source = _source_with_structured_context({"job_title": "Video Editor"})
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "conflicts": [
+                {
+                    "field_path": "primary_role_key",
+                    "values": [
+                        {
+                            "value": "video-editor",
+                            "evidence": [{"snippet": "Video Editor"}],
+                        },
+                        {
+                            "value": "graphic-designer",
+                            "evidence": [{"snippet": "Video Editor"}],
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+
+    assert [conflict.field_path for conflict in augmented.conflicts] == ["primary_role_key"]
+    assert all(field.field_path != "primary_role_key" for field in augmented.fields)
 
 
 def test_unsupported_months_stay_unresolved_without_guessing_a_band() -> None:
@@ -382,9 +924,7 @@ def test_supported_months_become_a_recruiter_confirmed_band_suggestion() -> None
     )
 
     augmented = JobImportService._with_deterministic_context(response, source)
-    experience = next(
-        field for field in augmented.fields if field.field_path == "experience_level"
-    )
+    experience = next(field for field in augmented.fields if field.field_path == "experience_level")
     assert experience.value == "1\u20133 years"
     assert experience.provenance == "suggested_inference"
     assert experience.provider_confidence is not None
@@ -544,6 +1084,7 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
     client: AsyncClient,
     public_page_server: str,
 ) -> None:
+    await active_test_role_id()
     owner = await _auth(client, "url-import-owner")
     other = await _auth(client, "url-import-other")
 
@@ -624,15 +1165,40 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         extracted = {field["field_path"]: field for field in processed_draft["fields"]}
         assert extracted["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
         assert extracted["location"]["decision_origin"] == "explicit"
-        assert extracted["content_niches"]["proposed_value"] == ["Education"]
-        assert extracted["content_niches"]["requires_confirmation"] is True
+        assert extracted["primary_role_key"]["effective_value"] == "video-editor"
+        assert extracted["engagement_type"]["effective_value"] == "full_time"
+        assert extracted["about_channel"]["effective_value"] == (
+            "A school-led education studio creating clear learning videos."
+        )
+        assert extracted["responsibilities"]["effective_value"] == [
+            "Edit learning videos for a school.",
+            "Enhance video and audio quality.",
+        ]
+        assert extracted["requirements"]["effective_value"] == [
+            "Minimum of 1-7 years of experience in video editing.",
+            "Proficiency with video editing software.",
+        ]
+        assert extracted["content_niches"]["effective_value"] == ["Education"]
+        assert extracted["content_niches"]["requires_confirmation"] is False
         assert extracted["experience_level"]["effective_value"] == "1\u20137 years of experience"
-        for field_path in ("location", "content_niches", "experience_level"):
+        for field_path in (
+            "primary_role_key",
+            "engagement_type",
+            "about_channel",
+            "responsibilities",
+            "requirements",
+            "location",
+            "content_niches",
+            "experience_level",
+        ):
             evidence = extracted[field_path]["evidence"][0]
             snippet = evidence["snippet"]
-            assert source["original_text"][
-                evidence["location"]["char_start"] : evidence["location"]["char_end"]
-            ] == snippet
+            assert (
+                source["original_text"][
+                    evidence["location"]["char_start"] : evidence["location"]["char_end"]
+                ]
+                == snippet
+            )
         assert len(provider.requests) == 1
         assert provider.requests[0].source.source_type == "external_listing_text"
         assert provider.requests[0].source.original_text == source["original_text"]

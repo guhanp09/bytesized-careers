@@ -429,6 +429,199 @@ class OpenAIJobImportExtractionResponse(BaseModel):
             diagnostics["affected_structure_index"] = location[1]
         return OpenAIJobImportPostParseError(reason, diagnostics=diagnostics)
 
+    @staticmethod
+    def _normalize_duplicate_field_paths(
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        """Repair only duplicate paths whose meaning is unambiguous.
+
+        Structured output cannot express the cross-collection invariant that a
+        field path appears once across ``fields``, ``conflicts`` and
+        ``missing_fields``. A provider can therefore return a perfectly useful
+        extracted field and also repeat the path as missing, or emit the exact
+        same field twice. Neither case should discard the rest of the job.
+
+        This deliberately does *not* choose between distinct proposed values,
+        nor between a field and a conflict. Those remain invalid and are
+        rejected by the provider-neutral contract below.
+        """
+
+        fields = payload.get("fields")
+        conflicts = payload.get("conflicts")
+        missing_fields = payload.get("missing_fields")
+        warnings = payload.get("warnings")
+        if not all(
+            isinstance(items, list) for items in (fields, conflicts, missing_fields, warnings)
+        ):
+            return payload
+
+        assert isinstance(fields, list)
+        assert isinstance(conflicts, list)
+        assert isinstance(missing_fields, list)
+        assert isinstance(warnings, list)
+
+        def canonical(value: object) -> str:
+            return json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+
+        def merge_evidence(
+            first: dict[str, object],
+            duplicate: dict[str, object],
+        ) -> None:
+            merged: list[object] = []
+            seen: set[str] = set()
+            for raw_evidence in (
+                *(first.get("evidence") if isinstance(first.get("evidence"), list) else []),
+                *(
+                    duplicate.get("evidence")
+                    if isinstance(duplicate.get("evidence"), list)
+                    else []
+                ),
+            ):
+                fingerprint = canonical(raw_evidence)
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                merged.append(raw_evidence)
+                if len(merged) >= MAX_EVIDENCE_SPANS_PER_REFERENCE:
+                    break
+            first["evidence"] = merged
+
+        def confidence_rank(value: dict[str, object]) -> tuple[float, float]:
+            label = value.get("label")
+            label_rank = {
+                "low": 0.0,
+                "medium": 0.5,
+                "high": 1.0,
+            }.get(label.strip().casefold() if isinstance(label, str) else "")
+            score = value.get("score")
+            numeric_score = (
+                float(score)
+                if isinstance(score, (int, float)) and not isinstance(score, bool)
+                else 0.0
+            )
+            return (
+                label_rank if label_rank is not None else numeric_score,
+                numeric_score,
+            )
+
+        def merge_ancillary_values(
+            first: dict[str, object],
+            duplicate: dict[str, object],
+        ) -> None:
+            merge_evidence(first, duplicate)
+            explanation = first.get("explanation")
+            duplicate_explanation = duplicate.get("explanation")
+            if (
+                not isinstance(explanation, str)
+                or not explanation.strip()
+            ) and isinstance(duplicate_explanation, str) and duplicate_explanation.strip():
+                first["explanation"] = duplicate_explanation
+
+            confidence_values = [
+                value
+                for value in (
+                    first.get("provider_confidence"),
+                    duplicate.get("provider_confidence"),
+                )
+                if isinstance(value, dict)
+            ]
+            if confidence_values:
+                # The lower provider-reported confidence is the safe choice;
+                # deterministic server evidence may raise it later under the
+                # domain policy, but duplicate provider output may not.
+                first["provider_confidence"] = min(
+                    confidence_values,
+                    key=confidence_rank,
+                )
+
+        normalized_paths: set[str] = set()
+        first_field_by_path: dict[str, dict[str, object]] = {}
+        normalized_fields: list[object] = []
+        for raw_field in fields:
+            if not isinstance(raw_field, dict):
+                normalized_fields.append(raw_field)
+                continue
+            field_path = raw_field.get("field_path")
+            if not isinstance(field_path, str):
+                normalized_fields.append(raw_field)
+                continue
+            previous = first_field_by_path.get(field_path)
+            if previous is None:
+                first_field_by_path[field_path] = raw_field
+                normalized_fields.append(raw_field)
+                continue
+            if (
+                canonical(previous.get("value")) == canonical(raw_field.get("value"))
+                and previous.get("provenance") == raw_field.get("provenance")
+            ):
+                merge_ancillary_values(previous, raw_field)
+                normalized_paths.add(field_path)
+                continue
+            # Keep distinct duplicates so the strict domain validator rejects
+            # them instead of silently choosing one provider value.
+            normalized_fields.append(raw_field)
+
+        occupied_paths = {
+            item.get("field_path")
+            for item in normalized_fields
+            if isinstance(item, dict) and isinstance(item.get("field_path"), str)
+        } | {
+            item.get("field_path")
+            for item in conflicts
+            if isinstance(item, dict) and isinstance(item.get("field_path"), str)
+        }
+        seen_missing: set[str] = set()
+        normalized_missing: list[object] = []
+        for raw_missing in missing_fields:
+            if not isinstance(raw_missing, dict):
+                normalized_missing.append(raw_missing)
+                continue
+            field_path = raw_missing.get("field_path")
+            if not isinstance(field_path, str):
+                normalized_missing.append(raw_missing)
+                continue
+            if field_path in occupied_paths or field_path in seen_missing:
+                normalized_paths.add(field_path)
+                continue
+            seen_missing.add(field_path)
+            normalized_missing.append(raw_missing)
+
+        normalized = {
+            **payload,
+            "fields": normalized_fields,
+            "missing_fields": normalized_missing,
+        }
+        normalized_warnings = list(warnings)
+        for field_path in sorted(normalized_paths):
+            if len(normalized_warnings) >= 30:
+                break
+            warning = {
+                "code": "provider_duplicate_path_normalized",
+                "message": "Repeated provider output for this field was normalized safely.",
+                "field_path": field_path,
+                "evidence": [],
+            }
+            candidate = {**normalized, "warnings": [*normalized_warnings, warning]}
+            if (
+                len(
+                    json.dumps(
+                        candidate,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                > MAX_EXTRACTION_RESPONSE_BYTES
+            ):
+                break
+            normalized_warnings.append(warning)
+        normalized["warnings"] = normalized_warnings
+        return normalized
+
     def to_domain_response(self, *, span_set: EvidenceSpanSet) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
         for field_index, field in enumerate(payload["fields"]):
@@ -480,6 +673,7 @@ class OpenAIJobImportExtractionResponse(BaseModel):
                     ),
                 },
             )
+        payload = self._normalize_duplicate_field_paths(payload)
         try:
             return JobImportExtractionResponse.model_validate(payload)
         except ValidationError as exc:

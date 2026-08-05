@@ -112,8 +112,9 @@ const STATIC_OPTIONS: Readonly<Record<string, readonly AnswerOption[]>> = {
   ],
   start_timeframe: [
     { value: "ASAP", label: "As soon as possible" },
-    { value: "Within 2 weeks", label: "Within two weeks" },
-    { value: "Within 1 month", label: "Within a month" },
+    { value: "<1mo", label: "Within one month" },
+    { value: "<2mo", label: "Within two months" },
+    { value: "<3mo", label: "Within three months" },
     { value: "Flexible", label: "Flexible" },
   ],
   duration_type: [
@@ -310,6 +311,27 @@ export function hasAnswerOptions(
 }
 
 /**
+ * Controlled choices that remain safer than a free-text control when an older
+ * server describes the underlying field as plain text.
+ *
+ * `start_timeframe` predates the canonical start-timing enum, so its schema is
+ * intentionally still a string for compatibility. That storage detail must not
+ * turn "When should this person start?" into a box that accepts arbitrary text.
+ * Keep this exception narrow: genuinely open text fields still need the
+ * recruiter's own words.
+ */
+export function controlledAnswerOptionsFor(
+  fieldPath: string,
+  serverKind: string | undefined,
+  context: AnswerOptionContext = {}
+): AnswerOption[] {
+  const options = answerOptionsFor(fieldPath, context);
+  if (!serverKind) return options;
+  if (fieldPath === "start_timeframe" && serverKind === "text") return options;
+  return [];
+}
+
+/**
  * How each field is asked about, in words a recruiter uses.
  *
  * Registry labels are written for a form: "Earlier start window" makes sense
@@ -325,6 +347,10 @@ const QUESTION_PHRASES: Readonly<Record<string, { heading: string; prompt: strin
   start_timing: {
     heading: "When should this person start?",
     prompt: "Candidates use this to check the timing works for them.",
+  },
+  start_date: {
+    heading: "Which date should it start on?",
+    prompt: "You chose a specific date, so this is the one candidates will see.",
   },
   work_mode: {
     heading: "Where will this person work?",
@@ -449,4 +475,59 @@ export function minimumAnswerLength(fieldPath: string): number {
   if (fieldPath === "about_channel") return 20;
   if (fieldPath === "requirements" || fieldPath === "responsibilities") return 8;
   return 1;
+}
+
+/**
+ * Reject obvious filler before it can become a candidate-facing requirement or
+ * responsibility.
+ *
+ * This is deliberately a small structural guard, not an attempt to judge the
+ * recruiter's prose. These two fields describe work in phrases or sentences; a
+ * single token, a long run of one character, or a string made from only a few
+ * repeated characters cannot do that. The server remains authoritative and
+ * applies the same rule to direct callers.
+ */
+export function isMeaningfulImportAnswer(fieldPath: string, value: string): boolean {
+  if (fieldPath !== "requirements" && fieldPath !== "responsibilities") return true;
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+  const phraseKey = normalized
+    .toLocaleLowerCase()
+    .replace(/['’]/gu, "")
+    .replace(/[^\p{L}\p{N}_]+/gu, " ")
+    .trim();
+  const meaninglessPhrases = new Set([
+    "asdf",
+    "blah",
+    "blah blah",
+    "dummy text",
+    "i dont know",
+    "idk",
+    "lorem ipsum",
+    "n a",
+    "na",
+    "none",
+    "not sure",
+    "provided during qa",
+    "test",
+    "test answer",
+    "tbd",
+    "todo",
+    "unknown",
+  ]);
+  if (meaninglessPhrases.has(phraseKey)) return false;
+
+  const words = normalized.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
+  if (
+    words.length < 2 ||
+    new Set(words.map((word) => word.toLocaleLowerCase())).size < 2
+  ) {
+    return false;
+  }
+
+  const compact = normalized.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  if (/(.)\1{4,}/u.test(compact)) return false;
+  if (compact.length >= 8 && new Set(compact).size <= 3) return false;
+
+  return true;
 }

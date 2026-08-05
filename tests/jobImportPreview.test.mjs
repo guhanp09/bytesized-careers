@@ -23,6 +23,7 @@ registerHooks({
 const {
   importPreviewFilledCount,
   importPreviewProps,
+  importPreviewRoleName,
   importPreviewSnapshot,
   previewValueForField,
 } = await import("../lib/jobImportPreview.ts");
@@ -182,6 +183,39 @@ test("live canonical values win once the job actually exists", () => {
   );
   assert.equal(snapshot.values.title, "Title the recruiter typed");
   assert.deepEqual(snapshot.provisionalFields, []);
+});
+
+test("a stable imported role key resolves through the public role catalog", () => {
+  const snapshot = importPreviewSnapshot(
+    draft([
+      field({ field_path: "primary_role_key", proposed_value: "video-editor" }),
+    ])
+  );
+  const roles = [
+    {
+      id: "role-video-editor",
+      slug: "video-editor",
+      name: "Video Editor",
+      category: "Editing",
+    },
+  ];
+  assert.equal(importPreviewRoleName(snapshot, roles), "Video Editor");
+  assert.equal(
+    importPreviewRoleName(snapshot, []),
+    "Video Editor",
+    "the stable slug prevents a false blank while the catalog is loading"
+  );
+
+  const singleToken = importPreviewSnapshot(
+    draft([
+      field({ field_path: "primary_role_key", proposed_value: "scriptwriter" }),
+    ])
+  );
+  assert.equal(
+    importPreviewRoleName(singleToken, []),
+    "Scriptwriter",
+    "single-token catalog slugs must not flash as an unselected role"
+  );
 });
 
 test("preview props go through the same hydration Post Job uses on a saved draft", async () => {
