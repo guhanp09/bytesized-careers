@@ -356,6 +356,13 @@ const QUESTION_PHRASES: Readonly<Record<string, { heading: string; prompt: strin
     heading: "Where is this role based?",
     prompt: "It decides who can realistically apply.",
   },
+  primary_role_key: {
+    // Only ever asked when the source named several crafts and none of them
+    // dominates. A listing filed under the wrong craft is shown to the wrong
+    // people, and that is not something the recruiter can see and correct later.
+    heading: "Which craft is this role mainly for?",
+    prompt: "The listing names a few, and this is the one candidates search by.",
+  },
   experience_level: {
     heading: "How much experience should candidates already have?",
     prompt: "Candidates filter on this before they read anything else.",

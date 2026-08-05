@@ -296,6 +296,7 @@ def deterministic_question_queue(
     active_conditional_fields: frozenset[str],
     suggested_fields: dict[str, str] | None = None,
     dismissed_fields: frozenset[str] = frozenset(),
+    ambiguous_fields: frozenset[str] = frozenset(),
 ) -> list[QueueCandidate]:
     """Every field that still legitimately needs a recruiter, best first.
 
@@ -352,7 +353,9 @@ def deterministic_question_queue(
             and path not in active_conditional_fields
         ):
             continue
-        kind = conversation_question_kind(path, requirement)
+        kind = conversation_question_kind(
+            path, requirement, is_conflict=path in ambiguous_fields
+        )
         if kind is None:
             continue
         seen.add(path)
@@ -375,7 +378,12 @@ def deterministic_question_queue(
             and path not in active_conditional_fields
         ):
             continue
-        kind = conversation_question_kind(path, requirement)
+        # An ambiguous field is not an omission. The source spoke, it named
+        # several supported answers, and no rule can pick between them — which
+        # is the same situation as a contradiction and earns the same question.
+        kind = conversation_question_kind(
+            path, requirement, is_conflict=path in ambiguous_fields
+        )
         if kind is None:
             # Not needed to understand the source and not a chosen improvement.
             # Ordinary Post Job editing is the right place for it.

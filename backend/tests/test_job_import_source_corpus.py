@@ -124,6 +124,12 @@ async def _prepare(
 
     payload = _extraction_for(source) if with_model else _EMPTY_EXTRACTION
     async with TestSessionLocal() as session:
+        from app.db.seed import seed_roles_if_missing
+
+        # Roles arrive via a migration and this suite builds schema with
+        # create_all. Without the catalog a craft question has no names to put
+        # on its buttons, which is the one thing that question must never do.
+        await seed_roles_if_missing(session)
         service = JobImportService(
             JobImportRepository(session), JobService(JobRepository(session))
         )

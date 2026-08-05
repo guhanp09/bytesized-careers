@@ -754,7 +754,23 @@ class JobImportConversationService:
             resolved_fields=resolved,
             suppressed_fields=suppressed_by_answers(answers),
             active_conditional_fields=await self._active_conditionals(draft),
+            ambiguous_fields=await self._ambiguous_fields(draft),
         )
+
+    async def _ambiguous_fields(self, draft: JobImportDraft) -> frozenset[str]:
+        """Fields where the source supports more than one supported answer.
+
+        Only the creator craft, for now. A title reading "Video Editing, VFX &
+        Animation" names several supported crafts and no dominant one; picking
+        for the recruiter would mis-file the listing in search, and leaving it
+        empty hands them a draft with no craft and no explanation. Both are worse
+        than one short question with the plausible options on it.
+
+        A single clear craft is never ambiguous and is applied without asking.
+        """
+
+        options = await self._title_role_options(draft)
+        return frozenset({"primary_role_key"}) if len(options) >= 2 else frozenset()
 
     async def _queue_for(self, draft: JobImportDraft) -> list[QueueCandidate]:
         fields = await self.import_service.repository.list_fields(draft.id)
@@ -786,6 +802,7 @@ class JobImportConversationService:
             answered_fields=frozenset(answers),
             suppressed_fields=suppressed_by_answers(answers),
             active_conditional_fields=await self._active_conditionals(draft),
+            ambiguous_fields=await self._ambiguous_fields(draft),
             suggested_fields=suggested,
             dismissed_fields=frozenset(self._dismissed(draft)),
         )

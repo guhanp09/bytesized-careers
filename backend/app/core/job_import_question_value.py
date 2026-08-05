@@ -94,14 +94,26 @@ LONG_FORM_DEFERRED: Final[frozenset[str]] = frozenset(
     {"about_channel", "responsibilities", "requirements"}
 )
 
-#: Resolved internally rather than asked about.
+#: Resolved internally rather than asked about — *when it can be resolved*.
 #:
-#: ``primary_role_key`` is the case that made this necessary. Its values are an
-#: internal creator taxonomy of roughly thirty crafts; putting that to someone as
-#: a chat question is a worse version of the picker they are about to see, and on
-#: a job outside the marketplace's scope — a financial analyst, say — there is no
-#: honest answer at all. It is derived from the title where the title says so,
-#: and otherwise left to the editor, which has the real control.
+#: ``primary_role_key`` is the case that made this necessary, and then the case
+#: that showed the rule was drawn too widely. Its values are an internal creator
+#: taxonomy of roughly thirty crafts; putting that whole list to someone as a
+#: chat question is a worse version of the picker they are about to see, and on a
+#: job outside the marketplace's scope — a financial analyst, say — there is no
+#: honest answer at all. So a craft the title names is applied silently, and a
+#: craft nothing names is left to the editor, which has the real control.
+#:
+#: What that missed is the case in between. A title reading "Video Editing, VFX &
+#: Animation" names several supported crafts and no dominant one. Choosing for
+#: the recruiter files the listing under a craft they did not pick, and the wrong
+#: candidates see it; leaving it empty hands them a draft with no craft and no
+#: explanation of why. Both are worse than one short question carrying only the
+#: crafts the source actually named — which is two or three chips, not thirty.
+#:
+#: Membership here therefore means "never asked *from absence*". Ambiguity is not
+#: absence: the caller marks the field ambiguous, which routes it through the
+#: conflict path below, because two evidenced readings is exactly what it is.
 RESOLVED_INTERNALLY: Final[frozenset[str]] = frozenset({"primary_role_key"})
 
 

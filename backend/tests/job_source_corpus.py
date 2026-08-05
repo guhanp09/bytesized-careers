@@ -572,6 +572,79 @@ NO_TRIAL_PASTE = GoldenSource(
 )
 
 
+# ---------------------------------------------------------------------------
+# Craft ambiguity
+#
+# A page can name a supported craft without naming a practitioner, and it can
+# name several at once. Both were invisible: role words were agent nouns, so a
+# title of activities matched nothing, and the role was then never asked about
+# because policy said it never should be. The recruiter got an empty craft and
+# no explanation. These entries hold both halves — read one craft silently, ask
+# about several — and the non-creator entry above holds the third case.
+# ---------------------------------------------------------------------------
+
+BEBEE_MULTI_CRAFT = GoldenSource(
+    key="bebee_multi_craft",
+    title="Visual Content Creator - Video Editing, VFX & Animation",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Visual Content Creator - Video Editing, VFX & Animation",
+        "employmentType":"FULL_TIME",
+        "hiringOrganization":{"@type":"Organization","name":"Adithya Global School"},
+        "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+        "addressLocality":"Coimbatore","addressRegion":"Coimbatore district",
+        "addressCountry":"IN"}},
+        "baseSalary":{"@type":"MonetaryAmount","currency":"INR","value":
+        {"@type":"QuantitativeValue","minValue":29167,"maxValue":41667,
+        "unitText":"MONTH"}}}""",
+        "<h1>Visual Content Creator</h1><h2>Experience</h2><ul><li><strong>25 years"
+        "</strong> of professional experience in Video Editing, Motion Graphics, "
+        "Animation, or Digital Content Creation.</li></ul>" + _BOILERPLATE,
+        "Visual Content Creator - Video Editing, VFX & Animation",
+    ),
+    established={
+        "engagement_type": "full_time",
+        "work_mode": "onsite",
+        # The district wrapper and country code are not part of a city name.
+        "location": "Coimbatore",
+        "budget_currency": "INR",
+        "budget_amount": 29167,
+        "budget_max": 41667,
+        "budget_unit": "per month",
+        "compensation_mode": "range",
+        # The page states 25 years, in a labelled Experience section its own
+        # markup omits. That is almost certainly a typo for 2-5, and deciding so
+        # is the recruiter's call, so it is carried exactly as written. Shaping
+        # it into a band the editor accepts happens on the way to the draft and
+        # is pinned separately, in test_job_import_bebee_defects.
+        "experience_level": "25 years",
+    },
+    absent=("start_timing", "platforms"),
+    contested=("primary_role_key",),
+    note=(
+        "The page names three crafts and no dominant one, so the craft is the "
+        "one thing here worth a question. Everything else it states plainly."
+    ),
+)
+
+SINGLE_CRAFT_AS_ACTIVITY = GoldenSource(
+    key="single_craft_as_activity",
+    title="Freelance Motion Graphics for a weekly finance show",
+    html=_page(
+        """{"@context":"https://schema.org","@type":"JobPosting",
+        "title":"Freelance Motion Graphics for a weekly finance show",
+        "employmentType":"CONTRACTOR","jobLocationType":"TELECOMMUTE"}""",
+        "<h1>Motion Graphics</h1><p>Weekly explainer segments.</p>" + _BOILERPLATE,
+        "Freelance Motion Graphics for a weekly finance show",
+    ),
+    established={"engagement_type": "ongoing_freelance", "work_mode": "remote"},
+    absent=("budget_amount", "start_timing"),
+    note=(
+        "One craft, named as an activity rather than a person. It must be read "
+        "silently: a single clear answer is never worth an interruption."
+    ),
+)
+
 CORPUS: tuple[GoldenSource, ...] = (
     GREENHOUSE_FULL,
     GREENHOUSE_NO_JSONLD,
@@ -595,4 +668,6 @@ CORPUS: tuple[GoldenSource, ...] = (
     NON_CREATOR_ROLE,
     DEADLINE_AND_START,
     NO_TRIAL_PASTE,
+    BEBEE_MULTI_CRAFT,
+    SINGLE_CRAFT_AS_ACTIVITY,
 )
