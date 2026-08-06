@@ -233,6 +233,24 @@ const PLATFORM_SUGGESTIONS = ["YouTube", "Instagram"];
 
 type IconName = React.ComponentProps<typeof Icon>["name"];
 
+/**
+ * The years a dropdown should offer, always including the one it already holds.
+ *
+ * The list stops at ten because that is where a useful picker stops. But a job
+ * post can state more — one real listing asked for twenty-five years — and a
+ * select whose value matches no option renders blank, so a figure read straight
+ * off the source looked to the recruiter like nothing had been filled in.
+ * Keeping the held value in the list shows what the draft actually says.
+ */
+function experienceYearOptions(current: string): number[] {
+  const offered = Array.from({ length: 11 }, (_, index) => index);
+  const held = Number(current);
+  if (current && Number.isFinite(held) && held >= 0 && !offered.includes(held)) {
+    return [...offered, held].sort((left, right) => left - right);
+  }
+  return offered;
+}
+
 function LabelWithIcon({
   icon,
   children,
@@ -1743,7 +1761,7 @@ export default function PostJobForm({
                   <option value="" className="bg-[#0b0b0f]">
                     Min years
                   </option>
-                  {Array.from({ length: 11 }, (_, i) => i).map((n) => (
+                  {experienceYearOptions(expMin).map((n) => (
                     <option key={`min-${n}`} value={String(n)} className="bg-[#0b0b0f]">
                       {n}
                     </option>
@@ -1766,7 +1784,7 @@ export default function PostJobForm({
                   <option value="" className="bg-[#0b0b0f]">
                     Max years
                   </option>
-                  {Array.from({ length: 11 }, (_, i) => i).map((n) => (
+                  {experienceYearOptions(expMax).map((n) => (
                     <option key={`max-${n}`} value={String(n)} className="bg-[#0b0b0f]">
                       {n}
                     </option>

@@ -1460,7 +1460,10 @@ export default function PostJobPage() {
   const experienceText = useMemo(() => {
     const min = expMin ? Number(expMin) : NaN;
     const max = expMax ? Number(expMax) : NaN;
-    if (!expMin || !expMax || Number.isNaN(min) || Number.isNaN(max)) return "";
+    if (!expMin || Number.isNaN(min)) return "";
+    // No maximum is a real answer — "five years or more" — so it is kept rather
+    // than discarded. Requiring both dropped an open-ended requirement on save.
+    if (!expMax || Number.isNaN(max)) return formatExperiencePreview(expMin, "");
     if (max < min) return formatExperiencePreview(expMin, expMin);
     return formatExperiencePreview(expMin, expMax);
   }, [expMin, expMax]);
@@ -1625,7 +1628,11 @@ export default function PostJobPage() {
       const normalized = typeof value === "string" ? value : "";
       const match = normalized.match(/(\d+)\s*[–-]\s*(\d+)/);
       if (match) return { min: match[1], max: match[2] };
-      const single = normalized.match(/(\d+)\+?/);
+      // "5+ years" states a floor and no ceiling. Reading it as 5–5 turned an
+      // open-ended requirement into an exact one the source never stated.
+      const openEnded = normalized.match(/(\d+)\s*\+/);
+      if (openEnded) return { min: openEnded[1], max: "" };
+      const single = normalized.match(/(\d+)/);
       if (single) return { min: single[1], max: single[1] };
       return { min: "", max: "" };
     };
@@ -1790,7 +1797,9 @@ export default function PostJobPage() {
         );
         setPreviewLocationText(nextWorkMode === "Remote" ? "Remote" : nextWorkMode && nextLocation ? `${nextWorkMode} - ${nextLocation}` : "");
         setPreviewExperienceText(
-          experience.min && experience.max ? formatExperiencePreview(experience.min, experience.max) : draft.experience_level || ""
+          experience.min
+            ? formatExperiencePreview(experience.min, experience.max)
+            : draft.experience_level || ""
         );
       })
       .catch(() => {
@@ -3378,6 +3387,10 @@ export default function PostJobPage() {
       } else {
         nextExperience = formatExperiencePreview(expMin, expMax);
       }
+    } else if (hasExpMin && !hasExpMax && !Number.isNaN(expMinNum)) {
+      // A floor with no ceiling. Without this the rail kept whatever it showed
+      // before, so an open-ended requirement read as the last closed range.
+      nextExperience = formatExperiencePreview(expMin, "");
     }
 
     let nextLocation = previewLocationText;

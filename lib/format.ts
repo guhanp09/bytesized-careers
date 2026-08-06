@@ -36,7 +36,12 @@ export function formatBudgetPreview(minStr: string, maxStr: string, unit: "per p
 export function formatExperiencePreview(minStr: string, maxStr: string) {
   const min = Number(minStr);
   const max = Number(maxStr);
-  if (!minStr || !maxStr || Number.isNaN(min) || Number.isNaN(max)) return "";
+  if (!minStr || Number.isNaN(min)) return "";
+  // A minimum with no maximum is open-ended, and saying so is the only honest
+  // rendering. Returning "" dropped the requirement entirely, and treating the
+  // minimum as both bounds advertised "5 years" for a post asking for five or
+  // more — a narrower claim than the source made.
+  if (!maxStr || Number.isNaN(max)) return `${min}+ years`;
   if (min === max) return `${min} years`;
   return `${min}–${max} years`;
 }
