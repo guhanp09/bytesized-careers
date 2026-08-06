@@ -19,7 +19,31 @@ from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
 MAX_URL_RESPONSE_BYTES = 1_000_000
 MAX_URL_REDIRECTS = 4
 URL_CONNECT_TIMEOUT_SECONDS = 5.0
-URL_TOTAL_TIMEOUT_SECONDS = 12.0
+
+#: How long any single network operation may take.
+#:
+#: Separate from the total below, which they were not. One number served as both
+#: the per-read timeout and the budget for the whole attempt, so a chain of up to
+#: five requests — this fetcher follows redirects itself, revalidating the
+#: destination each hop — had to finish inside the time allowed for one of them.
+#: A single slow hop consumed everything the chain had.
+URL_READ_TIMEOUT_SECONDS = 8.0
+
+#: The ceiling on one whole attempt, redirects included.
+#:
+#: Deliberately larger than one operation and much smaller than the worst case
+#: the operation budget permits: it is a stop, not a target. Measured against the
+#: reported page, a normal fetch completes in about 0.7s.
+URL_TOTAL_TIMEOUT_SECONDS = 15.0
+
+#: One retry, and only for a timeout.
+#:
+#: A page that answered a moment ago and times out now has told us nothing about
+#: itself; a page returning 404 has. So only the transient case is retried, and
+#: only once — the recruiter is waiting, and a second failure is an answer.
+#: Every attempt re-runs destination validation, so a retry cannot be used to
+#: slip past the SSRF checks a first attempt failed.
+URL_TIMEOUT_RETRIES = 1
 URL_USER_AGENT = "CreatorJobs-PublicJobImporter/1.0"
 ALLOWED_URL_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
 
@@ -777,15 +801,38 @@ class PublicJobUrlFetcher:
         )
 
     async def fetch(self, raw_url: str) -> PublicJobUrlRetrieval:
-        try:
-            async with asyncio.timeout(URL_TOTAL_TIMEOUT_SECONDS):
-                return await self._fetch_with_operation_timeouts(raw_url)
-        except TimeoutError as exc:
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_TIMEOUT",
-                "The public page took too long to respond.",
-                status_code=504,
-            ) from exc
+        """Retrieve a public page, retrying a timeout once and nothing else.
+
+        The retry exists because a timeout is not evidence about the page. A
+        live import of a page that normally answers in under a second failed
+        outright on a momentary network stall, and the recruiter was shown a
+        failure for something that would have worked if asked twice.
+
+        Only the timeout is retried. A refusal, a redirect loop, an oversized
+        body or a blocked destination are all answers, and repeating the request
+        would neither change them nor respect the site.
+        """
+
+        for attempt in range(URL_TIMEOUT_RETRIES + 1):
+            last = attempt >= URL_TIMEOUT_RETRIES
+            try:
+                async with asyncio.timeout(URL_TOTAL_TIMEOUT_SECONDS):
+                    return await self._fetch_with_operation_timeouts(raw_url)
+            except TimeoutError as exc:
+                # The whole-attempt deadline.
+                if last:
+                    raise PublicJobUrlFetchError(
+                        "JOB_IMPORT_URL_TIMEOUT",
+                        "The public page took too long to respond.",
+                        status_code=504,
+                    ) from exc
+            except PublicJobUrlFetchError as exc:
+                # A single stalled operation, already named by the layer below.
+                # Anything else it raises is an answer about the page, so it
+                # propagates on the first attempt rather than being repeated.
+                if last or exc.code != "JOB_IMPORT_URL_TIMEOUT":
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
 
     async def _fetch_with_operation_timeouts(
         self,
@@ -794,7 +841,7 @@ class PublicJobUrlFetcher:
         entered_url = await self._validate_destination(raw_url)
         current_url = entered_url
         timeout = httpx.Timeout(
-            URL_TOTAL_TIMEOUT_SECONDS,
+            URL_READ_TIMEOUT_SECONDS,
             connect=URL_CONNECT_TIMEOUT_SECONDS,
         )
         async with httpx.AsyncClient(

@@ -43,6 +43,8 @@ from app.services.job_import_url_service import JobImportUrlService
 from app.services.job_service import JobService
 from app.services.job_url_fetcher import (
     MAX_URL_RESPONSE_BYTES,
+    URL_READ_TIMEOUT_SECONDS,
+    URL_TOTAL_TIMEOUT_SECONDS,
     URL_USER_AGENT,
     PublicJobUrlFetcher,
     PublicJobUrlFetchError,
@@ -1307,3 +1309,96 @@ def test_url_retrieval_migration_is_additive_and_reversible(tmp_path: Path) -> N
     assert "final_source_url" not in columns
     assert "retrieved_at" not in columns
     assert "retrieval_metadata" not in columns
+
+
+class TestATransientTimeoutIsRetriedOnceAndNoMore:
+    """A timeout says nothing about the page; a refusal says everything.
+
+    A live import of a page that normally answers in under a second failed
+    outright on a momentary stall, and the recruiter was shown a failure for
+    something that would have worked if asked twice. So a timeout — and only a
+    timeout — gets one more attempt.
+    """
+
+    @staticmethod
+    async def _public_resolver(_hostname: str, _port: int):
+        return [ipaddress.ip_address("93.184.216.34")]
+
+    async def test_a_first_timeout_recovers_on_the_retry(self) -> None:
+        attempts: list[int] = []
+
+        def flaky(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise httpx.ReadTimeout("first attempt stalls")
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                content=b"<html><head><title>Video Editor</title></head>"
+                b"<body><h1>Video Editor</h1><p>Edit weekly explainers.</p></body></html>",
+            )
+
+        fetcher = PublicJobUrlFetcher(
+            resolver=self._public_resolver, transport=httpx.MockTransport(flaky)
+        )
+        retrieval = await fetcher.fetch("https://public.example/jobs/1")
+
+        assert len(attempts) == 2
+        assert "Video Editor" in retrieval.normalized_text
+
+    async def test_a_second_timeout_is_a_truthful_failure(self) -> None:
+        attempts: list[int] = []
+
+        def always_stalls(_request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            raise httpx.ReadTimeout("still stalling")
+
+        fetcher = PublicJobUrlFetcher(
+            resolver=self._public_resolver,
+            transport=httpx.MockTransport(always_stalls),
+        )
+        with pytest.raises(PublicJobUrlFetchError) as caught:
+            await fetcher.fetch("https://public.example/jobs/1")
+
+        # Bounded: tried twice, then stopped. Never an empty successful import.
+        assert len(attempts) == 2
+        assert caught.value.code == "JOB_IMPORT_URL_TIMEOUT"
+
+    async def test_a_refusal_is_an_answer_and_is_not_repeated(self) -> None:
+        attempts: list[int] = []
+
+        def refused(_request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            return httpx.Response(404, headers={"content-type": "text/html"})
+
+        fetcher = PublicJobUrlFetcher(
+            resolver=self._public_resolver, transport=httpx.MockTransport(refused)
+        )
+        with pytest.raises(PublicJobUrlFetchError):
+            await fetcher.fetch("https://public.example/jobs/1")
+
+        assert len(attempts) == 1
+
+    async def test_a_blocked_destination_is_not_reattempted(self) -> None:
+        async def private_resolver(_hostname: str, _port: int):
+            return [ipaddress.ip_address("127.0.0.1")]
+
+        attempts: list[int] = []
+
+        def never_reached(_request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            return httpx.Response(200)
+
+        fetcher = PublicJobUrlFetcher(
+            resolver=private_resolver, transport=httpx.MockTransport(never_reached)
+        )
+        with pytest.raises(PublicJobUrlFetchError):
+            await fetcher.fetch("https://public.example/jobs/1")
+
+        # The retry must never become a second chance at the SSRF checks.
+        assert attempts == []
+
+    def test_one_operation_may_not_consume_the_whole_attempt(self) -> None:
+        # These were the same number, so a redirect chain this fetcher is willing
+        # to follow could not fit inside the budget allowed for it.
+        assert URL_READ_TIMEOUT_SECONDS < URL_TOTAL_TIMEOUT_SECONDS
