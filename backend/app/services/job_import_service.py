@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.core.job_application_classification import classify_application_instructions
+from app.core.job_application_instructions import separate_application_instructions
 from app.core.job_apply_note import compose_public_apply_note
 from app.core.job_domain_taxonomy import (
     CREATIVE_AUTONOMY_LEVELS,
@@ -2373,11 +2375,60 @@ class JobImportService:
         deadline = payload.pop("deadline_at", None)
         stated = payload.get("how_to_apply")
         parsed_deadline = deadline if isinstance(deadline, datetime) else None
+        source_text = stated if isinstance(stated, str) else None
 
-        note = compose_public_apply_note(
-            source_text=stated if isinstance(stated, str) else None,
-            deadline=parsed_deadline,
+        # A request the application form can already collect becomes a structured
+        # requirement rather than a sentence. A rate then lands in a rate field
+        # and a portfolio in the portfolio picker, instead of being prose the
+        # candidate has to notice and the recruiter has to read.
+        #
+        # The priority is what stops anything appearing twice: a structured key
+        # wins, the note takes what has no structured home, and a screening
+        # question is only created for something neither could hold.
+        # Classify what survives sanitisation, not the raw source. Reading the
+        # original would let "on WhatsApp only" fall out as an unstructured
+        # material and land straight back in the note it was removed from.
+        separated = separate_application_instructions(source_text)
+        classified = classify_application_instructions(
+            " ".join(separated.safe_sentences) or None
         )
+        if classified.requirement_keys:
+            existing = payload.get("application_requirements")
+            merged = list(existing) if isinstance(existing, list) else []
+            for key in classified.requirement_keys:
+                if key not in merged:
+                    merged.append(key)
+            payload["application_requirements"] = merged
+
+        # The note carries only what nothing else can hold. Repeating a request
+        # the form already collects makes a candidate answer it twice, and an
+        # evaluative question published here would be asked of everyone who reads
+        # the listing rather than of everyone who applies.
+        if classified.requirement_keys:
+            # What is left is a list of things, not a sentence, so it goes in as
+            # materials and the composer supplies the framing.
+            note = compose_public_apply_note(
+                materials=list(classified.unstructured_materials),
+                deadline=parsed_deadline,
+            )
+        else:
+            note = compose_public_apply_note(
+                source_text=source_text,
+                deadline=parsed_deadline,
+            )
+
+        if classified.screening_questions:
+            existing_questions = payload.get("screening_questions")
+            rows = list(existing_questions) if isinstance(existing_questions, list) else []
+            known = {
+                row.get("prompt")
+                for row in rows
+                if isinstance(row, dict)
+            }
+            for prompt in classified.screening_questions:
+                if prompt not in known:
+                    rows.append({"prompt": prompt, "required": False})
+            payload["screening_questions"] = rows[:20]
         if note:
             payload["how_to_apply"] = note
         else:

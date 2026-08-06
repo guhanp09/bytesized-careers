@@ -157,7 +157,7 @@ _PORTFOLIO_CONTEXT: Final[tuple[str, ...]] = (
 _PURE_ROUTING = re.compile(
     r"^\s*(?:please\s+)?(?:"
     r"apply\s+(?:now|here|online|at|via|through|using|on)|"
-    r"use\s+the\s+(?:link|form|button)|"
+    r"use\s+(?:the|our|this)\s+(?:link|form|button|careers?\s+page|website|portal)|"
     r"fill\s+(?:out|in)\s+(?:the|this)|"
     r"click\s+(?:the|here)|"
     r"visit\s+(?:our|the|this)|"

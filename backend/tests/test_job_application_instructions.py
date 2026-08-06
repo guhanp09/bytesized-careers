@@ -239,7 +239,11 @@ class TestTheImportPipelineActuallyCallsThis:
 
         note = str(result["how_to_apply"])
         assert "whatsapp" not in note.lower()
-        assert "portfolio" in note and "AI-video confirmation" in note
+        # The portfolio is a structured requirement now — the application form
+        # collects it, so repeating it here would ask for it twice. What has no
+        # structured home still reaches the note.
+        assert result["application_requirements"] == ["relevant_portfolio"]
+        assert "personal details" in note and "AI-video confirmation" in note
 
     def test_an_imported_external_route_never_survives_conversion(self) -> None:
         result = self._convert(
