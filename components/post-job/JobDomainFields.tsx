@@ -2432,102 +2432,10 @@ export function TrialApplicationFields({
       <DomainCard
         id={`${prefix}-apply`}
         eyebrow="Applications"
-        title="Where and how should candidates apply?"
-        description="Everything here is candidate-visible. Do not include internal notes or private contact details."
+        title="Application requirements"
+        description="Candidates apply through CreatorJobs. Everything here is candidate-visible, so keep internal notes and private contact details out of it."
       >
         <div className="space-y-5">
-          <Group
-            id={`${prefix}-application-mode`}
-            legend="Application route"
-            hint="CreatorJobs applications keep the candidate's response and portfolio with the listing."
-            error={getError(errors, "application_mode", "external_apply_url")}
-          >
-            <div className="grid gap-2 sm:grid-cols-2">
-              <ChoiceButton
-                active={state.applicationMode === "internal"}
-                disabled={disabled}
-                onClick={() => onChange({ applicationMode: "internal" }, ["application_mode"])}
-              >
-                <span className="block">Apply on CreatorJobs</span>
-                <span className="mt-1 block text-[11px] font-normal leading-4 opacity-65">
-                  Review applications in your recruiter workspace.
-                </span>
-              </ChoiceButton>
-              <ChoiceButton
-                active={state.applicationMode === "external"}
-                disabled={disabled}
-                onClick={() => onChange({ applicationMode: "external" }, ["application_mode"])}
-              >
-                <span className="block">Apply on another site</span>
-                <span className="mt-1 block text-[11px] font-normal leading-4 opacity-65">
-                  Send candidates to one secure application URL.
-                </span>
-              </ChoiceButton>
-            </div>
-          </Group>
-          {state.applicationMode === "external" ? (
-            <Field
-              id={`${prefix}-external-url`}
-              label="External application URL"
-              hint="Use the final application page, not a company homepage or tracking redirect."
-              error={getError(errors, "external_apply_url")}
-            >
-              <input
-                id={`${prefix}-external-url`}
-                type="url"
-                inputMode="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                className={inputClass}
-                value={state.externalApplyUrl}
-                disabled={disabled}
-                maxLength={2000}
-                aria-invalid={Boolean(getError(errors, "external_apply_url"))}
-                aria-describedby={describedBy(
-                  `${prefix}-external-url`,
-                  true,
-                  getError(errors, "external_apply_url"),
-                )}
-                placeholder="https://…"
-                onChange={(event) => onChange({ externalApplyUrl: event.target.value }, ["external_apply_url"])}
-              />
-            </Field>
-          ) : state.externalApplyUrl.trim() ? (
-            <Notice>
-              The external URL entered earlier is retained in this draft, but it is not published while CreatorJobs applications are selected.
-            </Notice>
-          ) : null}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              id={`${prefix}-deadline`}
-              label="Application deadline"
-              hint="Shown in the recruiter's local date and time while editing."
-              error={getError(errors, "deadline_at")}
-              optional
-            >
-              <input
-                id={`${prefix}-deadline`}
-                type="datetime-local"
-                className={`${inputClass} [color-scheme:dark]`}
-                value={state.deadlineAt}
-                disabled={disabled}
-                aria-invalid={Boolean(getError(errors, "deadline_at"))}
-                aria-describedby={describedBy(
-                  `${prefix}-deadline`,
-                  true,
-                  getError(errors, "deadline_at"),
-                )}
-                onChange={(event) => onChange({ deadlineAt: event.target.value }, ["deadline_at"])}
-              />
-            </Field>
-            <div className="self-end">
-              <Notice>
-                Leave blank for a rolling search. Close the listing when the role is filled so candidates are not sent to a dead application.
-              </Notice>
-            </div>
-          </div>
-
           {legacyApplicationRequirements?.length ? (
             <Notice tone="amber">
               Existing application requests remain active: <span className="font-semibold">{legacyApplicationRequirements.join(", ")}</span>. The public instructions below should clarify them, not silently replace them.
@@ -2537,7 +2445,7 @@ export function TrialApplicationFields({
           <Field
             id={`${prefix}-how-to-apply`}
             label="Public how-to-apply note"
-            hint={publicInstructionsLockedReason || "Tell candidates what to submit, what a strong response includes, and what not to send."}
+            hint={publicInstructionsLockedReason || "Tell candidates what a strong response includes. Applications are handled here, so there is no need to say where to send anything."}
             error={getError(errors, "how_to_apply")}
             optional
           >
@@ -2553,11 +2461,7 @@ export function TrialApplicationFields({
                 true,
                 getError(errors, "how_to_apply"),
               )}
-              placeholder={
-                state.applicationMode === "external"
-                  ? "Use the link above. Include 2 relevant samples and briefly explain your role in each."
-                  : "Apply on CreatorJobs with 2 relevant samples and a short note about your approach."
-              }
+              placeholder="Include 2 relevant samples and a short note about your approach."
               onChange={(event) => onChange({ howToApply: event.target.value }, ["how_to_apply"])}
             />
           </Field>
