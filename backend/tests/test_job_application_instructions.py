@@ -211,3 +211,60 @@ class TestRecruiterProseIsWarnedAboutRatherThanRewritten:
     def test_a_safe_note_passes_untouched(self, note: str) -> None:
         assert contains_external_routing(note) is None
         assert compose_public_apply_note(recruiter_note=note) == note
+
+
+class TestTheImportPipelineActuallyCallsThis:
+    """The wiring, not just the parts.
+
+    The sanitizer existed and was correct for a while before anything invoked
+    it, which meant a real import still published the WhatsApp sentence. These
+    pin the connection at the conversion boundary every import passes through.
+    """
+
+    @staticmethod
+    def _convert(payload: dict[str, object]) -> dict[str, object]:
+        from app.services.job_import_service import JobImportService
+
+        return JobImportService._safe_application_payload(dict(payload))
+
+    def test_the_reported_source_becomes_a_safe_note_on_conversion(self) -> None:
+        result = self._convert(
+            {
+                "how_to_apply": (
+                    "Please share the requested portfolio, samples, personal "
+                    "details, and AI-video confirmation on WhatsApp only."
+                )
+            }
+        )
+
+        note = str(result["how_to_apply"])
+        assert "whatsapp" not in note.lower()
+        assert "portfolio" in note and "AI-video confirmation" in note
+
+    def test_an_imported_external_route_never_survives_conversion(self) -> None:
+        result = self._convert(
+            {
+                "application_mode": "external",
+                "external_apply_url": "https://jobs.example.test/apply",
+            }
+        )
+
+        assert result["application_mode"] == "internal"
+        assert "external_apply_url" not in result
+
+    def test_an_imported_deadline_becomes_note_text_not_a_field(self) -> None:
+        result = self._convert(
+            {
+                "how_to_apply": "Include two recent samples.",
+                "deadline_at": datetime(2026, 8, 31, tzinfo=UTC),
+            }
+        )
+
+        assert "deadline_at" not in result
+        assert "Applications close on 31 August 2026." in str(result["how_to_apply"])
+
+    def test_a_source_that_only_routes_leaves_no_note_behind(self) -> None:
+        result = self._convert({"how_to_apply": "Apply using the form below."})
+
+        assert "how_to_apply" not in result
+        assert result["application_mode"] == "internal"

@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.core.job_apply_note import compose_public_apply_note
 from app.core.job_domain_taxonomy import (
     CREATIVE_AUTONOMY_LEVELS,
     CREATOR_CONTENT_NICHES,
@@ -2341,6 +2342,50 @@ class JobImportService:
                 payload["primary_role_id"] = role.id
             elif policy.native_field is not None:
                 payload[policy.native_field] = value
+        return self._safe_application_payload(payload)
+
+    @staticmethod
+    def _safe_application_payload(payload: dict[str, object]) -> dict[str, object]:
+        """Make the application instructions safe before they become a draft.
+
+        This is the boundary the sanitizer was missing. Everything upstream —
+        the model, the structured reader, the recruiter's answers — can put an
+        off-platform instruction into ``how_to_apply``, and until this ran the
+        draft simply carried it. A page saying "share it on WhatsApp only"
+        published that sentence, sending candidates somewhere the platform
+        cannot follow and cannot record.
+
+        Three things happen here, in the one place every import passes through.
+
+        The note is recomposed from permitted parts only: what the source asked
+        candidates to include, plus a deadline if it stated one. The destination
+        is dropped rather than edited into the sentence, because a half-removed
+        instruction reads worse than none.
+
+        The route is forced internal. ``application_mode`` and
+        ``external_apply_url`` are platform-decided, so an imported value for
+        either is a claim about someone else's hiring process, not a setting.
+
+        The deadline stops being a field. It survives as a sentence in the note,
+        which is where a candidate actually reads it.
+        """
+
+        deadline = payload.pop("deadline_at", None)
+        stated = payload.get("how_to_apply")
+        parsed_deadline = deadline if isinstance(deadline, datetime) else None
+
+        note = compose_public_apply_note(
+            source_text=stated if isinstance(stated, str) else None,
+            deadline=parsed_deadline,
+        )
+        if note:
+            payload["how_to_apply"] = note
+        else:
+            payload.pop("how_to_apply", None)
+
+        # Never inherited from a source. The candidate applies here.
+        payload["application_mode"] = "internal"
+        payload.pop("external_apply_url", None)
         return payload
 
     @staticmethod
