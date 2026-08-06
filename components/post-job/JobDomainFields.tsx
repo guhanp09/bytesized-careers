@@ -1691,6 +1691,8 @@ export type TrialApplicationFieldsProps = JobDomainBaseProps & {
   /** Existing candidate-facing requirement chips rendered elsewhere in the posting flow. */
   legacyApplicationRequirements?: readonly string[] | null;
   publicInstructionsLockedReason?: string | null;
+  /** The applicant-requirements editor, rendered between note and questions. */
+  requirementsSlot?: React.ReactNode;
 };
 
 export function TrialApplicationFields({
@@ -1699,6 +1701,16 @@ export function TrialApplicationFields({
   errors,
   disabled,
   className = "",
+  /**
+   * The applicant-requirements editor, rendered between the public note and the
+   * screening questions.
+   *
+   * It arrives as a slot because it needs props that live in the parent form,
+   * and because there must be exactly one of it. A second, read-only copy was
+   * briefly added here to satisfy the ordering requirement, which left two
+   * competing versions of the same section on one screen.
+   */
+  requirementsSlot,
   engagementType,
   compensationCurrency,
   compensationUnit,
@@ -2361,23 +2373,9 @@ export function TrialApplicationFields({
             />
           </Field>
 
-        <div className="mt-5 border-t border-white/[0.07] pt-5">
-          <h4 className="text-xs font-semibold text-white/80">What applicants must include</h4>
-          <p className="mt-1 text-[11px] leading-4 text-subtle">
-            The standard materials and details every applicant supplies — an expected rate, a relevant portfolio, turnaround, working hours, tools or workflow. Ask for these here rather than as questions below.
-          </p>
-          {legacyApplicationRequirements?.length ? (
-            <div className="mt-3">
-              <Notice tone="amber">
-                Existing application requests remain active: <span className="font-semibold">{legacyApplicationRequirements.join(", ")}</span>. The note above should clarify them, not silently replace them.
-              </Notice>
-            </div>
-          ) : (
-            <p className="mt-3 rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-4 text-center text-xs leading-5 text-subtle">
-              Describe the materials in the note above. Every applicant is asked for them in the same way.
-            </p>
-          )}
-        </div>
+        {requirementsSlot ? (
+          <div className="mt-5 border-t border-white/[0.07] pt-5">{requirementsSlot}</div>
+        ) : null}
 
         <div className="mt-5 border-t border-white/[0.07] pt-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

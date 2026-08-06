@@ -18,32 +18,40 @@ import fs from "node:fs";
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("the note, then what applicants must include, then screening questions", () => {
-  const form = read("components/post-job/JobDomainFields.tsx");
+  const card = read("components/post-job/JobDomainFields.tsx");
+  const form = read("components/post-job/PostJobForm.tsx");
 
-  const note = form.indexOf('label="Public how-to-apply note"');
-  const materials = form.indexOf("What applicants must include");
-  const screening = form.indexOf(">Screening questions<");
+  // The requirements editor lives in the parent form because it needs props
+  // from there, and is passed in as a slot. What matters is where the slot
+  // renders: between the note and the questions, in the DOM the recruiter gets.
+  const note = card.indexOf('label="Public how-to-apply note"');
+  const slot = card.indexOf("{requirementsSlot}");
+  const screening = card.indexOf(">Screening questions<");
 
-  assert.ok(note > 0 && materials > 0 && screening > 0, "all three sections exist");
-  assert.ok(note < materials, "the note comes before the materials");
-  assert.ok(materials < screening, "materials come before screening questions");
+  assert.ok(note > 0 && slot > 0 && screening > 0, "all three positions exist");
+  assert.ok(note < slot, "the note comes before the requirements editor");
+  assert.ok(slot < screening, "requirements come before screening questions");
 
-  // Immediately after: nothing else may be inserted between them, because the
-  // gap is what let requirements drift into the wrong one.
-  const between = form.slice(materials, screening);
-  assert.doesNotMatch(between, /<DomainCard/, "no other card separates them");
+  // Nothing else may separate them; the gap is what let requirements drift.
+  assert.doesNotMatch(card.slice(slot, screening), /<DomainCard/);
+
+  // Exactly one requirements editor exists, and it is the real one.
+  assert.equal(card.match(/What applicants must include/g), null);
+  assert.equal(form.match(/What applicants must include/g).length, 1);
+  assert.match(form, /<RequirementSelector/);
 });
 
 test("each section says what it is for", () => {
-  const form = read("components/post-job/JobDomainFields.tsx");
+  const card = read("components/post-job/JobDomainFields.tsx");
+  const form = read("components/post-job/PostJobForm.tsx");
 
-  assert.match(form, /standard materials and details every applicant supplies/);
+  assert.match(form, /Choose the standard materials and details every applicant should provide/);
   assert.match(
-    form,
+    card,
     /Add questions that help you evaluate candidates after choosing the materials/
   );
   // Screening answers are private to the Inbox, and the copy says so.
-  assert.match(form, /never shown on the public listing/);
+  assert.match(card, /never shown on the public listing/);
 });
 
 test("screening questions left the hiring-process card entirely", () => {
