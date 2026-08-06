@@ -130,6 +130,32 @@ def _requirement_keys_in(sentence: str) -> list[str]:
     return found
 
 
+#: Platforms whose names carry information a generic requirement cannot.
+#:
+#: "reference_links" tells a candidate to send links. It cannot tell them the
+#: recruiter wants YouTube and Instagram specifically, which is the part that
+#: changes what they send — so a phrase naming one survives into the note even
+#: though the structured key already covers the general request.
+_PORTFOLIO_PLATFORMS: Final[tuple[str, ...]] = (
+    "youtube",
+    "instagram",
+    "tiktok",
+    "github",
+    "linkedin",
+    "behance",
+    "dribbble",
+    "vimeo",
+    "twitch",
+    "substack",
+    "spotify",
+)
+
+
+def _names_a_platform(fragment: str) -> bool:
+    lowered = fragment.lower()
+    return any(re.search(rf"\b{name}\b", lowered) for name in _PORTFOLIO_PLATFORMS)
+
+
 def _unmatched_items(sentence: str) -> str | None:
     """The requested things in a sentence that no structured field can hold.
 
@@ -146,7 +172,11 @@ def _unmatched_items(sentence: str) -> str | None:
         item = piece.strip().strip(".,;:")
         if len(re.findall(r"[A-Za-z]{2,}", item)) < 1:
             continue
-        if any(re.search(pattern, item, re.IGNORECASE) for _key, pattern in _REQUIREMENT_PATTERNS):
+        # A piece the structured key already covers is dropped — unless it names
+        # a platform, because that detail is exactly what the key cannot hold.
+        if not _names_a_platform(item) and any(
+            re.search(pattern, item, re.IGNORECASE) for _key, pattern in _REQUIREMENT_PATTERNS
+        ):
             continue
         kept.append(item)
     if not kept:

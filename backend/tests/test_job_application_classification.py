@@ -179,3 +179,64 @@ class TestPublicationRefusesOffPlatformRouting:
         # Keep the materials, drop the destination — and the prose itself is
         # never rewritten, so the draft still holds exactly what was typed.
         assert "Keep the requested" in message
+
+
+class TestPlatformContextSurvivesStructuredMapping:
+    """A generic key cannot say which platform, and that is the useful part.
+
+    "reference_links" tells a candidate to send links. It cannot tell them the
+    recruiter wants YouTube and Instagram specifically, which is what changes
+    what they send — so a phrase naming a platform survives into the note even
+    though the structured key already covers the general request.
+    """
+
+    def test_the_reported_loss_is_fixed(self) -> None:
+        result = convert(
+            "Email your CV and links to your YouTube and Instagram work to careers@example.com."
+        )
+
+        note = str(result["how_to_apply"])
+        assert "YouTube" in note and "Instagram" in note
+        assert "reference_links" in result["application_requirements"]
+        assert "@" not in note
+
+    @pytest.mark.parametrize(
+        ("source", "platform"),
+        [
+            ("Share your GitHub portfolio.", "GitHub"),
+            ("Include your TikTok editing samples.", "TikTok"),
+            ("Send LinkedIn content examples.", "LinkedIn"),
+        ],
+    )
+    def test_a_named_platform_reaches_the_candidate(
+        self, source: str, platform: str
+    ) -> None:
+        result = convert(source)
+
+        assert platform in str(result.get("how_to_apply", ""))
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "Apply through LinkedIn.",
+            "DM us on Instagram.",
+            "Send it on WhatsApp.",
+            "Email it to hiring@example.com.",
+        ],
+    )
+    def test_the_same_platforms_used_as_destinations_are_removed(
+        self, source: str
+    ) -> None:
+        result = convert(source)
+        note = str(result.get("how_to_apply", "")).lower()
+
+        for banned in ("linkedin", "instagram", "whatsapp", "@"):
+            assert banned not in note
+
+    def test_a_requirement_with_no_platform_does_not_repeat_itself(self) -> None:
+        # "your CV" is fully covered by the structured key, so repeating it in
+        # the note would ask the candidate for the same thing twice.
+        result = convert("Include your CV.")
+
+        assert result["application_requirements"] == ["relevant_portfolio"]
+        assert "how_to_apply" not in result
