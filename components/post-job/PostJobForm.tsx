@@ -234,22 +234,22 @@ const PLATFORM_SUGGESTIONS = ["YouTube", "Instagram"];
 type IconName = React.ComponentProps<typeof Icon>["name"];
 
 /**
- * The years a dropdown should offer, always including the one it already holds.
+ * Experience wordings offered as a starting point, never as the whole domain.
  *
- * The list stops at ten because that is where a useful picker stops. But a job
- * post can state more — one real listing asked for twenty-five years — and a
- * select whose value matches no option renders blank, so a figure read straight
- * off the source looked to the recruiter like nothing had been filled in.
- * Keeping the held value in the list shows what the draft actually says.
+ * ``experience_level`` is a plain string in the schema — no enum, no validator,
+ * nothing in search or matching depends on it. These four bands are the common
+ * cases, and treating them as the field's only legal values is what produced a
+ * listing claiming "5–8 years" from a source that said twenty-five.
  */
-function experienceYearOptions(current: string): number[] {
-  const offered = Array.from({ length: 11 }, (_, index) => index);
-  const held = Number(current);
-  if (current && Number.isFinite(held) && held >= 0 && !offered.includes(held)) {
-    return [...offered, held].sort((left, right) => left - right);
-  }
-  return offered;
-}
+const EXPERIENCE_SUGGESTIONS = [
+  "0–1 years",
+  "1–3 years",
+  "3–5 years",
+  "5–8 years",
+] as const;
+
+/** The longest an experience requirement may be, matching the column. */
+const EXPERIENCE_MAX_LENGTH = 64;
 
 function LabelWithIcon({
   icon,
@@ -906,10 +906,8 @@ export default function PostJobForm({
   onBudgetNoteChange,
   onBudgetUnitCustomChange,
   onBudgetIntentChange,
-  expMin,
-  expMax,
-  onExpMinChange,
-  onExpMaxChange,
+  experienceLevel,
+  onExperienceLevelChange,
   startWithin,
   platforms,
   onPlatformToggle,
@@ -1035,10 +1033,8 @@ export default function PostJobForm({
   onBudgetNoteChange: (next: string) => void;
   onBudgetUnitCustomChange: (next: string) => void;
   onBudgetIntentChange: (next: BudgetIntent) => void;
-  expMin: string;
-  expMax: string;
-  onExpMinChange: (next: string) => void;
-  onExpMaxChange: (next: string) => void;
+  experienceLevel: string;
+  onExperienceLevelChange: (next: string) => void;
   startWithin: StartTimeframe | "";
   onStartWithinChange: (next: StartTimeframe | "") => void;
   platforms: JobPlatform[];
@@ -1136,6 +1132,8 @@ export default function PostJobForm({
   const progressPercent = Math.round(weightedJobProgress(step) * 100);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityHighlight, setCityHighlight] = useState(0);
+  const [experienceOpen, setExperienceOpen] = useState(false);
+  const [experienceHighlight, setExperienceHighlight] = useState(0);
 
   const normalizeCity = (value: string) => value.trim().toLowerCase();
   const cityMatch = useMemo(
@@ -1742,54 +1740,104 @@ export default function PostJobForm({
               ) : null}
             </Field>
 
-            <Field label={<LabelWithIcon icon="cap">Experience</LabelWithIcon>} optional>
-              <div
-                className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center"
-                data-quality-target="job-experience"
-              >
-                <select
-                  className={selectBase}
-                  value={expMin}
-                  onChange={(e) => {
-                    const nextMin = e.target.value;
-                    onExpMinChange(nextMin);
-                    if (expMax && nextMin && Number(expMax) < Number(nextMin)) {
-                      onExpMaxChange(nextMin);
-                    }
+            <Field
+              id="job-experience"
+              label={<LabelWithIcon icon="cap">Experience</LabelWithIcon>}
+              optional
+              helper="Pick a suggestion or write your own — for example 10+ years, or Experience preferred."
+            >
+              <div className="relative" data-quality-target="job-experience">
+                <input
+                  id="job-experience"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={experienceOpen}
+                  aria-controls="job-experience-options"
+                  aria-label="Experience"
+                  aria-activedescendant={
+                    experienceOpen && EXPERIENCE_SUGGESTIONS[experienceHighlight]
+                      ? `job-experience-option-${experienceHighlight}`
+                      : undefined
+                  }
+                  className={basicsInputBase}
+                  placeholder="e.g. 3–5 years"
+                  maxLength={EXPERIENCE_MAX_LENGTH}
+                  value={experienceLevel}
+                  onChange={(event) => {
+                    onExperienceLevelChange(event.target.value);
+                    if (!experienceOpen) setExperienceOpen(true);
+                    setExperienceHighlight(0);
                   }}
-                >
-                  <option value="" className="bg-[#0b0b0f]">
-                    Min years
-                  </option>
-                  {experienceYearOptions(expMin).map((n) => (
-                    <option key={`min-${n}`} value={String(n)} className="bg-[#0b0b0f]">
-                      {n}
-                    </option>
-                  ))}
-                </select>
-
-                <span className="text-muted select-none">–</span>
-
-                <select
-                  className={selectBase}
-                  value={expMax}
-                  onChange={(e) => {
-                    const nextMax = e.target.value;
-                    onExpMaxChange(nextMax);
-                    if (expMin && nextMax && Number(nextMax) < Number(expMin)) {
-                      onExpMinChange(nextMax);
-                    }
+                  onFocus={() => {
+                    setExperienceOpen(true);
+                    setExperienceHighlight(0);
                   }}
-                >
-                  <option value="" className="bg-[#0b0b0f]">
-                    Max years
-                  </option>
-                  {experienceYearOptions(expMax).map((n) => (
-                    <option key={`max-${n}`} value={String(n)} className="bg-[#0b0b0f]">
-                      {n}
-                    </option>
-                  ))}
-                </select>
+                  // Deliberately unlike the city field above, which snaps to its
+                  // closest match on blur. Doing that here would silently turn a
+                  // recruiter's "25 years" into a suggested band, which is the
+                  // exact substitution this control exists to stop.
+                  onBlur={() => window.setTimeout(() => setExperienceOpen(false), 120)}
+                  onKeyDown={(event) => {
+                    if (!experienceOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                      setExperienceOpen(true);
+                      return;
+                    }
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setExperienceHighlight((prev) =>
+                        Math.min(prev + 1, EXPERIENCE_SUGGESTIONS.length - 1)
+                      );
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setExperienceHighlight((prev) => Math.max(prev - 1, 0));
+                    }
+                    if (event.key === "Enter" && experienceOpen) {
+                      const picked = EXPERIENCE_SUGGESTIONS[experienceHighlight];
+                      if (picked) {
+                        event.preventDefault();
+                        onExperienceLevelChange(picked);
+                      }
+                      setExperienceOpen(false);
+                    }
+                    if (event.key === "Escape") setExperienceOpen(false);
+                  }}
+                />
+                {experienceOpen ? (
+                  <div
+                    id="job-experience-options"
+                    role="listbox"
+                    aria-label="Common experience ranges"
+                    className="absolute z-20 mt-2 w-full rounded-xl border border-white/10 bg-[#0b0b0f] shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] overflow-hidden"
+                  >
+                    <p className="px-3 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">
+                      Suggestions
+                    </p>
+                    {EXPERIENCE_SUGGESTIONS.map((suggestion, index) => (
+                      <button
+                        key={suggestion}
+                        id={`job-experience-option-${index}`}
+                        type="button"
+                        tabIndex={-1}
+                        role="option"
+                        aria-selected={index === experienceHighlight}
+                        className={[
+                          "w-full cursor-pointer text-left px-3 py-2 text-sm text-white/85",
+                          index === experienceHighlight
+                            ? "bg-white/10"
+                            : "bg-transparent hover:bg-white/5",
+                        ].join(" ")}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          onExperienceLevelChange(suggestion);
+                          setExperienceOpen(false);
+                        }}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </Field>
           </div>

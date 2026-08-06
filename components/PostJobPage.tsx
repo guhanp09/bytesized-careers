@@ -32,7 +32,6 @@ import {
 } from "../lib/backendClient";
 import { findToolCatalogEntry } from "../lib/toolCatalog";
 import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
-import { formatExperiencePreview } from "../lib/format";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
 import { INDIA_CITIES } from "../lib/indiaCities";
 import PostJobForm from "./post-job/PostJobForm";
@@ -178,8 +177,7 @@ type SavedBasics = {
   budgetIntent: BudgetIntent;
   workMode: WorkMode;
   city: string;
-  expMin: string;
-  expMax: string;
+  experienceLevel: string;
   startWithin: StartTimeframe | "";
   platform: JobPlatform;
   platforms: IdentityPlatform[];
@@ -1226,8 +1224,11 @@ export default function PostJobPage() {
   const [workMode, setWorkMode] = useState<WorkMode>("");
   const [city, setCity] = useState("");
 
-  const [expMin, setExpMin] = useState("");
-  const [expMax, setExpMax] = useState("");
+  // One free-form string, because that is exactly what the field is: the API
+  // and the column both take a plain string. It was two numeric selects, which
+  // could not hold "25 years" or "Experience preferred" and silently dropped
+  // anything the pair could not express.
+  const [experienceLevel, setExperienceLevel] = useState("");
 
   const [startWithin, setStartWithin] = useState<StartTimeframe | "">("");
 
@@ -1282,8 +1283,7 @@ export default function PostJobPage() {
     budgetIntent: "",
     workMode: "",
     city: "",
-    expMin: "",
-    expMax: "",
+    experienceLevel: "",
     startWithin: "",
     platform: "",
     platforms: [],
@@ -1457,16 +1457,7 @@ export default function PostJobPage() {
     });
   }, [budgetCurrency, budgetMax, budgetMin, budgetNote, budgetUnit, budgetUnitCustom, compensationMode]);
 
-  const experienceText = useMemo(() => {
-    const min = expMin ? Number(expMin) : NaN;
-    const max = expMax ? Number(expMax) : NaN;
-    if (!expMin || Number.isNaN(min)) return "";
-    // No maximum is a real answer — "five years or more" — so it is kept rather
-    // than discarded. Requiring both dropped an open-ended requirement on save.
-    if (!expMax || Number.isNaN(max)) return formatExperiencePreview(expMin, "");
-    if (max < min) return formatExperiencePreview(expMin, expMin);
-    return formatExperiencePreview(expMin, expMax);
-  }, [expMin, expMax]);
+  const experienceText = experienceLevel.trim();
 
   React.useEffect(() => {
     if (!platform) return;
@@ -1624,18 +1615,6 @@ export default function PostJobPage() {
       if (normalized.includes("remote")) return "Remote";
       return "";
     };
-    const experienceParts = (value: unknown) => {
-      const normalized = typeof value === "string" ? value : "";
-      const match = normalized.match(/(\d+)\s*[–-]\s*(\d+)/);
-      if (match) return { min: match[1], max: match[2] };
-      // "5+ years" states a floor and no ceiling. Reading it as 5–5 turned an
-      // open-ended requirement into an exact one the source never stated.
-      const openEnded = normalized.match(/(\d+)\s*\+/);
-      if (openEnded) return { min: openEnded[1], max: "" };
-      const single = normalized.match(/(\d+)/);
-      if (single) return { min: single[1], max: single[1] };
-      return { min: "", max: "" };
-    };
     const refsFrom = (value: unknown): ReferenceVideo[] => {
       if (!Array.isArray(value)) return [];
       return value
@@ -1669,7 +1648,8 @@ export default function PostJobPage() {
               : budgetNote === "flexible"
                 ? "flexible"
                 : "";
-        const experience = experienceParts(draft.experience_level);
+        const nextExperience =
+          typeof draft.experience_level === "string" ? draft.experience_level : "";
         const nextWorkMode = normalizeWorkMode(draft.work_mode);
         const nextLocation = typeof draft.location === "string" ? draft.location : "";
         const nextPlatforms = normalizeJobPlatforms([
@@ -1707,8 +1687,7 @@ export default function PostJobPage() {
         setBudgetIntent(nextBudgetIntent);
         setWorkMode(nextWorkMode);
         setCity(nextWorkMode === "Remote" ? "" : nextLocation);
-        setExpMin(experience.min);
-        setExpMax(experience.max);
+        setExperienceLevel(nextExperience);
         setStartWithin((draft.start_timeframe as StartTimeframe) || "");
         setEngagementType(
           ENGAGEMENT_TYPES.includes(draft.engagement_type as EngagementType)
@@ -1797,9 +1776,7 @@ export default function PostJobPage() {
         );
         setPreviewLocationText(nextWorkMode === "Remote" ? "Remote" : nextWorkMode && nextLocation ? `${nextWorkMode} - ${nextLocation}` : "");
         setPreviewExperienceText(
-          experience.min
-            ? formatExperiencePreview(experience.min, experience.max)
-            : draft.experience_level || ""
+          nextExperience
         );
       })
       .catch(() => {
@@ -1932,15 +1909,6 @@ export default function PostJobPage() {
         )
           ? (values.budget_unit as CompensationUnit)
           : "";
-        const experience = (() => {
-          const normalized =
-            typeof values.experience_level === "string" ? values.experience_level : "";
-          const range = normalized.match(/(\d+)\s*[–-]\s*(\d+)/);
-          if (range) return { min: range[1], max: range[2] };
-          const single = normalized.match(/(\d+)\+?/);
-          return single ? { min: single[1], max: single[1] } : { min: "", max: "" };
-        })();
-
         setTitle(typeof values.title === "string" ? values.title : "");
         setPrimaryRoleId(role?.id ?? "");
         setRoleSpecialization(
@@ -1961,8 +1929,9 @@ export default function PostJobPage() {
         setCity(workMode === "Remote" ? "" : typeof values.location === "string" ? values.location : "");
         setPlatforms(platforms);
         setPlatform(platforms[0] ?? "");
-        setExpMin(experience.min);
-        setExpMax(experience.max);
+        setExperienceLevel(
+          typeof values.experience_level === "string" ? values.experience_level : ""
+        );
         setStartWithin((values.start_timeframe as StartTimeframe) || "");
         setEngagementType(
           ENGAGEMENT_TYPES.includes(values.engagement_type as EngagementType)
@@ -2799,7 +2768,7 @@ export default function PostJobPage() {
           };
 
   const hasExperienceQuality =
-    Boolean(expMin.trim() && expMax.trim()) ||
+    Boolean(experienceLevel.trim()) ||
     Boolean(previewExperienceText.trim() && previewExperienceText.trim().toLowerCase() !== "any");
 
   const jobQualityItems: JobQualityItem[] = getJobDraftCompletion({
@@ -3371,27 +3340,9 @@ export default function PostJobPage() {
         note: budgetNote,
       }) || budgetIntentLabel(budgetIntent);
 
-    let nextExperience = previewExperienceText;
-    const hasExpMin = expMin.trim().length > 0;
-    const hasExpMax = expMax.trim().length > 0;
-    const expMinNum = Number(expMin);
-    const expMaxNum = Number(expMax);
-    const expValid =
-      hasExpMin && hasExpMax && !Number.isNaN(expMinNum) && !Number.isNaN(expMaxNum);
-
-    if (!hasExpMin && !hasExpMax) {
-      nextExperience = "Any";
-    } else if (expValid) {
-      if (expMaxNum < expMinNum) {
-        nextExperience = formatExperiencePreview(expMin, expMin);
-      } else {
-        nextExperience = formatExperiencePreview(expMin, expMax);
-      }
-    } else if (hasExpMin && !hasExpMax && !Number.isNaN(expMinNum)) {
-      // A floor with no ceiling. Without this the rail kept whatever it showed
-      // before, so an open-ended requirement read as the last closed range.
-      nextExperience = formatExperiencePreview(expMin, "");
-    }
+    // Whatever the recruiter wrote, shown as they wrote it. Reformatting it here
+    // is how the rail once claimed a narrower requirement than the field held.
+    const nextExperience = experienceLevel.trim() || "Any";
 
     let nextLocation = previewLocationText;
     if (workMode === "Remote") {
@@ -3420,8 +3371,7 @@ export default function PostJobPage() {
       budgetUnitCustom,
       workMode,
       city,
-      expMin,
-      expMax,
+      experienceLevel,
       startWithin,
       platform,
       platforms: selectedJobPlatforms,
@@ -3508,8 +3458,7 @@ export default function PostJobPage() {
     roleSpecialization !== savedBasics.roleSpecialization ||
     workMode !== savedBasics.workMode ||
     city !== savedBasics.city ||
-    expMin !== savedBasics.expMin ||
-    expMax !== savedBasics.expMax ||
+    experienceLevel !== savedBasics.experienceLevel ||
     platform !== savedBasics.platform ||
     JSON.stringify(selectedJobPlatforms) !== JSON.stringify(savedBasics.platforms) ||
     platformName !== savedBasics.platformName ||
@@ -3817,14 +3766,9 @@ export default function PostJobPage() {
                 setBudgetUnitCustom(next);
                 markPayloadDirty("budget_unit_custom");
               }}
-              expMin={expMin}
-              expMax={expMax}
-              onExpMinChange={(next) => {
-                setExpMin(next);
-                markPayloadDirty("experience_level");
-              }}
-              onExpMaxChange={(next) => {
-                setExpMax(next);
+              experienceLevel={experienceLevel}
+              onExperienceLevelChange={(next) => {
+                setExperienceLevel(next);
                 markPayloadDirty("experience_level");
               }}
               startWithin={startWithin}

@@ -172,20 +172,27 @@ _ROLE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("illustrator", "illustrator"),
 )
 
-#: Experience wording, mapped onto the bands the Post Job editor can parse.
+#: Wording that states, in words, that no prior experience is needed.
 #:
-#: "Fresher" is the common Indian-market word for no prior experience and was
-#: being ignored entirely, so a title that already answered the question still
-#: produced one.
-_EXPERIENCE_WORDS: Final[tuple[tuple[str, str], ...]] = (
-    ("fresher", "0–1 years"),
-    ("freshers", "0–1 years"),
-    ("entry level", "0–1 years"),
-    ("no experience", "0–1 years"),
-    ("junior", "1–3 years"),
-    ("mid level", "3–5 years"),
-    ("senior", "5–8 years"),
-    ("lead", "5–8 years"),
+#: These are the only non-numeric phrasings that survive, because each of them
+#: *is* a statement about how much experience is required rather than a label for
+#: how senior someone is. "Fresher" is the common Indian-market word for exactly
+#: that, and it was being ignored entirely, so a title that had already answered
+#: the question still produced one.
+#:
+#: What used to sit here alongside them was a seniority table: senior → 5–8
+#: years, junior → 1–3, mid level → 3–5. That invented numbers out of adjectives.
+#: "Senior" is a judgement about scope and independence, and studios mean wildly
+#: different spans by it; publishing "5–8 years" from it states a requirement the
+#: source never made, and a candidate with nine years reads themselves out of a
+#: job they were wanted for. Seniority wording still reaches the listing — it is
+#: in the title, which is preserved verbatim — and the recruiter can add years in
+#: the editor if they want them.
+_NO_EXPERIENCE_WORDS: Final[tuple[tuple[str, str], ...]] = (
+    ("fresher", "No prior experience required"),
+    ("freshers", "No prior experience required"),
+    ("no experience", "No prior experience required"),
+    ("no prior experience", "No prior experience required"),
 )
 
 #: "2-4 years", "3+ years" stated as an experience requirement.
@@ -196,6 +203,16 @@ _EXPERIENCE_RANGE = re.compile(
     r"\b(\d{1,2})\s*(?:[-–]|to)\s*(\d{1,2})\s*\+?\s*years?\b"
     r"|\b(\d{1,2})\s*\+\s*years?\b"
     r"|\b(\d{1,2})\s*years?\s+(?:of\s+)?(?:\w+\s+){0,2}exp"
+)
+
+#: "at least 5 years", "minimum 3 years" — a floor stated in words.
+#:
+#: Kept separate from the range above because the qualifier is part of the claim.
+#: A title asking for at least five years is not asking for exactly five, and
+#: writing back the bare figure would quietly close an open requirement.
+_EXPERIENCE_FLOOR = re.compile(
+    r"\b(?:(minimum)(?:\s+of)?|(at\s+least))\s+(\d{1,2})\s*\+?\s*years?\b",
+    re.IGNORECASE,
 )
 
 #: "6 months", "3-month" — a stated length is a fixed period.
@@ -286,8 +303,13 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
         suggested["primary_role_key_options"] = matched_roles
 
     # A stated range wins over a word: "senior, 2-4 years" means 2-4.
+    floor = _EXPERIENCE_FLOOR.search(hyphenated)
     experience = _EXPERIENCE_RANGE.search(hyphenated)
-    if experience:
+    if floor:
+        wording = "Minimum" if floor.group(1) else "At least"
+        settled["experience_level"] = f"{wording} {floor.group(3)} years"
+        experience = floor
+    elif experience:
         low, high, plus, single = experience.groups()
         if low and high:
             settled["experience_level"] = f"{low}–{high} years"
@@ -300,7 +322,7 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
         else:
             settled["experience_level"] = f"{single} years"
     else:
-        for word, value in _EXPERIENCE_WORDS:
+        for word, value in _NO_EXPERIENCE_WORDS:
             if f" {_normalise(word)} " in padded:
                 settled["experience_level"] = value
                 break

@@ -17,6 +17,7 @@ experience" is a requirement however it is worded around; "remote" is not.
 from __future__ import annotations
 
 import re
+from typing import Final
 
 #: A stated experience requirement, in the phrasings pages actually use.
 #:
@@ -24,13 +25,23 @@ import re
 #: is what makes a body match safe here. A bare number, or the word on its own,
 #: matches nothing.
 _EXPERIENCE = re.compile(
-    r"(?:minimum|at\s+least|min\.?)?\s*"
-    r"(\d{1,2})\s*(?:[-–—]|to)\s*(\d{1,2})\s*\+?\s*years?"
+    r"(?:(minimum|at\s+least|min\.?)\s+)?"
+    r"(\d{1,2})\s*(?:[-–—]|to)\s*(\d{1,2})\s*(\+?)\s*years?"
     r"(?:\s+(?:[\w-]+\s+){0,3}?experience)"
-    r"|(?:minimum|at\s+least|min\.?)?\s*"
-    r"(\d{1,2})\s*\+?\s*years?(?:\s+(?:of\s+)?(?:[\w-]+\s+){0,2}?experience)",
+    r"|(?:(minimum|at\s+least|min\.?)\s+)?"
+    r"(\d{1,2})\s*(\+?)\s*years?(?:\s+(?:of\s+)?(?:[\w-]+\s+){0,2}?experience)",
     re.IGNORECASE,
 )
+
+
+#: How a matched qualifier is written back, so the phrasing stays consistent
+#: whichever synonym the page happened to use.
+_QUALIFIER_WORDING: Final[dict[str, str]] = {
+    "minimum": "Minimum",
+    "min": "Minimum",
+    "min.": "Minimum",
+    "at": "At least",
+}
 
 
 def experience_from_body(text: str | None) -> str | None:
@@ -47,7 +58,17 @@ def experience_from_body(text: str | None) -> str | None:
     match = _EXPERIENCE.search(text)
     if not match:
         return None
-    low, high, single = match.group(1), match.group(2), match.group(3)
+    range_qualifier, low, high, range_plus = match.group(1, 2, 3, 4)
+    single_qualifier, single, single_plus = match.group(5, 6, 7)
+
+    # A qualifier is part of the claim, not decoration around it. "At least five
+    # years" and "five years" are different requirements, and dropping the words
+    # in front quietly turns an open floor into an exact figure.
+    qualifier = range_qualifier or single_qualifier
+    prefix = f"{_QUALIFIER_WORDING[qualifier.lower().split()[0]]} " if qualifier else ""
+
     if low and high:
-        return f"{low}–{high} years"
-    return f"{single} years" if single else None
+        return f"{prefix}{low}–{high} years"
+    if single:
+        return f"{prefix}{single}{'+' if single_plus else ''} years"
+    return None
