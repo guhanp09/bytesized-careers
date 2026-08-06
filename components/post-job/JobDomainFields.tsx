@@ -2326,12 +2326,65 @@ export function TrialApplicationFields({
           </Field>
         </div>
 
+      </DomainCard>
+      ) : null}
+
+      {show("apply") ? (
+      <DomainCard
+        id={`${prefix}-apply`}
+        eyebrow="Applications"
+        title="Application requirements"
+        description="Candidates apply through CreatorJobs. Everything here is candidate-visible, so keep internal notes and private contact details out of it."
+      >
+        <div className="space-y-5">
+          <Field
+            id={`${prefix}-how-to-apply`}
+            label="Public how-to-apply note"
+            hint={publicInstructionsLockedReason || "Tell candidates what a strong response includes. Applications are handled here, so there is no need to say where to send anything."}
+            error={getError(errors, "how_to_apply")}
+            optional
+          >
+            <textarea
+              id={`${prefix}-how-to-apply`}
+              className={`${textareaClass} min-h-28`}
+              value={state.howToApply}
+              disabled={disabled || Boolean(publicInstructionsLockedReason)}
+              maxLength={2000}
+              aria-invalid={Boolean(getError(errors, "how_to_apply"))}
+              aria-describedby={describedBy(
+                `${prefix}-how-to-apply`,
+                true,
+                getError(errors, "how_to_apply"),
+              )}
+              placeholder="Include 2 relevant samples and a short note about your approach."
+              onChange={(event) => onChange({ howToApply: event.target.value }, ["how_to_apply"])}
+            />
+          </Field>
+
+        <div className="mt-5 border-t border-white/[0.07] pt-5">
+          <h4 className="text-xs font-semibold text-white/80">What applicants must include</h4>
+          <p className="mt-1 text-[11px] leading-4 text-subtle">
+            The standard materials and details every applicant supplies — an expected rate, a relevant portfolio, turnaround, working hours, tools or workflow. Ask for these here rather than as questions below.
+          </p>
+          {legacyApplicationRequirements?.length ? (
+            <div className="mt-3">
+              <Notice tone="amber">
+                Existing application requests remain active: <span className="font-semibold">{legacyApplicationRequirements.join(", ")}</span>. The note above should clarify them, not silently replace them.
+              </Notice>
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl border border-dashed border-white/12 bg-black/10 px-4 py-4 text-center text-xs leading-5 text-subtle">
+              Describe the materials in the note above. Every applicant is asked for them in the same way.
+            </p>
+          )}
+        </div>
+
         <div className="mt-5 border-t border-white/[0.07] pt-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h4 className="text-xs font-semibold text-white/80">Screening questions</h4>
               <p className="mt-1 text-[11px] leading-4 text-subtle">
-                Ask only what helps you shortlist. Portfolio requests can stay in the existing application requirements.
+                Add questions that help you evaluate candidates after choosing the materials and standard details every applicant must include. Private to your Inbox — never shown on the public listing.
               </p>
             </div>
             <button type="button" className={secondaryButtonClass} disabled={disabled} onClick={addQuestion}>
@@ -2425,46 +2478,6 @@ export function TrialApplicationFields({
           ) : null}
           {questionsError ? <p role="alert" className="mt-2 text-[11px] text-amber-200/90">{questionsError}</p> : null}
         </div>
-      </DomainCard>
-      ) : null}
-
-      {show("apply") ? (
-      <DomainCard
-        id={`${prefix}-apply`}
-        eyebrow="Applications"
-        title="Application requirements"
-        description="Candidates apply through CreatorJobs. Everything here is candidate-visible, so keep internal notes and private contact details out of it."
-      >
-        <div className="space-y-5">
-          {legacyApplicationRequirements?.length ? (
-            <Notice tone="amber">
-              Existing application requests remain active: <span className="font-semibold">{legacyApplicationRequirements.join(", ")}</span>. The public instructions below should clarify them, not silently replace them.
-            </Notice>
-          ) : null}
-
-          <Field
-            id={`${prefix}-how-to-apply`}
-            label="Public how-to-apply note"
-            hint={publicInstructionsLockedReason || "Tell candidates what a strong response includes. Applications are handled here, so there is no need to say where to send anything."}
-            error={getError(errors, "how_to_apply")}
-            optional
-          >
-            <textarea
-              id={`${prefix}-how-to-apply`}
-              className={`${textareaClass} min-h-28`}
-              value={state.howToApply}
-              disabled={disabled || Boolean(publicInstructionsLockedReason)}
-              maxLength={2000}
-              aria-invalid={Boolean(getError(errors, "how_to_apply"))}
-              aria-describedby={describedBy(
-                `${prefix}-how-to-apply`,
-                true,
-                getError(errors, "how_to_apply"),
-              )}
-              placeholder="Include 2 relevant samples and a short note about your approach."
-              onChange={(event) => onChange({ howToApply: event.target.value }, ["how_to_apply"])}
-            />
-          </Field>
           {applicationError ? <p role="alert" className="text-[11px] text-amber-200/90">{applicationError}</p> : null}
         </div>
       </DomainCard>
