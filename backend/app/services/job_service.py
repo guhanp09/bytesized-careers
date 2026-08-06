@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from app.core.job_application_instructions import contains_external_routing
 from app.core.job_domain_taxonomy import OUTPUT_COMPENSATION_UNITS
 from app.core.job_taxonomy import (
     COMPENSATION_UNITS,
@@ -350,6 +351,29 @@ class JobService:
 
     def _validate_domain_for_publication(self, data: dict[str, Any]) -> None:
         errors: dict[str, list[str]] = {}
+
+        # Imported wording is sanitised on the way in, which covers the source's
+        # own instructions but not the recruiter's. Someone can still type "send
+        # your portfolio to us on WhatsApp" into the public note, and until this
+        # ran, publishing it worked — the listing then told candidates to apply
+        # somewhere CreatorJobs cannot see, record or protect them in.
+        #
+        # This is the server's decision, not the form's. A stale client, a
+        # hand-built request or an old draft all arrive here, so refusing here is
+        # what actually makes the rule true.
+        #
+        # The text is never rewritten. It stays in the private draft exactly as
+        # written, because prose someone typed is theirs to edit; the publish is
+        # what gets refused, with the offending phrase named.
+        routing = contains_external_routing(data.get("how_to_apply"))
+        if routing is not None:
+            self._add_error(
+                errors,
+                "how_to_apply",
+                "Applications are handled through CreatorJobs. Keep the requested "
+                "materials, but remove the WhatsApp, email, phone number or "
+                f"external submission destination ({routing.strip()}).",
+            )
 
         if data.get("budget_unit") in OUTPUT_COMPENSATION_UNITS and not data.get("deliverables"):
             self._add_error(
