@@ -98,7 +98,10 @@ export function applicationPreflightForJob(job: Job) {
   // lost — and only when the note does not already say it.
   const deadlineSentence =
     deadline.valid && deadline.label && !mentionsDeadline(baseInstruction)
-      ? `Applications close on ${deadline.label}.`
+      // `label` is already a phrase — "Apply by 24 Aug 2026 UTC", or
+      // "Closed …" once it has passed — so wrapping it produced
+      // "Applications close on Apply by …". It is used as written.
+      ? `${deadline.label}.`
       : null;
   const applicationInstruction =
     [baseInstruction, deadlineSentence].filter(Boolean).join(" ").trim() || null;

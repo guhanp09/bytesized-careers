@@ -70,5 +70,6 @@ test("a stored external route never sends a candidate off CreatorJobs", () => {
 
   // A deadline is part of the instructions rather than a row of its own, so an
   // older job's stored date is folded into the note instead of being lost.
-  assert.match(preflight.applicationInstruction ?? "", /Applications close on/);
+  // The deadline label is already a phrase ("Apply by …"), used as written.
+  assert.match(preflight.applicationInstruction ?? "", /Apply by|Closed/);
 });

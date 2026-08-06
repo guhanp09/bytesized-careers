@@ -528,6 +528,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
   const applyNote = [
     howToApply,
     deadline && !/\b(?:applications?\s+close|apply\s+by|deadline)\b/i.test(howToApply || "")
+      // formatJobDate returns a bare date here, so it does need a sentence.
       ? `Applications close on ${deadline}.`
       : null,
   ]

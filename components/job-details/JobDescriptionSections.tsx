@@ -75,7 +75,10 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   const howToApply = [
     baseNote,
     deadline.valid && deadline.label && !/\b(?:applications?\s+close|apply\s+by|deadline)\b/i.test(baseNote || "")
-      ? `Applications close on ${deadline.label}.`
+      // `label` is already a phrase — "Apply by 24 Aug 2026 UTC", or
+      // "Closed …" once it has passed — so wrapping it produced
+      // "Applications close on Apply by …". It is used as written.
+      ? `${deadline.label}.`
       : null,
   ]
     .filter(Boolean)
