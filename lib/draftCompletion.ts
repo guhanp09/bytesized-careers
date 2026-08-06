@@ -459,15 +459,6 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
       groupLabel: G.role.label,
     },
     {
-      key: "timeline",
-      label: "Add timeline",
-      done: hasTimeline,
-      required: false,
-      jump: "basics",
-      group: G.timeline.key,
-      groupLabel: G.timeline.label,
-    },
-    {
       key: "media",
       label: "Add reference video",
       done: hasRefVideos,
@@ -478,7 +469,11 @@ export function getJobDraftCompletion(job: Partial<Job>): DraftCompletion {
     }
   );
 
-  const groups = [G.basics, G.context, G.role, G.budget, G.skills, G.creatorContext, G.location, G.timeline, G.media, G.verification];
+  // No suggestion belongs to the timeline group any more. Leaving it here
+  // would render a heading with nothing under it. The Timeline key-fact row
+  // below is a different thing and stays: it reports what the listing says,
+  // rather than asking the recruiter to add something.
+  const groups = [G.basics, G.context, G.role, G.budget, G.skills, G.creatorContext, G.location, G.media, G.verification];
 
   const accessConfirmed = !job.hiringIdentityId || verification === "VERIFIED";
   const accessValue = job.hiringIdentityId

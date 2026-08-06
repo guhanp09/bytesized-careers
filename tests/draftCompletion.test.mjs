@@ -60,7 +60,14 @@ test("job default-like completion fields stay incomplete when not explicitly pre
 
   assert.equal(c.requiredItems.find((i) => i.key === "platform").done, false);
   assert.equal(c.requiredItems.find((i) => i.key === "workMode").done, false);
-  assert.equal(c.recommendedItems.find((i) => i.key === "timeline").done, false);
+  // "Add timeline" was removed from Improve your listing. A recruiter reads
+  // that panel as work still to do, and a start window is not something a
+  // listing is weaker for omitting — so it no longer appears, and no longer
+  // counts against the recommended percentage.
+  assert.equal(
+    c.recommendedItems.find((i) => i.key === "timeline"),
+    undefined
+  );
 });
 
 test("job display fallback hiring name is not channel completion evidence", () => {
