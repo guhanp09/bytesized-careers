@@ -391,14 +391,16 @@ test.describe("completion and handoff", () => {
         (job: { id: string }) => job.id === nativeDraftId
       );
       expect(nativeDraft.primary_role_name_snapshot).toBe("Video Editor");
-      // Both of these used to arrive in the source's vocabulary rather than the
-      // editor's \u2014 a formatted address in a city field, and a free-form phrase
-      // in a field holding one of four bands. The editor refused both, so a
-      // fact the page stated became something the recruiter had to retype.
+      // A formatted postal address used to arrive in a field holding a city,
+      // and the editor refused it \u2014 so a fact the page stated became something
+      // the recruiter had to retype.
       expect(nativeDraft.location).toBe("Chennai");
       expect(nativeDraft.engagement_type).toBe("full_time");
-      // "1\u20137 years" is a minimum of one year, and that is the band holding it.
-      expect(nativeDraft.experience_level).toBe("1\u20133 years");
+      // Exactly what the page states. This briefly read "1\u20133 years", because a
+      // conversion layer mistook a question's four option bands for the field's
+      // domain and placed the figure in the nearest one. The field is a plain
+      // string in the schema, and a listing must never narrow its source.
+      expect(nativeDraft.experience_level).toBe("1\u20137 years of experience");
       expect(nativeDraft.content_niches).toContain("Education");
       expect(nativeDraft.responsibilities).toContain(
         "Edit learning videos for a school-based education channel"

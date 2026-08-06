@@ -87,14 +87,40 @@ test.describe("a title naming several crafts", () => {
 
     // The craft was the only thing this page left open, so answering it should
     // finish preparation rather than reveal a second form.
-    await page.waitForURL(/\/post-job/, { timeout: 60_000 });
+    const openDraft = page.getByRole("button", { name: "Open job draft" });
+    await expect(openDraft).toBeVisible({ timeout: 60_000 });
     await page.screenshot({ path: `${SHOTS}/handoff.png`, fullPage: true });
 
-    const body = await page.locator("body").innerText();
-    expect(body).toContain(chosen);
-    // The facts the page stated must already be in place.
-    expect(body).toMatch(/Coimbatore/);
-    expect(body).not.toMatch(/Coimbatore district/);
+    // Handing off is an explicit action, and the editor is a different page.
+    // Waiting on the URL alone matched /post-job/import — the screen we were
+    // already on — so this used to assert against the completion card.
+    await openDraft.click();
+    await expect(page).toHaveURL(/\/post-job\?/, { timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: "THE ROLE" })).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/editor.png`, fullPage: true });
+
+    // Experience sits on a later step of the editor, so the draft itself is the
+    // honest place to read it rather than whichever step happens to be open.
+    const nativeDraftId = new URL(page.url()).searchParams.get("draftId");
+    expect(nativeDraftId).toBeTruthy();
+    const session = await (await page.request.get("/api/auth/session")).json();
+    const jobsResponse = await page.request.get(
+      "http://127.0.0.1:8100/api/v1/me/jobs",
+      { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+    );
+    expect(jobsResponse.ok()).toBe(true);
+    const draft = (await jobsResponse.json()).find(
+      (job: { id: string }) => job.id === nativeDraftId
+    );
+
+    expect(draft.primary_role_name_snapshot).toBe(chosen);
+    expect(draft.location).toBe("Coimbatore");
+    // The page says twenty-five years. It briefly said "5–8 years", because a
+    // conversion layer treated a question's four option bands as the field's
+    // domain and picked the nearest one — not a rounding but a different claim.
+    // Nothing may narrow what the source stated.
+    expect(draft.experience_level).toBe("25 years");
+    expect(draft.status).toBe("draft");
   });
 
   for (const viewport of WIDTHS) {

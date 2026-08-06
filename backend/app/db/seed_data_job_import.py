@@ -660,8 +660,11 @@ def _multi_craft_fixture() -> JobImportExtractionResponse:
     watched being asked — with the crafts the page named on the buttons, and
     nothing else.
 
-    The city is deliberately the district-wrapped label the source supplied, so
-    the value reaching the editor can be seen rather than trusted.
+    The city is deliberately the district-wrapped label the source supplied, and
+    the experience is the "25 years" the page actually states, so both values
+    reaching the editor can be seen rather than trusted. Twenty-five years sits
+    outside every band the product offers; it is carried as stated rather than
+    rounded into one, because a listing must not claim what its source did not.
     """
 
     return JobImportExtractionResponse.model_validate(
@@ -697,7 +700,7 @@ def _multi_craft_fixture() -> JobImportExtractionResponse:
                 },
                 {
                     "field_path": "experience_level",
-                    "value": "5\u20138 years",
+                    "value": "25 years",
                     "provenance": "extracted_from_source",
                     "evidence": [
                         {"snippet": "25 years of professional experience in Video Editing"}
