@@ -201,6 +201,40 @@ def _row_choices(nested_field: str, key: str) -> list[str]:
     return []
 
 
+def native_schema_constraints(
+    field_path: str,
+) -> tuple[tuple[str, ...] | None, int | None, bool]:
+    """What the *job schema* actually enforces: allowed values, and a length cap.
+
+    Deliberately not ``answer_shape_for``. That function answers a different
+    question — what to put in front of the recruiter — and it consults
+    ``_CATALOG_CHOICES`` first, which are product suggestion lists for fields the
+    schema types as plain strings.
+
+    Confusing the two caused a real distortion. ``experience_level`` is a free
+    ``str`` in the schema, but its catalog offers four closed bands, so a
+    conversion layer reading the answer shape concluded the field could only hold
+    one of those bands and mapped a stated "25 years" into "5–8 years" to fit.
+    The field had never needed narrowing; only the question did.
+
+    Returns ``(choices, cap, is_list)``. ``choices`` is ``None`` when the schema
+    constrains no values, which means the field can hold the source value as
+    stated. ``cap`` counts characters for a string field and items for a list,
+    so callers must read it alongside ``is_list`` rather than on its own.
+    """
+
+    model_field = JobCreate.model_fields.get(field_path)
+    if model_field is None:
+        return (None, None, False)
+    choices = tuple(value for value in _literals(model_field.annotation) if value != "other")
+    cap: int | None = None
+    for entry in model_field.metadata or []:
+        candidate = getattr(entry, "max_length", None)
+        if isinstance(candidate, int):
+            cap = candidate
+    return (choices or None, cap, _is_list(model_field.annotation))
+
+
 def answer_shape_for(field_path: str) -> AnswerShape:
     """Describe a valid answer for one field."""
 

@@ -614,9 +614,11 @@ BEBEE_MULTI_CRAFT = GoldenSource(
         "compensation_mode": "range",
         # The page states 25 years, in a labelled Experience section its own
         # markup omits. That is almost certainly a typo for 2-5, and deciding so
-        # is the recruiter's call, so it is carried exactly as written. Shaping
-        # it into a band the editor accepts happens on the way to the draft and
-        # is pinned separately, in test_job_import_bebee_defects.
+        # is the recruiter's call, so it is carried exactly as written — all the
+        # way to the native draft. It was briefly rewritten to "5–8 years" to fit
+        # a question's option list mistaken for the field's domain, which is a
+        # distortion rather than a normalisation: twenty-five is not five to
+        # eight. See test_job_import_semantic_containment.
         "experience_level": "25 years",
     },
     absent=("start_timing", "platforms"),

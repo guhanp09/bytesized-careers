@@ -1,141 +1,199 @@
-"""Shaping derived values into something the native editor will accept.
+"""Putting a source's own words into a native field without changing what they say.
 
-The intelligence layer reads facts in the vocabulary of the *source*: a page
-says "2-4 years of experience", or "25 years", or "Coimbatore, Coimbatore
-district, IN". The native editor accepts values in the vocabulary of the
-*product*: a closed set of four experience bands, a city.
+A source speaks in its own terms — "25 years of professional experience",
+"Coimbatore, Coimbatore district, IN". A native field has its own shape. Getting
+a fact from one to the other is a real translation problem, and the first attempt
+at it got the central rule wrong, so it is worth stating plainly:
 
-Nothing was translating between the two. A correctly-read fact was written to a
-field that could not hold it, the editor's validator refused it on arrival, and
-the recruiter was left to re-enter something the source had already stated. That
-is the exact shape of failure this feature exists to remove: a technical mapping
-fault presented to a person as their work.
+**A conversion may never make a fact narrower, more precise, or different.**
 
-So every machine-derived value passes through here on its way to the draft, and
-one of three things happens.
+It may represent the value exactly. It may place it in a native category that
+genuinely *contains* it. It may decline, leaving the field unset and the source
+value preserved for the recruiter to see. It may report a technical defect. It
+may not do anything else — and in particular it may not pick the closest
+available category and hope.
 
-*It fits.* Pass it through unchanged.
+The defect that forced this rewrite is instructive. ``coerce_to_native`` asked
+``answer_shape_for`` what values the field accepted. But that function answers a
+different question — what to offer the recruiter in a chat question — and for
+``experience_level`` it returns four closed bands from a *product catalog*. The
+schema itself types the field as a free string. So a page stating "25 years" was
+mapped into "5–8 years" to fit a constraint that did not exist, and a listing
+went out saying something the source never said. Twenty-five years is not five to
+eight years. No amount of rounding makes it so.
 
-*It can be faithfully expressed in the product's vocabulary.* Translate it. A
-requirement of "2-4 years" is a requirement of at least two years, and the band
-containing two years says that truthfully.
-
-*It cannot.* Drop it, and let it be asked. A value the editor will reject is
-worth strictly less than no value at all: an empty field is one question, a
-rejected one is an error message plus the same question.
-
-What this must never do is guess. A source stating "25 years" is carried as
-written or dropped — never rewritten into the "2-5 years" it was probably meant
-to be. Deciding a source contains a typo is a person's call, not a parser's.
+Two lessons are encoded here. Native constraints are read from the schema, via
+``native_schema_constraints``, never from the question's option list. And a
+category only ever receives a value it demonstrably contains, which is why there
+is no "nearest band" search anywhere below: narrowing is not rejected by a check,
+it is absent by construction.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Final
+from dataclasses import dataclass
+from typing import Final, Literal
 
-from app.core.job_import_answer_shapes import answer_shape_for
+from app.core.job_import_answer_shapes import native_schema_constraints
 from app.core.job_import_location_resolution import parse_location
 
-#: A choice that names a numeric band: "0–1 years", "3–5 years", "5+ years".
-_BAND = re.compile(r"^\s*(\d{1,3})\s*(?:[-–—]\s*(\d{1,3})|(\+))?\s*(\w+)?\s*$")
-
-#: The same, read out of a free-form value: "2–4 years", "25 years", "5+ years".
-_STATED = re.compile(r"(\d{1,3})\s*(?:[-–—]|to)\s*(\d{1,3})|(\d{1,3})\s*(\+)?")
-
-#: Fields whose choices are ordered bands, so a stated figure can be placed in
-#: one. Ordering is what makes the translation safe: without it, "closest" has
-#: no meaning and the only honest options are an exact match or nothing.
-_BANDED_FIELDS: Final[frozenset[str]] = frozenset({"experience_level"})
+#: What happened to one value on its way to a native field.
+ConversionOutcome = Literal["exact", "broadened", "unsupported", "invalid"]
 
 
-def _band_bounds(choice: str) -> tuple[float, float] | None:
-    """The numeric span a choice covers, if it names one."""
+@dataclass(frozen=True)
+class NativeConversion:
+    """One value, what became of it, and why — auditable after the fact.
 
-    match = _BAND.match(choice.replace("years", " years"))
-    if not match:
-        return None
-    low, high, open_ended, _unit = match.groups()
-    if open_ended:
-        return (float(low), float("inf"))
-    if high:
-        return (float(low), float(high))
-    return (float(low), float(low))
-
-
-def _stated_minimum(value: str) -> float | None:
-    """The smallest figure a stated requirement would accept.
-
-    "2-4 years" asks for at least two. "5+ years" asks for at least five. Both
-    are minimums, which is the only reading that lets a range be placed in a
-    single band without inventing precision the source did not have.
+    ``native_value`` is ``None`` for every outcome except ``exact`` and
+    ``broadened``. That is the point: a field the source could not truthfully
+    fill stays empty, and ``source_value`` keeps what the page actually said so
+    the recruiter can be shown it rather than asked for it.
     """
 
-    match = _STATED.search(value)
-    if not match:
-        return None
-    low, _high, single, _plus = match.groups()
-    return float(low if low else single)
+    field_path: str
+    source_value: object
+    native_value: object | None
+    outcome: ConversionOutcome
+    #: Whether the native representation includes the source fact. Always true
+    #: when a value is written; the writing paths cannot produce anything else.
+    contains_source: bool
+    #: Plain-language reason, safe to show a recruiter.
+    detail: str
+
+    @property
+    def writable(self) -> bool:
+        return self.native_value is not None
 
 
-def coerce_to_native(field_path: str, value: object) -> object | None:
-    """The value as the native field would accept it, or ``None`` if it cannot.
+#: Native categories that are explicitly open-ended, with the figure they start
+#: from. A source figure at or above the bound is genuinely contained by such a
+#: category, so mapping into it broadens without distorting.
+#:
+#: Empty for ``experience_level``, and that emptiness is the honest state of the
+#: product: its bands are all closed ranges, the most senior ending at eight
+#: years, so nothing above eight can be truthfully represented as a band. The
+#: mechanism exists so that adding an "8+ years" category later is a data change
+#: rather than another rewrite — but adding one is a product decision about
+#: search and matching, not something a conversion layer may assume.
+OPEN_ENDED_CATEGORIES: Final[dict[str, tuple[tuple[str, float], ...]]] = {}
 
-    ``None`` means *do not write this*. The caller drops the field, which leaves
-    it askable and leaves the editor clean, rather than handing the editor a
-    value it will refuse.
-    """
+#: A figure stated as a lower bound with no upper one: "5+ years", "at least 8".
+_OPEN_ENDED_SOURCE = re.compile(
+    r"(?:\b(?:at\s+least|minimum(?:\s+of)?|min\.?|over|more\s+than)\s+)(\d{1,3})"
+    r"|(\d{1,3})\s*\+",
+    re.IGNORECASE,
+)
+
+
+def _numeric_floor(value: str) -> float | None:
+    """The smallest figure a stated requirement would accept, if it states one."""
+
+    match = _OPEN_ENDED_SOURCE.search(value)
+    if match:
+        return float(match.group(1) or match.group(2))
+    plain = re.search(r"\b(\d{1,3})\b", value)
+    return float(plain.group(1)) if plain else None
+
+
+def _category_contains(field_path: str, category: str, value: str) -> bool:
+    """Whether an open-ended native category genuinely includes a stated figure."""
+
+    floor = _numeric_floor(value)
+    if floor is None:
+        return False
+    for name, bound in OPEN_ENDED_CATEGORIES.get(field_path, ()):
+        if name == category:
+            return floor >= bound
+    return False
+
+
+def convert_to_native(field_path: str, value: object) -> NativeConversion:
+    """Translate one value for one native field, honestly or not at all."""
+
+    def result(
+        native: object | None, outcome: ConversionOutcome, detail: str
+    ) -> NativeConversion:
+        return NativeConversion(
+            field_path=field_path,
+            source_value=value,
+            native_value=native,
+            outcome=outcome,
+            contains_source=native is not None,
+            detail=detail,
+        )
+
+    choices, cap, is_list = native_schema_constraints(field_path)
+
+    if is_list:
+        # A list is a set of facts rather than one fact, so there is no category
+        # to place it in and nothing here can narrow it. Membership of each entry
+        # is the schema's business, and Pydantic still checks it downstream.
+        return result(value, "exact", "Stored as the source lists it.")
 
     if field_path == "location" and isinstance(value, str):
-        # A city field, reached by several routes: structured markup, model
-        # extraction, or the recruiter's own typing. Canonicalising at the
-        # mapper covered only the first, so a formatted address arriving any
-        # other way still reached the editor and still failed there.
+        # Reducing a postal address to its city is not narrowing: the control
+        # holds a city, and the city is the same one either way. Dropping the
+        # district and the country code changes the wording, not the place.
         parts = parse_location(value)
         canonical = ", ".join(
             component for component in (parts.locality, parts.city) if component
         )
-        return canonical[:120] if canonical else None
+        if not canonical:
+            return result(
+                None,
+                "unsupported",
+                "The source names an arrangement or a country rather than a city.",
+            )
+        if cap is not None and len(canonical) > cap:
+            return result(None, "unsupported", "The place name is longer than the field allows.")
+        return result(canonical, "exact", "The same place, named as the field expects.")
 
-    shape = answer_shape_for(field_path)
-    if shape is None or shape.kind != "choice" or shape.is_list:
-        return value
-    choices = list(shape.choices or ())
-    if not choices or value in choices:
-        return value
+    if choices is None:
+        # The schema constrains nothing, so the field can hold what the source
+        # said. This is the common case and the one that must stay simple: no
+        # catalog, no banding, no rounding — the recruiter sees the page's words.
+        if isinstance(value, str) and cap is not None and len(value) > cap:
+            # Truncating would quietly change the claim, so it is declined.
+            return result(
+                None,
+                "unsupported",
+                "The source states this at greater length than the field can hold.",
+            )
+        return result(value, "exact", "Stored exactly as the source states it.")
+
+    if value in choices:
+        return result(value, "exact", "Exactly one of the values this field accepts.")
+
     if not isinstance(value, str):
-        return None
+        return result(None, "invalid", "This field accepts a fixed set of values.")
 
-    # Case and spacing differences are not disagreements about meaning.
     folded = {choice.casefold(): choice for choice in choices}
-    exact = folded.get(value.strip().casefold())
-    if exact is not None:
-        return exact
+    matched = folded.get(value.strip().casefold())
+    if matched is not None:
+        # Spelling and spacing are not disagreements about meaning.
+        return result(matched, "exact", "The same value, spelled as the field expects.")
 
-    if field_path not in _BANDED_FIELDS:
-        return None
+    for category, _bound in OPEN_ENDED_CATEGORIES.get(field_path, ()):
+        if category in choices and _category_contains(field_path, category, value):
+            return result(
+                category,
+                "broadened",
+                f"{value} falls inside {category}, which is open-ended.",
+            )
 
-    bands = [(choice, _band_bounds(choice)) for choice in choices]
-    ordered = [(choice, bounds) for choice, bounds in bands if bounds is not None]
-    if len(ordered) != len(bands):
-        return None
-    stated = _stated_minimum(value)
-    if stated is None:
-        return None
+    # Deliberately no fallback. There is no "closest" category, because a
+    # category that does not contain the value would state something the source
+    # did not. The field stays empty and the source value stays visible.
+    return result(
+        None,
+        "unsupported",
+        "The source states something none of this field's values covers.",
+    )
 
-    # Bands share their boundaries — "1–3" and "3–5" both name three. A stated
-    # minimum belongs to the band that *starts* there, not the one that ends
-    # there: asking for five years is asking for the senior band, not the top of
-    # the one below it. So the upper bound is exclusive.
-    for choice, (low, high) in ordered:
-        if low <= stated < high:
-            return choice
 
-    # At or beyond the most senior band the product offers. A source asking for
-    # more experience than any band names is still asking for at least that
-    # band, so saying so is true; saying nothing would lose a stated fact.
-    ceiling = max(ordered, key=lambda item: item[1][0])
-    if stated >= ceiling[1][0]:
-        return ceiling[0]
-    floor = min(ordered, key=lambda item: item[1][0])
-    return floor[0] if stated < floor[1][0] else None
+def coerce_to_native(field_path: str, value: object) -> object | None:
+    """The value as the native field may hold it, or ``None`` to leave it unset."""
+
+    return convert_to_native(field_path, value).native_value

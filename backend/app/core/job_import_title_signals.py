@@ -97,6 +97,12 @@ _ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
     ("film editing", "video-editor"),
     ("motion graphics", "motion-designer"),
     ("motion design", "motion-designer"),
+    # Visual effects has no craft of its own in the catalog, and among the ones
+    # that exist it is motion and compositing work. Read from the title it is
+    # substantial evidence; the same words appearing once in a list of alternative
+    # backgrounds are not, which is why only the title is read for candidates.
+    ("vfx", "motion-designer"),
+    ("visual effects", "motion-designer"),
     ("animation", "animator"),
     ("2d animation", "animator"),
     ("3d animation", "animator"),
@@ -106,6 +112,8 @@ _ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
     ("script writing", "scriptwriter"),
     ("copywriting", "copywriter"),
     ("audio engineering", "audio-engineer"),
+    ("audio editing", "audio-engineer"),
+    ("sound editing", "audio-engineer"),
     ("sound design", "audio-engineer"),
     ("podcast production", "podcast-producer"),
     ("illustration", "illustrator"),
@@ -114,6 +122,22 @@ _ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
     ("community management", "community-manager"),
     ("social media management", "social-media-manager"),
     ("content strategy", "content-strategist"),
+)
+
+#: Phrases where "editing" belongs to a craft other than video.
+#:
+#: "Editing" alone almost always means video editing in this marketplace, and a
+#: title reading "Editing, Motion Graphics and Animation" should say so. But the
+#: word is not exclusively ours, and matching it blindly would file a copy editor
+#: as a video editor — so the bare word only counts when nothing narrows it.
+_EDITING_BELONGS_ELSEWHERE: Final[tuple[str, ...]] = (
+    "copy editing",
+    "photo editing",
+    "image editing",
+    "audio editing",
+    "sound editing",
+    "script editing",
+    "text editing",
 )
 
 #: Role words, longest first so "long-form editor" is not eaten by "editor".
@@ -240,6 +264,17 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
             ]
         )
     )
+    # "Editing" on its own, once nothing else has claimed it.
+    if (
+        "video-editor" not in matched_roles
+        and " editing " in role_padded
+        and not any(
+            f" {_normalise(phrase)} " in role_padded
+            for phrase in _EDITING_BELONGS_ELSEWHERE
+        )
+    ):
+        matched_roles.append("video-editor")
+
     if len(matched_roles) == 1:
         # One exact catalog craft is the role the title declares. Asking the
         # recruiter to select Video Editor after reading "Video Editor" is not
@@ -256,9 +291,14 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
         low, high, plus, single = experience.groups()
         if low and high:
             settled["experience_level"] = f"{low}–{high} years"
+        elif plus:
+            # "5+ years" is open-ended and stays that way. Closing it into a
+            # range invented a ceiling the source never gave: this line used to
+            # read base + 3, so a post asking for five years or more advertised
+            # itself as wanting no more than eight.
+            settled["experience_level"] = f"{plus}+ years"
         else:
-            base = int(plus or single)
-            settled["experience_level"] = f"{base}–{base + 3} years"
+            settled["experience_level"] = f"{single} years"
     else:
         for word, value in _EXPERIENCE_WORDS:
             if f" {_normalise(word)} " in padded:

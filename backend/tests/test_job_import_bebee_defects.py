@@ -21,7 +21,7 @@ import pytest
 
 from app.core.job_import_body_sections import experience_from_body
 from app.core.job_import_location_resolution import parse_location
-from app.core.job_import_native_values import coerce_to_native
+from app.core.job_import_native_values import coerce_to_native, convert_to_native
 from app.core.job_import_questions import deterministic_question_queue
 from app.core.job_import_structured_fields import fields_from_structured_context
 from app.core.job_import_title_signals import title_signals
@@ -39,7 +39,11 @@ class TestCraftNamedAsAnActivity:
         options = signals.suggested.get("primary_role_key_options")
 
         assert options is not None, "the title names crafts and none were read"
-        assert set(options) == {"video-editor", "animator"}
+        # Three crafts, one per item the title lists. VFX has no craft of its
+        # own in the catalog and is motion and compositing work among the ones
+        # that do exist. Candidate breadth is pinned in detail by
+        # test_job_import_role_candidates.
+        assert set(options) == {"video-editor", "motion-designer", "animator"}
 
     @pytest.mark.parametrize(
         ("title", "expected"),
@@ -137,7 +141,7 @@ class TestCityRatherThanPostalLabel:
 
 
 class TestStatedExperienceSurvivesToTheDraft:
-    """Read from the body, then shaped into what the field can hold."""
+    """Read from the body, then stored without being rewritten."""
 
     def test_a_labelled_requirement_is_read_rather_than_asked(self) -> None:
         stated = experience_from_body(
@@ -163,28 +167,42 @@ class TestStatedExperienceSurvivesToTheDraft:
         assert experience_from_body(text) is None
 
     @pytest.mark.parametrize(
-        ("stated", "expected"),
-        [
-            # A range is a minimum, so it lands in the band holding its floor.
-            ("2–4 years", "1–3 years"),
-            # Bands share boundaries; a minimum belongs to the one that starts
-            # there, not the one that ends there.
-            ("5+ years", "5–8 years"),
-            # More than the product can express, so the most senior band — which
-            # remains a true statement about the requirement.
-            ("25 years", "5–8 years"),
-        ],
+        "stated",
+        ["2–4 years", "5+ years", "25 years", "at least 10 years", "fresher"],
     )
-    def test_a_stated_figure_becomes_a_band_the_editor_accepts(
-        self, stated: str, expected: str
+    def test_a_stated_requirement_reaches_the_field_exactly_as_stated(
+        self, stated: str
     ) -> None:
-        assert coerce_to_native("experience_level", stated) == expected
+        # This used to place each figure in one of four bands, which read as
+        # normalisation and was not. The field is a plain string in the schema;
+        # the four bands are a *question's* option list. Reading the question's
+        # options as the field's domain is what turned a stated 25 years into
+        # "5–8 years" — a listing claiming something its source never said.
+        assert coerce_to_native("experience_level", stated) == stated
 
-    def test_an_unreadable_value_is_dropped_rather_than_sent_to_fail(self) -> None:
-        # An empty field is one question. A refused field is an error message
-        # and then the same question.
-        assert coerce_to_native("experience_level", "seasoned professional") is None
-        assert coerce_to_native("work_mode", "whatever the team prefers") is None
+    @pytest.mark.parametrize(
+        ("stated", "forbidden"),
+        [("25 years", "5–8 years"), ("10 years", "5–8 years"), ("9 years", "5–8 years")],
+    )
+    def test_a_figure_above_every_band_is_never_squeezed_into_one(
+        self, stated: str, forbidden: str
+    ) -> None:
+        conversion = convert_to_native("experience_level", stated)
+
+        assert conversion.native_value != forbidden
+        assert conversion.native_value == stated
+        assert conversion.outcome == "exact"
+        assert conversion.contains_source
+
+    def test_an_open_ended_requirement_keeps_its_open_end(self) -> None:
+        # "5+ years" says five or more. A closed 5–8 contradicts that, and the
+        # title reader used to build exactly that by adding three to the figure.
+        assert title_signals("Video Editor 5+ years").settled["experience_level"] == (
+            "5+ years"
+        )
+        assert title_signals("Animator 10+ years experience").settled[
+            "experience_level"
+        ] == "10+ years"
 
     def test_a_valid_value_passes_through_untouched(self) -> None:
         assert coerce_to_native("work_mode", "remote") == "remote"

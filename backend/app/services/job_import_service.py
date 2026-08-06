@@ -39,7 +39,7 @@ from app.core.job_import_inference import (
     infer_compensation_currency,
     provider_confidence_label,
 )
-from app.core.job_import_native_values import coerce_to_native
+from app.core.job_import_native_values import convert_to_native
 from app.core.job_import_policy import (
     AUTO_TRACKED_MISSING_FIELDS,
     JOB_IMPORT_FIELD_POLICIES,
@@ -2321,11 +2321,13 @@ class JobImportService:
                 continue
             # A value the editor will refuse is worth less than no value: the
             # recruiter gets a validation error *and* still has to answer. So a
-            # derived value is either shaped into the native vocabulary or left
-            # out, and never passed through to fail on arrival.
-            value = coerce_to_native(field.field_path, value)
-            if value is None:
+            # derived value is either represented truthfully or left out — and
+            # never bent into a neighbouring value to make it fit, which would
+            # publish a claim the source never made.
+            conversion = convert_to_native(field.field_path, value)
+            if not conversion.writable:
                 continue
+            value = conversion.native_value
             policy = JOB_IMPORT_FIELD_POLICIES[field.field_path]
             if field.field_path == "primary_role_key":
                 role = await self.repository.get_active_role_by_key(str(value))
