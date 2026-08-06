@@ -31,7 +31,12 @@ test("candidate detail exposes decision, qualification, workflow, trial, process
   assert.doesNotMatch(body, /Screening questions/);
   assert.doesNotMatch(body, /Required languages/);
   assert.doesNotMatch(body, /Preferred languages/);
-  assert.match(body, /CreatorJobs does not receive or track that submission/);
+  // The external-submission warning is gone because the state it described is
+  // gone: applications run through CreatorJobs, so no listing sends a candidate
+  // to a submission the platform cannot see.
+  assert.doesNotMatch(body, /CreatorJobs does not receive or track that submission/);
+  assert.doesNotMatch(body, /Apply on an external site/);
+  assert.match(body, /Apply through CreatorJobs/);
 });
 
 test("cards remain decision-first and do not expose technical legacy terminology", () => {

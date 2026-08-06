@@ -18,7 +18,6 @@ import {
   requiredSkillsForJob,
   requiredToolsForJob,
   revisionForJob,
-  safeJobExternalUrl,
   sourceInputLabel,
   sourceInputNeedsSensitiveAccess,
   splitJobLines,
@@ -48,14 +47,6 @@ function DecisionFact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EmptyImportant({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.02] px-3.5 py-3 text-sm leading-relaxed text-muted">
-      {children}
-    </p>
-  );
-}
-
 export default function JobDescriptionSections({ job }: { job: Job }) {
   const about = cleanJobText(job.about);
   const responsibilities = splitJobLines(job.responsibilities);
@@ -77,8 +68,19 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   const trialPresentation = job.trialStatus ? trialForJob(job) : null;
   const hiringProcess = job.hiringProcess || [];
   const applicationRequirements = uniqueJobText(job.applicationRequirements || []).map(applicationRequirementLabel);
-  const howToApply = cleanJobText(job.howToApply);
-  const externalUrl = safeJobExternalUrl(job.externalApplyUrl);
+  const baseNote = cleanJobText(job.howToApply);
+  // A closing date is part of the instructions. Older jobs stored it as its own
+  // field and it was rendered as a separate row; folding it in keeps the fact
+  // without giving it a label of its own, and only when the note is silent.
+  const howToApply = [
+    baseNote,
+    deadline.valid && deadline.label && !/\b(?:applications?\s+close|apply\s+by|deadline)\b/i.test(baseNote || "")
+      ? `Applications close on ${deadline.label}.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const referenceVideos = job.referenceVideos || [];
   const tags = uniqueJobText(job.tags || []);
   const sensitiveInputs = sourceInputs.filter(sourceInputNeedsSensitiveAccess);
@@ -368,14 +370,11 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
             <BodySection title="How to apply" icon="send">
               <div className="space-y-4">
                 <div>
-                  <p className="font-medium text-white/84">
-                    {job.applicationMode === "external" ? "Apply on an external site" : "Apply through CreatorJobs"}
-                  </p>
-                  {deadline.valid ? (
-                    <p className={deadline.expired ? "mt-1.5 text-sm font-medium text-amber-100/82" : "mt-1.5 text-sm text-white/58"}>
-                      {deadline.label}
-                    </p>
-                  ) : null}
+                  {/* Always CreatorJobs. A stored external mode describes a
+                      hiring process this platform never saw, so it is not a
+                      choice to report. The closing date, when there is one, is
+                      part of the instructions below rather than a row here. */}
+                  <p className="font-medium text-white/84">Apply through CreatorJobs</p>
                 </div>
                 {applicationRequirements.length ? (
                   <div>
@@ -387,15 +386,6 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
                 ) : null}
                 {howToApply ? (
                   <p className="whitespace-pre-line text-white/68">{howToApply}</p>
-                ) : null}
-                {job.applicationMode === "external" ? (
-                  externalUrl ? (
-                    <p className="rounded-xl border border-white/[0.08] bg-white/[0.025] px-3.5 py-3 text-sm leading-relaxed text-white/58">
-                      The application opens on another site. CreatorJobs does not receive or track that submission.
-                    </p>
-                  ) : (
-                    <EmptyImportant>The external application link is unavailable.</EmptyImportant>
-                  )
                 ) : null}
               </div>
             </BodySection>

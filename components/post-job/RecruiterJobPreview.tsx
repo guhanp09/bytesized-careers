@@ -336,8 +336,9 @@ function buildFacts(props: RecruiterJobPreviewProps): PreviewFacts {
   const location = text(props.location);
   const workMode = text(props.workMode);
   const workSetup = [workMode, location].filter(Boolean).join(" · ") || "Work setup not added";
-  const application =
-    domain.applicationMode === "external" ? "External application" : "Apply through CreatorJobs";
+  // Always CreatorJobs. A stored external mode describes someone else's hiring
+  // process, so the preview must not promise the recruiter it will be honoured.
+  const application = "Apply through CreatorJobs";
   const compensation = formatJobCompensation({
     mode: props.compensationMode,
     minimum: props.budgetMin,
@@ -524,6 +525,15 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
     { label: "Tags", values: unique(props.tags || []) },
   ].filter((group) => group.values.length);
   const deadline = formatJobDate(domain.deadlineAt, true);
+  const applyNote = [
+    howToApply,
+    deadline && !/\b(?:applications?\s+close|apply\s+by|deadline)\b/i.test(howToApply || "")
+      ? `Applications close on ${deadline}.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const trialActive = domain.trialStatus === "paid" || domain.trialStatus === "unpaid";
   const revisionSummary = revisionForJob({
     revisionPolicy: domain.revisionPolicy || undefined,
@@ -810,24 +820,10 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
           <BodySection title="How to apply" icon="send">
             <div className="space-y-3">
               <p className="font-medium text-white/82">{facts.application}</p>
-              {deadline ? <p className="text-sm text-white/58">Application deadline: {deadline}</p> : null}
-              {howToApply ? <p className="whitespace-pre-line">{howToApply}</p> : null}
-              {domain.applicationMode === "external" ? (
-                safeReferenceUrl(domain.externalApplyUrl) ? (
-                  <a
-                    href={safeReferenceUrl(domain.externalApplyUrl) || undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-white/78 underline decoration-white/25 underline-offset-4 transition-colors hover:text-white"
-                  >
-                    Open application page
-                    <Icon name="external-link" className="h-4 w-4" />
-                  </a>
-                ) : (
-                  <EmptyReview>The external application link has not been added.</EmptyReview>
-                )
-              ) : null}
-              {!deadline && !howToApply && domain.applicationMode === "internal" ? (
+              {/* A closing date belongs in the instructions, not on a row of its
+                  own — that is how a candidate reads it. */}
+              {applyNote ? <p className="whitespace-pre-line">{applyNote}</p> : null}
+              {!applyNote ? (
                 <p className="text-sm text-muted">Candidates will apply through CreatorJobs.</p>
               ) : null}
             </div>
