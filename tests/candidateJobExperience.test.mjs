@@ -44,7 +44,9 @@ test("cards remain decision-first and do not expose technical legacy terminology
   assert.match(card, /compensationForJob/);
   assert.match(card, /engagementForJob/);
   assert.match(card, /workSetupForJob/);
-  assert.match(card, /deadlineForJob/);
+  // A closing date is part of the application instructions now, not a row on a
+  // card. Showing it here made it a separate promise the listing had to keep.
+  assert.doesNotMatch(card, /deadlineForJob/);
   assert.match(card, /Verified hiring identity/);
   assert.doesNotMatch(card, />\s*legacy category\s*</i);
 });

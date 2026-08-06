@@ -9,7 +9,6 @@ import { formatListingTitle } from "../lib/displayText";
 import { formatCompactNumber, formatPostedLabel } from "../lib/format";
 import {
   compensationForJob,
-  deadlineForJob,
   engagementForJob,
   hiringVerificationForJob,
   roleForJob,
@@ -111,7 +110,6 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
   const responseRate = normalizePercent(job.responseRate);
   const role = roleForJob(job);
   const compensation = compensationForJob(job);
-  const deadline = deadlineForJob(job.deadlineAt);
   const trial = job.trialStatus ? trialForJob(job) : null;
   const employerName = job.hiringDisplayName || job.channel.name || "Employer not specified";
   const representedBy = job.postedByAgency ? job.managedByAgencyName : "";
@@ -219,12 +217,6 @@ export function JobCard({ job, matchReasons }: { job: Job; matchReasons?: string
             <Icon name="pin" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
             <span className="min-w-0 break-words">{workSetupForJob(job)}</span>
           </p>
-          {deadline.valid ? (
-            <p className={`flex min-w-0 items-start gap-2 ${deadline.expired ? "font-medium text-amber-100/80" : ""}`}>
-              <Icon name="calendar-clock" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
-              <span className="min-w-0 break-words">{deadline.label}</span>
-            </p>
-          ) : null}
         </div>
 
         {contextChips.length ? (

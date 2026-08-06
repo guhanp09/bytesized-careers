@@ -7,7 +7,6 @@ import { formatSubs } from "../../lib/format";
 import {
   cleanJobText,
   compensationForJob,
-  deadlineForJob,
   employerContextLabel,
   engagementForJob,
   hiringVerificationForJob,
@@ -86,7 +85,6 @@ export default function JobHero({
   });
   const role = roleForJob(job);
   const compensation = compensationForJob(job);
-  const deadline = deadlineForJob(job.deadlineAt);
   const identityName =
     cleanJobText(job.hiringDisplayName) ||
     cleanJobText(job.channel.name) ||
@@ -188,15 +186,12 @@ export default function JobHero({
         <SummaryFact icon="video" label="Platform / format" value={platformAndFormat} />
       </dl>
 
-      {postedText || deadline.valid ? (
+      {/* A closing date is part of the application instructions, not a badge on
+          the header. It reads there as a separate promise the listing has to
+          keep; in the instructions it reads as what it is. */}
+      {postedText ? (
         <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-subtle">
-          {postedText ? <span>{postedText}</span> : null}
-          {postedText && deadline.valid ? <span aria-hidden="true" className="text-disabled">•</span> : null}
-          {deadline.valid ? (
-            <span className={deadline.expired ? "font-medium text-amber-100/76" : "text-white/58"}>
-              {deadline.label}
-            </span>
-          ) : null}
+          <span>{postedText}</span>
         </div>
       ) : null}
     </section>
