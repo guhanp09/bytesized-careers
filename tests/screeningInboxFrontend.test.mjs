@@ -26,8 +26,11 @@ const { mapBackendMessage } = await import("../lib/messaging.ts");
 test("the static 'Review the application details before sending' line is gone from every action-panel state", () => {
   const panel = read("components/job-details/JobActionsPanelClient.tsx");
   assert.doesNotMatch(panel, /Review the application details before sending/);
-  // A genuine external-application notice remains.
-  assert.match(panel, /This opens another site/);
+  // The external-application notice is gone too. There is no longer a state it
+  // could describe: applications run through CreatorJobs, so the panel never
+  // sends anyone to another site and never warns that it might.
+  assert.doesNotMatch(panel, /This opens another site/);
+  assert.doesNotMatch(panel, /Continue to application/);
 });
 
 test("public job detail no longer renders language or screening sections", () => {

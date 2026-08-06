@@ -46,7 +46,11 @@ test("screening validation distinguishes required and optional questions and sna
   ]);
 });
 
-test("preflight makes external routing, tracking limits, deadline, materials, and trial explicit", () => {
+test("a stored external route never sends a candidate off CreatorJobs", () => {
+  // This used to assert the opposite: that an external mode produced an external
+  // CTA pointing at the stored URL. Applications run through CreatorJobs, so a
+  // stored external route describes some other hiring process the platform never
+  // saw and cannot record. It is compatibility data, not a setting.
   const preflight = applicationPreflightForJob(baseJob({
     applicationMode: "external",
     externalApplyUrl: "https://jobs.example.test/apply",
@@ -55,8 +59,8 @@ test("preflight makes external routing, tracking limits, deadline, materials, an
     screeningQuestions: [{ prompt: "Share context", required: true }],
     trialStatus: "unpaid",
   }));
-  assert.equal(preflight.mode, "external");
-  assert.equal(preflight.externalUrl, "https://jobs.example.test/apply");
+  assert.equal(preflight.mode, "internal");
+  assert.equal(preflight.externalUrl, null);
   assert.deepEqual(preflight.materialLabels, ["Relevant portfolio"]);
   // Screening questions are never collected before applying, so preflight never carries
   // them regardless of what the job configures.
@@ -64,6 +68,7 @@ test("preflight makes external routing, tracking limits, deadline, materials, an
   assert.equal(preflight.trial.title, "Unpaid trial");
   assert.equal(preflight.hasPreflightDetails, true);
 
-  const invalid = applicationPreflightForJob(baseJob({ applicationMode: "external", externalApplyUrl: "javascript:alert(1)" }));
-  assert.equal(invalid.externalUrl, null);
+  // A deadline is part of the instructions rather than a row of its own, so an
+  // older job's stored date is folded into the note instead of being lost.
+  assert.match(preflight.applicationInstruction ?? "", /Applications close on/);
 });

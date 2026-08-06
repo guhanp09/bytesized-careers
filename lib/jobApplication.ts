@@ -2,7 +2,6 @@ import type { JobScreeningQuestion } from "./jobContract.ts";
 import {
   applicationRequirementLabel,
   deadlineForJob,
-  safeJobExternalUrl,
   trialForJob,
   uniqueJobText,
 } from "./jobPresentation.ts";
@@ -79,20 +78,38 @@ export function buildScreeningQuestionAnswers(
     .filter((answer) => answer.response);
 }
 
+/** Whether a note already states a closing date, so it is not stated twice. */
+function mentionsDeadline(note: string | null): boolean {
+  if (!note) return false;
+  return /\b(?:applications?\s+close|apply\s+by|deadline)\b/i.test(note);
+}
+
 export function applicationPreflightForJob(job: Job) {
   const requirements = partitionJobApplicationRequirements(job.applicationRequirements);
   const deadline = deadlineForJob(job.deadlineAt);
-  const externalUrl = safeJobExternalUrl(job.externalApplyUrl);
   const trial = job.trialStatus ? trialForJob(job) : null;
   const howToApply = job.howToApply?.trim() || null;
-  const applicationInstruction =
+  const baseInstruction =
     howToApply && !requirements.known.includes(CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
       ? howToApply
       : null;
+  // A deadline is part of the instructions, not a row of its own. Older jobs
+  // stored it separately, so it is folded in here rather than shown twice or
+  // lost — and only when the note does not already say it.
+  const deadlineSentence =
+    deadline.valid && deadline.label && !mentionsDeadline(baseInstruction)
+      ? `Applications close on ${deadline.label}.`
+      : null;
+  const applicationInstruction =
+    [baseInstruction, deadlineSentence].filter(Boolean).join(" ").trim() || null;
   return {
-    mode: job.applicationMode === "external" ? ("external" as const) : ("internal" as const),
+    // Applications run through CreatorJobs. A stored external mode belongs to
+    // some other hiring process the platform never saw and cannot record, so it
+    // is compatibility data rather than a setting: reading it here is what let
+    // an old record send candidates off the platform.
+    mode: "internal" as const,
     deadline,
-    externalUrl,
+    externalUrl: null as string | null,
     trial,
     knownRequirementKeys: requirements.known,
     unknownRequirementKeys: requirements.unknown,
@@ -109,9 +126,7 @@ export function applicationPreflightForJob(job: Job) {
       requirements.known.length ||
         requirements.unknown.length ||
         trial ||
-        applicationInstruction ||
-        job.applicationMode === "external" ||
-        deadline.valid,
+        applicationInstruction,
     ),
   };
 }

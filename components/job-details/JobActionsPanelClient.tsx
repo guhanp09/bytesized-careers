@@ -335,7 +335,7 @@ export default function JobActionsPanelClient({
       return;
     }
     if (sessionStatus === "loading") {
-      setRelationshipState(preflight.mode === "external" ? "ready" : "loading");
+      setRelationshipState("loading");
       return;
     }
     const token = session?.backendAccessToken;
@@ -350,7 +350,7 @@ export default function JobActionsPanelClient({
     let cancelled = false;
     setExistingApplication(null);
     setConversationId(null);
-    setRelationshipState(preflight.mode === "external" ? "ready" : "loading");
+    setRelationshipState("loading");
     setApplyState("idle");
     setApplyError(null);
     void getMyApplicationForJob(token, String(job.id))
@@ -364,13 +364,6 @@ export default function JobActionsPanelClient({
       })
       .catch((error) => {
         if (cancelled) return;
-        if (preflight.mode === "external") {
-          // Existing CreatorJobs applications remain discoverable after a listing
-          // switches to an external flow, but a failed relationship read must not
-          // block or replace the safe external link.
-          setRelationshipState("ready");
-          return;
-        }
         setRelationshipState("error");
         setApplyState("error");
         setApplyError(applicationErrorMessage(error, "Couldn’t check your application status. Try again."));
@@ -428,7 +421,6 @@ export default function JobActionsPanelClient({
   // listing asks for preflight details.
   const onApply = async () => {
     if (deadlineExpired || applicationsUnavailable) return;
-    if (preflight.mode === "external") return;
     if (existingApplication) {
       openApplication(existingApplication.id);
       return;
@@ -453,9 +445,8 @@ export default function JobActionsPanelClient({
   };
 
   const submitApplication = async () => {
-    // A stale open modal must never turn an external or newly unavailable listing
-    // into an internal CreatorJobs POST.
-    if (preflight.mode === "external" || applicationsUnavailable) {
+    // A stale open modal must never turn a newly unavailable listing into a POST.
+    if (applicationsUnavailable) {
       setRequirementsOpen(false);
       return;
     }
@@ -544,10 +535,6 @@ export default function JobActionsPanelClient({
       ? { label: "Applications closed", icon: "calendar-clock" as const, disabled: true }
       : applicationsUnavailable
         ? { label: "Applications unavailable", icon: "alert" as const, disabled: true }
-      : preflight.mode === "external" && preflight.externalUrl
-        ? { label: "Continue to application", icon: "external-link" as const, href: preflight.externalUrl, external: true }
-        : preflight.mode === "external"
-          ? { label: "Application link unavailable", icon: "alert" as const, disabled: true }
     : relationshipState === "loading"
       ? { label: "Checking application…", icon: "refresh" as const, disabled: true }
       : relationshipState === "error"
@@ -602,9 +589,7 @@ export default function JobActionsPanelClient({
             ? "The application deadline has passed."
             : applicationsUnavailable
               ? "This job is no longer accepting applications."
-            : preflight.mode === "external"
-              ? "This opens another site. CreatorJobs does not receive or track the application."
-              : null
+            : null
         }
       />
       <FirstMessageRequirementsModal
