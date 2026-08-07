@@ -124,3 +124,53 @@ class TestOneStrayFieldNameDoesNotDestroyAnExtraction:
         # These are the reaches that must never be salvaged around.
         assert "status" in SYSTEM_OWNED_IMPORT_FIELDS
         assert "hiring_verification_status_snapshot" in SYSTEM_OWNED_IMPORT_FIELDS
+
+
+class TestPayIsOneDecisionNotTwo:
+    """Five of seven live sources asked the same two money questions in a row.
+
+    A page silent about money leaves two native fields unset — how the figure is
+    expressed, and what period it covers — and the queue asked for each in turn.
+    Nobody hires by choosing a "compensation mode": they decide whether they are
+    paying for a project, an hour, a month or a piece, and that one decision
+    settles both fields.
+    """
+
+    @staticmethod
+    def _options() -> list[dict]:
+        import inspect
+
+        from app.services.job_import_conversation_service import JobImportConversationService
+
+        source = inspect.getsource(JobImportConversationService._group_money_question)
+        assert '"grouped_fields"' in source
+        return source
+
+    def test_the_grouped_question_covers_both_fields(self) -> None:
+        source = self._options()
+
+        assert '["budget_unit", "compensation_mode"]' in source
+        assert "How is this role paid?" in source
+
+    def test_the_options_read_as_offers_not_field_names(self) -> None:
+        source = self._options()
+
+        for label in (
+            "A fixed amount for the whole project",
+            "An hourly rate",
+            "A monthly amount",
+            "A rate for each piece of work",
+            "Open to discussion with the candidate",
+        ):
+            assert label in source
+
+        # No internal field name may reach the recruiter's screen as a label.
+        assert '"label": "budget_unit' not in source
+        assert '"label": "compensation_mode' not in source
+
+    def test_grouping_only_happens_while_both_are_open(self) -> None:
+        # If the source settled one of them, what remains is already the
+        # smallest question worth asking and must not be widened again.
+        source = self._options()
+
+        assert 'unresolved("compensation_mode") and unresolved("budget_unit")' in source

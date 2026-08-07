@@ -724,6 +724,7 @@ class JobImportConversationService:
             await self._title_suggestions(draft),
         )
         await self._group_workplace_question(draft, question)
+        await self._group_money_question(draft, question)
         # Optional suggestions live in their own phase so the UI can present
         # them as offers rather than as remaining work.
         target_state: ConversationState = (
@@ -1069,6 +1070,82 @@ class JobImportConversationService:
             question["explanation"] = (
                 "Choosing here settles both the work setup and the place."
             )
+
+    async def _group_money_question(
+        self, draft: JobImportDraft, question: dict[str, Any]
+    ) -> None:
+        """Ask about pay once, in the terms a recruiter thinks in.
+
+        A page that says nothing about money leaves two native fields unset —
+        how the figure is expressed, and what period it covers — and the queue
+        asked for each in turn. Across a live benchmark that was the single most
+        repeated interruption: five of seven sources produced the same two
+        questions back to back, both phrased in terms of fields rather than
+        offers.
+
+        Nobody hires by choosing a "compensation mode". They decide whether they
+        are paying for a project, an hour, a month, or per piece — and that one
+        decision settles both fields. So it is asked as one, and a page that
+        already states its pay still reaches none of this.
+        """
+
+        asked_path = question.get("field_path")
+        if asked_path not in {"compensation_mode", "budget_unit"}:
+            return
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        by_path = {item.field_path: item for item in fields}
+        answers = self._stored_answers(draft)
+
+        def unresolved(path: str) -> bool:
+            row = by_path.get(path)
+            return (
+                path not in answers
+                and row is not None
+                and row.provenance_state in {"missing", "conflicting_source_values"}
+            )
+
+        # Only group while both are genuinely open. If the source settled one,
+        # the remaining question is already the smallest one worth asking.
+        if not (unresolved("compensation_mode") and unresolved("budget_unit")):
+            return
+
+        options = [
+            {
+                "value": "per project",
+                "label": "A fixed amount for the whole project",
+                "applies": {"budget_unit": "per project", "compensation_mode": "fixed"},
+            },
+            {
+                "value": "per hour",
+                "label": "An hourly rate",
+                "applies": {"budget_unit": "per hour", "compensation_mode": "range"},
+            },
+            {
+                "value": "per month",
+                "label": "A monthly amount",
+                "applies": {"budget_unit": "per month", "compensation_mode": "range"},
+            },
+            {
+                "value": "per video",
+                "label": "A rate for each piece of work",
+                "applies": {"budget_unit": "per video", "compensation_mode": "range"},
+            },
+            {
+                "value": "negotiable",
+                "label": "Open to discussion with the candidate",
+                "applies": {"compensation_mode": "negotiable"},
+            },
+        ]
+
+        question["field_path"] = "budget_unit"
+        question["grouped_fields"] = ["budget_unit", "compensation_mode"]
+        question["grouped_options"] = options
+        question["heading"] = "How is this role paid?"
+        question["explanation"] = (
+            "Candidates read pay before anything else. Choosing here settles how "
+            "the figure is expressed, and you can add the amount in the editor."
+        )
 
     def _grouped_side_effects(
         self, question: dict[str, Any] | None, value: object
