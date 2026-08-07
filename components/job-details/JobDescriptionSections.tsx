@@ -26,6 +26,7 @@ import {
   uniqueJobText,
   workSetupForJob,
 } from "../../lib/jobPresentation";
+import { CUSTOM_INSTRUCTION_REQUIREMENT_KEY } from "../../lib/firstMessageRequirements";
 import type { Job } from "../../lib/types";
 import {
   BodySection,
@@ -67,7 +68,13 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
   // that there is no trial.
   const trialPresentation = job.trialStatus ? trialForJob(job) : null;
   const hiringProcess = job.hiringProcess || [];
-  const applicationRequirements = uniqueJobText(job.applicationRequirements || []).map(applicationRequirementLabel);
+  // The screening key is a legacy standard-requirement entry whose label reads
+  // "Screening question". Listing it here published the private evaluative
+  // section on the public page as a required material — the one thing screening
+  // must never be. Its own section already owns the concept.
+  const applicationRequirements = uniqueJobText(job.applicationRequirements || [])
+    .filter((key) => key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY)
+    .map(applicationRequirementLabel);
   const baseNote = cleanJobText(job.howToApply);
   // A closing date is part of the instructions. Older jobs stored it as its own
   // field and it was rendered as a separate row; folding it in keeps the fact

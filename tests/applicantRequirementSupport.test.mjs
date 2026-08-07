@@ -91,3 +91,81 @@ test("work links are asked for through the job's portfolio mechanism", () => {
   assert.ok(classifierKeys().includes("relevant_portfolio"));
   assert.ok(!classifierKeys().includes("reference_links"));
 });
+
+test("every job-selectable requirement has a candidate control that renders it", () => {
+  // The catalog declares an answerType; this proves something actually draws
+  // one. A key whose type has no branch would render nothing, so the recruiter
+  // would be asking for something the candidate is never shown.
+  const fields = fs.readFileSync(
+    new URL("../components/first-message/FirstMessageFields.tsx", import.meta.url),
+    "utf8"
+  );
+  const rendered = new Set(
+    [...fields.matchAll(/def\.answerType === "([A-Za-z]+)"/g)].map((m) => m[1])
+  );
+  // The final branch treats longText and experience as a multiline control.
+  rendered.add("longText");
+  rendered.add("experience");
+
+  for (const def of requirementsForContext("job")) {
+    assert.ok(
+      rendered.has(def.answerType),
+      `${def.key} is selectable for jobs but no candidate control renders ` +
+        `answerType "${def.answerType}"; recruiters could request something ` +
+        `candidates cannot provide`
+    );
+  }
+});
+
+test("the screening concept has exactly one recruiter control", () => {
+  // custom_instruction predates the dedicated Screening questions section and
+  // is labelled "Screening question". Leaving it in the standard selector would
+  // give recruiters two controls for one concept — the precise distinction this
+  // work exists to draw — so Post Job hides it.
+  const form = fs.readFileSync(
+    new URL("../components/post-job/PostJobForm.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(form, /hideCustomInstruction/);
+
+  const selector = fs.readFileSync(
+    new URL("../components/first-message/RequirementSelector.tsx", import.meta.url),
+    "utf8"
+  );
+  // The filter must key off the canonical constant, not a copied string.
+  assert.match(selector, /definition\.key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY/);
+
+  // Historical values are still readable and removable rather than dropped.
+  assert.match(form, /Previously saved first-message prompt/);
+});
+
+test("selected requirements are genuinely required, on both sides", () => {
+  // "What applicants must include" is only truthful if something enforces it.
+  const panel = fs.readFileSync(
+    new URL("../components/job-details/JobActionsPanelClient.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(panel, /validateAnswers\(requirementKeys, "job", normalizedAnswers\)/);
+  assert.match(panel, /setAnswerErrors\(errors\)/);
+
+  // And the server does not trust the client to have done it.
+  const router = fs.readFileSync(
+    new URL("../backend/app/api/v1/routers/marketplace.py", import.meta.url),
+    "utf8"
+  );
+  assert.match(router, /_assert_first_message_complete\(job\.application_requirements/);
+  assert.match(router, /Missing required first-message details/);
+});
+
+test("the screening key never renders as a public application material", () => {
+  // Browser QA caught this: the public listing printed "Screening question" in
+  // its required-materials pills. The key is a legacy standard-requirement
+  // entry whose label happens to read that way, so it published the private
+  // evaluative section on the public page — the one thing screening must never
+  // be. An earlier assertion looked for the plural and missed it.
+  const sections = fs.readFileSync(
+    new URL("../components/job-details/JobDescriptionSections.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(sections, /filter\(\(key\) => key !== CUSTOM_INSTRUCTION_REQUIREMENT_KEY\)/);
+});

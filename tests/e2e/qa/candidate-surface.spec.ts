@@ -74,7 +74,9 @@ test("the candidate surface applies through CreatorJobs and nowhere else", async
   expect(body).not.toMatch(/whatsapp/i);
   expect(body).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
   // Screening questions belong to the application, never the public listing.
-  expect(body).not.toMatch(/Screening questions/);
+  // Singular as well as plural: the public page briefly printed "Screening
+  // question" as a required-materials pill, and a plural-only check missed it.
+  expect(body).not.toMatch(/Screening questions?/);
 
   // Nothing may leave the platform to apply.
   const leaving = await page
