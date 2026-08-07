@@ -1334,8 +1334,15 @@ class TestATransientTimeoutIsRetriedOnceAndNoMore:
             return httpx.Response(
                 200,
                 headers={"content-type": "text/html"},
-                content=b"<html><head><title>Video Editor</title></head>"
-                b"<body><h1>Video Editor</h1><p>Edit weekly explainers.</p></body></html>",
+                # A page thin enough to look like a shell is now refused, so the
+                # fixture has to read like the posting it claims to be.
+                content=b"<html><head><title>Video Editor</title></head><body>"
+                b"<h1>Video Editor</h1>"
+                b"<h2>About the role</h2><p>Edit weekly explainer videos.</p>"
+                b"<h2>Responsibilities</h2><p>Cut long-form episodes and shorts.</p>"
+                b"<h2>Qualifications</h2><p>3+ years of experience with Premiere Pro.</p>"
+                b"<h2>Benefits</h2><p>Paid time off and equipment budget.</p>"
+                b"</body></html>",
             )
 
         fetcher = PublicJobUrlFetcher(

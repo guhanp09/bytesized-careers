@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from app.core.job_page_evidence import page_holds_a_job
 from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
 
 MAX_URL_RESPONSE_BYTES = 1_000_000
@@ -965,6 +966,25 @@ class PublicJobUrlFetcher:
                     raise PublicJobUrlFetchError(
                         "JOB_IMPORT_URL_AUTH_REQUIRED",
                         "This page requires sign-in and cannot be imported.",
+                    )
+
+                # Fetching a page is not the same as finding a job on it. A board
+                # that draws its posting in the browser normalises to a few
+                # characters, and a job id that has moved serves the company's
+                # index instead — both arriving here as perfectly good responses.
+                #
+                # Letting either through is worse than failing: the model is
+                # handed a company blurb and whatever it invents becomes a draft
+                # the recruiter has to unpick. Saying so costs them one paste.
+                if not page_holds_a_job(
+                    normalized,
+                    has_structured_job=bool(metadata.get("structured_context")),
+                ):
+                    raise PublicJobUrlFetchError(
+                        "JOB_IMPORT_URL_NO_JOB_CONTENT",
+                        "This page does not contain a readable job description — "
+                        "it may be a job board index, or the listing may load in "
+                        "the browser. Paste the job text instead.",
                     )
                 metadata.update(
                     {
