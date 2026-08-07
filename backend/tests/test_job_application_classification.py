@@ -38,7 +38,9 @@ class TestStandardDetailsBecomeStructuredRequirements:
             ("List the editing tools and workflow you use.", "tools_workflow"),
             ("Attach your CV.", "relevant_portfolio"),
             ("Include your showreel.", "relevant_portfolio"),
-            ("Send links to previous work.", "reference_links"),
+            # Work links are asked for through the job-side portfolio mechanism.
+            # "reference_links" is talent-only and would be discarded for a job.
+            ("Send links to previous work.", "relevant_portfolio"),
             ("What is your expected turnaround?", "turnaround"),
         ],
     )
@@ -184,7 +186,7 @@ class TestPublicationRefusesOffPlatformRouting:
 class TestPlatformContextSurvivesStructuredMapping:
     """A generic key cannot say which platform, and that is the useful part.
 
-    "reference_links" tells a candidate to send links. It cannot tell them the
+    "relevant_portfolio" tells a candidate to send work. It cannot tell them the
     recruiter wants YouTube and Instagram specifically, which is what changes
     what they send — so a phrase naming a platform survives into the note even
     though the structured key already covers the general request.
@@ -197,7 +199,7 @@ class TestPlatformContextSurvivesStructuredMapping:
 
         note = str(result["how_to_apply"])
         assert "YouTube" in note and "Instagram" in note
-        assert "reference_links" in result["application_requirements"]
+        assert "relevant_portfolio" in result["application_requirements"]
         assert "@" not in note
 
     @pytest.mark.parametrize(

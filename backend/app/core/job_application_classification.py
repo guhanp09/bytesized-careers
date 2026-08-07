@@ -36,6 +36,16 @@ from typing import Final
 #: Deliberately the same vocabulary the application form already collects, so a
 #: mapped requirement activates an input the candidate already knows how to fill
 #: rather than inventing a second way to ask.
+#: Only keys a *job* can actually ask for.
+#:
+#: The catalog is shared with talent listings and not every entry belongs to
+#: both. ``reference_links`` is talent-only: emitting it for a job produced a
+#: requirement `sanitizeRequirementKeys(..., "job")` silently discarded, so the
+#: candidate was never asked and the recruiter never received it — a phantom
+#: selection that looked right in the payload and did nothing.
+#:
+#: Work links are asked for on the job side through ``relevant_portfolio``,
+#: which is the portfolio mechanism the application form already renders.
 REQUIREMENT_KEYS: Final[tuple[str, ...]] = (
     "expected_rate",
     "relevant_portfolio",
@@ -43,7 +53,6 @@ REQUIREMENT_KEYS: Final[tuple[str, ...]] = (
     "working_hours",
     "relevant_experience",
     "tools_workflow",
-    "reference_links",
     "start_availability",
 )
 
@@ -56,7 +65,7 @@ _REQUIREMENT_PATTERNS: Final[tuple[tuple[str, str], ...]] = (
     ("working_hours", r"\b(?:working\s+hours|work\s+hours|hours\s+(?:you|per)|time\s?zone|timezone|overlap)\b"),
     ("relevant_experience", r"\b(?:years?\s+of\s+experience|relevant\s+experience|prior\s+experience)\b"),
     ("tools_workflow", r"\b(?:tools?|software|workflow|editing\s+suite|stack)\b"),
-    ("reference_links", r"\b(?:links?\s+to|previous\s+work|past\s+work|references?)\b"),
+    ("relevant_portfolio", r"\b(?:links?\s+to|previous\s+work|past\s+work|references?)\b"),
     ("start_availability", r"\b(?:availability|available\s+(?:from|to\s+start)|notice\s+period|start\s+date)\b"),
 )
 
