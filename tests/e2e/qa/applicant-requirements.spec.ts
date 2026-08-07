@@ -107,3 +107,126 @@ test("the server refuses an application that skips a required answer", async ({ 
   expect(response.status(), await response.text()).toBe(422);
   expect(await response.text()).toContain("Missing required first-message details");
 });
+
+
+/**
+ * Fill whatever control a requirement rendered.
+ *
+ * Deliberately generic: the point is that the candidate can satisfy each
+ * requirement through the real UI, not that the test knows every widget. A key
+ * whose shell contains nothing fillable fails loudly, which is the defect worth
+ * catching.
+ */
+async function satisfy(page: Page, key: string) {
+  const shell = page.locator(`[data-requirement-key="${key}"]`);
+  await expect(shell).toBeVisible({ timeout: 20_000 });
+
+  // Portfolio offers a link alternative when the profile has no project.
+  const linkInstead = shell.getByRole("button", { name: /Attach a link instead/i });
+  if (await linkInstead.count()) {
+    await linkInstead.click();
+  }
+
+  if (key === "tools_workflow") {
+    const toolInput = shell.locator("input").first();
+    if (await toolInput.count()) {
+      await toolInput.fill("Adobe Premiere Pro");
+      await toolInput.press("Enter");
+      return;
+    }
+  }
+
+  const textbox = shell.locator("input:not([type=hidden]), textarea").first();
+  if (await textbox.count()) {
+    const type = await textbox.getAttribute("type");
+    const value =
+      key === "expected_rate" || type === "number"
+        ? "25000"
+        : key === "turnaround"
+          ? "3"
+          : type === "date"
+            ? "2026-12-01"
+            : key === "relevant_portfolio"
+              ? "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+              : "Answered by the candidate during QA.";
+    await textbox.fill(value);
+    // Portfolio and tools are pickers: typing proposes, Enter commits. Leaving
+    // the text uncommitted is why the modal still said "Select at least one
+    // item" while the box looked filled.
+    if (key === "relevant_portfolio" || key === "tools_workflow") {
+      await textbox.press("Enter");
+    }
+    return;
+  }
+
+  const select = shell.locator("select").first();
+  if (await select.count()) {
+    const options = await select.locator("option").allTextContents();
+    expect(options.length, `${key} has an empty select`).toBeGreaterThan(1);
+    await select.selectOption({ index: 1 });
+    return;
+  }
+
+  throw new Error(`${key} rendered no control a candidate could fill`);
+}
+
+test("a candidate submits every answer and the recruiter receives them", async ({ page }) => {
+  await login(page, "qa-controller@example.com", "LocalQaController123!");
+
+  // Applying needs a candidate, not the listing's owner.
+  await page.getByTestId("qa-persona-open").click();
+  await expect(page.getByTestId("qa-persona-drawer")).toBeVisible();
+  await page.getByTestId("qa-switch-talent-complete").click();
+  await expect(page.getByTestId("qa-persona-open")).toContainText("Priya Nair", {
+    timeout: 20_000,
+  });
+
+  const job = await jobRequiringEverything(page);
+  await page.goto(`/jobs/${job.id}`, { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: job.title, exact: false }).first()
+  ).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^Apply/i }).first().click();
+
+  for (const key of job.application_requirements ?? []) {
+    await satisfy(page, key);
+  }
+  await page.screenshot({ path: `${SHOTS}/filled-application.png`, fullPage: true });
+
+  const send = page.getByRole("button", { name: /Send application/i });
+  await expect(send).toBeEnabled();
+  await send.click();
+
+  // The real endpoint, not a stub. The button reports the outcome: "Sent" once
+  // the application lands, and the modal surfaces an error otherwise.
+  // Success closes the modal, so the proof is the state it leaves behind.
+  await expect(page.getByRole("button", { name: /Send application/i })).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await page.screenshot({ path: `${SHOTS}/after-submit.png`, fullPage: true });
+
+  // The answers must actually have persisted, not merely left the browser.
+  const session = (await (await page.request.get("/api/auth/session")).json()) as {
+    backendAccessToken?: string;
+  };
+  const mine = await page.request.get(`${BACKEND}/me/applications/sent`, {
+    headers: { Authorization: `Bearer ${session.backendAccessToken}` },
+  });
+  expect(mine.ok(), await mine.text()).toBeTruthy();
+  const applications = (await mine.json()) as Array<{
+    job_id?: string;
+    first_message_answers?: Record<string, unknown>;
+  }>;
+  const submitted = applications.find((row) => row.job_id === job.id);
+  expect(submitted, "the submitted application was not persisted").toBeTruthy();
+
+  // Every requirement the job asked for came back with an answer attached.
+  const answers = submitted!.first_message_answers ?? {};
+  for (const key of job.application_requirements ?? []) {
+    expect(
+      answers[key],
+      `${key} was required and submitted but no answer persisted`
+    ).toBeTruthy();
+  }
+});
