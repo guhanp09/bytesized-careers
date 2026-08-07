@@ -2693,14 +2693,45 @@ class JobImportService:
         state = existing.get("provenance_state")
         if state == "missing":
             return True
-        if state != "suggested_inference":
-            return False
+
         if existing.get("review_status") != "pending":
             return False
-        # Only where the guess is unusable anyway: rejected, or holding nothing.
-        return bool(existing.get("validation_errors")) or existing.get(
-            "proposed_value"
-        ) in (None, "")
+
+        # A row that cannot reach the draft is not a reading worth protecting,
+        # whatever provenance it claims. Two live runs proved the cost: a title
+        # row arrived holding nothing and still blocked the page's own
+        # JobPosting title, so an authoritative fact was lost *and* the
+        # recruiter was asked to supply it. And an experience row arrived with
+        # sixty-plus characters of prose that the sixty-four-character column
+        # refuses, so a correctly-read "25 years" was dropped at conversion
+        # while the page had said it plainly.
+        #
+        # An empty, rejected or unrepresentable value therefore yields to the
+        # explicit source fact. A settled, usable reading still wins, and a
+        # recruiter still wins over both through the prefill merge below.
+        if not JobImportService._value_reaches_the_draft(existing):
+            return True
+
+        return state == "suggested_inference" and (
+            bool(existing.get("validation_errors"))
+            or existing.get("proposed_value") in (None, "")
+        )
+
+    @staticmethod
+    def _value_reaches_the_draft(existing: dict[str, Any]) -> bool:
+        """Whether this row's value could actually become part of the draft."""
+
+        if existing.get("validation_errors"):
+            return False
+        value = existing.get("proposed_value")
+        if value in (None, ""):
+            return False
+        field_path = existing.get("field_path")
+        if not isinstance(field_path, str):
+            return True
+        # The same gate conversion applies, asked early: a value the native
+        # field will refuse is not a value the draft can hold.
+        return convert_to_native(field_path, value).writable
 
     async def _merge_structured_page_signals(
         self,
