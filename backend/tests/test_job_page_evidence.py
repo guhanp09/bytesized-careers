@@ -89,3 +89,52 @@ class TestTheRuleIsAboutEvidenceNotHosts:
 
     def test_an_index_mentioning_one_posting_word_still_fails(self) -> None:
         assert not page_holds_a_job(BOARD_INDEX + "\nSkills\n", has_structured_job=False)
+
+
+class TestARefusedRequestSaysSo:
+    """A site declining a bot is not a sign-in wall.
+
+    Cloudflare answers "Just a moment..." with a 403, and the fetcher reported
+    that as "This page requires sign-in", sending the recruiter to look for a
+    password that would not have helped. 401 is genuinely authentication; 403
+    here is a refusal, and the honest response points at the paste fallback.
+    """
+
+    @staticmethod
+    async def _fetch(status: int):
+        import ipaddress
+
+        import httpx
+
+        from app.services.job_url_fetcher import PublicJobUrlFetcher, PublicJobUrlFetchError
+
+        async def public(_host: str, _port: int):
+            return [ipaddress.ip_address("93.184.216.34")]
+
+        fetcher = PublicJobUrlFetcher(
+            resolver=public,
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    status, headers={"content-type": "text/html"}, content=b"Just a moment..."
+                )
+            ),
+        )
+        try:
+            await fetcher.fetch("https://public.example/jobs/1")
+        except PublicJobUrlFetchError as exc:
+            return exc
+        raise AssertionError("expected a fetch error")
+
+    @pytest.mark.anyio
+    async def test_a_bot_refusal_is_not_reported_as_sign_in(self) -> None:
+        error = await self._fetch(403)
+
+        assert error.code == "JOB_IMPORT_URL_ACCESS_DECLINED"
+        assert "sign in" not in error.message.lower()
+        assert "paste" in error.message.lower()
+
+    @pytest.mark.anyio
+    async def test_genuine_authentication_still_says_sign_in(self) -> None:
+        error = await self._fetch(401)
+
+        assert error.code == "JOB_IMPORT_URL_AUTH_REQUIRED"

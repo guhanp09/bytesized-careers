@@ -879,10 +879,24 @@ class PublicJobUrlFetcher:
                                 )
                             current_url = urljoin(current_url, location)
                             continue
-                        if response.status_code in {401, 403}:
+                        if response.status_code == 401:
                             raise PublicJobUrlFetchError(
                                 "JOB_IMPORT_URL_AUTH_REQUIRED",
                                 "This page requires sign-in and cannot be imported.",
+                            )
+                        if response.status_code == 403:
+                            # Not a sign-in wall. A 403 here is almost always a
+                            # site declining automated access — a bot check
+                            # answering "Just a moment..." rather than a login
+                            # form. Telling the recruiter to sign in sends them
+                            # looking for a password that would not help, so the
+                            # message says what actually happened and points at
+                            # the paste fallback, which does work.
+                            raise PublicJobUrlFetchError(
+                                "JOB_IMPORT_URL_ACCESS_DECLINED",
+                                "This site declined an automated request for the "
+                                "page. Open it in your browser and paste the job "
+                                "text instead.",
                             )
                         if response.status_code >= 400:
                             raise PublicJobUrlFetchError(
