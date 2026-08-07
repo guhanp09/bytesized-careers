@@ -316,8 +316,11 @@ test.describe("completion and handoff", () => {
         // start_timeframe is superseded: the editor only renders start_timing,
         // so that is the field the assistant now asks about.
         start_timing: "flexible",
-        compensation_mode: "negotiable",
-        budget_unit: "per month",
+        // Money is one grouped decision now: the question is carried under
+        // budget_unit and its answer settles compensation_mode too. Choosing a
+        // paying shape would rightly go on to ask the amount, so the fixture
+        // takes the option that describes this listing — open to discussion.
+        budget_unit: "custom",
       };
       const textAnswers: Record<string, string> = {
         about_channel:

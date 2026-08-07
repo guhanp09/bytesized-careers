@@ -1132,13 +1132,26 @@ class JobImportConversationService:
                 "applies": {"budget_unit": "per video", "compensation_mode": "range"},
             },
             {
-                "value": "negotiable",
+                # Every option must settle the field being asked, or the
+                # question returns. "Open to discussion" is still a period-free
+                # answer, so it carries the product's own catch-all unit and
+                # marks the offer negotiable.
+                "value": "custom",
                 "label": "Open to discussion with the candidate",
-                "applies": {"compensation_mode": "negotiable"},
+                "applies": {"budget_unit": "custom", "compensation_mode": "negotiable"},
             },
         ]
 
         question["field_path"] = "budget_unit"
+        # The answer shape has to be the grouped options, not budget_unit's
+        # sixteen raw units — otherwise the recruiter is offered "per short" and
+        # "commission" instead of the decision they are actually making, and the
+        # negotiable option has nowhere to render at all.
+        question["answer"] = {
+            "kind": "choice",
+            "choices": [option["value"] for option in options],
+            "labels": {option["value"]: option["label"] for option in options},
+        }
         question["grouped_fields"] = ["budget_unit", "compensation_mode"]
         question["grouped_options"] = options
         question["heading"] = "How is this role paid?"
