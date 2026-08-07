@@ -2864,7 +2864,13 @@ class JobImportService:
                 # something the page had stated plainly — a source-known
                 # interruption, and the one kind this product refuses to make.
                 employer_labelled = field_path in labelled_paths
-                outranks = existing.get("review_status") == "pending" and (
+                # A freshly built row carries no review_status at all — conflict
+                # rows in particular are constructed without one. Comparing
+                # against "pending" therefore skipped precedence for exactly the
+                # rows that needed it, which is why a labelled fact won on some
+                # runs and became a recruiter question on others.
+                untouched = existing.get("review_status") in (None, "", "pending")
+                outranks = untouched and (
                     employer_labelled
                     or (
                         self._structured_declaration_outranks(field_path, context)
