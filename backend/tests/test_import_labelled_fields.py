@@ -121,3 +121,83 @@ class TestEvidenceIsKept:
 
         assert evidence["compensation"] == "₹5,000 / mo"
         assert evidence["engagement_type"] == "Part-time / Freelance"
+
+
+class TestLabelledFactsBeatLowerAuthorityMetadata:
+    """The precedence, pinned where it actually broke.
+
+    The rule existed but never ran for conflict rows: those are constructed
+    without a review_status key, so a guard comparing against "pending" saw None
+    and skipped them. Whether a labelled fact won came down to whether the
+    provider happened to produce a conflict on that run — two of three live runs
+    asked the recruiter about a fact the page stated plainly.
+    """
+
+    @staticmethod
+    def _may_fill(**overrides) -> bool:
+        from app.services.job_import_service import JobImportService
+
+        existing = {
+            "field_path": "engagement_type",
+            "provenance_state": "conflicting_source_values",
+            "proposed_value": None,
+        }
+        existing.update(overrides)
+        return JobImportService._structured_value_may_fill(existing)
+
+    def test_an_unset_review_status_counts_as_untouched(self) -> None:
+        # The actual mechanism lives in the merge loop, which reaches its
+        # precedence path only when the general fill rule declines. What broke
+        # was the status comparison there: conflict rows carry no review_status,
+        # so `== "pending"` was False and the labelled fact never applied.
+        import inspect
+
+        from app.services.job_import_service import JobImportService
+
+        source = inspect.getsource(JobImportService._merge_structured_page_signals)
+        assert 'existing.get("review_status") in (None, "", "pending")' in source
+        assert "employer_labelled" in source
+        # And a genuine conflict is still only bypassed for labelled fields.
+        assert "labelled_paths" in source
+
+    def test_a_recruiter_reviewed_row_is_still_protected(self) -> None:
+        for status in ("accepted", "edited", "rejected"):
+            assert not self._may_fill(
+                review_status=status, proposed_value="internship"
+            ), status
+
+    def test_a_usable_settled_reading_is_still_protected(self) -> None:
+        assert not self._may_fill(
+            provenance_state="extracted_from_source",
+            proposed_value="full_time",
+            review_status="pending",
+        )
+
+
+class TestPartTimeFreelanceIsFreelance:
+    """Two compatible descriptors are not a question.
+
+    "Part-time / Freelance" names how the engagement is structured and how much
+    of it there is. The product's engagement field holds the structure —
+    freelance — and weekly hours carry the volume, so nothing is lost and there
+    is nothing to ask.
+    """
+
+    def test_the_structure_wins_over_the_volume(self) -> None:
+        assert labelled_facts("Type Part-time / Freelance").engagement_type == (
+            "ongoing_freelance"
+        )
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("Type Freelance / Part-time", "ongoing_freelance"),
+            ("Type Part-time", "part_time"),
+            ("Type Freelance", "ongoing_freelance"),
+            ("Type Full-time contract", "fixed_term"),
+        ],
+    )
+    def test_compatible_pairs_resolve_without_asking(
+        self, line: str, expected: str
+    ) -> None:
+        assert labelled_facts(line).engagement_type == expected
