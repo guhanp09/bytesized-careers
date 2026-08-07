@@ -81,6 +81,19 @@ function setDraftLocation(draftId: string | null) {
 
 function readableImportError(error: unknown, sourceType: EntryMode): string {
   const code = error instanceof BackendRequestError ? error.code ?? "" : "";
+  // The server now distinguishes *why* a page could not be imported — a board
+  // index, a bot check, a shell — and writes recruiter-facing wording for each.
+  // Collapsing them here told someone whose URL listed thirty jobs that we
+  // "couldn't read the page safely", which is both wrong and unactionable.
+  const RECOVERABLE_URL_CODES = new Set([
+    "JOB_IMPORT_URL_MULTIPLE_JOBS",
+    "JOB_IMPORT_URL_NO_JOB_CONTENT",
+    "JOB_IMPORT_URL_ACCESS_DECLINED",
+  ]);
+  if (RECOVERABLE_URL_CODES.has(code)) {
+    const detail = error instanceof BackendRequestError ? error.message?.trim() : "";
+    if (detail) return detail;
+  }
   if (code === "JOB_IMPORT_URL_AUTH_REQUIRED") {
     return "This page blocks automated access. Paste the job text instead.";
   }
