@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -95,6 +96,8 @@ from app.services.job_service import (
     JobValidationError,
     JobVerificationRequiredError,
 )
+
+logger = logging.getLogger(__name__)
 
 _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
     "deliverables": frozenset(
@@ -2097,17 +2100,70 @@ class JobImportService:
         }
         unknown_paths = sorted(path for path in all_paths if import_field_policy(path) is None)
         if unknown_paths:
+            # Naming a field we do not support is a quality failure, not an
+            # integrity one, and the two are handled differently on purpose.
+            # Forged evidence is checked above and still refuses the whole reply,
+            # because a reply that lies about its sources cannot be trusted in
+            # part. A stray field name tells us nothing about the other
+            # twenty-three, and discarding them turned one intermittent quirk
+            # into a failed import the recruiter had to start over.
+            #
+            # Observed live: the same page imported cleanly on one run and
+            # failed on the next, purely on which field names came back.
             server_owned = sorted(set(unknown_paths) & SYSTEM_OWNED_IMPORT_FIELDS)
             legacy_compatibility = sorted(set(unknown_paths) & LEGACY_COMPATIBILITY_IMPORT_FIELDS)
-            raise JobImportError(
-                "JOB_IMPORT_UNSUPPORTED_FIELD",
-                "Extraction output contains unsupported or server-owned fields.",
-                details={
-                    "fields": unknown_paths,
+
+            # Reaching for a field the server owns is different in kind. A reply
+            # trying to set publication status, or to claim a verified hiring
+            # identity, is not a quality slip — it is the model asking for
+            # authority it must never have, and that reply is refused whole.
+            if server_owned or legacy_compatibility:
+                raise JobImportError(
+                    "JOB_IMPORT_UNSUPPORTED_FIELD",
+                    "Extraction output contains unsupported or server-owned fields.",
+                    details={
+                        "fields": unknown_paths,
+                        "server_owned_fields": server_owned,
+                        "legacy_compatibility_fields": legacy_compatibility,
+                    },
+                )
+
+            logger.info(
+                "job_import_dropped_unsupported_fields",
+                extra={
+                    "unsupported_fields": unknown_paths,
                     "server_owned_fields": server_owned,
-                    "legacy_compatibility_fields": legacy_compatibility,
                 },
             )
+            unsupported = set(unknown_paths)
+            response = response.model_copy(
+                update={
+                    "fields": [
+                        item for item in response.fields
+                        if item.field_path not in unsupported
+                    ],
+                    "conflicts": [
+                        item for item in response.conflicts
+                        if item.field_path not in unsupported
+                    ],
+                    "missing_fields": [
+                        item for item in response.missing_fields
+                        if item.field_path not in unsupported
+                    ],
+                }
+            )
+            if not response.fields and not response.conflicts:
+                # Nothing usable survived, which is a genuine extraction failure
+                # rather than something to paper over with an empty draft.
+                raise JobImportError(
+                    "JOB_IMPORT_UNSUPPORTED_FIELD",
+                    "Extraction output contained no fields this product supports.",
+                    details={
+                        "fields": unknown_paths,
+                        "server_owned_fields": server_owned,
+                        "legacy_compatibility_fields": legacy_compatibility,
+                    },
+                )
 
         rows: list[dict[str, Any]] = []
         for item in response.fields:

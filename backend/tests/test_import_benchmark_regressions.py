@@ -86,3 +86,41 @@ class TestOneCityFieldHoldsOneCity:
 
     def test_an_arrangement_alone_is_still_not_a_place(self) -> None:
         assert convert_to_native("location", "Remote, India").native_value is None
+
+
+class TestOneStrayFieldNameDoesNotDestroyAnExtraction:
+    """A field we do not model is a quality slip, not grounds to discard 23 good ones.
+
+    Observed live: the same BeBee page imported cleanly on one run and failed
+    outright on the next, purely on which field names the provider returned. The
+    recruiter saw a failed import for a page the system had just read correctly.
+
+    Reaching for a field the *server* owns is different in kind and still refuses
+    the whole reply — a model asking to set publication status or to claim a
+    verified hiring identity is asking for authority it must never have.
+    """
+
+    @staticmethod
+    def _paths(response) -> set[str]:
+        return {item.field_path for item in response.fields}
+
+    def test_an_unknown_field_is_dropped_and_the_rest_survive(self) -> None:
+        from app.core.job_import_policy import import_field_policy
+
+        # The rule under test, stated directly: unknown names are not in the
+        # policy, and are not server-owned either.
+        assert import_field_policy("favourite_colour") is None
+        from app.core.job_import_policy import (
+            LEGACY_COMPATIBILITY_IMPORT_FIELDS,
+            SYSTEM_OWNED_IMPORT_FIELDS,
+        )
+
+        assert "favourite_colour" not in SYSTEM_OWNED_IMPORT_FIELDS
+        assert "favourite_colour" not in LEGACY_COMPATIBILITY_IMPORT_FIELDS
+
+    def test_server_owned_fields_remain_a_whole_reply_refusal(self) -> None:
+        from app.core.job_import_policy import SYSTEM_OWNED_IMPORT_FIELDS
+
+        # These are the reaches that must never be salvaged around.
+        assert "status" in SYSTEM_OWNED_IMPORT_FIELDS
+        assert "hiring_verification_status_snapshot" in SYSTEM_OWNED_IMPORT_FIELDS
