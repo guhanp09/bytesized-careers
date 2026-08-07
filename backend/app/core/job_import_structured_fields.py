@@ -71,23 +71,50 @@ _HYBRID = re.compile(r"\bhybrid\b", re.IGNORECASE)
 _YEARS = re.compile(r"(\d{1,2})\s*(?:[-–]\s*(\d{1,2}))?\s*\+?\s*year", re.IGNORECASE)
 _MONTHS = re.compile(r"(\d{1,3})\s*month", re.IGNORECASE)
 
+#: "at least", "minimum of" — the words that make a figure a floor, not a target.
+_AT_LEAST = re.compile(r"\b(?:at\s+least|minimum(?:\s+of)?|min\.?|over|more\s+than)\b", re.IGNORECASE)
+
+#: A trailing plus is its own way of saying the same thing.
+_OPEN_ENDED = re.compile(r"\d\s*\+")
+
 
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
 def _experience_band(raw: str) -> str | None:
-    """Map a stated requirement onto the bands the Post Job editor parses."""
+    """State the requirement the source stated, in years.
+
+    This used to close every open requirement into a band by adding three years
+    to the floor, and to turn a month count into a two-year window. Both invent
+    a ceiling nobody wrote: a structured "At least 60 months of experience"
+    became "5–7 years", advertising a maximum the employer never set and reading
+    a candidate with nine years out of a job they were wanted for.
+
+    A range stays a range, a floor stays a floor, and months become the years
+    they are. Nothing gains a bound it did not arrive with.
+    """
+
+    qualifier = "At least " if _AT_LEAST.search(raw) else ""
 
     years = _YEARS.search(raw)
     if years:
         low, high = years.groups()
-        return f"{low}–{high} years" if high else f"{low}–{int(low) + 3} years"
+        if high:
+            return f"{low}–{high} years"
+        if _OPEN_ENDED.search(raw):
+            return f"{low}+ years"
+        return f"{qualifier}{low} years"
+
     months = _MONTHS.search(raw)
     if months:
         total = int(months.group(1))
-        low = total // 12
-        return f"{low}–{low + 2} years"
+        if total < 12:
+            return f"{qualifier}{total} months".strip()
+        whole, remainder = divmod(total, 12)
+        if remainder:
+            return f"{qualifier}{total} months"
+        return f"{qualifier}{whole} years"
     return None
 
 

@@ -121,9 +121,12 @@ def test_a_year_is_not_mistaken_for_pay() -> None:
 @pytest.mark.parametrize(
     ("requirement", "expected"),
     [
+        # A stated range keeps its bounds; a stated floor keeps being a floor.
+        # These used to read "2–4 years" and "0–2 years", ceilings the sources
+        # never set — see test_import_benchmark_regressions.
         ("2–4 years of experience", "2–4 years"),
-        ("At least 30 months of experience", "2–4 years"),
-        ("At least 6 months of experience", "0–2 years"),
+        ("At least 30 months of experience", "At least 30 months"),
+        ("At least 6 months of experience", "At least 6 months"),
     ],
 )
 def test_experience_lands_in_a_band_the_editor_can_parse(
@@ -135,7 +138,9 @@ def test_experience_lands_in_a_band_the_editor_can_parse(
     assert fields["experience_level"] == expected
     import re
 
-    assert re.match(r"^\d+–\d+ years$", fields["experience_level"])
+    # No invented ceiling: a floor may render as "At least N", so the old
+    # "always a closed band" shape is exactly what must not be required.
+    assert fields["experience_level"]
 
 
 @pytest.mark.anyio
@@ -334,7 +339,8 @@ def test_a_single_job_posting_block_is_read_completely() -> None:
     assert fields["budget_unit"] == "per month"
     assert fields["work_mode"] == "onsite"
     assert "Chennai" in str(fields["location"])
-    assert fields["experience_level"] == "2–4 years"
+    # monthsOfExperience is a floor. It used to be widened into a closed band.
+    assert fields["experience_level"] == "At least 30 months"
 
 
 def test_a_job_posting_inside_an_array_is_found() -> None:

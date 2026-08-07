@@ -249,6 +249,42 @@ def _clean(value: str) -> str:
     return collapsed.strip(" ,;|-/")
 
 
+#: Separators a source uses when it lists several places in one string.
+_MULTI_PLACE = re.compile(r"\s*(?:;|\||/|\bor\b|\band\b)\s*", re.IGNORECASE)
+
+#: Parenthetical asides — usually the employer, occasionally a note.
+_ASIDE = re.compile(r"\([^)]*\)")
+
+
+def _first_stated_place(raw: str) -> str:
+    """The first real place in a string that may name several, or none.
+
+    A listing reading "Remote (Pansophic Learning); Tysons Corner, VA" put that
+    entire string — company name and second location included — into a field
+    holding one city. The employer is not a place, and a city control cannot
+    hold two cities, so the aside is dropped and the first stated place is the
+    one used. An arrangement like "Remote" is skipped rather than treated as a
+    city, so the real location behind it is still found.
+    """
+
+    without_asides = _ASIDE.sub(" ", raw or "")
+    candidates = [part.strip(" ,;-") for part in _MULTI_PLACE.split(without_asides)]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        # "Remote: Boston, MA" labels the arrangement and then names the place.
+        # The label belongs to work mode, which is read separately.
+        if ":" in candidate:
+            label, _, rest = candidate.partition(":")
+            if label.strip().casefold() in _NOT_A_PLACE and rest.strip():
+                candidate = rest.strip()
+        head = candidate.split(",")[0].strip().casefold()
+        if head in _NOT_A_PLACE:
+            continue
+        return candidate
+    return next((c for c in candidates if c), raw or "")
+
+
 def parse_location(raw: str) -> LocationParts:
     """Split a stated location into locality, city, region and country.
 
@@ -257,7 +293,7 @@ def parse_location(raw: str) -> LocationParts:
     position, because sources order them inconsistently.
     """
 
-    cleaned = _clean(raw)
+    cleaned = _clean(_first_stated_place(raw))
     if not cleaned:
         return LocationParts(raw=raw)
 

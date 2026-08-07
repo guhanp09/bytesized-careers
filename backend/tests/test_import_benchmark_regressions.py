@@ -1,0 +1,88 @@
+"""Defects a live benchmark across real job boards exposed.
+
+Fixtures are sanitised to the *shape* that triggered each defect, not to the
+companies that happened to serve them — a rule that would only hold for one
+employer's page is not a rule.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.core.job_import_native_values import convert_to_native
+from app.core.job_import_structured_fields import _experience_band
+
+
+class TestAStatedFloorKeepsItsFloor:
+    """Structured experience must not gain a ceiling nobody wrote.
+
+    A live listing declared "At least 60 months of experience" in its markup and
+    CreatorJobs produced "5–7 years": a maximum the employer never set, which
+    reads a candidate with nine years out of a job they were wanted for. The
+    derivation closed every open requirement by adding three years to the floor,
+    and turned a month count into a two-year window.
+    """
+
+    @pytest.mark.parametrize(
+        ("stated", "expected"),
+        [
+            ("At least 60 months of experience", "At least 5 years"),
+            ("Minimum of 36 months", "At least 3 years"),
+            ("At least 24 months of experience", "At least 2 years"),
+            ("3+ years", "3+ years"),
+            ("2-4 years", "2–4 years"),
+            ("5 years of experience", "5 years"),
+            ("18 months", "18 months"),
+        ],
+    )
+    def test_the_requirement_survives_as_stated(self, stated: str, expected: str) -> None:
+        assert _experience_band(stated) == expected
+
+    @pytest.mark.parametrize("stated", ["At least 60 months of experience", "3+ years"])
+    def test_no_open_requirement_gains_a_ceiling(self, stated: str) -> None:
+        derived = _experience_band(stated) or ""
+
+        # An en dash between two figures is the shape of an invented maximum.
+        assert not any(
+            part.strip().isdigit()
+            for part in derived.replace("–", "-").split("-")[1:]
+        ), derived
+
+
+class TestOneCityFieldHoldsOneCity:
+    """A location string can name several places, or none.
+
+    A live listing read "Remote (Pansophic Learning); Tysons Corner, VA" and the
+    whole string — employer name and second location included — went into a
+    field holding one city.
+    """
+
+    @pytest.mark.parametrize(
+        ("stated", "expected"),
+        [
+            ("Remote (Pansophic Learning); Tysons Corner, VA", "Tysons Corner, VA"),
+            ("Tysons Corner, VA; New York, NY", "Tysons Corner, VA"),
+            ("Boston, MA (Preferred)", "Boston, MA"),
+            ("Hybrid / Remote: Bengaluru", "Bengaluru"),
+        ],
+    )
+    def test_the_first_real_place_is_the_one_used(self, stated: str, expected: str) -> None:
+        assert convert_to_native("location", stated).native_value == expected
+
+    def test_an_employer_name_is_never_a_city(self) -> None:
+        assert convert_to_native("location", "Remote (Acme Inc)").native_value is None
+
+    @pytest.mark.parametrize(
+        ("stated", "expected"),
+        [
+            # The accepted cases must keep working.
+            ("Coimbatore, Coimbatore district, IN", "Coimbatore"),
+            ("Brookefield, Bengaluru", "Brookefield, Bengaluru"),
+            ("San Francisco, California, US", "San Francisco"),
+        ],
+    )
+    def test_previously_fixed_shapes_still_hold(self, stated: str, expected: str) -> None:
+        assert convert_to_native("location", stated).native_value == expected
+
+    def test_an_arrangement_alone_is_still_not_a_place(self) -> None:
+        assert convert_to_native("location", "Remote, India").native_value is None

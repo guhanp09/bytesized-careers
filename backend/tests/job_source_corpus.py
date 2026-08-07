@@ -99,7 +99,9 @@ GREENHOUSE_FULL = GoldenSource(
         "budget_unit": "per month",
         "compensation_mode": "range",
         "work_mode": "onsite",
-        "experience_level": "3–5 years",
+        # monthsOfExperience: 36 is a floor, not a range. It used to become
+        # "3–5 years", a ceiling the posting never set.
+        "experience_level": "At least 3 years",
         "about_channel": "studio",
     },
     absent=("platforms", "start_timing"),
