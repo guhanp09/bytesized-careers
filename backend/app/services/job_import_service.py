@@ -2718,6 +2718,35 @@ class JobImportService:
         )
 
     @staticmethod
+    def _structured_declaration_outranks(field_path: str, context: dict[str, Any]) -> bool:
+        """Whether the page itself declared this field in its JobPosting markup.
+
+        Publisher markup outranks a model's reading of the same page's prose.
+        Live evidence for why: a page whose markup said "At least 60 months of
+        experience" was consistently given "5–8 years" by the provider — a
+        ceiling that appears nowhere on the page — and because that value was
+        perfectly usable it won. The recruiter would have advertised a maximum
+        the employer never set.
+
+        Deliberately narrow: only fields the markup states outright, and only
+        against a machine reading. A recruiter answer and a genuine conflict
+        both still win, which the caller enforces.
+        """
+
+        declared = {
+            "title": "job_title",
+            "experience_level": "experience_requirement",
+            "compensation_mode": "compensation",
+            "budget_amount": "compensation",
+            "budget_max": "compensation",
+            "budget_currency": "compensation",
+            "budget_unit": "compensation",
+            "engagement_type": "employment_type",
+        }
+        key = declared.get(field_path)
+        return bool(key and str(context.get(key) or "").strip())
+
+    @staticmethod
     def _value_reaches_the_draft(existing: dict[str, Any]) -> bool:
         """Whether this row's value could actually become part of the draft."""
 
@@ -2789,7 +2818,15 @@ class JobImportService:
                 continue
             existing = by_path.get(field_path)
             if existing is not None and not self._structured_value_may_fill(existing):
-                continue
+                # Publisher markup outranks a machine reading of the same page's
+                # prose, but never a recruiter and never a real conflict.
+                outranks = (
+                    self._structured_declaration_outranks(field_path, context)
+                    and existing.get("review_status") == "pending"
+                    and existing.get("provenance_state") != "conflicting_source_values"
+                )
+                if not outranks:
+                    continue
 
             normalized, errors = await self._validate_field_value(policy, value)
             if errors or normalized is None:
