@@ -335,7 +335,16 @@ function buildFacts(props: RecruiterJobPreviewProps): PreviewFacts {
   const role = text(props.roleName) || "Creator role not selected";
   const location = text(props.location);
   const workMode = text(props.workMode);
-  const workSetup = [workMode, location].filter(Boolean).join(" · ") || "Work setup not added";
+  // "Remote" is the arrangement, not a place. A remote job whose location field
+  // also reads "Remote" rendered as "Remote · Remote", which says one thing
+  // twice and reads like a bug to the recruiter previewing their own listing.
+  // A real geography still shows — "Remote · India" tells a candidate something
+  // "Remote" alone does not.
+  const placeAddsMeaning =
+    Boolean(location) && location.trim().toLowerCase() !== workMode.trim().toLowerCase();
+  const workSetup =
+    [workMode, placeAddsMeaning ? location : ""].filter(Boolean).join(" · ") ||
+    "Work setup not added";
   // Always CreatorJobs. A stored external mode describes someone else's hiring
   // process, so the preview must not promise the recruiter it will be honoured.
   const application = "Apply through CreatorJobs";
