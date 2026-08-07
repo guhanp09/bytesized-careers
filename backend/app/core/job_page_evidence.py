@@ -1,39 +1,75 @@
-"""Whether a retrieved page actually contains a job posting.
+"""What kind of page came back, and whether one job can be read from it.
 
-Fetching a URL successfully is not the same as finding a job on it, and the
-importer had no way to tell the difference. Three real pages made that concrete.
+Fetching a URL successfully is not the same as finding a job on it. A live
+benchmark across real boards produced three pages the importer treated as
+successes while none contained a job: a client-rendered listing that normalised
+to four characters, and two board indexes served when a job id had moved.
 
-An Ashby listing normalised to four characters — "Jobs" — because the posting is
-drawn by client-side JavaScript the fetcher does not run. A Greenhouse job id
-that has since moved served the company's *board index* instead, so the page read
-"Jobs at The New York Times · Current openings", with no job on it at all. A
-third did the same at 840 characters.
+The first version of this module answered a yes/no question and answered it with
+keyword heuristics — "current openings", "N jobs". That caught the cases in front
+of it and missed the shape underneath: an aggregator search page carries the same
+vocabulary a posting does, many times over, and passed.
 
-All three were reported as successful retrievals. Downstream, that is worse than
-a failure: the model is handed a company blurb, and whatever it invents from it
-becomes a draft the recruiter must then unpick. A truthful "we could not read a
-job here, paste the text instead" costs them one paste; a fabricated draft costs
-them a review of every field.
+So the question is now about *coherence* rather than vocabulary. A job page is
+about one job: one title, one employer, one body of description. An index is
+about many, and says so structurally — repeated title/company/location tuples,
+a JobPosting object per card, pagination, filters. Counting how many jobs a page
+is about separates them without knowing anything about who served it.
 
-The test is deliberately about *evidence*, not hosts. A page carrying JobPosting
-markup is a job page, full stop. Otherwise it has to read like one: enough text
-to be a posting, and the section vocabulary postings actually use. A page that
-instead advertises a list of openings — "13 jobs", "current openings", "create a
-job alert" — without any of that vocabulary is an index, whoever serves it.
+The caller gets a classification rather than a boolean, because the right
+response differs: a blocked page and a multi-job page both need the recruiter,
+but they need to be told different things.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Final
+from dataclasses import dataclass, field
+from typing import Final, Literal
 
 #: Below this, nothing is a job description — it is a shell or an error page.
 #:
 #: Deliberately low. Length is only a proxy for "is there anything here at all";
-#: the section vocabulary below is the real test. Setting this at 400 rejected a
-#: terse but perfectly genuine posting of 378 characters, which is the wrong
-#: mistake to make — a missed real listing costs more than a caught shell.
+#: the section vocabulary below is the real test. At 400 it rejected a terse but
+#: genuine 378-character posting, and a missed real listing costs more than a
+#: caught shell.
 MIN_JOB_PAGE_CHARS: Final[int] = 200
+
+#: What the page turned out to be.
+#:
+#: Only ``single_job`` may reach the provider. The rest each need a different
+#: sentence in front of the recruiter, which is why they are not collapsed into
+#: one failure.
+PageClass = Literal[
+    "single_job",
+    "multi_job_or_index",
+    "blocked_or_challenge",
+    "thin_or_shell",
+    "not_a_job",
+    "ambiguous",
+]
+
+
+@dataclass(frozen=True)
+class PageEvidence:
+    """The classification, and the evidence that produced it."""
+
+    classification: PageClass
+    #: Distinct job titles the page declares in markup.
+    declared_jobs: int = 0
+    posting_signals: int = 0
+    index_signals: int = 0
+    chars: int = 0
+    reason: str = ""
+    #: Populated for multi-job pages, so a caller can name what it saw.
+    titles: list[str] = field(default_factory=list)
+
+    @property
+    def may_extract(self) -> bool:
+        """Whether this page may be sent to the provider at all."""
+
+        return self.classification == "single_job"
+
 
 #: Section vocabulary a real posting uses. Two of these is enough; requiring more
 #: would reject terse but genuine listings, which are common on smaller boards.
@@ -62,7 +98,7 @@ _POSTING_SIGNALS: Final[tuple[str, ...]] = (
     r"apply now",
 )
 
-#: Wording that belongs to a list of openings rather than to one opening.
+#: Structures that belong to a list of openings rather than to one opening.
 _INDEX_SIGNALS: Final[tuple[str, ...]] = (
     r"\b\d+\s+jobs?\b",
     r"current openings",
@@ -74,38 +110,124 @@ _INDEX_SIGNALS: Final[tuple[str, ...]] = (
     r"search jobs",
     r"join our talent",
     r"no jobs found",
+    r"\bpost a job\b",
+    r"\bfilter by\b",
+    r"\bsort by\b",
+    r"\bnext page\b",
+    r"\bshowing \d+",
+    r"\bload more\b",
+    r"jobs? (?:platform|board)\b",
 )
+
+#: Wording a bot check or a login wall puts on the page instead of content.
+_CHALLENGE_SIGNALS: Final[tuple[str, ...]] = (
+    r"just a moment",
+    r"checking your browser",
+    r"enable javascript",
+    r"verify (?:you are|you're) (?:a )?human",
+    r"access denied",
+    r"unusual traffic",
+    r"security check",
+)
+
+_AUTH_SIGNALS: Final[tuple[str, ...]] = (
+    r"\bsign in\b",
+    r"\blog in\b",
+    r"authentication required",
+    r"create an account",
+)
+
+#: A repeated "Title · Company · Location" row is the shape of a results list.
+_CARD_ROW = re.compile(r"^.{3,80}\n.{3,60}\n.{3,60}$", re.MULTILINE)
 
 
 def _count(patterns: tuple[str, ...], text: str) -> int:
     return sum(1 for pattern in patterns if re.search(pattern, text, re.IGNORECASE))
 
 
-def page_holds_a_job(
+def classify_job_page(
     normalized_text: str | None,
     *,
-    has_structured_job: bool = False,
-) -> bool:
-    """Whether this page is a job posting rather than an index or a shell.
+    declared_job_titles: list[str] | None = None,
+) -> PageEvidence:
+    """Decide what this page is, from its own evidence.
 
-    ``has_structured_job`` short-circuits everything: a page that declares
-    JobPosting markup has told us what it is, and second-guessing that on prose
-    would reject terse postings whose markup is perfectly good.
+    ``declared_job_titles`` are the distinct titles the page's JobPosting markup
+    declares. One is the strongest possible evidence of a single job; several
+    distinct ones are the strongest possible evidence of an index, and outrank
+    prose either way because markup is unambiguous where prose is not.
     """
 
-    if has_structured_job:
-        return True
-
     text = (normalized_text or "").strip()
-    if len(text) < MIN_JOB_PAGE_CHARS:
-        return False
+    # Deduplicated here as well as upstream: a page often repeats the same
+    # posting for syndication, and "declared twice" is still one job.
+    titles: list[str] = []
+    for candidate in declared_job_titles or []:
+        cleaned = " ".join(str(candidate).split()).strip()
+        if cleaned and cleaned.casefold() not in {t.casefold() for t in titles}:
+            titles.append(cleaned)
+    chars = len(text)
+
+    def verdict(classification: PageClass, reason: str) -> PageEvidence:
+        return PageEvidence(
+            classification=classification,
+            declared_jobs=len(titles),
+            posting_signals=_count(_POSTING_SIGNALS, text),
+            index_signals=_count(_INDEX_SIGNALS, text),
+            chars=chars,
+            reason=reason,
+            titles=titles[:10],
+        )
+
+    # Several materially different roles in markup settles it, however the prose
+    # reads. Importing "whichever came first" is how a thirty-role index used to
+    # become one arbitrary draft.
+    if len(titles) > 1:
+        return verdict("multi_job_or_index", "several distinct JobPosting records")
+
+    if _count(_CHALLENGE_SIGNALS, text) and chars < 2000:
+        return verdict("blocked_or_challenge", "the page shows a bot or browser check")
+
+    if len(titles) == 1:
+        # Markup naming exactly one job is the clearest evidence there is.
+        return verdict("single_job", "one JobPosting record")
+
+    if chars < MIN_JOB_PAGE_CHARS:
+        if _count(_AUTH_SIGNALS, text):
+            return verdict("blocked_or_challenge", "the page asks for sign-in")
+        return verdict("thin_or_shell", "almost no readable content")
 
     posting = _count(_POSTING_SIGNALS, text)
     index = _count(_INDEX_SIGNALS, text)
 
-    # An index that also happens to mention "skills" once should still be an
-    # index; a posting that mentions "view all jobs" in its footer should still
-    # be a posting. Comparing the weight of each reads both correctly.
-    if index and posting <= index:
-        return False
-    return posting >= 2
+    # A results list repeats a compact title/company/location row. One posting
+    # does not, however long it is.
+    card_rows = len(_CARD_ROW.findall(text))
+
+    if index >= 3 or (index and posting <= index):
+        return verdict("multi_job_or_index", "the page advertises a list of openings")
+    if card_rows >= 6 and posting < 4:
+        return verdict("multi_job_or_index", "the page repeats job-card rows")
+
+    if posting >= 2:
+        return verdict("single_job", "the page reads as one posting")
+    if posting == 1:
+        # Something job-shaped, but not enough to be sure. Guessing either way
+        # costs the recruiter — a wrong accept fabricates, a wrong reject loses
+        # a real listing — so this is handed back undecided.
+        return verdict("ambiguous", "too little evidence to be sure this is one job")
+    return verdict("not_a_job", "no job-posting evidence on the page")
+
+
+def page_holds_a_job(
+    normalized_text: str | None,
+    *,
+    has_structured_job: bool = False,
+    declared_job_titles: list[str] | None = None,
+) -> bool:
+    """Backwards-compatible boolean for callers that only need yes or no."""
+
+    titles = declared_job_titles
+    if titles is None and has_structured_job:
+        titles = ["(declared)"]
+    return classify_job_page(normalized_text, declared_job_titles=titles).may_extract

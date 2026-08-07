@@ -14,8 +14,45 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
-from app.core.job_page_evidence import page_holds_a_job
+from app.core.job_page_evidence import classify_job_page
 from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
+
+#: What the recruiter is told when a page cannot be imported directly.
+#:
+#: Product language, not diagnostics: the exact classification is kept in
+#: metadata for developers. Naming Cloudflare or "scraping" tells a recruiter
+#: nothing they can act on, whereas "paste the description" is the next step in
+#: every one of these cases.
+_CLASSIFICATION_MESSAGES: dict[str, str] = {
+    "multi_job_or_index": (
+        "This page lists several jobs rather than one. Open the specific job you "
+        "want, or paste its description here and I'll continue from that."
+    ),
+    "blocked_or_challenge": (
+        "I can't read this job page directly. Paste the job description here and "
+        "I'll continue from it."
+    ),
+    "thin_or_shell": (
+        "I can't read this job page directly — the listing doesn't come through. "
+        "Paste the job description here and I'll continue from it."
+    ),
+    "not_a_job": (
+        "I couldn't find a job description on this page. Paste the job text here "
+        "and I'll continue from it."
+    ),
+    "ambiguous": (
+        "I can't tell which job this page describes. Paste the job description "
+        "here and I'll continue from it."
+    ),
+}
+
+_CLASSIFICATION_CODES: dict[str, str] = {
+    "multi_job_or_index": "JOB_IMPORT_URL_MULTIPLE_JOBS",
+    "blocked_or_challenge": "JOB_IMPORT_URL_ACCESS_DECLINED",
+    "thin_or_shell": "JOB_IMPORT_URL_NO_JOB_CONTENT",
+    "not_a_job": "JOB_IMPORT_URL_NO_JOB_CONTENT",
+    "ambiguous": "JOB_IMPORT_URL_NO_JOB_CONTENT",
+}
 
 MAX_URL_RESPONSE_BYTES = 1_000_000
 MAX_URL_REDIRECTS = 4
@@ -72,6 +109,25 @@ class PublicJobUrlRetrieval:
 
 def _clean_text(value: str) -> str:
     return re.sub(r"[ \t\f\v]+", " ", value).strip()
+
+
+def _distinct_posting_titles(postings: list[dict[str, object]]) -> list[str]:
+    """The materially different job titles a page declares.
+
+    Several JobPosting blocks often describe the *same* job — a page may repeat
+    it for different syndication targets — so identical titles collapse to one.
+    What matters is whether the page is about one role or many.
+    """
+
+    seen: list[str] = []
+    for posting in postings:
+        title = posting.get("title")
+        if not isinstance(title, str):
+            continue
+        cleaned = " ".join(title.split()).strip()
+        if cleaned and cleaned.casefold() not in {t.casefold() for t in seen}:
+            seen.append(cleaned)
+    return seen[:20]
 
 
 def _safe_json_ld_job(value: object) -> dict[str, object] | None:
@@ -141,6 +197,12 @@ class _VisibleJobHtmlParser(HTMLParser):
         self._title: list[str] = []
         self.canonical_href: str | None = None
         self.job_posting: dict[str, object] | None = None
+        #: Every JobPosting the page declares, not merely the first.
+        #:
+        #: A board index publishes one per card. Keeping only the first meant a
+        #: page listing thirty roles imported as whichever happened to be top of
+        #: the list, with no sign anything had been chosen.
+        self.job_postings: list[dict[str, object]] = []
 
     @staticmethod
     def _attributes(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -191,8 +253,11 @@ class _VisibleJobHtmlParser(HTMLParser):
                     except (json.JSONDecodeError, RecursionError):
                         parsed = None
                     found = _safe_json_ld_job(parsed)
-                    if found is not None and self.job_posting is None:
-                        self.job_posting = found
+                    if found is not None:
+                        if self.job_posting is None:
+                            self.job_posting = found
+                        if len(self.job_postings) < 40:
+                            self.job_postings.append(found)
             return
         if self._ignored_depth:
             self._ignored_depth -= 1
@@ -683,6 +748,7 @@ def normalize_public_job_html(
     metadata: dict[str, object] = {
         "canonical_url": canonical_url,
         "json_ld_job_posting": parser.job_posting is not None,
+        "json_ld_job_titles": _distinct_posting_titles(parser.job_postings),
         "structured_title_found": structured_title is not None,
         "structured_context": structured_context,
     }
@@ -982,24 +1048,22 @@ class PublicJobUrlFetcher:
                         "This page requires sign-in and cannot be imported.",
                     )
 
-                # Fetching a page is not the same as finding a job on it. A board
-                # that draws its posting in the browser normalises to a few
-                # characters, and a job id that has moved serves the company's
-                # index instead — both arriving here as perfectly good responses.
-                #
-                # Letting either through is worse than failing: the model is
-                # handed a company blurb and whatever it invents becomes a draft
-                # the recruiter has to unpick. Saying so costs them one paste.
-                if not page_holds_a_job(
+                # Fetching a page is not the same as finding a job on it, and
+                # what came back instead decides what the recruiter should be
+                # told. A board index, a bot check and a client-rendered shell
+                # all need different sentences and all need the paste path.
+                evidence = classify_job_page(
                     normalized,
-                    has_structured_job=bool(metadata.get("structured_context")),
-                ):
+                    declared_job_titles=metadata.get("json_ld_job_titles") or [],
+                )
+                metadata["page_classification"] = evidence.classification
+                metadata["page_classification_reason"] = evidence.reason
+                if not evidence.may_extract:
                     raise PublicJobUrlFetchError(
-                        "JOB_IMPORT_URL_NO_JOB_CONTENT",
-                        "This page does not contain a readable job description — "
-                        "it may be a job board index, or the listing may load in "
-                        "the browser. Paste the job text instead.",
+                        _CLASSIFICATION_CODES[evidence.classification],
+                        _CLASSIFICATION_MESSAGES[evidence.classification],
                     )
+
                 metadata.update(
                     {
                         "status_code": response.status_code,

@@ -138,3 +138,72 @@ class TestARefusedRequestSaysSo:
         error = await self._fetch(401)
 
         assert error.code == "JOB_IMPORT_URL_AUTH_REQUIRED"
+
+
+class TestClassificationRatherThanYesOrNo:
+    """The right response differs by *what* came back, so the class does too."""
+
+    @staticmethod
+    def _classify(text, declared_job_titles=None):
+        from app.core.job_page_evidence import classify_job_page
+
+        return classify_job_page(text, declared_job_titles=declared_job_titles)
+
+    def test_one_declared_posting_is_a_single_job(self) -> None:
+        result = self._classify("Video Editor. Apply within.", declared_job_titles=["Video Editor"])
+
+        assert result.classification == "single_job"
+        assert result.may_extract
+
+    def test_several_distinct_postings_are_an_index(self) -> None:
+        # Markup outranks prose: keeping only the first posting is how a page of
+        # thirty roles used to import as one arbitrary draft.
+        result = self._classify(
+            REAL_POSTING,
+            declared_job_titles=["Video Editor", "Motion Designer", "Producer"],
+        )
+
+        assert result.classification == "multi_job_or_index"
+        assert not result.may_extract
+
+    def test_the_same_job_declared_twice_is_still_one_job(self) -> None:
+        # Pages repeat a posting for syndication; identical titles collapse.
+        result = self._classify(REAL_POSTING, declared_job_titles=["Video Editor", "Video Editor"])
+
+        assert result.classification == "single_job"
+
+    def test_a_bot_check_is_named_as_such(self) -> None:
+        result = self._classify("Just a moment... checking your browser")
+
+        assert result.classification == "blocked_or_challenge"
+
+    def test_a_sign_in_wall_is_a_block_not_a_shell(self) -> None:
+        result = self._classify("Please log in to continue")
+
+        assert result.classification == "blocked_or_challenge"
+
+    def test_an_empty_shell_is_a_shell(self) -> None:
+        assert self._classify("Jobs").classification == "thin_or_shell"
+
+    def test_an_aggregator_search_page_is_an_index(self) -> None:
+        # The regression this rewrite exists for: a search page carries posting
+        # vocabulary many times over and passed the old keyword gate.
+        aggregator = (
+            "Remote Video Editor Jobs\nLog in\nPost a Job\n"
+            "Filter by salary\nSort by date\nShowing 40 results\n"
+            + "Video Editor\nAcme\nRemote\n" * 8
+            + "Skills\nBenefits\n"
+        )
+        assert self._classify(aggregator).classification == "multi_job_or_index"
+
+    def test_a_page_about_nothing_job_shaped_is_not_a_job(self) -> None:
+        prose = "We make software for teams. Our values are curiosity and care. " * 8
+        assert self._classify(prose).classification == "not_a_job"
+
+    def test_only_a_single_job_may_reach_the_provider(self) -> None:
+        for text, titles in (
+            ("Jobs", []),
+            ("Just a moment...", []),
+            (REAL_POSTING, ["A", "B"]),
+        ):
+            assert not self._classify(text, declared_job_titles=titles).may_extract
