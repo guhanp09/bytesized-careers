@@ -111,6 +111,31 @@ def _clean_text(value: str) -> str:
     return re.sub(r"[ \t\f\v]+", " ", value).strip()
 
 
+def _all_json_ld_jobs(value: object, found: list[dict[str, object]] | None = None) -> list[dict[str, object]]:
+    """Every JobPosting in a block, not merely the first.
+
+    A board index publishes its whole results list in one array. Reading only
+    the first meant a page of thirty roles looked exactly like a page of one.
+    """
+
+    collected = found if found is not None else []
+    if len(collected) >= 40:
+        return collected
+    if isinstance(value, list):
+        for item in value:
+            _all_json_ld_jobs(item, collected)
+        return collected
+    if isinstance(value, dict):
+        graph = value.get("@graph")
+        if graph is not None:
+            _all_json_ld_jobs(graph, collected)
+        types = value.get("@type")
+        names = types if isinstance(types, list) else [types]
+        if any(isinstance(n, str) and n.strip().casefold() == "jobposting" for n in names):
+            collected.append(value)
+    return collected
+
+
 def _distinct_posting_titles(postings: list[dict[str, object]]) -> list[str]:
     """The materially different job titles a page declares.
 
@@ -253,11 +278,11 @@ class _VisibleJobHtmlParser(HTMLParser):
                     except (json.JSONDecodeError, RecursionError):
                         parsed = None
                     found = _safe_json_ld_job(parsed)
-                    if found is not None:
-                        if self.job_posting is None:
-                            self.job_posting = found
+                    if found is not None and self.job_posting is None:
+                        self.job_posting = found
+                    for posting in _all_json_ld_jobs(parsed):
                         if len(self.job_postings) < 40:
-                            self.job_postings.append(found)
+                            self.job_postings.append(posting)
             return
         if self._ignored_depth:
             self._ignored_depth -= 1

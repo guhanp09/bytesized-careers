@@ -192,13 +192,18 @@ def classify_job_page(
         # Markup naming exactly one job is the clearest evidence there is.
         return verdict("single_job", "one JobPosting record")
 
+    posting = _count(_POSTING_SIGNALS, text)
+    index = _count(_INDEX_SIGNALS, text)
+
     if chars < MIN_JOB_PAGE_CHARS:
         if _count(_AUTH_SIGNALS, text):
             return verdict("blocked_or_challenge", "the page asks for sign-in")
+        # A terse index is still an index. Checking length first classified a
+        # compact board listing as an empty shell, which is the wrong sentence
+        # to put in front of the recruiter: there is content, just not one job.
+        if index >= 2:
+            return verdict("multi_job_or_index", "the page advertises a list of openings")
         return verdict("thin_or_shell", "almost no readable content")
-
-    posting = _count(_POSTING_SIGNALS, text)
-    index = _count(_INDEX_SIGNALS, text)
 
     # A results list repeats a compact title/company/location row. One posting
     # does not, however long it is.
