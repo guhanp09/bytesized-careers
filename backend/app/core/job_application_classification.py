@@ -88,6 +88,7 @@ _EVALUATIVE_OPENERS: Final[tuple[str, ...]] = (
     "what was your",
     "what is your approach",
     "what would you",
+    "which",
     "what draws you",
     "what interests you",
     "share your thoughts",
@@ -101,6 +102,7 @@ _EVALUATIVE_OPENERS: Final[tuple[str, ...]] = (
 #: Both mention a structured field, and only the second is a screening question.
 _JUDGEMENT_OPENERS: Final[tuple[str, ...]] = (
     "why",
+    "which",
     "how would",
     "how do",
     "how did",
