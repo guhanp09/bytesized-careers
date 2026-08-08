@@ -201,3 +201,59 @@ class TestNeighbouringContentCannotDecideThisJob:
         assert stored == "Gurugram", stored
         assert "pvt" not in stored.casefold()
         assert "building" not in stored.casefold()
+
+
+class TestEveryRegionCodeBehavesLikeARegion:
+    """Derived from the table rather than from a list of examples.
+
+    A mutation removing one US state from the region table survived, because
+    the tests named Boston and New York and nothing else — so forty-eight
+    states were defended by nothing. Deriving the cases from the registry means
+    a state added or dropped is covered the moment it changes.
+    """
+
+    @staticmethod
+    def _codes() -> list[tuple[str, str]]:
+        from app.core.job_import_location_resolution import _REGIONS
+
+        # The suffixed keys ("IN-US", "CA-US", "DE-US") exist to avoid
+        # colliding with country codes — bare IN, CA and DE are India, Canada
+        # and Germany — and are not written on pages, so they are not cases.
+        return [(code, name) for code, name in _REGIONS.items() if "-" not in code]
+
+    #: Written out rather than derived, and that is the point.
+    #:
+    #: The cases below are generated from the region table, so a mutation that
+    #: removes a state from that table also removes its own test case and
+    #: survives. An oracle has to come from outside the thing it judges: this
+    #: list is what the United States actually has, and the table must satisfy
+    #: it. `CA`, `IN` and `DE` are suffixed in the table because bare they are
+    #: Canada, India and Germany.
+    US_STATES = (
+        "AL AK AZ AR CO CT FL GA HI ID IL IA KS KY LA ME MD MA MI MN MS MO MT "
+        "NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TX UT VT VA WA WV WI WY DC"
+    ).split()
+
+    def test_the_table_covers_every_united_states_region_code(self) -> None:
+        from app.core.job_import_location_resolution import _REGIONS
+
+        missing = [code for code in self.US_STATES if code not in _REGIONS]
+        assert not missing, f"region table is missing {missing}"
+
+        for suffixed in ("CA-US", "IN-US", "DE-US", "TN-US"):
+            assert suffixed in _REGIONS, suffixed
+
+    def test_a_city_comma_code_always_stores_the_city(self) -> None:
+        from app.core.job_import_location_resolution import parse_location
+
+        for code, name in self._codes():
+            parts = parse_location(f"Springfield, {code}")
+
+            assert parts.city == "Springfield", f"{code}: city={parts.city!r}"
+            assert parts.region == name, f"{code}: region={parts.region!r}"
+
+    def test_no_region_code_ever_reaches_a_city_field(self) -> None:
+        for code, _name in self._codes():
+            stored = convert_to_native("location", f"Springfield, {code}").native_value
+
+            assert stored == "Springfield", f"{code} -> {stored!r}"

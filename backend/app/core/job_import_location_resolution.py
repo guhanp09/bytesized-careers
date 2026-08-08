@@ -75,7 +75,12 @@ _REGIONS: Final[dict[str, str]] = {
     # component by what it *is* is the module's own design, and the positional
     # fallback is only meant for components nothing recognises.
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
-    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida",
+    "CO": "Colorado", "CT": "Connecticut", "FL": "Florida",
+    # Suffixed like Indiana and California below: bare "DE" is Germany's
+    # country code, and "Berlin, DE" means the country far more often than it
+    # means Delaware. Deriving the region cases from this table is what found
+    # the collision — the country reading wins, Delaware stays available.
+    "DE-US": "Delaware",
     "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois",
     "IN-US": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky",
     "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts",
@@ -339,7 +344,17 @@ def _clean(value: str) -> str:
 
 
 #: Separators a source uses when it lists several places in one string.
-_MULTI_PLACE = re.compile(r"\s*(?:;|\||/|\bor\b|\band\b)\s*", re.IGNORECASE)
+#: Separators between two places a source offers as alternatives.
+#:
+#: ``or`` is deliberately case-sensitive here, and only when it is a word
+#: between two places. "OR" is Oregon: "Springfield, OR" split into
+#: "Springfield" and lost the state, which the region cases found once they
+#: were derived from the table rather than written by hand. A conjunction is
+#: lowercase in every real listing; the state code never is.
+_MULTI_PLACE = re.compile(
+    r"\s*(?:;|\||/|(?<!,)\s\bor\b|\band\b)\s*",
+    re.IGNORECASE,
+)
 
 #: Parenthetical asides — usually the employer, occasionally a note.
 _ASIDE = re.compile(r"\([^)]*\)")
