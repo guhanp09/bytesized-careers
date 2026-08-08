@@ -161,6 +161,16 @@ def convert_to_native(field_path: str, value: object) -> NativeConversion:
                 "unsupported",
                 "The source states this at greater length than the field can hold.",
             )
+        if isinstance(value, str) and value and not value.strip():
+            # Whitespace is not a statement. Storing it "exactly" filled the row
+            # with something that renders as nothing — so the field looks
+            # answered, no question is asked about it, and the recruiter reaches
+            # Post Job to find it blank with no explanation.
+            #
+            # An *empty* string is different and is deliberately still exact: it
+            # is how a recruiter clears a field, and refusing it would make the
+            # field impossible to empty once anything had been read into it.
+            return result(None, "unsupported", "The source states nothing here.")
         return result(value, "exact", "Stored exactly as the source states it.")
 
     if value in choices:
