@@ -16,6 +16,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "clean-import",
     "shine-school-editor",
     "multi-craft",
+    "labelled-pay-conflict",
     # Checkpointed conversation: these land in waiting_for_recruiter so the
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
@@ -126,6 +127,8 @@ def processed_review_fixture(
         return _shine_school_editor_fixture()
     if scenario == "multi-craft":
         return _multi_craft_fixture()
+    if scenario == "labelled-pay-conflict":
+        return _labelled_pay_conflict_fixture()
     if scenario == "scriptwriter":
         return _scriptwriter_fixture()
     if scenario == "checkpoint-currency":
@@ -646,6 +649,91 @@ def _clean_import_fixture() -> JobImportExtractionResponse:
                     "code": "development_fixture",
                     "message": "This local example contains demonstration data only.",
                 }
+            ],
+        }
+    )
+
+
+def _labelled_pay_conflict_fixture() -> JobImportExtractionResponse:
+    """A page whose markup contradicts the copy the employer wrote.
+
+    Faithful to the failure it reproduces: the extraction reads the syndicated
+    markup, so it says ``internship`` and offers no compensation at all. Both
+    are wrong, and neither is the model's fault — the markup says exactly that.
+
+    The fixture deliberately does *not* pre-correct them. What is being tested
+    is that the deterministic layer reads the employer's own labelled rows and
+    settles the engagement and the rate without asking the recruiter about a
+    page that already answered. Handing this fixture the right answers would
+    test nothing.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "(Paid) Content Creator & Social Media Manager",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "(Paid) Content Creator & Social Media Manager"}
+                    ],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "social-media-manager",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Own our social presence"}],
+                    "explanation": "The stated work is running social channels.",
+                    "provider_confidence": {"score": 0.93, "label": "high"},
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "internship",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Structured employment type: INTERN"}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Location"}],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": [
+                        "Concept, shoot and edit 4-6 Reels per month.",
+                        "Design static feed and carousel posts.",
+                        "Write captions and short-form copy in English and Hinglish.",
+                        "Run community management and reply to comments.",
+                        "Plan drop campaigns and reshare UGC.",
+                        "Maintain hashtag and SEO strategy.",
+                        "Send a weekly performance report.",
+                    ],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Responsibilities"}],
+                },
+                {
+                    "field_path": "tools",
+                    "value": ["CapCut", "InShot"],
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Basic video editing in CapCut or InShot."}
+                    ],
+                },
+                {
+                    "field_path": "how_to_apply",
+                    "value": (
+                        "Send your Instagram handle or examples of social work, "
+                        "two caption examples, and a one-line answer to: which "
+                        "Indian pop-culture moment would you turn into a Reel? "
+                        "Email everything to hiring@larkfield.invalid."
+                    ),
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "How to apply"}],
+                },
             ],
         }
     )

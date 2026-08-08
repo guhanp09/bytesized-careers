@@ -1,18 +1,6 @@
 import { requestJson, type BackendJob } from "./backendClient";
 
 /**
- * How long the client waits for a provider-bound import request.
- *
- * The default write budget is 8s, which is shorter than the work: the backend
- * allows OPENAI_REQUEST_TIMEOUT_SECONDS (30s) with up to OPENAI_MAX_RETRIES (2)
- * retries, so a legitimate extraction can run to ~90s. Aborting at 8s cancels a
- * request the server is still working on, and the abort surfaces as status 0 —
- * i.e. "the backend is unreachable", about a backend that is fine.
- *
- * 120s clears the server's worst case with margin. The recruiter is not stuck
- * meanwhile: the canvas shows real progress and Cancel is always available.
- */
-/**
  * How long the client will wait on `POST /process` before giving up on it.
  *
  * This has to be *longer* than the server's own worst case, and it was shorter.
@@ -752,6 +740,7 @@ export type DevelopmentJobImportScenario =
   | "clean-import"
   | "shine-school-editor"
   | "multi-craft"
+  | "labelled-pay-conflict"
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"

@@ -2920,13 +2920,31 @@ class JobImportService:
                 # rows that needed it, which is why a labelled fact won on some
                 # runs and became a recruiter question on others.
                 untouched = existing.get("review_status") in (None, "", "pending")
-                outranks = untouched and (
-                    employer_labelled
-                    or (
-                        self._structured_declaration_outranks(field_path, context)
-                        and existing.get("provenance_state")
-                        != "conflicting_source_values"
-                    )
+                # Only a recruiter outranks what the employer printed. A row the
+                # extraction filled is marked "confirmed" too, and treating that
+                # as settled handed the decision to whichever reading arrived
+                # first: a page whose markup said INTERN while its own copy said
+                # "Type Part-time / Freelance" still reached the recruiter as an
+                # internship, because the extraction had faithfully read the
+                # markup and its row was therefore "confirmed". Machine
+                # agreement with the wrong source is not a settled fact.
+                #
+                # Nothing recruiter-owned is at risk here: this merge runs
+                # before the prefill merge, so a recruiter answer overwrites
+                # whatever this produces. The check is belt-and-braces for any
+                # later caller that reaches these rows after a recruiter has.
+                recruiter_owned = existing.get("authority_state") in {
+                    "confirmed_by_recruiter",
+                    "edited_by_recruiter",
+                    "rejected_by_recruiter",
+                }
+                outranks = (
+                    employer_labelled and not recruiter_owned
+                ) or (
+                    untouched
+                    and self._structured_declaration_outranks(field_path, context)
+                    and existing.get("provenance_state")
+                    != "conflicting_source_values"
                 )
                 if not outranks:
                     continue

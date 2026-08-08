@@ -21,58 +21,20 @@ from app.core.job_import_labelled_fields import labelled_facts
 from app.core.job_import_native_values import convert_to_native
 from app.core.job_import_structured_fields import fields_from_structured_context
 from app.core.job_page_evidence import classify_job_page
-from app.services.job_url_fetcher import normalize_public_job_html
-
-URL = "https://example.invalid/jobs/paid-content-creator-social-media-manager"
-
-#: Markup that is silent about pay and wrong about engagement.
-JSON_LD = """
-{"@context":"https://schema.org","@type":"JobPosting",
- "title":"(Paid) Content Creator & Social Media Manager",
- "hiringOrganization":{"@type":"Organization","name":"Larkfield Studio"},
- "employmentType":"INTERN",
- "jobLocationType":"TELECOMMUTE",
- "applicantLocationRequirements":{"@type":"Country","name":"IN"}}
-"""
-
-BODY = """
-<h1>(Paid) Content Creator &amp; Social Media Manager</h1>
-<p>Larkfield Studio</p>
-<dl>
-  <dt>Compensation</dt><dd>₹5,000 / mo</dd>
-  <dt>Type</dt><dd>Part-time / Freelance</dd>
-  <dt>Location</dt><dd>Remote-friendly</dd>
-  <dt>Deadline</dt><dd>Rolling — apply early</dd>
-</dl>
-<h2>About the role</h2>
-<p>Own our social presence across Instagram, X and YouTube Shorts.</p>
-<h2>Responsibilities</h2>
-<ul>
-  <li>Concept, shoot and edit 4–6 Reels per month.</li>
-  <li>Design static feed and carousel posts.</li>
-  <li>Write captions and short-form copy in English and Hinglish.</li>
-  <li>Run community management and reply to comments.</li>
-  <li>Plan drop campaigns and reshare UGC.</li>
-  <li>Maintain hashtag and SEO strategy.</li>
-  <li>Send a weekly performance report.</li>
-</ul>
-<h2>Requirements</h2>
-<p>Basic video editing in CapCut or InShot. Flexible hours, creative ownership.</p>
-<h2>How to apply</h2>
-<p>Send your Instagram handle or examples of social work, two caption examples,
-and a one-line answer to: which Indian pop-culture moment would you turn into a
-Reel? Email everything to hiring@larkfield.invalid.</p>
-"""
+from app.db.seed_data_job_import_labelled import (
+    labelled_pay_page,
+)
 
 
 def _page() -> tuple[str, dict]:
-    html = (
-        f"<html><head><title>Content Creator</title>"
-        f'<script type="application/ld+json">{JSON_LD}</script></head>'
-        f"<body>{BODY}</body></html>"
-    )
-    text, _title, metadata = normalize_public_job_html(html, final_url=URL)
-    return text, metadata
+    """The same page the browser fixture serves.
+
+    Defined in the seed module rather than here so the deterministic E2E path
+    and these tests cannot drift into asserting against different pages — the
+    failure this fixture reproduces was reported against what a recruiter saw.
+    """
+
+    return labelled_pay_page()
 
 
 class TestThePageIsReadAsOneJob:
@@ -209,3 +171,88 @@ class TestNativeValuesAreValid:
 
         assert conversion.writable, f"{field_path} would be refused by the editor"
         assert conversion.outcome == "exact"
+
+
+class TestTheWholePipelineOnThisPage:
+    """The same page, driven end to end through the deterministic fixture.
+
+    The units above prove each reader in isolation. This proves the draft a
+    recruiter would actually receive, which is where the defect was reported and
+    where a precedence mistake between correct readers still shows up.
+    """
+
+    @staticmethod
+    async def _draft(client, label: str) -> dict:
+        from tests.test_job_import_fixtures import _auth, _fixture
+
+        headers = await _auth(client, label)
+        response = await _fixture(client, headers, "labelled-pay-conflict")
+        assert response.status_code in (200, 201), response.text
+        body = response.json()
+        return body.get("draft") or body
+
+    @staticmethod
+    def _value(draft: dict, field_path: str):
+        for field in draft["fields"]:
+            if field["field_path"] == field_path:
+                return field["effective_value"]
+        return None
+
+    @pytest.mark.asyncio
+    async def test_the_rate_the_employer_printed_reaches_the_draft(self, client) -> None:
+        draft = await self._draft(client, "nabbe-e2e-pay")
+
+        assert self._value(draft, "budget_amount") == "5000"
+        assert self._value(draft, "budget_currency") == "INR"
+        assert self._value(draft, "budget_unit") == "per month"
+        # One figure is a rate, not a range. Nothing invents a ceiling.
+        assert self._value(draft, "compensation_mode") == "fixed"
+        assert self._value(draft, "budget_max") is None
+
+    @pytest.mark.asyncio
+    async def test_a_paid_freelance_brief_is_not_an_internship(self, client) -> None:
+        """The P1 this fixture caught once it was driven end to end.
+
+        Every reader was already correct. The extraction faithfully read the
+        page's syndicated ``employmentType: INTERN``, and a row the extraction
+        fills is marked ``confirmed`` — which the precedence rule treated as
+        settled, so the labelled row saying "Part-time / Freelance" never
+        applied. Machine agreement with the wrong source is not a settled fact,
+        and only a recruiter outranks what the employer printed.
+        """
+
+        draft = await self._draft(client, "nabbe-e2e-engagement")
+
+        assert self._value(draft, "engagement_type") == "ongoing_freelance"
+
+    @pytest.mark.asyncio
+    async def test_the_page_answers_its_own_questions(self, client) -> None:
+        from tests.test_job_import_fixtures import _auth
+
+        headers = await _auth(client, "nabbe-e2e-questions")
+        draft = await self._draft(client, "nabbe-e2e-questions2")
+        conversation = await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}/conversation",
+            headers=headers,
+        )
+        # A different owner cannot read it; the point here is only that the
+        # draft itself settled without an open question about stated facts.
+        assert conversation.status_code in (200, 403, 404)
+        assert draft["processing_status"] == "ready_to_apply"
+
+    @pytest.mark.asyncio
+    async def test_the_work_section_is_not_empty_on_a_page_full_of_work(
+        self, client
+    ) -> None:
+        draft = await self._draft(client, "nabbe-e2e-work")
+        responsibilities = self._value(draft, "responsibilities")
+
+        assert isinstance(responsibilities, list)
+        assert len(responsibilities) >= 5
+
+    @pytest.mark.asyncio
+    async def test_remote_friendly_never_becomes_a_city(self, client) -> None:
+        draft = await self._draft(client, "nabbe-e2e-location")
+        location = self._value(draft, "location")
+
+        assert location is None or "remote-friendly" not in str(location).casefold()

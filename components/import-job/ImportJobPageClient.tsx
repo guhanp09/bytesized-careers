@@ -1032,6 +1032,9 @@ export default function ImportJobPageClient() {
                     <option value="multi-craft" className="bg-[#0b0b0f]">
                       URL import · title names several crafts
                     </option>
+                    <option value="labelled-pay-conflict" className="bg-[#0b0b0f]">
+                      URL import · markup contradicts the copy
+                    </option>
                     <option value="checkpoint-currency" className="bg-[#0b0b0f]">
                       Checkpoint · pay needs a currency
                     </option>

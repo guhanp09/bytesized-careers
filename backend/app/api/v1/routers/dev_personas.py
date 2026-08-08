@@ -21,6 +21,10 @@ from app.db.seed_data_job_import import (
     SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT,
     processed_review_fixture,
 )
+from app.db.seed_data_job_import_labelled import (
+    LABELLED_PAY_SOURCE_TEXT,
+    LABELLED_PAY_STRUCTURED_CONTEXT,
+)
 from app.models import Job, JobApplication, Notification, TalentListing, User
 from app.schemas.job_import import (
     JobImportDraftInitialize,
@@ -197,6 +201,7 @@ async def create_job_import_review_fixture(
         "clean-import": "Education content strategist job post",
         "shine-school-editor": "Video Editor",
         "multi-craft": "Visual Content Creator - Video Editing, VFX & Animation",
+        "labelled-pay-conflict": "(Paid) Content Creator & Social Media Manager",
         "checkpoint-currency": "Finance video editor job post",
         "checkpoint-trial": "Gaming thumbnail designer job post",
         "delayed-processing": "Public job post being read",
@@ -212,6 +217,14 @@ async def create_job_import_review_fixture(
         "multi-craft": (
             MULTI_CRAFT_SOURCE_TEXT,
             MULTI_CRAFT_STRUCTURED_CONTEXT,
+        ),
+        # Markup that contradicts the employer's own labelled copy. Exposed to
+        # the browser deliberately: the defect it reproduces was reported
+        # against what a recruiter saw, so a fixture only the backend suite can
+        # reach would prove the reconciliation and nothing about the screen.
+        "labelled-pay-conflict": (
+            LABELLED_PAY_SOURCE_TEXT,
+            LABELLED_PAY_STRUCTURED_CONTEXT,
         ),
     }
     url_fixture = url_fixtures.get(scenario)
