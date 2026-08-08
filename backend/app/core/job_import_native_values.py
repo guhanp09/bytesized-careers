@@ -33,10 +33,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, get_args, get_origin
 
 from app.core.job_import_answer_shapes import native_schema_constraints
 from app.core.job_import_location_resolution import parse_location
+from app.schemas.job import JobCreate
 
 #: What happened to one value on its way to a native field.
 ConversionOutcome = Literal["exact", "broadened", "unsupported", "invalid"]
@@ -126,10 +127,45 @@ def convert_to_native(field_path: str, value: object) -> NativeConversion:
 
     choices, cap, is_list = native_schema_constraints(field_path)
 
+    if isinstance(value, dict):
+        # A provider reply's `value` is typed as JsonValue, so an object passes
+        # schema validation and arrives here. Nothing downstream expects one: a
+        # title that is a mapping renders as `{'unexpected': 'object'}` to a
+        # recruiter and to a candidate. Generated replies found this, and the
+        # reason it survived is that no hand-written case ever thought to send
+        # an object where a sentence belongs.
+        return result(
+            None,
+            "invalid",
+            "The source value is a structure rather than a stated fact.",
+        )
+
     if is_list:
         # A list is a set of facts rather than one fact, so there is no category
         # to place it in and nothing here can narrow it. Membership of each entry
         # is the schema's business, and Pydantic still checks it downstream.
+        #
+        # Except for shape, and only where the schema says the list holds plain
+        # strings. An entry that is itself a structure is then the same defect
+        # as a mapping arriving for a scalar field, one level down — a
+        # responsibility that is an object reads as `{'a': 1}` in a bullet list.
+        # Rejecting the whole value is right rather than dropping the bad entry:
+        # a reply that got the shape wrong is not evidence about which of its
+        # entries are trustworthy.
+        #
+        # Fields like `deliverables` genuinely hold objects, and an earlier
+        # version of this guard refused them — so the shape question has to be
+        # asked of the schema rather than assumed.
+        if (
+            _list_holds_plain_strings(field_path)
+            and isinstance(value, list)
+            and any(isinstance(entry, (dict, list)) for entry in value)
+        ):
+            return result(
+                None,
+                "invalid",
+                "The source lists structures rather than stated facts.",
+            )
         return result(value, "exact", "Stored as the source lists it.")
 
     if field_path == "location" and isinstance(value, str):
@@ -207,3 +243,25 @@ def coerce_to_native(field_path: str, value: object) -> object | None:
     """The value as the native field may hold it, or ``None`` to leave it unset."""
 
     return convert_to_native(field_path, value).native_value
+
+
+def _list_holds_plain_strings(field_path: str) -> bool:
+    """Whether the schema types this list field as a list of plain strings.
+
+    Asked of ``JobCreate`` directly rather than of ``native_schema_constraints``,
+    which reports only whether a field *is* a list. Some list fields —
+    ``deliverables`` most obviously — legitimately hold objects, and refusing
+    those would throw away structured facts a source correctly supplied.
+    """
+
+    model_field = JobCreate.model_fields.get(field_path)
+    if model_field is None:
+        return False
+    annotation = model_field.annotation
+    for candidate in (annotation, *get_args(annotation)):
+        if get_origin(candidate) is not list:
+            continue
+        arguments = get_args(candidate)
+        if arguments and arguments[0] is str:
+            return True
+    return False
