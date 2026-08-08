@@ -719,3 +719,139 @@ test.describe("changing where the work happens", () => {
     ).toBe("Hybrid");
   });
 });
+
+/**
+ * The last two later-step control families: required tools, and screening.
+ *
+ * Neither was reachable in the previous run and no mutation exposed them, which
+ * is not the same as their being safe — it only means nothing had asked. Both
+ * carry consequences the recruiter cannot see from the form: a required tool is
+ * a hard filter on who is eligible to apply, and a screening question is
+ * private to the Inbox and must never appear on the public listing.
+ */
+test.describe("required tools", () => {
+  const TOOL = "DaVinci Resolve";
+
+  test("a required tool survives a save and reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "tools");
+
+    const picker = page.locator("#post-job-tools-picker");
+    await expect(picker).toBeVisible({ timeout: 30_000 });
+    await picker.fill(TOOL);
+    // The picker commits on Enter rather than on blur, so a test that only
+    // typed would prove nothing about what was actually selected.
+    await picker.press("Enter");
+    await expect(page.getByRole("button", { name: `Remove ${TOOL}` })).toBeVisible();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "tools");
+
+    // Tools narrow who may apply. One lost in the save quietly widens the job
+    // to people who cannot do it, and nobody is told.
+    await expect(
+      page.getByRole("button", { name: `Remove ${TOOL}` }),
+      "the required tool did not persist"
+    ).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("removing a tool removes it for good", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "tools");
+
+    const picker = page.locator("#post-job-tools-picker");
+    await expect(picker).toBeVisible({ timeout: 30_000 });
+    await picker.fill(TOOL);
+    await picker.press("Enter");
+    await saveDraft(page);
+
+    await openSection(page, draftId, "tools");
+    await page.getByRole("button", { name: `Remove ${TOOL}` }).click();
+    await saveDraft(page);
+    await openSection(page, draftId, "tools");
+
+    // A save that can add but not remove leaves the job demanding software the
+    // recruiter deliberately stopped requiring.
+    await expect(page.getByRole("button", { name: `Remove ${TOOL}` })).toHaveCount(0);
+  });
+});
+
+/**
+ * Screening questions live on the *apply* step, not the evaluation one.
+ *
+ * `JOB_COMPLETION_TARGETS.screening` points at `process`, which renders only the
+ * evaluation fields — but nothing emits `screening` as a jump target, so that
+ * entry is unreachable rather than wrong in practice. The editor itself is in
+ * the apply card, which is what `howToApply` opens.
+ *
+ * Only persistence is asserted here. These questions are private to the Inbox
+ * and must never reach the public listing, but the step a recruiter edits them
+ * on is *supposed* to show them, so scanning this page for the text would prove
+ * nothing at all. That invariant is enforced where it is real — the public
+ * serializer nulls them, and the backend candidate-surface suite fails if it
+ * stops.
+ */
+test.describe("screening questions", () => {
+  const QUESTION = "Which edit of ours would you have cut differently? SCREEN_SENTINEL_4417";
+  const prompts = (page: Page) =>
+    page.locator('textarea[id^="job-question-"][id$="-prompt"]');
+
+  test("a screening question survives a save and reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const add = page.getByRole("button", { name: /Add question/i });
+    await expect(add).toBeVisible({ timeout: 30_000 });
+    const before = await prompts(page).count();
+    await add.click();
+    await expect.poll(() => prompts(page).count(), { timeout: 15_000 }).toBe(before + 1);
+
+    await prompts(page).nth(before).fill(QUESTION);
+    await prompts(page).nth(before).blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    // These are asked automatically in the Inbox after someone applies, so a
+    // question lost on save is a question no applicant is ever asked.
+    const values = await prompts(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLTextAreaElement).value)
+    );
+    expect(values, "the screening question did not persist").toContain(QUESTION);
+  });
+
+  test("two questions keep their order across a reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const add = page.getByRole("button", { name: /Add question/i });
+    await expect(add).toBeVisible({ timeout: 30_000 });
+    const before = await prompts(page).count();
+
+    await add.click();
+    await expect.poll(() => prompts(page).count(), { timeout: 15_000 }).toBe(before + 1);
+    await prompts(page).nth(before).fill("First question SCREEN_SENTINEL_A");
+    await add.click();
+    await expect.poll(() => prompts(page).count(), { timeout: 15_000 }).toBe(before + 2);
+    await prompts(page).nth(before + 1).fill("Second question SCREEN_SENTINEL_B");
+    await prompts(page).nth(before + 1).blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const values = await prompts(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLTextAreaElement).value).filter(Boolean)
+    );
+    // A list that round-trips as a set rather than a sequence reorders the
+    // conversation an applicant is walked through, without losing anything a
+    // count would notice.
+    expect(values.indexOf("First question SCREEN_SENTINEL_A")).toBeGreaterThanOrEqual(0);
+    expect(values.indexOf("First question SCREEN_SENTINEL_A")).toBeLessThan(
+      values.indexOf("Second question SCREEN_SENTINEL_B")
+    );
+  });
+});
