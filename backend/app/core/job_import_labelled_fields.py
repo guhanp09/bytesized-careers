@@ -163,10 +163,43 @@ def _read_compensation(value: str) -> tuple[int, str, str] | None:
     return amount, currency, unit
 
 
+#: Where the page stops being about this job and starts advertising others.
+#:
+#: A generated corpus made the cost exact: on 54 of 160 composed pages the
+#: reader took a neighbouring listing's rate. The pattern is obvious once seen —
+#: when the job itself prints no compensation, the first "Compensation" label on
+#: the page belongs to the "Similar jobs" card underneath it, and the draft then
+#: advertises a different company's salary.
+#:
+#: Earlier tests missed it because they always gave the primary job a rate, so
+#: the first match was correct by position rather than by belonging.
+_OTHER_JOBS_BOUNDARY = re.compile(
+    r"^[ \t]*(?:"
+    r"similar jobs?|related jobs?|recommended(?: for you)?|more jobs?|"
+    r"other (?:jobs?|openings|roles)|jobs? you might like|you may also like|"
+    r"people also viewed|similar (?:roles|positions|openings)|"
+    r"explore more jobs?|browse (?:more )?jobs?"
+    r")[ \t]*:?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def primary_job_text(normalized_text: str | None) -> str:
+    """The part of a page that is about the job it is a page for.
+
+    Everything from a "Similar jobs" heading onward belongs to other listings.
+    Reading labels out of it attributes another employer's facts to this one.
+    """
+
+    text = normalized_text or ""
+    boundary = _OTHER_JOBS_BOUNDARY.search(text)
+    return text[: boundary.start()] if boundary else text
+
+
 def labelled_facts(normalized_text: str | None) -> LabelledFacts:
     """Read the handful of facts a page states plainly under a label."""
 
-    text = normalized_text or ""
+    text = primary_job_text(normalized_text)
     if not text.strip():
         return LabelledFacts()
 
