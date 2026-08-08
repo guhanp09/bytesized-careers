@@ -1133,7 +1133,14 @@ export default function PostJobForm({
   const [cityOpen, setCityOpen] = useState(false);
   const [cityHighlight, setCityHighlight] = useState(0);
   const [experienceOpen, setExperienceOpen] = useState(false);
-  const [experienceHighlight, setExperienceHighlight] = useState(0);
+  // -1 means "the recruiter has not chosen a suggestion".
+  //
+  // This defaulted to 0, and Enter committed EXPERIENCE_SUGGESTIONS[0]
+  // unconditionally — so a recruiter who typed "12+ years of relevant
+  // experience" and pressed Enter, which is what anyone does in a text field,
+  // saved "0–1 years". The blur handler below exists precisely to stop a typed
+  // value being replaced by a band; the keyboard path was doing it anyway.
+  const [experienceHighlight, setExperienceHighlight] = useState(-1);
 
   const normalizeCity = (value: string) => value.trim().toLowerCase();
   const cityMatch = useMemo(
@@ -1766,11 +1773,14 @@ export default function PostJobForm({
                   onChange={(event) => {
                     onExperienceLevelChange(event.target.value);
                     if (!experienceOpen) setExperienceOpen(true);
-                    setExperienceHighlight(0);
+                    // Typing is the recruiter writing their own value, so no
+                    // suggestion is chosen. Re-arming the highlight here is
+                    // what made Enter replace what they had just written.
+                    setExperienceHighlight(-1);
                   }}
                   onFocus={() => {
                     setExperienceOpen(true);
-                    setExperienceHighlight(0);
+                    setExperienceHighlight(-1);
                   }}
                   // Deliberately unlike the city field above, which snaps to its
                   // closest match on blur. Doing that here would silently turn a
@@ -1790,10 +1800,16 @@ export default function PostJobForm({
                     }
                     if (event.key === "ArrowUp") {
                       event.preventDefault();
-                      setExperienceHighlight((prev) => Math.max(prev - 1, 0));
+                      setExperienceHighlight((prev) => Math.max(prev - 1, -1));
                     }
                     if (event.key === "Enter" && experienceOpen) {
-                      const picked = EXPERIENCE_SUGGESTIONS[experienceHighlight];
+                      // Only when a suggestion was actually chosen. Enter on
+                      // typed text means "I am done", not "replace what I wrote
+                      // with the first option".
+                      const picked =
+                        experienceHighlight >= 0
+                          ? EXPERIENCE_SUGGESTIONS[experienceHighlight]
+                          : undefined;
                       if (picked) {
                         event.preventDefault();
                         onExperienceLevelChange(picked);
