@@ -246,6 +246,40 @@ def _is_portfolio_reference(sentence: str, channel_span: tuple[int, int]) -> boo
     return bool(re.search(r"\b(?:your|their|his|her|candidate'?s)\s*$", head))
 
 
+#: A channel named without a preposition in front of it.
+#:
+#: "or WhatsApp +91 90000 00000" loses its number to the phone pattern above,
+#: and what is left is the bare word — which `_DESTINATION_PHRASE` never matches
+#: because there is no "on"/"via"/"to" to anchor it. The published note then read
+#: "please include it to or whatsapp with your CreatorJobs application": broken
+#: English that still names the platform a candidate was being routed to.
+_BARE_CHANNEL = re.compile(
+    r"\b(?:whats\s?app|telegram|signal|wechat|viber|messenger|discord|sms|"
+    r"e-?mail|mail|google\s+forms?|typeform)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_stranded_channels(sentence: str, working: str) -> tuple[str, list[str]]:
+    """Remove a channel name left behind once its address was taken away.
+
+    Called only for a sentence that already lost an address, a URL or a phone
+    number, because that is what makes a leftover channel name a destination
+    rather than vocabulary. Within such a sentence the portfolio test still
+    applies: "email your Instagram work to x@y" keeps Instagram.
+    """
+
+    found: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        if _is_portfolio_reference(sentence, match.span()):
+            return match.group(0)
+        found.append(match.group(0).strip())
+        return ""
+
+    return _BARE_CHANNEL.sub(replace, working), found
+
+
 def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
     """Remove routing phrases from one sentence, keeping everything else."""
 
@@ -291,6 +325,13 @@ def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
         return ""
 
     working = _DESTINATION_PHRASE.sub(replace, working)
+    if found:
+        # Only when this sentence demonstrably carried routing that was just
+        # removed. A bare channel name is otherwise ordinary vocabulary —
+        # "Familiarity with WhatsApp marketing helps" names a skill, and
+        # stripping it would cost the recruiter the requirement they wrote.
+        working, stranded = _strip_stranded_channels(sentence, working)
+        found.extend(stranded)
     return working, found
 
 
@@ -327,6 +368,14 @@ def _tidy(sentence: str) -> str:
     cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
     cleaned = re.sub(r"[,;:]\s*(?=[.!?])", "", cleaned)
     cleaned = re.sub(r"\b(?:and|or|with|to|on|via|at|by)\s*([.!?])", r"\1", cleaned, flags=re.I)
+    # Removal can leave connectives stranded mid-sentence too — "include it to
+    # or with your application" — not only immediately before punctuation.
+    cleaned = re.sub(
+        r"\b(?:to|on|via|at|by|through)\s+(?=(?:or|and)\b)", "", cleaned, flags=re.I
+    )
+    cleaned = re.sub(r"\b(?:or|and)\s+(?=with\b)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\b(?:to|on|via|at|by)\s+(?=with\b)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
     cleaned = re.sub(r"^[\s,;:.]+", "", cleaned)
     cleaned = cleaned.strip()
     if cleaned and cleaned[-1] not in ".!?":
