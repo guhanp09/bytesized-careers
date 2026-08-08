@@ -18,8 +18,8 @@ the exact string, so a generated failure is as debuggable as a written one.
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
 
 # --------------------------------------------------------------------------
 # Compensation
