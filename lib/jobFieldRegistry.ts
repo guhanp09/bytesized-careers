@@ -177,10 +177,16 @@ export const JOB_FIELD_REGISTRY: Record<keyof BackendCreateJobPayload, JobFieldE
   experience_level: {
     label: "Experience expectation",
     step: "basics",
-    representation: "derived",
+    representation: "control",
     requirement: "optional",
     target: "job-experience",
-    note: "Derived from the selected experience range.",
+    // Was "derived from the selected experience range", and that stopped being
+    // true when the bands were removed: a source stating "25 years" cannot be
+    // represented by a closed range, so the control became a free-form combobox
+    // with suggestions. The registry kept describing the old design, which is
+    // exactly the drift a source of truth must not have — this field's history
+    // is a banded value silently replacing a stated one.
+    note: "Free-form text with suggestions; a recruiter may write their own.",
   },
 
   // ── Step 2 · Work & deliverables (about) ──────────────────────────────────
