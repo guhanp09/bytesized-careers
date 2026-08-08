@@ -173,15 +173,130 @@ def _read_compensation(value: str) -> tuple[int, str, str] | None:
 #:
 #: Earlier tests missed it because they always gave the primary job a rate, so
 #: the first match was correct by position rather than by belonging.
+#: Composed rather than enumerated.
+#:
+#: The first version listed nine headings and 234 of 304 generated variants
+#: walked straight past it — "Related roles", "Other opportunities",
+#: "Vacancies", a trailing em dash, a bracketed count. Each miss let a
+#: neighbouring listing's salary become this job's.
+#:
+#: Unlike platform names, this vocabulary really is closed: an English job page
+#: introduces other jobs with a qualifier ("similar", "related", "more") and a
+#: job noun ("jobs", "roles", "openings", "vacancies"). Composing the two covers
+#: the space instead of guessing at points in it, and a heading nobody has seen
+#: is still made of the same parts.
+_OTHER_JOBS_QUALIFIER = (
+    r"(?:similar|related|other|more|additional|recommended|suggested|featured|"
+    r"latest|current|available|open|explore\s+more|browse|view\s+all|see\s+all|"
+    r"people\s+also\s+viewed|you\s+m(?:ay|ight)\s+also\s+like|"
+    r"(?:jobs?|roles?|careers?)\s+you\s+m(?:ay|ight)\s+like|"
+    r"more\s+from\s+this\s+(?:company|employer)|see\s+also)"
+)
+
+_OTHER_JOBS_NOUN = (
+    r"(?:jobs?|roles?|openings?|positions?|opportunities|opportunity|vacancies|"
+    r"vacancy|careers?|listings?|posts?)"
+)
+
 _OTHER_JOBS_BOUNDARY = re.compile(
-    r"^[ \t]*(?:"
-    r"similar jobs?|related jobs?|recommended(?: for you)?|more jobs?|"
-    r"other (?:jobs?|openings|roles)|jobs? you might like|you may also like|"
-    r"people also viewed|similar (?:roles|positions|openings)|"
-    r"explore more jobs?|browse (?:more )?jobs?"
-    r")[ \t]*:?[ \t]*$",
+    r"^[ \t]*[-—–*•]?[ \t]*"
+    # Either "<qualifier> <noun>", or a qualifier that already contains its own
+    # noun ("people also viewed", "see also", "you may also like").
+    # Qualifiers stack: "More related roles" is two of them before the noun.
+    rf"(?:{_OTHER_JOBS_QUALIFIER}(?:[ \t]+{_OTHER_JOBS_QUALIFIER})?"
+    rf"(?:[ \t]+(?:for[ \t]+you|to[ \t]+you))?"
+    rf"(?:[ \t]+{_OTHER_JOBS_NOUN})?"
+    rf"|{_OTHER_JOBS_NOUN}[ \t]+you[ \t]+m(?:ay|ight)[ \t]+like"
+    # A bare noun, but only the ones that exist to introduce a list. "Roles"
+    # and "Jobs" alone are excluded: a posting can head its own section that
+    # way, and cutting the page there would lose the job's own facts.
+    rf"|(?:vacancies|vacancy|openings|opportunities))"
+    # A count, a colon, a dash, an arrow — whatever the page decorates it with.
+    r"[ \t]*(?:\(\s*\d+\s*\)|\[\s*\d+\s*\]|\d+)?"
+    r"[ \t]*[:：\-—–>»]*[ \t]*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+#: Headings that begin a posting's own long-form body.
+#:
+#: A page states its own labelled facts near the top — beside the title, above
+#: the prose. A recommendation card sits *below* the body, and on a great many
+#: sites it carries no heading at all: just a title, a salary and a location,
+#: repeated. Half of a thousand generated heading-free layouts contaminated the
+#: draft that way, so the boundary cannot depend on a heading existing.
+_BODY_SECTION = re.compile(
+    r"^[ \t]*(?:about(?:\s+(?:the|this)\s+(?:role|job|position|company|us))?|"
+    r"the\s+role|role\s+overview|job\s+description|overview|summary|"
+    r"responsibilities|key\s+responsibilities|what\s+you'?ll\s+do|"
+    r"what\s+you\s+will\s+do|requirements?|qualifications?|who\s+you\s+are|"
+    r"your\s+profile|skills|benefits|perks|what\s+we\s+offer|how\s+to\s+apply)"
+    r"[ \t]*:?[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+#: A labelled row of the kind a job card repeats.
+_LABELLED_ROW = re.compile(
+    r"^[ \t]*(?:compensation|salary|pay|stipend|budget|job\s+type|employment\s+type|"
+    r"type|engagement|location)[ \t]*[:\-–]",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _first_neighbour_card(text: str) -> int | None:
+    """Where a second job's card begins, when no heading announces it.
+
+    The rule is positional because the page's structure is: title, labelled
+    facts, body, then other people's jobs. A labelled row appearing *after* the
+    body has started belongs to something the page moved on to — unless the
+    posting never had a body at all, in which case there is nothing to be after.
+    """
+
+    body = _BODY_SECTION.search(text)
+    if body is None:
+        return None
+
+    lines = text.splitlines(keepends=True)
+    offsets: list[int] = []
+    position = 0
+    for line in lines:
+        offsets.append(position)
+        position += len(line)
+
+    for row in _LABELLED_ROW.finditer(text, body.end()):
+        index = max(
+            (i for i, start in enumerate(offsets) if start <= row.start()),
+            default=0,
+        )
+        # A card announces itself with its own title and employer: two short
+        # lines that are neither prose nor a section heading. A posting stating
+        # its own pay below its body is preceded by prose instead, and cutting
+        # there would lose a fact the employer did state — which an earlier
+        # version of this did.
+        preceding = [line.strip() for line in lines[max(0, index - 2) : index]]
+        preceding = [line for line in preceding if line]
+        if len(preceding) < 2:
+            continue
+        if all(_looks_like_a_card_line(line) for line in preceding):
+            return offsets[max(0, index - len(preceding))]
+    return None
+
+
+def _looks_like_a_card_line(line: str) -> bool:
+    """Whether a line reads as a job card's title or employer rather than prose.
+
+    Short, no sentence punctuation, not a bullet, not itself a labelled row.
+    """
+
+    if not line or len(line) > 70:
+        return False
+    if line.endswith((".", "!", "?", ":", ";", ",")):
+        return False
+    if line.lstrip().startswith(("-", "*", "•", "–")):
+        return False
+    if _LABELLED_ROW.match(line) or _BODY_SECTION.match(line):
+        return False
+    return len(line.split()) <= 8
 
 
 def primary_job_text(normalized_text: str | None) -> str:
@@ -192,8 +307,11 @@ def primary_job_text(normalized_text: str | None) -> str:
     """
 
     text = normalized_text or ""
-    boundary = _OTHER_JOBS_BOUNDARY.search(text)
-    return text[: boundary.start()] if boundary else text
+    cuts = [match.start() for match in [_OTHER_JOBS_BOUNDARY.search(text)] if match]
+    structural = _first_neighbour_card(text)
+    if structural is not None:
+        cuts.append(structural)
+    return text[: min(cuts)] if cuts else text
 
 
 def labelled_facts(normalized_text: str | None) -> LabelledFacts:
