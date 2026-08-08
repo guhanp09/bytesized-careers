@@ -111,11 +111,21 @@ _DESTINATION_PHRASE = re.compile(
     r"""
     \s*
     (?:,\s*)?
-    \b(?:on|via|through|thru|to|at|using|by|over|in)\b
+    # No "in": it locates the work, not the application. "confirmation that
+    # you can work locally in Lisbon" was read as routing to Lisbon.
+    \b(?:on|via|through|thru|to|at|using|by|over)\b
     \s+
-    (?:our\s+|the\s+|this\s+|his\s+|her\s+|their\s+|my\s+)?
-    (?P<channel>[\w .+-]{2,40}?)
-    (?:\s+(?:only|directly|please|below|above|link|form|page|group|channel|number|id))*
+    (?:our\s+|the\s+|this\s+|his\s+|her\s+|their\s+|my\s+|an\s+|a\s+)?
+    # A lone capital is allowed because "X" is a platform, but only as a whole
+    # word — a general one-character minimum let the channel match "31" in
+    # "close on 31 August 2026" and swallow the deadline.
+    (?P<channel>[A-Z](?![\w])|[\w .+-]{2,40}?)
+    # The trailing nouns a destination phrase can end with. Missing "portal"
+    # and "site" meant "through our application portal" matched only as far as
+    # "application", so the word that made it a destination was never read.
+    (?:\s+(?:only|directly|please|below|above|link|form|page|group|channel|
+            number|id|portal|site|website|board|inbox|account|handle|profile|
+            careers|application|applications|jobs|hiring))*
     \b
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -280,8 +290,67 @@ def _strip_stranded_channels(sentence: str, working: str) -> tuple[str, list[str
     return _BARE_CHANNEL.sub(replace, working), found
 
 
-def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
-    """Remove routing phrases from one sentence, keeping everything else."""
+#: A sentence that is telling the candidate to send something somewhere.
+#:
+#: This is the open-vocabulary half of the decision, and it is why the channel
+#: list is no longer the thing that decides. Generated route-vs-skill pairs made
+#: the cost of membership-only reasoning exact: 144 of 616 genuine routing
+#: sentences leaked because the platform was one nobody had typed in — Skype,
+#: Teams, Jotform, Insta — and 63 legitimate sentences lost their platform
+#: because it happened to be one somebody had.
+#:
+#: Grammar separates them where a dictionary cannot. "Send your portfolio on
+#: WhatsApp" is governed by a routing verb; "Run paid campaigns on WhatsApp" is
+#: governed by a verb that sends nothing. The platform is identical and only one
+#: of them is a destination.
+_ROUTE_GOVERNED = re.compile(
+    r"""^\s*(?:please\s+)?(?:
+        (?:e-?mail|send|submit|share|forward|upload|post|apply|message|dm|
+           contact|reach\s+out|ping|drop|get\s+in\s+touch|fill|register|
+           visit|click|use|write\s+to|address)\b
+      | (?:applications?|submissions?|entries|cvs?|r[eé]sum[eé]s?|portfolios?)
+        # "to/via/through/using" only. "on" and "at" also introduce dates —
+        # "Applications close on 31 August" is a deadline, and reading it as a
+        # routing instruction ate the date out of the published note.
+        \b[^.]{0,40}?\b(?:to|via|through|using)\b
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+#: The same instruction arriving after a conjunction: "…, and send it to X".
+_ROUTE_GOVERNED_CLAUSE = re.compile(
+    r"\b(?:and|then|or)\s+(?:please\s+)?"
+    r"(?:e-?mail|send|submit|share|forward|upload|apply|message|dm|contact|"
+    r"reach\s+out|ping|drop)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_route_governed(sentence: str, *, address_found: bool) -> bool:
+    """Whether this sentence is an instruction to send something somewhere.
+
+    An address, a URL or a phone number settles it on its own: nothing puts one
+    of those in a job description except to be written to. Otherwise the verb
+    decides, because a destination needs something to send.
+    """
+
+    if address_found:
+        return True
+    return bool(
+        _ROUTE_GOVERNED.match(sentence) or _ROUTE_GOVERNED_CLAUSE.search(sentence)
+    )
+
+
+def _strip_destinations(
+    sentence: str, *, assume_routing: bool = False
+) -> tuple[str, list[str]]:
+    """Remove routing phrases from one sentence, keeping everything else.
+
+    ``assume_routing`` is for callers that already know the sentence is an
+    instruction about *how to apply* — a screening question, for instance,
+    never legitimately ends with a delivery channel, so "tell us why you want
+    the job on WhatsApp" has a destination even though "tell" sends nothing.
+    """
 
     found: list[str] = []
     working = sentence
@@ -291,7 +360,128 @@ def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
             found.append(match if isinstance(match, str) else str(match))
         working = pattern.sub("", working)
 
+    route_governed = assume_routing or _is_route_governed(
+        sentence, address_found=bool(found)
+    )
+
+    #: Words that are capitalised without naming a place.
+    #:
+    #: "INR 29167 per MONTH" put MONTH after a preposition in a sentence that
+    #: read as routing, and an all-caps unit became a destination. And routing
+    #: *to CreatorJobs* is not external routing at all — "Apply through
+    #: CreatorJobs" is the product describing itself, and flagging it made the
+    #: seed data unpublishable.
+    _NOT_A_DESTINATION = {
+        "creatorjobs",
+        "creator jobs",
+        "month",
+        "months",
+        "week",
+        "weeks",
+        "day",
+        "days",
+        "year",
+        "years",
+        "hour",
+        "hours",
+        "mo",
+        "hr",
+        "yr",
+        "usd",
+        "inr",
+        "eur",
+        "gbp",
+    }
+
+    def _looks_like_a_place(text: str) -> bool:
+        """Whether a prepositional object actually names somewhere to send to.
+
+        Being inside a routing instruction is not enough on its own. "Send us
+        your portfolio and a note on your approach" is governed by "Send", and
+        treating every prepositional object as a destination turned it into
+        "a note approach" — the recruiter's own wording, mangled, on a public
+        page.
+
+        A destination is a named place: a proper noun, or one of the words that
+        means "somewhere applications go". A lowercase common noun after a
+        possessive is the candidate's work or the recruiter's meaning.
+        """
+
+        cleaned = text.strip().strip(".,;:")
+        if not cleaned:
+            return False
+        if cleaned.casefold() in _NOT_A_DESTINATION:
+            return False
+        if re.search(
+            # No "platform" or "app": "decide what to adapt by platform" means
+            # per social network, and reading it as a destination stripped a
+            # recruiter's own responsibility out of their listing.
+            r"\b(?:form|portal|site|website|page|link|board|inbox|"
+            r"address|number|group|channel|handle|profile)\b",
+            cleaned,
+            re.IGNORECASE,
+        ):
+            return True
+        # A proper noun: a capitalised word that is not the sentence's first.
+        return bool(re.match(r"[A-Z]", cleaned)) and not sentence.strip().startswith(
+            cleaned
+        )
+
+    def _is_a_date_or_time(text: str) -> bool:
+        """Whether a prepositional object is a moment rather than a place.
+
+        "Please apply by 5:00 PM on 31 August 2026" is route-governed — it opens
+        with "apply" — and without this the date became the destination and the
+        whole deadline sentence was refused as unsafe. A place is never a bare
+        number.
+        """
+
+        cleaned = text.strip().strip(".,;:")
+        if not cleaned:
+            return True
+        if re.fullmatch(r"[\d\s:.,/+-]+", cleaned):
+            return True
+        return bool(
+            re.match(
+                r"^\d{1,4}\b|^(?:january|february|march|april|may|june|july|"
+                r"august|september|october|november|december|mon|tue|wed|thu|"
+                r"fri|sat|sun)\b",
+                cleaned,
+                re.IGNORECASE,
+            )
+        )
+
+    def _object_of(match: re.Match[str]) -> str:
+        """Everything the phrase matched after its preposition and determiner.
+
+        Judging `match.group("channel")` alone repeats the bug that let "to our
+        careers page" through: the optional suffix group swallows the portal
+        noun, so the channel is "careers" or "external" and the word that made
+        it a destination is no longer being looked at.
+        """
+
+        return re.sub(
+            r"^\s*,?\s*\b(?:on|via|through|thru|to|at|using|by|over)\b\s+"
+            r"(?:our\s+|the\s+|this\s+|his\s+|her\s+|their\s+|my\s+|an\s+|a\s+)?",
+            "",
+            match.group(0),
+            flags=re.IGNORECASE,
+        )
+
     def replace(match: re.Match[str]) -> str:
+        # Inside a routing instruction the prepositional object is the
+        # destination, whatever it is called. That is what makes an unseen
+        # platform safe: the sentence, not the word, is the evidence.
+        phrase = _object_of(match)
+        if (
+            route_governed
+            and _looks_like_a_place(phrase)
+            and not _is_a_date_or_time(phrase)
+            and not _is_portfolio_reference(sentence, match.span("channel"))
+        ):
+            found.append(match.group(0).strip())
+            return ""
+
         # The optional suffix group ("… page", "… form", "… link") swallows the
         # second word of a two-word channel, so "to our careers page" arrives
         # here with the channel "careers" — which names nothing. Read the whole
@@ -305,24 +495,27 @@ def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
                 flags=re.IGNORECASE,
             )
         )
-        if whole is not None:
+        if whole is not None and route_governed:
             # A phrase that names a destination outright is not ambiguous, and
             # the portfolio heuristic must not get a vote on it. "page" is a
             # portfolio marker — "your Instagram page" — and it is also the
             # second half of "careers page", so the heuristic read a destination
             # as a description of the candidate's own work and published it.
+            #
+            # Still gated on the sentence being a routing instruction, because
+            # naming a channel is not the same as routing to one: "Report on
+            # Instagram engagement weekly" names one and sends nothing.
             found.append(match.group(0).strip())
             return ""
 
-        channel = _names_a_channel(match.group("channel"))
-        if channel is None:
-            return match.group(0)
-        # A bare platform name is the genuinely ambiguous case this exists for:
-        # "DM us on Instagram" routes, "links to your Instagram work" describes.
-        if _is_portfolio_reference(sentence, match.span("channel")):
-            return match.group(0)
-        found.append(match.group(0).strip())
-        return ""
+        # Outside a routing instruction, a platform name is job content.
+        #
+        # Membership used to be enough on its own, and it cost 37 legitimate
+        # responsibilities their platform: "Run paid campaigns on WhatsApp"
+        # became "Run paid campaigns", because WhatsApp was on a list and the
+        # sentence was never asked what it was doing. A recruiter who wrote
+        # that lost the only detail that made the task specific.
+        return match.group(0)
 
     working = _DESTINATION_PHRASE.sub(replace, working)
     if found:
@@ -361,6 +554,43 @@ def requirement_object(sentence: str) -> str | None:
     return remainder or None
 
 
+#: Words that stand in for the materials instead of naming one.
+_STAND_INS: Final[frozenset[str]] = frozenset(
+    {"everything", "it", "them", "these", "those", "all", "anything", "this", "that"}
+)
+
+
+def _names_nothing(fragment: str) -> bool:
+    """Whether a reduced fragment asks for nothing in particular."""
+
+    words = [word.casefold() for word in re.findall(r"[A-Za-z]{2,}", fragment)]
+    meaningful = [
+        word
+        for word in words
+        if word not in _STAND_INS
+        and word
+        not in {
+            "send",
+            "share",
+            "submit",
+            "include",
+            "attach",
+            "upload",
+            "provide",
+            "forward",
+            "email",
+            "please",
+            "us",
+            "me",
+            "your",
+            "our",
+            "the",
+            "with",
+        }
+    ]
+    return not meaningful
+
+
 def _tidy(sentence: str) -> str:
     """Close the gaps removal leaves behind, without inventing words."""
 
@@ -383,7 +613,9 @@ def _tidy(sentence: str) -> str:
     return cleaned
 
 
-def separate_application_instructions(text: str | None) -> ApplicationInstructions:
+def separate_application_instructions(
+    text: str | None, *, assume_routing: bool = False
+) -> ApplicationInstructions:
     """Take a source's application wording apart into its two different facts."""
 
     if not text or not text.strip():
@@ -394,7 +626,7 @@ def separate_application_instructions(text: str | None) -> ApplicationInstructio
     sanitized = False
 
     for sentence in _split_sentences(text):
-        stripped, found = _strip_destinations(sentence)
+        stripped, found = _strip_destinations(sentence, assume_routing=assume_routing)
         if found:
             sanitized = True
             destinations.extend(found)
@@ -412,7 +644,11 @@ def separate_application_instructions(text: str | None) -> ApplicationInstructio
             # recruiter asked for, silently, with the candidate never asked.
             continue
 
-        reduced = False
+        # A sentence that just lost a destination is known to be an ask, the
+        # same way a routing reduction is. "Email your availability on
+        # WhatsApp" reduces to "your availability" — two words, and the
+        # fragment filter threw away nineteen generated requirements that way.
+        reduced = bool(found)
         if _PURE_ROUTING.match(stripped):
             # Directions first, the ask second. Keeping the whole sentence
             # published the directions — "Please include Apply through the form
@@ -438,6 +674,13 @@ def separate_application_instructions(text: str | None) -> ApplicationInstructio
         # is already known to be the ask, and "two samples" is a complete answer
         # to what the candidate must send even though it is only two words.
         if len(re.findall(r"[A-Za-z]{2,}", tidied)) < (2 if reduced else 3):
+            continue
+        # A fragment whose only object stands in for the materials names none
+        # of them. "Send everything to our careers page" reduces to "Send
+        # everything", and publishing "Please include everything with your
+        # CreatorJobs application" reads as an instruction while carrying no
+        # instruction at all.
+        if reduced and _names_nothing(tidied):
             continue
         safe.append(tidied)
 

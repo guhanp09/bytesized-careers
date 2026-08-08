@@ -167,9 +167,47 @@ _PORTFOLIO_PLATFORMS: Final[tuple[str, ...]] = (
 )
 
 
+#: "your Behance profile", "their TikTok channel" — a proper noun sitting in
+#: front of a word that means the candidate's own work.
+#:
+#: Structural, because the named list below is not the web. Twenty-six generated
+#: sentences lost their platform simply because it was WhatsApp or Discord
+#: rather than YouTube — a recruiter asking for someone's Telegram channel work
+#: got a generic "portfolio" requirement and no mention of Telegram at all.
+_PLATFORM_IN_WORK_CONTEXT = re.compile(
+    # Single capital allowed: "your X work" names a platform, not a letter.
+    r"\b[A-Z][\w.+-]{0,20}\s+"
+    r"(?:work|works|channel|channels|profile|profiles|page|pages|account|"
+    r"accounts|content|posts?|reels?|videos?|clips?|edits?|handle|handles|"
+    r"portfolio|feed|presence)\b"
+)
+
+
 def _names_a_platform(fragment: str) -> bool:
     lowered = fragment.lower()
-    return any(re.search(rf"\b{name}\b", lowered) for name in _PORTFOLIO_PLATFORMS)
+    if any(re.search(rf"\b{name}\b", lowered) for name in _PORTFOLIO_PLATFORMS):
+        return True
+    return bool(_PLATFORM_IN_WORK_CONTEXT.search(fragment))
+
+
+#: Stand-ins that carry no requirement of their own.
+_NAMES_NOTHING: Final[frozenset[str]] = frozenset(
+    {
+        "everything",
+        "it",
+        "them",
+        "these",
+        "those",
+        "all",
+        "all of it",
+        "the above",
+        "the below",
+        "anything",
+        "something",
+        "this",
+        "that",
+    }
+)
 
 
 def _unmatched_items(sentence: str) -> str | None:
@@ -187,6 +225,13 @@ def _unmatched_items(sentence: str) -> str | None:
     for piece in re.split(r",|\band\b|\bor\b", body):
         item = piece.strip().strip(".,;:")
         if len(re.findall(r"[A-Za-z]{2,}", item)) < 1:
+            continue
+        # A word that stands in for the materials rather than naming one.
+        # "Send everything to our careers page" reduces to "everything", and
+        # "Please include everything with your CreatorJobs application" tells a
+        # candidate nothing at all — it reads as an instruction while carrying
+        # no instruction.
+        if item.casefold() in _NAMES_NOTHING:
             continue
         # A piece the structured key already covers is dropped — unless it names
         # a platform, because that detail is exactly what the key cannot hold.
@@ -282,7 +327,13 @@ def classify_application_instructions(text: str | None) -> ClassifiedInstruction
                 separate_application_instructions,
             )
 
-            separated = separate_application_instructions(sentence)
+            # A screening question is candidate-facing and is, by definition,
+            # part of the how-to-apply block. A channel on the end of one is a
+            # delivery instruction rather than vocabulary, so routing is
+            # assumed here where it is inferred everywhere else.
+            separated = separate_application_instructions(
+                sentence, assume_routing=True
+            )
             cleaned = (separated.safe_sentences or [sentence])[0].strip()
             if cleaned and cleaned not in questions:
                 questions.append(cleaned)
