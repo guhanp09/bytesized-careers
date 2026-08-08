@@ -61,27 +61,41 @@ _ENGAGEMENT_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("permanent", "full_time"),
 )
 
-#: "₹5,000 / mo", "$30 per hour", "INR 40000 monthly".
+#: "₹5,000 / mo", "$30 per hour", "INR 40000 monthly", "Rs. 5,000 per month".
+#:
+#: Three families of miss were found by generating every currency × period ×
+#: amount × spacing rendering rather than listing strings, and all three cost a
+#: stated rate entirely — which then produced a question about pay the employer
+#: had already printed:
+#:
+#: * ``Rs`` and ``Rs.`` were not currencies at all, though on Indian job boards
+#:   they are at least as common as ``₹``. Eighty currency/period pairs.
+#: * ``an`` is the article in "$40 an hour" and was not a separator, so the
+#:   period never matched.
+#: * ``annual`` without its ``-ly`` was not a period.
+#:
+#: The ``a``/``an`` separators need their word boundary. Without it ``a`` ate the
+#: first letter of the period itself: "₹500000 annually" left "nnually".
 _AMOUNT = re.compile(
-    r"(?P<symbol>[₹$€£])?\s*(?P<currency>INR|USD|EUR|GBP|AED|SGD)?\s*"
+    r"(?P<symbol>[₹$€£])?\s*(?P<currency>INR|USD|EUR|GBP|AED|SGD|Rs\.?)?\s*"
     r"(?P<amount>\d[\d,\.]*)\s*"
-    # ``a`` is a separator in "₹5,000 a month", but only as a whole word. Without
-    # the boundary it swallowed the first letter of the period itself: "₹500000
-    # annually" left "nnually", which matches no unit, so a page that stated its
-    # salary plainly yielded no rate — and the recruiter was then asked about pay
-    # the employer had already printed.
-    r"(?:(?P<sep>/|per|a\b)\s*)?(?P<unit>mo|month|monthly|hr|hour|hourly|yr|year|annually|"
+    r"(?:(?P<sep>/|per|an\b|a\b)\s*)?"
+    r"(?P<unit>mo|month|monthly|hr|hour|hourly|yr|year|yearly|annually|annual|"
     r"annum|week|weekly|day|daily|project|video|piece|post|episode)?",
     re.IGNORECASE,
 )
 
 _SYMBOL_CURRENCY: Final[dict[str, str]] = {"₹": "INR", "$": "USD", "€": "EUR", "£": "GBP"}
 
+#: Currency words that are not already the code the product stores.
+_CURRENCY_WORDS: Final[dict[str, str]] = {"rs": "INR", "rs.": "INR"}
+
 #: How a stated period maps onto the product's own units.
 _UNITS: Final[dict[str, str]] = {
     "mo": "per month", "month": "per month", "monthly": "per month",
     "hr": "per hour", "hour": "per hour", "hourly": "per hour",
-    "yr": "per year", "year": "per year", "annually": "per year", "annum": "per year",
+    "yr": "per year", "year": "per year", "yearly": "per year",
+    "annual": "per year", "annually": "per year", "annum": "per year",
     "week": "per week", "weekly": "per week",
     "day": "per day", "daily": "per day",
     "project": "per project", "video": "per video", "piece": "per deliverable",
@@ -125,7 +139,10 @@ def _read_compensation(value: str) -> tuple[int, str, str] | None:
         return None
     amount = int(raw)
     currency = match.group("currency")
-    if not currency:
+    if currency:
+        # "Rs" is how a page writes rupees; "INR" is how the product stores them.
+        currency = _CURRENCY_WORDS.get(currency.casefold(), currency.upper())
+    else:
         symbol = match.group("symbol")
         currency = _SYMBOL_CURRENCY.get(symbol or "")
     unit = _UNITS.get((match.group("unit") or "").casefold())
