@@ -33,10 +33,19 @@ test("processing recovery polls retained drafts and clears user-facing failures"
   const page = read("components/import-job/ImportJobPageClient.tsx");
 
   assert.match(page, /phase !== "processing"/);
-  assert.match(page, /getJobImportDraft\(accessToken, draft\.id\)/);
-  assert.match(page, /terminalDraftStatuses\.has\(next\.processing_status\)/);
+  assert.match(page, /getJobImportDraft\(accessToken, draftId\)/);
   assert.match(page, /setError\(""\)/);
   assert.match(page, /Resume draft preparation/);
+
+  // Settlement is decided from the status, not from inside the poll that
+  // fetched it. This assertion replaces one that pinned the opposite shape —
+  // `terminalDraftStatuses.has(next.processing_status)` *within* the timer
+  // guarded on the draft still processing. That structure was the bug: the
+  // branch that opens a finished draft only existed while it was unfinished,
+  // so whichever reader delivered the finished status first decided whether
+  // the screen ever left the spinner.
+  assert.match(page, /settlementFor\(phase, draft\.processing_status\)/);
+  assert.doesNotMatch(page, /terminalDraftStatuses\.has\(next\.processing_status\)/);
 });
 
 test("preparation is calm, honest, cancellable, and accessible", () => {

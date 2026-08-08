@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.core.config import get_settings
 from app.core.job_application_classification import classify_application_instructions
 from app.core.job_application_instructions import separate_application_instructions
 from app.core.job_apply_note import compose_public_apply_note
@@ -37,6 +38,7 @@ from app.core.job_domain_taxonomy import (
     TRIAL_STATUSES,
     TRIAL_WORK_USAGE,
 )
+from app.core.job_import_attempt_liveness import assess_attempt
 from app.core.job_import_body_sections import experience_from_body
 from app.core.job_import_inference import (
     confidence_at_least,
@@ -549,7 +551,55 @@ class JobImportService:
                 "Import draft not found.",
                 status_code=404,
             )
-        return draft
+        return await self._reclaim_if_abandoned(draft, owner_user_id=owner_user_id)
+
+    async def _reclaim_if_abandoned(
+        self,
+        draft: JobImportDraft,
+        *,
+        owner_user_id: UUID,
+    ) -> JobImportDraft:
+        """Settle a ``processing`` draft whose attempt can no longer be running.
+
+        The deliberate failure paths all write a truthful status, and none of
+        them survives the process dying mid-extraction. What is left is a row
+        claiming work is in progress with nothing anywhere that will finish it —
+        so every later read reports processing, and the screen waits on it
+        forever because waiting is the correct response to that status.
+
+        Reading is where it gets noticed, so reading is where it gets settled.
+        """
+
+        settings = get_settings()
+        liveness = assess_attempt(
+            processing_status=draft.processing_status,
+            provider_metadata=draft.provider_metadata,
+            request_timeout_seconds=settings.openai_request_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
+        if not liveness.abandoned:
+            return draft
+
+        logger.warning(
+            "job_import.attempt_abandoned",
+            extra={
+                "draft_id": str(draft.id),
+                "age_seconds": liveness.age_seconds,
+                "budget_seconds": liveness.budget_seconds,
+            },
+        )
+        try:
+            return await self.mark_processing_failed(
+                draft.id,
+                owner_user_id=owner_user_id,
+                error_code="JOB_IMPORT_PROCESSING_ABANDONED",
+                message="Draft preparation stopped before it finished.",
+            )
+        except JobImportError:
+            # A concurrent attempt claimed the draft between the assessment and
+            # the write. That attempt is live and owns the outcome, so the row
+            # is left exactly as it is rather than failed out from under it.
+            return draft
 
     async def get_draft_for_target_job(
         self,

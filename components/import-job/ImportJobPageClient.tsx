@@ -33,6 +33,11 @@ import {
   type DevelopmentJobImportScenario,
 } from "../../lib/jobImportReadiness";
 import { normalizeImportText } from "../../lib/importJob/normalize";
+import {
+  OPENABLE_STATUSES,
+  backendHasSettled,
+  settlementFor,
+} from "../../lib/importJob/settlement";
 import { PageHeader, PageLoading, StateCard } from "../ui";
 import PastePanel from "./PastePanel";
 import { DraftAssistantCanvas } from "./assistant/DraftAssistantCanvas";
@@ -57,12 +62,9 @@ const isDevelopmentRuntime =
   process.env.NODE_ENV === "development" ||
   ["development", "test"].includes(process.env.NEXT_PUBLIC_APP_ENV ?? "");
 
-const terminalDraftStatuses = new Set([
-  "awaiting_recruiter_review",
-  "partially_reviewed",
-  "ready_to_apply",
-  "applied_to_native_draft",
-]);
+// Derived, not restated. Two hand-written copies of "which statuses mean the
+// draft can be opened" is exactly the drift that lets one of them fall behind.
+const terminalDraftStatuses = new Set<string>(OPENABLE_STATUSES);
 
 function setDraftLocation(draftId: string | null) {
   const next = new URL(window.location.href);
@@ -155,10 +157,22 @@ function importCounts(draft: JobImportDraft) {
 const FAILURE_MESSAGE =
   "We couldn’t finish reading this page. Nothing you entered was lost — retry, paste the job text instead, or continue manually.";
 
+/**
+ * The draft being waited on stopped existing while the screen waited on it.
+ *
+ * Discarded elsewhere, or replaced by a newer import of the same source. There
+ * is no failure to report and nothing to retry into, so this says what happened
+ * and offers the one action that still makes sense.
+ */
+const SUPERSEDED_MESSAGE =
+  "This import was replaced by a newer one. Start it again, or paste the job text to carry on here.";
+
 export default function ImportJobPageClient() {
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const [phase, setPhase] = React.useState<Phase>("entry");
+  //: Bumped when a status read fails, so the reader below re-arms itself.
+  const [pollTick, setPollTick] = React.useState(0);
   const [entryMode, setEntryMode] = React.useState<EntryMode>("text");
   const [text, setText] = React.useState("");
   const [url, setUrl] = React.useState("");
@@ -523,33 +537,56 @@ export default function ImportJobPageClient() {
     [accessToken, entryMode, openCanonicalDraft]
   );
 
+  // Settle on the status itself, whichever reader happened to deliver it.
+  //
+  // This used to live inside the poll below, guarded on the draft still being
+  // `processing` — so the branch that opens a finished draft only existed while
+  // the draft was unfinished. The four-second heartbeat usually won that race,
+  // and every time it did, a completed import kept its spinner forever. Reading
+  // the status here removes the race instead of reordering it.
+  React.useEffect(() => {
+    if (!draft) return;
+    const settlement = settlementFor(phase, draft.processing_status);
+    if (settlement === "open_draft") {
+      void openCanonicalDraft(draft);
+    } else if (settlement === "show_failure") {
+      // A failed attempt is shown as a failure. Retrying silently here would
+      // hide a genuine outage behind a spinner, and retrying into a
+      // manufactured empty draft is precisely the behaviour that turned a
+      // provider timeout into the recruiter's data-entry job.
+      setPhase("failure");
+      setError(FAILURE_MESSAGE);
+    } else if (settlement === "start_over") {
+      // The draft being waited on was discarded or superseded elsewhere. It
+      // will never report again, so waiting on it is waiting on nothing.
+      setPhase("failure");
+      setError(SUPERSEDED_MESSAGE);
+    }
+  }, [draft, openCanonicalDraft, phase]);
+
+  // Keep reading while the backend still reports work in progress. This is only
+  // a reader now — it never decides where the screen goes.
   React.useEffect(() => {
     if (
       phase !== "processing" ||
-      draft?.processing_status !== "processing" ||
+      !draft ||
+      backendHasSettled(draft.processing_status) ||
       !accessToken
     ) {
       return;
     }
+    const draftId = draft.id;
     const timer = window.setTimeout(() => {
-      void getJobImportDraft(accessToken, draft.id)
-        .then((next) => {
-          setDraft(next);
-          if (terminalDraftStatuses.has(next.processing_status)) {
-            void openCanonicalDraft(next);
-          } else if (next.processing_status === "processing_failed") {
-            // A failed attempt is shown as a failure. Retrying silently here
-            // would hide a genuine outage behind a spinner, and retrying into a
-            // manufactured empty draft is precisely the behaviour that turned a
-            // provider timeout into the recruiter's data-entry job.
-            setPhase("failure");
-            setError(FAILURE_MESSAGE);
-          }
-        })
-        .catch(() => undefined);
+      void getJobImportDraft(accessToken, draftId)
+        .then(setDraft)
+        // A rejected read must not end the loop. This effect re-arms on a new
+        // draft identity, so without the tick a single failed poll would leave
+        // nothing scheduled and the screen would wait on a reader that had
+        // already stopped — the same permanent spinner by a slower route.
+        .catch(() => setPollTick((tick) => tick + 1));
     }, 1_200);
     return () => window.clearTimeout(timer);
-  }, [accessToken, draft, openCanonicalDraft, phase]);
+  }, [accessToken, draft, phase, pollTick]);
 
   React.useEffect(() => {
     if (

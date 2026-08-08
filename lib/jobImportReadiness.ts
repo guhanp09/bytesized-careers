@@ -12,7 +12,25 @@ import { requestJson, type BackendJob } from "./backendClient";
  * 120s clears the server's worst case with margin. The recruiter is not stuck
  * meanwhile: the canvas shows real progress and Cancel is always available.
  */
-const JOB_IMPORT_PROCESSING_TIMEOUT_MS = 120_000;
+/**
+ * How long the client will wait on `POST /process` before giving up on it.
+ *
+ * This has to be *longer* than the server's own worst case, and it was shorter.
+ * The server allows one extraction attempt of up to `OPENAI_REQUEST_TIMEOUT_
+ * SECONDS` (90s by default, 180s at its configurable ceiling) plus one retry of
+ * the same size for a transient failure. So a slow-but-successful import can
+ * legitimately return at ~150s, and this budget stopped at 120s.
+ *
+ * The consequence was worse than a slow screen. The client abandoned the
+ * request, showed a failure, and the server then finished and wrote a perfectly
+ * good draft — which the failed screen had no reason to look at again. A
+ * completed import presented as a failed one, and the work was lost.
+ *
+ * Four minutes clears 2 × 90s with room for reconciliation and the response
+ * itself. It is a stop, not a target: the recruiter is told what is happening
+ * long before this, and the server fails far sooner in every ordinary case.
+ */
+const JOB_IMPORT_PROCESSING_TIMEOUT_MS = 240_000;
 
 /** Native conversion: database work, but it can involve a lot of rows. */
 const JOB_IMPORT_APPLY_TIMEOUT_MS = 30_000;

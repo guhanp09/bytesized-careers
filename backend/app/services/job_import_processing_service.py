@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from uuid import UUID, uuid4
@@ -133,6 +134,26 @@ class JobImportProcessingService:
 
         try:
             provider_result = await self.provider.extract(request)
+        except asyncio.CancelledError:
+            # The request went away mid-extraction — the client abandoned it, or
+            # the server is shutting down. `CancelledError` is a BaseException,
+            # so neither clause below sees it, and before this the draft simply
+            # stayed `processing` with nobody left to finish it. That is the
+            # state a recruiter watched for two minutes: not slow, abandoned.
+            #
+            # The status is written before the cancellation is re-raised, so the
+            # draft describes what actually happened to it. Re-raising keeps the
+            # cancellation itself intact; swallowing it would tell the server a
+            # cancelled task completed normally.
+            await self._mark_failed_if_current(
+                draft_id,
+                owner_user_id=owner_user_id,
+                processing_attempt_id=processing_attempt_id,
+                error_code="JOB_IMPORT_PROCESSING_ABANDONED",
+                message="Draft preparation stopped before it finished.",
+                provider_audit=None,
+            )
+            raise
         except JobImportProviderError as error:
             return await self._fail_or_fall_back(
                 draft_id,
