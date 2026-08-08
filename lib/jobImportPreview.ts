@@ -213,6 +213,29 @@ const WORK_MODE_LABELS: Readonly<Record<string, string>> = {
  * same code that will produce them after conversion. That is what makes the
  * preview a preview rather than a lookalike.
  */
+/** Words that restate the work mode rather than naming a place. */
+const RESTATES_REMOTE = /^(?:remote|remote[- ]friendly|remote[- ]first|fully[- ]remote|anywhere|work from home|wfh|distributed)$/i;
+
+/**
+ * Where the job is, given how it is worked.
+ *
+ * This used to be `workMode === "remote" ? "Remote" : location`, which got both
+ * halves wrong. A remote role in India rendered as "Remote" and lost the
+ * country — material on a marketplace where remote-in-India and remote-anywhere
+ * are different jobs to apply for. And when the stored location was itself the
+ * word "Remote", the mode and the place printed the same word twice, which is
+ * where "Remote · Remote" came from.
+ *
+ * So a stated place is always kept, and a "place" that only restates the mode is
+ * dropped rather than echoed.
+ */
+function previewLocation(workMode: string, stored: unknown): string | null {
+  const location = strOrNull(stored);
+  if (workMode !== "remote") return location;
+  if (!location) return "Remote";
+  return RESTATES_REMOTE.test(location.trim()) ? null : location;
+}
+
 export function importPreviewProps(
   snapshot: ImportPreviewSnapshot,
   options: { employerName: string; roleName?: string | null }
@@ -259,7 +282,7 @@ export function importPreviewProps(
     budgetNote: strOrNull(values.budget_note),
     engagementType: asEngagementType(values.engagement_type),
     workMode: WORK_MODE_LABELS[workMode] ?? strOrNull(values.work_mode),
-    location: workMode === "remote" ? "Remote" : strOrNull(values.location),
+    location: previewLocation(workMode, values.location),
     expectedWeeklyHoursMin:
       (values.expected_weekly_hours_min as string | number | null) ?? null,
     expectedWeeklyHoursMax:
