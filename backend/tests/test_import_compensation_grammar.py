@@ -98,13 +98,44 @@ class TestNothingIsInventedFromWordsAlone:
     def test_a_figure_missing_its_currency_or_period_is_not_a_rate(
         self, text: str
     ) -> None:
-        # A rate needs all three. Guessing the missing one is the invention the
-        # rest of the pipeline refuses to make.
+        """A rate needs all three, and a missing one is not filled in.
+
+        The first version of this asserted only that the three arrived
+        *together* — amount implies currency and unit. A mutation that defaults
+        the period to "per month" satisfies that perfectly while inventing the
+        one fact the page never stated, and it survived. The oracle has to name
+        what must not happen, not just that the parts agree.
+        """
+
         facts = _parse(text)
 
-        assert facts.budget_amount is None or (
-            facts.budget_currency is not None and facts.budget_unit is not None
-        ), f"{text!r} -> {facts}"
+        assert facts.budget_amount is None, (
+            f"{text!r} states no complete rate but produced "
+            f"{facts.budget_amount} {facts.budget_currency} {facts.budget_unit}"
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "missing"),
+        [
+            ("₹5,000", "period"),
+            ("$5,000", "period"),
+            ("Rs 5,000", "period"),
+            ("5000 per month", "currency"),
+            ("5,000 monthly", "currency"),
+            ("5000 annually", "currency"),
+        ],
+    )
+    def test_the_missing_half_is_never_supplied_from_nowhere(
+        self, text: str, missing: str
+    ) -> None:
+        facts = _parse(text)
+
+        # Defaulting the period to "per month" would understate an annual
+        # salary twelve-fold; defaulting the currency to INR on a dollar page
+        # would understate it eighty-fold. Both are worse than reading nothing.
+        assert facts.budget_unit is None, f"{text!r} gained a {missing}: {facts}"
+        assert facts.budget_currency is None, f"{text!r} gained a {missing}: {facts}"
+        assert facts.budget_amount is None
 
 
 class TestAFigureOnThePageIsNotNecessarilyThePay:

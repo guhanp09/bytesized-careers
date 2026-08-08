@@ -256,3 +256,58 @@ class TestTheWholePipelineOnThisPage:
         location = self._value(draft, "location")
 
         assert location is None or "remote-friendly" not in str(location).casefold()
+
+
+class TestOnlyARecruiterOutranksTheEmployersOwnWords:
+    """The belt-and-braces guard, which a mutation showed was untested.
+
+    A labelled fact outranks contradicted markup, and the check that stops it
+    outranking a *recruiter* survived being deleted: the merge runs before the
+    prefill merge, so the recruiter's answer is reapplied afterwards either way.
+    That ordering is the real defence and it is pinned structurally elsewhere —
+    but a guard nothing tests is a guard nothing notices losing, and the
+    ordering is one refactor away from changing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_recruiter_answer_is_not_overwritten_by_a_labelled_row(
+        self, client
+    ) -> None:
+        from tests.test_job_import_fixtures import _auth, _fixture
+
+        headers = await _auth(client, "nabbe-recruiter-precedence")
+        response = await _fixture(client, headers, "labelled-pay-conflict")
+        draft = response.json().get("draft") or response.json()
+
+        # The page's own labelled row says freelance. The recruiter says it is
+        # an internship, which is their job to know and not ours to correct.
+        saved = await client.patch(
+            f"/api/v1/job-imports/drafts/{draft['id']}/fields/engagement_type",
+            headers=headers,
+            json={"action": "edit", "edited_value": "internship"},
+        )
+        assert saved.status_code in (200, 201), saved.text
+
+        reread = await client.get(
+            f"/api/v1/job-imports/drafts/{draft['id']}", headers=headers
+        )
+        engagement = next(
+            field
+            for field in reread.json()["fields"]
+            if field["field_path"] == "engagement_type"
+        )
+
+        assert engagement["effective_value"] == "internship"
+
+    def test_the_guard_names_recruiter_authority_rather_than_review_status(self) -> None:
+        # Review status is set to "confirmed" by the extraction too, which is
+        # exactly why using it here let machine agreement with the wrong source
+        # look like a settled decision.
+        from pathlib import Path
+
+        source = Path("app/services/job_import_service.py").read_text()
+        guard = source[source.index("recruiter_owned = existing.get(") :][:400]
+
+        assert "authority_state" in guard
+        assert "confirmed_by_recruiter" in guard
+        assert "edited_by_recruiter" in guard
