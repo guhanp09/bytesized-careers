@@ -172,6 +172,30 @@ _PURE_ROUTING = re.compile(
 )
 
 
+#: A clause that asks the candidate to provide something, after the directions.
+#:
+#: Deliberately about the *ask*, not about the thing asked for: a list of nouns
+#: would need to anticipate every material a source can name, and the ones it
+#: missed would be exactly the ones silently dropped.
+_ASKS_FOR_SOMETHING = re.compile(
+    r"\b(?:and\s+|also\s+|then\s+|,\s*)?"
+    r"(?:"
+    r"(?:include|attach|add|send|share|provide|submit|upload|bring|enclose)\b"
+    r"\s+(?:us\s+|me\s+)?(?:your|two|three|a|an|the|some|any|\d)"
+    # "Apply at <url> with two samples" names the ask with a preposition rather
+    # than a verb, and dropping it lost the samples just as completely.
+    r"|with\s+(?:your|two|three|a|an|some|\d)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _also_asks_for_something(sentence: str) -> bool:
+    """Whether a routing sentence goes on to name what the candidate must send."""
+
+    return bool(_ASKS_FOR_SOMETHING.search(sentence))
+
+
 @dataclass(frozen=True)
 class ApplicationInstructions:
     """One source's application paragraph, taken apart.
@@ -234,9 +258,33 @@ def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
         working = pattern.sub("", working)
 
     def replace(match: re.Match[str]) -> str:
+        # The optional suffix group ("… page", "… form", "… link") swallows the
+        # second word of a two-word channel, so "to our careers page" arrives
+        # here with the channel "careers" — which names nothing. Read the whole
+        # phrase after the preposition first.
+        whole = _names_a_channel(
+            re.sub(
+                r"^\s*,?\s*\b(?:on|via|through|thru|to|at|using|by|over|in)\b\s+"
+                r"(?:our\s+|the\s+|this\s+|his\s+|her\s+|their\s+|my\s+)?",
+                "",
+                match.group(0),
+                flags=re.IGNORECASE,
+            )
+        )
+        if whole is not None:
+            # A phrase that names a destination outright is not ambiguous, and
+            # the portfolio heuristic must not get a vote on it. "page" is a
+            # portfolio marker — "your Instagram page" — and it is also the
+            # second half of "careers page", so the heuristic read a destination
+            # as a description of the candidate's own work and published it.
+            found.append(match.group(0).strip())
+            return ""
+
         channel = _names_a_channel(match.group("channel"))
         if channel is None:
             return match.group(0)
+        # A bare platform name is the genuinely ambiguous case this exists for:
+        # "DM us on Instagram" routes, "links to your Instagram work" describes.
         if _is_portfolio_reference(sentence, match.span("channel")):
             return match.group(0)
         found.append(match.group(0).strip())
@@ -254,7 +302,8 @@ def _strip_destinations(sentence: str) -> tuple[str, list[str]]:
 #: the sentence discarded.
 _LEADING_ROUTING_VERB = re.compile(
     r"^\s*(?:please\s+)?"
-    r"(?:e-?mail|send|share|submit|forward|drop|upload|post|attach|provide|include)"
+    r"(?:e-?mail|send|share|submit|forward|drop|upload|post|attach|provide|include"
+    r"|dm|whats-?app|message|text|ping)"
     r"\s+(?:us\s+|me\s+)?(?:with\s+)?",
     re.IGNORECASE,
 )
@@ -301,16 +350,45 @@ def separate_application_instructions(text: str | None) -> ApplicationInstructio
             sanitized = True
             destinations.extend(found)
 
-        if _PURE_ROUTING.match(sentence):
+        if _PURE_ROUTING.match(sentence) and not _also_asks_for_something(sentence):
             # Nothing here but directions. Dropping the sentence loses no
             # requirement, and keeping a hollowed-out version would read as
             # broken English on a public page.
+            #
+            # The second test is what makes that true. `_PURE_ROUTING` only
+            # inspects how a sentence *opens*, and sources routinely open with
+            # directions and then say what to send: "Apply through the form and
+            # include your showreel." Discarding on the opening alone threw away
+            # the showreel, the two samples, the reel — a requirement the
+            # recruiter asked for, silently, with the candidate never asked.
             continue
+
+        reduced = False
+        if _PURE_ROUTING.match(stripped):
+            # Directions first, the ask second. Keeping the whole sentence
+            # published the directions — "Please include Apply through the form
+            # with your CreatorJobs application" — which is both broken English
+            # and the destination this module exists to remove. Keep the ask.
+            ask = _ASKS_FOR_SOMETHING.search(stripped)
+            if ask:
+                stripped = stripped[ask.start() :].lstrip(" ,")
+                stripped = re.sub(r"^(?:and|also|then)\s+", "", stripped, flags=re.IGNORECASE)
+                # "with two samples" is the ask, but it is not a sentence. Left
+                # as a preposition it reads as a fragment on a public page, so
+                # it is given back the verb the directions took away.
+                stripped = re.sub(
+                    r"^with\s+", "Include ", stripped, flags=re.IGNORECASE
+                )
+                reduced = True
 
         tidied = _tidy(stripped)
         # A sentence reduced to a fragment has lost whatever it was saying.
         # Two letters counts as a word here because "CV" is a real requirement.
-        if len(re.findall(r"[A-Za-z]{2,}", tidied)) < 3:
+        #
+        # A clause that survived a routing reduction is held to a lower bar: it
+        # is already known to be the ask, and "two samples" is a complete answer
+        # to what the candidate must send even though it is only two words.
+        if len(re.findall(r"[A-Za-z]{2,}", tidied)) < (2 if reduced else 3):
             continue
         safe.append(tidied)
 

@@ -65,7 +65,12 @@ _ENGAGEMENT_WORDS: Final[tuple[tuple[str, str], ...]] = (
 _AMOUNT = re.compile(
     r"(?P<symbol>[₹$€£])?\s*(?P<currency>INR|USD|EUR|GBP|AED|SGD)?\s*"
     r"(?P<amount>\d[\d,\.]*)\s*"
-    r"(?:(?P<sep>/|per|a)\s*)?(?P<unit>mo|month|monthly|hr|hour|hourly|yr|year|annually|"
+    # ``a`` is a separator in "₹5,000 a month", but only as a whole word. Without
+    # the boundary it swallowed the first letter of the period itself: "₹500000
+    # annually" left "nnually", which matches no unit, so a page that stated its
+    # salary plainly yielded no rate — and the recruiter was then asked about pay
+    # the employer had already printed.
+    r"(?:(?P<sep>/|per|a\b)\s*)?(?P<unit>mo|month|monthly|hr|hour|hourly|yr|year|annually|"
     r"annum|week|weekly|day|daily|project|video|piece|post|episode)?",
     re.IGNORECASE,
 )

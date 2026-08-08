@@ -116,7 +116,12 @@ _JUDGEMENT_OPENERS: Final[tuple[str, ...]] = (
 
 #: Imperatives that request an attachment. Never a question, whatever follows.
 _MATERIAL_VERBS = re.compile(
-    r"^\s*(?:please\s+)?(?:upload|attach|include|share|send|provide|submit|state|list|add)\b",
+    # The routing verbs are here too, deliberately. A source that says "DM your
+    # Instagram work" is asking for the work; the verb is a destination, and
+    # leaving it in produced "Please include DM your Instagram work" — a note
+    # that both reads wrong and repeats the routing.
+    r"^\s*(?:please\s+)?(?:upload|attach|include|share|send|provide|submit|state|list|add"
+    r"|dm|whats-?app|message|text|ping|mail|e-?mail)\b",
     re.IGNORECASE,
 )
 
@@ -229,7 +234,18 @@ def classify_application_instructions(text: str | None) -> ClassifiedInstruction
     questions: list[str] = []
     leftovers: list[str] = []
 
-    for raw in re.split(r"(?<=[.!?])\s+|\n+", text.strip()):
+    # One sentence often carries a material ask and a judgement ask joined by a
+    # conjunction: "Send two caption examples and tell us why you want the job."
+    # Splitting only on sentence boundaries sent the whole thing to one
+    # destination, so the judgement half was published in the public note
+    # instead of being asked privately once.
+    prepared = re.sub(
+        r",?\s+\band\s+(?=(?:tell us|tell me|answer|explain|describe|let us know|share your thoughts)\b)",
+        ". ",
+        text.strip(),
+        flags=re.IGNORECASE,
+    )
+    for raw in re.split(r"(?<=[.!?])\s+|\n+", prepared):
         sentence = raw.strip()
         if not sentence:
             continue
@@ -256,8 +272,20 @@ def classify_application_instructions(text: str | None) -> ClassifiedInstruction
 
         if _is_evaluative(sentence):
             # Only prose the candidate writes can answer this.
-            if sentence not in questions:
-                questions.append(sentence)
+            #
+            # Sanitised on the way in. A screening question is candidate-facing,
+            # so a destination that rode along with the judgement clause — "tell
+            # us why you want the job on WhatsApp" — would route applicants off
+            # the platform from inside a private question, which is the one
+            # place nobody thought to look for it.
+            from app.core.job_application_instructions import (
+                separate_application_instructions,
+            )
+
+            separated = separate_application_instructions(sentence)
+            cleaned = (separated.safe_sentences or [sentence])[0].strip()
+            if cleaned and cleaned not in questions:
+                questions.append(cleaned)
             continue
 
         if len(re.findall(r"[A-Za-z]{2,}", sentence)) >= 3:
