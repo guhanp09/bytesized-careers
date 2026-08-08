@@ -85,8 +85,8 @@ class TestLocationNeverBecomesSomethingElse:
             ("Coimbatore, Coimbatore district, IN", "Coimbatore"),
             ("San Francisco, California, US", "San Francisco"),
             ("Brookefield, Bengaluru", "Brookefield, Bengaluru"),
-            ("Boston, MA", "Boston, MA"),
-            ("Remote (Acme Inc); Tysons Corner, VA", "Tysons Corner, VA"),
+            ("Boston, MA", "Boston"),
+            ("Remote (Acme Inc); Tysons Corner, VA", "Tysons Corner"),
             ("Hybrid / Remote: Bengaluru", "Bengaluru"),
         ],
     )

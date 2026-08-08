@@ -67,6 +67,27 @@ _REGIONS: Final[dict[str, str]] = {
     "UP": "Uttar Pradesh",
     "NY": "New York",
     "CA-US": "California",
+    # Every US state, because "City, ST" is how American listings write a
+    # location and the fallback below reads the *last* component as the city.
+    # That is right for "Brookefield, Bengaluru" — a neighbourhood then its city
+    # — and exactly wrong for "Boston, MA", which stored the city as "MA".
+    # Generated matrices found this on every US city tried; classifying the
+    # component by what it *is* is the module's own design, and the positional
+    # fallback is only meant for components nothing recognises.
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida",
+    "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois",
+    "IN-US": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky",
+    "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts",
+    "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+    "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire",
+    "NJ": "New Jersey", "NM": "New Mexico", "NC": "North Carolina",
+    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon",
+    "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN-US": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+    "DC": "District of Columbia",
 }
 
 #: Regions this module recognises by name, so a component can be classified.
@@ -203,8 +224,65 @@ _NOT_A_PLACE: Final[frozenset[str]] = frozenset(
         "telecommute",
         "multiple locations",
         "various",
+        # A building, a floor or a legal address is where a company is
+        # registered, not a city a candidate searches for. Generated matrices
+        # accepted every one of these as a city, and a page's footer carries
+        # them on almost every job.
+        "head office",
+        "headquarters",
+        "hq",
+        "registered office",
+        "corporate office",
+        "branch office",
+        "main office",
+        "office",
     }
 )
+
+#: Wording that names *when* someone works rather than where.
+#:
+#: A timezone is not a place. "Asia/Kolkata" split on its slash and stored the
+#: city as "Asia"; "IST" was stored verbatim. Both describe overlap hours, which
+#: the product models separately.
+_TIMEZONE = re.compile(
+    r"^(?:"
+    r"(?:UTC|GMT)\s*[+-]?\s*\d{1,2}(?::\d{2})?|"
+    r"[A-Z]{2,5}T|"  # IST, PST, EST, AEDT
+    r"(?:Africa|America|Antarctica|Asia|Atlantic|Australia|Europe|Indian|Pacific)/[\w+/-]+"
+    r")$",
+    re.IGNORECASE,
+)
+
+#: A legal entity, which is who is hiring rather than where the job is.
+#:
+#: Only the suffixes, because they are unambiguous. A bare trading name like
+#: "Larkfield Studio" is genuinely indistinguishable from a place name without a
+#: gazetteer this module deliberately refuses to become — the protection for
+#: that case is upstream, where a location is only read from location-labelled
+#: evidence rather than from any string on the page.
+_LEGAL_ENTITY = re.compile(
+    r"\b(?:pvt\.?|private|ltd\.?|limited|llp|llc|inc\.?|incorporated|corp\.?|"
+    r"corporation|gmbh|s\.?a\.?r\.?l|b\.?v\.?|plc|co\.?)\s*$",
+    re.IGNORECASE,
+)
+
+#: A street address fragment: "Building 4", "Suite 300", "Floor 2", "Unit 7".
+_ADDRESS_FRAGMENT = re.compile(
+    r"^(?:building|suite|floor|unit|block|tower|plot|door|room|no\.?)\s*[\w-]{0,6}$",
+    re.IGNORECASE,
+)
+
+
+def _is_not_a_place(part: str) -> bool:
+    """Whether a component describes something other than a place."""
+
+    cleaned = part.strip()
+    return (
+        cleaned.casefold() in _NOT_A_PLACE
+        or bool(_TIMEZONE.match(cleaned))
+        or bool(_ADDRESS_FRAGMENT.match(cleaned))
+        or bool(_LEGAL_ENTITY.search(cleaned))
+    )
 
 
 @dataclass(frozen=True)
@@ -279,6 +357,11 @@ def _first_stated_place(raw: str) -> str:
     """
 
     without_asides = _ASIDE.sub(" ", raw or "")
+    # Checked before splitting. "Asia/Kolkata" is one timezone, and the slash
+    # that separates its parts is also the slash that separates two places, so
+    # splitting first turned a timezone into the city "Asia".
+    if _TIMEZONE.match((raw or "").strip()):
+        return ""
     candidates = [part.strip(" ,;-") for part in _MULTI_PLACE.split(without_asides)]
     for candidate in candidates:
         if not candidate:
@@ -328,6 +411,14 @@ def parse_location(raw: str) -> LocationParts:
                 name for name in _COUNTRIES.values() if name.casefold() == folded
             )
             continue
+        if upper in _REGIONS and region == _REGIONS[upper] and city is None:
+            # Two components naming the same region means one of them was never
+            # the region. "New York, NY" is the case: "New York" is both a city
+            # and a state, so it was taken as the state and the city became
+            # "NY". A source does not write a region twice — it writes a city
+            # and then that city's region.
+            city, region = region, _REGIONS[upper]
+            continue
         if upper in _REGIONS and region is None:
             region = _REGIONS[upper]
             continue
@@ -349,9 +440,7 @@ def parse_location(raw: str) -> LocationParts:
         region = administrative[0]
 
     # An arrangement is not a place, however the source ordered its components.
-    unclassified = [
-        part for part in unclassified if part.casefold() not in _NOT_A_PLACE
-    ]
+    unclassified = [part for part in unclassified if not _is_not_a_place(part)]
 
     # What remains reads most specific first, which is how sources write
     # addresses: "Brookefield, Bengaluru" is a neighbourhood then its city.

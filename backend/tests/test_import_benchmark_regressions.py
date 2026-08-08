@@ -60,14 +60,43 @@ class TestOneCityFieldHoldsOneCity:
     @pytest.mark.parametrize(
         ("stated", "expected"),
         [
-            ("Remote (Pansophic Learning); Tysons Corner, VA", "Tysons Corner, VA"),
-            ("Tysons Corner, VA; New York, NY", "Tysons Corner, VA"),
-            ("Boston, MA (Preferred)", "Boston, MA"),
+            # These used to keep the state — "Tysons Corner, VA" — and read
+            # correctly while the parse underneath had it backwards: the city
+            # was "VA" and the locality was "Tysons Corner", because US state
+            # abbreviations were not classified as regions and the positional
+            # fallback took the last component. The string looked right; the
+            # structured value was the state.
+            #
+            # Now the city is the city, the state is the region, and the city
+            # field holds a city — which is what "Chennai, Tamil Nadu, IN" has
+            # always produced. The assertion is stronger, not looser.
+            ("Remote (Pansophic Learning); Tysons Corner, VA", "Tysons Corner"),
+            ("Tysons Corner, VA; New York, NY", "Tysons Corner"),
+            ("Boston, MA (Preferred)", "Boston"),
             ("Hybrid / Remote: Bengaluru", "Bengaluru"),
         ],
     )
     def test_the_first_real_place_is_the_one_used(self, stated: str, expected: str) -> None:
         assert convert_to_native("location", stated).native_value == expected
+
+    @pytest.mark.parametrize(
+        ("stated", "city", "region"),
+        [
+            ("Boston, MA", "Boston", "Massachusetts"),
+            ("Austin, TX", "Austin", "Texas"),
+            ("New York, NY", "New York", "New York"),
+            ("Chennai, Tamil Nadu, IN", "Chennai", "Tamil Nadu"),
+        ],
+    )
+    def test_a_us_state_is_the_region_and_never_the_city(
+        self, stated: str, city: str, region: str
+    ) -> None:
+        from app.core.job_import_location_resolution import parse_location
+
+        parts = parse_location(stated)
+
+        assert parts.city == city, stated
+        assert parts.region == region, stated
 
     def test_an_employer_name_is_never_a_city(self) -> None:
         assert convert_to_native("location", "Remote (Acme Inc)").native_value is None

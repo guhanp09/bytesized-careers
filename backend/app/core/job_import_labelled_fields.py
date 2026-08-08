@@ -52,11 +52,21 @@ _ENGAGEMENT_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("internship", "internship"),
     ("intern", "internship"),
     ("freelance", "ongoing_freelance"),
+    # Both spellings of the same idea. "fixed-term" was missing while its
+    # synonym "contract" was present, so a page using the more precise word got
+    # nothing — the generated matrix found the asymmetry.
+    ("fixed-term", "fixed_term"),
+    ("fixed term", "fixed_term"),
+    ("fixed_term", "fixed_term"),
     ("contract", "fixed_term"),
     ("part-time", "part_time"),
     ("part time", "part_time"),
+    ("part_time", "part_time"),
     ("full-time", "full_time"),
     ("full time", "full_time"),
+    # Schema.org writes employmentType as FULL_TIME. When that value is printed
+    # into visible copy rather than markup, the reader has to know it.
+    ("full_time", "full_time"),
     ("retainer", "retainer"),
     ("permanent", "full_time"),
 )

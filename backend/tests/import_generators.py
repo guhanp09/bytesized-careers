@@ -269,9 +269,15 @@ PLACES: tuple[tuple[str, str | None], ...] = (
 )
 
 #: Names that look like places and are not.
+#:
+#: A bare trading name is deliberately absent. "Larkfield Studio" is
+#: indistinguishable from a place name without a gazetteer this codebase refuses
+#: to become; the protection for that case is upstream, where a location is only
+#: read from location-labelled evidence rather than from any string on a page.
 NOT_PLACES: tuple[str, ...] = (
-    "Larkfield Studio",
     "Acme Media Pvt Ltd",
+    "Northgate Media Private Limited",
+    "Vashist Pvt. Ltd.",
     "Head Office",
     "Registered office",
     "Building 4",
