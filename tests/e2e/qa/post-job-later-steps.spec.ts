@@ -436,3 +436,286 @@ for (const viewport of VIEWPORTS) {
     ).toBe(before);
   });
 }
+
+/**
+ * The application step, where what is stored is also what candidates read.
+ *
+ * The public note is the sharpest case on this step. It has two owners in the
+ * form — a legacy prompt box that appears only when the custom-instruction
+ * requirement is chosen, and the ordinary note field that owns it otherwise —
+ * and the save chooses between them. A mutation that let the legacy branch win
+ * unconditionally survived every backend suite, because the damage is done
+ * before the request is built: the note a recruiter typed is serialized as
+ * null and the job page quietly loses a paragraph.
+ */
+test.describe("what applicants are asked for", () => {
+  const NOTE = "Send two recent edits and a note on your turnaround. APPLY_SENTINEL_2210";
+  const publicNote = (page: Page) => page.getByLabel("Public how-to-apply note").first();
+
+  test("the public note survives a save and reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const note = publicNote(page);
+    await expect(note).toBeVisible({ timeout: 30_000 });
+    await note.fill(NOTE);
+    await note.blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    // Candidate-visible by design — the step says so. A note that does not
+    // survive the save is a paragraph the recruiter believes they published.
+    expect(await publicNote(page).inputValue()).toBe(NOTE);
+  });
+
+  test("saving without touching the note leaves it alone", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+    await publicNote(page).fill(NOTE);
+    await publicNote(page).blur();
+    await saveDraft(page);
+
+    await openSection(page, draftId, "howToApply");
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    // The second save touches nothing. A form default that wins here erases
+    // the note of every recruiter who opens the step and moves on.
+    expect(await publicNote(page).inputValue()).toBe(NOTE);
+  });
+
+  test("a chosen requirement is still chosen after a reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const portfolio = page.getByRole("button", { name: "Relevant portfolio" }).first();
+    await expect(portfolio).toBeVisible({ timeout: 30_000 });
+    if ((await portfolio.getAttribute("aria-pressed")) !== "true") await portfolio.click();
+    await expect(portfolio).toHaveAttribute("aria-pressed", "true");
+
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    // These decide what an applicant is forced to attach. A selection that
+    // does not persist means applications arrive without the one thing the
+    // recruiter asked for.
+    await expect(
+      page.getByRole("button", { name: "Relevant portfolio" }).first()
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("removing a requirement removes it for good", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    const rate = page.getByRole("button", { name: "Expected rate" }).first();
+    await expect(rate).toBeVisible({ timeout: 30_000 });
+    if ((await rate.getAttribute("aria-pressed")) !== "true") {
+      await rate.click();
+      await saveDraft(page);
+      await openSection(page, draftId, "howToApply");
+    }
+
+    await page.getByRole("button", { name: "Expected rate" }).first().click();
+    await expect(
+      page.getByRole("button", { name: "Expected rate" }).first()
+    ).toHaveAttribute("aria-pressed", "false");
+
+    await saveDraft(page);
+    await openSection(page, draftId, "howToApply");
+
+    // A save that can add but not remove is how a job goes on demanding
+    // something the recruiter deliberately stopped asking for.
+    await expect(
+      page.getByRole("button", { name: "Expected rate" }).first()
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+test.describe("the description of the work", () => {
+  const bullet = (page: Page, index: number) =>
+    page.getByLabel(`Responsibility ${index}`).first();
+
+  test("an edited responsibility survives a reopen", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "responsibilities");
+
+    const first = bullet(page, 1);
+    await expect(first).toBeVisible({ timeout: 30_000 });
+    await first.fill("Cut two Shorts a week. RESP_SENTINEL_8841");
+    await first.blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "responsibilities");
+
+    expect(await bullet(page, 1).inputValue()).toBe(
+      "Cut two Shorts a week. RESP_SENTINEL_8841"
+    );
+  });
+
+  test("an added responsibility is still there tomorrow", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "responsibilities");
+
+    const first = bullet(page, 1);
+    await expect(first).toBeVisible({ timeout: 30_000 });
+    const existing = await first.inputValue();
+    const bullets = page.getByLabel(/^Responsibility \d+$/);
+    const before = await bullets.count();
+
+    await first.click();
+    await first.press("End");
+    await first.press("Enter");
+
+    // The editor moves focus to the new line on the next animation frame, so
+    // typing immediately puts the first few characters back in the old bullet
+    // and splits a word in half. Wait for the line to exist, then fill it.
+    await expect.poll(() => bullets.count(), { timeout: 15_000 }).toBe(before + 1);
+    await bullets.nth(1).fill("Storyboard one video a week. RESP_SENTINEL_9002");
+    await bullets.nth(1).blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "responsibilities");
+
+    // The list editor splits on Enter, so a new bullet is a new value the
+    // serializer has to notice. Both must come back.
+    const lines = await page
+      .getByLabel(/^Responsibility \d+$/)
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLTextAreaElement).value).filter(Boolean)
+      );
+    expect(lines).toContain("Storyboard one video a week. RESP_SENTINEL_9002");
+    if (existing.trim()) expect(lines).toContain(existing);
+  });
+
+  test("saving the step without editing keeps every bullet", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "responsibilities");
+    await expect(bullet(page, 1)).toBeVisible({ timeout: 30_000 });
+
+    const read = () =>
+      page
+        .getByLabel(/^Responsibility \d+$/)
+        .evaluateAll((nodes) =>
+          nodes.map((node) => (node as HTMLTextAreaElement).value).filter(Boolean)
+        );
+    const before = await read();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "responsibilities");
+
+    // A list that loses an entry per save is the worst kind of drift: it looks
+    // fine every time and empties over a week.
+    expect(await read()).toEqual(before);
+  });
+});
+
+/**
+ * Where the job happens, changed rather than merely observed.
+ *
+ * Every case above reads the arrangement and checks it has not drifted. None of
+ * them ever *changed* it, and that gap is exactly what a mutation found: an
+ * existing draft is saved as a dirty-key patch (`payloadForWrite`), so nulling
+ * `work_mode` or `location` in the payload has no effect at all unless a test
+ * edits those fields. Two deliberate defects lived through the whole suite for
+ * that reason.
+ *
+ * They are also the most coupled pair on the form. `location` is not a control
+ * of its own — it is derived from the work mode and the city, with "Remote"
+ * standing in for a place, and choosing Remote clears the city as a side effect.
+ * A serializer that gets that wrong produces a remote job in a city, or an
+ * on-site job nowhere.
+ */
+test.describe("changing where the work happens", () => {
+  test("moving a remote job on-site saves both the mode and the city", async ({
+    page,
+  }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    const workMode = page.locator("#job-work-mode");
+    await expect(workMode).toBeVisible({ timeout: 30_000 });
+    await workMode.selectOption("On-site");
+
+    // The city control only exists once somewhere is required, so its arrival
+    // is the signal that the conditional actually reacted.
+    const city = page.locator("#job-city");
+    await expect(city).toBeVisible({ timeout: 15_000 });
+    await city.fill("Coimbatore");
+    await city.blur();
+
+    await saveDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    expect(
+      await page.locator("#job-work-mode").inputValue(),
+      "the work mode did not persist"
+    ).toBe("On-site");
+    expect(
+      await page.locator("#job-city").inputValue(),
+      "the city did not persist"
+    ).toBe("Coimbatore");
+  });
+
+  test("moving it back to remote drops the city rather than keeping it", async ({
+    page,
+  }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    await page.locator("#job-work-mode").selectOption("Hybrid");
+    const city = page.locator("#job-city");
+    await expect(city).toBeVisible({ timeout: 15_000 });
+    await city.fill("Kolkata");
+    await city.blur();
+    await saveDraft(page);
+
+    await openSection(page, draftId, "timeline");
+    await page.locator("#job-work-mode").selectOption("Remote");
+    await saveDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    expect(await page.locator("#job-work-mode").inputValue()).toBe("Remote");
+    // A remote job that still remembers Kolkata tells candidates it is in a
+    // city nobody has to be in.
+    const cityAfter = page.locator("#job-city");
+    if ((await cityAfter.count()) > 0) {
+      expect(await cityAfter.inputValue()).toBe("");
+    }
+  });
+
+  test("an edited city does not move the work mode with it", async ({ page }) => {
+    await login(page);
+    const draftId = await importDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    await page.locator("#job-work-mode").selectOption("Hybrid");
+    const city = page.locator("#job-city");
+    await expect(city).toBeVisible({ timeout: 15_000 });
+    await city.fill("Pune");
+    await city.blur();
+    await saveDraft(page);
+
+    await openSection(page, draftId, "timeline");
+    await page.locator("#job-city").fill("Hyderabad");
+    await page.locator("#job-city").blur();
+    await saveDraft(page);
+    await openSection(page, draftId, "timeline");
+
+    expect(await page.locator("#job-city").inputValue()).toBe("Hyderabad");
+    expect(
+      await page.locator("#job-work-mode").inputValue(),
+      "the work mode changed when only the city was edited"
+    ).toBe("Hybrid");
+  });
+});
