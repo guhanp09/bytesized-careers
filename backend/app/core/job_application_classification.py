@@ -138,6 +138,36 @@ class ClassifiedInstructions:
     unstructured_materials: list[str] = field(default_factory=list)
 
 
+#: Verbs that describe the work rather than request material from a candidate.
+#:
+#: "You will build a portfolio of finished pieces for the brand" names a
+#: responsibility, and reading it as a request turned twenty-two generated job
+#: descriptions into an application requirement — the recruiter's own
+#: description of the role, deleted and replaced by a demand for a portfolio.
+#:
+#: The distinction is the verb, not the noun. A candidate *provides* a
+#: portfolio; a job *builds* one.
+_DESCRIBES_THE_WORK = re.compile(
+    r"\b(?:will|would|shall)\s+(?:be\s+)?(?:"
+    r"build|building|produce|producing|create|creating|maintain|maintaining|"
+    r"own|owning|manage|managing|grow|growing|develop|developing|run|running|"
+    r"deliver|delivering|curate|curating|expand|expanding"
+    r")\b"
+    # Two words, because a work noun is often two: "our demo reel is",
+    # "our past work is".
+    r"|^\s*(?:the\s+role|this\s+role|the\s+job|we\s+keep|"
+    r"our\s+\w+(?:\s+\w+)?\s+(?:is|are|was|were)|"
+    r"you'?ll\s+(?:build|own|manage|produce|create|grow|run))\b",
+    re.IGNORECASE,
+)
+
+
+def _describes_the_work(sentence: str) -> bool:
+    """Whether a sentence describes the job rather than asking for material."""
+
+    return bool(_DESCRIBES_THE_WORK.search(sentence))
+
+
 def _requirement_keys_in(sentence: str) -> list[str]:
     found: list[str] = []
     for key, pattern in _REQUIREMENT_PATTERNS:
@@ -293,6 +323,12 @@ def classify_application_instructions(text: str | None) -> ClassifiedInstruction
     for raw in re.split(r"(?<=[.!?])\s+|\n+", prepared):
         sentence = raw.strip()
         if not sentence:
+            continue
+
+        if _describes_the_work(sentence):
+            # A responsibility, not a request. It belongs in the job's own
+            # description and must not become something the candidate is asked
+            # to send.
             continue
 
         matched = _requirement_keys_in(sentence)

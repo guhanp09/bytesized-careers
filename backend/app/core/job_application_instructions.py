@@ -246,7 +246,19 @@ def _is_portfolio_reference(sentence: str, channel_span: tuple[int, int]) -> boo
     difference is the company the word keeps.
     """
 
-    tail = sentence[channel_span[1] : channel_span[1] + 40].lower()
+    # The work noun has to belong to *this* platform. "Reach out on YouTube
+    # with your portfolio" has a work noun fifteen characters later, and it
+    # belongs to "with your", not to "on YouTube" — reading it as portfolio
+    # context protected a routing destination on sixty-one generated cases.
+    #
+    # So the tail is cut at the next preposition: whatever follows starts a
+    # different phrase and says nothing about this one.
+    raw_tail = sentence[channel_span[1] : channel_span[1] + 60]
+    tail = re.split(
+        r"\b(?:with|to|via|through|on|at|using|by|over|and|or)\b",
+        raw_tail,
+        maxsplit=1,
+    )[0].lower()
     head = sentence[max(0, channel_span[0] - 40) : channel_span[0]].lower()
     for marker in _PORTFOLIO_CONTEXT:
         if re.search(rf"\b{re.escape(marker)}\b", tail):
@@ -282,6 +294,22 @@ def _strip_stranded_channels(sentence: str, working: str) -> tuple[str, list[str
     found: list[str] = []
 
     def replace(match: re.Match[str]) -> str:
+        # A sentence-initial channel word can be either. "Email your CV and
+        # showreel to x@y" uses it as a verb governing material, and the
+        # composer already turns that into "Please include your CV and
+        # showreel …" — stripping it here left "your CV and showreel ."
+        # carried verbatim, the right words as broken English. But "WhatsApp us
+        # at +91…" uses the same word as the destination itself.
+        #
+        # What follows it decides: material belongs to a verb, "us" belongs to a
+        # channel.
+        if match.start() == 0 or not sentence[: match.start()].strip():
+            following = working[match.end() : match.end() + 24].strip().lower()
+            addressed_to_them = re.match(
+                r"^(?:us|me|the\s+team|our\s+team|him|her|them)\b", following
+            )
+            if not addressed_to_them:
+                return match.group(0)
         if _is_portfolio_reference(sentence, match.span()):
             return match.group(0)
         found.append(match.group(0).strip())
@@ -570,6 +598,11 @@ def _names_nothing(fragment: str) -> bool:
         if word not in _STAND_INS
         and word
         not in {
+            # Connectives left behind by removal carry no request of their own.
+            "to",
+            "at",
+            "on",
+            "via",
             "send",
             "share",
             "submit",

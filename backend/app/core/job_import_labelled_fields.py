@@ -252,10 +252,6 @@ def _first_neighbour_card(text: str) -> int | None:
     posting never had a body at all, in which case there is nothing to be after.
     """
 
-    body = _BODY_SECTION.search(text)
-    if body is None:
-        return None
-
     lines = text.splitlines(keepends=True)
     offsets: list[int] = []
     position = 0
@@ -263,7 +259,23 @@ def _first_neighbour_card(text: str) -> int | None:
         offsets.append(position)
         position += len(line)
 
-    for row in _LABELLED_ROW.finditer(text, body.end()):
+    # Where the page stops being a header and starts being a description.
+    #
+    # A recognised body heading is the clearest marker, but requiring one made
+    # the whole structural rule collapse whenever a page used wording nobody had
+    # listed — "Your creative mandate", "Day to day", "What success looks like".
+    # 437 of 1,500 generated layouts took a neighbour's salary that way, with
+    # the heading list fully intact.
+    #
+    # Prose works as well and needs no vocabulary: a sentence is where the
+    # header ends, whatever the heading above it was called.
+    body = _BODY_SECTION.search(text)
+    prose = _PROSE_LINE.search(text)
+    starts = [match.end() for match in (body, prose) if match is not None]
+    if not starts:
+        return None
+
+    for row in _LABELLED_ROW.finditer(text, min(starts)):
         index = max(
             (i for i, start in enumerate(offsets) if start <= row.start()),
             default=0,
@@ -280,6 +292,14 @@ def _first_neighbour_card(text: str) -> int | None:
         if all(_looks_like_a_card_line(line) for line in preceding):
             return offsets[max(0, index - len(preceding))]
     return None
+
+
+#: A line that reads as a sentence rather than a heading or a labelled row.
+#:
+#: The end of the header region. Deliberately crude — it only has to separate
+#: "Content Creator / Larkfield Studio / Compensation: …" from the description
+#: underneath, and any sentence does that.
+_PROSE_LINE = re.compile(r"^[ \t]*\S[^\n]{25,}[.!?][ \t]*$", re.MULTILINE)
 
 
 def _looks_like_a_card_line(line: str) -> bool:
