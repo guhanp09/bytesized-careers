@@ -209,6 +209,35 @@ class _VisibleJobHtmlParser(HTMLParser):
             "tr",
             "ul",
             "ol",
+            # A definition list is the natural markup for labelled job facts,
+            # and it was missing. Source newlines were doing the work instead,
+            # so the accepted fixtures passed — they are written one pair per
+            # line. Minified HTML, which is what production sites actually
+            # serve, puts the whole list on one line, and then
+            # "<dt>Compensation</dt><dd>₹5,000/mo</dd><dt>Type</dt><dd>Freelance</dd>"
+            # normalised to "₹5,000/moTypeFreelance": the rate absorbed the next
+            # label and the engagement was never read at all.
+            "dl",
+            "dt",
+            "dd",
+            # The same reasoning for every other structural container. A tag
+            # that separates content on screen has to separate it in the text,
+            # whatever whitespace the source happened to use.
+            "header",
+            "footer",
+            "nav",
+            "figure",
+            "figcaption",
+            "caption",
+            "thead",
+            "tbody",
+            "tfoot",
+            "details",
+            "summary",
+            "fieldset",
+            "legend",
+            "hr",
+            "pre",
         }
     )
 
