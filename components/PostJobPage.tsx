@@ -27,6 +27,7 @@ import {
   listRoles,
   refreshMyYouTubeChannels,
   requestMyHiringIdentityVerification,
+  requestBrandAboutEnrichment,
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
@@ -3330,6 +3331,28 @@ export default function PostJobPage() {
       });
       if (saved?.id) trackPersistedImportEdits(completePayload);
       const savedId = saved?.id || draftId;
+
+      // Brand About enrichment, on the one event that means the job really
+      // exists with the identity the recruiter chose. It is deliberately here
+      // and not in an effect: mounting the editor is not a decision, and a
+      // render-time trigger would fire on every refresh.
+      //
+      // The acknowledgement is awaited; the work is not. The endpoint claims
+      // the attempt and hands the fetch and the model call to a background
+      // task before replying, so this costs one round trip and guarantees the
+      // request survives the navigation immediately below. Firing without
+      // awaiting would let `location.assign` cancel it mid-flight.
+      //
+      // No eligibility is decided here. The server owns the brand, its URL and
+      // whether any work happens at all.
+      if (savedId) {
+        await withFreshBackendToken((token) =>
+          requestBrandAboutEnrichment(token, String(savedId))
+        ).catch(() => {
+          // The job is already saved. Enrichment is optional and silent.
+        });
+      }
+
       if (saveStatus === "published") {
         window.location.assign(`/jobs?updated=1${savedId ? `&jobId=${encodeURIComponent(String(savedId))}` : ""}`);
         return;

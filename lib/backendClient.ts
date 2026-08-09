@@ -2158,6 +2158,41 @@ export async function updateJob(
   return toFrontendJob(response);
 }
 
+/**
+ * Ask the server to consider filling this job's brand About field.
+ *
+ * Deliberately the dumbest possible client. It knows a job id and nothing else:
+ * not the brand, not its website, not whether the field is empty, not whether
+ * an attempt already ran. Every one of those is decided by
+ * `should_enrich_brand_about` against persisted state, and duplicating any of it
+ * here would create a second opinion that drifts.
+ *
+ * The acknowledgement *is* awaited, and that is the point. The endpoint claims
+ * the attempt and hands the real work — a website fetch and a model call — to a
+ * background task before replying, so waiting for the reply costs a round trip
+ * and guarantees the request actually reached the server. Firing it without
+ * waiting would let `window.location.assign` tear the page down mid-flight and
+ * cancel the very request that starts the feature.
+ *
+ * Failure is silent by design: enrichment is optional, and there is no surface
+ * on which a recruiter should learn that a brand's website was slow. Their job
+ * is already saved by the time this runs.
+ */
+export async function requestBrandAboutEnrichment(
+  accessToken: string,
+  jobId: string
+): Promise<void> {
+  try {
+    await requestJson<{ outcome: string }>(
+      `/jobs/${encodeURIComponent(jobId)}/brand-about/enrich`,
+      { method: "POST", accessToken }
+    );
+  } catch {
+    // Never blocks, never surfaces. The next successful save asks again if the
+    // server still considers the job eligible.
+  }
+}
+
 export async function deleteJob(accessToken: string, jobId: string): Promise<Job> {
   const response = await requestJson<BackendJob>(`/jobs/${encodeURIComponent(jobId)}`, {
     method: "DELETE",

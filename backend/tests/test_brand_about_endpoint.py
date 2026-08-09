@@ -356,3 +356,89 @@ class TestTheEndpoint:
         assert response.status_code == 200, response.text
         # No identity on this job, so nothing was claimed regardless of the body.
         assert response.json()["outcome"] == "not_eligible"
+
+
+@pytest.mark.asyncio
+class TestTheEndpointActuallyEnqueuesTheWork:
+    """A claim that never runs is worse than no claim at all.
+
+    Found by mutation: deleting `background.add_task` left every endpoint test
+    green. The endpoint would answer "claimed", the job would sit in
+    `in_progress` until the stale rule reclaimed it, and nothing would ever be
+    written — a feature that looks wired from every angle except the one that
+    matters.
+    """
+
+    async def test_an_eligible_job_schedules_the_runner(
+        self, client: AsyncClient, db_session, monkeypatch
+    ) -> None:
+        from app.api.v1.routers import jobs as jobs_router
+        from app.models import HiringIdentity
+        from tests.conftest import active_test_role_id
+
+        headers, owner = await _auth(client, "brand-enqueue")
+
+        identity = HiringIdentity(
+            owner_user_id=owner,
+            type="brand",
+            platform="youtube",
+            display_name="Finance Simplified",
+            url="https://financesimplified.example",
+            verification_status="VERIFIED",
+        )
+        db_session.add(identity)
+        await db_session.commit()
+
+        created = await client.post(
+            "/api/v1/jobs",
+            headers=headers,
+            json={
+                "title": "Eligible for enrichment",
+                "primary_role_id": await active_test_role_id(),
+                "hiring_identity_id": str(identity.id),
+            },
+        )
+        assert created.status_code in (200, 201), created.text
+        job_id = created.json()["id"]
+
+        scheduled: list[tuple] = []
+
+        async def _spy(job, identity_id):
+            scheduled.append((job, identity_id))
+
+        monkeypatch.setattr(jobs_router, "_run_brand_about_enrichment", _spy)
+
+        response = await client.post(
+            f"/api/v1/jobs/{job_id}/brand-about/enrich", headers=headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["outcome"] == "claimed"
+        # The work is scheduled, not merely promised.
+        assert len(scheduled) == 1, "the endpoint claimed the job and enqueued nothing"
+        assert str(scheduled[0][0]) == str(job_id)
+
+    async def test_an_ineligible_job_schedules_nothing(
+        self, client: AsyncClient, monkeypatch
+    ) -> None:
+        from app.api.v1.routers import jobs as jobs_router
+        from tests.conftest import active_test_role_id
+
+        headers, _ = await _auth(client, "brand-noenqueue")
+        created = await client.post(
+            "/api/v1/jobs",
+            headers=headers,
+            json={"title": "No identity", "primary_role_id": await active_test_role_id()},
+        )
+
+        scheduled: list[tuple] = []
+
+        async def _spy(job, identity_id):
+            scheduled.append((job, identity_id))
+
+        monkeypatch.setattr(jobs_router, "_run_brand_about_enrichment", _spy)
+        await client.post(
+            f"/api/v1/jobs/{created.json()['id']}/brand-about/enrich", headers=headers
+        )
+
+        assert scheduled == []
