@@ -3864,6 +3864,7 @@ export default function PostJobPage() {
                 markPayloadDirty("languages");
               }}
               about={about}
+              hiringDisplayName={activeHiringDisplayName}
               responsibilities={responsibilities}
               requirements={requirements}
               howToApply={howToApply}

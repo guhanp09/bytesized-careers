@@ -37,7 +37,14 @@ export function BodySection({ title, icon, children }: { title: string; icon?: I
   return (
     <section className="py-8">
       <SectionLabel icon={icon}>{title}</SectionLabel>
-      <div className="mt-4 text-sm leading-relaxed text-white/80">{children}</div>
+      {/* `min-w-0` because a grid/flex child defaults to `min-width: auto`,
+          which sizes to the widest unbreakable token instead of the column —
+          that is what let a pasted URL push the whole card sideways.
+          `break-words` then wraps the token itself. Ordinary prose is
+          unaffected: it only applies where a word cannot otherwise fit. */}
+      <div className="mt-4 min-w-0 break-words text-sm leading-relaxed text-white/80">
+        {children}
+      </div>
     </section>
   );
 }
@@ -46,9 +53,11 @@ export function BulletList({ items }: { items: string[] }) {
   return (
     <ul className="space-y-3.5">
       {items.map((item) => (
-        <li key={item} className="flex gap-3.5">
+        <li key={item} className="flex min-w-0 gap-3.5">
           <span aria-hidden className="mt-[0.6em] h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
-          <span>{item}</span>
+          {/* The bullet is a flex row, so the text needs its own `min-w-0` to
+              be allowed to shrink below its longest token. */}
+          <span className="min-w-0 break-words">{item}</span>
         </li>
       ))}
     </ul>

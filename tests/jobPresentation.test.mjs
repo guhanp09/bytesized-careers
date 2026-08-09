@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  aboutBrandLabel,
   buildJobTransparency,
   compensationForJob,
   deadlineForJob,
@@ -255,4 +256,66 @@ test("approximate, exact, ceiling and floor all read differently", () => {
   // Four statements about the same number that a candidate must never have
   // confused with one another.
   assert.equal(new Set(headlines).size, 4, headlines.join(" | "));
+});
+
+test("a note that restates the structured pay is not shown twice", () => {
+  // The reported candidate listing: "₹22,000+ per month · The post also states:
+  // From ₹22,000.00 per month." One fact, written twice, the second time in the
+  // import's own voice.
+  const shown = formatJobCompensation({
+    mode: "range",
+    minimum: 22000,
+    maximum: null,
+    currency: "INR",
+    unit: "per month",
+    note: "The post also states: From ₹22,000.00 per month.",
+  });
+
+  assert.equal(shown.note, "");
+  assert.match(shown.headline, /22,000\+/);
+});
+
+test("a note carrying genuinely more than the figure survives", () => {
+  const bonus = formatJobCompensation({
+    mode: "range",
+    minimum: 22000,
+    maximum: null,
+    currency: "INR",
+    unit: "per month",
+    note: "Performance bonus after probation",
+  });
+
+  // Suppressing this would lose a real part of the offer.
+  assert.equal(bonus.note, "Performance bonus after probation");
+});
+
+test("a note naming a figure the headline does not carry is kept", () => {
+  const extra = formatJobCompensation({
+    mode: "range",
+    minimum: 22000,
+    maximum: null,
+    currency: "INR",
+    unit: "per month",
+    note: "Up to ₹30,000 for senior candidates",
+  });
+
+  assert.equal(extra.note, "Up to ₹30,000 for senior candidates");
+});
+
+test("about-brand label uses the hiring identity when there is one", () => {
+  assert.equal(aboutBrandLabel("Finance Simplified"), "About Finance Simplified");
+  assert.equal(aboutBrandLabel("  Finance Simplified  "), "About Finance Simplified");
+});
+
+test("about-brand label falls back safely when identity is unknown", () => {
+  // Never a guess and never a scraped source employer: the generic label is the
+  // honest answer when no CreatorJobs identity is attached.
+  assert.equal(aboutBrandLabel(""), "About the brand");
+  assert.equal(aboutBrandLabel(null), "About the brand");
+  assert.equal(aboutBrandLabel(undefined), "About the brand");
+});
+
+test("a long brand name is not truncated", () => {
+  const long = "The Extremely Long Independent Finance Education Collective";
+  assert.equal(aboutBrandLabel(long), `About ${long}`);
 });

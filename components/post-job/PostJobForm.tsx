@@ -1,5 +1,6 @@
 "use client";
 
+import { aboutBrandLabel } from "../../lib/jobPresentation";
 import { AnimatePresence } from "framer-motion";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatedStep } from "../ui/StepTransition";
@@ -933,6 +934,7 @@ export default function PostJobForm({
   requirements,
   howToApply,
   onAboutChange,
+  hiringDisplayName,
   onResponsibilitiesChange,
   onRequirementsChange,
   onHowToApplyChange,
@@ -1058,6 +1060,8 @@ export default function PostJobForm({
   languages: string[];
   onLanguagesChange: (next: string[]) => void;
   about: string;
+  /** The CreatorJobs hiring identity this job posts as, for the About label. */
+  hiringDisplayName?: string;
   responsibilities: string;
   requirements: string;
   howToApply: string;
@@ -2285,7 +2289,7 @@ export default function PostJobForm({
               id="job-about-brand"
               label={
                 <span className="inline-flex items-center gap-1.5">
-                  <LabelWithIcon icon="file">About the brand</LabelWithIcon>
+                  <LabelWithIcon icon="file">{aboutBrandLabel(hiringDisplayName)}</LabelWithIcon>
                   <span className="text-muted">*</span>
                 </span>
               }

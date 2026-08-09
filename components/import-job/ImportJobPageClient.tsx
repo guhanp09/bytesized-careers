@@ -1035,6 +1035,9 @@ export default function ImportJobPageClient() {
                     <option value="labelled-pay-conflict" className="bg-[#0b0b0f]">
                       URL import · markup contradicts the copy
                     </option>
+                    <option value="ceiling-only-pay" className="bg-[#0b0b0f]">
+                      URL import · pay stated as a ceiling only
+                    </option>
                     <option value="checkpoint-currency" className="bg-[#0b0b0f]">
                       Checkpoint · pay needs a currency
                     </option>

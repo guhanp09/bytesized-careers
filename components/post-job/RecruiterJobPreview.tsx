@@ -19,6 +19,7 @@ import {
   durationForJob,
   employerContextLabel,
   engagementForJob,
+  aboutBrandLabel,
   formatJobCompensation,
   formatJobDate,
   formatJobMoney,
@@ -584,7 +585,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
 
       <section className={`${LISTING_PANEL_CLASS} min-w-0`} aria-label="Work details">
         <div className="min-w-0 divide-y divide-white/[0.08]">
-          <BodySection title="About the opportunity" icon="notebook-text">
+          <BodySection title={aboutBrandLabel(props.employerName)} icon="notebook-text">
             {text(props.about) ? (
               <p className="whitespace-pre-line">{text(props.about)}</p>
             ) : (

@@ -741,6 +741,7 @@ export type DevelopmentJobImportScenario =
   | "shine-school-editor"
   | "multi-craft"
   | "labelled-pay-conflict"
+  | "ceiling-only-pay"
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"

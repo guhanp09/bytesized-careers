@@ -40,6 +40,7 @@ from app.core.job_domain_taxonomy import (
 )
 from app.core.job_import_attempt_liveness import assess_attempt
 from app.core.job_import_body_sections import experience_from_body
+from app.core.job_import_candidate_copy import candidate_native_copy
 from app.core.job_import_facts import outranks as fact_outranks
 from app.core.job_import_inference import (
     confidence_at_least,
@@ -2452,7 +2453,10 @@ class JobImportService:
                 payload["primary_role_id"] = role.id
             elif policy.native_field is not None:
                 payload[policy.native_field] = value
-        return self._safe_application_payload(payload)
+        # Two boundaries, in order: what a candidate is asked to do, then
+        # what a candidate reads. Both exist because everything upstream can
+        # put something in a field that should never reach a listing.
+        return candidate_native_copy(self._safe_application_payload(payload))
 
     @staticmethod
     def _safe_application_payload(payload: dict[str, object]) -> dict[str, object]:

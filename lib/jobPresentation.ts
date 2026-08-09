@@ -66,6 +66,68 @@ export function formatJobMoney(value: number | string, currency?: string | null)
   }
 }
 
+/**
+ * "About Finance Simplified", or "About the brand" when nothing reliable is known.
+ *
+ * One helper rather than three constructions, because the editor label, the
+ * recruiter preview and the candidate heading were already disagreeing: the
+ * field is labelled "About the brand" in Post Job and rendered as "About the
+ * opportunity" to candidates. It is a brand description in both places, and
+ * naming it two different things is the kind of drift that only gets worse
+ * once a third surface copies one of them.
+ *
+ * The name comes from the CreatorJobs hiring identity attached to the job —
+ * never from a scraped source employer, which is a different entity and is
+ * deliberately kept separate.
+ */
+export function aboutBrandLabel(brandName?: string | null) {
+  const name = cleanJobText(brandName);
+  // No truncation: a brand's own name is not ours to shorten. Long names wrap,
+  // which is why the heading and the section body both allow it.
+  return name ? `About ${name}` : "About the brand";
+}
+
+/** Digits in a money phrase, ignoring separators and trailing zero decimals. */
+const payFigures = (value: string) =>
+  new Set(
+    (value.match(/\d[\d,]*(?:\.\d+)?/g) || []).map((figure) =>
+      String(Number(figure.replace(/,/g, ""))),
+    ),
+  );
+
+/**
+ * Whether a compensation note says only what the headline already says.
+ *
+ * Compares the *figures*, because the two are routinely written differently —
+ * "₹22,000+ per month" against "From ₹22,000.00 per month" is one fact in two
+ * spellings. A note naming a figure the headline does not carry is new
+ * information and is kept, so a bonus or a second rate is never suppressed.
+ */
+function noteOnlyRestatesPay(note: string, headline: string) {
+  const inNote = payFigures(note);
+  if (inNote.size === 0) return false;
+  const inHeadline = payFigures(headline);
+  if (inHeadline.size === 0) return false;
+  for (const figure of inNote) {
+    if (!inHeadline.has(figure)) return false;
+  }
+  // Words the note adds beyond pay vocabulary make it more than a restatement.
+  const extra = note
+    .toLocaleLowerCase()
+    .replace(/\d[\d,]*(?:\.\d+)?/g, " ")
+    .match(/[\p{L}]{3,}/gu);
+  const PAY_WORDS = new Set([
+    "the", "post", "also", "states", "state", "says", "say", "listing",
+    "source", "original", "according", "per", "month", "monthly", "year",
+    "yearly", "annum", "annually", "hour", "hourly", "week", "weekly", "day",
+    "daily", "project", "video", "post", "episode", "from", "upto", "and",
+    "between", "starting", "minimum", "maximum", "about", "approximately",
+    "around", "inr", "usd", "eur", "gbp", "rupees", "dollars", "salary", "pay",
+    "compensation", "budget", "rate", "stipend",
+  ]);
+  return (extra || []).every((word) => PAY_WORDS.has(word));
+}
+
 export type JobCompensationPresentation = {
   headline: string;
   note: string;
@@ -174,8 +236,17 @@ export function formatJobCompensation(input: {
   // each of them.
   const comparable = (value: string) =>
     value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const restatesHeadline =
+    Boolean(rawNote) && comparable(headline).includes(comparable(rawNote));
+  // The same suppression, judged by the figures rather than the spelling.
+  // A candidate saw "₹22,000+ per month · The post also states: From ₹22,000.00
+  // per month." — one fact, written twice, the second time in the import's own
+  // voice. The import path now strips that at source; this covers rows already
+  // stored, and anything a future path forgets.
   const note =
-    rawNote && comparable(headline).includes(comparable(rawNote)) ? "" : rawNote;
+    rawNote && (restatesHeadline || noteOnlyRestatesPay(rawNote, headline))
+      ? ""
+      : rawNote;
 
   if (!headline && legacyDisplay && legacyDisplay !== "Compensation not specified") {
     return {

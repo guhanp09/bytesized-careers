@@ -17,6 +17,7 @@ import {
   preferredSkillsForJob,
   requiredSkillsForJob,
   requiredToolsForJob,
+  aboutBrandLabel,
   revisionForJob,
   sourceInputLabel,
   sourceInputNeedsSensitiveAccess,
@@ -49,6 +50,9 @@ function DecisionFact({ label, value }: { label: string; value: string }) {
 }
 
 export default function JobDescriptionSections({ job }: { job: Job }) {
+  // The CreatorJobs hiring identity, never a scraped source employer: the two
+  // are deliberately separate entities and this field describes the former.
+  const brandName = job.hiringDisplayName || job.channel?.name || "";
   const about = cleanJobText(job.about);
   const responsibilities = splitJobLines(job.responsibilities);
   const legacyRequirements = splitJobLines(job.requirements);
@@ -146,8 +150,8 @@ export default function JobDescriptionSections({ job }: { job: Job }) {
         <section className={`${LISTING_PANEL_CLASS} min-w-0`} aria-label="Role and work">
           <div className="min-w-0 divide-y divide-white/[0.08]">
             {about ? (
-              <BodySection title="About the opportunity" icon="notebook-text">
-                <p className="whitespace-pre-line">{about}</p>
+              <BodySection title={aboutBrandLabel(brandName)} icon="notebook-text">
+                <p className="whitespace-pre-line break-words">{about}</p>
               </BodySection>
             ) : null}
 
