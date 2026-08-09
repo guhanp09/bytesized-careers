@@ -185,3 +185,44 @@ test("a negotiable job is not turned into a figure by a stray maximum", () => {
 
   assert.match(negotiable.headline, /^Negotiable/);
 });
+
+test("a floor with no ceiling keeps its plus", () => {
+  // "₹20,000+/month" is what the employer promised. Rendering it as a flat
+  // ₹20,000 reports a maximum they never agreed to, which is the same class of
+  // error as showing a ceiling as the rate.
+  const floor = formatJobCompensation({
+    mode: "range",
+    minimum: 20000,
+    maximum: null,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.match(floor.headline, /\+/);
+  assert.match(floor.headline, /20,000/);
+  assert.equal(floor.disclosed, true);
+});
+
+test("a fixed rate does not gain a plus it never had", () => {
+  const fixed = formatJobCompensation({
+    mode: "fixed",
+    minimum: 20000,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.ok(!fixed.headline.includes("+"), fixed.headline);
+});
+
+test("both ends equal read as approximate rather than a null range", () => {
+  const about = formatJobCompensation({
+    mode: "range",
+    minimum: 20000,
+    maximum: 20000,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.match(about.headline, /^About /);
+  assert.ok(!about.headline.includes("–"), about.headline);
+});

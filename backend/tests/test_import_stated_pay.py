@@ -230,6 +230,18 @@ class TestNothingIsInvented:
         # picked an open one, and a deterministic keyword must not decide that.
         assert labelled_facts(labelled).compensation_mode is None
 
+    @pytest.mark.parametrize("labelled", ["Compensation Competitive", "Compensation DOE"])
+    def test_no_compensation_evidence_is_recorded_for_a_stored_nothing(
+        self, labelled: str
+    ) -> None:
+        # Evidence is a claim that a fact came from a place. Recording a
+        # compensation citation while storing no compensation leaves an audit
+        # trail pointing at a value that does not exist, which reads to a later
+        # reader as a fact that was dropped rather than never taken.
+        evidence = labelled_facts(labelled).evidence or {}
+
+        assert "compensation" not in evidence, evidence
+
 
 class TestAFigureInProseIsNotTheOffer:
     """Reading a page harder must not mean reading somebody else's number."""

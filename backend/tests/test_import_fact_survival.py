@@ -175,3 +175,58 @@ class TestStageThreeQuestionPlanning:
             f"QUESTION_PLANNER_LOSS: {fact.page!r} "
             f"{'was asked about anyway' if asks else 'was not asked about'}"
         )
+
+
+class TestQualifiedFactsBeyondCompensation:
+    """The same failure shape, checked where it could recur.
+
+    Compensation was the field that broke, but the pattern — a source states a
+    bound, the schema holds only exact-or-null — is not specific to money. The
+    audit found experience already safe for a reason worth recording, and worth
+    pinning so it stays that way.
+    """
+
+    @pytest.mark.parametrize(
+        "stated",
+        [
+            "At least 5 years",
+            "5+ years",
+            "Up to 5 years",
+            "25 years of professional experience",
+            "At least 60 months",
+            "Minimum of three years",
+            "Senior",
+            "2-3 years",
+        ],
+    )
+    def test_experience_is_carried_in_the_sources_own_words(self, stated: str) -> None:
+        from app.core.job_import_native_values import convert_to_native
+
+        conversion = convert_to_native("experience_level", stated)
+
+        # `experience_level` is free-form text, so a qualified requirement needs
+        # no bounded representation to survive: the qualifier is the value. That
+        # is why "25 years" reached the editor intact where "up to ₹20,000"
+        # could not — and it is the shape compensation now has too.
+        assert conversion.writable, f"{stated!r} became unwritable"
+        assert conversion.native_value == stated, (
+            f"{stated!r} was rewritten to {conversion.native_value!r}"
+        )
+        assert conversion.outcome == "exact"
+
+    @pytest.mark.parametrize(
+        "stated", ["At least 5 years", "5+ years", "Up to 5 years", "Senior"]
+    )
+    def test_a_qualified_requirement_is_never_narrowed_into_a_band(
+        self, stated: str
+    ) -> None:
+        from app.core.job_import_native_values import convert_to_native
+
+        conversion = convert_to_native("experience_level", stated)
+
+        # The failure this guards is the one already paid for once: "25 years"
+        # arriving as the band "5-8". A narrowed value is worse than none,
+        # because nothing downstream can tell it was narrowed.
+        assert conversion.native_value is None or conversion.native_value == stated
+        for band in ("0–1", "1-3", "3-5", "5-8"):
+            assert conversion.native_value != band
