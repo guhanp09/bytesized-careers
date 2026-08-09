@@ -40,9 +40,25 @@ logger = logging.getLogger(__name__)
 
 
 def build_brand_enrichment_service() -> BrandEnrichmentService:
-    """The engine, configured from settings. Separate so tests can replace it."""
+    """The engine, configured from settings.
+
+    The probe branch is the seam a browser test uses to hold an attempt open
+    mid-flight so the race guarantees can be observed through the product. It is
+    inert in any ordinary process: `active_probe()` returns None unless the
+    dev-only router installed one, and that router refuses to load outside
+    development or test.
+    """
 
     from app.core.config import settings
+    from app.services.brand_enrichment_probe import (
+        GatedFetcher,
+        GatedSummarizer,
+        active_probe,
+    )
+
+    probe = active_probe()
+    if probe is not None:
+        return BrandEnrichmentService(GatedSummarizer(probe), fetcher=GatedFetcher(probe))
 
     return BrandEnrichmentService(
         OpenAIBrandSummarizer(

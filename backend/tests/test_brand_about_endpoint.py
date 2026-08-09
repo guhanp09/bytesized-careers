@@ -73,6 +73,9 @@ class _Job:
     """The columns the runner reads and writes, without a database."""
 
     def __init__(self, **overrides) -> None:
+        # The claim is now a real UPDATE keyed on the row, so the stub needs an
+        # identity the statement can be built against.
+        self.id = uuid4()
         self.about_channel = None
         self.hiring_identity_id = uuid4()
         self.brand_about_status = None
@@ -101,6 +104,38 @@ class _Session:
         self.job = job
         self.on_refresh = on_refresh
         self.commits = 0
+        self.claims = 0
+
+    async def execute(self, statement):
+        """Model the conditional claim, including the case where it loses.
+
+        The claim is a single UPDATE guarded by a WHERE, because checking in
+        Python and writing afterwards is a lost update — a browser test with two
+        tabs proved it by fetching a brand's site twice. This fake applies the
+        statement's own bound values so the runner sees exactly what the
+        database would give it back, and refuses the claim when a live attempt
+        already holds it.
+        """
+
+        from datetime import UTC, datetime, timedelta
+
+        job = self.job
+        attempted = job.brand_about_attempted_at
+        live = (
+            job.brand_about_status == "in_progress"
+            and attempted is not None
+            and datetime.now(UTC) - attempted <= timedelta(seconds=180)
+        )
+
+        class _Result:
+            rowcount = 0 if live else 1
+
+        if not live:
+            self.claims += 1
+            for column, value in statement.compile().params.items():
+                if column.startswith("brand_about_"):
+                    setattr(job, column, value)
+        return _Result()
 
     async def commit(self) -> None:
         self.commits += 1

@@ -304,15 +304,57 @@ class BrandAboutRunner:
                 job.brand_about_status or "not_attempted", None, False, decision.reason
             )
 
-        # Claim. A second caller reaching here finds `in_progress` with a fresh
-        # timestamp and declines, so a double save or a second tab is one attempt.
+        # Claim, atomically.
+        #
+        # This was a read-then-write, and a browser test with two tabs proved
+        # what that costs: both background tasks loaded the job in their own
+        # session, both saw "not attempted", both claimed, and the brand's site
+        # was fetched twice. Checking eligibility in Python and writing after is
+        # a lost update whenever two attempts overlap — which is precisely when
+        # the claim is supposed to matter.
+        #
+        # So the claim is one conditional UPDATE and the winner is decided by
+        # the database. A row already claimed by a live attempt does not match,
+        # the second caller updates nothing, and only the task that changed a
+        # row proceeds to do any expensive work.
+        from datetime import timedelta
+
+        from sqlalchemy import or_, update
+
+        from app.core.brand_about_eligibility import ATTEMPT_LIVENESS_SECONDS
+        from app.models import Job
+
         attempt = uuid4()
         claimed_identity = job.hiring_identity_id
-        job.brand_about_status = "in_progress"
-        job.brand_about_attempt_id = attempt
-        job.brand_about_identity_id = claimed_identity
-        job.brand_about_attempted_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(seconds=ATTEMPT_LIVENESS_SECONDS)
+        claim = (
+            update(Job)
+            .where(Job.id == job.id)
+            .where(
+                or_(
+                    Job.brand_about_status.is_(None),
+                    Job.brand_about_status != "in_progress",
+                    Job.brand_about_attempted_at.is_(None),
+                    Job.brand_about_attempted_at < cutoff,
+                )
+            )
+            .values(
+                brand_about_status="in_progress",
+                brand_about_attempt_id=attempt,
+                brand_about_identity_id=claimed_identity,
+                brand_about_attempted_at=now,
+            )
+        )
+        claimed = await self._session.execute(claim)
         await self._session.commit()
+        if claimed.rowcount != 1:
+            # Another attempt holds the claim. Doing the work anyway is the
+            # duplicate this exists to prevent.
+            return BrandAboutApplication(
+                "in_progress", None, False, "another attempt already holds the claim"
+            )
+        await self._session.refresh(job)
 
         identity = resolve_brand_identity(
             display_name=getattr(identity_row, "display_name", None),
