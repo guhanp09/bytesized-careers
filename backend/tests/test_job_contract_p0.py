@@ -268,7 +268,10 @@ async def test_compensation_modes_and_special_units_validate_independently(clien
 
     invalid_cases = [
         {"compensation_mode": "fixed", "budget_amount": 100, "budget_max": 200},
-        {"compensation_mode": "range", "budget_amount": 100, "budget_max": None},
+        # A range with *neither* end states nothing at all. One end is a
+        # legitimate offer — see the one-sided cases below — but zero ends is
+        # a mode with no content.
+        {"compensation_mode": "range", "budget_amount": None, "budget_max": None},
         {"compensation_mode": "negotiable", "budget_amount": 100, "budget_max": None},
         {
             "compensation_mode": "negotiable",
@@ -302,6 +305,41 @@ async def test_compensation_modes_and_special_units_validate_independently(clien
         )
         assert response.status_code == 422, response.text
         assert response.json()["detail"]["code"] == "JOB_PUBLISH_VALIDATION_FAILED"
+
+    # One-sided bounds are how job pages routinely state pay: "Up to ₹20,000 a
+    # month", "₹20,000+/month". Requiring both ends meant a listing that said
+    # one of these had no truthful native target at all, so the fact was
+    # dropped and the recruiter was asked what their own page already said.
+    # A range with one end is a range with an end the employer did not state.
+    ceiling_only = await client.post(
+        "/api/v1/jobs",
+        headers=headers,
+        json=_published_payload(
+            role_id,
+            title="Ceiling only compensation",
+            compensation_mode="range",
+            budget_amount=None,
+            budget_max=20000,
+        ),
+    )
+    assert ceiling_only.status_code == 201, ceiling_only.text
+    assert ceiling_only.json()["budget_amount"] is None
+    assert float(ceiling_only.json()["budget_max"]) == 20000
+
+    floor_only = await client.post(
+        "/api/v1/jobs",
+        headers=headers,
+        json=_published_payload(
+            role_id,
+            title="Floor only compensation",
+            compensation_mode="range",
+            budget_amount=20000,
+            budget_max=None,
+        ),
+    )
+    assert floor_only.status_code == 201, floor_only.text
+    assert float(floor_only.json()["budget_amount"]) == 20000
+    assert floor_only.json()["budget_max"] is None
 
     commission = await client.post(
         "/api/v1/jobs",

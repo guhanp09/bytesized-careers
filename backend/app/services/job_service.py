@@ -519,9 +519,9 @@ class JobService:
             if maximum is not None:
                 self._add_error(errors, "budget_max", "Fixed compensation cannot include a maximum.")
         elif mode == "range":
-            if amount is None or maximum is None:
-                self._add_error(errors, "budget_max", "Enter both ends of the compensation range.")
-            elif Decimal(maximum) < Decimal(amount):
+            if amount is None and maximum is None:
+                self._add_error(errors, "budget_max", "Enter at least one end of the compensation range.")
+            elif amount is not None and maximum is not None and Decimal(maximum) < Decimal(amount):
                 self._add_error(errors, "budget_max", "Maximum must be at least the minimum.")
         elif mode == "negotiable" and (amount is not None or maximum is not None):
             self._add_error(errors, "budget_amount", "Negotiable compensation cannot include fixed amounts.")

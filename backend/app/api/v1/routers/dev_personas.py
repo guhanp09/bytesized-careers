@@ -21,6 +21,10 @@ from app.db.seed_data_job_import import (
     SHINE_SCHOOL_EDITOR_STRUCTURED_CONTEXT,
     processed_review_fixture,
 )
+from app.db.seed_data_job_import_ceiling import (
+    CEILING_ONLY_PAY_SOURCE_TEXT,
+    CEILING_ONLY_PAY_STRUCTURED_CONTEXT,
+)
 from app.db.seed_data_job_import_labelled import (
     LABELLED_PAY_SOURCE_TEXT,
     LABELLED_PAY_STRUCTURED_CONTEXT,
@@ -202,6 +206,7 @@ async def create_job_import_review_fixture(
         "shine-school-editor": "Video Editor",
         "multi-craft": "Visual Content Creator - Video Editing, VFX & Animation",
         "labelled-pay-conflict": "(Paid) Content Creator & Social Media Manager",
+        "ceiling-only-pay": "Freelance Video Editor",
         "checkpoint-currency": "Finance video editor job post",
         "checkpoint-trial": "Gaming thumbnail designer job post",
         "delayed-processing": "Public job post being read",
@@ -225,6 +230,12 @@ async def create_job_import_review_fixture(
         "labelled-pay-conflict": (
             LABELLED_PAY_SOURCE_TEXT,
             LABELLED_PAY_STRUCTURED_CONTEXT,
+        ),
+        # Pay as a bare line with a qualifier and no label anywhere — the shape
+        # the label reader could not see and the schema could not hold.
+        "ceiling-only-pay": (
+            CEILING_ONLY_PAY_SOURCE_TEXT,
+            CEILING_ONLY_PAY_STRUCTURED_CONTEXT,
         ),
     }
     url_fixture = url_fixtures.get(scenario)

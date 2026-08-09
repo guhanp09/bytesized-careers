@@ -165,19 +165,41 @@ def _apply_pay(
     promoting a maximum into a flat rate the employer never offered.
     """
 
-    found["budget_currency"] = stated.currency
+    if stated.currency:
+        found["budget_currency"] = stated.currency
     if stated.unit:
         found["budget_unit"] = stated.unit
+
+    if stated.qualifier == "negotiable":
+        # Deliberately writes nothing. "Competitive" and "DOE" tell a reader
+        # there is no figure; they do not tell this product that the recruiter
+        # chose its `negotiable` compensation mode, which is a publishable
+        # state. A keyword match is not that decision.
+        #
+        # The qualifier still exists on the fact so an evidenced provider
+        # reading can carry it — the restraint belongs to this detector, not to
+        # the representation.
+        return
+
     if stated.minimum is not None:
         found["budget_amount"] = stated.minimum
     if stated.maximum is not None:
         found["budget_max"] = stated.maximum
-    if stated.kind == "range":
+
+    if stated.qualifier in {"range", "minimum_only", "maximum_only"}:
+        # A one-sided bound is still a range — a range with one end the page did
+        # not state. Calling it "fixed" would promote a ceiling into a promise.
         found["compensation_mode"] = "range"
-    elif stated.kind == "exact":
+    elif stated.qualifier == "exact":
         # One figure is a fixed rate, not a range. Inventing a second bound
         # would advertise a spread the employer never offered.
         found["compensation_mode"] = "fixed"
+    elif stated.qualifier == "approximate":
+        # "around ₹20,000" is a figure its author declined to stand behind
+        # exactly. A range with both ends equal keeps the number without
+        # claiming the precision.
+        found["compensation_mode"] = "range"
+
     evidence["compensation"] = excerpt
 
 

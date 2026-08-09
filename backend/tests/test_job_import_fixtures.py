@@ -58,6 +58,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "shine-school-editor",
         "multi-craft",
         "labelled-pay-conflict",
+        "ceiling-only-pay",
         "checkpoint-currency",
         "checkpoint-trial",
     }

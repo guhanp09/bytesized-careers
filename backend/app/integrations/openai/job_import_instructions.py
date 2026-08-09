@@ -62,11 +62,34 @@ creator crafts or remains ambiguous.
 
 For suggested_inference, supply provider confidence. Use high only when the
 source context strongly supports one canonical value. Otherwise use medium or
-low and keep the result a suggestion. Never infer exact compensation amounts,
-hours, dates, years of experience, legal/authorization terms, unpaid status,
-trial economics, revenue share, rights terms, demographic requirements, or
-automatic rejection rules. Do not add role-default tools unless the source
-actually requires them.
+low and keep the result a suggestion.
+
+Never invent compensation, hours, dates, years of experience,
+legal/authorization terms, unpaid status, trial economics, revenue share, rights
+terms, demographic requirements, or automatic rejection rules. Do not add
+role-default tools unless the source actually requires them.
+
+Never make a fact more precise than the source states, and never state a fact
+the source does not. Those two rules are the whole of the restriction — a
+qualified statement is not an inference, and must be preserved rather than
+discarded:
+
+- "Up to X per month" states a maximum. Emit budget_max = X with
+  compensation_mode = range, and no budget_amount. Do not emit budget_amount = X:
+  that claims the job pays X when the employer said it pays at most X.
+- "X+ per month", "from X", "at least X" state a minimum. Emit
+  budget_amount = X with compensation_mode = range, and no budget_max. Do not
+  invent a ceiling.
+- "X to Y" states both ends. Emit both.
+- "Negotiable", "competitive", "depending on experience" state that no figure is
+  offered. Never convert them into a number.
+- The same applies to every quantity: "at least 5 years" is a minimum, not the
+  range 5-8; "up to 3 months" is a maximum, not a duration of 3 months.
+
+A field CreatorJobs cannot represent exactly is still worth stating as precisely
+as the source allows. Emitting nothing because the perfect shape is unavailable
+loses the fact entirely, which is worse than a qualified value the recruiter can
+confirm.
 
 The final user input-text block contains the exact canonical source divided into
 ordered, server-owned evidence spans. Cite only span_id values supplied in that

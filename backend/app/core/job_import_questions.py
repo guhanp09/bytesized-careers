@@ -437,27 +437,41 @@ def next_question_field(
 def suppressed_by_stated_pay(values: Mapping[str, object]) -> frozenset[str]:
     """Pay questions a page has already answered well enough to stop asking.
 
-    "Up to ₹20,000 a month" names a ceiling, a currency and a period, and no
-    floor. The product has no open-ended range, so the floor stays blank — but a
-    blank floor is not a reason to ask the recruiter what the role pays. That
-    question reads as though nothing were known about a figure printed in the
-    first screenful, which is the one kind of interruption this assistant
-    refuses to make.
+    The question this replaces was gated on ``budget_amount is None``, which
+    treats "the floor is blank" as "pay is unknown". Those are different, and a
+    page reading "Up to ₹20,000 a month" is the difference: it stated a bound, a
+    currency and a period, and was asked what the role pays anyway.
 
-    So the remaining pay decisions move to Post Job, where the controls exist
-    and the ceiling is already filled in, rather than becoming a question that
-    ignores what the page said.
+    A bound is an answer. So is "negotiable" — the page was asked and said it
+    would discuss. In both cases the remaining decisions belong in Post Job,
+    where the controls exist and the figure is already filled in, and asking
+    here would be asking the recruiter to repeat their own listing.
+
+    What still earns a question: a figure with no currency or no period, which
+    is not a rate and cannot be shown to a candidate as one.
     """
 
-    if values.get("budget_amount") is not None:
-        return frozenset()
-    if values.get("budget_max") is None:
+    if values.get("compensation_mode") == "negotiable":
+        return frozenset({"budget_amount", "budget_max"})
+
+    minimum = values.get("budget_amount")
+    maximum = values.get("budget_max")
+    if minimum is None and maximum is None:
         return frozenset()
     if not (values.get("budget_currency") and values.get("budget_unit")):
-        # A bare ceiling with no currency or period is not a stated rate, and
-        # the ordinary questions should still run.
+        # A bare bound with no currency or period is not a stated rate, and the
+        # ordinary questions should still run.
         return frozenset()
-    return frozenset({"budget_amount", "compensation_mode"})
+
+    settled = {"compensation_mode"}
+    # Only the *unstated* end stays askable, and only in Post Job. Neither end
+    # is worth interrupting for when the other is known.
+    settled.add("budget_amount" if minimum is None else "budget_max")
+    if minimum is not None:
+        settled.add("budget_amount")
+    if maximum is not None:
+        settled.add("budget_max")
+    return frozenset(settled)
 
 
 def essential_work_remains(queue: list[QueueCandidate]) -> bool:

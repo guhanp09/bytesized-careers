@@ -17,6 +17,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "shine-school-editor",
     "multi-craft",
     "labelled-pay-conflict",
+    "ceiling-only-pay",
     # Checkpointed conversation: these land in waiting_for_recruiter so the
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
@@ -127,6 +128,8 @@ def processed_review_fixture(
         return _shine_school_editor_fixture()
     if scenario == "multi-craft":
         return _multi_craft_fixture()
+    if scenario == "ceiling-only-pay":
+        return _ceiling_only_pay_fixture()
     if scenario == "labelled-pay-conflict":
         return _labelled_pay_conflict_fixture()
     if scenario == "scriptwriter":
@@ -735,6 +738,97 @@ def _labelled_pay_conflict_fixture() -> JobImportExtractionResponse:
                     "evidence": [{"snippet": "How to apply"}],
                 },
             ],
+        }
+    )
+
+
+def _ceiling_only_pay_fixture() -> JobImportExtractionResponse:
+    """A page that states a ceiling and no floor — the reported failure.
+
+    Sanitized from a reported public listing: the employer name is replaced, the
+    URL and contact route are dropped, and the free-form body is rewritten to a
+    generic equivalent. What is preserved is the only thing the regression needs
+    — the *shape*: pay stated as a bare line with a "Up to" qualifier, no
+    "Compensation:" label anywhere, and the rest of the listing structured the
+    way a board renders it.
+
+    The fixture deliberately carries the maximum with no minimum, because that
+    is what the page says. A fixture that filled in a floor would pass whatever
+    the pipeline did with one-sided bounds, which is the bug it exists to catch.
+    """
+
+    return JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Freelance Video Editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Freelance Video Editor"}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "video-editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Freelance Video Editor"}],
+                },
+                {
+                    "field_path": "engagement_type",
+                    "value": "ongoing_freelance",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Job Type: Freelance"}],
+                },
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Remote"}],
+                },
+                {
+                    "field_path": "compensation_mode",
+                    "value": "range",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Up to \u20b920,000 a month"}],
+                },
+                {
+                    "field_path": "budget_max",
+                    "value": 20000,
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Up to \u20b920,000 a month"}],
+                },
+                {
+                    "field_path": "budget_currency",
+                    "value": "INR",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Up to \u20b920,000 a month"}],
+                },
+                {
+                    "field_path": "budget_unit",
+                    "value": "per month",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Up to \u20b920,000 a month"}],
+                },
+                {
+                    "field_path": "responsibilities",
+                    "value": [
+                        "Edit raw footage into finished videos including reels and shorts.",
+                        "Perform colour correction and audio cleanup.",
+                    ],
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Edit raw footage into finished videos"}],
+                },
+                {
+                    "field_path": "about_channel",
+                    "value": "A finance education channel publishing short explainers.",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "A finance education channel"}],
+                },
+            ],
+            "conflicts": [],
+            "missing_fields": [],
+            "warnings": [],
         }
     )
 

@@ -34,8 +34,9 @@ either, so an incomplete figure returns ``None``.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Final
+
+from app.core.job_import_facts import Quantity
 
 #: Multipliers a page can attach to a figure. Indian pages use lakh and crore
 #: as freely as Western ones use k and m.
@@ -163,6 +164,21 @@ _AT_LEAST = re.compile(
     re.IGNORECASE,
 )
 
+#: Wording that makes a figure approximate rather than stated.
+_APPROXIMATE = re.compile(
+    r"(?:around|approx(?:\.|imately)?|about|roughly|circa|c\.|~)\s*$",
+    re.IGNORECASE,
+)
+
+#: Pay a page declines to put a number on at all. Not a figure, and not a gap
+#: either — the page answered, and the answer was "we will discuss it".
+_NEGOTIABLE = re.compile(
+    r"\b(?:negotiable|competitive|commensurate\s+with\s+experience|"
+    r"depending\s+on\s+experience|as\s+per\s+(?:industry\s+)?standards?|"
+    r"open\s+to\s+discussion|doe|best\s+in\s+industry)\b",
+    re.IGNORECASE,
+)
+
 #: What joins the two ends of a range. Anchored by ``match(text, index)``, so no
 #: leading ``^`` — see the note on ``_PERIOD``.
 _RANGE_JOIN = re.compile(r"\s*(?:-|–|—|to|and|~)\s*", re.IGNORECASE)
@@ -204,27 +220,13 @@ _PAY_LINE_COMPANY: Final[frozenset[str]] = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class StatedPay:
-    """Pay as a page stated it, before the product's own vocabulary applies.
-
-    ``minimum`` and ``maximum`` are both optional because a page is allowed to
-    state only one end. Collapsing "up to ₹20,000" into a flat ₹20,000 would
-    turn a ceiling into a promise, which is the same class of error as reading a
-    monthly rate as an annual one.
-    """
-
-    currency: str
-    unit: str | None
-    minimum: int | None = None
-    maximum: int | None = None
-    #: exact | range | at_most | at_least
-    kind: str = "exact"
-    #: The slice of text this came from, for evidence.
-    text: str = ""
+#: Kept as the module's own name for the fact it produces. The shape is the
+#: shared :class:`~app.core.job_import_facts.Quantity`, so pay is not a special
+#: case of anything — it is the first field to use the general representation.
+StatedPay = Quantity
 
 
-def owns_its_line(line: str, stated: StatedPay | None = None) -> bool:
+def owns_its_line(line: str, stated: Quantity | None = None) -> bool:
     """Whether a line is *about* pay, rather than mentioning a figure.
 
     Job boards print pay as its own line — "Up to ₹20,000 a month". Prose that
@@ -314,6 +316,10 @@ def read_pay(text: str) -> StatedPay | None:
                                 first = inherited
                         end = follower.end()
 
+        trailing_plus = bool(re.match(r"\s*\+", text[end:]))
+        if trailing_plus:
+            end = re.match(r"\s*\+", text[end:]).end() + end  # type: ignore[union-attr]
+
         unit, after_period = _period_after(text, end)
         if unit is None:
             # An amount with no period is not a rate, and supplying one would
@@ -327,40 +333,71 @@ def read_pay(text: str) -> StatedPay | None:
             low, high = sorted((first, second))
             if _BETWEEN.search(before):
                 start = _BETWEEN.search(before).start()  # type: ignore[union-attr]
-            return StatedPay(
-                currency=currency,
-                unit=unit,
+            return Quantity(
+                qualifier="range",
                 minimum=low,
                 maximum=high,
-                kind="range",
+                unit=unit,
+                currency=currency,
                 text=text[start:end].strip(),
+            )
+
+        if trailing_plus:
+            # "₹20,000+/month" is a floor written after the number rather than
+            # before it. Reading it as exact drops the "+", which is the whole
+            # of what the employer promised.
+            return Quantity(
+                qualifier="minimum_only",
+                minimum=first,
+                unit=unit,
+                currency=currency,
+                text=excerpt,
             )
 
         if _AT_MOST.search(before):
             # A ceiling is not a rate. The product has no open-ended range, so
             # the floor stays unknown and the recruiter is asked for that alone.
-            return StatedPay(
-                currency=currency,
-                unit=unit,
+            return Quantity(
+                qualifier="maximum_only",
                 maximum=first,
-                kind="at_most",
+                unit=unit,
+                currency=currency,
                 text=excerpt,
             )
         if _AT_LEAST.search(before):
-            return StatedPay(
-                currency=currency,
-                unit=unit,
+            return Quantity(
+                qualifier="minimum_only",
                 minimum=first,
-                kind="at_least",
+                unit=unit,
+                currency=currency,
                 text=excerpt,
             )
 
-        return StatedPay(
-            currency=currency,
-            unit=unit,
+        if _APPROXIMATE.search(before):
+            # "around ₹20,000 a month" states a figure and declines to stand by
+            # it exactly. Recording it as exact would make the page more precise
+            # than its author was willing to be.
+            return Quantity(
+                qualifier="approximate",
+                minimum=first,
+                maximum=first,
+                unit=unit,
+                currency=currency,
+                text=excerpt,
+            )
+
+        return Quantity(
+            qualifier="exact",
             minimum=first,
-            kind="exact",
+            unit=unit,
+            currency=currency,
             text=excerpt,
         )
+
+    if _NEGOTIABLE.search(text):
+        # No figure, and not a gap either: the page was asked what it pays and
+        # said "we will discuss it". Recording that stops the assistant asking
+        # the same question back.
+        return Quantity(qualifier="negotiable", text=_NEGOTIABLE.search(text).group(0))  # type: ignore[union-attr]
 
     return None

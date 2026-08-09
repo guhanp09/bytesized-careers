@@ -142,7 +142,7 @@ class TestARangeKeepsBothEnds:
 
         assert stated is not None, f"{text} read as nothing"
         assert (stated.minimum, stated.maximum) == (15_000, 20_000), text
-        assert stated.kind == "range"
+        assert stated.qualifier == "range"
 
     def test_a_shared_magnitude_reaches_the_first_end(self) -> None:
         # "₹15-20k" states one magnitude for both. Reading the first end
@@ -175,7 +175,7 @@ class TestACeilingIsNotARate:
         # employer never offered, which is the same class of error as reading a
         # monthly rate as annual.
         assert stated.minimum is None, f"{text} invented a floor of {stated.minimum}"
-        assert stated.kind == "at_most"
+        assert stated.qualifier == "maximum_only"
 
     @pytest.mark.parametrize(
         "text",
@@ -192,7 +192,7 @@ class TestACeilingIsNotARate:
         assert stated is not None, f"{text} read as nothing"
         assert stated.minimum == 25_000, text
         assert stated.maximum is None, f"{text} invented a ceiling"
-        assert stated.kind == "at_least"
+        assert stated.qualifier == "minimum_only"
 
 
 class TestNothingIsInvented:
@@ -205,14 +205,30 @@ class TestNothingIsInvented:
             "40 hours per week",
             "₹20,000",
             "20,000 per month",
-            "Competitive salary",
-            "Salary negotiable",
         ],
     )
     def test_an_incomplete_or_non_monetary_figure_is_not_a_rate(self, text: str) -> None:
         # A rate needs a currency and a period. Supplying either from nowhere
         # understates real salaries by an order of magnitude.
         assert read_pay(text) is None, f"{text!r} produced pay"
+
+    @pytest.mark.parametrize("text", ["Competitive salary", "Salary negotiable", "Pay is DOE"])
+    def test_wording_with_no_figure_names_no_figure(self, text: str) -> None:
+        stated = read_pay(text)
+
+        # The page addressed pay and named no number. Recording *that* is
+        # useful; inventing an amount from it is not.
+        assert stated is not None and stated.qualifier == "negotiable", text
+        assert stated.minimum is None and stated.maximum is None
+
+    @pytest.mark.parametrize("labelled", ["Compensation Competitive", "Compensation DOE"])
+    def test_a_keyword_does_not_choose_the_recruiters_compensation_mode(
+        self, labelled: str
+    ) -> None:
+        # `negotiable` is a publishable state a recruiter chooses. "Competitive"
+        # says a reader will find no figure; it does not say the recruiter
+        # picked an open one, and a deterministic keyword must not decide that.
+        assert labelled_facts(labelled).compensation_mode is None
 
 
 class TestAFigureInProseIsNotTheOffer:
@@ -265,8 +281,9 @@ class TestTheReportedListing:
         facts = labelled_facts(self.PAGE)
 
         assert facts.budget_amount is None
-        # "fixed" would claim the job pays exactly ₹20,000.
-        assert facts.compensation_mode is None
+        # "fixed" would claim the job pays exactly ₹20,000. A one-sided range is
+        # the truthful native shape: a range with an end the page did not state.
+        assert facts.compensation_mode == "range"
 
     def test_the_engagement_still_reads(self) -> None:
         assert labelled_facts(self.PAGE).engagement_type == "ongoing_freelance"
@@ -306,17 +323,35 @@ class TestSuppressionOnlyAppliesToAStatedRate:
     def test_nothing_is_suppressed_when_no_pay_was_stated(self) -> None:
         assert suppressed_by_stated_pay({}) == frozenset()
 
-    def test_a_known_floor_does_not_suppress_anything(self) -> None:
-        # With a floor the ordinary flow already has what it needs, and the
-        # remaining questions are the normal ones.
-        assert (
-            suppressed_by_stated_pay(
-                {
-                    "budget_amount": 20_000,
-                    "budget_max": 30_000,
-                    "budget_currency": "INR",
-                    "budget_unit": "per month",
-                }
-            )
-            == frozenset()
+    def test_a_stated_range_settles_pay_entirely(self) -> None:
+        # Both ends stated: nothing about pay is worth interrupting for.
+        settled = suppressed_by_stated_pay(
+            {
+                "budget_amount": 20_000,
+                "budget_max": 30_000,
+                "budget_currency": "INR",
+                "budget_unit": "per month",
+            }
         )
+
+        assert {"budget_amount", "budget_max", "compensation_mode"} <= settled
+
+    def test_a_stated_floor_alone_also_settles_pay(self) -> None:
+        # "₹20,000+/month" is an answer. Asking what the role pays after
+        # reading it is asking the recruiter to repeat their own listing.
+        settled = suppressed_by_stated_pay(
+            {
+                "budget_amount": 20_000,
+                "budget_max": None,
+                "budget_currency": "INR",
+                "budget_unit": "per month",
+            }
+        )
+
+        assert "budget_amount" in settled
+        assert "compensation_mode" in settled
+
+    def test_a_negotiable_page_is_not_asked_for_amounts(self) -> None:
+        settled = suppressed_by_stated_pay({"compensation_mode": "negotiable"})
+
+        assert {"budget_amount", "budget_max"} <= settled

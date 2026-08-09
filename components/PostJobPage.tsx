@@ -1495,7 +1495,18 @@ export default function PostJobPage() {
     ((budgetUnit === "commission" || budgetUnit === "mixed") && Boolean(budgetNote.trim()));
   const hasCompensationIntent =
     (compensationMode === "fixed" && hasPositiveBudgetMin && !hasBudgetMax && Boolean(budgetCurrency) && hasValidCompensationUnit && hasRequiredCompensationNote) ||
-    (compensationMode === "range" && hasPositiveBudgetMin && hasValidBudgetRange && Boolean(budgetCurrency) && hasValidCompensationUnit && hasRequiredCompensationNote) ||
+    // A range may state one end. Job pages routinely offer "Up to ₹20,000 a
+    // month" or "₹20,000+/month", and requiring both ends left an imported
+    // listing that said one of those with no way to be saved as what it said —
+    // so the figure was dropped and the recruiter was asked for it again.
+    // Both ends together must still be ordered; one end alone is complete.
+    (compensationMode === "range" &&
+      hasAnyBudgetInput &&
+      (hasBudgetMin && hasBudgetMax ? hasValidBudgetRange : true) &&
+      (hasBudgetMin ? hasPositiveBudgetMin : true) &&
+      Boolean(budgetCurrency) &&
+      hasValidCompensationUnit &&
+      hasRequiredCompensationNote) ||
     (compensationMode === "negotiable" &&
       !hasAnyBudgetInput &&
       negotiableCurrencyValid &&

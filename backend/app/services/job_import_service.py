@@ -40,6 +40,7 @@ from app.core.job_domain_taxonomy import (
 )
 from app.core.job_import_attempt_liveness import assess_attempt
 from app.core.job_import_body_sections import experience_from_body
+from app.core.job_import_facts import outranks as fact_outranks
 from app.core.job_import_inference import (
     confidence_at_least,
     infer_compensation_currency,
@@ -2940,9 +2941,22 @@ class JobImportService:
                     "edited_by_recruiter",
                     "rejected_by_recruiter",
                 }
-                outranks = (
-                    employer_labelled and not recruiter_owned
-                ) or (
+                # Precedence is about evidence, not about which kind of code
+                # produced the reading. A labelled fact wins because the
+                # employer printed it under a label about their own job — not
+                # because a regex found it. The distinction matters the moment
+                # the deterministic reader is the weaker one: it had no way to
+                # read "Up to ₹20,000 a month" at all, and a reader that finds
+                # nothing has reported on its own coverage, not on the page.
+                #
+                # `labelled_paths` therefore contains only fields the labelled
+                # reader actually *found*. A field absent from it contributes no
+                # opinion here, and cannot displace an evidenced extraction.
+                may_replace = fact_outranks(
+                    "labelled_source" if employer_labelled else "heuristic",
+                    "recruiter" if recruiter_owned else "evidenced_interpretation",
+                )
+                outranks = may_replace or (
                     untouched
                     and self._structured_declaration_outranks(field_path, context)
                     and existing.get("provenance_state")

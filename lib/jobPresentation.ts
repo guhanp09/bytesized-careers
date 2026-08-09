@@ -123,11 +123,22 @@ export function formatJobCompensation(input: {
         ? `Mixed compensation · ${formatJobMoney(minimum, input.currency)} base`
         : "Mixed compensation";
   } else if (mode === "range" && hasMinimum && hasMaximum) {
-    headline = `${formatJobMoney(minimum, input.currency)}–${formatJobMoney(
-      maximum,
-      input.currency,
-    )}${suffix}`;
-  } else if ((mode === "fixed" || mode === "range") && hasMinimum) {
+    headline =
+      Number(minimum) === Number(maximum)
+        ? // Both ends the same figure is how an approximate rate survives a
+          // schema with no "approximately": the number is kept and the
+          // precision is not claimed. Printing "₹20,000–₹20,000" would be
+          // technically true and obviously wrong.
+          `About ${formatJobMoney(minimum, input.currency)}${suffix}`
+        : `${formatJobMoney(minimum, input.currency)}–${formatJobMoney(
+            maximum,
+            input.currency,
+          )}${suffix}`;
+  } else if (mode === "range" && hasMinimum) {
+    // A floor with no ceiling. "₹20,000+" is what the employer promised, and
+    // dropping the "+" reports a maximum they never agreed to.
+    headline = `${formatJobMoney(minimum, input.currency)}+${suffix}`;
+  } else if (mode === "fixed" && hasMinimum) {
     headline = `${formatJobMoney(minimum, input.currency)}${suffix}`;
   } else if (mode === "negotiable") {
     headline = unitLabel ? `Negotiable · ${unitLabel}` : "Negotiable";
@@ -141,6 +152,9 @@ export function formatJobCompensation(input: {
     // Below `negotiable` on purpose: a negotiable job carries no amounts, and a
     // stray maximum must not turn it into a figure.
     headline = `Up to ${formatJobMoney(maximum, input.currency)}${suffix}`;
+  } else if (hasMinimum && !hasMaximum) {
+    // Same shape from the other side, for a job stored without a mode.
+    headline = `${formatJobMoney(minimum, input.currency)}+${suffix}`;
   } else if (hasMinimum && hasMaximum) {
     headline = `${formatJobMoney(minimum, input.currency)}–${formatJobMoney(
       maximum,
