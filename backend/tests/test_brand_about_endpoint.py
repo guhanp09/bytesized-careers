@@ -56,9 +56,11 @@ class _Fetcher:
         self.text = text
         self.error = error
         self.calls = 0
+        self.urls: list[str] = []
 
     async def fetch(self, url: str):
         self.calls += 1
+        self.urls.append(url)
         if self.error:
             raise self.error
 
@@ -168,6 +170,11 @@ class TestTheRunnerDirectly:
         # The claim records which brand it was for, so a later switch is visible.
         assert job.brand_about_identity_id == job.hiring_identity_id
         assert fetcher.calls == 1 and summarizer.calls == 1
+        # The host fetched is the one registered on the hiring identity. Nothing
+        # a caller sends can redirect retrieval somewhere else — the URL is
+        # server-owned, and asserting the fetch target is what makes that true
+        # rather than merely intended.
+        assert fetcher.urls == ["https://financesimplified.example"]
 
     async def test_an_ineligible_job_does_no_work_at_all(self) -> None:
         job = _Job(about_channel="Already written by the recruiter")

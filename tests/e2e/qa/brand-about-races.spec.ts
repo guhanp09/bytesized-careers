@@ -253,7 +253,12 @@ test.describe("brand enrichment races, through the browser", () => {
     const identity = await createIdentity(page, "Finance Simplified");
     const draftId = await importDraft(page);
     await attachIdentity(page, draftId, identity);
-    await arm(page, { gated: false, summary: BRAND_A_SUMMARY });
+    // Gated on purpose. Ungated, the first attempt finishes before the second
+    // begins and the two never overlap — so the test passed even with the
+    // atomic claim removed, which is not a concurrency test at all. Holding the
+    // fetch open forces both attempts to be genuinely in flight together, which
+    // is the only situation the claim exists for.
+    await arm(page, { gated: true, summary: BRAND_A_SUMMARY });
 
     const second = await browser.newContext();
     const other = await second.newPage();
@@ -262,14 +267,23 @@ test.describe("brand enrichment races, through the browser", () => {
       await openDraft(page, draftId);
       await openDraft(other, draftId);
 
-      // Near-simultaneous saves from two contexts. Both clients will request
-      // enrichment; the compare-and-set claim is what makes it one attempt.
+      // Near-simultaneous saves from two contexts. Both clients request
+      // enrichment; the database decides which one does the work.
       await Promise.all([save(page), save(other)]);
-      await page.waitForTimeout(2_500);
+      await waitForAttemptStarted(page);
+      await page.waitForTimeout(2_000);
 
-      const state = await probeState(page);
-      expect(state.fetches, `two tabs caused ${state.fetches} fetches`).toBe(1);
-      expect(state.model_calls).toBe(1);
+      // Counted while the winner is still held at the gate, so a second
+      // attempt that started would already have been counted here.
+      const during = await probeState(page);
+      expect(during.fetches, `two tabs caused ${during.fetches} fetches`).toBe(1);
+
+      await release(page);
+      await page.waitForTimeout(1_500);
+
+      const after = await probeState(page);
+      expect(after.fetches, "a second attempt ran after the first was released").toBe(1);
+      expect(after.model_calls).toBe(1);
     } finally {
       await second.close();
     }
@@ -305,8 +319,16 @@ test.describe("brand enrichment races, through the browser", () => {
 
     await arm(page, { gated: true, summary: BRAND_A_SUMMARY });
     await openDraft(page, draftId);
+    const started = Date.now();
     await save(page);
+    const savedIn = Date.now() - started;
     await waitForAttemptStarted(page);
+
+    // The endpoint acknowledges by claiming and backgrounding the work, so a
+    // save issued while the fetch is held open must still finish promptly. A
+    // server that ran the work inline would stall here until the client's own
+    // request timeout rescued it, which is seconds later and measurable.
+    expect(savedIn, `save took ${savedIn}ms while enrichment was held`).toBeLessThan(6_000);
 
     // Enrichment is held open for the whole of this. The recruiter must not be
     // able to tell: no modal, no spinner over the editor, no blocked save.
