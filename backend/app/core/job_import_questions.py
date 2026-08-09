@@ -17,6 +17,7 @@ Nothing here decides publication validity — that stays with native validation.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -431,6 +432,32 @@ def next_question_field(
         dismissed_fields=dismissed_fields,
     )
     return queue[0] if queue else None
+
+
+def suppressed_by_stated_pay(values: Mapping[str, object]) -> frozenset[str]:
+    """Pay questions a page has already answered well enough to stop asking.
+
+    "Up to ₹20,000 a month" names a ceiling, a currency and a period, and no
+    floor. The product has no open-ended range, so the floor stays blank — but a
+    blank floor is not a reason to ask the recruiter what the role pays. That
+    question reads as though nothing were known about a figure printed in the
+    first screenful, which is the one kind of interruption this assistant
+    refuses to make.
+
+    So the remaining pay decisions move to Post Job, where the controls exist
+    and the ceiling is already filled in, rather than becoming a question that
+    ignores what the page said.
+    """
+
+    if values.get("budget_amount") is not None:
+        return frozenset()
+    if values.get("budget_max") is None:
+        return frozenset()
+    if not (values.get("budget_currency") and values.get("budget_unit")):
+        # A bare ceiling with no currency or period is not a stated rate, and
+        # the ordinary questions should still run.
+        return frozenset()
+    return frozenset({"budget_amount", "compensation_mode"})
 
 
 def essential_work_remains(queue: list[QueueCandidate]) -> bool:

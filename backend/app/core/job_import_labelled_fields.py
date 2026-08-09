@@ -19,6 +19,14 @@ So a small set of labels is read from the visible text: the ones where a page
 states a fact plainly, in a form there is no reasonable second reading of. This
 is not a second extractor. It answers "did the employer print this under a
 label?", and nothing else.
+
+Pay is the one exception, and it was earned. A listing headed ``Up to ₹20,000 a
+month`` arrived with no pay and a question about pay, because that figure is not
+under a label — it is a bare line, which is how most boards render it. So
+compensation is also read from the job's own text when no label carries it,
+using the grammar in :mod:`app.core.job_import_compensation`. The search stays
+inside :func:`primary_job_text`, so a neighbouring listing's salary is no more
+reachable this way than it was before.
 """
 
 from __future__ import annotations
@@ -26,6 +34,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Final
+
+from app.core.job_import_compensation import StatedPay, owns_its_line, read_pay
 
 #: Label rows a job page prints, and the field each one settles.
 #:
@@ -119,6 +129,9 @@ class LabelledFacts:
 
     engagement_type: str | None = None
     budget_amount: int | None = None
+    #: The upper end, when the page stated one. A page saying "up to ₹20,000"
+    #: has named a ceiling and no floor, and the two are not the same fact.
+    budget_max: int | None = None
     budget_currency: str | None = None
     budget_unit: str | None = None
     compensation_mode: str | None = None
@@ -138,8 +151,42 @@ def _read_engagement(value: str) -> str | None:
     return None
 
 
+def _apply_pay(
+    stated: StatedPay,
+    found: dict[str, object],
+    evidence: dict[str, str],
+    excerpt: str,
+) -> None:
+    """Record stated pay in the product's own vocabulary, without rounding it up.
+
+    The mode is only set where the page settled it. "Up to ₹20,000" names a
+    ceiling and no floor, and the product has no open-ended range — so the
+    ceiling is stored and the mode is left for the recruiter, rather than
+    promoting a maximum into a flat rate the employer never offered.
+    """
+
+    found["budget_currency"] = stated.currency
+    if stated.unit:
+        found["budget_unit"] = stated.unit
+    if stated.minimum is not None:
+        found["budget_amount"] = stated.minimum
+    if stated.maximum is not None:
+        found["budget_max"] = stated.maximum
+    if stated.kind == "range":
+        found["compensation_mode"] = "range"
+    elif stated.kind == "exact":
+        # One figure is a fixed rate, not a range. Inventing a second bound
+        # would advertise a spread the employer never offered.
+        found["compensation_mode"] = "fixed"
+    evidence["compensation"] = excerpt
+
+
 def _read_compensation(value: str) -> tuple[int, str, str] | None:
-    """A single stated figure with its currency and period, or nothing."""
+    """A single stated figure with its currency and period, or nothing.
+
+    Superseded by :func:`app.core.job_import_compensation.read_pay`, and kept
+    because the accepted grammar suite pins its behaviour directly.
+    """
 
     match = _AMOUNT.search(value)
     if not match:
@@ -358,20 +405,31 @@ def labelled_facts(normalized_text: str | None) -> LabelledFacts:
                 found["engagement_type"] = engagement
                 evidence["engagement_type"] = value
         elif name == "compensation":
-            money = _read_compensation(value)
-            if money:
-                amount, currency, unit = money
-                found["budget_amount"] = amount
-                found["budget_currency"] = currency
-                found["budget_unit"] = unit
-                # One figure is a fixed rate, not a range. Inventing a second
-                # bound would advertise a spread the employer never offered.
-                found["compensation_mode"] = "fixed"
-                evidence["compensation"] = value
+            stated = read_pay(value)
+            if stated:
+                _apply_pay(stated, found, evidence, value)
+
+    if "budget_amount" not in found and "budget_max" not in found:
+        # No label carried the pay. Most boards print it as a bare line —
+        # "Up to ₹20,000 a month" — which is how the reported listing was
+        # missed entirely, and the label reader had no way to see it.
+        #
+        # A line at a time, and only when the money *owns* the line. A figure
+        # inside a sentence is regularly not the offer: "Previous salary of
+        # ₹30,000 per month will be verified" carries a currency and a period
+        # and is somebody else's number.
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            stated = read_pay(line)
+            if stated and owns_its_line(line, stated):
+                _apply_pay(stated, found, evidence, line.strip())
+                break
 
     return LabelledFacts(
         engagement_type=found.get("engagement_type"),  # type: ignore[arg-type]
         budget_amount=found.get("budget_amount"),  # type: ignore[arg-type]
+        budget_max=found.get("budget_max"),  # type: ignore[arg-type]
         budget_currency=found.get("budget_currency"),  # type: ignore[arg-type]
         budget_unit=found.get("budget_unit"),  # type: ignore[arg-type]
         compensation_mode=found.get("compensation_mode"),  # type: ignore[arg-type]

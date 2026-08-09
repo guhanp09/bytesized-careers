@@ -111,3 +111,77 @@ test("canonical hiring verification takes precedence over a legacy boolean", () 
   assert.equal(hiringVerificationForJob(baseJob({ channel: { ...baseJob().channel, verified: true } })).verified, true);
   assert.equal(hiringVerificationForJob(baseJob()).captured, false);
 });
+
+test("a ceiling with no floor is stated rather than called unspecified", () => {
+  // Job pages write pay as "Up to ₹20,000 a month" constantly, and there was no
+  // branch for it: the whole compensation read "Compensation not specified"
+  // while a stray "Up to" sat in the note, so the preview rendered
+  // "Compensation not specified · Up to" — a qualifier with nothing to qualify.
+  const ceiling = formatJobCompensation({
+    mode: null,
+    minimum: null,
+    maximum: 20000,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.match(ceiling.headline, /^Up to /);
+  assert.match(ceiling.headline, /20,000/);
+  assert.match(ceiling.headline, /month/i);
+  assert.equal(ceiling.disclosed, true);
+});
+
+test("a ceiling is never promoted into a flat rate", () => {
+  const ceiling = formatJobCompensation({
+    mode: null,
+    minimum: null,
+    maximum: 20000,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  // Dropping the qualifier would tell a candidate the job pays ₹20,000 when the
+  // employer said it pays at most that.
+  assert.ok(ceiling.headline.toLowerCase().includes("up to"));
+});
+
+test("a note that only repeats the headline is dropped", () => {
+  // The imported listing arrived with budget_note "Up to" — a fragment of the
+  // figure beside it. Callers join headline and note with "·", so a fragment
+  // renders as a dangling word.
+  const withFragment = formatJobCompensation({
+    mode: null,
+    minimum: null,
+    maximum: 20000,
+    currency: "INR",
+    unit: "per month",
+    note: "Up to",
+  });
+
+  assert.equal(withFragment.note, "");
+  assert.equal([withFragment.headline, withFragment.note].filter(Boolean).join(" · "), withFragment.headline);
+});
+
+test("a note that adds something is kept", () => {
+  const informative = formatJobCompensation({
+    mode: "fixed",
+    minimum: 20000,
+    currency: "INR",
+    unit: "per month",
+    note: "Reviewed after three months",
+  });
+
+  assert.equal(informative.note, "Reviewed after three months");
+});
+
+test("a negotiable job is not turned into a figure by a stray maximum", () => {
+  const negotiable = formatJobCompensation({
+    mode: "negotiable",
+    minimum: null,
+    maximum: 20000,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.match(negotiable.headline, /^Negotiable/);
+});

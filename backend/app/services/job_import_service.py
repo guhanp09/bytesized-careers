@@ -2876,6 +2876,7 @@ class JobImportService:
             for path, value in (
                 ("engagement_type", labelled.engagement_type),
                 ("budget_amount", labelled.budget_amount),
+                ("budget_max", labelled.budget_max),
                 ("budget_currency", labelled.budget_currency),
                 ("budget_unit", labelled.budget_unit),
                 ("compensation_mode", labelled.compensation_mode),
@@ -2892,6 +2893,7 @@ class JobImportService:
             for path, value in (
                 ("engagement_type", labelled.engagement_type),
                 ("budget_amount", labelled.budget_amount),
+                ("budget_max", labelled.budget_max),
                 ("budget_currency", labelled.budget_currency),
                 ("budget_unit", labelled.budget_unit),
                 ("compensation_mode", labelled.compensation_mode),

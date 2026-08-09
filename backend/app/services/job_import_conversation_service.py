@@ -47,6 +47,7 @@ from app.core.job_import_questions import (
     assistant_preparation_complete,
     deterministic_question_queue,
     essential_work_remains,
+    suppressed_by_stated_pay,
     validate_proposed_question,
 )
 from app.core.job_import_title_signals import title_signals
@@ -801,12 +802,36 @@ class JobImportConversationService:
             conflicted_fields=conflicted,
             missing_fields=missing,
             answered_fields=frozenset(answers),
-            suppressed_fields=suppressed_by_answers(answers),
+            # An answer can make a question moot, and so can the page itself: a
+            # stated ceiling settles pay well enough that asking what the role
+            # pays would ignore what the listing printed.
+            suppressed_fields=suppressed_by_answers(answers)
+            | suppressed_by_stated_pay(await self._effective_values(draft)),
             active_conditional_fields=await self._active_conditionals(draft),
             ambiguous_fields=await self._ambiguous_fields(draft),
             suggested_fields=suggested,
             dismissed_fields=frozenset(self._dismissed(draft)),
         )
+
+    async def _effective_values(self, draft: JobImportDraft) -> dict[str, object]:
+        """What the draft currently holds, recruiter answers winning.
+
+        Extracted so the question queue can ask about the draft itself and not
+        only about what has been answered. A page that stated its pay has
+        settled something no answer records.
+        """
+
+        fields = await self.import_service.repository.list_fields(draft.id)
+        values: dict[str, object] = {}
+        for field in fields:
+            if field.review_status == "edited" and field.edited_value is not None:
+                values[field.field_path] = field.edited_value
+            elif field.review_status == "confirmed" and field.confirmed_value is not None:
+                values[field.field_path] = field.confirmed_value
+            elif field.proposed_value is not None:
+                values[field.field_path] = field.proposed_value
+        values.update(self._stored_answers(draft))
+        return values
 
     async def _active_conditionals(self, draft: JobImportDraft) -> frozenset[str]:
         """Conditional fields whose controlling answer makes them relevant.

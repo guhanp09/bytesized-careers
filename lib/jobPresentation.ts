@@ -98,7 +98,7 @@ export function formatJobCompensation(input: {
   const mode = cleanJobText(input.mode);
   const unit = cleanJobText(input.unit);
   const customUnit = cleanJobText(input.customUnit);
-  const note = cleanJobText(input.note);
+  const rawNote = cleanJobText(input.note);
   const legacyDisplay = cleanJobText(input.legacyDisplay);
   const minimum = input.minimum;
   const maximum = input.maximum;
@@ -131,6 +131,16 @@ export function formatJobCompensation(input: {
     headline = `${formatJobMoney(minimum, input.currency)}${suffix}`;
   } else if (mode === "negotiable") {
     headline = unitLabel ? `Negotiable · ${unitLabel}` : "Negotiable";
+  } else if (hasMaximum && !hasMinimum) {
+    // A ceiling with no floor. Job pages write pay this way constantly — "Up to
+    // ₹20,000 a month" — and with no branch for it the whole compensation read
+    // as "Compensation not specified" while a stray "Up to" sat in the note
+    // beside it. Saying what the page said is better than saying nothing and
+    // better than promoting the ceiling into a flat rate.
+    //
+    // Below `negotiable` on purpose: a negotiable job carries no amounts, and a
+    // stray maximum must not turn it into a figure.
+    headline = `Up to ${formatJobMoney(maximum, input.currency)}${suffix}`;
   } else if (hasMinimum && hasMaximum) {
     headline = `${formatJobMoney(minimum, input.currency)}–${formatJobMoney(
       maximum,
@@ -139,6 +149,17 @@ export function formatJobCompensation(input: {
   } else if (hasMinimum) {
     headline = `${formatJobMoney(minimum, input.currency)}${suffix}`;
   }
+
+  // A note that only repeats the headline is noise, and a note that is a
+  // *fragment* of it is worse than noise. An imported listing reading "Up to
+  // ₹20,000 a month" arrived with a stray note of "Up to", which rendered as
+  // "Compensation not specified · Up to" — a qualifier with nothing to qualify.
+  // Callers join the two with "·", so the check belongs here rather than in
+  // each of them.
+  const comparable = (value: string) =>
+    value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const note =
+    rawNote && comparable(headline).includes(comparable(rawNote)) ? "" : rawNote;
 
   if (!headline && legacyDisplay && legacyDisplay !== "Compensation not specified") {
     return {
