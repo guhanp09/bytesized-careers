@@ -35,6 +35,7 @@ import {
   engagementLabel,
 } from "../../lib/jobContract";
 import {
+  screenMeta,
   weightedJobProgress,
   type JobPostingDomainState,
   type RecruiterJobScreen,
@@ -59,19 +60,19 @@ type WorkMode = "" | "Remote" | "Hybrid" | "On-site";
 type JobPlatform = "youtube" | "instagram";
 
 const inputBase =
-  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "h-11 w-full rounded-xl border border-line-mid bg-raised px-3 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 const textareaBase =
-  "w-full min-h-[110px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "min-h-[110px] w-full rounded-xl border border-line-mid bg-raised px-3 py-2.5 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 const selectBase =
-  "w-full h-11 cursor-pointer rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "h-11 w-full cursor-pointer rounded-xl border border-line-mid bg-raised px-3 text-sm text-ink outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 const basicsInputBase =
-  "w-full h-11 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
+  "h-11 w-full rounded-xl border border-line-mid bg-raised px-3 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 const basicsSelectBase =
-  "h-11 cursor-pointer rounded-xl bg-white/[0.06] border border-white/10 px-3 text-sm text-white outline-none focus:border-white/25 focus:bg-white/[0.075] transition-colors";
+  "h-11 cursor-pointer rounded-xl border border-line-mid bg-raised px-3 text-sm text-ink outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 const decimalText = (value: string) => {
   const cleaned = value.replace(/[^\d.]/g, "");
@@ -592,8 +593,7 @@ function StepCard({
   return (
     <section
       className={[
-        "rounded-2xl bg-white/[0.06] border border-white/10 p-5",
-        "shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]",
+        "rounded-[28px] border border-line bg-panel p-4 elev-2 sm:p-6",
         "flex flex-col",
         sizeClass,
       ].join(" ")}
@@ -601,7 +601,7 @@ function StepCard({
       {title || hint ? (
         <div className="flex items-baseline justify-between gap-3">
           {typeof title === "string" ? (
-            <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight text-white/90 uppercase">
+            <h2 className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-secondary">
               {icon ? (
                 <span aria-hidden="true" className="inline-flex shrink-0 text-white/58">
                   <Icon name={icon} className="h-4 w-4" />
@@ -625,7 +625,7 @@ function StepCard({
       >
         {children}
       </div>
-      <div className="pt-2 mt-2 border-t border-white/5">{actions}</div>
+      <div className="mt-2 border-t border-line pt-3">{actions}</div>
     </section>
   );
 }
@@ -810,13 +810,16 @@ function StepActions({
   ) : nextIcon ? (
     nextIcon
   ) : (
-    <span className="text-sm leading-none">→</span>
+    <>
+      <span className="text-xs font-semibold">Continue</span>
+      <span className="text-sm leading-none" aria-hidden="true">→</span>
+    </>
   );
   return (
     <div
       className={
         variant === "mobile-fixed"
-          ? "fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-white/10 bg-[#121216]/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_45px_-30px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:hidden"
+          ? "fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-line bg-panel/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_45px_-30px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:hidden"
           : "mt-4 hidden items-center justify-between gap-2 sm:flex sm:flex-nowrap"
       }
     >
@@ -826,7 +829,7 @@ function StepActions({
             type="button"
             onClick={onSaveDraft}
             disabled={isBusy}
-            className="inline-flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/[0.16] bg-white/[0.065] px-2.5 text-xs font-semibold text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[background-color,border-color,color,transform] hover:border-white/25 hover:bg-white/[0.095] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#101014] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[116px] sm:flex-none sm:px-4 sm:text-sm"
+            className="ui-press inline-flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-line-mid bg-raised px-2.5 text-xs font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[116px] sm:flex-none sm:px-4 sm:text-sm"
           >
             {saveDraftIcon}
             {saveDraftLabel}
@@ -836,7 +839,7 @@ function StepActions({
           <button
             type="button"
             onClick={() => onBack(id)}
-            className="h-11 w-11 inline-flex cursor-pointer items-center justify-center rounded-xl bg-white text-black border border-white hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+            className="ui-press inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-55"
             aria-label="Back"
             title="Back"
             disabled={isBusy}
@@ -851,11 +854,11 @@ function StepActions({
             type={nextType}
             onClick={nextType === "submit" ? undefined : () => onNext(id)}
             className={[
-              "inline-flex items-center justify-center rounded-xl border transition-colors",
+              "ui-press surface-primary inline-flex items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-panel",
               nextDisabled || isBusy
-                ? "cursor-not-allowed border-white/10 bg-white/15 text-subtle"
-                : "cursor-pointer bg-white text-black border-white hover:bg-white/90",
-              nextLabel ? "min-h-11 px-4 gap-2" : "h-11 w-11",
+                ? "cursor-not-allowed border-line bg-raised bg-none text-disabled shadow-none"
+                : "cursor-pointer border-white text-black hover:brightness-95 elev-1",
+              "min-h-11 gap-2 px-4",
             ].join(" ")}
             aria-label={nextAccessibleLabel}
             title={nextAccessibleLabel}
@@ -1134,6 +1137,7 @@ export default function PostJobForm({
   // Continuous, weighted progress — front-loaded so early steps feel brisk. The
   // raw step count is never exposed (see weightedJobProgress for the model).
   const progressPercent = Math.round(weightedJobProgress(step) * 100);
+  const activeScreen = screenMeta(step);
   const [cityOpen, setCityOpen] = useState(false);
   const [cityHighlight, setCityHighlight] = useState(0);
   const [experienceOpen, setExperienceOpen] = useState(false);
@@ -1900,7 +1904,7 @@ export default function PostJobForm({
               </select>
             </Field>
 
-            <div className={workMode === "Hybrid" || workMode === "On-site" ? "grid gap-4 sm:grid-cols-2" : "max-w-full sm:max-w-[520px]"}>
+            <div className={workMode ? "grid gap-4 sm:grid-cols-2" : "max-w-full sm:max-w-[520px]"}>
               <Field
                 id="job-work-mode"
                 label={
@@ -1923,7 +1927,6 @@ export default function PostJobForm({
                     onChange={(e) => {
                       const next = e.target.value as WorkMode;
                       onWorkModeChange(next);
-                      if (next === "Remote") onCityChange("");
                     }}
                   >
                     <option value="" className="bg-[#0b0b0f]">
@@ -1941,7 +1944,25 @@ export default function PostJobForm({
                 </div>
               </Field>
 
-              {workMode === "Hybrid" || workMode === "On-site" ? (
+              {workMode === "Remote" ? (
+                <Field
+                  id="job-city"
+                  label="Candidate location"
+                  helper="Add a country or region when remote work is geographically limited. Leave blank for worldwide."
+                  error={cityError}
+                >
+                  <input
+                    id="job-city"
+                    aria-label="Candidate location"
+                    aria-invalid={Boolean(cityError)}
+                    aria-describedby={cityError ? "job-city-error" : undefined}
+                    className={[basicsInputBase, cityError ? invalidClass : ""].join(" ")}
+                    placeholder="e.g. India, UK time zones, or worldwide"
+                    value={city}
+                    onChange={(event) => onCityChange(event.target.value)}
+                  />
+                </Field>
+              ) : workMode === "Hybrid" || workMode === "On-site" ? (
                 <Field
                   id="job-city"
                   label={
@@ -2273,7 +2294,7 @@ export default function PostJobForm({
     if (id === "about") {
       return (
         <StepCard
-          title="About"
+          title={aboutBrandLabel(hiringDisplayName)}
           icon="notebook-text"
           bodyClassName="mt-4"
           size="compact"
@@ -2289,10 +2310,11 @@ export default function PostJobForm({
               id="job-about-brand"
               label={
                 <span className="inline-flex items-center gap-1.5">
-                  <LabelWithIcon icon="file">{aboutBrandLabel(hiringDisplayName)}</LabelWithIcon>
+                  <LabelWithIcon icon="file">Candidate-facing introduction</LabelWithIcon>
                   <span className="text-muted">*</span>
                 </span>
               }
+              helper="Give candidates useful context on the creator or brand, its audience, and why the work matters."
               error={aboutError}
             >
               <div className="flex flex-col gap-3" data-quality-target="job-description">
@@ -2309,6 +2331,9 @@ export default function PostJobForm({
                     onAboutChange(e.target.value);
                   }}
                 />
+                <p className="text-[11px] leading-5 text-muted">
+                  This appears as ordinary listing copy and stays fully editable.
+                </p>
               </div>
             </Field>
 
@@ -2578,10 +2603,21 @@ export default function PostJobForm({
   return (
     <div className="space-y-6">
       {!guidedMode ? (
-        <section className="rounded-3xl bg-white/[0.06] border border-white/10 p-6 sm:p-7 shadow-[0_18px_60px_-40px_rgba(0,0,0,0.95)]">
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-[1.05]">POST A JOB</h1>
+        <section className="rounded-[28px] border border-line bg-panel p-5 elev-2 sm:p-7">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">Post a job</p>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-ink sm:text-[30px]">
+                {activeScreen.question}
+              </h1>
+              <p className="mt-1.5 text-xs font-medium text-muted">{activeScreen.label}</p>
+            </div>
+            <p className="shrink-0 text-[11px] tabular-nums text-subtle" aria-hidden="true">
+              {progressPercent}%
+            </p>
+          </div>
           <div
-            className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-white/10"
+            className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-elevated"
             role="progressbar"
             aria-label="Job posting progress"
             aria-valuemin={0}
@@ -2590,7 +2626,7 @@ export default function PostJobForm({
             aria-valuetext={`${progressPercent}% complete`}
           >
             <div
-              className="h-full rounded-full bg-white/45 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              className="h-full rounded-full bg-state-review transition-[width] duration-500 ease-out motion-reduce:transition-none"
               style={{ width: `${progressPercent}%` }}
             />
           </div>

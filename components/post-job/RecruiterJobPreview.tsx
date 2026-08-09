@@ -200,7 +200,7 @@ const TRIAL_BASIS_LABELS: Record<string, string> = {
 
 function EmptyReview({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-white/[0.1] bg-white/[0.025] px-3.5 py-3 text-sm leading-relaxed text-subtle">
+    <p className="rounded-xl bg-wash px-3.5 py-3 text-sm leading-relaxed text-muted">
       {children}
     </p>
   );
@@ -208,27 +208,27 @@ function EmptyReview({ children }: { children: ReactNode }) {
 
 function PreviewFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3.5">
+    <div className="min-w-0 rounded-xl border-l-2 border-line-mid bg-wash px-3.5 py-3">
       <dt className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">{label}</dt>
-      <dd className="mt-1.5 break-words text-sm font-medium leading-snug text-white/84">{value}</dd>
+      <dd className="mt-1.5 break-words text-sm font-medium leading-snug text-default [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
 }
 
 function CompactGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-t border-white/[0.07] px-4 py-4 first:border-t-0" aria-label={title}>
-      <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">{title}</h3>
-      <div className="mt-2.5 space-y-2 text-xs leading-relaxed text-white/67">{children}</div>
+    <section className="border-t border-line px-5 py-5 first:border-t-0" aria-label={title}>
+      <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">{title}</h3>
+      <div className="mt-3 space-y-2.5 text-xs leading-relaxed text-secondary">{children}</div>
     </section>
   );
 }
 
 function CompactLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2.5">
-      <span className="text-subtle">{label}</span>
-      <span className="min-w-0 break-words text-right font-medium text-white/76">{value}</span>
+    <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3">
+      <span className="text-muted">{label}</span>
+      <span className="min-w-0 break-words text-right font-medium text-default [overflow-wrap:anywhere]">{value}</span>
     </div>
   );
 }
@@ -257,6 +257,7 @@ function EmployerHeader({
   const verification = verificationMeta(verificationStatus);
   const displayEmployer = text(employerName) || "Employer identity not selected";
   const displayTitle = text(title) || "Job title not added yet";
+  const identityContext = [employerContext, platform].filter(Boolean).join(" · ");
 
   return (
     <header className={compact ? "p-4" : "p-5 sm:p-7"}>
@@ -292,9 +293,7 @@ function EmployerHeader({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 text-xs text-subtle">
-            {[employerContext, platform].filter(Boolean).join(" · ") || "Hiring context not added"}
-          </p>
+          {identityContext ? <p className="mt-0.5 text-xs text-subtle">{identityContext}</p> : null}
         </div>
       </div>
 
@@ -409,7 +408,7 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
     ...(domain.otherPreferredSkills || []),
   ]);
   const tools = unique(props.tools || []);
-  const trial = domain.trialStatus ? TRIAL_STATUS_LABELS[domain.trialStatus] : "Trial terms not added";
+  const trial = domain.trialStatus ? TRIAL_STATUS_LABELS[domain.trialStatus] : null;
   const processCount = domain.hiringProcess?.length || 0;
   const applicationCount = (props.applicationRequirements || []).length;
   const deliverableLines = deliverables.map((item) => {
@@ -427,15 +426,17 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
   });
   const workItems = unique([...deliverableLines, ...responsibilities]);
   const mustHaves = unique([...requiredSkills, ...legacyRequirements]);
+  const hasCandidateFit = Boolean(mustHaves.length || preferredSkills.length || tools.length);
+  const about = text(props.about);
 
   return (
     <section
       aria-label="Candidate listing preview"
-      className="max-h-[calc(100dvh-7.5rem)] min-w-0 overflow-y-auto rounded-3xl border border-[var(--vt-card-line,rgba(255,255,255,0.1))] bg-[var(--vt-card,rgba(255,255,255,0.06))] shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]"
+      className="chat-scroll max-h-[calc(100dvh-7.5rem)] min-w-0 overflow-y-auto rounded-[28px] border border-line bg-panel elev-2"
       data-preview-mode="rail"
     >
-      <div className="border-b border-white/[0.07] px-4 py-3">
-        <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
+      <div className="sticky top-0 z-10 border-b border-line bg-panel/95 px-5 py-3 backdrop-blur">
+        <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
           <Icon name="eye" className="h-3.5 w-3.5" />
           Candidate preview
         </p>
@@ -452,51 +453,57 @@ function RecruiterJobRailPreview(props: RecruiterJobPreviewProps) {
         platform={platform}
       />
 
-      <div>
+      <div className="pb-1">
         <CompactGroup title="Opportunity">
           <CompactLine label="Pay" value={facts.compensation} />
           <CompactLine label="Engagement" value={facts.engagement} />
           <CompactLine label="Work setup" value={facts.workSetup} />
-          <CompactLine label="Hours" value={facts.weeklyHours} />
-          <CompactLine label="Turnaround" value={facts.turnaround} />
+          {props.expectedWeeklyHoursMin || props.expectedWeeklyHoursMax ? (
+            <CompactLine label="Hours" value={facts.weeklyHours} />
+          ) : null}
+          {props.turnaround?.value ? (
+            <CompactLine label="Turnaround" value={facts.turnaround} />
+          ) : null}
         </CompactGroup>
 
-        <CompactGroup title="Work">
-          {workItems.length ? (
-            workItems.slice(0, 3).map((item) => (
+        {about ? (
+          <CompactGroup title={aboutBrandLabel(props.employerName)}>
+            <p className="line-clamp-4 whitespace-pre-line break-words [overflow-wrap:anywhere]">{about}</p>
+          </CompactGroup>
+        ) : null}
+
+        {workItems.length ? (
+          <CompactGroup title="Work">
+            {workItems.slice(0, 3).map((item) => (
               <p key={item} className="flex gap-2">
                 <span aria-hidden="true" className="mt-[0.55em] h-1 w-1 shrink-0 rounded-full bg-white/30" />
                 <span>{item}</span>
               </p>
-            ))
-          ) : (
-            <p className="text-subtle">No work details added yet.</p>
-          )}
-          {workItems.length > 3 ? <p className="text-subtle">+{workItems.length - 3} more</p> : null}
-        </CompactGroup>
+            ))}
+            {workItems.length > 3 ? <p className="text-subtle">+{workItems.length - 3} more</p> : null}
+          </CompactGroup>
+        ) : null}
 
-        <CompactGroup title="Candidate fit">
-          <CompactLine
-            label="Must have"
-            value={mustHaves.slice(0, 4).join(", ") || "Not added"}
-          />
-          <CompactLine
-            label="Nice to have"
-            value={preferredSkills.slice(0, 4).join(", ") || "Not added"}
-          />
-          <CompactLine label="Tools" value={tools.slice(0, 4).join(", ") || "Not added"} />
-        </CompactGroup>
+        {hasCandidateFit ? (
+          <CompactGroup title="Candidate fit">
+            {mustHaves.length ? (
+              <CompactLine label="Must have" value={mustHaves.slice(0, 4).join(", ")} />
+            ) : null}
+            {preferredSkills.length ? (
+              <CompactLine label="Nice to have" value={preferredSkills.slice(0, 4).join(", ")} />
+            ) : null}
+            {tools.length ? <CompactLine label="Tools" value={tools.slice(0, 4).join(", ")} /> : null}
+          </CompactGroup>
+        ) : null}
 
         <CompactGroup title="Application">
-          <CompactLine label="Trial" value={trial} />
-          <CompactLine
-            label="Process"
-            value={processCount ? `${processCount} stage${processCount === 1 ? "" : "s"}` : "Not added"}
-          />
-          <CompactLine
-            label="Materials"
-            value={applicationCount ? `${applicationCount} requested` : "None selected"}
-          />
+          {trial ? <CompactLine label="Trial" value={trial} /> : null}
+          {processCount ? (
+            <CompactLine label="Process" value={`${processCount} stage${processCount === 1 ? "" : "s"}`} />
+          ) : null}
+          {applicationCount ? (
+            <CompactLine label="Materials" value={`${applicationCount} requested`} />
+          ) : null}
           <CompactLine label="Method" value={facts.application} />
         </CompactGroup>
       </div>
@@ -558,8 +565,8 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
 
   return (
     <section aria-label="Candidate listing preview" className="min-w-0 space-y-6" data-preview-mode="full">
-      <div className="overflow-hidden rounded-3xl border border-[var(--vt-card-line,rgba(255,255,255,0.1))] bg-[var(--vt-card,rgba(255,255,255,0.06))] shadow-[var(--vt-card-shadow,0_10px_30px_-20px_rgba(0,0,0,0.9))]">
-        <div className="border-b border-white/[0.07] px-5 py-3 sm:px-7">
+      <div className="overflow-hidden rounded-[28px] border border-line bg-panel elev-2">
+        <div className="border-b border-line px-5 py-3 sm:px-7">
           <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
             <Icon name="eye" className="h-3.5 w-3.5" />
             Candidate preview
@@ -575,7 +582,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
           employerContext={employerContext}
           platform={platform}
         />
-        <dl className="grid gap-3 border-t border-white/[0.07] p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-4">
+        <dl className="grid gap-3 border-t border-line p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-4">
           <PreviewFact label="Compensation" value={facts.compensation} />
           <PreviewFact label="Engagement" value={facts.engagement} />
           <PreviewFact label="Work setup" value={facts.workSetup} />
@@ -589,7 +596,7 @@ function RecruiterJobFullPreview(props: RecruiterJobPreviewProps) {
             {text(props.about) ? (
               <p className="whitespace-pre-line">{text(props.about)}</p>
             ) : (
-              <EmptyReview>About this opportunity has not been added yet.</EmptyReview>
+              <EmptyReview>A brand introduction has not been added yet.</EmptyReview>
             )}
           </BodySection>
 

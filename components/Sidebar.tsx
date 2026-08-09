@@ -16,6 +16,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { status } = useSession();
   const isAuthed = status === "authenticated";
+  const focusedJobCreation = pathname.startsWith("/post-job");
 
   const navClass = (active: boolean) =>
     [
@@ -41,7 +42,12 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-50 flex h-screen w-20 flex-col items-center gap-6 bg-[var(--vt-canvas,#0b0b0f)] border-r border-r-[var(--vt-bar-line,transparent)] pt-16">
+    <aside
+      className={[
+        "fixed left-0 top-0 z-50 h-screen w-20 flex-col items-center gap-6 bg-[var(--vt-canvas,#0b0b0f)] border-r border-r-[var(--vt-bar-line,transparent)] pt-16",
+        focusedJobCreation ? "hidden sm:flex" : "flex",
+      ].join(" ")}
+    >
       {items
         .filter((item) => !item.auth || isAuthed)
         .map((item) => {

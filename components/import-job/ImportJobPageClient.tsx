@@ -39,6 +39,7 @@ import {
   settlementFor,
 } from "../../lib/importJob/settlement";
 import { PageHeader, PageLoading, StateCard } from "../ui";
+import { Icon } from "../Icons";
 import PastePanel from "./PastePanel";
 import { DraftAssistantCanvas } from "./assistant/DraftAssistantCanvas";
 import { DraftAssistantRobot } from "./assistant/DraftAssistantRobot";
@@ -844,12 +845,12 @@ export default function ImportJobPageClient() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-56px)] bg-[#0b0b0f] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+    <main className="surface-canvas min-h-[calc(100vh-56px)] px-4 py-6 text-ink sm:px-6 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl space-y-6">
         <PageHeader
           eyebrow="POST A JOB"
-          title="Import job details"
-          description="Paste an existing post or public URL. We’ll prepare a draft, then open it in the normal Post Job flow."
+          title="Turn an existing post into a draft"
+          description="Paste the job text or add a public URL. Bea will prepare what it can and ask only for the decisions that still need you."
         />
         <p aria-live="polite" className="sr-only">
           {announcement}
@@ -857,17 +858,16 @@ export default function ImportJobPageClient() {
 
         {phase === "entry" ? (
           <div className="mx-auto max-w-3xl space-y-4">
-            <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-xs leading-relaxed text-white/60">
-              <p className="font-semibold text-white/75">Private import</p>
-              <p className="mt-1">
-                CreatorJobs uses the source only to prepare your private draft. Nothing is
-                published. When the source is unclear, CreatorJobs leaves the decision to you.
+            <div className="flex items-start gap-2.5 px-1 text-xs leading-5 text-muted">
+              <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-secondary" />
+              <p>
+                Private by default. Nothing is published until you review the draft and post it yourself.
               </p>
-            </section>
+            </div>
             <div
               role="tablist"
               aria-label="Import source"
-              className="inline-flex rounded-2xl border border-white/10 bg-white/[0.035] p-1"
+              className="grid w-full max-w-sm grid-cols-2 rounded-2xl border border-line bg-panel p-1 elev-1"
             >
               {(
                 [
@@ -883,10 +883,10 @@ export default function ImportJobPageClient() {
                   aria-selected={entryMode === mode}
                   aria-controls={`import-panel-${mode}`}
                   tabIndex={entryMode === mode ? 0 : -1}
-                  className={`h-11 rounded-xl px-4 text-sm font-semibold transition motion-reduce:transition-none ${
+                  className={`ui-press h-11 cursor-pointer rounded-xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 motion-reduce:transition-none ${
                     entryMode === mode
-                      ? "bg-white text-black"
-                      : "text-white/60 hover:text-white"
+                      ? "surface-primary text-black elev-1"
+                      : "text-muted hover:bg-wash hover:text-ink"
                   }`}
                   onClick={() => selectEntryMode(mode)}
                   onKeyDown={(event) => {
@@ -938,16 +938,20 @@ export default function ImportJobPageClient() {
                 className={importPanelClass}
                 data-testid="url-import-panel"
               >
-                <h2 className="text-sm font-semibold text-white/85">
-                  Import a public job-listing page
-                </h2>
-                <p className="mt-2 text-xs leading-relaxed text-white/55">
-                  Enter a page anyone can open without signing in. Some sites block automated
-                  reading; you can always paste the text instead.
-                </p>
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-raised text-secondary elev-1">
+                    <Icon name="globe" className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-semibold tracking-tight text-ink">Import a public job page</h2>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      Use a page anyone can open without signing in. If a site blocks access, you can paste the text instead.
+                    </p>
+                  </div>
+                </div>
                 <label
                   htmlFor="job-import-url"
-                  className="mt-5 block text-xs font-semibold text-white/70"
+                  className="mt-6 block text-xs font-semibold text-secondary"
                 >
                   Public listing URL
                 </label>
@@ -970,7 +974,7 @@ export default function ImportJobPageClient() {
                   autoComplete="url"
                   data-testid="import-url-input"
                 />
-                <div className="mt-4 flex justify-end">
+                <div className="mt-5 flex justify-end">
                   <button
                     type="button"
                     className={importPrimaryButton}
@@ -984,9 +988,10 @@ export default function ImportJobPageClient() {
               </section>
             )}
             {error ? (
-              <p role="alert" className="text-sm text-amber-200/90">
-                {error}
-              </p>
+              <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] px-4 py-3 text-sm leading-6 text-amber-50">
+                <Icon name="alert" className="mt-1 h-4 w-4 shrink-0 text-amber-200/90" />
+                <p>{error}</p>
+              </div>
             ) : null}
             {draft?.processing_status === "processing" ? (
               <button type="button" className={importGhostButton} onClick={() => setPhase("processing")}>

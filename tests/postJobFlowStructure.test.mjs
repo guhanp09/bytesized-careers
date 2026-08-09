@@ -94,11 +94,13 @@ test("chapters group every screen exactly once as short arcs", () => {
   }
 });
 
-test("the persistent header shows only the brand and one continuous, weighted progress bar", () => {
+test("the persistent header names the current decision and shows one continuous, weighted progress bar", () => {
   const form = read("components/post-job/PostJobForm.tsx");
 
-  // Brand + a single continuous progress track with the accessible semantics preserved.
-  assert.match(form, /POST A JOB<\/h1>/);
+  // Product context + the current conversational prompt + one truthful progress track.
+  assert.match(form, />Post a job<\/p>/);
+  assert.match(form, /\{activeScreen\.question\}/);
+  assert.match(form, /\{activeScreen\.label\}/);
   assert.match(form, /role="progressbar"/);
   assert.match(form, /aria-label="Job posting progress"/);
   assert.match(form, /aria-valuemin=\{0\}/);
@@ -109,7 +111,7 @@ test("the persistent header shows only the brand and one continuous, weighted pr
   assert.match(form, /style=\{\{ width: `\$\{progressPercent\}%` \}\}/);
   assert.match(form, /motion-reduce:transition-none/);
 
-  // No step count, no chapter/part labels, no segmented markers, no subtitle in the header.
+  // No step count, no chapter/part labels, and no segmented markers in the header.
   assert.doesNotMatch(form, /Step \{currentStepNumber\} of \{totalSteps\}/);
   assert.doesNotMatch(form, /Part \{activeChapterIndex/);
   assert.doesNotMatch(form, /RECRUITER_JOB_CHAPTERS\.map\(\(chapter\) =>/);
@@ -231,7 +233,7 @@ test("functional minimalism: flat sections, tooltips, no eyebrows, no optional b
   assert.match(domainFields, /title="What will this person be expected to deliver\?"/);
 
   // Selectable choices are pointer-cursor and deselect on re-selection where empty is allowed.
-  assert.match(domainFields, /min-h-10 cursor-pointer rounded-xl/); // ChoiceButton
+  assert.match(domainFields, /min-h-11 cursor-pointer rounded-xl/); // ChoiceButton
   assert.match(domainFields, /employerContextType: state\.employerContextType === value \? "" : value/);
   assert.match(domainFields, /const show = \(section: WorkDeliverablesSection\)/);
 });
@@ -278,10 +280,10 @@ test("candidate preview is available on mobile, desktop, and the final review sc
   const form = read("components/post-job/PostJobForm.tsx");
   const preview = read("components/post-job/RecruiterJobPreview.tsx");
 
-  assert.match(page, /<details[^>]*className="[^"]*lg:hidden"/);
-  assert.match(page, /Preview candidate view/);
+  assert.match(page, /<details[^>]*className="[^"]*xl:hidden"/);
+  assert.match(page, /Candidate preview/);
   assert.match(page, /<RecruiterJobPreview \{\.\.\.previewProps\} previewMode="full"/);
-  assert.match(page, /sticky top-6 hidden[\s\S]*lg:block/);
+  assert.match(page, /sticky top-6 hidden[\s\S]*xl:block/);
   assert.match(page, /<RecruiterJobPreview \{\.\.\.previewProps\} previewMode="rail"/);
   assert.match(page, /reviewPreview=\{<RecruiterJobPreview \{\.\.\.previewProps\} previewMode="full" \/>\}/);
   assert.match(form, /aria-labelledby="job-review-preview-title"/);

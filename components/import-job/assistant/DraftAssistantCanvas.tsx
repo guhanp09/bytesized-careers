@@ -51,7 +51,7 @@ import {
  */
 
 const panel =
-  "rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-6 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]";
+  "rounded-[28px] border border-line bg-panel p-4 elev-3 sm:p-6";
 
 export type DraftAssistantCanvasProps = {
   progress: JobImportProgressInput;
@@ -157,6 +157,14 @@ export function DraftAssistantCanvas({
                 ? "scanning"
                 : "reading";
 
+  const assistantStatus = progress.failed
+    ? "Needs attention"
+    : progress.nativeDraftReady
+      ? "Ready"
+      : waitingForRecruiter
+        ? "Your input"
+        : "Preparing";
+
   const handleAnswer = async (value: string) => {
     if (!question || busy) return;
     setPendingValue(value);
@@ -203,7 +211,7 @@ export function DraftAssistantCanvas({
 
   return (
     <div
-      className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
+      className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] xl:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]"
       data-testid="draft-assistant-canvas"
     >
       {/* On a large screen this is a chat column of fixed height, not a growing
@@ -212,33 +220,46 @@ export function DraftAssistantCanvas({
           option chips fell below the fold and the recruiter had to scroll the
           page to answer — which is exactly what a chat layout exists to avoid. */}
       <section
-        className={`${panel} flex min-w-0 flex-col lg:h-[calc(100dvh-9.5rem)] lg:max-h-[880px] lg:min-h-[540px]`}
+        className={`${panel} flex min-w-0 flex-col lg:h-[calc(100dvh-8rem)] lg:max-h-[820px] lg:min-h-[560px]`}
+        aria-labelledby="draft-assistant-title"
         aria-label="Prepare this job draft with Bea"
       >
         <header className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <DraftAssistantRobot
               state={robotState}
               acknowledging={acknowledging}
-              size={28}
+              size={36}
               className="shrink-0"
             />
-            <p className="truncate text-xs text-white/40" title={sourceLabel}>
-              {sourceLabel}
-            </p>
-            {waitingForRecruiter ? (
-              <span
-                className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-white/45"
-                data-testid="draft-assistant-paused-note"
-              >
-                paused
-              </span>
-            ) : null}
+            <div className="min-w-0">
+              <p id="draft-assistant-title" className="text-sm font-semibold tracking-tight text-ink">
+                Bea
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-muted" title={sourceLabel}>
+                {sourceLabel}
+              </p>
+            </div>
+            <span
+              className={[
+                "shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold",
+                progress.failed
+                  ? "border-state-danger/20 bg-state-danger-fill text-state-danger"
+                  : progress.nativeDraftReady
+                    ? "border-state-success/20 bg-state-success-fill text-state-success"
+                    : waitingForRecruiter
+                      ? "border-state-review/20 bg-state-review-fill text-state-review"
+                      : "border-line bg-raised text-muted",
+              ].join(" ")}
+              data-testid={waitingForRecruiter ? "draft-assistant-paused-note" : undefined}
+            >
+              {assistantStatus}
+            </span>
           </div>
           {onCancel ? (
             <button
               type="button"
-              className="ui-press -mr-2 min-h-11 shrink-0 cursor-pointer rounded-xl px-3 text-xs font-semibold text-white/45 transition-colors hover:text-white/80"
+              className="ui-press -mr-2 min-h-11 shrink-0 cursor-pointer rounded-xl px-3 text-xs font-semibold text-muted transition-colors hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
               onClick={onCancel}
               data-testid="draft-assistant-cancel"
             >
@@ -254,7 +275,7 @@ export function DraftAssistantCanvas({
           {active ? `. ${active.label}` : ""}
         </p>
 
-        <div className="shrink-0">
+        <div className="shrink-0 border-b border-line pb-5">
           <ProgressBar ratio={ratio} stages={stages} />
         </div>
 
@@ -264,7 +285,7 @@ export function DraftAssistantCanvas({
         <div className="mt-5 flex min-h-0 flex-1 flex-col">
           <div
             ref={conversationRef}
-            className="chat-scroll max-h-[min(68dvh,680px)] min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1 lg:max-h-none lg:flex-1"
+            className="chat-scroll max-h-[min(66dvh,680px)] min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1.5 [scroll-padding-bottom:1rem] lg:max-h-none lg:flex-1"
             data-testid="conversation-scroll"
           >
           {conversation && answeredEntries.length > 0 ? (
@@ -325,22 +346,23 @@ export function DraftAssistantCanvas({
             onClick={onContinueManually}
             disabled={busy}
             data-testid="conversation-continue-manually"
-            className="ui-press mt-5 min-h-11 cursor-pointer text-xs font-semibold text-white/45 transition-colors hover:text-white/80"
+            className="ui-press mt-5 inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-line-mid bg-raised px-4 text-xs font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 sm:w-auto sm:self-center"
           >
             Continue manually in the full editor
+            <span aria-hidden="true">→</span>
           </button>
         ) : null}
 
         {preview ? (
           <details
-            className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 lg:hidden"
+            className="mt-5 rounded-2xl border border-line bg-raised px-4 py-2 elev-1 lg:hidden"
             data-testid="draft-assistant-preview-mobile"
           >
-            <summary className="min-h-11 cursor-pointer list-none py-2 text-[12px] font-semibold text-white/60">
-              Preview what candidates see
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 text-[12px] font-semibold text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60">
+              <span>Preview what candidates see</span>
               {provisionalCount > 0 ? (
-                <span className="ml-2 font-normal text-white/32">
-                  {provisionalCount} still to confirm
+                <span className="shrink-0 rounded-full bg-wash-strong px-2 py-1 font-normal text-muted">
+                  {provisionalCount} to confirm
                 </span>
               ) : null}
             </summary>
@@ -375,7 +397,19 @@ function ProgressBar({
   // recruiter is expected to follow, when the point is a single job quietly
   // getting further along.
   return (
-    <div className="mt-6">
+    <div className="mt-5">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-[11px] font-medium text-muted">
+          {failed
+            ? "Draft preparation paused"
+            : paused
+              ? "Ready for your answer"
+              : active?.activeLabel ?? "Draft prepared"}
+        </p>
+        <p className="text-[10px] tabular-nums text-subtle" aria-hidden="true">
+          {percent}%
+        </p>
+      </div>
       <div
         role="progressbar"
         aria-valuemin={0}
@@ -383,7 +417,7 @@ function ProgressBar({
         aria-valuenow={percent}
         aria-valuetext={`${percent}% prepared`}
         aria-label="Draft preparation"
-        className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/8"
+        className="relative h-1.5 w-full overflow-hidden rounded-full bg-elevated"
         data-testid="draft-assistant-progress"
         data-progress={percent}
         data-state={failed ? "failed" : paused ? "waiting" : active ? "active" : "complete"}
@@ -392,10 +426,10 @@ function ProgressBar({
             can never claim more than has actually happened. */}
         <span
           className={[
-            "absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out",
+          "absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out",
             "motion-reduce:transition-none",
             failed
-              ? "bg-white/25"
+              ? "bg-disabled"
               : paused
                 ? "bg-[color:var(--color-state-review,#8ec5ff)]/55"
                 : "bg-[color:var(--color-state-review,#8ec5ff)]",
@@ -492,15 +526,15 @@ function EarlyQuestionTurn({
             onClick={() => onAnswer(option.value)}
             data-testid={`early-question-option-${option.value}`}
             className={[
-              "ui-press min-h-11 cursor-pointer rounded-xl border px-4 py-3 text-left transition-colors",
+              "ui-press min-h-11 cursor-pointer rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
               "disabled:cursor-not-allowed disabled:opacity-50",
               pendingValue === option.value
-                ? "border-white/30 bg-white/12"
-                : "border-white/12 bg-white/6 hover:bg-white/10",
+                ? "border-state-review/50 bg-state-review-fill"
+                : "border-line-mid bg-raised hover:border-line-strong hover:bg-elevated",
             ].join(" ")}
           >
-            <span className="block text-sm font-semibold text-white">{option.label}</span>
-            <span className="mt-1 block text-[11px] leading-4 text-white/50">
+            <span className="block text-sm font-semibold text-ink">{option.label}</span>
+            <span className="mt-1 block text-[11px] leading-4 text-muted">
               {option.detail}
             </span>
           </button>
@@ -615,32 +649,32 @@ function PreviewRail({
   return (
     <aside
       className={[
-        "hidden rounded-3xl border bg-white/[0.025] p-5 transition-colors duration-500 lg:block",
+        "sticky top-6 hidden min-w-0 transition-[filter] duration-500 lg:block",
         "motion-reduce:transition-none",
-        pulse ? "border-[color:var(--color-state-review,#8ec5ff)]/40" : "border-white/[0.08]",
+        pulse ? "brightness-110" : "brightness-100",
       ].join(" ")}
       aria-label="Candidate preview being prepared"
       data-testid="draft-assistant-preview-rail"
       data-provisional-count={provisionalCount}
     >
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="mb-3 flex min-h-6 items-center justify-between gap-2 px-1">
         {/* The real preview prints its own heading; a second one above it was
             just the same words twice. */}
         {preview ? (
           <span />
         ) : (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/32">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">
             Candidate preview
           </p>
         )}
         {provisionalCount > 0 ? (
-          <p className="text-[10px] text-white/32" data-testid="preview-provisional-note">
+          <p className="rounded-full bg-wash px-2 py-1 text-[10px] text-muted" data-testid="preview-provisional-note">
             {provisionalCount} still to confirm
           </p>
         ) : null}
       </div>
 
-      <div className="mt-4">
+      <div>
         {preview ?? (
           <div className="space-y-4" aria-hidden="true">
             {[
@@ -658,7 +692,7 @@ function PreviewRail({
         )}
       </div>
 
-      <p className="mt-6 text-[11px] leading-4 text-white/34">
+      <p className="mt-4 px-1 text-[11px] leading-5 text-muted">
         This stays a private draft. Nothing is published until you review and post it.
       </p>
     </aside>

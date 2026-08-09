@@ -56,14 +56,21 @@ export default function PastePanel({
 
   return (
     <section className={importPanelClass}>
-      <div className="flex items-center gap-2">
-        <Icon name="file" className="h-4 w-4 text-white/60" />
-        <h2 className="text-xs font-semibold text-white/80">Your hiring post</h2>
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-raised text-secondary elev-1">
+          <Icon name="file" className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold tracking-tight text-ink">Paste a job post</h2>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            Add the existing copy as-is. Bea will turn it into a CreatorJobs draft.
+          </p>
+        </div>
         {restoredFromSession ? (
-          <span className={`${importHelperClass} ml-auto`}>Restored your last paste.</span>
+          <span className={`${importHelperClass} shrink-0 rounded-full bg-wash-strong px-2.5 py-1`}>Restored</span>
         ) : pastedNote ? (
-          <span className={`${importHelperClass} ml-auto`} data-testid="import-paste-note">
-            Pasted — ready to analyze.
+          <span className={`${importHelperClass} shrink-0 rounded-full bg-wash-strong px-2.5 py-1`} data-testid="import-paste-note">
+            Ready
           </span>
         ) : null}
       </div>
@@ -81,18 +88,19 @@ export default function PastePanel({
         }}
         placeholder={PLACEHOLDER}
         aria-label="Pasted hiring post"
+        aria-describedby="import-text-help import-text-count"
         autoComplete="off"
         spellCheck={false}
         data-testid="import-textarea"
-        className={`${importTextareaBase} mt-3 min-h-[320px] font-mono text-[13px] leading-relaxed sm:min-h-[320px]`}
+        className={`${importTextareaBase} mt-5 min-h-[240px] resize-y text-[14px] leading-6 sm:min-h-[300px]`}
       />
 
       <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
-        <p className={`${importHelperClass} max-w-md`}>
+        <p id="import-text-help" className={`${importHelperClass} max-w-md leading-5`}>
           Works with LinkedIn posts, WhatsApp messages, Instagram captions, and emails. Plain text works
           best.
         </p>
-        <p className={importHelperClass} aria-hidden="true">
+        <p id="import-text-count" className={`${importHelperClass} tabular-nums`} aria-live="polite">
           {count.toLocaleString("en-US")} / {MAX_IMPORT_CHARS.toLocaleString("en-US")}
         </p>
       </div>
@@ -104,7 +112,7 @@ export default function PastePanel({
         </p>
       ) : null}
 
-      <div className="sticky bottom-0 -mx-4 mt-4 flex items-center justify-end gap-2 border-t border-white/10 bg-[#0b0b0f]/95 px-4 py-3 backdrop-blur sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0 sm:pt-4 sm:backdrop-blur-none">
+      <div className="sticky bottom-0 -mx-4 mt-5 flex items-center justify-end gap-2 border-t border-line bg-panel/95 px-4 py-3 backdrop-blur sm:static sm:m-0 sm:border-0 sm:bg-transparent sm:p-0 sm:pt-5 sm:backdrop-blur-none">
         {text.trim() ? (
           <button type="button" className={importGhostButton} onClick={onClearRequest} data-testid="import-clear">
             Clear
@@ -117,7 +125,7 @@ export default function PastePanel({
           disabled={prepareDisabled}
           data-testid="import-prepare"
         >
-          PREPARE DRAFT
+          Prepare draft
         </button>
       </div>
     </section>

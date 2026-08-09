@@ -25,7 +25,7 @@ test("URL entry explains the public retrieval boundary and keeps a paste fallbac
   ]) {
     assert.match(page, new RegExp(phrase, "i"));
   }
-  assert.match(page, /Some sites block automated\s+reading/i);
+  assert.match(page, /If a site blocks access/i);
   assert.match(page, /type="url"/);
   assert.match(page, /aria-label="Import source"/);
   assert.match(page, /Enter a public HTTP or HTTPS URL without sign-in credentials/);

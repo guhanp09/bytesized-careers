@@ -103,7 +103,7 @@ export function shapeRows(
 }
 
 const optionButton =
-  "ui-press w-full cursor-pointer rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-left text-sm text-white transition-colors hover:border-white/20 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-50";
+  "ui-press w-full cursor-pointer rounded-xl border border-line-mid bg-raised px-4 py-3 text-left text-sm text-ink transition-colors hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-50";
 
 // ---------------------------------------------------------------------------
 // Message primitives
@@ -120,16 +120,16 @@ export function AssistantMessage({
   muted?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="hidden w-8 shrink-0 sm:block">
+    <div className="flex items-start gap-2.5 sm:gap-3">
+      <div className="w-[30px] shrink-0 sm:w-8">
         {showAvatar ? (
-          <DraftAssistantRobot state="asking" size={32} className="mt-0.5" />
+          <DraftAssistantRobot state="asking" size={30} className="mt-0.5" />
         ) : null}
       </div>
       <div
         className={[
-          "min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 break-words [overflow-wrap:anywhere]",
-          muted ? "bg-white/[0.035] text-white/55" : "bg-white/[0.06] text-white/85",
+          "min-w-0 max-w-[88%] overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 break-words [overflow-wrap:anywhere]",
+          muted ? "bg-wash text-muted" : "bg-raised text-default elev-1",
         ].join(" ")}
       >
         {children}
@@ -156,22 +156,22 @@ export function TypingBubble({
 }) {
   return (
     <div
-      className="ui-bubble-in flex items-start gap-3"
+      className="ui-bubble-in flex items-start gap-2.5 sm:gap-3"
       data-testid={testId}
       role="status"
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className="hidden w-8 shrink-0 sm:block">
+      <div className="w-[30px] shrink-0 sm:w-8">
         {showAvatar ? (
-          <DraftAssistantRobot state="thinking" size={32} className="mt-0.5" />
+          <DraftAssistantRobot state="thinking" size={30} className="mt-0.5" />
         ) : null}
       </div>
-      <div className="min-w-0 rounded-2xl rounded-tl-md bg-white/[0.06] px-4 py-3.5">
+      <div className="min-w-0 rounded-2xl rounded-tl-md bg-raised px-4 py-3.5 elev-1">
         <span className="flex items-center gap-1.5" aria-hidden="true">
-          <span className="bea-dot block h-1.5 w-1.5 rounded-full bg-white/70" />
-          <span className="bea-dot bea-dot--2 block h-1.5 w-1.5 rounded-full bg-white/70" />
-          <span className="bea-dot bea-dot--3 block h-1.5 w-1.5 rounded-full bg-white/70" />
+          <span className="bea-dot block h-1.5 w-1.5 rounded-full bg-secondary" />
+          <span className="bea-dot bea-dot--2 block h-1.5 w-1.5 rounded-full bg-secondary" />
+          <span className="bea-dot bea-dot--3 block h-1.5 w-1.5 rounded-full bg-secondary" />
         </span>
         {label ? <span className="sr-only">{label}</span> : null}
       </div>
@@ -182,9 +182,9 @@ export function TypingBubble({
 /** The recruiter's own reply, mirrored to the opposite side. */
 export function RecruiterReply({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex justify-end pl-6 sm:pl-11">
+    <div className="flex justify-end pl-9 sm:pl-11">
       <div
-        className="max-w-[85%] overflow-hidden rounded-2xl rounded-br-md bg-[color:var(--color-state-review,#8ec5ff)]/15 px-4 py-2.5 text-sm break-words [overflow-wrap:anywhere] text-white/90"
+        className="max-w-[82%] overflow-hidden rounded-2xl rounded-br-md border border-state-review/10 bg-state-review-fill px-4 py-2.5 text-sm break-words [overflow-wrap:anywhere] text-ink"
         data-testid="conversation-reply"
       >
         {children}
@@ -361,12 +361,12 @@ export function ConversationTurn({
     >
       <AssistantMessage>
         <p
-          className="text-[15px] font-semibold leading-6 text-white"
+          className="text-[15px] font-semibold leading-6 text-ink"
           data-field={question.field_path}
         >
           {heading}
         </p>
-        <p className="mt-1.5 text-[13px] leading-5 text-white/55">{why}</p>
+        <p className="mt-1.5 text-[13px] leading-5 text-muted">{why}</p>
       </AssistantMessage>
 
       {submittedReply ? (
@@ -377,10 +377,10 @@ export function ConversationTurn({
           ) : null}
         </>
       ) : (
-      <div className="pl-0 sm:pl-11">
+      <div className="pl-9 sm:pl-11">
         {alternatives.length ? (
           <div className="space-y-2" data-testid="conversation-alternatives">
-            <p className="mb-1 text-[11px] text-white/40">
+            <p className="mb-1 text-[11px] text-muted">
               Your post mentions both — which should candidates see?
             </p>
             {alternatives.map((alternative, index) => {
@@ -402,13 +402,13 @@ export function ConversationTurn({
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="font-medium">{value}</span>
                     {recommended ? (
-                      <span className="shrink-0 text-[11px] text-[color:var(--color-state-review,#8ec5ff)]">
-                        matches your title
+                      <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                        Best match
                       </span>
                     ) : null}
                   </span>
                   {alternative.evidence[0] ? (
-                    <span className="mt-1 block text-[11px] italic leading-4 text-white/40">
+                    <span className="mt-1 block text-[11px] italic leading-4 text-muted">
                       &ldquo;{alternative.evidence[0]}&rdquo;
                     </span>
                   ) : null}
@@ -452,8 +452,8 @@ export function ConversationTurn({
                   <span className="font-medium">
                     Use {recommendedMulti.map(labelFor).join(", ")}
                   </span>
-                  <span className="shrink-0 text-[11px] text-[color:var(--color-state-review,#8ec5ff)]">
-                    matches your post
+                  <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                    This matches your post
                   </span>
                 </span>
               </button>
@@ -471,12 +471,12 @@ export function ConversationTurn({
                     data-testid={`conversation-chip-${option.value}`}
                     onClick={() => toggle(option.value)}
                     className={[
-                      "ui-press cursor-pointer rounded-full border px-3.5 py-2 text-[13px] transition-all duration-150",
+                      "ui-press min-h-10 cursor-pointer rounded-full border px-3.5 py-2 text-[13px] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
                       on
                         ? "border-[color:var(--color-state-review,#8ec5ff)]/50 bg-[color:var(--color-state-review,#8ec5ff)]/18 text-white"
                         : recommended
                           ? "border-white/25 bg-white/[0.09] text-white"
-                        : "border-white/12 bg-white/[0.04] text-white/70 hover:border-white/25 hover:text-white",
+                        : "border-line-mid bg-raised text-secondary hover:border-line-strong hover:bg-elevated hover:text-ink",
                     ].join(" ")}
                   >
                     {on ? "✓ " : ""}
@@ -498,7 +498,7 @@ export function ConversationTurn({
                   picked.map(labelFor).join(", ")
                 );
               }}
-              className="ui-press mt-3 min-h-11 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
+              className="ui-press surface-primary mt-3 min-h-11 cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none disabled:text-disabled"
             >
               {picked.length ? `Use ${picked.length} selected` : "Pick at least one"}
             </button>
@@ -521,13 +521,13 @@ export function ConversationTurn({
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="font-medium">{choice.label}</span>
                   {"recommended" in choice && choice.recommended ? (
-                    <span className="shrink-0 text-[11px] text-[color:var(--color-state-review,#8ec5ff)]">
-                      matches your post
+                    <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                      Suggested
                     </span>
                   ) : null}
                 </span>
                 {choice.detail ? (
-                  <span className="mt-0.5 block text-[11px] leading-4 text-white/45">
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted">
                     {choice.detail}
                   </span>
                 ) : null}
@@ -544,20 +544,20 @@ export function ConversationTurn({
               disabled={busy}
               aria-label={heading}
               data-testid="conversation-date-answer"
-              className="h-11 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.05] px-4 text-sm text-white outline-none transition-colors focus:border-white/25 [color-scheme:dark]"
+              className="h-12 min-w-0 flex-1 rounded-2xl border border-line-mid bg-raised px-4 text-sm text-ink outline-none transition-colors focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60 [color-scheme:dark]"
             />
             <button
               type="button"
               onClick={submit}
               disabled={busy || !canSend}
               data-testid="conversation-submit"
-              className="ui-press h-11 shrink-0 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
+              className="ui-press surface-primary h-11 shrink-0 cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none disabled:text-disabled"
             >
               Send
             </button>
           </div>
         ) : (
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 rounded-2xl border border-line-mid bg-raised p-1.5 transition-colors focus-within:border-line-strong focus-within:bg-elevated focus-within:ring-2 focus-within:ring-focus/35">
             <textarea
               value={text}
               maxLength={maxLength}
@@ -582,7 +582,7 @@ export function ConversationTurn({
               aria-invalid={
                 trimmed.length >= minLength && !meaningful ? true : undefined
               }
-              className="min-h-[52px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm leading-5 text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25"
+              className="min-h-[48px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-5 text-ink outline-none placeholder:text-subtle"
               placeholder={textExampleFor(question.field_path)}
             />
             <button
@@ -590,7 +590,7 @@ export function ConversationTurn({
               onClick={submit}
               disabled={busy || !canSend}
               data-testid="conversation-submit"
-              className="ui-press mb-0.5 h-11 shrink-0 cursor-pointer rounded-xl bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/12 disabled:text-white/35"
+              className="ui-press surface-primary h-11 shrink-0 cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-overlay disabled:bg-none disabled:text-disabled disabled:shadow-none"
             >
               Send
             </button>
@@ -599,7 +599,7 @@ export function ConversationTurn({
 
         {trimmed.length >= minLength && !meaningful ? (
           <p
-            className="mt-2 text-[12px] leading-4 text-white/45"
+            className="mt-2 text-[12px] leading-4 text-muted"
             data-testid="conversation-answer-guidance"
           >
             Add a short, specific phrase that candidates can understand.
@@ -620,13 +620,13 @@ export function ConversationTurn({
         ) : null}
 
         {optional ? (
-          <div className="mt-2 flex flex-wrap gap-4">
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={busy}
               onClick={() => beginAction("Not now", onSkip)}
               data-testid="conversation-skip"
-              className="cursor-pointer text-[12px] text-white/40 transition-colors hover:text-white/75"
+              className="inline-flex min-h-11 cursor-pointer items-center rounded-xl px-2 text-[12px] font-medium text-muted transition-colors hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
             >
               Not now
             </button>
@@ -635,7 +635,7 @@ export function ConversationTurn({
               disabled={busy}
               onClick={() => beginAction("Skip suggestions", onSkipRemaining)}
               data-testid="conversation-skip-remaining"
-              className="cursor-pointer text-[12px] text-white/40 transition-colors hover:text-white/75"
+              className="inline-flex min-h-11 cursor-pointer items-center rounded-xl px-2 text-[12px] font-medium text-muted transition-colors hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
             >
               Skip suggestions
             </button>
@@ -709,11 +709,11 @@ export function ConversationComplete({
           onClick={onOpenDraft}
           disabled={busy}
           data-testid="conversation-open-draft"
-          className="ui-press min-h-11 cursor-pointer rounded-xl bg-white px-5 text-sm font-semibold text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15"
+          className="ui-press surface-primary min-h-11 cursor-pointer rounded-xl border border-white px-5 text-sm font-semibold text-black elev-2 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none"
         >
           Open job draft
         </button>
-        <p className="mt-2 text-[11px] text-white/35">
+        <p className="mt-2 text-[11px] text-muted">
           It stays private until you publish it yourself.
         </p>
       </div>

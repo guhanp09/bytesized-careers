@@ -66,14 +66,14 @@ export type JobDomainBaseProps = {
 export type JobDomainWorkMode = "" | "Remote" | "Hybrid" | "On-site";
 
 const inputClass =
-  "h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none transition placeholder:text-subtle focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-11 w-full rounded-xl border border-line-mid bg-raised px-3 text-sm text-ink outline-none transition placeholder:text-subtle focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35 disabled:cursor-not-allowed disabled:opacity-50";
 const textareaClass =
-  "min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-sm leading-6 text-white outline-none transition placeholder:text-subtle focus:border-white/30 focus:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50";
+  "min-h-24 w-full resize-y rounded-xl border border-line-mid bg-raised px-3 py-2.5 text-sm leading-6 text-ink outline-none transition placeholder:text-subtle focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35 disabled:cursor-not-allowed disabled:opacity-50";
 const selectClass = `${inputClass} cursor-pointer appearance-none pr-9`;
 const secondaryButtonClass =
-  "inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-white/12 bg-white/[0.05] px-3 text-sm font-semibold text-white/75 transition hover:border-white/25 hover:bg-white/[0.09] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-40";
+  "ui-press inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised px-3 text-sm font-semibold text-secondary transition hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-40";
 const iconButtonClass =
-  "inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-base font-semibold text-white/55 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-30";
+  "ui-press inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised text-base font-semibold text-muted transition hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-30";
 
 const EMPLOYER_CONTEXT_LABELS: Record<EmployerContextType, string> = {
   creator: "Creator / channel",
@@ -306,12 +306,12 @@ function ChoiceButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        "min-h-10 cursor-pointer rounded-xl border px-3 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
+        "ui-press min-h-11 cursor-pointer rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-45",
         active && tone === "white"
-          ? "border-white bg-white text-black focus-visible:ring-white/35"
+          ? "surface-primary border-white text-black elev-1 focus-visible:ring-focus"
           : active
             ? "border-amber-200/45 bg-amber-200/[0.13] text-amber-100 focus-visible:ring-amber-200/30"
-            : "border-white/12 bg-white/[0.035] text-white/68 hover:border-white/25 hover:bg-white/[0.07] hover:text-white focus-visible:ring-white/25",
+            : "border-line-mid bg-raised text-secondary hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:ring-focus/60",
       ].join(" ")}
     >
       {children}
@@ -385,7 +385,7 @@ function Notice({ tone = "neutral", children }: { tone?: "neutral" | "amber"; ch
         "rounded-xl border px-3 py-2.5 text-xs leading-5",
         tone === "amber"
           ? "border-amber-200/20 bg-amber-200/[0.07] text-amber-100/85"
-          : "border-white/10 bg-black/10 text-muted",
+          : "border-line bg-wash text-muted",
       ].join(" ")}
     >
       {children}

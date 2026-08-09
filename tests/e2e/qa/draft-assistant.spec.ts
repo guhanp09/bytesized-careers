@@ -80,6 +80,30 @@ async function answerCurrentConversationTurn(page: Page) {
 }
 
 test.describe("AI entry", () => {
+  for (const viewport of [
+    { name: "mobile-390", width: 390, height: 844 },
+    { name: "desktop-1280", width: 1280, height: 900 },
+  ]) {
+    test(`the private import entry is usable at ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await loginController(page);
+      await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
+
+      await expect(page.getByRole("heading", { name: "Turn an existing post into a draft" })).toBeVisible();
+      await expect(page.locator("#import-panel-text")).toBeVisible();
+      await expect(page.getByTestId("import-prepare")).toBeVisible();
+      await page.screenshot({
+        path: `${SHOTS}/import-entry-${viewport.name}.png`,
+        fullPage: true,
+      });
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      );
+      expect(overflow, `horizontal overflow on import entry at ${viewport.name}`).toBe(false);
+    });
+  }
+
   test("Prepare with AI opens the assistant canvas, not the old dashboard", async ({
     page,
   }) => {
@@ -103,7 +127,7 @@ test.describe("AI entry", () => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto("/post-job/import", { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("import-panel-text")).toHaveCount(0);
+    await expect(page.locator("#import-panel-text")).toHaveCount(0);
     await context.close();
   });
 });
@@ -381,6 +405,10 @@ test.describe("completion and handoff", () => {
       await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
       await expect(page.getByRole("heading", { name: "THE ROLE" })).toBeVisible();
       await expect(page.getByLabel("Job title")).toHaveValue("Video Editor");
+      await page.screenshot({
+        path: `${SHOTS}/shine-handoff-${viewport.name}.png`,
+        fullPage: true,
+      });
 
       const nativeDraftId = new URL(page.url()).searchParams.get("draftId");
       expect(nativeDraftId).toBeTruthy();
@@ -607,6 +635,10 @@ test.describe("checkpointed conversation", () => {
     expect(typingBox!.y + typingBox!.height).toBeLessThanOrEqual(
       scrollBox!.y + scrollBox!.height + 1
     );
+    await page.screenshot({
+      path: `${SHOTS}/conversation-reply-and-typing.png`,
+      fullPage: true,
+    });
 
     releaseRequest();
     await expect(typing).toHaveCount(0, { timeout: 20_000 });

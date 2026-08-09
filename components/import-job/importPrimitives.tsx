@@ -7,13 +7,13 @@
 // import flow keeps pixel parity.
 
 export const importPanelClass =
-  "rounded-3xl bg-white/[0.06] border border-white/10 p-5 sm:p-6 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.9)]";
+  "rounded-[28px] border border-line bg-panel p-4 elev-2 sm:p-6";
 
 export const importTextareaBase =
-  "w-full min-h-[110px] rounded-xl bg-white/6 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "w-full min-h-[110px] rounded-2xl border border-line-mid bg-raised px-4 py-3 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 export const importInputBase =
-  "w-full h-11 rounded-xl bg-white/6 border border-white/10 px-3 text-sm text-white placeholder:text-subtle outline-none focus:border-white/25 focus:bg-white/7 transition-colors";
+  "h-12 w-full rounded-xl border border-line-mid bg-raised px-3.5 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-line-strong focus:bg-elevated focus-visible:ring-2 focus-visible:ring-focus/35";
 
 export const importPill = (active: boolean) =>
   [
@@ -31,10 +31,10 @@ export const importSuggestedPill =
   "h-10 cursor-pointer px-3 rounded-xl text-sm font-semibold border border-dashed border-white/30 bg-transparent text-white/80 hover:bg-white/8 transition-all duration-150";
 
 export const importPrimaryButton =
-  "ui-press h-11 cursor-pointer rounded-xl bg-white px-5 text-sm font-semibold tracking-wide text-black transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-subtle";
+  "ui-press surface-primary elev-2 inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-white px-5 text-sm font-semibold text-black transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none disabled:text-disabled disabled:shadow-none";
 
 export const importGhostButton =
-  "ui-press h-11 cursor-pointer rounded-xl border border-white/12 bg-white/6 px-4 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40";
+  "ui-press inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised px-4 text-sm font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-40";
 
 export const importHelperClass = "text-[11px] text-muted";
 

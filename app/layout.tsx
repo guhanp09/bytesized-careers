@@ -47,6 +47,7 @@ import QaPersonaDrawer from "../components/qa/QaPersonaDrawer";
 import { isQaPersonaUiAllowed } from "../lib/qaPersonas";
 import VisualThemeToggle from "../components/theme/VisualThemeToggle";
 import { VISUAL_THEME_BOOTSTRAP_SCRIPT } from "../lib/visualTheme";
+import AppContent from "../components/AppContent";
 
 export default function RootLayout({
   children,
@@ -69,8 +70,8 @@ export default function RootLayout({
           <Header />
           <SmartTypingProvider />
 
-          {/* Content sits "under" the fixed header, and to the right of the fixed sidebar */}
-          <div className="pl-20 pt-14">{children}</div>
+          {/* Job creation uses the full phone viewport; the desktop rail returns at sm. */}
+          <AppContent>{children}</AppContent>
           {devToolsEnabled ? <DevToolsPanel /> : null}
           {qaPersonaEnabled ? <QaPersonaDrawer /> : null}
           <VisualThemeToggle />

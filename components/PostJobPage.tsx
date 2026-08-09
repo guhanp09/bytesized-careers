@@ -1703,7 +1703,10 @@ export default function PostJobPage() {
         setBudgetUnitCustom(nextBudgetUnitCustom);
         setBudgetIntent(nextBudgetIntent);
         setWorkMode(nextWorkMode);
-        setCity(nextWorkMode === "Remote" ? "" : nextLocation);
+        // `location` can still be material for remote work (for example,
+        // "Remote, India"). Keep it in the frontend model instead of throwing
+        // it away merely because the work mode is remote.
+        setCity(nextLocation);
         setExperienceLevel(nextExperience);
         setStartWithin((draft.start_timeframe as StartTimeframe) || "");
         setEngagementType(
@@ -1943,7 +1946,7 @@ export default function PostJobPage() {
         );
         setBudgetNote(typeof values.budget_note === "string" ? values.budget_note : "");
         setWorkMode(workMode);
-        setCity(workMode === "Remote" ? "" : typeof values.location === "string" ? values.location : "");
+        setCity(typeof values.location === "string" ? values.location : "");
         setPlatforms(platforms);
         setPlatform(platforms[0] ?? "");
         setExperienceLevel(
@@ -2978,7 +2981,11 @@ export default function PostJobPage() {
       title: title.trim() || (status === "published" ? "" : "Untitled job draft"),
       ...buildCanonicalJobContractPayload(effectiveCompensationMode, { includeCompensation }),
       location:
-        workMode === "Remote" ? "Remote" : workMode && city.trim() ? city.trim() : null,
+        workMode === "Remote"
+          ? city.trim() || "Remote"
+          : workMode && city.trim()
+            ? city.trim()
+            : null,
       experience_level: experienceText || null,
       platforms: selectedJobPlatforms,
       start_timeframe: startWithin || null,
@@ -3385,7 +3392,7 @@ export default function PostJobPage() {
 
     let nextLocation = previewLocationText;
     if (workMode === "Remote") {
-      nextLocation = "Remote";
+      nextLocation = city.trim() || "Remote";
     } else if (isCityRequired) {
       nextLocation = workMode;
       if (matchedCity) nextLocation = `${workMode} - ${matchedCity}`;
@@ -3592,7 +3599,7 @@ export default function PostJobPage() {
   /* Import questions are resolved in DraftAssistantCanvas before handoff.
    * An imported native draft uses the standard Post Job editor from here. */
   const hiringIdentityPanel = (
-    <section className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
+    <section className="rounded-2xl border border-line bg-panel px-4 py-3 elev-1">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <HiringIdentityAvatar
@@ -3629,7 +3636,7 @@ export default function PostJobPage() {
           <button
             type="button"
             onClick={() => setHiringIdentityModalOpen(true)}
-            className="h-9 w-fit rounded-xl border border-white/[0.1] px-3 text-xs font-semibold text-white/74 transition-colors hover:bg-white/[0.07] hover:text-white cursor-pointer"
+            className="ui-press h-10 w-fit cursor-pointer rounded-xl border border-line-mid bg-raised px-3 text-xs font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
           >
             Change
           </button>
@@ -3665,7 +3672,7 @@ export default function PostJobPage() {
     budgetNote,
     engagementType,
     workMode,
-    location: workMode === "Remote" ? "Remote" : city,
+    location: city.trim() || (workMode === "Remote" ? "Remote" : ""),
     expectedWeeklyHoursMin,
     expectedWeeklyHoursMax,
     turnaround,
@@ -3685,7 +3692,7 @@ export default function PostJobPage() {
   } as const;
 
   return (
-    <main className="min-h-screen text-white bg-[#0b0b0f]">
+    <main className="surface-canvas min-h-screen text-ink">
       <HiringIdentityModal
         open={hiringIdentityModalOpen}
         onClose={() => setHiringIdentityModalOpen(false)}
@@ -3698,16 +3705,20 @@ export default function PostJobPage() {
         onCheckRepresentedIdentityVerification={checkRepresentedHiringIdentityVerification}
         sessionDisplayName={session?.user?.name || session?.user?.username || null}
       />
-      <div className="px-4 sm:px-6 py-8">
-        <div className="mx-auto max-w-6xl grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] items-start">
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <div className="mx-auto grid max-w-7xl items-start gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:gap-6">
           <div className="min-w-0 space-y-6">
             {hiringIdentityPanel}
 
-            <details ref={mobilePreviewRef} className="rounded-2xl border border-white/10 bg-white/[0.04] lg:hidden">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-white/86 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30">
-                Preview candidate view
+            <details ref={mobilePreviewRef} className="rounded-2xl border border-line bg-panel elev-1 xl:hidden">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/60">
+                <span className="inline-flex items-center gap-2">
+                  <Icon name="eye" className="h-4 w-4 text-muted" />
+                  Candidate preview
+                </span>
+                <span aria-hidden="true" className="text-muted">⌄</span>
               </summary>
-              <div className="max-h-[70dvh] overflow-y-auto overscroll-contain border-t border-white/10 p-3">
+              <div className="chat-scroll max-h-[72dvh] overflow-y-auto overscroll-contain border-t border-line p-3 sm:p-4">
                 <RecruiterJobPreview {...previewProps} previewMode="full" />
               </div>
             </details>
@@ -3982,7 +3993,7 @@ export default function PostJobPage() {
             />
           </div>
 
-          <div ref={desktopPreviewRef} className="sticky top-6 hidden space-y-6 lg:block">
+          <div ref={desktopPreviewRef} className="sticky top-6 hidden space-y-5 xl:block">
             <RecruiterJobPreview {...previewProps} previewMode="rail" />
             <PostJobSafety />
             <RecommendedChecklistPopup
