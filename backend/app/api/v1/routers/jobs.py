@@ -1,18 +1,31 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_user,
+    get_db,
     get_job_service,
     require_job_owner,
 )
+from app.core.brand_about_eligibility import should_enrich_brand_about
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
-from app.models import Job, User
+from app.integrations.openai.brand_summary_adapter import (
+    BrandSummaryConfig,
+    OpenAIBrandSummarizer,
+)
+from app.models import HiringIdentity, Job, User
 from app.schemas import JobCreate, JobListResponse, JobRead, JobStatus, JobUpdate
+from app.services.brand_enrichment_service import (
+    BrandAboutRunner,
+    BrandEnrichmentService,
+)
 from app.services.job_service import (
     JobAuthRequiredError,
     JobForbiddenError,
@@ -22,6 +35,27 @@ from app.services.job_service import (
     JobVerificationRequiredError,
 )
 from app.services.public_listing_serializer import public_job_read
+
+logger = logging.getLogger(__name__)
+
+
+def build_brand_enrichment_service() -> BrandEnrichmentService:
+    """The engine, configured from settings. Separate so tests can replace it."""
+
+    from app.core.config import settings
+
+    return BrandEnrichmentService(
+        OpenAIBrandSummarizer(
+            BrandSummaryConfig(
+                api_key=(
+                    settings.openai_api_key.get_secret_value()
+                    if settings.openai_api_key is not None
+                    else None
+                ),
+                model=settings.openai_model,
+            )
+        )
+    )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -185,3 +219,79 @@ async def delete_job(
 ) -> JobRead:
     job = await service.delete_job_record(owned_job)
     return JobRead.model_validate(job)
+
+class BrandAboutEnrichResponse(BaseModel):
+    """What the trigger was told. Diagnostics, never candidate copy."""
+
+    outcome: str
+    reason: str = ""
+
+
+@router.post(
+    "/{job_id}/brand-about/enrich",
+    response_model=BrandAboutEnrichResponse,
+    summary="Request bounded brand About enrichment for an owned job",
+)
+async def enrich_brand_about(
+    background: BackgroundTasks,
+    owned_job: Job = Depends(require_job_owner),
+    session: AsyncSession = Depends(get_db),
+) -> BrandAboutEnrichResponse:
+    """Claim an eligible job for enrichment and do the work after responding.
+
+    The response is deliberately immediate. Enrichment is a website fetch and a
+    model call, and the recruiter's save must not wait for either — so this
+    answers as soon as it knows whether there is work to do, and the work itself
+    runs in a background task once the response has been sent.
+
+    That also settles the cancellation problem the import pipeline already
+    taught us about: because the work does not depend on the client holding the
+    connection, navigating away the instant a draft is saved cannot strand it.
+    If the process itself dies mid-attempt, the accepted 180-second stale rule
+    makes the row eligible again rather than leaving it running forever.
+
+    Nothing is accepted from the client. The brand, its official URL and the
+    eligibility decision all come from persisted CreatorJobs state, so a caller
+    cannot ask for a different company to be described.
+    """
+
+    decision = should_enrich_brand_about(
+        about=owned_job.about_channel,
+        hiring_identity_id=owned_job.hiring_identity_id,
+        status=owned_job.brand_about_status,
+        attempted_identity_id=owned_job.brand_about_identity_id,
+        attempted_at=owned_job.brand_about_attempted_at,
+    )
+    if not decision.eligible:
+        return BrandAboutEnrichResponse(outcome="not_eligible", reason=decision.reason)
+
+    identity = await session.get(HiringIdentity, owned_job.hiring_identity_id)
+    if identity is None:
+        return BrandAboutEnrichResponse(
+            outcome="not_eligible", reason="the hiring identity is no longer available"
+        )
+
+    background.add_task(_run_brand_about_enrichment, owned_job.id, identity.id)
+    return BrandAboutEnrichResponse(outcome="claimed", reason=decision.reason)
+
+
+async def _run_brand_about_enrichment(job_id: UUID, identity_id: UUID) -> None:
+    """Run one enrichment attempt on its own session, after the response.
+
+    Its own session because the request's is closed by now. Failures are logged
+    and dropped: enrichment is optional, and there is no surface on which a
+    recruiter should learn that a brand's website was slow.
+    """
+
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        try:
+            job = await session.get(Job, job_id)
+            identity = await session.get(HiringIdentity, identity_id)
+            if job is None or identity is None:
+                return
+            runner = BrandAboutRunner(session, build_brand_enrichment_service())
+            await runner.run(job, identity)
+        except Exception:  # pragma: no cover - optional enhancement
+            logger.exception("brand_about_enrichment_failed", extra={"job_id": str(job_id)})
