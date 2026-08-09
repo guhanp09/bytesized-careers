@@ -196,9 +196,10 @@ def _apply_pay(
         found["compensation_mode"] = "fixed"
     elif stated.qualifier == "approximate":
         # "around ₹20,000" is a figure its author declined to stand behind
-        # exactly. A range with both ends equal keeps the number without
-        # claiming the precision.
-        found["compensation_mode"] = "range"
+        # exactly. It has its own native mode now, so it is no longer
+        # indistinguishable from an equal-ended range or from an exact rate.
+        found["compensation_mode"] = "approximate"
+        found.pop("budget_max", None)
 
     evidence["compensation"] = excerpt
 

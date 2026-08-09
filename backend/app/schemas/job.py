@@ -9,7 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 
 
 JobStatus = Literal["draft", "published", "paused", "closed", "archived"]
-CompensationMode = Literal["fixed", "range", "negotiable"]
+#: ``approximate`` is additive and needs no migration: the column is a plain
+#: string, so existing rows keep whatever they already had. It exists because
+#: "About ₹20,000 a month" is a fourth distinct fact — not exactly 20,000, not a
+#: range of 20,000-20,000, and not negotiable — and collapsing it into any of
+#: those claims a precision the employer declined to give.
+CompensationMode = Literal["fixed", "range", "negotiable", "approximate"]
 BudgetUnit = Literal[
     "per hour",
     "per day",

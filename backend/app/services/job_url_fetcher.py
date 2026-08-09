@@ -182,9 +182,25 @@ def _safe_json_ld_job(value: object) -> dict[str, object] | None:
 
 
 class _VisibleJobHtmlParser(HTMLParser):
-    _IGNORED_TAGS = frozenset(
-        {"script", "style", "noscript", "svg", "nav", "footer", "header", "form"}
-    )
+    #: Dropped wherever they appear. Genuinely not the employer's copy about
+    #: this job at any nesting depth.
+    _IGNORED_TAGS = frozenset({"script", "style", "noscript", "svg", "nav", "form"})
+
+    #: Dropped only as *page* chrome.
+    #:
+    #: In HTML5 these are sectioning content, not page furniture. Job boards put
+    #: the title, the employer, the location and — the case that cost a live
+    #: import — the pay chip inside the posting's own ``<header>``. Dropping it
+    #: wherever it appeared meant "Up to ₹20,000 a month" never reached the
+    #: provider at all, so no amount of downstream comprehension could recover
+    #: it: the fact was gone before anything was asked to read it.
+    #:
+    #: Inside a content root the element belongs to the job. Outside one it is
+    #: the site's masthead, which is what this rule was written for.
+    _CHROME_TAGS = frozenset({"header", "footer"})
+
+    #: Elements whose contents are the page's own subject matter.
+    _CONTENT_ROOTS = frozenset({"main", "article", "section"})
     _BLOCK_TAGS = frozenset(
         {
             "address",
@@ -244,6 +260,9 @@ class _VisibleJobHtmlParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._ignored_depth = 0
+        #: How deep we are inside main/article/section. A header nested in one
+        #: of those is the job's own header, not the site's.
+        self._content_depth = 0
         self._title_depth = 0
         self._json_ld_depth = 0
         self._json_ld_chunks: list[str] = []
@@ -287,9 +306,12 @@ class _VisibleJobHtmlParser(HTMLParser):
             and re.search(r"\b(cookie|consent|navigation|newsletter|modal|popup)\b", marker)
         )
         hidden = values.get("aria-hidden", "").casefold() == "true" or "hidden" in values
-        if self._ignored_depth or tag in self._IGNORED_TAGS or clutter or hidden:
+        chrome = tag in self._CHROME_TAGS and not self._content_depth
+        if self._ignored_depth or tag in self._IGNORED_TAGS or clutter or hidden or chrome:
             self._ignored_depth += 1
             return
+        if tag in self._CONTENT_ROOTS:
+            self._content_depth += 1
         if tag == "title":
             self._title_depth += 1
         if tag in self._BLOCK_TAGS:
@@ -316,6 +338,8 @@ class _VisibleJobHtmlParser(HTMLParser):
         if self._ignored_depth:
             self._ignored_depth -= 1
             return
+        if tag in self._CONTENT_ROOTS and self._content_depth:
+            self._content_depth -= 1
         if tag == "title" and self._title_depth:
             self._title_depth -= 1
         if tag in self._BLOCK_TAGS:

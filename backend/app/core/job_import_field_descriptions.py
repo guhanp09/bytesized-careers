@@ -62,7 +62,7 @@ FIELD_DESCRIPTIONS: Final[dict[str, str]] = {
     "turnaround_unit": "The unit for the turnaround time.",
     "turnaround_basis": "What the turnaround is measured against.",
     # --- Money ------------------------------------------------------------
-    "compensation_mode": "Whether pay is a fixed amount, a range, or negotiable.",
+    "compensation_mode": "Whether pay is a fixed amount, a range, approximate, or negotiable.",
     "budget_amount": "The pay figure, or the lower bound of a range.",
     "budget_max": "The upper bound of a pay range.",
     "budget_currency": "The currency the pay is quoted in.",

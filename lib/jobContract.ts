@@ -120,7 +120,7 @@ export const HIRING_PROCESS_STAGES = [
 ] as const;
 
 export type CompensationUnit = (typeof COMPENSATION_UNITS)[number];
-export type CompensationMode = "fixed" | "range" | "negotiable";
+export type CompensationMode = "fixed" | "range" | "negotiable" | "approximate";
 export type EngagementType = (typeof ENGAGEMENT_TYPES)[number];
 export type TurnaroundUnit = (typeof TURNAROUND_UNITS)[number];
 export type TurnaroundBasis = (typeof TURNAROUND_BASES)[number];

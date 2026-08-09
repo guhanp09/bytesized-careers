@@ -509,10 +509,20 @@ class JobService:
         maximum = data.get("budget_max")
         currency = str(data.get("budget_currency") or "").strip()
         note = str(data.get("budget_note") or "").strip()
-        if mode not in {"fixed", "range", "negotiable"}:
-            self._add_error(errors, "compensation_mode", "Select fixed, range, or negotiable compensation.")
+        if mode not in {"fixed", "range", "negotiable", "approximate"}:
+            self._add_error(
+                errors, "compensation_mode", "Select how this role's pay is set."
+            )
         if unit not in COMPENSATION_UNITS:
             self._add_error(errors, "budget_unit", "Select a supported compensation unit.")
+        if mode == "approximate":
+            # One figure the employer declined to stand behind exactly. Same
+            # shape as fixed — a single amount — and deliberately a different
+            # mode, so nothing downstream can report it as an exact rate.
+            if amount is None or Decimal(amount) <= 0:
+                self._add_error(errors, "budget_amount", "Enter a positive compensation amount.")
+            if maximum is not None:
+                self._add_error(errors, "budget_max", "Approximate compensation cannot include a maximum.")
         if mode == "fixed":
             if amount is None or Decimal(amount) <= 0:
                 self._add_error(errors, "budget_amount", "Enter a positive compensation amount.")
@@ -525,7 +535,7 @@ class JobService:
                 self._add_error(errors, "budget_max", "Maximum must be at least the minimum.")
         elif mode == "negotiable" and (amount is not None or maximum is not None):
             self._add_error(errors, "budget_amount", "Negotiable compensation cannot include fixed amounts.")
-        if mode in {"fixed", "range"} and not currency:
+        if mode in {"fixed", "range", "approximate"} and not currency:
             self._add_error(errors, "budget_currency", "Select a compensation currency.")
         if mode == "negotiable" and unit not in {"commission", "mixed"} and not currency:
             self._add_error(errors, "budget_currency", "Select a compensation currency.")

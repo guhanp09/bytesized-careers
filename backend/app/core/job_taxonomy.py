@@ -17,7 +17,7 @@ ENGAGEMENT_TYPES: Final[tuple[str, ...]] = (
     "internship",
 )
 
-COMPENSATION_MODES: Final[tuple[str, ...]] = ("fixed", "range", "negotiable")
+COMPENSATION_MODES: Final[tuple[str, ...]] = ("fixed", "range", "negotiable", "approximate")
 
 COMPENSATION_UNITS: Final[tuple[str, ...]] = (
     "per hour",

@@ -1494,7 +1494,12 @@ export default function PostJobPage() {
     Boolean(budgetCurrency) ||
     ((budgetUnit === "commission" || budgetUnit === "mixed") && Boolean(budgetNote.trim()));
   const hasCompensationIntent =
-    (compensationMode === "fixed" && hasPositiveBudgetMin && !hasBudgetMax && Boolean(budgetCurrency) && hasValidCompensationUnit && hasRequiredCompensationNote) ||
+    // `approximate` carries one figure, like fixed, and differs only in what it
+    // claims about precision — so it validates identically and is never asked
+    // for a second end.
+    ((compensationMode === "fixed" || compensationMode === "approximate") &&
+      hasPositiveBudgetMin && !hasBudgetMax && Boolean(budgetCurrency) &&
+      hasValidCompensationUnit && hasRequiredCompensationNote) ||
     // A range may state one end. Job pages routinely offer "Up to ₹20,000 a
     // month" or "₹20,000+/month", and requiring both ends left an imported
     // listing that said one of those with no way to be saved as what it said —

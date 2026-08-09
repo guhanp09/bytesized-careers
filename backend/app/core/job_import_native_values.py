@@ -110,6 +110,56 @@ def _category_contains(field_path: str, category: str, value: str) -> bool:
     return False
 
 
+#: Fields where a source states the right fact in a different vocabulary.
+#:
+#: A live provider check found this: asked to read "Up to ₹20,000 a month", the
+#: model correctly returned a currency of ``₹`` and a period of ``month``. Both
+#: are the fact, written the way the page wrote it — and the gate discarded the
+#: period for not being the token ``per month`` while storing ``₹`` as though it
+#: were a currency code.
+#:
+#: Translating a stated equivalent is not inference and cannot narrow anything:
+#: ``month`` and ``per month`` are the same period, and ``₹`` and ``INR`` are the
+#: same currency. Refusing them only meant a fact the model read correctly was
+#: dropped for its spelling.
+_SAME_FACT_OTHER_WORDS: Final[dict[str, dict[str, str]]] = {
+    "budget_currency": {
+        "₹": "INR", "rs": "INR", "rs.": "INR", "inr": "INR", "rupees": "INR",
+        "$": "USD", "us$": "USD", "usd": "USD", "dollars": "USD",
+        "€": "EUR", "eur": "EUR", "euros": "EUR",
+        "£": "GBP", "gbp": "GBP", "pounds": "GBP",
+    },
+    "budget_unit": {
+        "month": "per month", "monthly": "per month", "mo": "per month",
+        "pm": "per month", "a month": "per month", "p.m.": "per month",
+        "months": "per month",
+        "hour": "per hour", "hourly": "per hour", "hr": "per hour",
+        "an hour": "per hour", "a hour": "per hour",
+        "year": "per year", "yearly": "per year", "annual": "per year",
+        "annually": "per year", "annum": "per year", "pa": "per year",
+        "a year": "per year", "per annum": "per year", "p.a.": "per year",
+        "per anum": "per year",
+        "week": "per week", "weekly": "per week", "a week": "per week",
+        "day": "per day", "daily": "per day", "a day": "per day",
+        "project": "per project", "video": "per video", "post": "per post",
+        "episode": "per episode", "deliverable": "per deliverable",
+    },
+}
+
+
+def _in_the_products_own_words(field_path: str, value: object) -> object:
+    """Restate a value in the product's vocabulary when it means the same thing.
+
+    Only ever an exact synonym lookup. Nothing is guessed, nothing is widened,
+    and a value with no entry is passed through untouched to be judged as it was.
+    """
+
+    synonyms = _SAME_FACT_OTHER_WORDS.get(field_path)
+    if not synonyms or not isinstance(value, str):
+        return value
+    return synonyms.get(value.strip().casefold(), value)
+
+
 def convert_to_native(field_path: str, value: object) -> NativeConversion:
     """Translate one value for one native field, honestly or not at all."""
 
@@ -126,6 +176,8 @@ def convert_to_native(field_path: str, value: object) -> NativeConversion:
         )
 
     choices, cap, is_list = native_schema_constraints(field_path)
+
+    value = _in_the_products_own_words(field_path, value)
 
     if isinstance(value, dict):
         # A provider reply's `value` is typed as JsonValue, so an object passes

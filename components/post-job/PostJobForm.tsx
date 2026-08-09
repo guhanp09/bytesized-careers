@@ -1640,6 +1640,11 @@ export default function PostJobForm({
                   <option value="" className="bg-[#0b0b0f]">Choose compensation mode</option>
                   <option value="fixed" className="bg-[#0b0b0f]">Fixed amount</option>
                   <option value="range" className="bg-[#0b0b0f]">Range</option>
+                  {/* An imported listing that said "about ₹20,000" arrives in
+                      this mode. Offering it here is what lets a recruiter keep
+                      the qualifier their own page used instead of being forced
+                      to overstate it as an exact rate. */}
+                  <option value="approximate" className="bg-[#0b0b0f]">Approximate</option>
                   <option value="negotiable" className="bg-[#0b0b0f]">Negotiable</option>
                 </select>
                 <select

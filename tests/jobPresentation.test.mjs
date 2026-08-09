@@ -226,3 +226,33 @@ test("both ends equal read as approximate rather than a null range", () => {
   assert.match(about.headline, /^About /);
   assert.ok(!about.headline.includes("–"), about.headline);
 });
+
+test("an approximate rate is shown as approximate, not exact", () => {
+  // "About ₹20,000 a month" is a fourth distinct fact. Showing it as a flat
+  // ₹20,000 claims a precision the employer explicitly declined to give.
+  const approximate = formatJobCompensation({
+    mode: "approximate",
+    minimum: 20000,
+    maximum: null,
+    currency: "INR",
+    unit: "per month",
+  });
+
+  assert.match(approximate.headline, /^About /);
+  assert.match(approximate.headline, /20,000/);
+  assert.equal(approximate.disclosed, true);
+});
+
+test("approximate, exact, ceiling and floor all read differently", () => {
+  const money = { minimum: 20000, currency: "INR", unit: "per month" };
+  const headlines = [
+    formatJobCompensation({ ...money, mode: "fixed" }).headline,
+    formatJobCompensation({ ...money, mode: "approximate" }).headline,
+    formatJobCompensation({ mode: "range", minimum: null, maximum: 20000, currency: "INR", unit: "per month" }).headline,
+    formatJobCompensation({ ...money, mode: "range", maximum: null }).headline,
+  ];
+
+  // Four statements about the same number that a candidate must never have
+  // confused with one another.
+  assert.equal(new Set(headlines).size, 4, headlines.join(" | "));
+});

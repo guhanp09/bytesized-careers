@@ -122,13 +122,15 @@ export function formatJobCompensation(input: {
       : hasMinimum
         ? `Mixed compensation · ${formatJobMoney(minimum, input.currency)} base`
         : "Mixed compensation";
+  } else if (mode === "approximate" && hasMinimum) {
+    // A figure the employer declined to stand behind exactly. Its own mode, so
+    // it is never reported as an exact rate and never as a range.
+    headline = `About ${formatJobMoney(minimum, input.currency)}${suffix}`;
   } else if (mode === "range" && hasMinimum && hasMaximum) {
     headline =
       Number(minimum) === Number(maximum)
-        ? // Both ends the same figure is how an approximate rate survives a
-          // schema with no "approximately": the number is kept and the
-          // precision is not claimed. Printing "₹20,000–₹20,000" would be
-          // technically true and obviously wrong.
+        ? // A genuine range whose ends happen to coincide. Printing
+          // "₹20,000–₹20,000" is technically true and obviously wrong.
           `About ${formatJobMoney(minimum, input.currency)}${suffix}`
         : `${formatJobMoney(minimum, input.currency)}–${formatJobMoney(
             maximum,
