@@ -169,6 +169,29 @@ class Job(Base):
     hiring_external_url_snapshot: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     managed_by_agency_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    #: Brand About enrichment: what happened, for which identity, and whether an
+    #: attempt is still live.
+    #:
+    #: Four nullable columns rather than a workflow system. Each answers one
+    #: question the trigger has to ask before doing anything: has this been
+    #: tried, was it tried for *this* brand, is somebody already doing it, and
+    #: has that attempt been running long enough to be considered dead.
+    brand_about_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: The hiring identity an attempt was started for. A result is discarded
+    #: when the recruiter has since chosen a different brand, which is the one
+    #: way this feature could write the wrong company's description.
+    brand_about_identity_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    #: Compare-and-set claim, the same mechanism import processing uses. Two
+    #: tabs, a double save and a refresh all resolve to one attempt.
+    brand_about_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    brand_about_attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     applicants: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     response_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

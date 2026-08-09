@@ -458,3 +458,159 @@ class TestEachGuardIsIndependentlyLoadBearing:
 
         assert not verdict.accepted
         assert "characters" in verdict.reason
+
+
+class TestEligibilityIsDecidedInOnePlace:
+    """The trigger, the runner and the writer all ask this same question."""
+
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4 as _uuid
+
+    IDENTITY_A = _uuid()
+    IDENTITY_B = _uuid()
+    NOW = datetime.now(UTC)
+
+    def _decide(self, **overrides):
+        from app.core.brand_about_eligibility import should_enrich_brand_about
+
+        base = {
+            "about": None,
+            "hiring_identity_id": self.IDENTITY_A,
+            "status": None,
+            "attempted_identity_id": None,
+            "attempted_at": None,
+        }
+        base.update(overrides)
+        return should_enrich_brand_about(**base)
+
+    def test_a_fresh_eligible_job_is_enriched(self) -> None:
+        assert self._decide().eligible
+
+    def test_a_populated_about_is_never_touched(self) -> None:
+        assert not self._decide(about="We make finance videos.").eligible
+
+    def test_no_hiring_identity_means_no_brand_to_describe(self) -> None:
+        # A source employer scraped from a page is explicitly not a substitute.
+        assert not self._decide(hiring_identity_id=None).eligible
+
+    def test_success_is_not_repeated(self) -> None:
+        assert not self._decide(
+            status="success", attempted_identity_id=self.IDENTITY_A, attempted_at=self.NOW
+        ).eligible
+
+    def test_a_recruiter_who_cleared_the_field_is_not_overridden(self) -> None:
+        # The deliberate case. An empty field that was emptied on purpose looks
+        # identical to one never filled; the status is what distinguishes them.
+        assert not self._decide(
+            status="recruiter_owned",
+            attempted_identity_id=self.IDENTITY_A,
+            attempted_at=self.NOW,
+        ).eligible
+
+    def test_a_running_attempt_is_not_duplicated(self) -> None:
+        assert not self._decide(
+            status="in_progress",
+            attempted_identity_id=self.IDENTITY_A,
+            attempted_at=self.NOW,
+        ).eligible
+
+    def test_a_lost_attempt_stops_being_in_progress(self) -> None:
+        # "In progress forever" is worse than "failed", because failed retries.
+        stale = self.NOW - self.timedelta(seconds=600)
+        assert self._decide(
+            status="in_progress",
+            attempted_identity_id=self.IDENTITY_A,
+            attempted_at=stale,
+        ).eligible
+
+    def test_changing_brand_reopens_a_settled_job(self) -> None:
+        assert self._decide(
+            hiring_identity_id=self.IDENTITY_B,
+            status="success",
+            attempted_identity_id=self.IDENTITY_A,
+            attempted_at=self.NOW,
+        ).eligible
+
+    def test_a_known_dead_end_is_not_retried_for_the_same_brand(self) -> None:
+        for status in ("no_reliable_identity", "no_official_source", "insufficient_evidence"):
+            assert not self._decide(
+                status=status,
+                attempted_identity_id=self.IDENTITY_A,
+                attempted_at=self.NOW,
+            ).eligible, status
+
+    def test_a_recent_failure_is_not_immediately_retried(self) -> None:
+        assert not self._decide(
+            status="failed", attempted_identity_id=self.IDENTITY_A, attempted_at=self.NOW
+        ).eligible
+
+    def test_an_old_failure_becomes_retryable(self) -> None:
+        assert self._decide(
+            status="failed",
+            attempted_identity_id=self.IDENTITY_A,
+            attempted_at=self.NOW - self.timedelta(seconds=600),
+        ).eligible
+
+
+class TestALateResultCannotUndoARecruiter:
+    """The race the feature turns on: enrichment takes seconds, people type."""
+
+    from uuid import uuid4 as _uuid
+
+    IDENTITY_A = _uuid()
+    IDENTITY_B = _uuid()
+
+    def _apply(self, **overrides):
+        from app.services.brand_enrichment_service import (
+            BrandEnrichment,
+            apply_enrichment_result,
+        )
+
+        base = {
+            "about_now": None,
+            "identity_now": self.IDENTITY_A,
+            "identity_attempted": self.IDENTITY_A,
+        }
+        base.update(overrides)
+        return apply_enrichment_result(
+            BrandEnrichment("success_official_site", about="Brand publishes videos."),
+            **base,
+        )
+
+    def test_a_clean_field_receives_the_result(self) -> None:
+        application = self._apply()
+
+        assert application.applied
+        assert application.status == "success"
+
+    def test_text_typed_while_enrichment_ran_survives(self) -> None:
+        application = self._apply(about_now="My own description")
+
+        assert not application.applied
+        # Recorded as theirs so nothing tries again later.
+        assert application.status == "recruiter_owned"
+
+    def test_a_result_for_the_previous_brand_is_discarded(self) -> None:
+        # P0 territory: identity A's description must never appear under B.
+        application = self._apply(identity_now=self.IDENTITY_B)
+
+        assert not application.applied
+        assert application.about is None
+        # Reset rather than settled, so B is considered on its own merits.
+        assert application.status == "not_attempted"
+
+    def test_an_unwritable_result_still_records_why(self) -> None:
+        from app.services.brand_enrichment_service import (
+            BrandEnrichment,
+            apply_enrichment_result,
+        )
+
+        application = apply_enrichment_result(
+            BrandEnrichment("insufficient_evidence", detail="page said too little"),
+            about_now=None,
+            identity_now=self.IDENTITY_A,
+            identity_attempted=self.IDENTITY_A,
+        )
+
+        assert not application.applied
+        assert application.status == "insufficient_evidence"

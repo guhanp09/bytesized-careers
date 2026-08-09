@@ -209,3 +209,138 @@ class BrandEnrichmentService:
             evidence_url=retrieval.final_url,
             detail="summarised from the brand's own site",
         )
+
+
+@dataclass(frozen=True)
+class BrandAboutApplication:
+    """What a completed attempt should do to the job row."""
+
+    status: str
+    #: Written only when it is still safe to write.
+    about: str | None
+    applied: bool
+    reason: str
+
+
+def apply_enrichment_result(
+    result: BrandEnrichment,
+    *,
+    about_now: str | None,
+    identity_now,
+    identity_attempted,
+) -> BrandAboutApplication:
+    """Decide whether a finished attempt may still be written.
+
+    This is the race the whole feature turns on. Enrichment takes seconds: a
+    fetch, a model call. In that window a recruiter can type their own
+    description, clear the field, or change which brand they are posting as —
+    and the result in hand was computed for a world that no longer exists.
+
+    So the answer is re-checked against the row as it is *now*, not as it was
+    when the attempt started. Both losing conditions produce a status rather
+    than silence, because "we had an answer and threw it away" is a different
+    thing to debug than "we never got one".
+    """
+
+    from app.core.brand_about_eligibility import status_for_outcome
+
+    status = status_for_outcome(result.outcome)
+
+    if identity_attempted != identity_now:
+        # Identity A's description must never appear under identity B. The
+        # result is discarded outright; B is considered on its own merits.
+        return BrandAboutApplication(
+            "not_attempted",
+            None,
+            False,
+            "the hiring identity changed while enrichment was running",
+        )
+
+    if (about_now or "").strip():
+        # A recruiter wrote something while we were working. They win, and the
+        # status records that they own the field so nothing tries again.
+        return BrandAboutApplication(
+            "recruiter_owned",
+            None,
+            False,
+            "the recruiter wrote their own description while enrichment ran",
+        )
+
+    if not result.writable:
+        return BrandAboutApplication(status, None, False, result.detail)
+
+    return BrandAboutApplication(status, result.about, True, result.detail)
+
+
+class BrandAboutRunner:
+    """Claims a job, runs enrichment once, and writes only if still safe.
+
+    The lifecycle deliberately mirrors job-import processing rather than
+    inventing a second one: a compare-and-set claim so concurrent callers become
+    one attempt, a timestamp so a lost attempt stops being "in progress", and a
+    status the trigger reads instead of remembering anything.
+    """
+
+    def __init__(self, session, service: BrandEnrichmentService) -> None:
+        self._session = session
+        self._service = service
+
+    async def run(self, job, identity_row) -> BrandAboutApplication:
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from app.core.brand_about_eligibility import should_enrich_brand_about
+        from app.core.brand_identity import resolve_brand_identity
+
+        decision = should_enrich_brand_about(
+            about=job.about_channel,
+            hiring_identity_id=job.hiring_identity_id,
+            status=job.brand_about_status,
+            attempted_identity_id=job.brand_about_identity_id,
+            attempted_at=job.brand_about_attempted_at,
+        )
+        if not decision.eligible:
+            return BrandAboutApplication(
+                job.brand_about_status or "not_attempted", None, False, decision.reason
+            )
+
+        # Claim. A second caller reaching here finds `in_progress` with a fresh
+        # timestamp and declines, so a double save or a second tab is one attempt.
+        attempt = uuid4()
+        claimed_identity = job.hiring_identity_id
+        job.brand_about_status = "in_progress"
+        job.brand_about_attempt_id = attempt
+        job.brand_about_identity_id = claimed_identity
+        job.brand_about_attempted_at = datetime.now(UTC)
+        await self._session.commit()
+
+        identity = resolve_brand_identity(
+            display_name=getattr(identity_row, "display_name", None),
+            official_url=getattr(identity_row, "url", None),
+            verification_status=getattr(identity_row, "verification_status", None),
+            existing_description=getattr(identity_row, "description", None),
+        )
+        result = await self._service.enrich(identity, existing_about=job.about_channel)
+
+        await self._session.refresh(job)
+        if job.brand_about_attempt_id != attempt:
+            # Another attempt claimed this job while we worked. Theirs wins;
+            # writing here would undo it.
+            return BrandAboutApplication(
+                job.brand_about_status or "not_attempted",
+                None,
+                False,
+                "a newer attempt superseded this one",
+            )
+
+        application = apply_enrichment_result(
+            result,
+            about_now=job.about_channel,
+            identity_now=job.hiring_identity_id,
+            identity_attempted=claimed_identity,
+        )
+        job.brand_about_status = application.status
+        if application.applied:
+            job.about_channel = application.about
+        await self._session.commit()
+        return application
