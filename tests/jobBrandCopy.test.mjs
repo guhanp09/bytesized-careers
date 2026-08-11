@@ -14,7 +14,7 @@ test("post-job brand context field uses standardized About the brand copy", () =
   // introduction" caption on the control beneath it, so a recruiter met two
   // names for one box. Naming the brand is useful to a candidate reading the
   // job, not to the person filling the field in.
-  assert.match(form, /title="About the brand"/);
+  assert.match(form, /<label htmlFor="job-about-brand">About the brand<\/label>/);
   assert.doesNotMatch(form, /Candidate-facing introduction/);
   assert.doesNotMatch(form, /title=\{aboutBrandLabel\(/);
   assert.match(form, /Share your brand’s voice, audience, and why this role matters\./);

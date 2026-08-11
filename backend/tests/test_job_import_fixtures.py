@@ -59,6 +59,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "multi-craft",
         "labelled-pay-conflict",
         "ceiling-only-pay",
+        "brand-discovery",
         "checkpoint-currency",
         "checkpoint-trial",
         "checkpoint-experience",

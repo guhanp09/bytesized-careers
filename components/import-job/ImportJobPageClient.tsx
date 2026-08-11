@@ -1068,6 +1068,9 @@ export default function ImportJobPageClient() {
                     <option value="ceiling-only-pay" className="bg-[#0b0b0f]">
                       URL import · pay stated as a ceiling only
                     </option>
+                    <option value="brand-discovery" className="bg-[#0b0b0f]">
+                      URL import · brand discovery without About copy
+                    </option>
                     <option value="checkpoint-currency" className="bg-[#0b0b0f]">
                       Checkpoint · pay needs a currency
                     </option>

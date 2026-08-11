@@ -146,8 +146,10 @@ def status_for_outcome(outcome: str) -> BrandAboutStatus:
     return {
         "success_official_site": "success",
         "success_existing_description": "success",
+        "success_source_page": "success",
         "already_written": "skipped_existing_content",
         "no_reliable_identity": "no_reliable_identity",
+        "ambiguous_brand": "no_reliable_identity",
         "no_official_source": "no_official_source",
         "insufficient_evidence": "insufficient_evidence",
         "model_declined": "insufficient_evidence",

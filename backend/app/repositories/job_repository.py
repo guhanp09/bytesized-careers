@@ -195,6 +195,16 @@ class JobRepository:
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def list_hiring_identities_for_user(
+        self, *, user_id: UUID
+    ) -> list[HiringIdentity]:
+        stmt = (
+            select(HiringIdentity)
+            .where(HiringIdentity.owner_user_id == user_id)
+            .order_by(HiringIdentity.created_at.desc())
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def create(self, data: dict[str, Any]) -> Job:
         job = Job(**data)
         self.session.add(job)

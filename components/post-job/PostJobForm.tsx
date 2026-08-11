@@ -309,23 +309,28 @@ function Field({
       {helper ? <QuestionTooltip label={helper} /> : null}
     </>
   );
+  const showHeader = label !== null || Boolean(helper) || Boolean(error);
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        {id ? (
-          <label htmlFor={id} className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
-            {labelInner}
-          </label>
-        ) : (
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">{labelInner}</div>
-        )}
-        {error ? (
-          <div id={id ? `${id}-error` : undefined} role="alert" className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
-            <Icon name="alert" className="w-3 h-3" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-      </div>
+      {showHeader ? (
+        <div className="flex items-center justify-between gap-3">
+          {label !== null ? (
+            id ? (
+              <label htmlFor={id} className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">
+                {labelInner}
+              </label>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/80">{labelInner}</div>
+            )
+          ) : null}
+          {error ? (
+            <div id={id ? `${id}-error` : undefined} role="alert" className="inline-flex items-center gap-1 text-[11px] text-amber-200/90">
+              <Icon name="alert" className="w-3 h-3" />
+              <span>{error}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {children}
     </div>
   );
@@ -936,7 +941,6 @@ export default function PostJobForm({
   requirements,
   howToApply,
   onAboutChange,
-  hiringDisplayName,
   onResponsibilitiesChange,
   onRequirementsChange,
   onHowToApplyChange,
@@ -1062,8 +1066,6 @@ export default function PostJobForm({
   languages: string[];
   onLanguagesChange: (next: string[]) => void;
   about: string;
-  /** The CreatorJobs hiring identity this job posts as, for the About label. */
-  hiringDisplayName?: string;
   responsibilities: string;
   requirements: string;
   howToApply: string;
@@ -2298,8 +2300,16 @@ export default function PostJobForm({
         // same box. The candidate page still uses the brand heading — that is
         // where naming the brand actually helps someone reading the job.
         <StepCard
-          title="About the brand"
-          icon="notebook-text"
+          title={
+            <h2 className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-secondary">
+              <span aria-hidden="true" className="inline-flex shrink-0 text-white/58">
+                <Icon name="notebook-text" className="h-4 w-4" />
+              </span>
+              <label htmlFor="job-about-brand">About the brand</label>
+              <span className="text-muted">*</span>
+              <QuestionTooltip label="Give candidates useful context on the creator or brand, its audience, and why the work matters." />
+            </h2>
+          }
           bodyClassName="mt-4"
           size="compact"
           actions={actionsFor(
@@ -2312,11 +2322,9 @@ export default function PostJobForm({
           <div className="flex flex-col gap-4">
             <Field
               id="job-about-brand"
-              // The card title is the field's only visible label. The helper
-              // and the required contract are unchanged; the duplicate caption
-              // is what went.
+              // The card title is the field's visible and semantic label. Field
+              // therefore renders no second caption row.
               label={null}
-              helper="Give candidates useful context on the creator or brand, its audience, and why the work matters."
               error={aboutError}
             >
               <div className="flex flex-col gap-3" data-quality-target="job-description">

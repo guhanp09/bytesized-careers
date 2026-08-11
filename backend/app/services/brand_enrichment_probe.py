@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 #: What a released attempt should do.
-ReleaseMode = Literal["success", "fetch_failure", "model_decline"]
+ReleaseMode = Literal["success", "search_failure", "fetch_failure", "model_decline"]
 
 DEFAULT_EVIDENCE = (
     "Finance Simplified publishes personal finance videos aimed at helping young "
@@ -42,6 +42,8 @@ class BrandEnrichmentProbe:
     #: How many times a brand's own site was actually fetched. The number the
     #: cost contract cares about — endpoint requests are cheap and may repeat.
     fetches: int = 0
+    #: How many provider-neutral discovery searches ran.
+    searches: int = 0
     #: How many times the summariser ran.
     model_calls: int = 0
     #: Set when an attempt reaches the gate, so a test can wait for "work has
@@ -53,9 +55,11 @@ class BrandEnrichmentProbe:
     mode: ReleaseMode = "success"
     evidence: str = DEFAULT_EVIDENCE
     summary: str = "Finance Simplified publishes personal finance videos for young adults."
+    discovered_url: str = "https://financesimplified.example"
 
     def reset(self) -> None:
         self.fetches = 0
+        self.searches = 0
         self.model_calls = 0
         self.started = asyncio.Event()
         self.gate = asyncio.Event()
@@ -145,8 +149,37 @@ class GatedSummarizer:
     def __init__(self, probe: BrandEnrichmentProbe) -> None:
         self._probe = probe
 
-    async def summarize(self, *, brand_name: str, evidence: str) -> str | None:
+    async def summarize(
+        self,
+        *,
+        brand_name: str,
+        evidence: str,
+        job_context: str | None = None,
+        source_authority: str = "official_site",
+    ) -> str | None:
         self._probe.model_calls += 1
         if self._probe.mode == "model_decline":
             return None
         return self._probe.summary
+
+
+class GatedFinder:
+    """Deterministic web-discovery seam for browser tests."""
+
+    def __init__(self, probe: BrandEnrichmentProbe) -> None:
+        self._probe = probe
+
+    async def find_official_site(self, context):
+        from app.core.brand_discovery import DiscoveryResult
+
+        self._probe.searches += 1
+        if self._probe.mode == "search_failure":
+            return DiscoveryResult(
+                "no_match", None, "the fixture search failed", failed=True
+            )
+        return DiscoveryResult(
+            "verified_match",
+            self._probe.discovered_url,
+            "the fixture resolved an official site",
+            (self._probe.discovered_url,),
+        )

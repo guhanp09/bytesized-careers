@@ -28,6 +28,7 @@ def _ensure_dev_only() -> None:
 
 
 class ProbeState(BaseModel):
+    searches: int
     fetches: int
     model_calls: int
     gated: bool
@@ -74,8 +75,9 @@ async def state() -> ProbeState:
 def _state() -> ProbeState:
     probe = active_probe()
     if probe is None:
-        return ProbeState(fetches=0, model_calls=0, gated=False, started=False)
+        return ProbeState(searches=0, fetches=0, model_calls=0, gated=False, started=False)
     return ProbeState(
+        searches=probe.searches,
         fetches=probe.fetches,
         model_calls=probe.model_calls,
         gated=probe.gated,

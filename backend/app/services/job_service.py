@@ -828,6 +828,49 @@ class JobService:
                 identity_id=job.hiring_identity_id,
             )
 
+        about_was_supplied = "about_channel" in updates
+        identity_changed = (
+            "hiring_identity_id" in updates
+            and updates.get("hiring_identity_id") != job.hiring_identity_id
+        )
+        about_changed = (
+            "about_channel" in updates
+            and updates.get("about_channel") != job.about_channel
+        )
+        if identity_changed:
+            unchanged_generated_about = (
+                job.brand_about_status == "success"
+                and (
+                    not about_was_supplied
+                    or updates.get("about_channel") == job.about_channel
+                )
+            )
+            if unchanged_generated_about:
+                # Native saves send the effective form, not a sparse dirty-field
+                # patch. Receiving A's generated paragraph again therefore does
+                # not make it recruiter-authored. Clear it exactly as we do when
+                # the field is omitted, then consider B independently. A real
+                # simultaneous edit/deletion differs from the stored value and
+                # remains recruiter-owned below.
+                updates["about_channel"] = None
+                updates["brand_about_status"] = "not_attempted"
+                updates["brand_about_identity_id"] = None
+                updates["brand_about_attempt_id"] = None
+                updates["brand_about_attempted_at"] = None
+            elif about_was_supplied:
+                updates["brand_about_status"] = "recruiter_owned"
+                updates["brand_about_attempt_id"] = None
+            else:
+                updates["brand_about_status"] = "not_attempted"
+                updates["brand_about_identity_id"] = None
+                updates["brand_about_attempt_id"] = None
+                updates["brand_about_attempted_at"] = None
+        if about_changed:
+            # A typed edit and an intentional deletion are both ownership. The
+            # settled marker is what prevents generated text returning later.
+            updates["brand_about_status"] = "recruiter_owned"
+            updates["brand_about_attempt_id"] = None
+
         effective_status = updates.get("status", job.status)
         if self._requires_representation_verification(selected_identity, effective_status):
             self._raise_representation_verification_required()

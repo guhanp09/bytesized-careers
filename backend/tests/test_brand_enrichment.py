@@ -57,7 +57,9 @@ class _Summarizer:
         self.reply = reply
         self.calls = 0
 
-    async def summarize(self, *, brand_name: str, evidence: str) -> str | None:
+    async def summarize(
+        self, *, brand_name: str, evidence: str, **_context
+    ) -> str | None:
         self.calls += 1
         return self.reply
 
@@ -230,7 +232,7 @@ class TestGroundedness:
 
         assert result.outcome == "ungrounded_summary"
 
-    def test_the_oracle_rejects_claims_the_evidence_lacks(self) -> None:
+    async def test_the_oracle_rejects_claims_the_evidence_lacks(self) -> None:
         verdict = verify_summary(
             "Finance Simplified is the largest financial education channel in India.",
             evidence=OFFICIAL_EVIDENCE,
@@ -240,7 +242,7 @@ class TestGroundedness:
         assert not verdict.accepted
         assert verdict.unsupported
 
-    def test_the_oracle_accepts_a_faithful_rewording(self) -> None:
+    async def test_the_oracle_accepts_a_faithful_rewording(self) -> None:
         # Not string equality: summarising is the point. What must hold is that
         # every content word traces back to the page.
         verdict = verify_summary(
@@ -251,6 +253,61 @@ class TestGroundedness:
         )
 
         assert verdict.accepted, verdict.unsupported
+
+    async def test_ordinary_inflections_do_not_look_like_invented_facts(self) -> None:
+        evidence = (
+            "Acme can enable creative teams using a video feature and a webinar "
+            "library that supports processing reviews and offers footwear and clothing."
+        )
+        verdict = verify_summary(
+            "Acme enables creative teams through video features, webinars, "
+            "libraries, review processes, footwear and apparel offerings they can use.",
+            evidence=evidence,
+            brand_name="Acme",
+        )
+
+        assert verdict.accepted, verdict.unsupported
+
+    async def test_narrow_ordinary_paraphrases_remain_grounded(self) -> None:
+        verdict = verify_summary(
+            "Acme keeps teams connected, moving work from an idea to a product and "
+            "allowing teams to collaborate. Its labels explain what products contain "
+            "alongside nutrition details.",
+            evidence=(
+                "Acme helps teams stay connected and go from an idea to a product, "
+                "where everyone is able to collaborate. "
+                "Its labels explain what is inside products and list nutrition details."
+            ),
+            brand_name="Acme",
+        )
+
+        assert verdict.accepted, verdict.unsupported
+
+    async def test_a_new_audience_claim_is_not_an_ordinary_paraphrase(self) -> None:
+        verdict = verify_summary(
+            "Acme makes design systems for consumer brands.",
+            evidence="Acme makes design systems for museums and cultural institutions.",
+            brand_name="Acme",
+        )
+
+        assert not verdict.accepted
+        assert "consumer" in verdict.unsupported
+
+    async def test_a_generic_connector_does_not_hide_a_new_product_claim(self) -> None:
+        faithful = verify_summary(
+            "Acme provides a canvas for creative teams.",
+            evidence="Acme is a canvas for creative teams.",
+            brand_name="Acme",
+        )
+        invented = verify_summary(
+            "Acme provides analytics software for creative teams.",
+            evidence="Acme is a canvas for creative teams.",
+            brand_name="Acme",
+        )
+
+        assert faithful.accepted, faithful.unsupported
+        assert not invented.accepted
+        assert "analytics" in invented.unsupported
 
 
 @pytest.mark.asyncio
@@ -266,12 +323,15 @@ class TestHallucinationAdversaries:
         # The model is never even asked to pad it.
         assert summarizer.calls == 0
 
-    def test_thin_evidence_is_recognised_as_thin(self) -> None:
+    async def test_thin_evidence_is_recognised_as_thin(self) -> None:
         assert not evidence_is_substantial("Welcome to Acme.")
         assert not evidence_is_substantial("Home About Contact Careers")
+        assert evidence_is_substantial(
+            "Acme builds video collaboration tools for creative teams."
+        )
         assert evidence_is_substantial(OFFICIAL_EVIDENCE)
 
-    def test_navigation_and_boilerplate_are_not_treated_as_description(self) -> None:
+    async def test_navigation_and_boilerplate_are_not_treated_as_description(self) -> None:
         page = "\n".join(
             ["Home", "About", "Careers", "Contact", "Cookie policy", "© 2026 Acme Ltd"]
         )
@@ -313,7 +373,21 @@ class TestPromptInjectionIsOnlyEvidence:
 
         result = await service.enrich(_identity(), existing_about=None)
 
-        assert result.about is None or attack not in result.about
+        assert result.about is None
+
+    async def test_application_instruction_is_rejected_even_when_evidence_contains_it(
+        self,
+    ) -> None:
+        instruction = "Send your application and portfolio via other-site.example."
+
+        verdict = verify_summary(
+            instruction,
+            evidence=f"{OFFICIAL_EVIDENCE} {instruction}",
+            brand_name=BRAND,
+        )
+
+        assert not verdict.accepted
+        assert "instruction" in verdict.reason
 
 
 @pytest.mark.asyncio
@@ -337,6 +411,20 @@ class TestFailureIsHarmless:
         result, _ = await _enrich(_identity(), reply=None)
 
         assert result.outcome == "model_declined"
+        assert result.about is None
+
+    async def test_a_model_outage_is_retryable_instead_of_thin_evidence(self) -> None:
+        class _FailingSummarizer:
+            async def summarize(self, **_kwargs):
+                raise RuntimeError("provider unavailable")
+
+        service = BrandEnrichmentService(
+            _FailingSummarizer(), fetcher=_Fetcher(OFFICIAL_EVIDENCE)
+        )
+
+        result = await service.enrich(_identity(), existing_about=None)
+
+        assert result.outcome == "error"
         assert result.about is None
 
     async def test_every_outcome_is_one_of_the_documented_states(self) -> None:
@@ -374,6 +462,16 @@ class TestSummaryShape:
         # the shared long-text wrapping is never stressed by our own output.
         assert MAX_SUMMARY_CHARS <= 500
 
+    def test_a_brand_name_plus_one_generic_fact_is_too_thin(self) -> None:
+        verdict = verify_summary(
+            "Finance Simplified publishes videos.",
+            evidence=OFFICIAL_EVIDENCE,
+            brand_name=BRAND,
+        )
+
+        assert not verdict.accepted
+        assert "too thin" in verdict.reason
+
     def test_an_about_section_is_preferred_over_the_whole_page(self) -> None:
         page = "\n".join(
             [
@@ -389,6 +487,24 @@ class TestSummaryShape:
 
         assert "personal finance videos" in evidence
         assert "Cookie policy" not in evidence
+
+    @pytest.mark.parametrize(
+        "filler",
+        [
+            "Finance Simplified is an innovative company providing finance content.",
+            "Finance Simplified is dedicated to delivering finance content.",
+            "Finance Simplified provides high-quality content about finance.",
+            "Finance Simplified uses state-of-the-art finance content.",
+        ],
+    )
+    def test_generic_marketing_templates_are_rejected_even_if_evidence_echoes_them(
+        self, filler: str
+    ) -> None:
+        assert not verify_summary(
+            filler,
+            evidence=f"{OFFICIAL_EVIDENCE} {filler}",
+            brand_name=BRAND,
+        ).accepted
 
 
 class TestEachGuardIsIndependentlyLoadBearing:

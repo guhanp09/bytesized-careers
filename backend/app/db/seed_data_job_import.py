@@ -18,6 +18,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     "multi-craft",
     "labelled-pay-conflict",
     "ceiling-only-pay",
+    "brand-discovery",
     # Checkpointed conversation: these land in waiting_for_recruiter so the
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
@@ -140,6 +141,18 @@ def processed_review_fixture(
         return _multi_craft_fixture()
     if scenario == "ceiling-only-pay":
         return _ceiling_only_pay_fixture()
+    if scenario == "brand-discovery":
+        # Same deterministic URL shape, but intentionally without an imported
+        # company About field. Browser assurance uses it to prove the real
+        # source -> native draft -> server-owned web-discovery path without a
+        # provider key or a network request.
+        payload = _ceiling_only_pay_fixture().model_dump(mode="json")
+        payload["fields"] = [
+            field
+            for field in payload["fields"]
+            if field["field_path"] != "about_channel"
+        ]
+        return JobImportExtractionResponse.model_validate(payload)
     if scenario == "labelled-pay-conflict":
         return _labelled_pay_conflict_fixture()
     if scenario == "scriptwriter":

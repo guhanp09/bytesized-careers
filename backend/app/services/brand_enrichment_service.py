@@ -1,4 +1,4 @@
-"""Filling an empty About field from the brand's own website, or not at all.
+"""Filling an empty About field from trustworthy brand evidence, or not at all.
 
 Optional enrichment, in the strict sense: every branch that is not clearly safe
 ends in "leave it blank and let the recruiter write it". A blank field costs
@@ -13,14 +13,14 @@ The precedence is fixed and short:
 2. **A description CreatorJobs already holds** for this identity is used as-is.
    It costs no network call and no model call, and it is what the brand told us
    about itself.
-3. **The brand's own website**, but only when the identity is pinned firmly
-   enough to be sure which brand that is.
-4. **Nothing.**
+3. **An explicit company introduction on the imported page**, when that page's
+   employer matches the selected hiring identity.
+4. **The brand's own website** — registered first, or safely discovered from
+   context and corroborated after retrieval.
+5. **Nothing.**
 
-Two things are deliberately absent. There is no brand-name search: searching a
-name finds *a* company, not necessarily this one, and "Acme" would resolve to
-whichever Acme ranked highest. And there is no fetch on render — enrichment runs
-once, during import, and the result is stored.
+There is still no fetch on render. Discovery is server-owned background work,
+and search only identifies a candidate official URL; it is never candidate copy.
 """
 
 from __future__ import annotations
@@ -28,14 +28,26 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Literal, Protocol
+from urllib.parse import urlsplit
 
+from app.core.brand_discovery import (
+    BrandContext,
+    BrandSiteFinder,
+    discovered_page_matches_identity,
+    host_of,
+    looks_official,
+    source_copy_matches_identity,
+)
 from app.core.brand_identity import BrandIdentity, is_brand_owned_host
 from app.core.brand_summary import (
-    SummaryVerdict,
     evidence_is_substantial,
     verify_summary,
 )
-from app.services.job_url_fetcher import PublicJobUrlFetcher, PublicJobUrlFetchError
+from app.services.job_url_fetcher import (
+    PublicBrandUrlFetcher,
+    PublicJobUrlFetcher,
+    PublicJobUrlFetchError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +93,14 @@ class BrandSummarizer(Protocol):
     provider adapter; either way its output is checked before it is used.
     """
 
-    async def summarize(self, *, brand_name: str, evidence: str) -> str | None: ...
+    async def summarize(
+        self,
+        *,
+        brand_name: str,
+        evidence: str,
+        job_context: str | None = None,
+        source_authority: str = "official_site",
+    ) -> str | None: ...
 
 
 #: Sections of a homepage that describe the company rather than decorate it.
@@ -99,7 +118,7 @@ _USEFUL_HEADINGS = (
 _SOURCE_BRAND_HEADINGS = (
     "about us", "about the company", "about our company", "who we are",
     "our company", "our channel", "our story", "our mission", "company overview",
-    "about the team", "about the brand",
+    "about the team", "about the brand", "structured employer summary",
 )
 
 #: Wording that is legally or administratively required rather than descriptive.
@@ -108,6 +127,8 @@ _NOT_BRAND_COPY = (
     "equal opportunity", "e-verify", "privacy policy", "cookie",
     "affirmative action",
     "reasonable accommodation", "background check", "at-will", "disclaimer",
+    "ignore previous instruction", "ignore all previous instruction", "system:",
+    "apply at", "apply via", "click here", "send your application",
 )
 
 
@@ -124,12 +145,26 @@ def brand_evidence_from_source_page(text: str | None, *, limit: int = 4000) -> s
         return ""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for index, line in enumerate(lines):
-        heading = line.casefold().rstrip(":").strip()
-        if len(line) > 80 or not any(
-            heading.startswith(known) for known in _SOURCE_BRAND_HEADINGS
+        raw_heading, separator, inline = line.partition(":")
+        heading = raw_heading.casefold().strip()
+        named_about = (
+            heading.startswith("about ")
+            and not any(
+                excluded in heading
+                for excluded in ("role", "job", "position", "opportunity")
+            )
+        )
+        if len(raw_heading) > 80 or not (
+            named_about
+            or any(heading.startswith(known) for known in _SOURCE_BRAND_HEADINGS)
         ):
             continue
         body: list[str] = []
+        inline = inline.strip() if separator else ""
+        if len(inline) >= 40 and not any(
+            marker in inline.casefold() for marker in _NOT_BRAND_COPY
+        ):
+            body.append(inline)
         for candidate in lines[index + 1 : index + 10]:
             lowered = candidate.casefold()
             if any(marker in lowered for marker in _NOT_BRAND_COPY):
@@ -159,11 +194,21 @@ def brand_evidence_from_page(text: str, *, limit: int = 4000) -> str:
             line.casefold().startswith(heading) for heading in _USEFUL_HEADINGS
         ):
             section = lines[index + 1 : index + 12]
-            body = " ".join(part for part in section if len(part) > 40)
+            body = " ".join(
+                part
+                for part in section
+                if len(part) > 40
+                and not any(marker in part.casefold() for marker in _NOT_BRAND_COPY)
+            )
             if body:
                 return body[:limit]
     # No About heading: take the substantial prose, skipping nav-sized fragments.
-    prose = [line for line in lines if len(line) > 60]
+    prose = [
+        line
+        for line in lines
+        if len(line) > 60
+        and not any(marker in line.casefold() for marker in _NOT_BRAND_COPY)
+    ]
     return " ".join(prose[:8])[:limit]
 
 
@@ -175,16 +220,16 @@ class BrandEnrichmentService:
         summarizer: BrandSummarizer,
         *,
         fetcher: PublicJobUrlFetcher | None = None,
-        finder: object | None = None,
+        finder: BrandSiteFinder | None = None,
     ) -> None:
         self._summarizer = summarizer
         # Optional by design. Without a finder the service behaves exactly as it
         # did before discovery existed: registered URL or nothing.
         self._finder = finder
-        # The accepted public-URL fetcher, unchanged: SSRF protection, redirect
-        # validation, size and time limits, content-type checks. Enrichment adds
-        # no new way to reach the network.
-        self._fetcher = fetcher or PublicJobUrlFetcher()
+        # Brand pages use a larger but still bounded response allowance and do
+        # not need to classify as a job. Scheme, SSRF, DNS, redirect, timeout and
+        # content-type protections remain the accepted fetcher's implementation.
+        self._fetcher = fetcher or PublicBrandUrlFetcher()
 
     async def _discover(self, identity: BrandIdentity, context):
         """Ask the finder which site belongs to this brand, then re-check it.
@@ -194,7 +239,7 @@ class BrandEnrichmentService:
         finder.
         """
 
-        from app.core.brand_discovery import BrandContext, accept_discovery
+        from app.core.brand_discovery import accept_discovery
 
         if self._finder is None:
             return None
@@ -208,13 +253,21 @@ class BrandEnrichmentService:
             logger.exception("brand_discovery_failed")
             from app.core.brand_discovery import DiscoveryResult
 
-            return DiscoveryResult("no_match", None, "discovery was unavailable")
+            return DiscoveryResult(
+                "no_match", None, "discovery was unavailable", failed=True
+            )
         # The finder is untrusted in the same way the extraction provider is.
         return accept_discovery(found, context=resolved)
 
     async def _summarise(
-        self, identity: BrandIdentity, *, evidence: str, evidence_url: str | None
-    ) -> BrandEnrichment | None:
+        self,
+        identity: BrandIdentity,
+        *,
+        evidence: str,
+        evidence_url: str | None,
+        context: BrandContext | None,
+        source_authority: str,
+    ) -> BrandEnrichment:
         """One grounding path for every rung of the ladder.
 
         Source-page copy, a registered site and a discovered site all arrive
@@ -224,18 +277,29 @@ class BrandEnrichmentService:
 
         try:
             proposed = await self._summarizer.summarize(
-                brand_name=identity.name, evidence=evidence
+                brand_name=identity.name,
+                evidence=evidence,
+                job_context=_summary_job_context(context),
+                source_authority=source_authority,
             )
         except Exception:  # pragma: no cover - optional enhancement
             logger.exception("brand_enrichment_summary_failed")
             return BrandEnrichment("error", evidence_url=evidence_url, detail="summary raised")
 
         if not (proposed or "").strip():
-            return None
+            return BrandEnrichment(
+                "model_declined",
+                evidence_url=evidence_url,
+                detail="the model declined to summarise this evidence",
+            )
 
         verdict = verify_summary(proposed, evidence=evidence, brand_name=identity.name)
         if not verdict.accepted:
-            return None
+            return BrandEnrichment(
+                "ungrounded_summary",
+                evidence_url=evidence_url,
+                detail=f"{verdict.reason}: {', '.join(verdict.unsupported)}".strip(": "),
+            )
 
         return BrandEnrichment(
             "success_source_page" if evidence_url is None else "success_official_site",
@@ -251,7 +315,7 @@ class BrandEnrichmentService:
         *,
         existing_about: str | None,
         source_text: str | None = None,
-        context=None,
+        context: BrandContext | None = None,
     ) -> BrandEnrichment:
         """Fill an empty About field from the cheapest trustworthy source.
 
@@ -282,20 +346,37 @@ class BrandEnrichmentService:
                 detail="used the brand description CreatorJobs already holds",
             )
 
+        # Every discovery path gets a server-owned context, even when a direct
+        # service caller did not supply job details. That keeps the fetched-page
+        # corroboration mandatory: common names with no context fail closed
+        # instead of bypassing the check merely because ``context`` was None.
+        context = context or BrandContext(name=identity.name)
+
         # Level 3. The page the job came from often introduces the company
         # itself, and that copy is already retrieved, already about the right
         # employer, and free. Searching the web for something sitting in the
         # source would be waste and an unnecessary chance to find the wrong
         # company.
         from_source = brand_evidence_from_source_page(source_text)
-        if from_source and evidence_is_substantial(from_source):
-            summarised = await self._summarise(
-                identity, evidence=from_source, evidence_url=None
+        source_matches = bool(
+            from_source
+            and source_copy_matches_identity(
+                brand_name=identity.name,
+                source_employer=context.source_employer if context else None,
+                evidence=from_source,
             )
-            if summarised is not None:
-                return summarised
+        )
+        if source_matches and evidence_is_substantial(from_source):
+            return await self._summarise(
+                identity,
+                evidence=from_source,
+                evidence_url=None,
+                context=context,
+                source_authority="imported_job_page_company_section",
+            )
 
         url = identity.official_url if is_brand_owned_host(identity.official_url) else None
+        discovery_verdict = None
 
         if url is None:
             # Level 5. No registered site. Before discovery existed this was the
@@ -321,12 +402,15 @@ class BrandEnrichmentService:
                 # A blank field costs a paragraph. The wrong company's
                 # description is published under somebody's brand.
                 return BrandEnrichment(
+                    "error" if discovered.failed else (
                     "ambiguous_brand"
                     if discovered.verdict == "ambiguous"
-                    else "no_official_source",
+                    else "no_official_source"
+                    ),
                     detail=discovered.detail,
                 )
             url = discovered.official_url
+            discovery_verdict = discovered.verdict
 
         try:
             retrieval = await self._fetcher.fetch(url)
@@ -338,6 +422,15 @@ class BrandEnrichmentService:
             logger.exception("brand_enrichment_fetch_failed")
             return BrandEnrichment("error", detail="fetch raised")
 
+        if not looks_official(
+            retrieval.final_url,
+            source_host=context.source_host if context else None,
+        ):
+            return BrandEnrichment(
+                "ambiguous_brand",
+                detail="the retrieved page resolved to a third-party or source host",
+            )
+
         evidence = brand_evidence_from_page(retrieval.normalized_text)
         if not evidence_is_substantial(evidence):
             # "Welcome to Acme." Padding this into a paragraph is precisely the
@@ -348,40 +441,158 @@ class BrandEnrichmentService:
                 detail="the official page says too little to describe",
             )
 
-        try:
-            proposed = await self._summarizer.summarize(
-                brand_name=identity.name, evidence=evidence
-            )
-        except Exception:  # pragma: no cover - optional enhancement
-            logger.exception("brand_enrichment_summary_failed")
-            return BrandEnrichment("error", evidence_url=retrieval.final_url, detail="summary raised")
-
-        if not (proposed or "").strip():
+        if discovery_verdict is not None and context is not None and not discovered_page_matches_identity(
+            context=context,
+            evidence=evidence,
+            final_url=retrieval.final_url,
+            verdict=discovery_verdict,
+        ):
             return BrandEnrichment(
-                "model_declined",
+                "ambiguous_brand",
                 evidence_url=retrieval.final_url,
-                detail="the model declined to summarise this evidence",
+                detail="the fetched page did not corroborate the selected identity and job context",
             )
 
-        verdict: SummaryVerdict = verify_summary(
-            proposed, evidence=evidence, brand_name=identity.name
-        )
-        if not verdict.accepted:
-            # The model proposed; this decided. An unsupported claim is dropped
-            # entirely rather than trimmed, because a partially-invented
-            # description is still an invented one.
-            return BrandEnrichment(
-                "ungrounded_summary",
-                evidence_url=retrieval.final_url,
-                detail=f"{verdict.reason}: {', '.join(verdict.unsupported)}".strip(": "),
-            )
-
-        return BrandEnrichment(
-            "success_official_site",
-            about=verdict.summary,
+        return await self._summarise(
+            identity,
+            evidence=evidence,
             evidence_url=retrieval.final_url,
-            detail="summarised from the brand's own site",
+            context=context,
+            source_authority=(
+                "discovered_official_site"
+                if discovery_verdict is not None
+                else "registered_official_site"
+            ),
         )
+
+
+def _summary_job_context(context: BrandContext | None) -> str | None:
+    """Small relevance hint for Luna; never an additional factual source."""
+
+    if context is None:
+        return None
+    parts = [
+        *context.industry_terms[:4],
+        *context.role_terms[:2],
+        context.location or "",
+    ]
+    value = " | ".join(" ".join(str(part).split())[:100] for part in parts if part)
+    return value[:500] or None
+
+
+async def import_brand_inputs_for_job(
+    session, job, identity_row
+) -> tuple[str | None, BrandContext]:
+    """Load private import evidence and build bounded discovery context.
+
+    The association is server-owned: a client supplies neither source text nor a
+    fetch URL. When no import is linked, native job fields still provide a useful
+    (smaller) context for a registered CreatorJobs hiring identity.
+    """
+
+    from sqlalchemy import select
+
+    from app.models import JobImportDraft, JobImportSource
+
+    source = (
+        await session.execute(
+            select(JobImportSource)
+            .join(JobImportDraft, JobImportDraft.source_id == JobImportSource.id)
+            .where(
+                JobImportDraft.target_job_id == job.id,
+                JobImportDraft.deleted_at.is_(None),
+                JobImportSource.deleted_at.is_(None),
+                JobImportSource.content_redacted_at.is_(None),
+            )
+            .order_by(JobImportDraft.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    structured: dict[str, object] = {}
+    source_text: str | None = None
+    source_url: str | None = None
+    if source is not None:
+        source_text = (source.original_text or "")[:120_000] or None
+        source_url = str(source.final_source_url or source.source_url or "") or None
+        metadata = source.retrieval_metadata
+        if isinstance(metadata, dict) and isinstance(metadata.get("structured_context"), dict):
+            structured = metadata["structured_context"]
+
+    industry_terms = _bounded_unique_terms(
+        [
+            *_as_text_values(structured.get("industry")),
+            *list(getattr(job, "content_niches", None) or []),
+            *list(getattr(job, "content_genres", None) or []),
+        ],
+        maximum=6,
+    )
+    role_terms = _bounded_unique_terms(
+        [
+            structured.get("job_title"),
+            getattr(job, "primary_role_name_snapshot", None),
+            getattr(job, "role_specialization", None),
+            getattr(job, "title", None),
+        ],
+        maximum=4,
+    )
+    location = next(
+        (
+            value
+            for value in (
+                structured.get("role_location"),
+                getattr(job, "location", None),
+                structured.get("employer_location"),
+            )
+            if isinstance(value, str) and value.strip()
+        ),
+        None,
+    )
+    return source_text, BrandContext(
+        name=" ".join(str(getattr(identity_row, "display_name", "") or "").split())[:160],
+        source_employer=(
+            " ".join(str(structured.get("employer_name") or "").split())[:160] or None
+        ),
+        industry_terms=industry_terms,
+        role_terms=role_terms,
+        location=" ".join(location.split())[:160] if location else None,
+        known_identifiers=_bounded_unique_terms(
+            [
+                getattr(identity_row, "handle", None),
+                (
+                    f"{getattr(identity_row, 'platform', '')} "
+                    f"{getattr(identity_row, 'handle', '')}"
+                    if getattr(identity_row, "handle", None)
+                    else None
+                ),
+            ],
+            maximum=2,
+        ),
+        source_host=host_of(source_url),
+    )
+
+
+def _as_text_values(value: object) -> list[object]:
+    return list(value) if isinstance(value, list) else [value]
+
+
+def _bounded_unique_terms(
+    values: list[object], *, maximum: int
+) -> tuple[str, ...]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        if not isinstance(raw, str):
+            continue
+        value = " ".join(raw.split())[:100]
+        folded = value.casefold()
+        if not value or folded in seen:
+            continue
+        seen.add(folded)
+        result.append(value)
+        if len(result) >= maximum:
+            break
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -458,7 +669,14 @@ class BrandAboutRunner:
         self._session = session
         self._service = service
 
-    async def run(self, job, identity_row) -> BrandAboutApplication:
+    async def run(
+        self,
+        job,
+        identity_row,
+        *,
+        source_text: str | None = None,
+        context: BrandContext | None = None,
+    ) -> BrandAboutApplication:
         from datetime import UTC, datetime
         from uuid import uuid4
 
@@ -529,13 +747,51 @@ class BrandAboutRunner:
             )
         await self._session.refresh(job)
 
+        # A persisted edit can win in the small window between the atomic claim
+        # and the first provider/network operation. Re-check before paying for
+        # work as well as after it: the final check is the correctness barrier,
+        # while this one avoids a search/fetch/model call whose result is already
+        # guaranteed to be discarded.
+        if job.brand_about_attempt_id != attempt:
+            return BrandAboutApplication(
+                job.brand_about_status or "not_attempted",
+                None,
+                False,
+                "a newer attempt superseded this one before work began",
+            )
+        if job.hiring_identity_id != claimed_identity:
+            job.brand_about_status = "not_attempted"
+            job.brand_about_attempt_id = None
+            await self._session.commit()
+            return BrandAboutApplication(
+                "not_attempted",
+                None,
+                False,
+                "the hiring identity changed before enrichment began",
+            )
+        if (job.about_channel or "").strip():
+            job.brand_about_status = "recruiter_owned"
+            job.brand_about_attempt_id = None
+            await self._session.commit()
+            return BrandAboutApplication(
+                "recruiter_owned",
+                None,
+                False,
+                "the recruiter wrote their own description before work began",
+            )
+
         identity = resolve_brand_identity(
             display_name=getattr(identity_row, "display_name", None),
             official_url=getattr(identity_row, "url", None),
             verification_status=getattr(identity_row, "verification_status", None),
             existing_description=getattr(identity_row, "description", None),
         )
-        result = await self._service.enrich(identity, existing_about=job.about_channel)
+        result = await self._service.enrich(
+            identity,
+            existing_about=job.about_channel,
+            source_text=source_text,
+            context=context,
+        )
 
         await self._session.refresh(job)
         if job.brand_about_attempt_id != attempt:
@@ -558,4 +814,18 @@ class BrandAboutRunner:
         if application.applied:
             job.about_channel = application.about
         await self._session.commit()
+        logger.info(
+            "brand_about_enrichment_completed",
+            extra={
+                "job_id": str(job.id),
+                "hiring_identity_id": str(claimed_identity),
+                "outcome": result.outcome,
+                "applied": application.applied,
+                "evidence_host": (
+                    urlsplit(result.evidence_url).hostname
+                    if result.evidence_url
+                    else None
+                ),
+            },
+        )
         return application

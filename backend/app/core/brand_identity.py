@@ -6,7 +6,7 @@ belonging to *Nabbe* must never get Nabbe's business written under "About
 Finance Simplified" — and a brand called "Acme" must get nothing at all, because
 there are hundreds of them and picking one is a coin toss dressed as a fact.
 
-So resolution happens before any lookup, and it only ever uses context
+So local resolution happens before any lookup, and it only ever uses context
 CreatorJobs already owns: the hiring identity attached to the job, the URL the
 account registered for it, and whether that identity is verified. A company name
 scraped from a job board is *not* an input here. It identifies the source
@@ -20,9 +20,10 @@ The confidence ladder decides what may happen next:
 ``ambiguous``         a name and nothing that pins it to one real brand.
 ``unresolved``        no usable identity at all.
 
-Only the first two may produce a summary. For the other two the honest output is
-an empty field the recruiter can fill in themselves — no summary is always
-better than the wrong one, and there is no third option worth having.
+Only the first two may proceed directly to evidence. An ambiguous local result
+may now be passed to the separate context-aware web-discovery resolver, which
+must independently establish an official source before anything is fetched or
+written. Without that resolver, the honest output remains an empty field.
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ class BrandIdentity:
 
     @property
     def may_enrich(self) -> bool:
-        """Whether this identity is pinned firmly enough to describe."""
+        """Whether held identity data is enough without web discovery."""
 
         return self.confidence in {"verified", "high_confidence"}
 
@@ -160,8 +161,9 @@ def resolve_brand_identity(
             reason="verified identity with a description CreatorJobs already holds",
         )
 
-    # A name and nothing else. There is no safe way to turn that into facts:
-    # searching it would find *a* company, not necessarily this one.
+    # A name and nothing else cannot become facts here. The discovery layer may
+    # search with job/account context and corroborate an official page; this
+    # local resolver deliberately does not pre-approve that later result.
     return BrandIdentity(
         name=name,
         confidence="ambiguous",

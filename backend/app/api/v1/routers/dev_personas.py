@@ -208,6 +208,7 @@ async def create_job_import_review_fixture(
         "multi-craft": "Visual Content Creator - Video Editing, VFX & Animation",
         "labelled-pay-conflict": "(Paid) Content Creator & Social Media Manager",
         "ceiling-only-pay": "Freelance Video Editor",
+        "brand-discovery": "Finance brand video editor",
         "checkpoint-currency": "Finance video editor job post",
         "checkpoint-trial": "Gaming thumbnail designer job post",
         "checkpoint-experience": "Education content strategist job post",
@@ -236,6 +237,10 @@ async def create_job_import_review_fixture(
         # Pay as a bare line with a qualifier and no label anywhere — the shape
         # the label reader could not see and the schema could not hold.
         "ceiling-only-pay": (
+            CEILING_ONLY_PAY_SOURCE_TEXT,
+            CEILING_ONLY_PAY_STRUCTURED_CONTEXT,
+        ),
+        "brand-discovery": (
             CEILING_ONLY_PAY_SOURCE_TEXT,
             CEILING_ONLY_PAY_STRUCTURED_CONTEXT,
         ),

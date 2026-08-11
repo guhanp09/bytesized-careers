@@ -27,7 +27,7 @@ import {
   listRoles,
   refreshMyYouTubeChannels,
   requestMyHiringIdentityVerification,
-  requestBrandAboutEnrichment,
+  getBrandAboutState,
   updateJob,
   upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
@@ -1255,6 +1255,7 @@ export default function PostJobPage() {
   const [loadedSchemaVersion, setLoadedSchemaVersion] = useState<number | null>(null);
 
   const [about, setAbout] = useState("");
+  const aboutValueRef = useRef("");
   const [responsibilities, setResponsibilities] = useState("");
   const [requirements, setRequirements] = useState("");
   const [howToApply, setHowToApply] = useState("");
@@ -1615,6 +1616,10 @@ export default function PostJobPage() {
   );
 
   React.useEffect(() => {
+    aboutValueRef.current = about;
+  }, [about]);
+
+  React.useEffect(() => {
     if (!draftId || sessionStatus !== "authenticated") return;
     let cancelled = false;
     const numericString = (value: unknown) => {
@@ -1809,6 +1814,85 @@ export default function PostJobPage() {
       cancelled = true;
     };
   }, [draftId, sessionStatus, withFreshBackendToken]);
+
+  React.useEffect(() => {
+    if (
+      !draftId ||
+      draftLoading ||
+      sessionStatus !== "authenticated" ||
+      dirtyPayloadKeysRef.current.has("about_channel") ||
+      dirtyPayloadKeysRef.current.has("hiring_identity_id") ||
+      String(loadedJobRef.current?.about_channel || "").trim()
+    ) {
+      return;
+    }
+
+    // The server starts enrichment when persisted identity/draft state becomes
+    // eligible. The editor only reads that background result and never initiates
+    // search, fetch, or model work from mount, refresh, or textarea visibility.
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const startedAt = Date.now();
+    const terminal = new Set([
+      "success",
+      "skipped_existing_content",
+      "no_reliable_identity",
+      "no_official_source",
+      "insufficient_evidence",
+      "failed",
+      "recruiter_owned",
+    ]);
+
+    const poll = async () => {
+      if (
+        cancelled ||
+        dirtyPayloadKeysRef.current.has("about_channel") ||
+        dirtyPayloadKeysRef.current.has("hiring_identity_id") ||
+        aboutValueRef.current.trim()
+      ) {
+        return;
+      }
+      attempts += 1;
+      try {
+        const state = await withFreshBackendToken((token) =>
+          getBrandAboutState(token, draftId)
+        );
+        if (
+          cancelled ||
+          dirtyPayloadKeysRef.current.has("about_channel") ||
+          dirtyPayloadKeysRef.current.has("hiring_identity_id")
+        ) return;
+        const generated = String(state.about_channel || "").trim();
+        if (generated && !aboutValueRef.current.trim()) {
+          aboutValueRef.current = generated;
+          setAbout(generated);
+          if (loadedJobRef.current) {
+            loadedJobRef.current = {
+              ...loadedJobRef.current,
+              about_channel: generated,
+            };
+          }
+          return;
+        }
+        if (terminal.has(state.status)) return;
+      } catch {
+        // Optional automation has no recruiter-facing failure mode. The field
+        // remains immediately editable and Save remains unchanged. A transient
+        // read failure does not abandon a background attempt that may still be
+        // running successfully.
+      }
+      if (cancelled || Date.now() - startedAt >= 95_000) return;
+      const delay = attempts < 5 ? 750 : attempts < 15 ? 1_500 : 3_000;
+      timer = setTimeout(() => void poll(), delay);
+    };
+
+    timer = setTimeout(() => void poll(), 350);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [draftId, draftLoading, sessionStatus, withFreshBackendToken]);
 
   React.useEffect(() => {
     const job = loadedJobRef.current;
@@ -3339,27 +3423,6 @@ export default function PostJobPage() {
       if (saved?.id) trackPersistedImportEdits(completePayload);
       const savedId = saved?.id || draftId;
 
-      // Brand About enrichment, on the one event that means the job really
-      // exists with the identity the recruiter chose. It is deliberately here
-      // and not in an effect: mounting the editor is not a decision, and a
-      // render-time trigger would fire on every refresh.
-      //
-      // The acknowledgement is awaited; the work is not. The endpoint claims
-      // the attempt and hands the fetch and the model call to a background
-      // task before replying, so this costs one round trip and guarantees the
-      // request survives the navigation immediately below. Firing without
-      // awaiting would let `location.assign` cancel it mid-flight.
-      //
-      // No eligibility is decided here. The server owns the brand, its URL and
-      // whether any work happens at all.
-      if (savedId) {
-        await withFreshBackendToken((token) =>
-          requestBrandAboutEnrichment(token, String(savedId))
-        ).catch(() => {
-          // The job is already saved. Enrichment is optional and silent.
-        });
-      }
-
       if (saveStatus === "published") {
         window.location.assign(`/jobs?updated=1${savedId ? `&jobId=${encodeURIComponent(String(savedId))}` : ""}`);
         return;
@@ -3898,7 +3961,6 @@ export default function PostJobPage() {
                 markPayloadDirty("languages");
               }}
               about={about}
-              hiringDisplayName={activeHiringDisplayName}
               responsibilities={responsibilities}
               requirements={requirements}
               howToApply={howToApply}

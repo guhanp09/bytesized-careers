@@ -16,7 +16,14 @@ from job_import_response_fixtures import SCENARIOS, scenario
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from app.models import Job, JobImportDraft, JobImportField, JobImportSource, Role
+from app.models import (
+    HiringIdentity,
+    Job,
+    JobImportDraft,
+    JobImportField,
+    JobImportSource,
+    Role,
+)
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
 from app.schemas.job_import import (
@@ -151,6 +158,20 @@ async def _accept_all_proposed(
         assert response.status_code == 200, response.text
         current = response.json()
     return current
+
+
+def _source_about_payload(about: str) -> dict[str, object]:
+    payload = scenario("vague_one_line")
+    payload["fields"].append(
+        {
+            "field_path": "about_channel",
+            "value": about,
+            "provenance": "extracted_from_source",
+            "evidence": [{"snippet": about}],
+            "provider_confidence": {"score": 1, "label": "high"},
+        }
+    )
+    return payload
 
 
 @pytest.mark.parametrize(
@@ -1616,6 +1637,135 @@ async def test_native_creation_failure_rolls_back_job_and_import_claim(
         assert stored.processing_status == "ready_to_apply"
         assert stored.target_job_id is None
         assert stored.mutation_claim_token is None
+
+
+async def test_matching_single_account_identity_is_attached_at_native_handoff(
+    client: AsyncClient,
+) -> None:
+    """The earliest safe persisted draft starts automation without a UI trigger."""
+
+    headers, owner_id = await _auth(client, "import-brand-match")
+    about = (
+        "Finance Simplified creates practical personal finance videos and "
+        "explainers for people learning about budgeting and investing."
+    )
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "import-brand-match",
+        source_payload={
+            "source_type": "pasted_text",
+            "source_title": "Finance Simplified role",
+            "original_text": f"Video editor\nAbout us\n{about}",
+            "idempotency_key": "source-import-brand-match",
+        },
+    )
+    await _record(draft["id"], owner_id, _source_about_payload(about))
+    accepted = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    async with TestSessionLocal() as session:
+        identity = HiringIdentity(
+            owner_user_id=owner_id,
+            type="brand",
+            platform="youtube",
+            display_name="Finance Simplified",
+            verification_status="VERIFIED",
+        )
+        session.add(identity)
+        await session.commit()
+        await session.refresh(identity)
+        identity_id = identity.id
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+
+    assert applied.status_code == 200, applied.text
+    assert UUID(applied.json()["job"]["hiring_identity_id"]) == identity_id
+    assert applied.json()["job"]["about_channel"] == about
+    async with TestSessionLocal() as session:
+        job = await session.get(Job, UUID(applied.json()["job"]["id"]))
+        assert job is not None
+        assert job.brand_about_status == "success"
+        assert job.brand_about_identity_id == identity_id
+
+
+async def test_mismatched_source_about_is_never_paired_with_the_account_identity(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source employer paragraph cannot silently become another brand's copy."""
+
+    from app.api.v1.routers import jobs as jobs_router
+
+    headers, owner_id = await _auth(client, "import-brand-mismatch")
+    about = (
+        "Nabbe operates a recruitment marketplace connecting employers and "
+        "agencies with candidates across multiple industries and locations."
+    )
+    _source, draft = await _source_and_draft(
+        client,
+        headers,
+        "import-brand-mismatch",
+        source_payload={
+            "source_type": "pasted_text",
+            "source_title": "Nabbe role",
+            "original_text": f"Video editor\nAbout Nabbe\n{about}",
+            "idempotency_key": "source-import-brand-mismatch",
+        },
+    )
+    await _record(draft["id"], owner_id, _source_about_payload(about))
+    accepted = await client.patch(
+        f"/api/v1/job-imports/drafts/{draft['id']}/fields/title",
+        headers=headers,
+        json={"action": "accept"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    async with TestSessionLocal() as session:
+        identity = HiringIdentity(
+            owner_user_id=owner_id,
+            type="brand",
+            platform="youtube",
+            display_name="Finance Simplified",
+            verification_status="VERIFIED",
+        )
+        session.add(identity)
+        await session.commit()
+        await session.refresh(identity)
+        identity_id = identity.id
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft['id']}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert applied.status_code == 200, applied.text
+    job_id = applied.json()["job"]["id"]
+    assert applied.json()["job"]["hiring_identity_id"] is None
+    assert applied.json()["job"]["about_channel"] == about
+
+    async def _noop(_job_id, _identity_id):
+        return None
+
+    monkeypatch.setattr(jobs_router, "_run_brand_about_enrichment", _noop)
+    selected = await client.patch(
+        f"/api/v1/jobs/{job_id}",
+        headers=headers,
+        json={"hiring_identity_id": str(identity_id)},
+    )
+
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["about_channel"] is None
+    state = await client.get(
+        f"/api/v1/jobs/{job_id}/brand-about/state", headers=headers
+    )
+    assert state.json()["status"] == "not_attempted"
 
 
 async def test_applied_draft_replay_rejects_deleted_or_cross_owner_target(

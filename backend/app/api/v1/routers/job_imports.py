@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_user,
+    get_db,
     get_job_import_conversation_service,
     get_job_import_processing_service,
     get_job_import_service,
@@ -481,8 +483,10 @@ async def delete_import_draft(
 async def apply_import_draft(
     draft_id: UUID,
     payload: JobImportApplyRequest,
+    background: BackgroundTasks,
     _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobImportApplyResponse:
     try:
@@ -493,6 +497,9 @@ async def apply_import_draft(
         )
     except JobImportError as error:
         _raise_import_error(error)
+    from app.api.v1.routers.jobs import schedule_brand_about_enrichment
+
+    await schedule_brand_about_enrichment(background, job=job, session=session)
     return JobImportApplyResponse(
         draft=await service.draft_read(draft),
         job=JobRead.model_validate(job),
@@ -508,8 +515,10 @@ async def apply_import_draft(
 async def attach_import_draft(
     draft_id: UUID,
     payload: JobImportAttachRequest,
+    background: BackgroundTasks,
     _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobImportService = Depends(get_job_import_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobImportAttachResponse:
     try:
@@ -520,6 +529,9 @@ async def attach_import_draft(
         )
     except JobImportError as error:
         _raise_import_error(error)
+    from app.api.v1.routers.jobs import schedule_brand_about_enrichment
+
+    await schedule_brand_about_enrichment(background, job=job, session=session)
     return JobImportAttachResponse(
         draft=await service.draft_read(draft),
         job=JobRead.model_validate(job),

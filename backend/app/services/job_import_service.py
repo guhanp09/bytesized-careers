@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.core.brand_discovery import brand_names_equivalent, source_copy_matches_identity
 from app.core.config import get_settings
 from app.core.job_application_classification import (
     REQUIREMENT_KEYS as APPLICATION_REQUIREMENT_KEYS,
@@ -4981,11 +4982,87 @@ class JobImportService:
                     "Confirmed import values do not form a valid native job draft.",
                     details={"field_errors": native_errors},
                 )
+            about_field = next(
+                (field for field in fields if field.field_path == "about_channel"),
+                None,
+            )
+            system_owned_import_about = bool(
+                job_payload.about_channel
+                and about_field is not None
+                and about_field.reviewed_by_user_id is None
+            )
+            source_context = (
+                source.retrieval_metadata.get("structured_context")
+                if isinstance(source.retrieval_metadata, dict)
+                else None
+            )
+            source_employer = (
+                source_context.get("employer_name")
+                if isinstance(source_context, dict)
+                and isinstance(source_context.get("employer_name"), str)
+                else None
+            )
+            selected_import_identity_id = job_payload.hiring_identity_id
+            if selected_import_identity_id is None:
+                # An exact source-employer match among the recruiter's persisted
+                # identities, or their sole identity when no such distinction is
+                # needed, is not a scraped-employer guess. Attaching that account
+                # identity lets server-owned enrichment begin as soon as the
+                # private native draft exists. Other multi-identity cases remain
+                # a real choice. System-supplied company copy adds one more guard:
+                # it must itself name that identity (or carry the same structured
+                # employer), or the choice stays unresolved rather than pairing
+                # A's paragraph with B's account identity.
+                owned_identities = (
+                    await self.job_service.repository.list_hiring_identities_for_user(
+                        user_id=owner_user_id
+                    )
+                )
+                matching_identities = [
+                    identity
+                    for identity in owned_identities
+                    if source_employer
+                    and brand_names_equivalent(identity.display_name, source_employer)
+                ]
+                sole_identity = (
+                    matching_identities[0]
+                    if len(matching_identities) == 1
+                    else owned_identities[0]
+                    if len(owned_identities) == 1
+                    else None
+                )
+                imported_copy_matches = bool(
+                    sole_identity is not None
+                    and job_payload.about_channel
+                    and source_copy_matches_identity(
+                        brand_name=sole_identity.display_name,
+                        source_employer=source_employer,
+                        evidence=job_payload.about_channel,
+                    )
+                )
+                if sole_identity is not None and (
+                    not system_owned_import_about or imported_copy_matches
+                ):
+                    job_payload = job_payload.model_copy(
+                        update={"hiring_identity_id": sole_identity.id}
+                    )
+                    selected_import_identity_id = sole_identity.id
             job = await self.job_service.create_job(
                 job_payload,
                 actor_user_id=owner_user_id,
                 commit_transaction=False,
             )
+            if job.about_channel and about_field is not None:
+                # Imported copy is ordinary editable content, but its ownership
+                # still matters on a later identity switch. Untouched machine /
+                # source copy is automation-owned and may be cleared when the
+                # brand changes; anything the recruiter reviewed is theirs and
+                # must survive exactly.
+                if system_owned_import_about:
+                    job.brand_about_status = "success"
+                    job.brand_about_identity_id = selected_import_identity_id
+                else:
+                    job.brand_about_status = "recruiter_owned"
             await self.repository.update_draft(
                 draft,
                 {
@@ -4997,6 +5074,12 @@ class JobImportService:
                     "mutation_claim_token": None,
                 },
             )
+            # Setting automation ownership touches the job after its repository
+            # create/refresh. Refresh once more so server-managed timestamps are
+            # loaded before the route serializes the committed object; otherwise
+            # SQLAlchemy would try to lazy-load ``updated_at`` outside its async
+            # greenlet during Pydantic validation.
+            await self.repository.session.refresh(job)
             await self.repository.session.commit()
             return draft, job, True
         except JobImportError:

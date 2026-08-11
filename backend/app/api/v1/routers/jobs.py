@@ -16,6 +16,10 @@ from app.api.deps import (
 )
 from app.core.brand_about_eligibility import should_enrich_brand_about
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
+from app.integrations.openai.brand_site_finder import (
+    BrandSiteFinderConfig,
+    OpenAIBrandSiteFinder,
+)
 from app.integrations.openai.brand_summary_adapter import (
     BrandSummaryConfig,
     OpenAIBrandSummarizer,
@@ -25,6 +29,7 @@ from app.schemas import JobCreate, JobListResponse, JobRead, JobStatus, JobUpdat
 from app.services.brand_enrichment_service import (
     BrandAboutRunner,
     BrandEnrichmentService,
+    import_brand_inputs_for_job,
 )
 from app.services.job_service import (
     JobAuthRequiredError,
@@ -52,25 +57,39 @@ def build_brand_enrichment_service() -> BrandEnrichmentService:
     from app.core.config import settings
     from app.services.brand_enrichment_probe import (
         GatedFetcher,
+        GatedFinder,
         GatedSummarizer,
         active_probe,
     )
 
     probe = active_probe()
     if probe is not None:
-        return BrandEnrichmentService(GatedSummarizer(probe), fetcher=GatedFetcher(probe))
+        return BrandEnrichmentService(
+            GatedSummarizer(probe),
+            fetcher=GatedFetcher(probe),
+            finder=GatedFinder(probe),
+        )
 
+    api_key = (
+        settings.openai_api_key.get_secret_value()
+        if settings.openai_api_key is not None
+        else None
+    )
     return BrandEnrichmentService(
         OpenAIBrandSummarizer(
             BrandSummaryConfig(
-                api_key=(
-                    settings.openai_api_key.get_secret_value()
-                    if settings.openai_api_key is not None
-                    else None
-                ),
+                api_key=api_key,
                 model=settings.openai_model,
+                request_timeout_seconds=settings.openai_request_timeout_seconds,
             )
-        )
+        ),
+        finder=OpenAIBrandSiteFinder(
+            BrandSiteFinderConfig(
+                api_key=api_key,
+                model=settings.openai_model,
+                request_timeout_seconds=settings.openai_request_timeout_seconds,
+            )
+        ),
     )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -159,8 +178,10 @@ async def get_job(job_id: UUID, service: JobService = Depends(get_job_service)) 
 )
 async def create_job(
     payload: JobCreate,
+    background: BackgroundTasks,
     _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
     service: JobService = Depends(get_job_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobRead | JSONResponse:
     try:
@@ -185,6 +206,7 @@ async def create_job(
         ) from exc
     except JobForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    await schedule_brand_about_enrichment(background, job=job, session=session)
     return JobRead.model_validate(job)
 
 
@@ -195,9 +217,11 @@ async def create_job(
 )
 async def update_job(
     payload: JobUpdate,
+    background: BackgroundTasks,
     _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
     owned_job: Job = Depends(require_job_owner),
     service: JobService = Depends(get_job_service),
+    session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobRead | JSONResponse:
     try:
@@ -219,6 +243,7 @@ async def update_job(
         ) from exc
     except JobForbiddenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    await schedule_brand_about_enrichment(background, job=job, session=session)
     return JobRead.model_validate(job)
 
 
@@ -241,6 +266,53 @@ class BrandAboutEnrichResponse(BaseModel):
 
     outcome: str
     reason: str = ""
+
+
+class BrandAboutStateResponse(BaseModel):
+    """Private editor hydration state; no evidence or provider provenance."""
+
+    status: str
+    about_channel: str | None = None
+
+
+async def schedule_brand_about_enrichment(
+    background: BackgroundTasks,
+    *,
+    job: Job,
+    session: AsyncSession,
+) -> BrandAboutEnrichResponse:
+    """Queue eligible work from persisted server state, never client context."""
+
+    decision = should_enrich_brand_about(
+        about=job.about_channel,
+        hiring_identity_id=job.hiring_identity_id,
+        status=job.brand_about_status,
+        attempted_identity_id=job.brand_about_identity_id,
+        attempted_at=job.brand_about_attempted_at,
+    )
+    if not decision.eligible:
+        return BrandAboutEnrichResponse(outcome="not_eligible", reason=decision.reason)
+    identity = await session.get(HiringIdentity, job.hiring_identity_id)
+    if identity is None:
+        return BrandAboutEnrichResponse(
+            outcome="not_eligible", reason="the hiring identity is no longer available"
+        )
+    background.add_task(_run_brand_about_enrichment, job.id, identity.id)
+    return BrandAboutEnrichResponse(outcome="claimed", reason=decision.reason)
+
+
+@router.get(
+    "/{job_id}/brand-about/state",
+    response_model=BrandAboutStateResponse,
+    summary="Read automatic brand About state for an owned job",
+)
+async def get_brand_about_state(
+    owned_job: Job = Depends(require_job_owner),
+) -> BrandAboutStateResponse:
+    return BrandAboutStateResponse(
+        status=owned_job.brand_about_status or "not_attempted",
+        about_channel=owned_job.about_channel,
+    )
 
 
 @router.post(
@@ -271,24 +343,9 @@ async def enrich_brand_about(
     cannot ask for a different company to be described.
     """
 
-    decision = should_enrich_brand_about(
-        about=owned_job.about_channel,
-        hiring_identity_id=owned_job.hiring_identity_id,
-        status=owned_job.brand_about_status,
-        attempted_identity_id=owned_job.brand_about_identity_id,
-        attempted_at=owned_job.brand_about_attempted_at,
+    return await schedule_brand_about_enrichment(
+        background, job=owned_job, session=session
     )
-    if not decision.eligible:
-        return BrandAboutEnrichResponse(outcome="not_eligible", reason=decision.reason)
-
-    identity = await session.get(HiringIdentity, owned_job.hiring_identity_id)
-    if identity is None:
-        return BrandAboutEnrichResponse(
-            outcome="not_eligible", reason="the hiring identity is no longer available"
-        )
-
-    background.add_task(_run_brand_about_enrichment, owned_job.id, identity.id)
-    return BrandAboutEnrichResponse(outcome="claimed", reason=decision.reason)
 
 
 async def _run_brand_about_enrichment(job_id: UUID, identity_id: UUID) -> None:
@@ -307,7 +364,15 @@ async def _run_brand_about_enrichment(job_id: UUID, identity_id: UUID) -> None:
             identity = await session.get(HiringIdentity, identity_id)
             if job is None or identity is None:
                 return
+            source_text, context = await import_brand_inputs_for_job(
+                session, job, identity
+            )
             runner = BrandAboutRunner(session, build_brand_enrichment_service())
-            await runner.run(job, identity)
+            await runner.run(
+                job,
+                identity,
+                source_text=source_text,
+                context=context,
+            )
         except Exception:  # pragma: no cover - optional enhancement
             logger.exception("brand_about_enrichment_failed", extra={"job_id": str(job_id)})

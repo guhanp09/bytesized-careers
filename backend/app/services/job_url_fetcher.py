@@ -64,6 +64,11 @@ _CLASSIFICATION_CODES: dict[str, str] = {
 }
 
 MAX_URL_RESPONSE_BYTES = 1_000_000
+#: Official homepages commonly carry larger bundled markup than a job detail.
+#: Brand enrichment still needs a hard ceiling; three megabytes is bounded and
+#: enough for the audited public sites without accepting arbitrary downloads.
+MAX_BRAND_URL_RESPONSE_BYTES = 3_000_000
+MAX_BRAND_SOURCE_TEXT_LENGTH = 20_000
 MAX_URL_REDIRECTS = 4
 URL_CONNECT_TIMEOUT_SECONDS = 5.0
 
@@ -92,6 +97,7 @@ URL_TOTAL_TIMEOUT_SECONDS = 15.0
 #: slip past the SSRF checks a first attempt failed.
 URL_TIMEOUT_RETRIES = 1
 URL_USER_AGENT = "CreatorJobs-PublicJobImporter/1.0"
+BRAND_URL_USER_AGENT = "CreatorJobs-BrandEnrichment/1.0"
 ALLOWED_URL_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
 
 Resolver = Callable[[str, int], Awaitable[list[ipaddress.IPv4Address | ipaddress.IPv6Address]]]
@@ -142,6 +148,38 @@ def _all_json_ld_jobs(value: object, found: list[dict[str, object]] | None = Non
         names = types if isinstance(types, list) else [types]
         if any(isinstance(n, str) and n.strip().casefold() == "jobposting" for n in names):
             collected.append(value)
+    return collected
+
+
+def _all_json_ld_organizations(
+    value: object,
+    found: list[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    """Bounded organisation records from an official page's structured data."""
+
+    collected = found if found is not None else []
+    if len(collected) >= 12:
+        return collected
+    if isinstance(value, list):
+        for item in value:
+            _all_json_ld_organizations(item, collected)
+        return collected
+    if not isinstance(value, dict):
+        return collected
+    graph = value.get("@graph")
+    if graph is not None:
+        _all_json_ld_organizations(graph, collected)
+    raw_types = value.get("@type")
+    types = raw_types if isinstance(raw_types, list) else [raw_types]
+    if any(
+        isinstance(item, str)
+        and item.strip().casefold() in {"organization", "corporation", "brand"}
+        for item in types
+    ):
+        collected.append(value)
+    for key, item in value.items():
+        if key != "@graph" and isinstance(item, (dict, list)):
+            _all_json_ld_organizations(item, collected)
     return collected
 
 
@@ -328,6 +366,9 @@ class _VisibleJobHtmlParser(HTMLParser):
         self._json_ld_chunks: list[str] = []
         self._text: list[str] = []
         self._title: list[str] = []
+        self.page_descriptions: list[str] = []
+        self.site_names: list[str] = []
+        self.organizations: list[dict[str, object]] = []
         self.canonical_href: str | None = None
         self.job_posting: dict[str, object] | None = None
         #: Every JobPosting the page declares, not merely the first.
@@ -348,6 +389,15 @@ class _VisibleJobHtmlParser(HTMLParser):
     ) -> None:
         tag = tag.casefold()
         values = self._attributes(attrs)
+        if tag == "meta":
+            key = (values.get("name") or values.get("property") or "").casefold()
+            content = _clean_text(values.get("content", ""))
+            if key in {"description", "og:description", "twitter:description"} and content:
+                if content.casefold() not in {item.casefold() for item in self.page_descriptions}:
+                    self.page_descriptions.append(content[:1000])
+            if key in {"og:site_name", "application-name"} and content:
+                if content.casefold() not in {item.casefold() for item in self.site_names}:
+                    self.site_names.append(content[:255])
         if tag == "link" and "canonical" in values.get("rel", "").casefold().split():
             self.canonical_href = values.get("href") or self.canonical_href
         if (
@@ -394,6 +444,9 @@ class _VisibleJobHtmlParser(HTMLParser):
                     for posting in _all_json_ld_jobs(parsed):
                         if len(self.job_postings) < 40:
                             self.job_postings.append(posting)
+                    for organization in _all_json_ld_organizations(parsed):
+                        if len(self.organizations) < 12:
+                            self.organizations.append(organization)
             return
         if self._ignored_depth:
             self._ignored_depth -= 1
@@ -1206,6 +1259,74 @@ def normalize_public_job_html(
     return normalized, structured_title or title, metadata
 
 
+def normalize_public_brand_html(
+    html_text: str,
+    *,
+    final_url: str,
+) -> tuple[str, str | None, dict[str, object]]:
+    """Normalize official brand evidence without applying job-page semantics."""
+
+    parser = _VisibleJobHtmlParser()
+    try:
+        parser.feed(html_text)
+        parser.close()
+    except (ValueError, RecursionError) as exc:
+        raise PublicJobUrlFetchError(
+            "JOB_IMPORT_URL_HTML_INVALID",
+            "The public page could not be read safely.",
+        ) from exc
+
+    organization_lines: list[str] = []
+    organization_names: list[str] = []
+    for organization in parser.organizations[:12]:
+        name = _bounded_structured_text(organization.get("name"), 255)
+        description = organization.get("description")
+        cleaned_description = (
+            _bounded_structured_text(_strip_html_fragment(description), 1500)
+            if isinstance(description, str)
+            else None
+        )
+        if name and name.casefold() not in {item.casefold() for item in organization_names}:
+            organization_names.append(name)
+        if cleaned_description and cleaned_description.casefold() not in {
+            item.casefold() for item in organization_lines
+        }:
+            organization_lines.append(cleaned_description)
+
+    pieces: list[str | None] = [
+        *parser.site_names,
+        parser.page_title,
+        *parser.page_descriptions,
+        *organization_names,
+        *organization_lines,
+        parser.visible_text,
+    ]
+    lines: list[str] = []
+    seen: set[str] = set()
+    for piece in pieces:
+        if not piece:
+            continue
+        for raw_line in piece.splitlines():
+            cleaned = _clean_text(raw_line)
+            key = cleaned.casefold()
+            if not cleaned or key in seen:
+                continue
+            seen.add(key)
+            lines.append(cleaned)
+    normalized = "\n".join(lines)[:MAX_BRAND_SOURCE_TEXT_LENGTH]
+    if not normalized.strip():
+        raise PublicJobUrlFetchError(
+            "JOB_IMPORT_URL_EMPTY_CONTENT",
+            "The public page did not contain readable brand text.",
+        )
+    return normalized, parser.page_title, {
+        "canonical_url": parser.canonical_href,
+        "organization_names": organization_names[:8],
+        "organization_descriptions_found": len(organization_lines),
+        "meta_descriptions_found": len(parser.page_descriptions),
+    }
+
+
 async def _default_resolver(
     hostname: str,
     port: int,
@@ -1247,10 +1368,16 @@ class PublicJobUrlFetcher:
         resolver: Resolver = _default_resolver,
         transport: httpx.AsyncBaseTransport | None = None,
         allow_test_loopback: bool = False,
+        max_response_bytes: int = MAX_URL_RESPONSE_BYTES,
+        require_job_content: bool = True,
+        user_agent: str = URL_USER_AGENT,
     ) -> None:
         self._resolver = resolver
         self._transport = transport
         self._allow_test_loopback = allow_test_loopback
+        self._max_response_bytes = max_response_bytes
+        self._require_job_content = require_job_content
+        self._user_agent = user_agent
 
     async def _validate_destination(self, raw_url: str) -> str:
         try:
@@ -1378,7 +1505,7 @@ class PublicJobUrlFetcher:
                         "GET",
                         current_url,
                         headers={
-                            "User-Agent": URL_USER_AGENT,
+                            "User-Agent": self._user_agent,
                             "Accept": "text/html, application/xhtml+xml, text/plain;q=0.8",
                         },
                     ) as response:
@@ -1435,7 +1562,7 @@ class PublicJobUrlFetcher:
                             )
                         content_length = response.headers.get("content-length")
                         if content_length and content_length.isdigit():
-                            if int(content_length) > MAX_URL_RESPONSE_BYTES:
+                            if int(content_length) > self._max_response_bytes:
                                 raise PublicJobUrlFetchError(
                                     "JOB_IMPORT_URL_RESPONSE_TOO_LARGE",
                                     "The public page is too large to import safely.",
@@ -1444,7 +1571,7 @@ class PublicJobUrlFetcher:
                         body = bytearray()
                         async for chunk in response.aiter_bytes():
                             body.extend(chunk)
-                            if len(body) > MAX_URL_RESPONSE_BYTES:
+                            if len(body) > self._max_response_bytes:
                                 raise PublicJobUrlFetchError(
                                     "JOB_IMPORT_URL_RESPONSE_TOO_LARGE",
                                     "The public page is too large to import safely.",
@@ -1484,8 +1611,13 @@ class PublicJobUrlFetcher:
                         "json_ld_job_posting": False,
                         "structured_title_found": False,
                     }
-                else:
+                elif self._require_job_content:
                     normalized, title, metadata = normalize_public_job_html(
+                        page_text,
+                        final_url=current_url,
+                    )
+                else:
+                    normalized, title, metadata = normalize_public_brand_html(
                         page_text,
                         final_url=current_url,
                     )
@@ -1503,17 +1635,25 @@ class PublicJobUrlFetcher:
                 # what came back instead decides what the recruiter should be
                 # told. A board index, a bot check and a client-rendered shell
                 # all need different sentences and all need the paste path.
-                evidence = classify_job_page(
-                    normalized,
-                    declared_job_titles=metadata.get("json_ld_job_titles") or [],
-                    declared_job_identities=metadata.get("json_ld_job_identities") or [],
-                )
-                metadata["page_classification"] = evidence.classification
-                metadata["page_classification_reason"] = evidence.reason
-                if not evidence.may_extract:
-                    raise PublicJobUrlFetchError(
-                        _CLASSIFICATION_CODES[evidence.classification],
-                        _CLASSIFICATION_MESSAGES[evidence.classification],
+                if self._require_job_content:
+                    evidence = classify_job_page(
+                        normalized,
+                        declared_job_titles=metadata.get("json_ld_job_titles") or [],
+                        declared_job_identities=metadata.get("json_ld_job_identities") or [],
+                    )
+                    metadata["page_classification"] = evidence.classification
+                    metadata["page_classification_reason"] = evidence.reason
+                    if not evidence.may_extract:
+                        raise PublicJobUrlFetchError(
+                            _CLASSIFICATION_CODES[evidence.classification],
+                            _CLASSIFICATION_MESSAGES[evidence.classification],
+                        )
+                else:
+                    # The same parser and every network-safety check, without
+                    # asking a company homepage to prove it is a single job.
+                    metadata["page_classification"] = "brand_page"
+                    metadata["page_classification_reason"] = (
+                        "job-content classification is not applicable"
                     )
 
                 metadata.update(
@@ -1536,4 +1676,30 @@ class PublicJobUrlFetcher:
         raise PublicJobUrlFetchError(
             "JOB_IMPORT_URL_TOO_MANY_REDIRECTS",
             "The public page redirected too many times.",
+        )
+
+
+class PublicBrandUrlFetcher(PublicJobUrlFetcher):
+    """Fetch an official brand page with the accepted public-URL safety model.
+
+    It deliberately changes only two job-import assumptions: a homepage need
+    not classify as one job, and its bounded markup allowance is larger. DNS,
+    scheme, credential, redirect, content-type, timeout and private-address
+    checks remain the exact same implementation.
+    """
+
+    def __init__(
+        self,
+        *,
+        resolver: Resolver = _default_resolver,
+        transport: httpx.AsyncBaseTransport | None = None,
+        allow_test_loopback: bool = False,
+    ) -> None:
+        super().__init__(
+            resolver=resolver,
+            transport=transport,
+            allow_test_loopback=allow_test_loopback,
+            max_response_bytes=MAX_BRAND_URL_RESPONSE_BYTES,
+            require_job_content=False,
+            user_agent=BRAND_URL_USER_AGENT,
         )

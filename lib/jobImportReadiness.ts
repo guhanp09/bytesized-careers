@@ -788,6 +788,7 @@ export type DevelopmentJobImportScenario =
   | "multi-craft"
   | "labelled-pay-conflict"
   | "ceiling-only-pay"
+  | "brand-discovery"
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"
