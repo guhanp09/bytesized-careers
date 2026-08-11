@@ -104,6 +104,23 @@ async function completeAssistant(page: Page) {
       continue;
     }
 
+    // A submitted reply remains in the current turn while the server saves it.
+    // During that honest typing state the answer controls are intentionally
+    // absent, so wait for either the next turn or completion instead of
+    // misclassifying the transient state as an unsupported control.
+    const thinking = turn.getByTestId("conversation-thinking");
+    if (await thinking.isVisible().catch(() => false)) {
+      await expect
+        .poll(
+          async () =>
+            (await done.isVisible().catch(() => false)) ||
+            !(await thinking.isVisible().catch(() => false)),
+          { timeout: 20_000 }
+        )
+        .toBe(true);
+      continue;
+    }
+
     const turnSignature = await turn.textContent({ timeout: 1_000 }).catch(() => null);
     if (!turnSignature) continue;
 

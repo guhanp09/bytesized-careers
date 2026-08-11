@@ -1494,6 +1494,11 @@ async def test_complete_reviewed_import_creates_one_private_native_draft(
     assert reviewed["confirmation_state"] == "confirmed"
     assert reviewed["can_apply_to_native_draft"] is True
     assert reviewed["can_publish_directly"] is False
+    reviewed_title = next(
+        field["effective_value"]
+        for field in reviewed["fields"]
+        if field["field_path"] == "title"
+    )
 
     converted = await client.post(
         f"/api/v1/job-imports/drafts/{draft['id']}/apply",
@@ -1507,6 +1512,12 @@ async def test_complete_reviewed_import_creates_one_private_native_draft(
     assert job["status"] == "draft"
     assert job["posted_by_user_id"] == str(owner_id)
     assert job["listing_schema_version"] == 3
+    assert job["title"] == reviewed_title
+    # Source-employer copy may describe the brand, but only the account owns
+    # the CreatorJobs hiring identity. Import conversion cannot manufacture or
+    # impersonate one from a page it fetched.
+    assert job["hiring_identity_id"] is None
+    assert job["channel_name"] is None
     assert job["required_tool_keys"] == ["premiere-pro"]
     assert job["other_required_tools"] == ["Creator Review Rig"]
     assert job["required_skill_keys"] == ["video_editing", "storytelling"]

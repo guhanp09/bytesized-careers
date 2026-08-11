@@ -45,6 +45,33 @@ def test_ambiguous_or_global_locations_remain_unknown(location: str) -> None:
     assert country_from_location(location) is None
 
 
+@pytest.mark.parametrize(
+    "location",
+    [
+        "Any Location",
+        "Anywhere",
+        "Fully Remote",
+        "Global",
+        "Remote",
+    ],
+)
+def test_generic_remote_labels_never_become_gazetteer_cities(location: str) -> None:
+    assert country_from_location(location) is None
+
+
+def test_explicit_currency_does_not_conflict_with_an_unbounded_remote_label() -> None:
+    decision = infer_compensation_currency(
+        explicit_currency="USD",
+        amount_present=True,
+        role_location="Any Location",
+        work_mode="remote",
+    )
+
+    assert decision.currency == "USD"
+    assert decision.country_code is None
+    assert decision.conflict_currency is None
+
+
 def test_role_location_wins_over_employer_location() -> None:
     decision = infer_compensation_currency(
         explicit_currency=None,

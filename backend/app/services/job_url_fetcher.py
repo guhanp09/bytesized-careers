@@ -753,6 +753,18 @@ _APPLICATION_ROUTE_LINE = re.compile(
     r"^(?:apply\s+(?:now|here|at|via|online|by|through|using)\b|to\s+apply\b)",
     re.IGNORECASE,
 )
+_APPLICATION_MATERIAL_LINE = re.compile(
+    r"(?:^|\b)(?:(?:interested\s+)?(?:candidates?|applicants?)\s+"
+    r"(?:can|may|must|should)\s+)?(?:apply|submit|send|email|forward)\b"
+    r".{0,180}\b(?:application|resume|cv|cover\s+letter|portfolio|"
+    r"indeed|job\s+board|email)\b",
+    re.IGNORECASE,
+)
+_SIGNOFF_LINE = re.compile(
+    r"^(?:thanks?(?:\s+and\s+regards)?|kind\s+regards|best\s+regards|"
+    r"sincerely)[\s,!.:-]*$",
+    re.IGNORECASE,
+)
 _PREFERRED_QUALIFIER = re.compile(
     r"\b(?:preferred|optional|nice\s+to\s+have|bonus|ideally|helpful)\b",
     re.IGNORECASE,
@@ -804,6 +816,26 @@ def _description_section_boundary(value: str) -> bool:
     label, separator, _detail = value.partition(":")
     return bool(
         separator and _normalized_heading(label) in _SECTION_BOUNDARY_HEADINGS
+    )
+
+
+def _application_or_signoff_boundary(value: str) -> bool:
+    """Stop a candidate-fit section when the page moves into applying.
+
+    Real JobPosting descriptions do not always provide a ``How to apply``
+    heading.  A SimplyHired-shaped page placed an application instruction and
+    email signature directly after ``Preferred Skills``; treating those lines
+    as qualifications leaked the destination, contact name, and address into
+    the candidate-fit model.  This boundary is semantic rather than
+    host-specific and deliberately requires application verbs plus application
+    materials/destinations, so work bullets such as "Apply brand guidelines"
+    remain valid.
+    """
+
+    return bool(
+        _APPLICATION_ROUTE_LINE.match(value)
+        or _APPLICATION_MATERIAL_LINE.search(value)
+        or _SIGNOFF_LINE.match(value)
     )
 
 
@@ -872,7 +904,7 @@ def _structured_description_context(description: object) -> dict[str, object]:
         cleaned = re.sub(r"^(?:[-*•–—]+|\d+[.)])\s*", "", raw_line).strip()
         if not cleaned:
             continue
-        if active_section is not None and _APPLICATION_ROUTE_LINE.match(cleaned):
+        if active_section is not None and _application_or_signoff_boundary(cleaned):
             active_section = None
             continue
         if active_section == "responsibilities":
@@ -961,7 +993,11 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, obj
     direct_responsibilities = _bounded_structured_list(job_posting.get("responsibilities"))
     if direct_responsibilities:
         _merge_context_items(context, "responsibilities", direct_responsibilities)
-    direct_qualifications = _bounded_structured_list(job_posting.get("qualifications"))
+    direct_qualifications = [
+        item
+        for item in _bounded_structured_list(job_posting.get("qualifications"))
+        if not _application_or_signoff_boundary(item)
+    ]
     if direct_qualifications:
         required: list[str] = []
         preferred: list[str] = []

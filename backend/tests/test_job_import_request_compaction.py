@@ -174,7 +174,11 @@ async def test_the_compact_request_is_materially_smaller(client) -> None:
     full = len(request.model_dump_json())
     compact = len(json.dumps(compact_provider_request(request)))
     reduction = (full - compact) / full
-    assert reduction >= 0.25, f"only {reduction:.1%} smaller"
+    # The explicit completion checklist deliberately repeats the path names: a
+    # live response otherwise omitted one verdict and discarded the whole job.
+    # The request remains materially smaller while spending a little of the
+    # original saving on reliable one-call coverage.
+    assert reduction >= 0.20, f"only {reduction:.1%} smaller"
     # Only platform-decided route fields are omitted. This is semantic
     # compaction, not arbitrary truncation.
     expected_provider_fields = sum(

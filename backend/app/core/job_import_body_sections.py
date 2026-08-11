@@ -48,10 +48,47 @@ _EXPERIENCE_VALUE = re.compile(
     r"up\s+to|maximum(?:\s+of)?|max\.?)?\s*"
     r"(?P<minimum>\d{1,3})\s*"
     r"(?:(?P<plus>\+)|"
-    r"(?P<separator>[-\u2013\u2014]|to)\s*(?P<maximum>\d{1,3}))?\s*"
+    r"(?P<separator>[-\u2013\u2014]|to)\s*(?P<maximum>\d{1,3})"
+    r"(?P<range_plus>\+)?)?\s*"
     r"(?P<unit>years?|yrs?|months?|mos?)\b"
     r"(?:\s+(?:of\s+)?(?:[\w'\u2019-]+\s+){0,5}experience)?"
     r"\s*$",
+    re.IGNORECASE,
+)
+
+#: A quantitative requirement at the start of an otherwise descriptive value.
+#:
+#: Luna can correctly return the source's complete sentence (for example,
+#: ``5+ years of content strategy and B2B marketing experience``) even though
+#: the native field is deliberately a compact 64-character summary.  The
+#: leading requirement is safe to compact only when it is the sole quantitative
+#: experience claim and the remainder still reads like experience context.
+_LEADING_EXPERIENCE_REQUIREMENT = re.compile(
+    r"^\s*(?P<value>"
+    r"(?:(?:minimum(?:\s+of)?|min\.?|at\s+least|up\s+to|"
+    r"maximum(?:\s+of)?|max\.?)\s+)?"
+    r"\d{1,3}\s*"
+    r"(?:\+|(?:[-\u2013\u2014]|to)\s*\d{1,3}\s*\+?)?\s*"
+    r"(?:years?|yrs?|months?|mos?)"
+    r")\b(?P<context>.*)$",
+    re.IGNORECASE,
+)
+
+_QUANTIFIED_EXPERIENCE_IN_CONTEXT = re.compile(
+    r"\b\d{1,3}\s*(?:\+|(?:[-\u2013\u2014]|to)\s*\d{1,3}\s*\+?)?\s*"
+    r"(?:years?|yrs?|months?|mos?)\b",
+    re.IGNORECASE,
+)
+
+_EXPERIENCE_CONTEXT_START = re.compile(
+    r"^(?:"
+    r"(?:of|in|with|as)\b"
+    r"|(?:professional|relevant|hands-on|industry|related)\b"
+    r"|experience\b"
+    r"|[\w'\u2019-]+ing\b"
+    r"|['\u2019](?:s\s+)?experience\b"
+    r"|[,;(]"
+    r")",
     re.IGNORECASE,
 )
 
@@ -92,6 +129,40 @@ class LabelledExperience:
     value: str
     #: Exact source row, kept separately from the normalized field value.
     evidence: str
+
+
+@dataclass(frozen=True)
+class EntailedWorkMode:
+    """A work arrangement stated by an exact attendance requirement."""
+
+    value: str
+    evidence: str
+
+
+_FULL_WEEK_IN_OFFICE = re.compile(
+    r"\b(?:be|work)\s+(?:in|from)\s+(?:the\s+)?office\s+"
+    r"(?:for\s+)?(?:all\s+)?(?:five|5)\s+days?\s+(?:a|per)\s+week\b",
+    re.IGNORECASE,
+)
+
+
+def entailed_work_mode_from_body(value: str | None) -> EntailedWorkMode | None:
+    """Return onsite only for an unambiguous full-week office requirement.
+
+    A generic mention of an office is not a work arrangement, and two or three
+    office days normally means hybrid. Five required office days, however,
+    leaves no remote/hybrid interpretation to ask a recruiter to confirm.
+    """
+
+    if not isinstance(value, str):
+        return None
+    for raw_line in value.splitlines():
+        line = " ".join(raw_line.split()).strip()
+        if not line or "hybrid" in line.casefold():
+            continue
+        if _FULL_WEEK_IN_OFFICE.search(line):
+            return EntailedWorkMode(value="onsite", evidence=line[:500])
+    return None
 
 
 def normalize_experience_requirement(value: str | None) -> str | None:
@@ -139,19 +210,51 @@ def normalize_experience_requirement(value: str | None) -> str | None:
     # qualifier would add noise, while combining it with an upper-bound phrase
     # would be contradictory and therefore invalid.
     plus = bool(match.group("plus"))
-    if plus and prefix in {"Maximum ", "Up to "}:
+    range_plus = bool(match.group("range_plus"))
+    if (plus or range_plus) and prefix in {"Maximum ", "Up to "}:
         return None
     if plus:
         prefix = ""
 
     if maximum is not None:
-        quantity = f"{minimum}\u2013{maximum}"
+        quantity = f"{minimum}\u2013{maximum}{'+' if range_plus else ''}"
         plural = True
     else:
         quantity = f"{minimum}{'+' if plus else ''}"
         plural = minimum != 1 or plus
     unit_word = f"{canonical_unit}{'s' if plural else ''}"
     return f"{prefix}{quantity} {unit_word}"
+
+
+def normalize_leading_experience_requirement(value: str | None) -> str | None:
+    """Compact one explicit leading requirement without changing its bounds.
+
+    This is intentionally narrower than arbitrary summarization.  It returns a
+    value only when the text starts with one valid quantitative requirement,
+    contains no second years/months claim, and the remaining words describe
+    experience rather than a date such as ``5 years ago``.  No seniority word
+    or qualitative phrase can become a number through this helper.
+    """
+
+    direct = normalize_experience_requirement(value)
+    if direct is not None:
+        return direct
+    if not isinstance(value, str):
+        return None
+
+    cleaned = " ".join(value.split()).strip()
+    match = _LEADING_EXPERIENCE_REQUIREMENT.fullmatch(cleaned)
+    if match is None:
+        return None
+
+    context = match.group("context").strip()
+    if not context or not _EXPERIENCE_CONTEXT_START.match(context):
+        return None
+    if context.casefold().startswith("ago"):
+        return None
+    if _QUANTIFIED_EXPERIENCE_IN_CONTEXT.search(context):
+        return None
+    return normalize_experience_requirement(match.group("value"))
 
 
 def labelled_experience(text: str | None) -> LabelledExperience | None:
@@ -281,7 +384,7 @@ def _experience_match_value(match: re.Match[str]) -> str | None:
     prefix = f"{_QUALIFIER_WORDING[qualifier.lower().split()[0]]} " if qualifier else ""
 
     if low and high:
-        return f"{prefix}{low}–{high} years"
+        return f"{prefix}{low}–{high}{'+' if range_plus else ''} years"
     if single:
         return f"{prefix}{single}{'+' if single_plus else ''} years"
     return None

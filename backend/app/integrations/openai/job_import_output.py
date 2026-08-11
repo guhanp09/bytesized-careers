@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    create_model,
+    model_validator,
+)
 
+from app.core.job_import_intelligence_matrix import intelligence_matrix
 from app.integrations.openai.job_import_spans import (
     EVIDENCE_SPAN_ID_PATTERN,
     MAX_EVIDENCE_SPANS_PER_REFERENCE,
@@ -26,6 +34,35 @@ _SpanId = Annotated[
         pattern=EVIDENCE_SPAN_ID_PATTERN,
     ),
 ]
+
+_ProviderCoverageVerdict = Literal["field", "conflict", "missing"]
+_PROVIDER_VISIBLE_FIELD_PATHS = tuple(
+    field_path
+    for field_path, row in intelligence_matrix().items()
+    if row.provider_visible
+)
+
+# Structured Outputs can require object properties, but cannot require a list
+# to contain one item for each dynamic field path. A companion object therefore
+# makes every current provider-visible verdict a required schema property. The
+# richer arrays still carry values/evidence; this map exists only to prove
+# complete coverage in one call.
+OpenAIJobImportCoverage = create_model(
+    "OpenAIJobImportCoverage",
+    __config__=ConfigDict(extra="forbid"),
+    **{
+        field_path: (_ProviderCoverageVerdict, ...)
+        for field_path in _PROVIDER_VISIBLE_FIELD_PATHS
+    },
+)
+
+
+def _default_coverage() -> BaseModel:
+    # Python-side fixtures created before the coverage contract remain usable.
+    # OpenAI's strict schema makes every property required on real responses.
+    return OpenAIJobImportCoverage(
+        **{field_path: "missing" for field_path in _PROVIDER_VISIBLE_FIELD_PATHS}
+    )
 
 
 class OpenAIJobImportPostParseError(ValueError):
@@ -239,6 +276,51 @@ class OpenAIJobImportExtractionField(BaseModel):
     ]
     inference_type: str | None = Field(default=None, max_length=80)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_provider_diagnostic_claims(cls, value: Any) -> Any:
+        """Make redundant provider labels coherent without changing content.
+
+        ``provenance`` and ``epistemic_status`` encode overlapping authority.
+        Structured Outputs can constrain each enum but cannot express their
+        cross-field relationship, so a live response returned a useful field
+        with an incompatible pair and the whole job was discarded. These labels
+        are private diagnostics, not source facts.
+
+        Normalize disagreement toward less authority: if either label says
+        inference, the result remains a recruiter-visible suggestion. A provider
+        never gets to claim that source text was recruiter-supplied. Missing
+        inference names receive bounded generic diagnostics; no field value,
+        evidence, confidence, or decision is invented here.
+        """
+
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        provenance = normalized.get("provenance")
+        epistemic = normalized.get("epistemic_status")
+        inferred = provenance == "suggested_inference" or epistemic in {
+            "logically_entailed",
+            "plausible_interpretation",
+        }
+        if inferred:
+            normalized["provenance"] = "suggested_inference"
+            if epistemic not in {"logically_entailed", "plausible_interpretation"}:
+                normalized["epistemic_status"] = "plausible_interpretation"
+            if not str(normalized.get("inference_type") or "").strip():
+                normalized["inference_type"] = "provider_grounded_interpretation"
+            if not str(normalized.get("explanation") or "").strip():
+                normalized["explanation"] = "Interpreted from the cited source context."
+            return normalized
+
+        if provenance == "directly_supplied":
+            normalized["provenance"] = "extracted_from_source"
+        if epistemic == "normalized_explicit" and not str(
+            normalized.get("inference_type") or ""
+        ).strip():
+            normalized["inference_type"] = "provider_source_normalization"
+        return normalized
+
     @model_validator(mode="after")
     def validate_epistemic_contract(self) -> OpenAIJobImportExtractionField:
         if (
@@ -328,6 +410,11 @@ class OpenAIJobImportExtractionResponse(BaseModel):
     conflicts: list[OpenAIJobImportConflict] = Field(default_factory=list, max_length=30)
     missing_fields: list[OpenAIJobImportMissingField] = Field(default_factory=list, max_length=100)
     warnings: list[OpenAIJobImportProcessingWarning] = Field(default_factory=list, max_length=30)
+    # Keep this last in the wire shape. Structured Outputs are generated in
+    # schema order; asking the model to inventory its collections *after* it has
+    # emitted them avoids a prospective checklist drifting from the actual
+    # verdict arrays (observed on a live, otherwise complete extraction).
+    coverage: OpenAIJobImportCoverage = Field(default_factory=_default_coverage)
 
     @staticmethod
     def _decode_value(
@@ -417,6 +504,11 @@ class OpenAIJobImportExtractionResponse(BaseModel):
             "provider_conflict_count": len(self.conflicts),
             "provider_missing_field_count": len(self.missing_fields),
             "provider_warning_count": len(self.warnings),
+            "provider_coverage_supplied": "coverage" in self.model_fields_set,
+            "provider_coverage_missing_count": sum(
+                verdict == "missing"
+                for verdict in self.coverage.model_dump(mode="json").values()
+            ),
             **({"invalid_evidence_span_ids": invalid_ids[:5]} if invalid_ids else {}),
         }
 
@@ -761,6 +853,10 @@ class OpenAIJobImportExtractionResponse(BaseModel):
 
     def to_domain_response(self, *, span_set: EvidenceSpanSet) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
+        # Provider-neutral domain output has no redundant coverage companion.
+        # The adapter uses it after decoding to materialize only explicit
+        # ``missing`` verdicts for paths in the current request.
+        payload.pop("coverage", None)
         # Decode fields independently so diagnostics identify the exact bad
         # value. The adapter's request-specific completeness gate runs after
         # this conversion: because a dropped field no longer has a verdict, the

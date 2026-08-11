@@ -269,6 +269,14 @@ async def test_the_workplace_is_settled_in_one_turn(client) -> None:
     assert set(grouped["grouped_fields"]) == {"work_mode", "location"}
     labels = [option["label"] for option in grouped["grouped_options"]]
     assert any("San Francisco" in label for label in labels), labels
+    assert {option["value"] for option in grouped["grouped_options"]} == {
+        "remote",
+        "onsite",
+    }
+    remote = next(
+        option for option in grouped["grouped_options"] if option["value"] == "remote"
+    )
+    assert remote["applies"]["location"] == "United States"
 
     # One click settles both fields.
     chosen = next(
@@ -388,9 +396,17 @@ async def test_a_labelled_remote_place_choice_persists_both_fields(client) -> No
     remote = next(
         option
         for option in question["grouped_options"]
-        if option["value"] == "remote" and "based around" in option["label"]
+        if option["value"] == "remote"
     )
-    assert remote["applies"]["location"]
+    assert remote["applies"]["location"] == "Canada"
+    assert {option["value"] for option in question["grouped_options"]} == {
+        "remote",
+        "hybrid",
+    }
+    hybrid = next(
+        option for option in question["grouped_options"] if option["value"] == "hybrid"
+    )
+    assert hybrid["applies"]["location"] == "Toronto, Ontario, Canada"
 
     answered = await client.post(
         f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",

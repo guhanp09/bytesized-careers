@@ -12,9 +12,12 @@ about it must be gone before anyone sees it.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.core.job_import_questions import deterministic_question_queue
+from app.services.job_import_conversation_service import JobImportConversationService
 
 
 def queue_for(missing: dict[str, str], **kwargs) -> list[str]:
@@ -145,3 +148,36 @@ class TestNoTechnicalFailureBecomesABusinessQuestion:
         # Retrieval refuses first, so there is no draft to plan questions from.
         for text in ("Jobs", "Just a moment... checking your browser"):
             assert not classify_job_page(text).may_extract
+
+
+class TestConsequentialSuggestionsRemainConfirmable:
+    def test_valid_contextual_currency_is_offered_but_not_auto_applied(self) -> None:
+        row = SimpleNamespace(
+            field_path="budget_currency",
+            proposed_value="CAD",
+            validation_errors=[
+                "This field may only be extracted from explicit source wording."
+            ],
+        )
+
+        assert JobImportConversationService._confirmable_essential_suggestion(row)
+
+    @pytest.mark.parametrize(
+        ("field_path", "value"),
+        [
+            ("creative_autonomy", "high"),
+            ("budget_currency", "not-a-currency"),
+        ],
+    )
+    def test_optional_or_malformed_suggestions_stay_suppressed(
+        self, field_path: str, value: str
+    ) -> None:
+        row = SimpleNamespace(
+            field_path=field_path,
+            proposed_value=value,
+            validation_errors=[
+                "This field may only be extracted from explicit source wording."
+            ],
+        )
+
+        assert not JobImportConversationService._confirmable_essential_suggestion(row)

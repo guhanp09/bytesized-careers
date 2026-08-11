@@ -111,7 +111,7 @@ def test_coherent_epistemic_claims_cross_both_provider_contracts(
         ("directly_supplied", "plausible_interpretation", "interpretation"),
     ],
 )
-def test_incoherent_epistemic_claims_are_rejected_by_both_provider_contracts(
+def test_incoherent_wire_diagnostics_normalize_toward_lower_authority(
     provenance: str,
     epistemic_status: str,
     inference_type: str | None,
@@ -124,14 +124,20 @@ def test_incoherent_epistemic_claims_are_rejected_by_both_provider_contracts(
                 inference_type=inference_type,
             )
         )
-    with pytest.raises(ValidationError):
-        OpenAIJobImportExtractionField.model_validate(
-            _wire_field(
-                provenance=provenance,
-                epistemic_status=epistemic_status,
-                inference_type=inference_type,
-            )
+    wire = OpenAIJobImportExtractionField.model_validate(
+        _wire_field(
+            provenance=provenance,
+            epistemic_status=epistemic_status,
+            inference_type=inference_type,
         )
+    )
+
+    assert wire.provenance == "suggested_inference"
+    assert wire.epistemic_status in {
+        "logically_entailed",
+        "plausible_interpretation",
+    }
+    assert wire.inference_type
 
 
 @pytest.mark.parametrize(
@@ -155,14 +161,17 @@ def test_nonliteral_epistemic_claims_require_a_named_inference(
                     inference_type=inference_type,
                 )
             )
-        with pytest.raises(ValidationError):
-            OpenAIJobImportExtractionField.model_validate(
-                _wire_field(
-                    provenance=provenance,
-                    epistemic_status=epistemic_status,
-                    inference_type=inference_type,
-                )
+        wire = OpenAIJobImportExtractionField.model_validate(
+            _wire_field(
+                provenance=provenance,
+                epistemic_status=epistemic_status,
+                inference_type=inference_type,
             )
+        )
+        assert wire.inference_type in {
+            "provider_source_normalization",
+            "provider_grounded_interpretation",
+        }
 
 
 def test_legacy_domain_fields_may_omit_epistemic_annotations_but_wire_may_not() -> None:
@@ -308,7 +317,7 @@ def _wire_response(field: dict[str, object]) -> dict[str, object]:
 
 
 @pytest.mark.asyncio
-async def test_fake_provider_cannot_smuggle_an_incoherent_epistemic_claim() -> None:
+async def test_incoherent_wire_claim_cannot_gain_explicit_authority() -> None:
     payload = _wire_response(
         _wire_field(
             provenance="suggested_inference",
@@ -316,11 +325,13 @@ async def test_fake_provider_cannot_smuggle_an_incoherent_epistemic_claim() -> N
         )
     )
 
-    with pytest.raises(JobImportProviderError) as caught:
-        await _adapter(payload).extract(_request())
+    result = await _adapter(payload).extract(_request())
+    field = result.extraction.fields[0]
 
-    assert caught.value.code == "OPENAI_SCHEMA_MISMATCH"
-    assert caught.value.metadata.metadata["processing_stage"] == "provider_wire_validation"
+    assert field.provenance == "suggested_inference"
+    assert field.epistemic_status == "plausible_interpretation"
+    assert field.inference_type == "provider_grounded_interpretation"
+    assert field.explanation == "The source supports the selected creator role."
 
 
 @pytest.mark.asyncio

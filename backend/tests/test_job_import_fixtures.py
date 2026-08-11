@@ -142,7 +142,7 @@ async def test_shine_school_editor_fixture_preserves_url_context_without_provide
     assert fields["content_niches"]["effective_value"] == ["Education"]
     assert fields["content_niches"]["decision_confidence"] == "high"
     assert fields["content_niches"]["needs_review"] is False
-    assert fields["experience_level"]["effective_value"] == "1\u20137 years of experience"
+    assert fields["experience_level"]["effective_value"] == "1\u20137 years"
 
     source_id = draft["source_id"]
     source = await client.get(f"/api/v1/job-imports/sources/{source_id}", headers=headers)

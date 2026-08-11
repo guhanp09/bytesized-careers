@@ -91,6 +91,12 @@ class TestOnlyTheStrongestOptionsAreShown:
     def test_a_job_outside_the_marketplace_offers_nothing(self) -> None:
         assert candidates("Senior Financial Analyst") == []
 
+    def test_seeded_community_manager_title_is_recognized(self) -> None:
+        # Title-only lookup owns catalog recognition. Whole-job reconciliation
+        # separately rejects office-operations jobs with this ambiguous title.
+        assert candidates("Community Manager (NY)") == ["community-manager"]
+        assert candidates("Online Community Manager") == ["community-manager"]
+
     def test_the_option_list_stays_short_enough_to_be_a_question(self) -> None:
         crowded = "Video Editing, Animation, Motion Graphics, Scriptwriting and Copywriting"
         assert len(candidates(crowded)) <= 5

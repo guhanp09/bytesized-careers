@@ -97,7 +97,7 @@ class Settings(BaseSettings):
         alias="OPENAI_MAX_RETRIES",
     )
     job_import_prompt_version: str = Field(
-        default="job-import-text-v5",
+        default="job-import-text-v6",
         min_length=1,
         max_length=80,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",

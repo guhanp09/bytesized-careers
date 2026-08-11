@@ -20,8 +20,10 @@ from app.core.job_import_answer_shapes import (
 )
 from app.core.job_import_body_sections import (
     experience_from_body,
+    experience_requirements_from_body,
     labelled_experience,
     normalize_experience_requirement,
+    normalize_leading_experience_requirement,
 )
 from app.core.job_import_labelled_fields import labelled_facts, primary_job_text
 from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
@@ -41,6 +43,7 @@ from app.services.job_url_fetcher import (
         ("At least 5 years", "At least 5 years"),
         ("Minimum of 2 yrs", "Minimum 2 years"),
         ("2+ years", "2+ years"),
+        ("3-5+ years", "3–5+ years"),
         ("12+ months of relevant editing experience", "12+ months"),
         ("12–18 months", "12–18 months"),
         (
@@ -51,6 +54,12 @@ from app.services.job_url_fetcher import (
 )
 def test_self_contained_experience_keeps_its_semantics(written: str, expected: str) -> None:
     assert normalize_experience_requirement(written) == expected
+
+
+def test_prose_range_with_an_open_upper_bound_keeps_the_plus() -> None:
+    source = "Have 3-5+ years of experience managing social media accounts."
+
+    assert experience_requirements_from_body(source) == ("3–5+ years",)
 
 
 @pytest.mark.parametrize(
@@ -68,6 +77,49 @@ def test_self_contained_experience_keeps_its_semantics(written: str, expected: s
 def test_invalid_or_filler_experience_is_not_an_answer(written: str) -> None:
     assert normalize_experience_requirement(written) is None
     assert conversation_answer_errors("experience_level", written)
+
+
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        (
+            "5+ years of content strategy, content marketing, or social media "
+            "experience in a B2B environment",
+            "5+ years",
+        ),
+        (
+            "3-5+ years managing social media for a B2B SaaS or security company",
+            "3–5+ years",
+        ),
+        (
+            "2+ years in communications, content strategy, marketing, or copywriting",
+            "2+ years",
+        ),
+        (
+            "3+ years of professional graphic design experience, preferably in tech",
+            "3+ years",
+        ),
+    ],
+)
+def test_long_provider_experience_keeps_its_exact_quantitative_requirement(
+    written: str,
+    expected: str,
+) -> None:
+    assert len(written) > 64
+    assert normalize_leading_experience_requirement(written) == expected
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "5 years ago we were founded",
+        "1–2 years or 3–5 years of experience",
+        "Senior social media leader",
+        "Several years of experience",
+    ],
+)
+def test_experience_compaction_never_invents_or_hides_another_claim(written: str) -> None:
+    assert normalize_leading_experience_requirement(written) is None
 
 
 @pytest.mark.parametrize(

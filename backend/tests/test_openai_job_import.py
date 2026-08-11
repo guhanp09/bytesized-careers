@@ -52,6 +52,32 @@ SOURCE_TEXT = "Need a video editor for weekly YouTube videos."
 TITLE_TEXT = "video editor"
 
 
+def test_provider_input_keeps_the_whole_job_in_one_reasoning_context() -> None:
+    source = (
+        "Video Editor\n"
+        "Remote within India\n"
+        "Edit four YouTube episodes each month.\n"
+        "Salary: INR 50,000 per month"
+    )
+    span_set = build_evidence_span_set(source)
+
+    provider_input = OpenAIJobImportAdapter._provider_input(
+        _request(source), span_set=span_set
+    )
+    evidence_payload = json.loads(
+        provider_input[0]["content"][1]["text"].split("\n", 1)[1]
+    )
+    combined = "\n".join(
+        span["text"] for span in evidence_payload["evidence_spans"]
+    )
+
+    assert "Video Editor" in combined
+    assert "Remote within India" in combined
+    assert "four YouTube episodes" in combined
+    assert "INR 50,000 per month" in combined
+    assert evidence_payload["segmentation_version"] == EVIDENCE_SEGMENTATION_VERSION
+
+
 def _request(source_text: str = SOURCE_TEXT) -> JobImportExtractionRequest:
     return JobImportExtractionRequest.model_validate(
         {
@@ -471,13 +497,22 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert "Server-labelled Structured lines" in str(call["instructions"])
     assert "structured role location" in str(call["instructions"])
     assert "exactly once across fields, conflicts, and missing_fields" in str(call["instructions"])
+    assert "required_field_paths as a literal completion checklist" in str(call["instructions"])
     assert "Structured job title" in str(call["instructions"])
     assert "qualification/requirement lines" in str(call["instructions"])
     assert 'exact "Video Editor" title maps to video-editor' in str(call["instructions"])
+    compact_request = json.loads(content[0]["text"].split("\n", 1)[1])
+    assert compact_request["required_field_count"] == len(
+        compact_request["required_field_paths"]
+    )
+    assert compact_request["required_field_paths"] == [
+        item["field_path"] for item in compact_request["field_definitions"]
+    ]
 
 
 def test_openai_wire_schema_is_strict_structured_output_compatible() -> None:
     schema = to_strict_json_schema(OpenAIJobImportExtractionResponse)
+    assert list(schema["properties"])[-1] == "coverage"
 
     def walk(value: object) -> None:
         if isinstance(value, dict):

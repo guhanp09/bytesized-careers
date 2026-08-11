@@ -136,7 +136,6 @@ def test_experience_lands_in_a_band_the_editor_can_parse(
 
     fields = fields_from_structured_context({"experience_requirement": requirement})
     assert fields["experience_level"] == expected
-    import re
 
     # No invented ceiling: a floor may render as "At least N", so the old
     # "always a closed band" shape is exactly what must not be required.
@@ -757,3 +756,214 @@ async def test_the_title_settles_a_contradiction_instead_of_asking(client) -> No
         ).scalar_one()
     effective = row.edited_value or row.confirmed_value or row.proposed_value
     assert effective == "internship", "the tie was broken the wrong way"
+
+
+@pytest.mark.anyio
+async def test_intern_title_outranks_uncontested_full_time_board_markup(client) -> None:
+    """Live regression: the provider repeated stale board markup as one fact.
+
+    The earlier regression represented the disagreement as a conflict.  On a
+    current Ashby page, however, the provider faithfully emitted only the
+    board's generic ``FULL_TIME`` value even though both the title and role copy
+    said Social Media Intern.  Conversation-time reconciliation must reach the
+    same truthful result regardless of whether the provider noticed the
+    contradiction first.
+    """
+
+    from uuid import UUID, uuid4
+
+    from conftest import TestSessionLocal
+    from test_job_import_checkpoint import _auth
+
+    from app.models import JobImportField
+    from app.repositories.job_import_repository import JobImportRepository
+    from app.repositories.job_repository import JobRepository
+    from app.schemas.job_import import JobImportExtractionResponse
+    from app.services.job_import_service import JobImportService
+    from app.services.job_service import JobService
+
+    title = "Social Media Intern"
+    headers, owner_id = await _auth(client, "intern-title-beats-board-default")
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": title,
+            "original_text": (
+                "Social Media Intern\n"
+                "Structured employment type: FULL_TIME\n"
+                "Work in person with our creator team and build a UGC program."
+            ),
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft_id = draft.json()["id"]
+
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            JobImportExtractionResponse.model_validate(
+                {
+                    "extraction_schema_version": 1,
+                    "target_listing_schema_version": 3,
+                    "fields": [
+                        {
+                            "field_path": "title",
+                            "value": title,
+                            "provenance": "extracted_from_source",
+                            "evidence": [{"snippet": title}],
+                        },
+                        {
+                            "field_path": "engagement_type",
+                            "value": "full_time",
+                            "provenance": "extracted_from_source",
+                            "evidence": [
+                                {"snippet": "Structured employment type: FULL_TIME"}
+                            ],
+                        },
+                    ],
+                    "conflicts": [],
+                    "missing_fields": [],
+                    "warnings": [],
+                }
+            ),
+            owner_user_id=owner_id,
+        )
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    assert (begun.json().get("active_question") or {}).get("field_path") != (
+        "engagement_type"
+    )
+
+    async with TestSessionLocal() as session:
+        row = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft_id),
+                    JobImportField.field_path == "engagement_type",
+                )
+            )
+        ).scalar_one()
+    assert (row.edited_value or row.confirmed_value or row.proposed_value) == (
+        "internship"
+    )
+
+
+@pytest.mark.anyio
+async def test_conversation_does_not_reapply_contextually_excluded_creator_role(
+    client,
+) -> None:
+    """An office Community Manager stays outside the creator-role catalog."""
+
+    from uuid import UUID, uuid4
+
+    from conftest import TestSessionLocal
+    from test_job_import_checkpoint import _auth
+
+    from app.models import JobImportField
+    from app.repositories.job_import_repository import JobImportRepository
+    from app.repositories.job_repository import JobRepository
+    from app.schemas.job_import import JobImportExtractionResponse
+    from app.services.job_import_service import JobImportService
+    from app.services.job_service import JobService
+
+    title = "Community Manager (NY)"
+    body = (
+        f"{title}\nRun daily office operations, supplies, and vendors.\n"
+        "Own facilities, mail, space planning, and office tours."
+    )
+    headers, owner_id = await _auth(client, "office-community-title-context")
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": title,
+            "original_text": body,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft_id = draft.json()["id"]
+
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            JobImportExtractionResponse.model_validate(
+                {
+                    "extraction_schema_version": 1,
+                    "target_listing_schema_version": 3,
+                    "fields": [
+                        {
+                            "field_path": "title",
+                            "value": title,
+                            "provenance": "extracted_from_source",
+                            "evidence": [{"snippet": title}],
+                        },
+                        {
+                            "field_path": "primary_role_key",
+                            "value": "community-manager",
+                            "provenance": "suggested_inference",
+                            "evidence": [{"snippet": title}],
+                            "explanation": "The title names Community Manager.",
+                            "epistemic_status": "logically_entailed",
+                            "inference_type": "exact_title_signal",
+                        },
+                    ],
+                    "conflicts": [],
+                    "missing_fields": [],
+                    "warnings": [],
+                }
+            ),
+            owner_user_id=owner_id,
+        )
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    assert (begun.json().get("active_question") or {}).get("field_path") != (
+        "primary_role_key"
+    )
+
+    async with TestSessionLocal() as session:
+        row = (
+            await session.execute(
+                select(JobImportField).where(
+                    JobImportField.draft_id == UUID(draft_id),
+                    JobImportField.field_path == "primary_role_key",
+                )
+            )
+        ).scalar_one()
+    assert row.proposed_value is None
+    assert row.confirmed_value is None
+    assert row.explanation == (
+        "The source title does not establish a supported creator role."
+    )

@@ -1254,7 +1254,7 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
         ]
         assert extracted["content_niches"]["effective_value"] == ["Education"]
         assert extracted["content_niches"]["requires_confirmation"] is False
-        assert extracted["experience_level"]["effective_value"] == "1\u20137 years of experience"
+        assert extracted["experience_level"]["effective_value"] == "1\u20137 years"
         for field_path in (
             "primary_role_key",
             "engagement_type",

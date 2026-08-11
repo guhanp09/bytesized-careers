@@ -306,6 +306,19 @@ async def test_integer_and_decimal_number_answers_keep_distinct_contracts() -> N
     assert normalized == "0.5"
 
 
+@pytest.mark.asyncio
+async def test_long_explicit_experience_is_compacted_before_native_validation() -> None:
+    service = JobImportService.__new__(JobImportService)
+    normalized, errors = await service._validate_field_value(
+        JOB_IMPORT_FIELD_POLICIES["experience_level"],
+        "5+ years of content strategy, content marketing, or social media "
+        "experience in a B2B environment",
+    )
+
+    assert errors == []
+    assert normalized == "5+ years"
+
+
 def test_past_start_dates_and_impossible_merged_pairs_are_rejected() -> None:
     yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
     assert conversation_answer_errors("start_date", yesterday)

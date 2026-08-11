@@ -45,10 +45,10 @@ The production adapter remains server-only and provider-neutral at every browser
 - OpenAI model `gpt-5.6-luna`;
 - Responses API structured output parsed into the bounded import schema;
 - reasoning effort `medium`;
-- versioned instruction contract `job-import-text-v5`;
+- versioned instruction contract `job-import-text-v6`;
 - a maximum of 16,000 output tokens, `store=false`, and bounded retry/timeout behavior.
 
-The version-5 instructions require a complete pass over every provider-visible field, whole-job interpretation, exact server-owned evidence-span references, and the field-specific permissions generated from the executable intelligence matrix. The matrix defines each field's meaning, allowed origins, inference risk, answer classification, forbidden semantics, validation, persistence, presentation, and regression coverage. Provider confidence is diagnostic metadata; it never expands what the matrix permits.
+The version-6 instructions require a complete pass over every provider-visible field, whole-job interpretation, exact server-owned evidence-span references, and the field-specific permissions generated from the executable intelligence matrix. The compact request supplies an explicit field-path checklist and expected verdict count; the server independently enforces the same coverage after decoding. The matrix defines each field's meaning, allowed origins, inference risk, answer classification, forbidden semantics, validation, persistence, presentation, and regression coverage. Provider confidence is diagnostic metadata; it never expands what the matrix permits.
 
 Luna does not own canonical truth by itself. Deterministic structured and labelled parsers recover exact source facts where they are stronger, the server validates and reconciles every result, recruiter answers outrank machine decisions, and the native job schema remains the publication boundary.
 
@@ -101,7 +101,7 @@ The richer provider contract separates what is known from how confident the prov
 | `absent` | The source genuinely does not answer the field | Missing-field output |
 | `technically_unavailable` | Retrieval or representation prevented a reliable read | Server-owned recovery/legacy state, never new provider output and never a recruiter business question |
 
-The server rejects incompatible combinations: an explicit state cannot use inference provenance, an entailed or plausible value cannot masquerade as extracted fact, and a proposed field cannot carry an ambiguity, conflict, absence, or technical-failure state. Older persisted provider records remain readable, but the version-5 provider is instructed not to manufacture technical-unavailability rows.
+The server rejects incompatible combinations: an explicit state cannot use inference provenance, an entailed or plausible value cannot masquerade as extracted fact, and a proposed field cannot carry an ambiguity, conflict, absence, or technical-failure state. At the OpenAI wire boundary, redundant diagnostic labels are normalized conservatively toward suggestion authority before this provider-neutral validation; field values and evidence are never repaired. Older persisted provider records remain readable, but the version-6 provider is instructed not to manufacture technical-unavailability rows.
 
 Incomplete provider coverage is not silently converted into recruiter work. Safe deterministic parsers may recover an exact fact from the retained source; otherwise retrieval, schema, or provider failures stay in the retry/paste-text recovery path. Bea asks about an actual business decision, not about an internal extraction failure.
 

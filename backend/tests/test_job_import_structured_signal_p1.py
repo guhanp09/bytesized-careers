@@ -8,7 +8,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.job_import_body_sections import experience_from_body
+from app.core.job_import_body_sections import (
+    entailed_work_mode_from_body,
+    experience_from_body,
+)
 from app.core.job_import_compensation import read_pay
 from app.core.job_import_labelled_fields import labelled_facts
 from app.core.job_import_structured_fields import fields_from_structured_context
@@ -66,6 +69,96 @@ def _source(context: dict[str, object]) -> JobImportSource:
         original_text="\n".join(lines),
         retrieval_metadata={"structured_context": context},
         content_fingerprint="a" * 64,
+    )
+
+
+def test_five_day_office_requirement_entails_onsite_without_a_reask() -> None:
+    source = _source({"job_title": "Community Manager (NY)"})
+    source.original_text += (
+        "\nBe in office five days per week from at least 8 am - 6 pm."
+    )
+    evidence = source.original_text.splitlines()[-1]
+    parsed = entailed_work_mode_from_body(source.original_text)
+    assert parsed is not None
+    assert parsed.value == "onsite"
+    assert parsed.evidence == evidence
+
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "work_mode",
+                    "value": "onsite",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": evidence}],
+                    "explanation": "The role appears office-based.",
+                    "provider_confidence": {"score": 0.2, "label": "low"},
+                    "epistemic_status": "logically_entailed",
+                    "inference_type": "office attendance interpretation",
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    work_mode = next(
+        field for field in augmented.fields if field.field_path == "work_mode"
+    )
+    assert work_mode.value == "onsite"
+    assert work_mode.provider_confidence is not None
+    assert work_mode.provider_confidence.score == 1
+    assert work_mode.provider_confidence.metadata["rationale_code"] == (
+        "onsite_from_full_office_week"
+    )
+
+
+def test_preferred_only_tenure_never_becomes_required_experience() -> None:
+    preferred = "3+ years running social for a brand, ideally tech and AI."
+    source = _source(
+        {
+            "job_title": "Social Media Manager",
+            "qualifications": ["Demonstrated experience with a brand voice"],
+            "preferred_qualifications": [preferred],
+        }
+    )
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "experience_level",
+                    "value": preferred,
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": f"Structured preferred qualification: {preferred}"}
+                    ],
+                    "epistemic_status": "explicit",
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+
+    assert all(
+        field.field_path != "experience_level" for field in augmented.fields
+    )
+    assert any(
+        field.field_path == "experience_level"
+        for field in augmented.missing_fields
+    )
+    preferred_field = next(
+        field
+        for field in augmented.fields
+        if field.field_path == "other_preferred_skills"
+    )
+    assert preferred in preferred_field.value
+    assert any(
+        warning.code == "preferred_experience_not_promoted"
+        for warning in augmented.warnings
     )
 
 
@@ -143,6 +236,57 @@ def test_section_stop_logic_keeps_real_work_bullets(bullet: str) -> None:
         bullet,
         "Export final cuts.",
     ]
+
+
+def test_application_and_signature_after_preferred_skills_never_become_candidate_fit() -> None:
+    posting = {
+        "@type": "JobPosting",
+        "title": "Video Editor Executive - Chennai",
+        "description": (
+            "<h2>Required Skills</h2><p>Adobe Premiere required.</p>"
+            "<h2>Preferred Skills (Optional)</h2>"
+            "<p>Interested candidates can submit their resume and cover letter "
+            "to editor@example.com or apply through Indeed.</p>"
+            "<p>Thanks and Regards,</p><p>Recruiter Name</p>"
+            "<p>Company Team</p><p>Aminjikarai, Chennai.</p>"
+        ),
+    }
+
+    normalized, _title, metadata = normalize_public_job_html(
+        _html(posting), final_url="https://jobs.example/editor"
+    )
+
+    context = metadata["structured_context"]
+    assert context["qualifications"] == ["Adobe Premiere required."]
+    assert "preferred_qualifications" not in context
+    assert "Structured preferred qualification" not in normalized
+    # The canonical source still contains the application paragraph so Luna can
+    # recover resume/cover-letter materials; it simply no longer receives the
+    # server-owned claim that these are preferred skills.
+    assert "editor@example.com" in normalized
+
+
+def test_application_work_setup_paragraph_is_not_a_direct_qualification() -> None:
+    posting = {
+        "@type": "JobPosting",
+        "title": "Video Editor",
+        "qualifications": [
+            "1–7 years of video editing experience.",
+            (
+                "Please note this role works from our office in India. "
+                "Please apply with your resume and portfolio."
+            ),
+        ],
+    }
+
+    normalized, _title, metadata = normalize_public_job_html(
+        _html(posting), final_url="https://jobs.example/editor"
+    )
+
+    assert metadata["structured_context"]["qualifications"] == [
+        "1–7 years of video editing experience."
+    ]
+    assert "Please apply with your resume" not in normalized
 
 
 def test_two_explicit_prose_experience_claims_stay_unresolved() -> None:
@@ -455,6 +599,94 @@ def test_partial_provider_lists_merge_remaining_exact_items_and_catalog_tools() 
     assert fields["requirements"].value == context["qualifications"]
     assert fields["required_tool_keys"].value == ["premiere-pro", "after-effects"]
     assert all(item.field_path != "other_required_tools" for item in augmented.fields)
+
+
+def test_unsupported_non_creator_title_cannot_use_other_role_as_model_fallback() -> None:
+    context = {"job_title": "Backend Engineer"}
+    source = _source(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Backend Engineer",
+                    "provenance": "extracted_from_source",
+                    "evidence": [{"snippet": "Structured job title: Backend Engineer"}],
+                },
+                {
+                    "field_path": "primary_role_key",
+                    "value": "other-creator-role",
+                    "provenance": "suggested_inference",
+                    "evidence": [{"snippet": "Structured job title: Backend Engineer"}],
+                    "provider_confidence": {"score": 0.99, "label": "high"},
+                    "epistemic_status": "plausible_interpretation",
+                    "inference_type": "taxonomy_fallback_for_named_role",
+                    "explanation": "No specific creator role matches the title.",
+                },
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(
+        response,
+        source,
+        allowed_role_keys={"video-editor", "other-creator-role"},
+    )
+
+    assert all(item.field_path != "primary_role_key" for item in augmented.fields)
+    assert any(
+        item.field_path == "primary_role_key" for item in augmented.missing_fields
+    )
+    assert any(
+        item.code == "automatic_other_creator_role_removed"
+        for item in augmented.warnings
+    )
+
+
+def test_office_operations_community_manager_is_not_a_creator_role() -> None:
+    context = {"job_title": "Community Manager (NY)"}
+    source = _source(context)
+    source.original_text += (
+        "\nRun daily office operations, supplies, and vendors."
+        "\nOwn facilities, mail, space planning, and office tours."
+    )
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "primary_role_key",
+                    "value": "community-manager",
+                    "provenance": "suggested_inference",
+                    "evidence": [
+                        {"snippet": "Structured job title: Community Manager (NY)"}
+                    ],
+                    "explanation": "The title names Community Manager.",
+                    "provider_confidence": {"score": 0.99, "label": "high"},
+                    "epistemic_status": "logically_entailed",
+                    "inference_type": "exact_title_signal",
+                }
+            ],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(
+        response,
+        source,
+        allowed_role_keys={"community-manager", "other-creator-role"},
+    )
+
+    assert all(item.field_path != "primary_role_key" for item in augmented.fields)
+    assert any(
+        item.field_path == "primary_role_key" for item in augmented.missing_fields
+    )
+    assert any(
+        item.code == "workplace_community_role_inference_removed"
+        for item in augmented.warnings
+    )
 
 
 def test_boilerplate_about_summary_cannot_bypass_the_central_guard() -> None:

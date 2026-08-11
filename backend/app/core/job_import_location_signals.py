@@ -105,8 +105,14 @@ _TITLE_LOCATION_SUFFIX = re.compile(
     re.IGNORECASE,
 )
 _CITY_PREFERENCE = re.compile(
-    r"\b(?:prefer|preferred|preference|based|located)\b[^\n]{0,100}\b"
-    r"(?:candidate|applicant|office|location)s?\b",
+    r"\b(?:prefer|preferred|preference)\b"
+    r"(?:\s+(?:is|given))?(?:\s+(?:to|for))?[\s:,-]*"
+    r"(?P<place>[^\n.;|]{2,80}?)\s+\b(?:candidate|applicant)s?\b",
+    re.IGNORECASE,
+)
+_CANDIDATE_GEOGRAPHY = re.compile(
+    r"\b(?:candidate|applicant)s?\b\s+(?:in|from|based\s+in)\s+"
+    r"(?P<place>[^\n.;|]{2,80})",
     re.IGNORECASE,
 )
 _PHYSICAL_LOCATION_CONTEXT = re.compile(
@@ -206,8 +212,10 @@ def resolve_job_city(
         # "We prefer Chennai candidates" is a direct geographic restriction,
         # not incidental prose mentioning a city.
         physical_location = _PHYSICAL_LOCATION_CONTEXT.search(line)
+        city_preference = _CITY_PREFERENCE.search(line)
+        candidate_geography = _CANDIDATE_GEOGRAPHY.search(line)
         has_location_semantics = bool(
-            _CITY_PREFERENCE.search(line) or physical_location
+            city_preference or candidate_geography or physical_location
         )
         if has_location_semantics:
             # Once the grammar names the object of “based/located in,” scan the
@@ -217,8 +225,10 @@ def resolve_job_city(
             # fabricated a second city and converted a settled location into a
             # conflict. Preference wording has no equally stable object shape,
             # so it continues through the bounded full-line reader.
-            location_fragment = (
-                physical_location.group("place") if physical_location else line
+            location_fragment = next(
+                match.group("place")
+                for match in (physical_location, city_preference, candidate_geography)
+                if match is not None
             )
             explicit_cities = _cities_in(location_fragment, prose=True)
             for city in explicit_cities:

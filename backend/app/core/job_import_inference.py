@@ -218,6 +218,23 @@ _GLOBAL_LOCATION_MARKERS: Final[tuple[str, ...]] = (
     "worldwide",
 )
 
+# Exact generic labels used by job boards for an unbounded remote role.  These
+# are not place names.  Without this guard the city gazetteer can interpret a
+# token such as ``Any`` as a small real-world locality and manufacture a country
+# (and therefore a contradictory currency) from "Any Location".
+#
+# Keep this exact rather than substring-based: "any location in Canada" still
+# names Canada and should retain that applicant geography.
+_UNBOUNDED_LOCATION_VALUES: Final[frozenset[str]] = frozenset(
+    {
+        "any location",
+        "anywhere",
+        "fully remote",
+        "global",
+        "remote",
+    }
+)
+
 
 @lru_cache(maxsize=1)
 def _country_names() -> dict[str, str]:
@@ -304,6 +321,8 @@ def country_from_location(location: str | None) -> str | None:
     if not location or not location.strip():
         return None
     normalized = _normalize_place(location)
+    if normalized in _UNBOUNDED_LOCATION_VALUES:
+        return None
     if any(marker in normalized for marker in _GLOBAL_LOCATION_MARKERS):
         return None
     countries = _country_mentions(location)

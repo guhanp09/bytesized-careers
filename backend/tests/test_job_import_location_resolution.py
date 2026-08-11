@@ -23,6 +23,7 @@ from app.core.job_import_location_resolution import (
     resolve_locations,
 )
 from app.core.job_import_location_signals import resolve_job_city
+from app.services.job_import_service import JobImportService
 
 # ---------------------------------------------------------------------------
 # 1-5. Established city renamings
@@ -156,6 +157,7 @@ def test_a_location_sentence_does_not_treat_ordinary_words_as_cities() -> None:
 
     assert resolution.city == "Chennai"
     assert resolution.conflicting_cities == []
+    assert not any("preferred qualification" in item.casefold() for item in resolution.evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +300,64 @@ We prefer Chennai candidates only.
     assert resolution.conflicting_cities == []
     assert resolution.rationale_code == "corroborated_city_from_source_context"
     assert city_for_location("Aminjikarai, Chennai, Tamil Nadu") == "Chennai"
+
+
+def test_preferred_qualification_copy_cannot_fabricate_a_competing_city() -> None:
+    """The live SimplyHired source that re-asked an already-settled Chennai.
+
+    ``Structured preferred qualification: Interested candidates ... cover
+    letter`` matched the old broad preference grammar. A city catalog alias in
+    that ordinary prose then produced Guangzhou, turning three explicit Chennai
+    signals into a false conflict. Only the place-shaped phrase between a
+    preference and ``candidate`` is geographic evidence.
+    """
+
+    source = """Video Editor Executive - Chennai
+Structured job title: Video Editor Executive - Chennai
+Structured preferred qualification: Interested candidates can submit their resume and cover letter through the external job board.
+Structured role location: Nungambakkam, TN, IN
+Location: Aminjikarai
+We Perfer Chennai Candidate Only
+"""
+
+    resolution = resolve_job_city(
+        source,
+        {
+            "job_title": "Video Editor Executive - Chennai",
+            "role_location": "Nungambakkam, TN, IN",
+        },
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Chennai"
+
+
+def test_city_or_remote_country_is_not_collapsed_to_the_city() -> None:
+    rows = [
+        {
+            "field_path": "location",
+            "provenance_state": "conflicting_source_values",
+            "proposed_value": None,
+            "confirmed_value": None,
+            "review_status": "pending",
+            "requires_confirmation": True,
+            "validation_errors": [],
+            "evidence": [],
+            "conflicting_values": [
+                {"value": "San Francisco, CA", "evidence": []},
+                {"value": "US", "evidence": []},
+            ],
+            "provider_confidence": {"epistemic_state": "ambiguous"},
+        }
+    ]
+
+    resolved = JobImportService._resolve_semantically_equivalent_conflicts(rows)
+
+    assert resolved[0]["provenance_state"] == "conflicting_source_values"
+    assert [
+        item["value"] for item in resolved[0]["conflicting_values"]
+    ] == ["San Francisco, CA", "US"]
+    assert resolved[0]["requires_confirmation"] is True
 
 
 @pytest.mark.parametrize(

@@ -46,7 +46,11 @@ from app.core.job_domain_taxonomy import (
 )
 from app.core.job_import_application_signals import explicit_application_requirements
 from app.core.job_import_attempt_liveness import assess_attempt
-from app.core.job_import_body_sections import experience_from_body
+from app.core.job_import_body_sections import (
+    entailed_work_mode_from_body,
+    experience_from_body,
+    normalize_leading_experience_requirement,
+)
 from app.core.job_import_candidate_copy import candidate_native_copy
 from app.core.job_import_facts import outranks as fact_outranks
 from app.core.job_import_inference import (
@@ -106,6 +110,7 @@ from app.schemas.job_import import (
     JobImportFieldDefinition,
     JobImportFieldRead,
     JobImportFieldReviewRequest,
+    JobImportMissingField,
     JobImportProcessingWarning,
     JobImportProviderConfidence,
     JobImportProviderMetadata,
@@ -123,6 +128,24 @@ from app.services.job_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+_WORKPLACE_COMMUNITY_SIGNALS = (
+    re.compile(r"\boffice\s+operations?\b", re.IGNORECASE),
+    re.compile(r"\b(?:facilit(?:y|ies)|workplace\s+strategy)\b", re.IGNORECASE),
+    re.compile(r"\b(?:supplies|vendors?|mail)\b", re.IGNORECASE),
+    re.compile(r"\b(?:space\s+planning|seating|shared\s+spaces?)\b", re.IGNORECASE),
+    re.compile(r"\b(?:visitors?|office\s+tours?|in[- ]office\s+five\s+days)\b", re.IGNORECASE),
+)
+
+
+def _is_workplace_community_role(source_text: str | None) -> bool:
+    """Whether Community Manager clearly means running an office, not an audience."""
+
+    if not source_text or not re.search(
+        r"\bcommunity\s+manager\b", source_text, re.IGNORECASE
+    ):
+        return False
+    return sum(bool(pattern.search(source_text)) for pattern in _WORKPLACE_COMMUNITY_SIGNALS) >= 2
 
 _NESTED_FIELD_KEYS: dict[str, frozenset[str]] = {
     "deliverables": frozenset(
@@ -962,6 +985,11 @@ class JobImportService:
                 return value, ["The proposed creator role key is unknown or inactive."]
             return role.slug, []
 
+        if policy.field_path == "experience_level" and isinstance(value, str):
+            compact_experience = normalize_leading_experience_requirement(value)
+            if compact_experience is not None:
+                value = compact_experience
+
         if policy.field_path == "screening_questions" and isinstance(value, list):
             value = [
                 ({**item, "required": False} if "required" not in item else dict(item))
@@ -1236,6 +1264,42 @@ class JobImportService:
                 and field.provenance == "suggested_inference"
             )
         ]
+        workplace_community_role = _is_workplace_community_role(source.original_text)
+        removed_automatic_other_role = any(
+            field.field_path == "primary_role_key"
+            and field.value == "other-creator-role"
+            and field.provenance == "suggested_inference"
+            for field in fields
+        )
+        removed_workplace_community_role = any(
+            field.field_path == "primary_role_key"
+            and field.value == "community-manager"
+            and field.provenance == "suggested_inference"
+            and workplace_community_role
+            for field in fields
+        )
+        if removed_automatic_other_role or removed_workplace_community_role:
+            # ``Other Creator Role`` is the recruiter's escape hatch, not a
+            # catch-all classifier. A live non-creator control (Backend
+            # Engineer) was otherwise filed in the creator marketplace merely
+            # because the provider could not find a more specific role key.
+            # Exact supported creator titles are still resolved below; an
+            # unsupported title remains honestly unclassified for the editor.
+            fields = [
+                field
+                for field in fields
+                if not (
+                    field.field_path == "primary_role_key"
+                    and field.provenance == "suggested_inference"
+                    and (
+                        field.value == "other-creator-role"
+                        or (
+                            field.value == "community-manager"
+                            and workplace_community_role
+                        )
+                    )
+                )
+            ]
         conflicts = list(response.conflicts)
         by_path = {field.field_path: field for field in fields}
         occupied_paths = {
@@ -1278,6 +1342,103 @@ class JobImportService:
             )
         missing_fields = list(response.missing_fields)
         warnings = list(response.warnings)
+
+        # A tenure line under "preferred" is not a minimum candidates must
+        # already have. A live extraction promoted a clearly labelled preferred
+        # 3+ years into the candidate experience filter, changing who would
+        # self-select for the job. The fetcher has already separated required
+        # and preferred qualification sections, so use that owned structure to
+        # prevent the provider from escalating authority.
+        preferred_qualifications = context.get("preferred_qualifications")
+        required_qualifications = context.get("qualifications")
+
+        def experience_signatures(value: object) -> set[str]:
+            values = value if isinstance(value, list) else [value]
+            signatures: set[str] = set()
+            for raw in values:
+                if not isinstance(raw, str):
+                    continue
+                normalized = normalize_leading_experience_requirement(raw)
+                if normalized is not None:
+                    signatures.add(normalized.casefold())
+            return signatures
+
+        experience_field = by_path.get("experience_level")
+        provider_experience_signatures = experience_signatures(
+            experience_field.value if experience_field is not None else None
+        )
+        preferred_experience_signatures = experience_signatures(
+            preferred_qualifications
+        )
+        required_experience_signatures = experience_signatures(
+            required_qualifications
+        )
+        preferred_only_experience = bool(
+            experience_field is not None
+            and provider_experience_signatures
+            and provider_experience_signatures <= preferred_experience_signatures
+            and provider_experience_signatures.isdisjoint(required_experience_signatures)
+            and not isinstance(context.get("experience_requirement"), str)
+            and not context.get("experience_requirement_conflicts")
+        )
+        if preferred_only_experience and experience_field is not None:
+            fields = [item for item in fields if item is not experience_field]
+            by_path.pop("experience_level", None)
+            occupied_paths.discard("experience_level")
+            missing_fields = [
+                item
+                for item in missing_fields
+                if item.field_path != "experience_level"
+            ]
+            missing_fields.append(
+                JobImportMissingField(
+                    field_path="experience_level",
+                    explanation=(
+                        "The source states numeric tenure only as a preferred "
+                        "qualification, not a candidate requirement."
+                    ),
+                    epistemic_status="absent",
+                )
+            )
+            if len(warnings) < 30:
+                warnings.append(
+                    JobImportProcessingWarning(
+                        code="preferred_experience_not_promoted",
+                        message=(
+                            "Preferred tenure was kept out of the required "
+                            "candidate experience field."
+                        ),
+                        field_path="experience_level",
+                    )
+                )
+        if removed_automatic_other_role or removed_workplace_community_role:
+            missing_fields = [
+                item for item in missing_fields if item.field_path != "primary_role_key"
+            ]
+            missing_fields.append(
+                JobImportMissingField(
+                    field_path="primary_role_key",
+                    explanation=(
+                        "The source title does not establish a supported creator role."
+                    ),
+                    epistemic_status="absent",
+                )
+            )
+            if len(warnings) < 30:
+                warnings.append(
+                    JobImportProcessingWarning(
+                        code=(
+                            "automatic_other_creator_role_removed"
+                            if removed_automatic_other_role
+                            else "workplace_community_role_inference_removed"
+                        ),
+                        message=(
+                            "An unsupported automatic creator-role inference was "
+                            "removed; the recruiter may classify it in the editor."
+                        ),
+                        field_path="primary_role_key",
+                    )
+                )
         if removed_unsupported_hours and len(warnings) < 30:
             warnings.append(
                 JobImportProcessingWarning(
@@ -1300,6 +1461,60 @@ class JobImportService:
             missing_fields = [
                 item for item in missing_fields if item.field_path != field.field_path
             ]
+
+        # A five-day in-office requirement is not a low-confidence semantic
+        # guess: it entails onsite work. A live page stated that exact schedule,
+        # but the provider attached a low confidence label and Bea asked the
+        # recruiter whether the role might be remote. Upgrade only the same
+        # value (or a true omission) from exact source text; a disagreeing
+        # explicit source reading remains untouched for conflict handling.
+        entailed_work_mode = entailed_work_mode_from_body(source.original_text)
+        if entailed_work_mode is not None:
+            work_mode_evidence = cls._exact_source_evidence(
+                source,
+                [entailed_work_mode.evidence],
+            )
+            existing_work_mode = by_path.get("work_mode")
+            grounded_work_mode = JobImportExtractionField(
+                field_path="work_mode",
+                value=entailed_work_mode.value,
+                provenance="suggested_inference",
+                evidence=work_mode_evidence,
+                explanation=(
+                    "The source requires a full five-day office week, which "
+                    "entails onsite work."
+                ),
+                provider_confidence=JobImportProviderConfidence(
+                    score=1,
+                    label="high",
+                    metadata={
+                        "origin": "contextual_inference",
+                        "rationale_code": "onsite_from_full_office_week",
+                    },
+                ),
+                epistemic_status="logically_entailed",
+                inference_type="full_week_office_requirement",
+            )
+            if work_mode_evidence and existing_work_mode is None:
+                append_context_field(grounded_work_mode)
+            elif (
+                work_mode_evidence
+                and existing_work_mode is not None
+                and existing_work_mode.provenance == "suggested_inference"
+                and existing_work_mode.value == entailed_work_mode.value
+            ):
+                field_index = next(
+                    index
+                    for index, item in enumerate(fields)
+                    if item is existing_work_mode
+                )
+                fields[field_index] = grounded_work_mode
+                by_path["work_mode"] = grounded_work_mode
+                missing_fields = [
+                    item
+                    for item in missing_fields
+                    if item.field_path != "work_mode"
+                ]
 
         def force_context_conflict(
             field_path: str,
@@ -1623,6 +1838,9 @@ class JobImportService:
             role_key_is_allowed = bool(
                 isinstance(role_key, str)
                 and (allowed_role_keys is None or role_key in allowed_role_keys)
+                and not (
+                    role_key == "community-manager" and workplace_community_role
+                )
             )
             if role_key_is_allowed and isinstance(role_key, str) and title_evidence:
                 role_explanation = (
@@ -3742,6 +3960,17 @@ class JobImportService:
                 and isinstance(item.get("value"), str)
                 and item.get("value", "").strip()
             ]
+            # A city and a remote applicant country are different semantic
+            # dimensions, even if the city happens to be inside that country.
+            # A live "San Francisco, CA or Remote, US" posting was collapsed to
+            # San Francisco because the non-remote normalizer discarded the
+            # country-only alternative before comparing. Only city-resolvable
+            # alternatives may enter this city-equivalence shortcut; the
+            # workplace question keeps city-vs-remote geography intact.
+            if work_mode != "remote" and any(
+                city_for_location(value) is None for value in stated
+            ):
+                continue
             resolution = resolve_locations(stated, work_mode=work_mode)
             if not resolution.confident or resolution.recommended is None:
                 continue

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.job_import_intelligence_matrix import intelligence_matrix
 from app.integrations.openai.job_import_adapter import (
     OpenAIJobImportAdapter,
     OpenAIJobImportConfig,
@@ -108,6 +109,28 @@ def _wire_response(*, include_title: bool, include_work_mode_verdict: bool) -> o
             "warnings": [],
         }
     )
+
+
+def _wire_response_with_coverage(
+    *,
+    work_mode_coverage: str,
+) -> OpenAIJobImportExtractionResponse:
+    payload = _wire_response(
+        include_title=True,
+        include_work_mode_verdict=False,
+    ).model_dump(mode="json", exclude={"coverage"})
+    payload["coverage"] = {
+        field_path: (
+            "field"
+            if field_path == "title"
+            else work_mode_coverage
+            if field_path == "work_mode"
+            else "missing"
+        )
+        for field_path, row in intelligence_matrix().items()
+        if row.provider_visible
+    }
+    return OpenAIJobImportExtractionResponse.model_validate(payload)
 
 
 class _FakeResponses:
@@ -218,6 +241,29 @@ async def test_explicit_missing_verdict_satisfies_provider_coverage() -> None:
 
     assert [field.field_path for field in result.extraction.fields] == ["title"]
     assert [field.field_path for field in result.extraction.missing_fields] == ["work_mode"]
+
+
+@pytest.mark.asyncio
+async def test_machine_coverage_materializes_an_explicit_missing_verdict() -> None:
+    parsed = _wire_response_with_coverage(work_mode_coverage="missing")
+
+    result = await _adapter(parsed).extract(_request())
+
+    assert [field.field_path for field in result.extraction.fields] == ["title"]
+    assert [field.field_path for field in result.extraction.missing_fields] == ["work_mode"]
+    assert result.metadata.metadata["coverage_materialized_missing_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_machine_coverage_cannot_claim_a_field_without_returning_it() -> None:
+    parsed = _wire_response_with_coverage(work_mode_coverage="field")
+
+    with pytest.raises(JobImportProviderError) as caught:
+        await _adapter(parsed).extract(_request())
+
+    assert caught.value.code == "OPENAI_INCOMPLETE_EXTRACTION"
+    assert caught.value.metadata is not None
+    assert caught.value.metadata.metadata["omitted_field_paths"] == ["work_mode"]
 
 
 @pytest.mark.asyncio

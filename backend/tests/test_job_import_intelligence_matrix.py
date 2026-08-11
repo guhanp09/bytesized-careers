@@ -162,7 +162,7 @@ def test_sensitive_input_types_remain_explicit_pending_provider_facts() -> None:
 
 
 def test_luna_contract_names_epistemic_states_and_whole_job_mission() -> None:
-    instructions = build_job_import_instructions(version="job-import-text-v5")
+    instructions = build_job_import_instructions(version="job-import-text-v6")
     schema = OpenAIJobImportExtractionField.model_json_schema()
 
     assert "semantic reasoning layer" in instructions

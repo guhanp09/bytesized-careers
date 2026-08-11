@@ -31,6 +31,7 @@ from app.schemas.job_import import (
     MAX_EXTRACTION_RESPONSE_BYTES,
     JobImportExtractionRequest,
     JobImportExtractionResponse,
+    JobImportMissingField,
     JobImportProviderMetadata,
 )
 from app.services.job_import_provider import (
@@ -299,9 +300,17 @@ class OpenAIJobImportAdapter:
             extraction = wire_response.to_domain_response(
                 span_set=span_set,
             )
+            extraction, materialized_missing_count = self._materialize_coverage_missing(
+                request,
+                wire_response,
+                extraction,
+            )
             response_metadata = self._metadata_with_diagnostics(
                 response_metadata,
-                {"processing_stage": "validated_provider_output"},
+                {
+                    "processing_stage": "validated_provider_output",
+                    "coverage_materialized_missing_count": materialized_missing_count,
+                },
             )
         except EvidenceSpanError as exc:
             evidence_metadata = self._metadata_with_diagnostics(
@@ -400,6 +409,52 @@ class OpenAIJobImportAdapter:
         return JobImportProviderResult(
             extraction=extraction,
             metadata=response_metadata,
+        )
+
+    @staticmethod
+    def _materialize_coverage_missing(
+        request: JobImportExtractionRequest,
+        wire_response: OpenAIJobImportExtractionResponse,
+        extraction: JobImportExtractionResponse,
+    ) -> tuple[JobImportExtractionResponse, int]:
+        """Turn only an explicit coverage ``missing`` into a missing verdict.
+
+        The companion map is required by the real strict-output schema. Legacy
+        fake-client fixtures may omit it, in which case the existing completeness
+        failure remains unchanged. A map claiming ``field`` or ``conflict``
+        without the corresponding evidenced object is never repaired.
+        """
+
+        if "coverage" not in wire_response.model_fields_set:
+            return extraction, 0
+        expected = {
+            definition["field_path"]
+            for definition in compact_provider_request(request)["field_definitions"]
+        }
+        reported = {
+            *(item.field_path for item in extraction.fields),
+            *(item.field_path for item in extraction.conflicts),
+            *(item.field_path for item in extraction.missing_fields),
+        }
+        verdicts = wire_response.coverage.model_dump(mode="json")
+        materialized = [
+            JobImportMissingField(
+                field_path=field_path,
+                explanation="The provider reported that the source does not state this detail.",
+                epistemic_status="absent",
+            )
+            for field_path in sorted(expected - reported)
+            if verdicts.get(field_path) == "missing"
+        ]
+        if not materialized:
+            return extraction, 0
+        return (
+            extraction.model_copy(
+                update={
+                    "missing_fields": [*extraction.missing_fields, *materialized]
+                }
+            ),
+            len(materialized),
         )
 
     @staticmethod

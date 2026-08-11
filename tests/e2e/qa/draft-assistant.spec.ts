@@ -431,7 +431,7 @@ test.describe("completion and handoff", () => {
       // conversion layer mistook a question's four option bands for the field's
       // domain and placed the figure in the nearest one. The field is a plain
       // string in the schema, and a listing must never narrow its source.
-      expect(nativeDraft.experience_level).toBe("1\u20137 years of experience");
+      expect(nativeDraft.experience_level).toBe("1\u20137 years");
       expect(nativeDraft.content_niches).toContain("Education");
       expect(nativeDraft.responsibilities).toContain(
         "Edit learning videos for a school-based education channel"

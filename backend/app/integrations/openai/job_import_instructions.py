@@ -34,6 +34,15 @@ the source wording into a supported CreatorJobs shape. Each field_path may occur
 exactly once across fields, conflicts, and missing_fields. If a field is emitted
 in fields or conflicts, it must not also be emitted as missing.
 
+Before returning, use required_field_paths as a literal completion checklist.
+The total number of distinct verdicts across fields, conflicts, and
+missing_fields must equal required_field_count, and their field paths must equal
+that checklist exactly. A field with no supported answer still needs one
+missing_fields verdict. Do not omit a verdict merely because its value is absent.
+Set every required property in coverage to field, conflict, or missing so it
+matches the collection containing that path. Coverage is the mandatory
+machine-checkable checklist; it never substitutes for a value or conflict.
+
 Obey each field's allowed_decision_origins, inference_risk, and
 forbidden_semantics. "Explicit" permits source extraction, not inference.
 "contextual_inference" permits only a conclusion jointly established by source
@@ -91,6 +100,9 @@ suggested_inference with direct supporting evidence. For example, the
 exact "Video Editor" title maps to video-editor without asking the recruiter to choose
 from unrelated roles. Do not select one when the source genuinely names multiple
 creator crafts or remains ambiguous.
+"Other Creator Role" is a recruiter-owned escape hatch, never a generic model
+fallback. If a title such as Backend Engineer does not name a supported creator
+craft, report primary_role_key missing; do not coerce it to other-creator-role.
 
 For suggested_inference, supply provider confidence. Use high only when the
 source context strongly supports one canonical value. Otherwise use medium or

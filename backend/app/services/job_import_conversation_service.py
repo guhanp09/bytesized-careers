@@ -15,6 +15,7 @@ most* one continuation, usually zero.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -41,9 +42,10 @@ from app.core.job_import_conversation import (
     may_start_provider_stage,
     resume_state_for,
 )
-from app.core.job_import_location_resolution import resolve_locations
+from app.core.job_import_location_resolution import city_for_location, resolve_locations
 from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_questions import (
+    ESSENTIAL_CONVERSATION_FIELDS,
     ProposedQuestion,
     QueueCandidate,
     assistant_preparation_complete,
@@ -695,6 +697,20 @@ class JobImportConversationService:
             if path in answers:
                 continue
             existing = by_path.get(path)
+            # Whole-job reconciliation can establish that an otherwise valid
+            # catalog title belongs to a different occupation: for example an
+            # office-operations Community Manager rather than an audience
+            # manager.  Preserve that contextual exclusion here instead of
+            # weakening the shared title catalog, which must still recognize
+            # the seeded role when the title is all the evidence available.
+            if (
+                path == "primary_role_key"
+                and existing is not None
+                and existing.provenance_state == "missing"
+                and existing.explanation
+                == "The source title does not establish a supported creator role."
+            ):
+                continue
             if existing is None or existing.provenance_state == "missing":
                 fresh[path] = value
                 continue
@@ -719,6 +735,23 @@ class JobImportConversationService:
                 # in place shipped a draft that called an internship a full-time
                 # job, which is worse than any question: nobody is asked to check
                 # a value that looks settled.
+                fresh[path] = value
+                continue
+            # Some job boards stamp every listing ``FULL_TIME`` in JSON-LD,
+            # including postings whose own title says ``Intern`` or
+            # ``Freelance``.  That syndication default is a real source claim,
+            # but it is weaker than the employer's role-defining headline for
+            # the engagement structure.  A live Social Media Intern otherwise
+            # became a full-time role without a question.  Keep this exception
+            # narrow: only an exact title engagement may replace an untouched
+            # machine reading, and any recruiter-owned decision still wins via
+            # the answers/reviewer guards above.
+            if (
+                path == "engagement_type"
+                and existing.provenance_state == "extracted_from_source"
+                and existing.reviewed_by_user_id is None
+                and (existing.confirmed_value or existing.proposed_value) != value
+            ):
                 fresh[path] = value
                 continue
             # Resolve a contradiction the title already decides.
@@ -988,7 +1021,10 @@ class JobImportConversationService:
             and field.review_status == "pending"
             and field.proposed_value is not None
             and bool(field.evidence)
-            and not field.validation_errors
+            and (
+                not field.validation_errors
+                or self._confirmable_essential_suggestion(field)
+            )
         }
         required_confirmations: set[str] = set()
         # The source may explicitly say the hire needs account/analytics
@@ -1022,6 +1058,44 @@ class JobImportConversationService:
             suggested_fields=suggested,
             dismissed_fields=frozenset(self._dismissed(draft)),
             required_confirmation_fields=frozenset(required_confirmations),
+        )
+
+    @staticmethod
+    def _confirmable_essential_suggestion(field: Any) -> bool:
+        """Keep a valid consequential hint visible without auto-applying it.
+
+        Some fields deliberately reject plausible inference as a stored fact.
+        That policy error is not a malformed value: for an essential field such
+        as currency, the safe outcome is a one-click confirmation. Optional
+        guesses remain suppressed, and a value the recruiter-answer contract
+        rejects can never use this path.
+        """
+
+        if field.field_path not in ESSENTIAL_CONVERSATION_FIELDS:
+            return False
+        if set(field.validation_errors or []) != {
+            "This field may only be extracted from explicit source wording."
+        }:
+            return False
+        choices, _maximum, is_list = native_schema_constraints(field.field_path)
+        shape = answer_shape_for(field.field_path)
+        if (
+            choices is None
+            and shape.choices
+            and not shape.custom_values_allowed
+        ):
+            choices = tuple(shape.choices)
+        if choices is not None:
+            proposed = field.proposed_value
+            if is_list:
+                if not isinstance(proposed, list) or any(
+                    item not in choices for item in proposed
+                ):
+                    return False
+            elif proposed not in choices:
+                return False
+        return not conversation_answer_errors(
+            field.field_path, field.proposed_value
         )
 
     async def _effective_values(self, draft: JobImportDraft) -> dict[str, object]:
@@ -1329,6 +1403,7 @@ class JobImportConversationService:
 
         work_mode_open = unresolved("work_mode")
         location_open = unresolved("location")
+        work_mode_row = by_path.get("work_mode")
         location_row = by_path.get("location")
         settled_location: object | None = answers.get("location")
         if settled_location is None and location_row is not None:
@@ -1361,12 +1436,52 @@ class JobImportConversationService:
         elif isinstance(settled_location, str) and settled_location.strip():
             places.append(settled_location.strip())
 
-        resolution = resolve_locations(places) if len(places) > 1 else None
+        source_modes: list[str] = []
+        if (
+            work_mode_row is not None
+            and work_mode_row.provenance_state == "conflicting_source_values"
+        ):
+            source_modes = matching_choices(
+                "work_mode", self._conflicting_values(work_mode_row)
+            )
+            source_modes = list(dict.fromkeys(source_modes))
+            if len(source_modes) < 2:
+                # A source conflict needs all real alternatives. If fewer than
+                # two map to the native enum, keep the ordinary control instead
+                # of pretending the one recognized value settles it.
+                return
+
+        paired_places: dict[str, str] | None = None
+        city_places = [place for place in places if city_for_location(place)]
+        scope_places = [place for place in places if city_for_location(place) is None]
+        if (
+            "remote" in source_modes
+            and len(city_places) == 1
+            and len(scope_places) == 1
+            and any(mode != "remote" for mode in source_modes)
+        ):
+            # ``San Francisco or Remote, US`` is not two spellings of one
+            # place. It is two complete arrangements. Pair the country scope
+            # only with the stated remote mode and the city only with stated
+            # non-remote modes; never add a third mode the source did not name.
+            paired_places = {
+                mode: (
+                    self._remote_location_scope(scope_places[0])
+                    if mode == "remote"
+                    else city_places[0]
+                )
+                for mode in source_modes
+            }
+
+        resolution = (
+            resolve_locations(places)
+            if len(places) > 1 and paired_places is None
+            else None
+        )
         if resolution is not None and resolution.recommended is None:
-            # Two genuinely different cities cannot be compressed into a
-            # workplace preset without silently choosing the first one. Keep
-            # the location turn intact: it exposes both source readings and a
-            # bounded custom answer, then work mode can be settled separately.
+            # Two genuinely different places cannot be compressed into a
+            # workplace preset without silently choosing one. Keep the field
+            # turns separate so every source alternative survives.
             return
         primary = (
             resolution.recommended
@@ -1384,29 +1499,24 @@ class JobImportConversationService:
         question.pop("alternatives", None)
         question.pop("recommended_value", None)
 
+        modes = source_modes or ["remote", "hybrid", "onsite"]
         options: list[dict[str, Any]] = []
-        if primary:
-            options.append(
-                {
-                    "value": "remote",
-                    "label": f"Remote, based around {primary}",
-                    "applies": {"work_mode": "remote", "location": primary},
-                }
-            )
-            options.append(
-                {
-                    "value": "hybrid",
-                    "label": f"Hybrid in {primary}",
-                    "applies": {"work_mode": "hybrid", "location": primary},
-                }
-            )
-            options.append(
-                {
-                    "value": "onsite",
-                    "label": f"On-site in {primary}",
-                    "applies": {"work_mode": "onsite", "location": primary},
-                }
-            )
+        if paired_places is not None:
+            for mode in modes:
+                place = paired_places[mode]
+                options.append(self._workplace_option(mode, place))
+            question["location_audit"] = {
+                "relation": "work_mode_scoped_alternatives",
+                "recommended": None,
+                "alternatives": places,
+                "normalization_applied": ["remote_scope_preserved"],
+                "alias_applied": None,
+                "containment_rule": None,
+                "confident": True,
+            }
+        elif primary:
+            for mode in modes:
+                options.append(self._workplace_option(mode, primary))
         else:
             options.append(
                 {"value": "remote", "label": "Fully remote", "applies": {"work_mode": "remote"}}
@@ -1426,6 +1536,31 @@ class JobImportConversationService:
             question["explanation"] = (
                 "Choosing here settles both the work setup and the place."
             )
+
+    @staticmethod
+    def _remote_location_scope(value: str) -> str:
+        """Keep the stated geography while removing a duplicated mode label."""
+
+        scope = re.sub(
+            r"^\s*(?:fully\s+)?remote(?:[-\s]+friendly)?\s*[,;:/-]?\s*",
+            "",
+            value,
+            flags=re.IGNORECASE,
+        ).strip()
+        return scope or value.strip()
+
+    @staticmethod
+    def _workplace_option(mode: str, place: str) -> dict[str, Any]:
+        labels = {
+            "remote": f"Remote, based in {place}",
+            "hybrid": f"Hybrid in {place}",
+            "onsite": f"On-site in {place}",
+        }
+        return {
+            "value": mode,
+            "label": labels[mode],
+            "applies": {"work_mode": mode, "location": place},
+        }
 
     async def _group_money_question(
         self, draft: JobImportDraft, question: dict[str, Any]

@@ -80,6 +80,12 @@ def compact_provider_request(request: JobImportExtractionRequest) -> dict[str, A
     are what every citation must point at.
     """
 
+    field_definitions = [
+        compact_field_definition(definition)
+        for definition in request.field_definitions
+        if intelligence_for(definition.field_path).provider_visible
+    ]
+    required_field_paths = [definition["field_path"] for definition in field_definitions]
     return {
         "extraction_schema_version": request.extraction_schema_version,
         "target_listing_schema_version": request.target_listing_schema_version,
@@ -87,11 +93,15 @@ def compact_provider_request(request: JobImportExtractionRequest) -> dict[str, A
         # URL is not something the model should reason about.
         "source": {"source_type": request.source.source_type},
         "allowed_taxonomies": request.allowed_taxonomies,
-        "field_definitions": [
-            compact_field_definition(definition)
-            for definition in request.field_definitions
-            if intelligence_for(definition.field_path).provider_visible
-        ],
+        "field_definitions": field_definitions,
+        # A live provider campaign found otherwise-complete responses missing
+        # exactly one verdict. The definitions already name every field, but
+        # they are a policy document rather than an obvious completion
+        # checklist. Keep one explicit ordered checklist and count so the model
+        # can audit its one response before returning it. The server still
+        # enforces this independently after decoding.
+        "required_field_paths": required_field_paths,
+        "required_field_count": len(required_field_paths),
         "inference_restrictions": request.inference_restrictions,
         "output_validation_instructions": request.output_validation_instructions,
     }
