@@ -18,9 +18,11 @@ import pytest
 from app.core.job_import_location_resolution import (
     CITY_ALIASES,
     KNOWN_LOCALITIES,
+    city_for_location,
     parse_location,
     resolve_locations,
 )
+from app.core.job_import_location_signals import resolve_job_city
 
 # ---------------------------------------------------------------------------
 # 1-5. Established city renamings
@@ -30,15 +32,13 @@ from app.core.job_import_location_resolution import (
 @pytest.mark.parametrize(
     ("older", "current", "expected"),
     [
-        ("Bangalore", "Bengaluru", "Bengaluru, Karnataka, India"),
-        ("Bombay", "Mumbai", "Mumbai, Maharashtra, India"),
-        ("Madras", "Chennai", "Chennai, Tamil Nadu, India"),
-        ("Calcutta", "Kolkata", "Kolkata, West Bengal, India"),
+        ("Bangalore", "Bengaluru", "Bengaluru"),
+        ("Bombay", "Mumbai", "Mumbai"),
+        ("Madras", "Chennai", "Chennai"),
+        ("Calcutta", "Kolkata", "Kolkata"),
     ],
 )
-def test_an_established_renaming_is_one_place(
-    older: str, current: str, expected: str
-) -> None:
+def test_an_established_renaming_is_one_place(older: str, current: str, expected: str) -> None:
     resolution = resolve_locations([older, current])
     assert resolution.relation == "alias_equivalent"
     assert resolution.recommended == expected
@@ -60,13 +60,11 @@ def test_the_alias_registry_stays_small_and_bidirectional() -> None:
 
 
 def test_the_reported_case_recommends_the_more_specific_office() -> None:
-    resolution = resolve_locations(
-        ["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"]
-    )
+    resolution = resolve_locations(["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"])
     assert resolution.relation == "same_city_different_specificity"
-    assert resolution.recommended == "Brookefield, Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
     # The less specific reading stays available; nothing is taken away.
-    assert "Bengaluru, Karnataka, India" in resolution.alternatives
+    assert "Bengaluru" in resolution.alternatives
     assert resolution.containment_rule == "curated_locality"
 
 
@@ -75,7 +73,7 @@ def test_containment_is_never_inferred_from_resemblance() -> None:
 
     resolution = resolve_locations(["Bengaluru, Karnataka", "Bangalore"])
     assert resolution.containment_rule is None
-    assert resolution.recommended == "Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
 
 
 def test_every_curated_locality_names_a_city_we_know() -> None:
@@ -91,16 +89,73 @@ def test_every_curated_locality_names_a_city_we_know() -> None:
 def test_punctuation_and_casing_alone_are_not_a_disagreement() -> None:
     resolution = resolve_locations(["bengaluru , karnataka", "Bengaluru, Karnataka"])
     assert resolution.relation in {"normalized_equivalent", "alias_equivalent"}
-    assert resolution.recommended == "Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
 
 
 def test_a_country_code_expands_to_a_name_a_candidate_would_read() -> None:
-    resolution = resolve_locations(
-        ["Bengaluru, KA, IN", "Bengaluru, Karnataka, India"]
-    )
-    assert resolution.recommended == "Bengaluru, Karnataka, India"
+    resolution = resolve_locations(["Bengaluru, KA, IN", "Bengaluru, Karnataka, India"])
+    assert resolution.recommended == "Bengaluru"
     assert parse_location("Bengaluru, KA, IN").country == "India"
     assert parse_location("New York, US").country == "United States"
+
+
+@pytest.mark.parametrize(
+    ("stated", "expected_city", "expected_region"),
+    [
+        ("Toronto, Ontario, Canada", "Toronto", "Ontario"),
+        ("Toronto, ON, CA", "Toronto", "Ontario"),
+        ("Vancouver, British Columbia, Canada", "Vancouver", "British Columbia"),
+        ("Vancouver, BC, CA", "Vancouver", "British Columbia"),
+    ],
+)
+def test_a_canadian_province_never_replaces_the_city(
+    stated: str,
+    expected_city: str,
+    expected_region: str,
+) -> None:
+    parts = parse_location(stated)
+
+    assert parts.city == expected_city
+    assert parts.region == expected_region
+    assert parts.country == "Canada"
+    assert city_for_location(stated) == expected_city
+
+
+@pytest.mark.parametrize(
+    ("stated", "city", "region", "country"),
+    [
+        ("San Francisco, CA", "San Francisco", "California", None),
+        ("Toronto, CA", "Toronto", None, "Canada"),
+        ("Indianapolis, IN", "Indianapolis", "Indiana", None),
+        ("Berlin, DE", "Berlin", None, "Germany"),
+        ("Wilmington, DE", "Wilmington", "Delaware", None),
+        ("Nashville, TN", "Nashville", "Tennessee", None),
+        ("Chennai, TN, IN", "Chennai", "Tamil Nadu", "India"),
+    ],
+)
+def test_an_overloaded_code_uses_the_exact_city_relationship(
+    stated: str,
+    city: str,
+    region: str | None,
+    country: str | None,
+) -> None:
+    parts = parse_location(stated)
+
+    assert parts.city == city
+    assert parts.region == region
+    assert parts.country == country
+    assert city_for_location(stated) == city
+
+
+def test_a_location_sentence_does_not_treat_ordinary_words_as_cities() -> None:
+    resolution = resolve_job_city(
+        "The team is located in Chennai.",
+        {},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Chennai"
+    assert resolution.conflicting_cities == []
 
 
 # ---------------------------------------------------------------------------
@@ -150,18 +205,26 @@ def test_a_remote_role_is_not_relocated_to_the_employers_office() -> None:
     assert len(resolution.alternatives) == 2
 
 
+def test_one_remote_office_location_is_not_promoted_to_candidate_geography() -> None:
+    resolution = resolve_locations(["Nungambakkam, Chennai, Tamil Nadu, IN"], work_mode="remote")
+
+    assert resolution.recommended is None
+    assert resolution.confident is False
+    assert "remote_scope_preserved" in resolution.normalization_applied
+
+
 def test_a_hybrid_role_keeps_a_workplace_location() -> None:
     resolution = resolve_locations(
         ["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"], work_mode="hybrid"
     )
-    assert resolution.recommended == "Brookefield, Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
 
 
 def test_an_onsite_role_prefers_the_workplace() -> None:
     resolution = resolve_locations(
         ["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"], work_mode="onsite"
     )
-    assert resolution.recommended == "Brookefield, Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +235,7 @@ def test_an_onsite_role_prefers_the_workplace() -> None:
 def test_a_single_candidate_needs_no_arbitration() -> None:
     resolution = resolve_locations(["Brookefield, Bengaluru"])
     assert resolution.relation == "exact_equivalent"
-    assert resolution.recommended == "Brookefield, Bengaluru, Karnataka, India"
+    assert resolution.recommended == "Bengaluru"
 
 
 def test_nothing_is_claimed_without_candidates() -> None:
@@ -202,20 +265,172 @@ def test_a_recommendation_fits_the_native_location_field() -> None:
         for item in JobCreate.model_fields["location"].metadata
         if hasattr(item, "max_length")
     )
-    resolution = resolve_locations(
-        ["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"]
-    )
+    resolution = resolve_locations(["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"])
     for option in [resolution.recommended, *resolution.alternatives]:
         assert option is not None and len(option) <= limit
 
 
 def test_the_audit_record_is_bounded_and_explains_itself() -> None:
-    audit = resolve_locations(
-        ["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"]
-    ).audit()
+    audit = resolve_locations(["Bangalore, Karnataka, IN", "Brookefield, Bengaluru"]).audit()
     assert audit["relation"] == "same_city_different_specificity"
     assert audit["containment_rule"] == "curated_locality"
     assert len(audit["alternatives"]) <= 8
+
+
+def test_neighbourhood_metadata_and_page_context_resolve_to_the_city() -> None:
+    source = """Video Editor Executive - Chennai
+Structured job title: Video Editor Executive - Chennai
+Structured role location: Nungambakkam, TN, IN
+Location: Aminjikarai
+We prefer Chennai candidates only.
+"""
+
+    resolution = resolve_job_city(
+        source,
+        {
+            "job_title": "Video Editor Executive - Chennai",
+            "role_location": "Nungambakkam, TN, IN",
+        },
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Chennai"
+    assert resolution.conflicting_cities == []
+    assert resolution.rationale_code == "corroborated_city_from_source_context"
+    assert city_for_location("Aminjikarai, Chennai, Tamil Nadu") == "Chennai"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Mobile Video Editor",
+        "Reading Content Writer",
+        "Nice Motion Designer",
+    ],
+)
+def test_ordinary_title_words_that_are_city_names_do_not_fabricate_a_location(
+    title: str,
+) -> None:
+    resolution = resolve_job_city(
+        f"{title}\nStructured job title: {title}",
+        {"job_title": title},
+        work_mode="onsite",
+    )
+
+    assert resolution.city is None
+    assert resolution.conflicting_cities == []
+    assert resolution.evidence == []
+    assert resolution.rationale_code == "city_not_found"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Video Editor - Chennai", "Chennai"),
+        ("Video Editor | Bengaluru", "Bengaluru"),
+        ("Video Editor in Mumbai", "Mumbai"),
+    ],
+)
+def test_an_explicit_title_location_suffix_remains_usable(
+    title: str,
+    expected: str,
+) -> None:
+    resolution = resolve_job_city(
+        f"{title}\nStructured job title: {title}",
+        {"job_title": title},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == expected
+    assert resolution.conflicting_cities == []
+    assert resolution.evidence == [f"Structured job title: {title}"]
+    assert resolution.rationale_code == "normalized_explicit_city"
+
+
+def test_a_separate_location_row_can_corroborate_an_ambiguous_title_word() -> None:
+    resolution = resolve_job_city(
+        "Mobile Video Editor\nLocation: Mobile, AL",
+        {"job_title": "Mobile Video Editor"},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Mobile"
+    assert resolution.evidence == ["Location: Mobile, AL"]
+
+
+def test_named_region_does_not_replace_a_multiword_city() -> None:
+    resolution = resolve_job_city(
+        "Video Editor\nLocation: Salt Lake City, Utah",
+        {},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Salt Lake City"
+    assert resolution.conflicting_cities == []
+
+
+def test_workplace_context_distinguishes_a_city_from_an_indian_locality() -> None:
+    resolution = resolve_job_city(
+        "Video Editor\nOur studio is based in Salt Lake City, Utah.",
+        {},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Salt Lake City"
+    assert resolution.conflicting_cities == []
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Create content about the Electronic City ecosystem.",
+        "Produce a travel series about Salt Lake City.",
+    ],
+)
+def test_subject_matter_locations_never_become_the_workplace(sentence: str) -> None:
+    resolution = resolve_job_city(
+        f"Video Editor\n{sentence}",
+        {},
+        work_mode="onsite",
+    )
+
+    assert resolution.city is None
+    assert resolution.evidence == []
+
+
+def test_duplicate_structured_and_source_title_is_not_fake_corroboration() -> None:
+    title = "Video Editor - Chennai"
+    resolution = resolve_job_city(
+        f"{title}\nStructured job title: {title}",
+        {"job_title": title},
+        work_mode="onsite",
+    )
+
+    assert resolution.city == "Chennai"
+    assert resolution.evidence == [f"Structured job title: {title}"]
+    assert resolution.rationale_code == "normalized_explicit_city"
+
+
+def test_two_explicit_cities_remain_a_real_conflict() -> None:
+    resolution = resolve_job_city(
+        "Location: Chennai\nOffice location: Bengaluru",
+        {},
+        work_mode="onsite",
+    )
+
+    assert resolution.city is None
+    assert set(resolution.conflicting_cities) == {"Chennai", "Bengaluru"}
+
+
+def test_remote_role_does_not_inherit_an_office_city() -> None:
+    resolution = resolve_job_city(
+        "Office location: Chennai",
+        {"role_location": "Chennai, TN, IN"},
+        work_mode="remote",
+    )
+
+    assert resolution.city is None
+    assert resolution.rationale_code == "remote_geography_preserved"
 
 
 # ---------------------------------------------------------------------------
@@ -224,15 +439,15 @@ def test_the_audit_record_is_bounded_and_explains_itself() -> None:
 
 
 @pytest.mark.anyio
-async def test_the_shine_source_asks_only_for_the_location_and_offers_an_answer(
+async def test_the_shine_source_settles_two_spellings_of_one_city_without_asking(
     client,
 ) -> None:
     """The live import that prompted all of this, reproduced deterministically.
 
     Everything the post stated must be read: the stipend, its unit, how the role
-    is paid, and that it is an internship. The one thing genuinely open is which
-    of two renderings of the same office candidates should see — and that must
-    arrive as a one-click choice, not an empty box.
+    is paid, and that it is an internship. Bangalore/Bengaluru and a curated
+    neighbourhood inside it do not create a business decision for the recruiter;
+    the native city value can be settled from those source facts directly.
     """
 
     from uuid import UUID, uuid4
@@ -282,9 +497,7 @@ async def test_the_shine_source_asks_only_for_the_location_and_offers_an_answer(
         }
 
     async with TestSessionLocal() as session:
-        service = JobImportService(
-            JobImportRepository(session), JobService(JobRepository(session))
-        )
+        service = JobImportService(JobImportRepository(session), JobService(JobRepository(session)))
         await service.record_extraction_result(
             UUID(draft_id),
             JobImportExtractionResponse.model_validate(
@@ -309,9 +522,7 @@ async def test_the_shine_source_asks_only_for_the_location_and_offers_an_answer(
                                 },
                                 {
                                     "value": "Brookefield, Bengaluru",
-                                    "evidence": [
-                                        {"snippet": "Office Location: Brookefield"}
-                                    ],
+                                    "evidence": [{"snippet": "Office Location: Brookefield"}],
                                 },
                             ],
                             "explanation": "The page names the office twice.",
@@ -330,14 +541,12 @@ async def test_the_shine_source_asks_only_for_the_location_and_offers_an_answer(
     assert begun.status_code == 200, begun.text
 
     asked: list[str] = []
-    location_question: dict[str, object] | None = None
     question = begun.json().get("active_question")
     for _ in range(20):
         if question is None:
             break
         asked.append(question["field_path"])
         if question["field_path"] == "location":
-            location_question = question
             break
         shape = question.get("answer") or {}
         if shape.get("choices"):
@@ -369,35 +578,18 @@ async def test_the_shine_source_asks_only_for_the_location_and_offers_an_answer(
     ):
         assert settled not in asked, f"{settled} was on the page and still asked"
 
-    assert location_question is not None, "the open question should be the location"
-    recommended = location_question.get("recommended_value")
-    assert recommended == "Brookefield, Bengaluru, Karnataka, India"
-    offered = [
-        item["value"] for item in location_question.get("alternatives") or []
-    ]
-    assert recommended in offered, "the recommendation must be clickable"
-    assert "Bengaluru, Karnataka, India" in offered, "the city-only reading stays"
+    assert "location" not in asked
 
-    # One click settles it, and the answer is accepted by the native field.
-    accepted = await client.post(
-        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
-        headers=headers,
-        json={"field_path": "location", "value": recommended},
-    )
-    assert accepted.status_code == 200, accepted.text
-
-    stored = (
-        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
-    ).json()
-    location_row = next(
-        item for item in stored["fields"] if item["field_path"] == "location"
-    )
-    assert location_row["effective_value"] == recommended
+    stored = (await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)).json()
+    location_row = next(item for item in stored["fields"] if item["field_path"] == "location")
+    assert location_row["effective_value"] == "Bengaluru"
+    assert location_row["epistemic_state"] == "logically_entailed"
+    assert location_row["requires_confirmation"] is False
 
 
 @pytest.mark.anyio
 async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
-    """The recommendation is an offer. A typed answer still wins."""
+    """A genuine place conflict offers choices without banning a typed city."""
 
     from uuid import UUID, uuid4
 
@@ -417,7 +609,7 @@ async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
         json={
             "source_type": "pasted_text",
             "source_title": "Editor",
-            "original_text": "Editor role. Office in Bangalore, Karnataka. Brookefield.",
+            "original_text": "Editor role. The post mentions Bengaluru and Hyderabad.",
             "idempotency_key": uuid4().hex,
         },
     )
@@ -432,9 +624,7 @@ async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
     )
     draft_id = draft.json()["id"]
     async with TestSessionLocal() as session:
-        service = JobImportService(
-            JobImportRepository(session), JobService(JobRepository(session))
-        )
+        service = JobImportService(JobImportRepository(session), JobService(JobRepository(session)))
         await service.record_extraction_result(
             UUID(draft_id),
             JobImportExtractionResponse.model_validate(
@@ -451,8 +641,8 @@ async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
                                     "evidence": [{"snippet": "Bangalore, Karnataka"}],
                                 },
                                 {
-                                    "value": "Brookefield, Bengaluru",
-                                    "evidence": [{"snippet": "Brookefield"}],
+                                    "value": "Hyderabad, Telangana, IN",
+                                    "evidence": [{"snippet": "Hyderabad, Telangana"}],
                                 },
                             ],
                         }
@@ -463,9 +653,11 @@ async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
             ),
             owner_user_id=owner_id,
         )
-    await client.post(
+    begun = await client.post(
         f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
     )
+    assert begun.status_code == 200, begun.text
+    assert begun.json()["active_question"]["field_path"] == "location"
 
     typed = "Whitefield, Bengaluru, Karnataka, India"
     accepted = await client.post(
@@ -475,9 +667,7 @@ async def test_a_recruiter_may_enter_a_location_of_their_own(client) -> None:
     )
     assert accepted.status_code == 200, accepted.text
 
-    stored = (
-        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
-    ).json()
+    stored = (await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)).json()
     row = next(item for item in stored["fields"] if item["field_path"] == "location")
     assert row["effective_value"] == typed
     assert row["review_status"] == "edited", "a recruiter answer outranks a suggestion"

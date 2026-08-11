@@ -1,17 +1,20 @@
 """No question may ask for something the page already said.
 
-Runs every corpus source through the real pipeline with **no model output at
-all**, then counts questions that ask for a fact the golden manifest says is on
-the page. That count must be zero.
+Runs every corpus source through the deterministic reconciliation layer with
+**no proposed model fields**, then counts questions that ask for a fact the
+golden manifest says is on the page. That count must be zero.
 
-The empty extraction is the point. It reproduces the case that has caused every
-reported complaint — a model run that timed out, came back malformed, or simply
-missed a field — and proves the deterministic layer still carries the draft. If
-this passes, a bad model run cannot turn into recruiter data entry.
+This deliberately bypasses the adapter's completeness gate to isolate fallback
+coverage. A real provider timeout or malformed/partial response now remains a
+technical failure with retry/paste/manual recovery; it never reaches the
+business-question planner. A completed extraction that explicitly reports a
+field absent may still be enriched from stronger page-owned structured or
+labelled evidence, which is the boundary exercised here.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -276,7 +279,10 @@ async def test_established_values_are_the_ones_the_page_stated(
         if field_path in source.contested or field_path not in settled:
             continue
         actual = settled[field_path]
-        if isinstance(expected, str) and isinstance(actual, str):
+        if isinstance(expected, str):
+            assert isinstance(actual, str), (
+                f"{source.key}.{field_path}: expected text {expected!r}, got {actual!r}"
+            )
             # Substring, so a manifest can name the meaningful part of prose.
             assert expected.casefold() in actual.casefold(), (
                 f"{source.key}.{field_path}: {actual!r} does not reflect {expected!r}"
@@ -357,6 +363,32 @@ async def test_prose_facts_reach_the_draft_and_are_not_asked_back(
             assert value.casefold() in actual.casefold(), (
                 f"{source.key}.{field_path}: {actual!r} does not reflect {value!r}"
             )
+
+
+@pytest.mark.anyio
+async def test_labelled_experience_overrides_one_wrong_provider_field(
+    client: AsyncClient,
+) -> None:
+    """The SimplyHired fix applies to an ordinary field, not only conflicts."""
+
+    source = next(item for item in CORPUS if item.key == "simplyhired_chennai_conflict")
+    provider_miss = replace(
+        source,
+        model_fields={"experience_level": "1–3 years"},
+        model_conflicts={},
+    )
+    draft_id, headers, _title = await _prepare(client, provider_miss, with_model=True)
+    asked = await _walk(client, draft_id, headers)
+    current = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    experience = next(
+        item for item in current["fields"] if item["field_path"] == "experience_level"
+    )
+
+    assert experience["effective_value"] == "1–2 years"
+    assert experience["epistemic_state"] == "normalized_explicit"
+    assert "experience_level" not in asked
 
 
 @pytest.mark.anyio

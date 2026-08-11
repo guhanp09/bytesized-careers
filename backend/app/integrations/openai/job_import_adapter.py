@@ -11,6 +11,7 @@ import openai
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
+from app.core.job_import_intelligence_matrix import intelligence_matrix
 from app.core.job_import_request_compaction import compact_provider_request
 from app.integrations.openai.job_import_instructions import (
     build_job_import_instructions,
@@ -29,6 +30,7 @@ from app.integrations.openai.job_import_spans import (
 from app.schemas.job_import import (
     MAX_EXTRACTION_RESPONSE_BYTES,
     JobImportExtractionRequest,
+    JobImportExtractionResponse,
     JobImportProviderMetadata,
 )
 from app.services.job_import_provider import (
@@ -37,6 +39,7 @@ from app.services.job_import_provider import (
 )
 
 OPENAI_MAX_OUTPUT_TOKENS = 16_000
+OPENAI_REASONING_EFFORT = "medium"
 _MAX_RETRY_DELAY_SECONDS = 2.0
 _Sleep = Callable[[float], Awaitable[None]]
 
@@ -136,6 +139,7 @@ class OpenAIJobImportAdapter:
                     ),
                     input=provider_input,
                     text_format=OpenAIJobImportExtractionResponse,
+                    reasoning={"effort": OPENAI_REASONING_EFFORT},
                     max_output_tokens=OPENAI_MAX_OUTPUT_TOKENS,
                     store=False,
                 )
@@ -270,6 +274,20 @@ class OpenAIJobImportAdapter:
                 if isinstance(parsed, OpenAIJobImportExtractionResponse)
                 else OpenAIJobImportExtractionResponse.model_validate(parsed)
             )
+            unexpected_field_paths = self._unexpected_provider_field_paths(
+                request,
+                wire_response,
+            )
+            if unexpected_field_paths:
+                raise OpenAIJobImportPostParseError(
+                    "provider_field_path_not_allowed",
+                    diagnostics={
+                        "processing_stage": "provider_output_path_validation",
+                        "failure_subreason": "provider_field_path_not_allowed",
+                        "unexpected_field_count": len(unexpected_field_paths),
+                        "unexpected_field_paths": unexpected_field_paths[:20],
+                    },
+                )
             evidence_diagnostics = wire_response.evidence_diagnostics(span_set=span_set)
             response_metadata = self._metadata_with_diagnostics(
                 response_metadata,
@@ -350,10 +368,112 @@ class OpenAIJobImportAdapter:
                 metadata=mismatch_metadata,
             ) from exc
 
+        missing_field_paths = self._missing_provider_visible_field_paths(
+            request,
+            extraction,
+        )
+        if missing_field_paths:
+            # The schema can validate each returned item, but it cannot express
+            # the request-specific invariant that every supplied field
+            # definition receives exactly one verdict. Treat omissions as an
+            # incomplete machine read, not as evidence that the source omitted
+            # those facts; otherwise the service turns a technical miss into a
+            # wall of recruiter questions.
+            incomplete_metadata = self._metadata_with_diagnostics(
+                response_metadata,
+                {
+                    "processing_stage": "provider_output_coverage",
+                    "failure_subreason": "provider_visible_fields_omitted",
+                    "omitted_field_count": len(missing_field_paths),
+                    "omitted_field_paths": missing_field_paths[:20],
+                },
+            )
+            raise self._provider_error(
+                "OPENAI_INCOMPLETE_EXTRACTION",
+                "The job details were only partially read. Please retry.",
+                status_code=502,
+                retryable=True,
+                retry_count=retries_used,
+                metadata=incomplete_metadata,
+            )
+
         return JobImportProviderResult(
             extraction=extraction,
             metadata=response_metadata,
         )
+
+    @staticmethod
+    def _missing_provider_visible_field_paths(
+        request: JobImportExtractionRequest,
+        response: object,
+    ) -> list[str]:
+        compact = compact_provider_request(request)
+        compact_definitions = compact.get("field_definitions")
+        expected = {
+            field_path
+            for definition in (
+                compact_definitions if isinstance(compact_definitions, list) else []
+            )
+            if isinstance(definition, dict)
+            and isinstance((field_path := definition.get("field_path")), str)
+        }
+        if not expected or not isinstance(response, JobImportExtractionResponse):
+            return []
+        reported = {
+            *(item.field_path for item in response.fields),
+            *(item.field_path for item in response.conflicts),
+            *(item.field_path for item in response.missing_fields),
+        }
+        return sorted(expected - reported)
+
+    @staticmethod
+    def _provider_allowed_field_paths(
+        request: JobImportExtractionRequest,
+    ) -> frozenset[str]:
+        """Return the exact field vocabulary exposed to the current provider.
+
+        Production requests include the complete current field registry, whose
+        compact projection deliberately removes server-owned paths. The empty
+        definition fallback supports older decoder-only callers while still
+        restricting them to today's provider-visible registry; it never admits
+        platform-owned or unknown paths.
+        """
+
+        compact_definitions = compact_provider_request(request).get("field_definitions")
+        requested = frozenset(
+            field_path
+            for definition in (
+                compact_definitions if isinstance(compact_definitions, list) else []
+            )
+            if isinstance(definition, dict)
+            and isinstance((field_path := definition.get("field_path")), str)
+        )
+        if requested:
+            return requested
+        return frozenset(
+            field_path
+            for field_path, row in intelligence_matrix().items()
+            if row.provider_visible
+        )
+
+    @classmethod
+    def _unexpected_provider_field_paths(
+        cls,
+        request: JobImportExtractionRequest,
+        response: OpenAIJobImportExtractionResponse,
+    ) -> list[str]:
+        allowed = cls._provider_allowed_field_paths(request)
+        reported = {
+            *(item.field_path for item in response.fields),
+            *(item.field_path for item in response.conflicts),
+            *(item.field_path for item in response.missing_fields),
+            *(
+                item.field_path
+                for item in response.warnings
+                if item.field_path is not None
+            ),
+        }
+        return sorted(reported - allowed)
 
     @staticmethod
     def _provider_input(

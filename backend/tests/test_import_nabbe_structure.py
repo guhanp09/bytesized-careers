@@ -103,8 +103,11 @@ class TestTheRestOfThePageSurvives:
         )
 
         assert structured["work_mode"] == "remote"
-        # A remote role carries no city, so the preview cannot print it twice.
-        assert "location" not in structured
+        # Applicant-location requirements are not an office city.  The native
+        # remote control uses this field as the candidate geography, so a
+        # country restriction remains useful without turning “Remote” into a
+        # place name.
+        assert structured["location"] == "India"
         assert convert_to_native("location", "Remote-friendly").native_value is None
 
 

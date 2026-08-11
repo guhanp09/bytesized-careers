@@ -149,9 +149,9 @@ MISLABELLED_INTERNSHIP = GoldenSource(
     model_conflicts={
         "location": ("Bangalore, Karnataka, IN", "Brookefield, Bengaluru"),
     },
-    contested=("location",),
     note="The real reported page. Its own structured data mislabels the engagement, "
-    "and names the office at two levels of detail.",
+    "and names one office at two levels of detail. That equivalence is resolved "
+    "without asking the recruiter.",
 )
 
 SPARSE_LISTING = GoldenSource(
@@ -649,6 +649,57 @@ SINGLE_CRAFT_AS_ACTIVITY = GoldenSource(
     ),
 )
 
+
+# A compact, invented page with the same information architecture as the
+# reported SimplyHired listing. No employer copy, identifier, or destination is
+# retained; the regression is the relationship between a labelled requirement,
+# weaker prose, locality-shaped JSON-LD, corroborating city evidence, and a
+# routed application sentence.
+SIMPLYHIRED_CHENNAI_CONFLICT = GoldenSource(
+    key="simplyhired_chennai_conflict",
+    title="Video Editor Executive - Chennai",
+    html=_page(
+        '{"@context":"https://schema.org","@type":"JobPosting",'
+        '"title":"Video Editor Executive - Chennai","employmentType":"FULL_TIME",'
+        '"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",'
+        '"addressLocality":"Nungambakkam","addressRegion":"TN","addressCountry":"IN"}},'
+        '"baseSalary":{"@type":"MonetaryAmount","currency":"INR","value":'
+        '{"@type":"QuantitativeValue","minValue":20000,"maxValue":30000,'
+        '"unitText":"MONTH"}},"description":"<p>Company: Sample Studio</p>'
+        '<p>Location: Aminjikarai</p><p>Experience: 1 to 2 yrs</p>'
+        '<p>We prefer Chennai candidates only.</p>'
+        '<p>We are looking for a video editor with 1–3 years of experience.</p>'
+        '<h2>Responsibilities</h2><ul><li>Edit raw footage into polished videos</li></ul>'
+        '<h2>Qualifications</h2><ul><li>Proficiency with editing software</li></ul>'
+        '<h2>How to apply</h2><p>Submit your resume and cover letter to '
+        'jobs@example.invalid or apply through Indeed.</p>"}',
+        "<h1>Video Editor Executive - Chennai</h1>"
+        "<p>Nungambakkam, Chennai, Tamil Nadu</p>",
+        "Video Editor Executive - Chennai",
+    ),
+    established={
+        "experience_level": "1–2 years",
+        "location": "Chennai",
+        "engagement_type": "full_time",
+        "work_mode": "onsite",
+        "budget_amount": 20000,
+        "budget_max": 30000,
+        "budget_currency": "INR",
+        "budget_unit": "per month",
+        "compensation_mode": "range",
+        "responsibilities": ["Edit raw footage into polished videos"],
+        "requirements": ["Proficiency with editing software"],
+    },
+    model_conflicts={
+        "experience_level": ("1–2 years", "1–3 years"),
+        "location": ("Nungambakkam", "Aminjikarai"),
+    },
+    note=(
+        "A labelled experience row outranks weaker prose, and several locality "
+        "signals resolve to the one explicit city rather than becoming questions."
+    ),
+)
+
 CORPUS: tuple[GoldenSource, ...] = (
     GREENHOUSE_FULL,
     GREENHOUSE_NO_JSONLD,
@@ -674,4 +725,5 @@ CORPUS: tuple[GoldenSource, ...] = (
     NO_TRIAL_PASTE,
     BEBEE_MULTI_CRAFT,
     SINGLE_CRAFT_AS_ACTIVITY,
+    SIMPLYHIRED_CHENNAI_CONFLICT,
 )

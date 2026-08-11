@@ -38,6 +38,13 @@ MAX_FIELD_JSON_BYTES = 16_384
 MAX_MACHINE_METADATA_BYTES = 16_384
 MAX_EXTRACTION_RESPONSE_BYTES = 1_000_000
 
+# A conversation answer may contain nested JSON nulls where a native structured
+# field permits them, but the answer itself can never be null. A null root is
+# indistinguishable from "not answered" and must not settle a required turn.
+JobImportNonNullJsonValue = (
+    str | int | float | bool | list[JsonValue] | dict[str, JsonValue]
+)
+
 JobImportSourceType = Literal[
     "pasted_text",
     "rough_description",
@@ -72,6 +79,16 @@ JobImportProvenanceState = Literal[
     "suggested_inference",
     "conflicting_source_values",
     "missing",
+]
+JobImportEpistemicState = Literal[
+    "explicit",
+    "normalized_explicit",
+    "logically_entailed",
+    "plausible_interpretation",
+    "ambiguous",
+    "conflicting",
+    "absent",
+    "technically_unavailable",
 ]
 JobImportReviewStatus = Literal["pending", "confirmed", "edited", "rejected"]
 JobImportAuthorityState = Literal[
@@ -344,6 +361,8 @@ class JobImportExtractionField(BaseModel):
     evidence: list[JobImportEvidence] = Field(default_factory=list, max_length=5)
     explanation: str | None = Field(default=None, max_length=1000)
     provider_confidence: JobImportProviderConfidence | None = None
+    epistemic_status: JobImportEpistemicState | None = None
+    inference_type: str | None = Field(default=None, max_length=80)
 
     @field_validator("value")
     @classmethod
@@ -367,6 +386,37 @@ class JobImportExtractionField(BaseModel):
             raise ValueError("directly supplied and extracted fields require evidence")
         if self.provenance == "suggested_inference" and not self.explanation:
             raise ValueError("suggested inferences require an explanation")
+        if self.epistemic_status in {
+            "ambiguous",
+            "conflicting",
+            "absent",
+            "technically_unavailable",
+        }:
+            raise ValueError("a proposed field must carry a settled epistemic state")
+        if self.epistemic_status is None:
+            # Epistemic annotations were added after the provider-neutral
+            # contract shipped. Keep older providers readable while requiring
+            # coherent claims whenever they opt into the richer contract.
+            return self
+        if (
+            self.epistemic_status in {"explicit", "normalized_explicit"}
+            and self.provenance not in {"directly_supplied", "extracted_from_source"}
+        ):
+            raise ValueError(
+                "explicit and normalized explicit values require direct or extracted provenance"
+            )
+        if (
+            self.epistemic_status
+            in {"logically_entailed", "plausible_interpretation"}
+            and self.provenance != "suggested_inference"
+        ):
+            raise ValueError("entailed and plausible values require suggested inference provenance")
+        if self.epistemic_status in {
+            "normalized_explicit",
+            "logically_entailed",
+            "plausible_interpretation",
+        } and not (self.inference_type and self.inference_type.strip()):
+            raise ValueError("normalized and inferred values require an inference type")
         return self
 
 
@@ -395,6 +445,7 @@ class JobImportConflict(BaseModel):
     values: list[JobImportConflictValue] = Field(min_length=2, max_length=8)
     explanation: str | None = Field(default=None, max_length=1000)
     provider_confidence: JobImportProviderConfidence | None = None
+    epistemic_status: Literal["ambiguous", "conflicting"] = "conflicting"
 
     @field_validator("explanation")
     @classmethod
@@ -417,6 +468,10 @@ class JobImportMissingField(BaseModel):
     field_path: str = Field(min_length=1, max_length=120, pattern=r"^[a-z][a-z0-9_]*$")
     explanation: str | None = Field(default=None, max_length=1000)
     evidence: list[JobImportEvidence] = Field(default_factory=list, max_length=3)
+    # Retrieval and representation failures are established by server-owned
+    # processing metadata. An extraction provider may only report source
+    # absence here.
+    epistemic_status: Literal["absent"] = "absent"
 
     @field_validator("explanation")
     @classmethod
@@ -652,6 +707,7 @@ class JobImportFieldRead(BaseModel):
     review_status: JobImportReviewStatus
     authority_state: JobImportAuthorityState
     decision_origin: ImportDecisionOrigin
+    epistemic_state: JobImportEpistemicState
     decision_confidence: ImportDecisionConfidence | None = None
     needs_review: bool
     rationale_code: str | None = None
@@ -741,14 +797,16 @@ class JobImportAnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field_path: str = Field(min_length=1, max_length=120)
-    value: JsonValue
+    value: JobImportNonNullJsonValue
     #: The version the client last saw. A stale value makes the write a no-op
     #: rather than advancing the conversation twice.
     expected_context_version: int | None = None
 
     @field_validator("value")
     @classmethod
-    def bound_value(cls, value: JsonValue) -> JsonValue:
+    def bound_value(
+        cls, value: JobImportNonNullJsonValue
+    ) -> JobImportNonNullJsonValue:
         return _bounded_json(
             value, maximum=MAX_FIELD_JSON_BYTES, label="answer value"
         )  # type: ignore[return-value]

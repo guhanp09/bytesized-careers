@@ -13,6 +13,7 @@
  */
 
 import {
+  DELIVERABLE_FREQUENCIES,
   DELIVERABLE_TYPES,
   ENGAGEMENT_TYPES,
   HIRING_PROCESS_STAGES,
@@ -232,22 +233,344 @@ export function multiSelectOptionsFor(fieldPath: string): AnswerOption[] {
  * Keeping the shaping beside the options is what stops the two drifting apart
  * and reintroducing the rejection this replaced.
  */
+export type DeliverableAnswerDetail = {
+  quantity?: string | number;
+  frequency?: string;
+  customFrequency?: string;
+};
+
+export type StructuredAnswerContext = {
+  deliverables?: Readonly<Record<string, DeliverableAnswerDetail>>;
+  sensitiveAccessConfirmed?: boolean;
+};
+
+const SENSITIVE_SOURCE_INPUTS = new Set(["analytics_access", "account_access"]);
+
+/** Custom labels must not provide a back door around access confirmation. */
+export function sourceInputLabelNeedsSensitiveConfirmation(label: string): boolean {
+  return /\b(?:accounts?|admins?|administrators?|credentials?|log[ -]?ins?|log\s+(?:in|into|on(?:to)?)|passwords?|permissions?|sign\s+(?:in|into|on(?:to)?)|workspaces?|ownership|api\s+keys?|oauth\s+tokens?|2fa\s+codes?|two[- ]factor\s+codes?|session\s+cookies?|private\s+keys?|secret\s+tokens?|business\s+manager\s+invites?)\b|\b(?:(?:account|analytics|channel|profile|platform|workspace|dashboard|cms|admin|administrator|website|backend|portal|youtube|instagram|tiktok|facebook|linkedin|google\s+drive|dropbox|notion|slack|email|inbox|business\s+manager)\s+access|access\s+(?:to|for)\s+(?:the\s+)?(?:account|analytics|channel|profile|platform|workspace|dashboard|cms|website|backend|portal|youtube|instagram|tiktok|facebook|linkedin|google\s+drive|dropbox|notion|slack|email|inbox|business\s+manager))\b|\b(?:add|invite|grant)\s+(?:an?\s+)?(?:editor|manager|admin|administrator|user|member)\b/iu.test(label);
+}
+
+/** Frequencies the inline deliverable composer can persist without translation. */
+export const DELIVERABLE_FREQUENCY_OPTIONS: readonly AnswerOption[] =
+  DELIVERABLE_FREQUENCIES.map((value) => ({
+    value,
+    label:
+      value === "one_time"
+        ? "One time"
+        : value === "ongoing"
+          ? "Ongoing / as needed"
+          : value === "other"
+            ? "Another cadence"
+            : sentence(value),
+  }));
+
+function deliverableRow(
+  type: string,
+  detail: DeliverableAnswerDetail | undefined,
+  customType?: string
+): Record<string, unknown> | null {
+  const quantity = Number(detail?.quantity);
+  const frequency = detail?.frequency?.trim() ?? "";
+  const customFrequency = detail?.customFrequency?.trim() ?? "";
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000 || !frequency) {
+    return null;
+  }
+  if (!DELIVERABLE_FREQUENCIES.includes(frequency as never)) return null;
+  if (
+    frequency === "other" &&
+    (!customFrequency ||
+      customFrequency.length > 80 ||
+      looksLikePlaceholder(customFrequency))
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    ...(type === "other" ? { custom_type: customType } : {}),
+    quantity,
+    frequency,
+    ...(frequency === "other" ? { custom_frequency: customFrequency } : {}),
+  };
+}
+
+/**
+ * Build only complete, recruiter-supplied structured rows.
+ *
+ * Deliverable quantity/cadence and sensitive-access consent are business facts;
+ * this helper deliberately returns null instead of inventing either one.
+ */
 export function shapeMultiSelect(
   fieldPath: string,
-  selected: readonly string[]
-): Array<Record<string, unknown>> {
+  selected: readonly string[],
+  context: StructuredAnswerContext = {}
+): Array<Record<string, unknown>> | null {
+  const unique = [...new Set(selected)];
   if (fieldPath === "hiring_process") {
-    return selected.map((stage) => ({ stage }));
+    if (
+      unique.some(
+        (stage) =>
+          stage === "other" || !HIRING_PROCESS_STAGES.includes(stage as never)
+      )
+    ) {
+      return null;
+    }
+    return unique.map((stage) => ({ stage }));
   }
   if (fieldPath === "source_inputs") {
-    return selected.map((type) => ({ type }));
+    if (
+      unique.some(
+        (type) => type === "other" || !SOURCE_INPUT_TYPES.includes(type as never)
+      ) ||
+      (unique.some((type) => SENSITIVE_SOURCE_INPUTS.has(type)) &&
+      context.sensitiveAccessConfirmed !== true
+      )
+    ) {
+      return null;
+    }
+    return unique.map((type) => ({
+      type,
+      ...(SENSITIVE_SOURCE_INPUTS.has(type)
+        ? { sensitive_access_confirmed: true }
+        : {}),
+    }));
   }
   if (fieldPath === "deliverables") {
-    // A sensible default shape; the recruiter refines quantities in Post Job,
-    // where the repeatable row editor belongs.
-    return selected.map((type) => ({ type, quantity: 1, frequency: "per_month" }));
+    if (
+      unique.some(
+        (type) => type === "other" || !DELIVERABLE_TYPES.includes(type as never)
+      )
+    ) {
+      return null;
+    }
+    const rows = unique.map((type) =>
+      deliverableRow(type, context.deliverables?.[type])
+    );
+    return rows.every((row): row is Record<string, unknown> => row !== null)
+      ? rows
+      : null;
   }
   return [];
+}
+
+/**
+ * Shape a native list-of-strings picker without pretending it is a structured
+ * row catalog. Catalog choices are shortcuts; an open custom value can sit
+ * beside them, and case-insensitive duplicates are removed before submission.
+ */
+export function shapeStringMultiSelect(
+  selected: readonly string[],
+  customValue?: string
+): string[] | null {
+  const candidates = [...selected, ...(customValue === undefined ? [] : [customValue])];
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = candidate.trim().replace(/\s+/g, " ");
+    const key = normalized.toLocaleLowerCase();
+    if (
+      normalized.length < 2 ||
+      normalized.length > 40 ||
+      looksLikePlaceholder(normalized)
+    ) {
+      return null;
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    values.push(normalized);
+  }
+  return values.length > 0 ? values : null;
+}
+
+const structuredRows = (value: unknown): Array<Record<string, unknown>> | null => {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some(
+      (row) => row === null || typeof row !== "object" || Array.isArray(row)
+    )
+  ) {
+    return null;
+  }
+  return value as Array<Record<string, unknown>>;
+};
+
+/** Whether accepting a structured value would assert sensitive access. */
+export function structuredAnswerNeedsSensitiveConfirmation(
+  fieldPath: string,
+  value: unknown
+): boolean {
+  if (fieldPath !== "source_inputs" || !Array.isArray(value)) return false;
+  return value.some((item) => {
+    if (typeof item === "string") return SENSITIVE_SOURCE_INPUTS.has(item);
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      return false;
+    }
+    const type = (item as Record<string, unknown>).type;
+    const customLabel = (item as Record<string, unknown>).custom_label;
+    return (
+      (typeof type === "string" && SENSITIVE_SOURCE_INPUTS.has(type)) ||
+      (type === "other" &&
+        typeof customLabel === "string" &&
+        sourceInputLabelNeedsSensitiveConfirmation(customLabel))
+    );
+  });
+}
+
+/**
+ * Validate and sanitize a server-suggested structured answer before a one-click
+ * accept action can send it back.
+ *
+ * Suggestions can outlive the schema version that created them. Rebuilding the
+ * rows here prevents an incomplete deliverable, unknown stage, or provider-set
+ * sensitive-access flag from becoming an apparently successful recruiter
+ * answer. Sensitive access always requires this session's explicit checkbox.
+ */
+export function shapeStructuredAnswer(
+  fieldPath: string,
+  value: unknown,
+  context: StructuredAnswerContext = {}
+): Array<Record<string, unknown>> | null {
+  const rows = structuredRows(value);
+  if (!rows) return null;
+
+  if (fieldPath === "hiring_process") {
+    const shaped: Array<Record<string, unknown> | null> = rows.map((row) => {
+      const stage = typeof row.stage === "string" ? row.stage : "";
+      if (!HIRING_PROCESS_STAGES.includes(stage as never)) return null;
+      if (stage !== "other") return { stage };
+      const label =
+        typeof row.custom_label === "string"
+          ? row.custom_label.trim().replace(/\s+/g, " ")
+          : "";
+      return label.length >= 2 && label.length <= 80 && !looksLikePlaceholder(label)
+        ? { stage, custom_label: label }
+        : null;
+    });
+    return shaped.every((row): row is Record<string, unknown> => row !== null)
+      ? shaped
+      : null;
+  }
+
+  if (fieldPath === "source_inputs") {
+    if (
+      structuredAnswerNeedsSensitiveConfirmation(fieldPath, rows) &&
+      context.sensitiveAccessConfirmed !== true
+    ) {
+      return null;
+    }
+    const shaped: Array<Record<string, unknown> | null> = rows.map((row) => {
+      const type = typeof row.type === "string" ? row.type : "";
+      if (!SOURCE_INPUT_TYPES.includes(type as never)) return null;
+      if (type === "other") {
+        const label =
+          typeof row.custom_label === "string"
+            ? row.custom_label.trim().replace(/\s+/g, " ")
+            : "";
+        return label.length >= 2 && label.length <= 80 && !looksLikePlaceholder(label)
+          ? {
+              type,
+              custom_label: label,
+              ...(sourceInputLabelNeedsSensitiveConfirmation(label)
+                ? { sensitive_access_confirmed: true }
+                : {}),
+            }
+          : null;
+      }
+      return {
+        type,
+        ...(SENSITIVE_SOURCE_INPUTS.has(type)
+          ? { sensitive_access_confirmed: true }
+          : {}),
+      };
+    });
+    return shaped.every((row): row is Record<string, unknown> => row !== null)
+      ? shaped
+      : null;
+  }
+
+  if (fieldPath === "deliverables") {
+    const shaped = rows.map((row) => {
+      const type = typeof row.type === "string" ? row.type : "";
+      if (!DELIVERABLE_TYPES.includes(type as never)) return null;
+      const customType =
+        typeof row.custom_type === "string"
+          ? row.custom_type.trim().replace(/\s+/g, " ")
+          : "";
+      if (
+        type === "other" &&
+        (!customType || customType.length > 80 || looksLikePlaceholder(customType))
+      ) {
+        return null;
+      }
+      return deliverableRow(
+        type,
+        {
+          quantity:
+            typeof row.quantity === "number" || typeof row.quantity === "string"
+              ? row.quantity
+              : undefined,
+          frequency: typeof row.frequency === "string" ? row.frequency : undefined,
+          customFrequency:
+            typeof row.custom_frequency === "string"
+              ? row.custom_frequency
+              : undefined,
+        },
+        customType || undefined
+      );
+    });
+    return shaped.every((row): row is Record<string, unknown> => row !== null)
+      ? shaped
+      : null;
+  }
+
+  return null;
+}
+
+/** Shape either the compact key list or the persisted row form of a suggestion. */
+export function shapeStructuredCandidateAnswer(
+  fieldPath: string,
+  value: unknown,
+  context: StructuredAnswerContext = {}
+): Array<Record<string, unknown>> | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  if (value.every((item): item is string => typeof item === "string")) {
+    return shapeMultiSelect(fieldPath, value, context);
+  }
+  return shapeStructuredAnswer(fieldPath, value, context);
+}
+
+/** Shape one valid `other` row for a structured open field. */
+export function shapeCustomStructuredAnswer(
+  fieldPath: string,
+  label: string,
+  context: StructuredAnswerContext = {}
+): Record<string, unknown> | null {
+  const trimmed = label.trim().replace(/\s+/g, " ");
+  if (trimmed.length < 2 || trimmed.length > 80 || looksLikePlaceholder(trimmed)) {
+    return null;
+  }
+  if (fieldPath === "hiring_process") {
+    return { stage: "other", custom_label: trimmed };
+  }
+  if (fieldPath === "source_inputs") {
+    const sensitive = sourceInputLabelNeedsSensitiveConfirmation(trimmed);
+    if (sensitive && context.sensitiveAccessConfirmed !== true) return null;
+    return {
+      type: "other",
+      custom_label: trimmed,
+      ...(sensitive ? { sensitive_access_confirmed: true } : {}),
+    };
+  }
+  if (fieldPath === "deliverables") {
+    return deliverableRow(
+      "other",
+      context.deliverables?.__custom__,
+      trimmed
+    );
+  }
+  return null;
 }
 
 /**
@@ -489,6 +812,7 @@ const TEXT_EXAMPLES: Readonly<Record<string, string>> = {
   budget_note: "e.g. Rate reviewed after the first three videos",
   title: "e.g. Video editor for a personal finance channel",
   role_specialization: "e.g. Long-form YouTube editing",
+  experience_level: "e.g. 1–7 years, 10+ years, or Experience preferred",
   budget_amount: "e.g. 60000",
   budget_max: "e.g. 80000",
   how_to_apply: "e.g. Share two recent edits and a note on your turnaround",
@@ -508,6 +832,175 @@ export function minimumAnswerLength(fieldPath: string): number {
   return 1;
 }
 
+export type NumericAnswerConstraints = {
+  minimum?: number;
+  maximum?: number;
+  minimum_exclusive?: boolean;
+  maximum_exclusive?: boolean;
+  integer_only?: boolean;
+  step?: number | "any";
+};
+
+/** Validate exactly what a numeric answer shape promises. */
+export function numericAnswerError(
+  value: string,
+  constraints: NumericAnswerConstraints = {}
+): string | null {
+  const normalized = value.trim();
+  if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+    return "Enter a valid number.";
+  }
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) return "Enter a valid number.";
+  if (constraints.integer_only && !Number.isInteger(numeric)) {
+    return "Enter a whole number.";
+  }
+  if (
+    constraints.minimum !== undefined &&
+    (constraints.minimum_exclusive
+      ? numeric <= constraints.minimum
+      : numeric < constraints.minimum)
+  ) {
+    return constraints.minimum_exclusive
+      ? `Enter a number greater than ${constraints.minimum}.`
+      : `Enter ${constraints.minimum} or more.`;
+  }
+  if (
+    constraints.maximum !== undefined &&
+    (constraints.maximum_exclusive
+      ? numeric >= constraints.maximum
+      : numeric > constraints.maximum)
+  ) {
+    return constraints.maximum_exclusive
+      ? `Enter a number less than ${constraints.maximum}.`
+      : `Enter ${constraints.maximum} or less.`;
+  }
+  if (
+    typeof constraints.step === "number" &&
+    constraints.step > 0 &&
+    !constraints.integer_only
+  ) {
+    const base = constraints.minimum ?? 0;
+    const units = (numeric - base) / constraints.step;
+    if (Math.abs(units - Math.round(units)) > 1e-9) {
+      return `Use increments of ${constraints.step}.`;
+    }
+  }
+  return null;
+}
+
+/** Reference links accepted in chat are public web URLs, never route-like text. */
+export function isHttpUrlAnswer(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      Boolean(parsed.hostname) &&
+      !parsed.username &&
+      !parsed.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Shape a URL answer or URL-list suggestion into the native list contract. */
+export function shapeHttpUrlList(value: unknown): string[] | null {
+  const candidates = typeof value === "string" ? [value] : value;
+  if (
+    !Array.isArray(candidates) ||
+    candidates.length === 0 ||
+    !candidates.every((item) => typeof item === "string")
+  ) {
+    return null;
+  }
+  const unique = [
+    ...new Set(candidates.map((item) => item.trim())),
+  ];
+  return unique.every(isHttpUrlAnswer) ? unique : null;
+}
+
+const MEANINGLESS_IMPORT_PHRASES = new Set([
+  "asdf",
+  "blah",
+  "blah blah",
+  "dummy text",
+  "i dont know",
+  "idk",
+  "lorem ipsum",
+  "n a",
+  "na",
+  "none",
+  "not sure",
+  "provided during qa",
+  "test",
+  "test answer",
+  "tbd",
+  "todo",
+  "unknown",
+]);
+
+function looksLikePlaceholder(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  const phraseKey = normalized
+    .toLocaleLowerCase()
+    .replace(/['’]/gu, "")
+    .replace(/[^\p{L}\p{N}_]+/gu, " ")
+    .trim();
+  if (MEANINGLESS_IMPORT_PHRASES.has(phraseKey)) return true;
+
+  const compact = normalized.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  if (/(.)\1{4,}/u.test(compact)) return true;
+  return compact.length >= 8 && new Set(compact).size <= 3;
+}
+
+const EXPERIENCE_VALUE =
+  /^(?:(minimum(?:\s+of)?|min\.?|at\s+least|up\s+to|maximum(?:\s+of)?|max\.?)\s*)?(\d{1,3})\s*(?:(\+)|(?:-|–|—|to)\s*(\d{1,3}))?\s*(years?|yrs?|months?|mos?)\b(?:\s+(?:of\s+)?(?:[\p{L}\p{N}_'’\-]+\s+){0,5}experience)?$/iu;
+const NON_NUMERIC_EXPERIENCE =
+  /^(?:(?:strong\s+)?portfolio(?:\s+(?:required|preferred))?[;,: -]+no\s+(?:prior\s+experience|minimum\s+(?:years?|experience))\s+required|no\s+(?:prior\s+)?experience\s+(?:required|needed|necessary)|no\s+minimum\s+(?:years?|experience)\s+required|experience\s+(?:preferred|optional|not\s+required)|fresher(?:s)?|entry[-\s]?level|any\s+(?:experience\s+level|level\s+of\s+experience))$/iu;
+
+/**
+ * Validate the short, candidate-facing wording stored in `experience_level`.
+ *
+ * This field is intentionally not an enum: the source may honestly say
+ * "1–7 years", "10+ years", "Fresher", or "Experience preferred". The
+ * assistant still should not accept keyboard noise or a malformed/impossible
+ * range merely because the database can hold an arbitrary string.
+ */
+export function experienceAnswerError(value: string): string | null {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return "Enter a clear experience requirement.";
+  if (normalized.length > 64) return "Keep the experience requirement to 64 characters or fewer.";
+  if (looksLikePlaceholder(normalized)) {
+    return "Enter a real experience requirement rather than placeholder text.";
+  }
+
+  if (NON_NUMERIC_EXPERIENCE.test(normalized)) return null;
+
+  const numeric = normalized.match(EXPERIENCE_VALUE);
+  if (numeric) {
+    const qualifier = (numeric[1] ?? "").toLocaleLowerCase();
+    const lower = Number(numeric[2]);
+    const plus = Boolean(numeric[3]);
+    const upper = numeric[4] === undefined ? null : Number(numeric[4]);
+    const inMonths = /^(?:months?|mos?)$/iu.test(numeric[5]);
+    const maximum = inMonths ? 600 : 60;
+
+    if (upper !== null && lower > upper) {
+      return "Put the lower experience amount before the higher one.";
+    }
+    if (lower > maximum || (upper !== null && upper > maximum)) {
+      return `Keep the experience amount at ${maximum} ${inMonths ? "months" : "years"} or fewer.`;
+    }
+    if (plus && /^(?:up\s+to|maximum|max\.?)$/iu.test(qualifier)) {
+      return "Use either a minimum or a maximum, not both.";
+    }
+    return null;
+  }
+
+  return "Use years or months, or a clear level such as “Fresher” or “Experience preferred”.";
+}
+
 /**
  * Reject obvious filler before it can become a candidate-facing requirement or
  * responsibility.
@@ -519,34 +1012,11 @@ export function minimumAnswerLength(fieldPath: string): number {
  * applies the same rule to direct callers.
  */
 export function isMeaningfulImportAnswer(fieldPath: string, value: string): boolean {
+  if (fieldPath === "experience_level") return experienceAnswerError(value) === null;
   if (fieldPath !== "requirements" && fieldPath !== "responsibilities") return true;
 
   const normalized = value.trim().replace(/\s+/g, " ");
-  const phraseKey = normalized
-    .toLocaleLowerCase()
-    .replace(/['’]/gu, "")
-    .replace(/[^\p{L}\p{N}_]+/gu, " ")
-    .trim();
-  const meaninglessPhrases = new Set([
-    "asdf",
-    "blah",
-    "blah blah",
-    "dummy text",
-    "i dont know",
-    "idk",
-    "lorem ipsum",
-    "n a",
-    "na",
-    "none",
-    "not sure",
-    "provided during qa",
-    "test",
-    "test answer",
-    "tbd",
-    "todo",
-    "unknown",
-  ]);
-  if (meaninglessPhrases.has(phraseKey)) return false;
+  if (looksLikePlaceholder(normalized)) return false;
 
   const words = normalized.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? [];
   if (
@@ -555,10 +1025,6 @@ export function isMeaningfulImportAnswer(fieldPath: string, value: string): bool
   ) {
     return false;
   }
-
-  const compact = normalized.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-  if (/(.)\1{4,}/u.test(compact)) return false;
-  if (compact.length >= 8 && new Set(compact).size <= 3) return false;
 
   return true;
 }

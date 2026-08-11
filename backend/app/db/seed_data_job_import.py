@@ -22,6 +22,7 @@ DEVELOPMENT_IMPORT_SCENARIOS = (
     # pause, the listening pose and the answer-driven follow-up can be seen.
     "checkpoint-currency",
     "checkpoint-trial",
+    "checkpoint-experience",
     # Failure surface: a real 503, never a fake stalled progress bar.
     "processing-failure",
     # In-flight drafts: left in `processing` so the source-first pause and resume
@@ -116,6 +117,15 @@ SHINE_SCHOOL_EDITOR_SOURCE_TEXT = "\n".join(
     )
 )
 
+CHECKPOINT_EXPERIENCE_SOURCE_TEXT = "\n".join(
+    (
+        "Content strategist for an education brand",
+        "The role summary calls for 1–2 years of relevant experience.",
+        "The qualifications section asks for 3–5 years of relevant experience.",
+        "The recruiter needs to decide which requirement candidates should see.",
+    )
+)
+
 
 def processed_review_fixture(
     scenario: str = "strong-decisions",
@@ -138,6 +148,8 @@ def processed_review_fixture(
         return _checkpoint_currency_fixture()
     if scenario == "checkpoint-trial":
         return _checkpoint_trial_fixture()
+    if scenario == "checkpoint-experience":
+        return _checkpoint_experience_fixture()
     if scenario == "answer-precedence":
         # Deliberately proposes the opposite of the recruiter's saved answer so
         # the merge rule is observable rather than merely asserted in a test.
@@ -1315,3 +1327,47 @@ def _checkpoint_trial_fixture() -> JobImportExtractionResponse:
             ],
         }
     )
+
+
+def _checkpoint_experience_fixture() -> JobImportExtractionResponse:
+    """A complete source with a genuine unresolved experience conflict.
+
+    The ordinary experience bands are useful shortcuts, but the native field is
+    intentionally open. This fixture exists to prove the browser can retain an
+    exact, valid answer outside those shortcuts without a provider or network
+    request. It derives from the otherwise complete fixture so experience is the
+    first and only decision Bea needs to present before optional refinements.
+    """
+
+    payload = _clean_import_fixture().model_dump(mode="json")
+    payload["conflicts"] = [
+        {
+            "field_path": "experience_level",
+            "values": [
+                {
+                    "value": "1–2 years",
+                    "evidence": [
+                        {
+                            "snippet": (
+                                "The role summary calls for 1–2 years of relevant "
+                                "experience."
+                            )
+                        }
+                    ],
+                },
+                {
+                    "value": "3–5 years",
+                    "evidence": [
+                        {
+                            "snippet": (
+                                "The qualifications section asks for 3–5 years of "
+                                "relevant experience."
+                            )
+                        }
+                    ],
+                },
+            ],
+            "explanation": "Two source sections state different experience requirements.",
+        }
+    ]
+    return JobImportExtractionResponse.model_validate(payload)

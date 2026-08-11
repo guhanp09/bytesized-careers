@@ -61,6 +61,7 @@ def test_every_advertised_scenario_is_either_processed_in_flight_or_failure() ->
         "ceiling-only-pay",
         "checkpoint-currency",
         "checkpoint-trial",
+        "checkpoint-experience",
     }
     # Every processed scenario must actually have extraction output behind it.
     for scenario in processed:
@@ -112,6 +113,7 @@ async def test_processed_scenarios_produce_a_reviewable_draft(
         "multi-craft",
         "checkpoint-currency",
         "checkpoint-trial",
+        "checkpoint-experience",
     ):
         response = await _fixture(client, headers, scenario)
         assert response.status_code == 200, f"{scenario}: {response.text}"
@@ -133,7 +135,7 @@ async def test_shine_school_editor_fixture_preserves_url_context_without_provide
     assert response.status_code == 200, response.text
     draft = response.json()["draft"]
     fields = {field["field_path"]: field for field in draft["fields"]}
-    assert fields["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
+    assert fields["location"]["effective_value"] == "Chennai"
     assert fields["primary_role_key"]["effective_value"] == "video-editor"
     assert fields["primary_role_key"]["decision_confidence"] == "high"
     assert fields["primary_role_key"]["needs_review"] is False
@@ -266,7 +268,11 @@ async def test_checkpoint_fixtures_stop_on_a_question(client: AsyncClient) -> No
     """The checkpoint scenarios exist to be seen paused, so they must pause."""
 
     headers = await _auth(client, "fixture-checkpoint")
-    for scenario in ("checkpoint-currency", "checkpoint-trial"):
+    for scenario in (
+        "checkpoint-currency",
+        "checkpoint-trial",
+        "checkpoint-experience",
+    ):
         created = await _fixture(client, headers, scenario)
         assert created.status_code == 200, created.text
         draft_id = created.json()["draft"]["id"]

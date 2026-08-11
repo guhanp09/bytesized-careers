@@ -78,11 +78,13 @@ test("the job-selectable set is exactly what a job can ask for", () => {
   assert.deepEqual(
     [...keys].sort(),
     [
+      "cover_letter",
       "custom_instruction",
       "expected_rate",
       "fit_note",
       "relevant_experience",
       "relevant_portfolio",
+      "resume",
       "start_availability",
       "tools_workflow",
       "turnaround",

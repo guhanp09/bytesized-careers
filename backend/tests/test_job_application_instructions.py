@@ -93,6 +93,51 @@ class TestDestinationsInEveryShapeSourcesUse:
         assert note == "Please include your CV and showreel with your CreatorJobs application."
 
 
+class TestRoutingActionsDoNotSurviveTheirDestinations:
+    @pytest.mark.parametrize(
+        ("source", "expected_safe"),
+        [
+            (
+                "Submit your resume and cover letter to email or apply through Indeed.",
+                "Submit your resume and cover letter.",
+            ),
+            (
+                "Send your portfolio to hiring@example.com or apply through LinkedIn.",
+                "Send your portfolio.",
+            ),
+            (
+                "Share your expected rate by email, then submit through Typeform.",
+                "Share your expected rate.",
+            ),
+            (
+                "Apply through the form and include your showreel.",
+                "Include your showreel.",
+            ),
+        ],
+    )
+    def test_an_objectless_route_clause_is_removed_with_its_destination(
+        self, source: str, expected_safe: str
+    ) -> None:
+        separated = separate_application_instructions(source)
+
+        assert separated.safe_sentences == [expected_safe]
+        assert separated.destination
+        safe = " ".join(separated.safe_sentences).casefold()
+        assert "indeed" not in safe
+        assert "linkedin" not in safe
+        assert "typeform" not in safe
+        assert "or apply" not in safe
+        assert "then submit" not in safe
+
+    def test_material_bearing_uses_of_the_same_verbs_are_not_removed(self) -> None:
+        source = "Apply creative judgment and submit polished edits."
+
+        separated = separate_application_instructions(source)
+
+        assert separated.destination == []
+        assert separated.safe_sentences == [source]
+
+
 class TestPlatformNamesThatDescribeWork:
     """A blanket ban would strip the requirement along with the routing."""
 
@@ -256,7 +301,9 @@ class TestTheImportPipelineActuallyCallsThis:
         assert result["application_mode"] == "internal"
         assert "external_apply_url" not in result
 
-    def test_an_imported_deadline_becomes_note_text_not_a_field(self) -> None:
+    def test_an_imported_deadline_stays_native_and_is_not_duplicated_in_note(
+        self,
+    ) -> None:
         result = self._convert(
             {
                 "how_to_apply": "Include two recent samples.",
@@ -264,8 +311,8 @@ class TestTheImportPipelineActuallyCallsThis:
             }
         )
 
-        assert "deadline_at" not in result
-        assert "Applications close on 31 August 2026." in str(result["how_to_apply"])
+        assert result["deadline_at"] == datetime(2026, 8, 31, tzinfo=UTC)
+        assert "Applications close" not in str(result["how_to_apply"])
 
     def test_a_source_that_only_routes_leaves_no_note_behind(self) -> None:
         result = self._convert({"how_to_apply": "Apply using the form below."})

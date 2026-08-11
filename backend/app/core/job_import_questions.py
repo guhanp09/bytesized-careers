@@ -179,6 +179,7 @@ QuestionRejection = Literal[
     "inactive_conditional",
     "answer_shape_mismatch",
     "not_recruiter_answerable",
+    "not_in_current_queue",
 ]
 
 
@@ -209,6 +210,7 @@ def validate_proposed_question(
     resolved_fields: frozenset[str] = frozenset(),
     suppressed_fields: frozenset[str],
     active_conditional_fields: frozenset[str],
+    askable_questions: frozenset[tuple[str, QuestionKind]] | None = None,
 ) -> QuestionValidation:
     """Decide whether a proposed question may be shown to the recruiter.
 
@@ -244,6 +246,16 @@ def validate_proposed_question(
         return QuestionValidation(None, "already_resolved")
     if path in suppressed_fields:
         return QuestionValidation(None, "suppressed_by_answer")
+
+    # A continuation may improve the wording of work the server already knows
+    # it needs; it may not manufacture new administrative work. The
+    # deterministic queue is the authority for both the field and whether that
+    # turn is mandatory, a confirmation, or an optional suggestion.
+    if (
+        askable_questions is not None
+        and (path, proposal.kind) not in askable_questions
+    ):
+        return QuestionValidation(None, "not_in_current_queue")
 
     if (
         policy.missing_requirement == "conditionally_required"
@@ -298,6 +310,7 @@ def deterministic_question_queue(
     suggested_fields: dict[str, str] | None = None,
     dismissed_fields: frozenset[str] = frozenset(),
     ambiguous_fields: frozenset[str] = frozenset(),
+    required_confirmation_fields: frozenset[str] = frozenset(),
 ) -> list[QueueCandidate]:
     """Every field that still legitimately needs a recruiter, best first.
 
@@ -333,7 +346,11 @@ def deterministic_question_queue(
         # routing purely for being a conflict. Post Job's review still surfaces
         # it; it just does not stop the assistant.
         policy = JOB_IMPORT_FIELD_POLICIES[path]
-        kind = conversation_question_kind(path, policy.missing_requirement)
+        kind = conversation_question_kind(
+            path,
+            policy.missing_requirement,
+            is_conflict=path in ambiguous_fields,
+        )
         if kind is None:
             continue
         seen.add(path)
@@ -352,10 +369,15 @@ def deterministic_question_queue(
         if (
             policy.missing_requirement == "conditionally_required"
             and path not in active_conditional_fields
+            and path not in required_confirmation_fields
         ):
             continue
-        kind = conversation_question_kind(
-            path, requirement, is_conflict=path in ambiguous_fields
+        kind = (
+            "confirmation"
+            if path in required_confirmation_fields
+            else conversation_question_kind(
+                path, requirement, is_conflict=path in ambiguous_fields
+            )
         )
         if kind is None:
             continue

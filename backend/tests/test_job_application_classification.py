@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.job_application_classification import classify_application_instructions
+from app.core.job_application_classification import (
+    REQUIREMENT_KEYS,
+    classify_application_instructions,
+    sanitize_application_requirement_keys,
+)
 from app.services.job_import_service import JobImportService
 
 
@@ -36,8 +40,9 @@ class TestStandardDetailsBecomeStructuredRequirements:
             ("Include your usual working hours.", "working_hours"),
             ("Tell us your years of experience.", "relevant_experience"),
             ("List the editing tools and workflow you use.", "tools_workflow"),
-            ("Attach your CV.", "relevant_portfolio"),
+            ("Attach your CV.", "resume"),
             ("Include your showreel.", "relevant_portfolio"),
+            ("Include your cover letter.", "cover_letter"),
             # Work links are asked for through the job-side portfolio mechanism.
             # "reference_links" is talent-only and would be discarded for a job.
             ("Send links to previous work.", "relevant_portfolio"),
@@ -60,6 +65,30 @@ class TestStandardDetailsBecomeStructuredRequirements:
 
         assert result.requirement_keys == ["expected_rate"]
         assert result.screening_questions == []
+
+    def test_only_keys_the_candidate_form_can_render_leave_the_classifier(self) -> None:
+        result = classify_application_instructions(
+            "Submit your resume, cover letter, and expected rate."
+        )
+
+        assert set(result.requirement_keys) <= set(REQUIREMENT_KEYS)
+        assert result.requirement_keys == [
+            "expected_rate",
+            "resume",
+            "cover_letter",
+        ]
+
+    def test_requirement_key_sanitization_drops_prose_and_unknown_values(self) -> None:
+        assert sanitize_application_requirement_keys(
+            [
+                "relevant_portfolio",
+                "Submit through Indeed",
+                " fit_note ",
+                "future_unknown_key",
+                "fit_note",
+                None,
+            ]
+        ) == ["relevant_portfolio", "fit_note"]
 
 
 class TestGenuineEvaluationBecomesAScreeningQuestion:
@@ -199,6 +228,7 @@ class TestPlatformContextSurvivesStructuredMapping:
 
         note = str(result["how_to_apply"])
         assert "YouTube" in note and "Instagram" in note
+        assert "resume" in result["application_requirements"]
         assert "relevant_portfolio" in result["application_requirements"]
         assert "@" not in note
 
@@ -240,5 +270,5 @@ class TestPlatformContextSurvivesStructuredMapping:
         # the note would ask the candidate for the same thing twice.
         result = convert("Include your CV.")
 
-        assert result["application_requirements"] == ["relevant_portfolio"]
+        assert result["application_requirements"] == ["resume"]
         assert "how_to_apply" not in result

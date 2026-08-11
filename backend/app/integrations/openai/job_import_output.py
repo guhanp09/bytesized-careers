@@ -231,6 +231,36 @@ class OpenAIJobImportExtractionField(BaseModel):
     )
     explanation: str | None = Field(default=None, max_length=1000)
     provider_confidence: OpenAIJobImportProviderConfidence | None = None
+    epistemic_status: Literal[
+        "explicit",
+        "normalized_explicit",
+        "logically_entailed",
+        "plausible_interpretation",
+    ]
+    inference_type: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_epistemic_contract(self) -> OpenAIJobImportExtractionField:
+        if (
+            self.epistemic_status in {"explicit", "normalized_explicit"}
+            and self.provenance not in {"directly_supplied", "extracted_from_source"}
+        ):
+            raise ValueError(
+                "explicit and normalized explicit values require direct or extracted provenance"
+            )
+        if (
+            self.epistemic_status
+            in {"logically_entailed", "plausible_interpretation"}
+            and self.provenance != "suggested_inference"
+        ):
+            raise ValueError("entailed and plausible values require suggested inference provenance")
+        if self.epistemic_status in {
+            "normalized_explicit",
+            "logically_entailed",
+            "plausible_interpretation",
+        } and not (self.inference_type and self.inference_type.strip()):
+            raise ValueError("normalized and inferred values require an inference type")
+        return self
 
 
 class OpenAIJobImportConflictValue(BaseModel):
@@ -254,6 +284,7 @@ class OpenAIJobImportConflict(BaseModel):
     values: list[OpenAIJobImportConflictValue] = Field(min_length=2, max_length=8)
     explanation: str | None = Field(default=None, max_length=1000)
     provider_confidence: OpenAIJobImportProviderConfidence | None = None
+    epistemic_status: Literal["ambiguous", "conflicting"]
 
 
 class OpenAIJobImportMissingField(BaseModel):
@@ -261,6 +292,7 @@ class OpenAIJobImportMissingField(BaseModel):
 
     field_path: str = Field(min_length=1, max_length=120, pattern=r"^[a-z][a-z0-9_]*$")
     explanation: str | None = Field(default=None, max_length=1000)
+    epistemic_status: Literal["absent"]
 
 
 class OpenAIJobImportProcessingWarning(BaseModel):
@@ -729,12 +761,11 @@ class OpenAIJobImportExtractionResponse(BaseModel):
 
     def to_domain_response(self, *, span_set: EvidenceSpanSet) -> JobImportExtractionResponse:
         payload = self.model_dump(mode="json")
-        # One unreadable field is a quality problem, not an unusable reply.
-        #
-        # This used to abort the whole extraction, so a single malformed value
-        # cost every other field the model got right and the recruiter was asked
-        # to supply them by hand. A field that cannot be read is dropped and
-        # recorded; the rest of the job survives.
+        # Decode fields independently so diagnostics identify the exact bad
+        # value. The adapter's request-specific completeness gate runs after
+        # this conversion: because a dropped field no longer has a verdict, the
+        # overall reply becomes a retryable technical failure rather than a
+        # business question for the recruiter.
         #
         # Deliberately narrow: this covers values the server cannot parse. A
         # provider returning a field it is not allowed to touch, or evidence
@@ -775,8 +806,8 @@ class OpenAIJobImportExtractionResponse(BaseModel):
                 {
                     "code": "provider_field_unreadable",
                     "message": (
-                        "One returned value could not be read and was left for "
-                        "the assistant to ask about."
+                        "One returned value could not be read; the provider "
+                        "response is incomplete."
                     ),
                     "field_path": dropped["field_path"],
                     # Wire shape: the loop below resolves this into evidence.

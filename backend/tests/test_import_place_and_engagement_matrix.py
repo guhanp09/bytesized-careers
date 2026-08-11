@@ -216,10 +216,16 @@ class TestEveryRegionCodeBehavesLikeARegion:
     def _codes() -> list[tuple[str, str]]:
         from app.core.job_import_location_resolution import _REGIONS
 
-        # The suffixed keys ("IN-US", "CA-US", "DE-US") exist to avoid
-        # colliding with country codes — bare IN, CA and DE are India, Canada
-        # and Germany — and are not written on pages, so they are not cases.
-        return [(code, name) for code, name in _REGIONS.items() if "-" not in code]
+        # The suffixed keys exist where a US postal code collides with a country
+        # or another country's region. Bare IN/CA/DE and TN therefore need an
+        # exact city relationship before their US reading can win; a fabricated
+        # ``Springfield`` oracle cannot assert the non-US meaning for them.
+        overloaded = {"IN", "CA", "DE", "TN"}
+        return [
+            (code, name)
+            for code, name in _REGIONS.items()
+            if "-" not in code and code not in overloaded
+        ]
 
     #: Written out rather than derived, and that is the point.
     #:
@@ -227,8 +233,8 @@ class TestEveryRegionCodeBehavesLikeARegion:
     #: removes a state from that table also removes its own test case and
     #: survives. An oracle has to come from outside the thing it judges: this
     #: list is what the United States actually has, and the table must satisfy
-    #: it. `CA`, `IN` and `DE` are suffixed in the table because bare they are
-    #: Canada, India and Germany.
+    #: it. `CA`, `IN`, `DE`, and `TN` are covered separately with real city/code
+    #: relationships because their bare forms are overloaded.
     US_STATES = (
         "AL AK AZ AR CO CT FL GA HI ID IL IA KS KY LA ME MD MA MI MN MS MO MT "
         "NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TX UT VT VA WA WV WI WY DC"

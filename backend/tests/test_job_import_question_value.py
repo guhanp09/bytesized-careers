@@ -295,6 +295,148 @@ async def test_the_workplace_is_settled_in_one_turn(client) -> None:
     assert not follow_up or follow_up["field_path"] != "location"
 
 
+@pytest.mark.anyio
+async def test_a_labelled_remote_place_choice_persists_both_fields(client) -> None:
+    """"Remote, based around …" is one structured answer, not decorative copy."""
+
+    from uuid import UUID, uuid4
+
+    from conftest import TestSessionLocal
+    from test_job_import_checkpoint import _auth
+
+    from app.repositories.job_import_repository import JobImportRepository
+    from app.repositories.job_repository import JobRepository
+    from app.schemas.job_import import JobImportExtractionResponse
+    from app.services.job_import_service import JobImportService
+    from app.services.job_service import JobService
+
+    headers, owner_id = await _auth(client, "remote-place-group")
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": "Remote editor",
+            "original_text": "Remote-friendly role for candidates based in Toronto.",
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    draft_id = draft.json()["id"]
+
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            JobImportExtractionResponse.model_validate(
+                {
+                    "extraction_schema_version": 1,
+                    "target_listing_schema_version": 3,
+                    "fields": [],
+                    "conflicts": [
+                        {
+                            "field_path": "work_mode",
+                            "values": [
+                                {
+                                    "value": "remote",
+                                    "evidence": [{"snippet": "Remote-friendly"}],
+                                },
+                                {
+                                    "value": "hybrid",
+                                    "evidence": [{"snippet": "Toronto office"}],
+                                },
+                            ],
+                        },
+                        {
+                            "field_path": "location",
+                            "values": [
+                                {
+                                    "value": "Toronto, Ontario, Canada",
+                                    "evidence": [{"snippet": "based in Toronto"}],
+                                },
+                                {
+                                    "value": "Remote, Canada",
+                                    "evidence": [{"snippet": "Remote-friendly"}],
+                                },
+                            ],
+                        },
+                    ],
+                    "missing_fields": [],
+                    "warnings": [],
+                }
+            ),
+            owner_user_id=owner_id,
+        )
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert begun.status_code == 200, begun.text
+    question = begun.json()["active_question"]
+    assert question["field_path"] == "work_mode"
+    assert "grouped_options" in question
+    remote = next(
+        option
+        for option in question["grouped_options"]
+        if option["value"] == "remote" and "based around" in option["label"]
+    )
+    assert remote["applies"]["location"]
+
+    answered = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={"field_path": "work_mode", "value": remote["value"]},
+    )
+    assert answered.status_code == 200, answered.text
+
+    stored = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    settled = {
+        field["field_path"]: field["effective_value"] for field in stored["fields"]
+    }
+    assert settled["work_mode"] == "remote"
+    assert settled["location"] == remote["applies"]["location"]
+    assert stored["recruiter_prefill"]["work_mode"] == "remote"
+    assert stored["recruiter_prefill"]["location"] == remote["applies"]["location"]
+
+
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        "external_apply_url",
+        "trial_scope",
+        "trial_compensation_amount",
+        "revision_rounds",
+        "start_date",
+        "duration_value",
+    ],
+)
+def test_active_post_job_conditionals_remain_deferred(field_path: str) -> None:
+    """Activation is relevance, not permission to turn chat into Post Job."""
+
+    from app.core.job_import_questions import deterministic_question_queue
+
+    queued = deterministic_question_queue(
+        conflicted_fields=frozenset(),
+        missing_fields={field_path: "conditionally_required"},
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset({field_path}),
+    )
+    assert queued == []
+
+
 def test_long_form_prose_is_never_a_chat_writing_exercise() -> None:
     """Composing paragraphs in a chat bubble is the fastest way to lose someone.
 

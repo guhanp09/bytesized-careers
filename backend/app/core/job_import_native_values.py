@@ -36,7 +36,8 @@ from dataclasses import dataclass
 from typing import Final, Literal, get_args, get_origin
 
 from app.core.job_import_answer_shapes import native_schema_constraints
-from app.core.job_import_location_resolution import parse_location
+from app.core.job_import_location_resolution import city_for_location
+from app.core.job_import_structured_fields import remote_location_restriction
 from app.schemas.job import JobCreate
 
 #: What happened to one value on its way to a native field.
@@ -160,7 +161,12 @@ def _in_the_products_own_words(field_path: str, value: object) -> object:
     return synonyms.get(value.strip().casefold(), value)
 
 
-def convert_to_native(field_path: str, value: object) -> NativeConversion:
+def convert_to_native(
+    field_path: str,
+    value: object,
+    *,
+    work_mode: str | None = None,
+) -> NativeConversion:
     """Translate one value for one native field, honestly or not at all."""
 
     def result(
@@ -221,13 +227,23 @@ def convert_to_native(field_path: str, value: object) -> NativeConversion:
         return result(value, "exact", "Stored as the source lists it.")
 
     if field_path == "location" and isinstance(value, str):
+        if work_mode == "remote":
+            restriction = remote_location_restriction(value)
+            if restriction:
+                return result(
+                    restriction,
+                    "exact",
+                    "Stored as the source's remote applicant geography.",
+                )
+            return result(
+                None,
+                "unsupported",
+                "The source does not name a bounded remote applicant geography.",
+            )
         # Reducing a postal address to its city is not narrowing: the control
         # holds a city, and the city is the same one either way. Dropping the
         # district and the country code changes the wording, not the place.
-        parts = parse_location(value)
-        canonical = ", ".join(
-            component for component in (parts.locality, parts.city) if component
-        )
+        canonical = city_for_location(value)
         if not canonical:
             return result(
                 None,

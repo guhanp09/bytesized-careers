@@ -373,6 +373,35 @@ def test_structured_inline_section_headings_keep_same_line_fact() -> None:
     assert context["qualifications"] == ["Two years of editing experience."]
 
 
+def test_required_skills_are_qualifications_and_preferred_skills_do_not_narrow_them() -> None:
+    posting = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": "Video Editor",
+        "description": (
+            "<h2>Required Skills</h2>"
+            "<p>Proficiency in Adobe After Effects</p>"
+            "<p>Strong working knowledge of Premiere Pro</p>"
+            "<h2>Preferred Skills (Optional)</h2>"
+            "<p>Experience with 3D animation is helpful.</p>"
+            "<h2>How to Apply</h2><p>Apply on the source board.</p>"
+        ),
+    }
+    html = f'<script type="application/ld+json">{json.dumps(posting)}</script>'
+
+    normalized, _title, metadata = normalize_public_job_html(
+        html,
+        final_url="https://jobs.example/video-editor",
+    )
+
+    assert metadata["structured_context"]["qualifications"] == [
+        "Proficiency in Adobe After Effects",
+        "Strong working knowledge of Premiere Pro",
+    ]
+    assert "Structured qualification: Proficiency in Adobe After Effects" in normalized
+    assert "Structured qualification: Experience with 3D animation" not in normalized
+
+
 def _source_with_structured_context(context: dict[str, object]) -> JobImportSource:
     labels = {
         "job_title": "Structured job title",
@@ -382,6 +411,8 @@ def _source_with_structured_context(context: dict[str, object]) -> JobImportSour
         "qualifications": "Structured qualification",
         "employment_type": "Structured employment type",
         "role_location": "Structured role location",
+        "remote_eligibility": "Structured remote eligibility",
+        "location_type": "Structured work location type",
         "industry": "Structured industry",
         "experience_requirement": "Structured experience requirement",
     }
@@ -494,7 +525,7 @@ def test_shine_structured_context_recovers_core_fields_without_provider_values()
     assert fields["about_channel"].value == context["about_summary"]
     assert fields["responsibilities"].value == context["responsibilities"]
     assert fields["requirements"].value == context["qualifications"]
-    assert fields["location"].value == "Chennai, Tamil Nadu, IN"
+    assert fields["location"].value == "Chennai"
     assert fields["content_niches"].value == ["Education"]
     assert fields["content_niches"].provider_confidence is not None
     assert fields["content_niches"].provider_confidence.label == "high"
@@ -550,7 +581,13 @@ def test_structured_employment_maps_only_an_unambiguous_supported_token(
     )
     if expected_engagement is None:
         assert engagement is None
-        assert [item.field_path for item in augmented.missing_fields] == ["engagement_type"]
+        conflict = next(
+            item
+            for item in augmented.conflicts
+            if item.field_path == "engagement_type"
+        )
+        assert len(conflict.values) == 2
+        assert augmented.missing_fields == []
     else:
         assert engagement is not None
         assert engagement.value == expected_engagement
@@ -610,6 +647,41 @@ def test_exact_structured_facts_upgrade_matching_medium_provider_suggestions() -
         assert field.provider_confidence.label == "high"
         assert field.provider_confidence.metadata["server_grounded_match"] is True
         assert field.evidence
+
+
+def test_remote_structured_context_never_promotes_the_office_as_candidate_location() -> None:
+    context: dict[str, object] = {
+        "job_title": "Remote Video Editor",
+        "location_type": "TELECOMMUTE",
+        "role_location": "Chennai, Tamil Nadu, IN",
+        "remote_eligibility": "India",
+    }
+    source = _source_with_structured_context(context)
+    response = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "work_mode",
+                    "value": "remote",
+                    "provenance": "extracted_from_source",
+                    "evidence": [
+                        {"snippet": "Structured work location type: TELECOMMUTE"}
+                    ],
+                }
+            ],
+            "missing_fields": [{"field_path": "location"}],
+        }
+    )
+
+    augmented = JobImportService._with_deterministic_context(response, source)
+    fields = {field.field_path: field for field in augmented.fields}
+
+    assert fields["location"].value == "India"
+    assert fields["location"].evidence[0].snippet == "Structured remote eligibility: India"
+    assert all(field.value != "Chennai" for field in augmented.fields)
+    assert {item.field_path for item in augmented.missing_fields}.isdisjoint({"location"})
 
 
 def test_distinct_valid_provider_suggestions_are_never_upgraded_or_replaced() -> None:
@@ -829,7 +901,7 @@ def test_malformed_provider_values_cannot_block_grounded_structured_fallbacks() 
     assert fields["responsibilities"].value == context["responsibilities"]
     assert fields["requirements"].value == context["qualifications"]
     assert fields["about_channel"].value == context["about_summary"]
-    assert fields["location"].value == context["role_location"]
+    assert fields["location"].value == "Chennai"
     assert fields["content_niches"].value == ["Education"]
     assert fields["experience_level"].value == context["experience_requirement"]
     repaired_paths = {
@@ -1165,8 +1237,8 @@ async def test_url_source_uses_same_private_review_and_native_draft_pipeline(
             "Structured role location: Chennai, Tamil Nadu, IN"
         )
         extracted = {field["field_path"]: field for field in processed_draft["fields"]}
-        assert extracted["location"]["effective_value"] == "Chennai, Tamil Nadu, IN"
-        assert extracted["location"]["decision_origin"] == "explicit"
+        assert extracted["location"]["effective_value"] == "Chennai"
+        assert extracted["location"]["decision_origin"] == "contextual_inference"
         assert extracted["primary_role_key"]["effective_value"] == "video-editor"
         assert extracted["engagement_type"]["effective_value"] == "full_time"
         assert extracted["about_channel"]["effective_value"] == (

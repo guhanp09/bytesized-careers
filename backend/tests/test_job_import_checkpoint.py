@@ -8,7 +8,7 @@ call from any code path — including one nobody intended — shows up as a numb
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -36,6 +36,7 @@ from app.models import JobImportField
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
 from app.schemas.job_import import JobImportExtractionResponse
+from app.services.job_import_conversation_service import JobImportConversationService
 from app.services.job_import_provider import JobImportProviderError
 from app.services.job_import_service import JobImportService
 from app.services.job_service import JobService
@@ -159,6 +160,84 @@ async def _prepared_draft(
 
         # Roles arrive via a migration; this suite builds schema with
         # create_all, so the catalog has to be seeded explicitly.
+        await seed_roles_if_missing(session)
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id), parsed, owner_user_id=owner_id
+        )
+    return draft_id
+
+
+async def _prepared_sensitive_access_draft(
+    client: AsyncClient,
+    headers: dict[str, str],
+    owner_id: UUID,
+) -> str:
+    source_text = "Video Editor\nThe editor needs analytics account access."
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": "sensitive-access",
+            "original_text": source_text,
+            "idempotency_key": "src-sensitive-access",
+        },
+    )
+    assert source.status_code == 201, source.text
+    draft = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": "drf-sensitive-access",
+        },
+    )
+    assert draft.status_code == 201, draft.text
+    draft_id = draft.json()["id"]
+
+    def evidence(snippet: str) -> dict[str, object]:
+        start = source_text.index(snippet)
+        return {
+            "snippet": snippet,
+            "location": {"char_start": start, "char_end": start + len(snippet)},
+        }
+
+    parsed = JobImportExtractionResponse.model_validate(
+        {
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "fields": [
+                {
+                    "field_path": "title",
+                    "value": "Video Editor",
+                    "provenance": "extracted_from_source",
+                    "evidence": [evidence("Video Editor")],
+                    "epistemic_status": "explicit",
+                },
+                {
+                    "field_path": "source_inputs",
+                    # Even if a provider tries to assert consent, only the
+                    # recruiter confirmation below may persist it.
+                    "value": [
+                        {
+                            "type": "analytics_access",
+                            "sensitive_access_confirmed": True,
+                        }
+                    ],
+                    "provenance": "extracted_from_source",
+                    "evidence": [evidence("analytics account access")],
+                    "epistemic_status": "explicit",
+                },
+            ],
+        }
+    )
+    async with TestSessionLocal() as session:
+        from app.db.seed import seed_roles_if_missing
+
         await seed_roles_if_missing(session)
         service = JobImportService(
             JobImportRepository(session), JobService(JobRepository(session))
@@ -341,6 +420,103 @@ async def test_answering_advances_without_spending_a_continuation(
 
 
 @pytest.mark.anyio
+async def test_explicit_sensitive_source_input_becomes_one_recruiter_confirmation(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "cp-sensitive-access")
+    draft_id = await _prepared_sensitive_access_draft(client, headers, owner_id)
+    async with TestSessionLocal() as session:
+        pending_field = await session.scalar(
+            select(JobImportField).where(
+                JobImportField.draft_id == UUID(draft_id),
+                JobImportField.field_path == "source_inputs",
+            )
+        )
+        assert pending_field is not None
+        assert pending_field.review_status == "pending"
+        assert pending_field.validation_errors == []
+        assert pending_field.provider_confidence[
+            "sensitive_access_confirmation_required"
+        ] is True
+        repository = JobImportRepository(session)
+        model = await repository.get_draft_for_owner(UUID(draft_id), owner_id)
+        assert model is not None
+        service = JobImportService(repository, JobService(JobRepository(session)))
+        queue = await JobImportConversationService(service)._queue_for(model)
+        assert "source_inputs" in [item.field_path for item in queue]
+    response = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+
+    answered_access = False
+    asked_paths: list[str] = []
+    for _ in range(60):
+        snapshot = response.json()
+        question = snapshot.get("active_question")
+        if question is None:
+            break
+        field_path = question["field_path"]
+        asked_paths.append(field_path)
+        if field_path == "source_inputs":
+            assert question["recommended_value"] == [
+                {
+                    "type": "analytics_access",
+                    "sensitive_access_confirmed": False,
+                }
+            ]
+            response = await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+                headers=headers,
+                json={
+                    "field_path": "source_inputs",
+                    "value": [
+                        {
+                            "type": "analytics_access",
+                            "sensitive_access_confirmed": True,
+                        }
+                    ],
+                },
+            )
+            assert response.status_code == 200, response.text
+            answered_access = True
+            break
+        if question["kind"] == "optional":
+            response = await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/skip",
+                headers=headers,
+            )
+        else:
+            response = await client.post(
+                f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+                headers=headers,
+                json={"field_path": field_path, "value": _answer_for(field_path)},
+            )
+        assert response.status_code == 200, response.text
+
+    assert answered_access, (
+        f"the explicit access request disappeared from review; asked {asked_paths}"
+    )
+    async with TestSessionLocal() as session:
+        field = await session.scalar(
+            select(JobImportField).where(
+                JobImportField.draft_id == UUID(draft_id),
+                JobImportField.field_path == "source_inputs",
+            )
+        )
+        assert field is not None
+        assert field.review_status == "edited"
+        assert field.edited_value == [
+            {
+                "type": "analytics_access",
+                "sensitive_access_confirmed": True,
+            }
+        ]
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
 async def test_a_duplicate_answer_does_not_advance_twice(
     client: AsyncClient, counting_provider: CountingProvider
 ) -> None:
@@ -470,6 +646,70 @@ def test_an_inactive_conditional_is_never_asked() -> None:
         active_conditional_fields=frozenset(),
     )
     assert result.rejection == "inactive_conditional"
+
+
+def test_a_provider_question_must_exist_in_the_current_server_queue() -> None:
+    result = validate_proposed_question(
+        ProposedQuestion(
+            "requirements",
+            "What must candidates know?",
+            "This would add more detail.",
+        ),
+        answered_fields=frozenset(),
+        suppressed_fields=frozenset(),
+        active_conditional_fields=frozenset(),
+        askable_questions=frozenset({("work_mode", "mandatory")}),
+    )
+
+    assert result.rejection == "not_in_current_queue"
+
+
+@pytest.mark.anyio
+async def test_direct_answer_calls_cannot_settle_a_turn_with_null_empty_or_another_field(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    headers, owner_id = await _auth(client, "answer-boundary")
+    draft_id = await _prepared_draft(client, headers, owner_id, "answer-boundary")
+    opened = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
+    )
+    assert opened.status_code == 200, opened.text
+    before = opened.json()
+    active_path = before["active_question"]["field_path"]
+
+    for invalid_value in (None, ""):
+        rejected = await client.post(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+            headers=headers,
+            json={
+                "field_path": active_path,
+                "value": invalid_value,
+                "expected_context_version": before["recruiter_context_version"],
+            },
+        )
+        assert rejected.status_code == 422, rejected.text
+        unchanged = await client.get(
+            f"/api/v1/job-imports/drafts/{draft_id}/conversation", headers=headers
+        )
+        assert unchanged.json() == before
+
+    another_path = "application_mode" if active_path != "application_mode" else "title"
+    mismatch = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={
+            "field_path": another_path,
+            "value": _answer_for(another_path),
+            "expected_context_version": before["recruiter_context_version"],
+        },
+    )
+    assert mismatch.status_code == 409, mismatch.text
+    assert mismatch.json()["error"]["code"] == "JOB_IMPORT_QUESTION_MISMATCH"
+    unchanged = await client.get(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation", headers=headers
+    )
+    assert unchanged.json() == before
+    assert counting_provider.calls == 0
 
 
 def test_the_deterministic_queue_keeps_the_conversation_alive() -> None:
@@ -867,6 +1107,196 @@ async def test_answering_through_to_completion_never_calls_the_provider(
 
 
 @pytest.mark.anyio
+async def test_ambiguous_multi_craft_role_offers_likely_choices_and_catalog_override(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """One real ambiguity earns one bounded decision, not a taxonomy wall.
+
+    The title explicitly names video editing, motion graphics/VFX, and animation.
+    Luna may not silently choose among them, but the recruiter must still be able
+    to override those likely readings with any active CreatorJobs role.  This is
+    the complete API path so a direct UI-only assertion cannot hide a checkpoint
+    or persistence regression.
+    """
+
+    headers, _owner_id = await _auth(client, "multi-craft-role-e2e")
+    created = await client.post(
+        "/api/v1/dev/job-import-review?scenario=multi-craft&fresh=true",
+        headers=headers,
+    )
+    assert created.status_code == 200, created.text
+    draft_id = created.json()["draft"]["id"]
+
+    roles_response = await client.get("/api/v1/roles")
+    assert roles_response.status_code == 200, roles_response.text
+    active_roles = {
+        role["slug"]: role["name"]
+        for role in roles_response.json()["items"]
+        if role["is_active"]
+    }
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin",
+        headers=headers,
+    )
+    assert begun.status_code == 200, begun.text
+    question = begun.json()["active_question"]
+    assert question["field_path"] == "primary_role_key"
+    assert question["reason"] == "GENUINE_AMBIGUITY"
+    assert set(question["recommended_choices"]) == {
+        "video-editor",
+        "motion-designer",
+        "animator",
+    }
+    assert set(question["answer"]["choices"]) == set(active_roles)
+    assert question["answer"]["labels"] == active_roles
+
+    # The full catalog is an override, not another page of recommended buttons.
+    # Choose a valid active role outside the likely set and prove it survives.
+    override = "thumbnail-designer"
+    assert override in active_roles
+    assert override not in question["recommended_choices"]
+    answered = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={
+            "field_path": "primary_role_key",
+            "value": override,
+            "expected_context_version": begun.json()["recruiter_context_version"],
+        },
+    )
+    assert answered.status_code == 200, answered.text
+
+    stored = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    role = next(
+        field for field in stored["fields"] if field["field_path"] == "primary_role_key"
+    )
+    assert role["effective_value"] == override
+    assert role["review_status"] == "edited"
+    assert stored["recruiter_prefill"]["primary_role_key"] == override
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
+async def test_last_conversation_answer_refreshes_get_and_apply_readiness(
+    client: AsyncClient, counting_provider: CountingProvider
+) -> None:
+    """The checkpoint and import-draft readiness are one observable state.
+
+    Before this regression, the answer row was durable but the draft-level
+    readiness cache still described the previous row set.  The conversation
+    said it was done while GET could say the draft was invalid and application
+    could refuse it until some unrelated review action refreshed the cache.
+    """
+
+    headers, owner_id = await _auth(client, "answer-readiness-refresh")
+    source = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "source_title": "Untitled creator brief",
+            "original_text": "A private creator brief whose title was omitted.",
+            "idempotency_key": "answer-readiness-refresh-source",
+        },
+    )
+    assert source.status_code == 201, source.text
+    initialized = await client.post(
+        f"/api/v1/job-imports/sources/{source.json()['id']}/drafts",
+        headers=headers,
+        json={
+            "extraction_schema_version": 1,
+            "target_listing_schema_version": 3,
+            "idempotency_key": "answer-readiness-refresh-draft",
+        },
+    )
+    assert initialized.status_code == 201, initialized.text
+    draft_id = initialized.json()["id"]
+
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        await service.record_extraction_result(
+            UUID(draft_id),
+            JobImportExtractionResponse.model_validate(
+                {
+                    "extraction_schema_version": 1,
+                    "target_listing_schema_version": 3,
+                    "fields": [],
+                    "missing_fields": [
+                        {
+                            "field_path": "title",
+                            "explanation": "No job title was present in the source.",
+                        }
+                    ],
+                    "warnings": [],
+                }
+            ),
+            owner_user_id=owner_id,
+        )
+        # This test isolates the final assistant-required turn.  Other absent
+        # publication details deliberately remain for Post Job; rejection here
+        # means only "do not ask in chat", not "safe to publish".
+        rows = (
+            await session.execute(
+                select(JobImportField).where(JobImportField.draft_id == UUID(draft_id))
+            )
+        ).scalars().all()
+        for row in rows:
+            if row.field_path != "title" and row.provenance_state == "missing":
+                row.review_status = "rejected"
+        await service._refresh_draft_state(
+            await service.get_draft(UUID(draft_id), owner_user_id=owner_id),
+            owner_user_id=owner_id,
+        )
+        await session.commit()
+
+    before = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    assert before["can_apply_to_native_draft"] is False
+    assert "title" in before["validation_errors"]["draft"]
+
+    begun = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin",
+        headers=headers,
+    )
+    assert begun.status_code == 200, begun.text
+    assert begun.json()["active_question"]["field_path"] == "title"
+
+    answered = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
+        headers=headers,
+        json={
+            "field_path": "title",
+            "value": "Creator operations coordinator",
+            "expected_context_version": begun.json()["recruiter_context_version"],
+        },
+    )
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["ready_for_draft"] is True
+
+    refreshed = (
+        await client.get(f"/api/v1/job-imports/drafts/{draft_id}", headers=headers)
+    ).json()
+    assert refreshed["can_apply_to_native_draft"] is True
+    assert "draft" not in refreshed["validation_errors"]
+    assert all(item["field_path"] != "title" for item in refreshed["missing_fields"])
+
+    applied = await client.post(
+        f"/api/v1/job-imports/drafts/{draft_id}/apply",
+        headers=headers,
+        json={"mode": "create_new"},
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["job"]["title"] == "Creator operations coordinator"
+    assert counting_provider.calls == 0
+
+
+@pytest.mark.anyio
 async def test_skip_remaining_finishes_the_optional_phase(
     client: AsyncClient, counting_provider: CountingProvider
 ) -> None:
@@ -1203,11 +1633,19 @@ def test_numeric_fields_carry_their_real_bounds() -> None:
     # compensation field and left it without a numeric control.
     pay = answer_shape_for("budget_amount")
     assert pay.kind == "number"
-    assert pay.minimum == 1
+    assert pay.minimum == 0
+    assert pay.minimum_exclusive is True
+    assert pay.integer_only is False
+    assert pay.step == "any"
 
     hours = answer_shape_for("expected_weekly_hours_min")
     assert hours.kind == "number"
     assert hours.maximum == 168
+    assert hours.integer_only is False
+
+    turnaround = answer_shape_for("turnaround_value")
+    assert turnaround.integer_only is True
+    assert turnaround.step == 1
 
 
 def test_text_fields_carry_their_length_limits() -> None:
@@ -1253,6 +1691,7 @@ async def test_invalid_conversation_answers_leave_the_checkpoint_unchanged(
     )
     assert before_response.status_code == 200, before_response.text
     before = before_response.json()
+    yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
 
     invalid_answers = (
         ("requirements", ["a a"]),
@@ -1264,6 +1703,15 @@ async def test_invalid_conversation_answers_leave_the_checkpoint_unchanged(
         ("responsibilities", ["Provided during QA"]),
         ("requirements", ["I don't know"]),
         ("start_timeframe", "Aaaaaaaaaaa"),
+        ("start_date", yesterday),
+        ("turnaround_value", 1.5),
+        ("duration_value", 2.5),
+        ("revision_rounds", 3.5),
+        ("reference_videos", ["ftp://example.com/reference"]),
+        ("content_niches", ["x"]),
+        ("formats_hired_for", ["x"]),
+        ("source_inputs", [{"type": "other", "custom_label": "x"}]),
+        ("hiring_process", [{"stage": "other", "custom_label": "x"}]),
     )
     for field_path, value in invalid_answers:
         response = await client.post(
@@ -1275,8 +1723,11 @@ async def test_invalid_conversation_answers_leave_the_checkpoint_unchanged(
                 "expected_context_version": before["recruiter_context_version"],
             },
         )
-        assert response.status_code == 422, (field_path, response.text)
-        assert response.json()["error"]["code"] == "JOB_IMPORT_FIELD_INVALID"
+        assert response.status_code in {409, 422}, (field_path, response.text)
+        assert response.json()["error"]["code"] in {
+            "JOB_IMPORT_FIELD_INVALID",
+            "JOB_IMPORT_QUESTION_MISMATCH",
+        }
 
         current = await client.get(
             f"/api/v1/job-imports/drafts/{draft_id}/conversation", headers=headers
@@ -1294,35 +1745,19 @@ async def test_invalid_conversation_answers_leave_the_checkpoint_unchanged(
 
 
 @pytest.mark.anyio
-async def test_a_canonical_start_timeframe_advances_the_checkpoint(
-    client: AsyncClient, counting_provider: CountingProvider
+async def test_a_canonical_legacy_start_timeframe_remains_deserializable(
 ) -> None:
-    headers, owner_id = await _auth(client, "answer-start")
-    draft_id = await _prepared_draft(client, headers, owner_id, "answer-start")
-    before = (
-        await client.post(
-            f"/api/v1/job-imports/drafts/{draft_id}/conversation/begin", headers=headers
-        )
-    ).json()
+    from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 
-    response = await client.post(
-        f"/api/v1/job-imports/drafts/{draft_id}/conversation/answer",
-        headers=headers,
-        json={
-            "field_path": "start_timeframe",
-            "value": "<1mo",
-            "expected_context_version": before["recruiter_context_version"],
-        },
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["recruiter_context_version"] == (
-        before["recruiter_context_version"] + 1
-    )
-    draft = await client.get(
-        f"/api/v1/job-imports/drafts/{draft_id}", headers=headers
-    )
-    assert draft.json()["recruiter_prefill"]["start_timeframe"] == "<1mo"
-    assert counting_provider.calls == 0
+    async with TestSessionLocal() as session:
+        service = JobImportService(
+            JobImportRepository(session), JobService(JobRepository(session))
+        )
+        normalized, errors = await service._validate_field_value(
+            JOB_IMPORT_FIELD_POLICIES["start_timeframe"], "<1mo"
+        )
+    assert errors == []
+    assert normalized == "<1mo"
 
 
 def test_conflicting_source_wording_is_mapped_onto_real_values() -> None:

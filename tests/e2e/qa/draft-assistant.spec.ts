@@ -827,6 +827,64 @@ test.describe("conversational completion", () => {
     await expect(page.getByText("Review flagged fields")).toHaveCount(0);
   });
 
+  test("an exact custom experience answer validates and survives the native handoff", async ({
+    page,
+  }) => {
+    await loginController(page);
+    await openFixture(page, "checkpoint-experience");
+
+    const turn = page.getByTestId("conversation-turn");
+    await expect(turn).toBeVisible({ timeout: 30_000 });
+    await expect(turn.locator('[data-field="experience_level"]')).toBeVisible();
+    const alternatives = turn.locator('[data-testid^="conversation-alternative-"]');
+    await expect(alternatives).toHaveCount(2);
+    await expect(alternatives.nth(0)).toContainText("1–2 years");
+    await expect(alternatives.nth(1)).toContainText("3–5 years");
+    await expect(turn.getByTestId("conversation-custom-override")).toBeVisible();
+
+    const custom = turn.getByTestId("conversation-custom-answer");
+    const submit = turn.getByTestId("conversation-custom-submit");
+    await custom.fill("7–1 years");
+    await custom.blur();
+    await expect(custom).toHaveAttribute("aria-invalid", "true");
+    await expect(submit).toBeDisabled();
+
+    await custom.fill("18–30 months");
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(page.getByTestId("conversation-reply")).toContainText("18–30 months", {
+      timeout: 20_000,
+    });
+
+    // Reloading reconstructs the transcript from the server-owned checkpoint;
+    // the exact open-domain answer must not collapse into a catalog band.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("conversation-reply")).toContainText("18–30 months", {
+      timeout: 30_000,
+    });
+
+    const skipRemaining = page.getByTestId("conversation-skip-remaining");
+    if (await skipRemaining.isVisible()) await skipRemaining.click();
+    await expect(page.getByTestId("conversation-open-draft")).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.getByTestId("conversation-open-draft").click();
+    await expect(page).toHaveURL(/\/post-job\?/, { timeout: 30_000 });
+
+    const nativeDraftId = new URL(page.url()).searchParams.get("draftId");
+    expect(nativeDraftId).toBeTruthy();
+    const session = await (await page.request.get("/api/auth/session")).json();
+    const jobsResponse = await page.request.get(
+      "http://127.0.0.1:8100/api/v1/me/jobs",
+      { headers: { Authorization: `Bearer ${session.backendAccessToken}` } }
+    );
+    expect(jobsResponse.ok()).toBe(true);
+    const nativeDraft = (await jobsResponse.json()).find(
+      (job: { id: string }) => job.id === nativeDraftId
+    );
+    expect(nativeDraft.experience_level).toBe("18–30 months");
+  });
+
   test("Continue manually hands off with unanswered questions preserved", async ({
     page,
   }) => {

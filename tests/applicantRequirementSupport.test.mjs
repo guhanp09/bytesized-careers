@@ -92,6 +92,14 @@ test("work links are asked for through the job's portfolio mechanism", () => {
   assert.ok(!classifierKeys().includes("reference_links"));
 });
 
+test("resume and cover-letter imports use their own fulfillable candidate controls", () => {
+  const byKey = new Map(requirementsForContext("job").map((def) => [def.key, def]));
+  assert.equal(byKey.get("resume")?.answerType, "link");
+  assert.equal(byKey.get("cover_letter")?.answerType, "longText");
+  assert.ok(classifierKeys().includes("resume"));
+  assert.ok(classifierKeys().includes("cover_letter"));
+});
+
 test("every job-selectable requirement has a candidate control that renders it", () => {
   // The catalog declares an answerType; this proves something actually draws
   // one. A key whose type has no branch would render nothing, so the recruiter

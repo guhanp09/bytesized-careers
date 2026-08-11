@@ -73,9 +73,21 @@ _ROLE_SYNONYMS: Final[tuple[tuple[str, str], ...]] = (
     ("podcast editor", "podcast-producer"),
     ("short form content editor", "shorts-editor"),
     ("short-form content editor", "shorts-editor"),
+    ("youtube shorts video editor", "shorts-editor"),
+    ("short form video editor", "shorts-editor"),
+    ("short-form video editor", "shorts-editor"),
     ("short form editor", "shorts-editor"),
     ("reels editor", "shorts-editor"),
+    ("youtube long form video editor", "long-form-editor"),
+    ("youtube long-form video editor", "long-form-editor"),
+    ("long form video editor", "long-form-editor"),
+    ("long-form video editor", "long-form-editor"),
+    ("film editor", "video-editor"),
+    ("audio editor", "audio-engineer"),
+    ("sound editor", "audio-engineer"),
     ("thumbnail artist", "thumbnail-designer"),
+    ("thumbnail creator", "thumbnail-designer"),
+    ("thumbnail editor", "thumbnail-designer"),
     ("motion graphics designer", "motion-designer"),
     ("motion graphics artist", "motion-designer"),
     ("content growth consultant", "content-strategist"),
@@ -172,6 +184,37 @@ _ROLE_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("illustrator", "illustrator"),
 )
 
+# These titles discuss a creator craft without hiring that practitioner.  The
+# occupational head wins over a substring: a Video Editing Software Engineer
+# builds editing software; an Editing Instructor teaches the craft. Filing
+# either as a Video Editor would silently put the listing in the wrong market.
+_NON_CREATOR_OCCUPATION = re.compile(
+    r"\b(?:software\s+engineer|software\s+developer|app(?:lication)?\s+developer|"
+    r"web\s+developer|instructor|teacher|trainer|coach|"
+    r"sales(?:\s+executive|\s+representative|\s+manager)?|"
+    r"customer\s+(?:support|success|service)(?:\s+\w+)?|"
+    r"technical\s+support)\b",
+    re.IGNORECASE,
+)
+
+_OCCUPATIONAL_PLURALS: Final[dict[str, str]] = {
+    "editors": "editor",
+    "designers": "designer",
+    "writers": "writer",
+    "managers": "manager",
+    "producers": "producer",
+    "creators": "creator",
+    "artists": "artist",
+    "engineers": "engineer",
+    "specialists": "specialist",
+    "animators": "animator",
+    "illustrators": "illustrator",
+    "videographers": "videographer",
+    "copywriters": "copywriter",
+    "scriptwriters": "scriptwriter",
+    "researchers": "researcher",
+}
+
 #: Wording that states, in words, that no prior experience is needed.
 #:
 #: These are the only non-numeric phrasings that survive, because each of them
@@ -215,6 +258,12 @@ _EXPERIENCE_FLOOR = re.compile(
     re.IGNORECASE,
 )
 
+_EXPERIENCE_MONTHS = re.compile(
+    r"\b(?:(minimum)(?:\s+of)?|(at\s+least))?\s*(\d{1,3})\s*[-–]?\s*months?"
+    r"\s+(?:of\s+)?(?:experience|exp)\b",
+    re.IGNORECASE,
+)
+
 #: "6 months", "3-month" — a stated length is a fixed period.
 _DURATION = re.compile(r"\b(\d{1,2})\s*[-–]?\s*(month|months|week|weeks|year|years)\b")
 
@@ -249,7 +298,10 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
     # "collaborate with our video editor" describes a colleague, not this job.
     # Ignoring body-only role words is safer than creating a suggestion without
     # field-specific evidence.
-    role_padded = padded
+    role_haystack = " ".join(
+        _OCCUPATIONAL_PLURALS.get(token, token) for token in haystack.split()
+    )
+    role_padded = f" {role_haystack} "
     suggestion_text = f"{title} {extra_text or ''}"
     suggestion_padded = f" {_normalise(suggestion_text)} "
     settled: dict[str, object] = {}
@@ -267,22 +319,32 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
 
     # Synonyms first, so a specific phrase wins over the general word inside it
     # and "short-form content editor" is not merely "editor".
-    matched_roles = list(
-        dict.fromkeys(
-            [
-                value
-                for phrase, value in _ROLE_SYNONYMS
-                if f" {_normalise(phrase)} " in role_padded
-            ]
-            + [
-                value
-                for word, value in _ROLE_WORDS
-                if f" {_normalise(word)} " in role_padded
-            ]
+    matched_roles: list[str] = []
+    creator_occupation = not _NON_CREATOR_OCCUPATION.search(title)
+    if creator_occupation:
+        matched_roles = list(
+            dict.fromkeys(
+                [
+                    value
+                    for phrase, value in _ROLE_SYNONYMS
+                    if f" {_normalise(phrase)} " in role_padded
+                ]
+                + [
+                    value
+                    for word, value in _ROLE_WORDS
+                    if f" {_normalise(word)} " in role_padded
+                ]
+            )
         )
-    )
+        # A specialist title naturally contains the generic phrase too. The
+        # more specific catalog role is the meaning, not an ambiguity between
+        # two roles: "Short Form Video Editor" is a Shorts Editor.
+        if any(role in matched_roles for role in ("shorts-editor", "long-form-editor")):
+            matched_roles = [role for role in matched_roles if role != "video-editor"]
     # "Editing" on its own, once nothing else has claimed it.
     if (
+        creator_occupation
+        and
         "video-editor" not in matched_roles
         and " editing " in role_padded
         and not any(
@@ -305,6 +367,7 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
     # A stated range wins over a word: "senior, 2-4 years" means 2-4.
     floor = _EXPERIENCE_FLOOR.search(hyphenated)
     experience = _EXPERIENCE_RANGE.search(hyphenated)
+    month_experience = _EXPERIENCE_MONTHS.search(hyphenated)
     if floor:
         wording = "Minimum" if floor.group(1) else "At least"
         settled["experience_level"] = f"{wording} {floor.group(3)} years"
@@ -321,6 +384,12 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
             settled["experience_level"] = f"{plus}+ years"
         else:
             settled["experience_level"] = f"{single} years"
+    elif month_experience:
+        qualifier = month_experience.group(1) or month_experience.group(2)
+        amount = month_experience.group(3)
+        prefix = "Minimum " if month_experience.group(1) else "At least " if qualifier else ""
+        settled["experience_level"] = f"{prefix}{amount} months"
+        experience = month_experience
     else:
         for word, value in _NO_EXPERIENCE_WORDS:
             if f" {_normalise(word)} " in padded:

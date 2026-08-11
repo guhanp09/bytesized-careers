@@ -160,6 +160,11 @@ def _wire_payload(
     conflicts: list[dict[str, object]] | None = None,
     missing_fields: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
+    epistemic_status = (
+        "plausible_interpretation"
+        if provenance == "suggested_inference"
+        else "explicit"
+    )
     return {
         "extraction_schema_version": 1,
         "target_listing_schema_version": 3,
@@ -179,10 +184,22 @@ def _wire_payload(
                     else None
                 ),
                 "provider_confidence": None,
+                "epistemic_status": epistemic_status,
+                "inference_type": (
+                    "test_contextual_interpretation"
+                    if provenance == "suggested_inference"
+                    else None
+                ),
             }
         ],
-        "conflicts": conflicts or [],
-        "missing_fields": missing_fields or [],
+        "conflicts": [
+            {**conflict, "epistemic_status": conflict.get("epistemic_status", "conflicting")}
+            for conflict in (conflicts or [])
+        ],
+        "missing_fields": [
+            {**missing, "epistemic_status": missing.get("epistemic_status", "absent")}
+            for missing in (missing_fields or [])
+        ],
         "warnings": [],
     }
 
@@ -267,6 +284,7 @@ def test_conflict_alternatives_resolve_independent_spans() -> None:
             ],
             "explanation": "The source states two amounts.",
             "provider_confidence": None,
+            "epistemic_status": "conflicting",
         }
     ]
     wire = OpenAIJobImportExtractionResponse.model_validate(payload)
@@ -289,6 +307,7 @@ def test_invalid_conflict_span_rejects_entire_response() -> None:
             ],
             "explanation": None,
             "provider_confidence": None,
+            "epistemic_status": "conflicting",
         }
     ]
     wire = OpenAIJobImportExtractionResponse.model_validate(payload)
@@ -317,6 +336,7 @@ def test_missing_field_has_no_provider_evidence_surface() -> None:
         {
             "field_path": "deadline_at",
             "explanation": None,
+            "epistemic_status": "absent",
             "evidence_span_ids": ["E0001"],
         }
     ]

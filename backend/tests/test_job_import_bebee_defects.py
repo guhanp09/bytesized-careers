@@ -93,6 +93,20 @@ class TestAmbiguityEarnsExactlyOneQuestion:
         # The original policy, still correct for the case it was written for.
         assert "primary_role_key" not in self._queue_paths(ambiguous=False)
 
+    def test_an_ambiguous_role_conflict_cannot_vanish_from_the_queue(self) -> None:
+        candidates = deterministic_question_queue(
+            conflicted_fields=frozenset({"primary_role_key"}),
+            missing_fields={},
+            answered_fields=frozenset(),
+            suppressed_fields=frozenset(),
+            active_conditional_fields=frozenset(),
+            ambiguous_fields=frozenset({"primary_role_key"}),
+        )
+
+        assert [(item.field_path, item.kind) for item in candidates] == [
+            ("primary_role_key", "confirmation")
+        ]
+
 
 class TestCityRatherThanPostalLabel:
     """The native control holds a city, so it must receive a city."""
@@ -119,9 +133,9 @@ class TestCityRatherThanPostalLabel:
         [
             ("San Francisco, California, US", "San Francisco"),
             ("Mumbai, IN", "Mumbai"),
-            # A neighbourhood is more specific than its city, not noise, so it
-            # survives — the editor accepts it and candidates recognise it.
-            ("Brookefield, Bengaluru", "Brookefield, Bengaluru"),
+            # A neighbourhood remains in evidence, while the native City field
+            # receives the city value it can validate and round-trip.
+            ("Brookefield, Bengaluru", "Bengaluru"),
         ],
     )
     def test_other_shapes_of_address_reduce_to_a_place(
@@ -138,6 +152,18 @@ class TestCityRatherThanPostalLabel:
 
         assert "location" not in fields
         assert fields["work_mode"] == "remote"
+
+    def test_remote_applicant_geography_is_kept_apart_from_the_office(self) -> None:
+        fields = fields_from_structured_context(
+            {
+                "role_location": "Nungambakkam, Chennai, Tamil Nadu, IN",
+                "location_type": "TELECOMMUTE",
+                "remote_eligibility": "Remote anywhere in India",
+            }
+        )
+
+        assert fields["work_mode"] == "remote"
+        assert fields["location"] == "India"
 
 
 class TestStatedExperienceSurvivesToTheDraft:

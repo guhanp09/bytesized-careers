@@ -300,6 +300,11 @@ _SECTION_FIELDS: Final[dict[ReviewSection, frozenset[str]]] = {
 
 _CUSTOM_VALUE_FIELDS: Final[frozenset[str]] = frozenset(
     {
+        # The four product bands are useful shortcuts, not the native field's
+        # domain. A source or recruiter may state an exact range such as
+        # "12–18 months" or an open floor such as "5+ years" without having it
+        # narrowed into the nearest catalog band.
+        "experience_level",
         "role_specialization",
         "budget_unit_custom",
         "other_required_tools",
@@ -308,6 +313,12 @@ _CUSTOM_VALUE_FIELDS: Final[frozenset[str]] = frozenset(
         "content_niches",
         "content_genres",
         "formats_hired_for",
+        # These native fields are structured lists whose catalog values are
+        # shortcuts, not closed domains. Their `other` rows retain a bounded
+        # recruiter label instead of coercing an unfamiliar truthful value.
+        "deliverables",
+        "source_inputs",
+        "hiring_process",
     }
 )
 

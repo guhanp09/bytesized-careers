@@ -28,6 +28,7 @@ import re
 import pytest
 
 import app.core.job_application_instructions as instructions
+from app.core.job_application_instructions import separate_application_instructions
 from app.services.job_import_service import JobImportService
 from tests.import_portfolio_vocabulary import (
     ALL_CASES,
@@ -117,9 +118,11 @@ class TestLegitimateContentIsNeverDeleted:
     @pytest.mark.parametrize("chunk", range(4))
     def test_a_job_responsibility_keeps_its_platform(self, chunk: int) -> None:
         for case in SKILLS[chunk::4]:
-            note, _requirements = _payload(case.text)
-            assert case.platform.lower() in note.lower(), (
-                f"{case.text!r} lost its platform: {note!r}"
+            sanitized = " ".join(
+                separate_application_instructions(case.text).safe_sentences
+            )
+            assert case.platform.lower() in sanitized.lower(), (
+                f"{case.text!r} lost its platform: {sanitized!r}"
             )
 
     @pytest.mark.parametrize("chunk", range(4))
@@ -127,20 +130,26 @@ class TestLegitimateContentIsNeverDeleted:
         self, chunk: int
     ) -> None:
         for case in ORDINARY[chunk::4]:
-            note, _requirements = _payload(case.text)
-            assert case.noun.split()[-1].lower() in note.lower(), (
-                f"{case.text!r} was deleted: {note!r}"
+            sanitized = " ".join(
+                separate_application_instructions(case.text).safe_sentences
             )
+            _note, requirements = _payload(case.text)
+            assert case.noun.split()[-1].lower() in sanitized.lower(), (
+                f"{case.text!r} was deleted: {sanitized!r}"
+            )
+            assert requirements == [], case.text
 
     def test_a_responsibility_is_not_read_as_a_request(self) -> None:
         # "You will build a portfolio" describes the job. Reading it as a
         # request replaced a recruiter's own description with a demand for a
         # portfolio on twenty-two generated cases.
-        note, requirements = _payload(
-            "You will build a portfolio of finished pieces for the brand."
+        text = "You will build a portfolio of finished pieces for the brand."
+        sanitized = " ".join(
+            separate_application_instructions(text).safe_sentences
         )
+        _note, requirements = _payload(text)
 
-        assert "portfolio" in note.lower()
+        assert "portfolio" in sanitized.lower()
         assert requirements == []
 
 
@@ -192,10 +201,17 @@ class TestTheWordListIsNoLongerLoadBearing:
 
         lost = [case for case in sample_portfolio if not _material_survived(case)]
         leaked = [case for case in sample_destinations if not _destination_removed(case)]
+        # The final native application boundary intentionally does not publish
+        # arbitrary prose from ``how_to_apply``.  Membership independence for
+        # ordinary job content therefore belongs at the routing sanitizer,
+        # before application-only classification.
         deleted = [
             case
             for case in sample_skills
-            if case.platform.lower() not in _payload(case.text)[0].lower()
+            if case.platform.lower()
+            not in " ".join(
+                separate_application_instructions(case.text).safe_sentences
+            ).lower()
         ]
 
         assert lost == [], f"{label}: material lost {[c.text for c in lost[:3]]}"

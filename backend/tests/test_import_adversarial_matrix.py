@@ -16,8 +16,15 @@ import pytest
 
 from app.core.job_import_labelled_fields import labelled_facts
 from app.core.job_import_native_values import convert_to_native
+from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_structured_fields import _experience_band
 from app.core.job_import_title_signals import title_signals
+from app.schemas.job_import import (
+    JobImportEvidence,
+    JobImportExtractionField,
+    JobImportProviderConfidence,
+)
+from app.services.job_import_service import JobImportService
 
 
 class TestExperienceNeverNarrows:
@@ -78,13 +85,52 @@ class TestExperienceNeverNarrows:
         assert title_signals(title).settled.get("experience_level") is None
 
 
+def test_plausible_epistemic_state_cannot_be_upgraded_by_confidence_metadata() -> None:
+    field = JobImportExtractionField(
+        field_path="location",
+        value="Chennai",
+        provenance="suggested_inference",
+        evidence=[JobImportEvidence(snippet="Candidates in Tamil Nadu are welcome")],
+        explanation="Chennai is one plausible location in Tamil Nadu.",
+        provider_confidence=JobImportProviderConfidence(
+            score=0.99,
+            label="high",
+            metadata={"origin": "contextual_inference"},
+        ),
+        epistemic_status="plausible_interpretation",
+        inference_type="geographic_interpretation",
+    )
+
+    policy = JOB_IMPORT_FIELD_POLICIES["location"]
+    inference_errors = JobImportService._provider_inference_errors(
+        policy,
+        field.provenance,
+        field.value,
+        field.provider_confidence,
+        field.epistemic_status,
+    )
+    auto_fill, decision = JobImportService._field_decision(
+        policy,
+        field,
+        validation_errors=inference_errors,
+    )
+
+    assert inference_errors == [
+        "This field may only be extracted from explicit source wording."
+    ]
+    assert auto_fill is False
+    assert decision["origin"] == "semantic_inference"
+    assert decision["epistemic_state"] == "plausible_interpretation"
+    assert decision["needs_review"] is True
+
+
 class TestLocationNeverBecomesSomethingElse:
     @pytest.mark.parametrize(
         ("stated", "expected"),
         [
             ("Coimbatore, Coimbatore district, IN", "Coimbatore"),
             ("San Francisco, California, US", "San Francisco"),
-            ("Brookefield, Bengaluru", "Brookefield, Bengaluru"),
+            ("Brookefield, Bengaluru", "Bengaluru"),
             ("Boston, MA", "Boston"),
             ("Remote (Acme Inc); Tysons Corner, VA", "Tysons Corner"),
             ("Hybrid / Remote: Bengaluru", "Bengaluru"),

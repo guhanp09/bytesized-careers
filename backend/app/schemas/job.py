@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
-
 
 JobStatus = Literal["draft", "published", "paused", "closed", "archived"]
 #: ``approximate`` is additive and needs no migration: the column is a plain
@@ -67,6 +67,32 @@ SourceInputType = Literal[
     "reference_videos", "thumbnail_assets", "music_or_stock_subscription", "voice_over",
     "project_files", "analytics_access", "account_access", "product_footage", "other",
 ]
+_SENSITIVE_SOURCE_INPUT_LABEL = re.compile(
+    r"\b(?:accounts?|admins?|administrators?|credentials?|log[ -]?ins?|"
+    r"log\s+(?:in|into|on(?:to)?)|passwords?|permissions?|"
+    r"sign\s+(?:in|into|on(?:to)?)|workspaces?|ownership|"
+    r"api\s+keys?|oauth\s+tokens?|2fa\s+codes?|two[- ]factor\s+codes?|"
+    r"session\s+cookies?|private\s+keys?|secret\s+tokens?|"
+    r"business\s+manager\s+invites?)\b|"
+    r"\b(?:(?:account|analytics|channel|profile|platform|workspace|dashboard|"
+    r"cms|admin|administrator|website|backend|portal|youtube|instagram|"
+    r"tiktok|facebook|linkedin|google\s+drive|dropbox|notion|slack|email|"
+    r"inbox|business\s+manager)\s+access|access\s+(?:to|for)\s+(?:the\s+)?"
+    r"(?:account|analytics|channel|profile|platform|workspace|dashboard|cms|"
+    r"website|backend|portal|youtube|instagram|tiktok|facebook|linkedin|"
+    r"google\s+drive|dropbox|notion|slack|email|inbox|business\s+manager))\b|"
+    r"\b(?:add|invite|grant)\s+(?:an?\s+)?"
+    r"(?:editor|manager|admin|administrator|user|member)\b",
+    re.IGNORECASE,
+)
+
+
+def source_input_label_needs_sensitive_confirmation(label: str) -> bool:
+    """Whether an open source-input label grants account/workspace access."""
+
+    return _SENSITIVE_SOURCE_INPUT_LABEL.search(label) is not None
+
+
 CreativeAutonomy = Literal[
     "follow_established_style", "guided_by_references", "collaborative_direction",
     "own_creative_approach", "varies_by_assignment", "not_applicable",
@@ -220,7 +246,14 @@ class JobSourceInput(BaseModel):
             raise ValueError("custom_label is required when source input type is other")
         if self.type != "other" and self.custom_label is not None:
             raise ValueError("custom_label is only valid for other source inputs")
-        if self.type in {"analytics_access", "account_access"} and not self.sensitive_access_confirmed:
+        custom_sensitive = bool(
+            self.type == "other"
+            and self.custom_label
+            and source_input_label_needs_sensitive_confirmation(self.custom_label)
+        )
+        if (
+            self.type in {"analytics_access", "account_access"} or custom_sensitive
+        ) and not self.sensitive_access_confirmed:
             raise ValueError("sensitive access must be explicitly confirmed")
         return self
 

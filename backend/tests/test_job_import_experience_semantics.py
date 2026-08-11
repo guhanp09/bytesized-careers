@@ -132,6 +132,30 @@ class TestAStatedFloorKeepsItsQualifier:
         assert stated_experience(title) == expected
 
 
+class TestMonthExperienceNeverBecomesContractDuration:
+    @pytest.mark.parametrize(
+        ("title", "expected"),
+        [
+            ("Video Editor - 6 months experience", "6 months"),
+            ("Video Editor, minimum 12 months experience", "Minimum 12 months"),
+            ("Video Editor with 18 months of experience", "18 months"),
+        ],
+    )
+    def test_exact_month_wording_is_kept_as_experience(
+        self, title: str, expected: str
+    ) -> None:
+        signals = title_signals(title)
+
+        assert signals.settled["experience_level"] == expected
+        assert "duration_value" not in signals.settled
+
+    def test_an_explicit_month_contract_remains_a_duration(self) -> None:
+        signals = title_signals("Video Editor - 6 month contract")
+
+        assert signals.settled["duration_value"] == 6
+        assert signals.settled["duration_unit"] == "months"
+
+
 class TestEveryWordingReachesTheDraftUnchanged:
     """The full table, end to end through the conversion chokepoint."""
 

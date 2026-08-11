@@ -24,6 +24,8 @@ test("job-import readiness client owns the private typed contract", () => {
     "JobImportProcessResponse",
     "JobImportProvenance",
     "JobImportReviewStatus",
+    "JobImportEpistemicState",
+    "JobImportQuestionReasonCode",
     "JobImportDraftContext",
   ]) {
     assert.match(contract, new RegExp(`export type ${typeName}`));
@@ -67,6 +69,33 @@ test("job-import readiness client owns the private typed contract", () => {
   assert.match(contract, /PROVENANCE_STATES/);
   assert.match(contract, /REVIEW_STATES/);
   assert.match(contract, /AUTHORITY_STATES/);
+  assert.match(contract, /EPISTEMIC_STATES/);
+  assert.match(contract, /QUESTION_REASON_CODES/);
+  for (const state of [
+    "explicit",
+    "normalized_explicit",
+    "logically_entailed",
+    "plausible_interpretation",
+    "ambiguous",
+    "conflicting",
+    "absent",
+    "technically_unavailable",
+  ]) {
+    assert.match(contract, new RegExp(`"${state}"`));
+  }
+  assert.match(
+    contract,
+    /requireKnownState\(field\.epistemic_state, EPISTEMIC_STATES, "field epistemic"\)/
+  );
+  for (const reason of [
+    "MISSING_IMPORTANT_BUSINESS_DECISION",
+    "GENUINE_AMBIGUITY",
+    "UNRESOLVED_SOURCE_CONFLICT",
+    "OPTIONAL_HIGH_VALUE_REFINEMENT",
+  ]) {
+    assert.match(contract, new RegExp(`"${reason}"`));
+  }
+  assert.match(contract, /reason: JobImportQuestionReasonCode/);
 });
 
 test("structured backend errors retain machine-readable import metadata", () => {

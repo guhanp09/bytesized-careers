@@ -38,8 +38,28 @@ from typing import Final
 
 #: Contact details that are always a routing instruction, never a requirement.
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b")
-_URL = re.compile(r"\b(?:https?://|www\.)\S+|\b[\w-]+\.(?:com|in|io|co|org|net)/\S*", re.I)
+_EXPLICIT_URL = re.compile(r"\b(?:https?://|www\.)[^\s<>()]+", re.IGNORECASE)
+_BARE_DOMAIN = re.compile(
+    r"\b(?:[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.)+"
+    r"[a-z]{2,24}(?:/[^\s<>()]*)?",
+    re.IGNORECASE,
+)
+# Addresses are often deliberately written so a board does not hyperlink them.
+# They are still destinations, not candidate material.  Keep the pattern
+# bounded to address-shaped tokens and let the same route-grammar checks below
+# decide whether a dot-spelled token is actually a destination.
+_OBFUSCATED_EMAIL = re.compile(
+    r"\b[a-z0-9._%+-]+\s*(?:\(|\[)?at(?:\)|\])?\s*"
+    r"[a-z0-9-]+(?:\s*(?:\(|\[)?dot(?:\)|\])?\s*[a-z0-9-]+)+\b",
+    re.IGNORECASE,
+)
+_OBFUSCATED_DOMAIN = re.compile(
+    r"\b[a-z0-9-]+(?:\s+(?:\(|\[)?dot(?:\)|\])?\s+[a-z0-9-]+)+"
+    r"(?:\s+(?:slash|/)\s*[a-z0-9_./-]+)?\b",
+    re.IGNORECASE,
+)
 _PHONE = re.compile(r"(?:\+\d{1,3}[\s-]?)?(?:\d[\s-]?){7,14}\d")
+_HANDLE = re.compile(r"(?<![\w@])@[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\b")
 
 #: Messaging and social channels a source might route an application through.
 #:
@@ -167,18 +187,36 @@ _PORTFOLIO_CONTEXT: Final[tuple[str, ...]] = (
 _PURE_ROUTING = re.compile(
     r"^\s*(?:please\s+)?(?:"
     r"apply\s+(?:now|here|online|at|via|through|using|on)|"
-    r"use\s+(?:the|our|this)\s+(?:link|form|button|careers?\s+page|website|portal)|"
-    r"fill\s+(?:out|in)\s+(?:the|this)|"
-    r"click\s+(?:the|here)|"
+    r"use\s+(?:the|our|this|a)\s+(?:link|form|button|qr\s+code|code|careers?\s+page|website|portal)|"
+    r"use\s+(?:the\s+|our\s+|this\s+|an?\s+)?application\s+(?:link|form|portal|page)|"
+    r"scan\s+(?:the|our|this|a)\s+(?:qr\s+)?code|"
+    r"complete\s+(?:the|our|this|a)?\s*(?:typeform|application\s+form|form)|"
+    r"fill\s+(?:out|in)\s+(?:the|this|our|an?)\s+"
+    r"(?:(?:google|application)\s+)?form|"
+    r"click\s+(?:the\s+)?(?:apply(?:\s+now)?|here|button|link)|"
     r"visit\s+(?:our|the|this)|"
+    r"follow\s+(?:our|the|these|this)\s+(?:instructions?|steps?|link)|"
+    r"reply\s+to\s+(?:our|this|the\s+)?(?:original\s+)?(?:post|listing|ad|message|thread)|"
+    r"leave\s+(?:us\s+)?a\s+comment|"
+    r"connect\s+with\s+(?:us|me|the\s+(?:recruiter|hiring\s+manager|team))|"
+    r"put\s+(?:your\s+answer|the\s+answer|it)\s+(?:in|on|through|via)|"
     r"register\s+(?:at|on|via)|"
+    r"apply\s+in\s+person|"
+    r"walk\s+in\s+for\s+(?:an?\s+|the\s+)?interview|"
     r"send\s+(?:it|them|these)\s+(?:on|to|via)|"
-    r"contact\s+us|"
-    r"call\s+us|"
+    r"(?:contact|call|text)\s+(?:us|me|the\s+(?:recruiter|hiring\s+manager|team))|"
+    r"reach\s+out\s+to\s+(?:us|me|the\s+(?:recruiter|hiring\s+manager|team))|"
+    r"reach\s+(?:out\s+to\s+)?(?:hr|human\s+resources?)|"
+    r"write\s+to\s+(?:hr|careers?|recruit(?:er|ing)|hiring)\b|"
     r"dm\s+us|"
     r"message\s+us"
     r")\b",
     re.IGNORECASE,
+)
+
+_NAMED_CONTACT_ROUTE = re.compile(
+    r"^\s*(?:Please\s+)?(?:Contact|Call|Text|Message|DM)\s+"
+    r"[A-Z][A-Za-z'’-]{1,40}(?:\s+(?:directly|for\s+details|to\s+apply))?[.!?]?\s*$"
 )
 
 
@@ -318,6 +356,50 @@ def _strip_stranded_channels(sentence: str, working: str) -> tuple[str, list[str
     return _BARE_CHANNEL.sub(replace, working), found
 
 
+#: Routing actions whose destination has already been removed.
+#:
+#: A compound source often repeats the route as a second clause: "Submit your
+#: resume to email or apply through Indeed."  Destination removal correctly
+#: takes out both places, but used to leave "or apply" behind.  That fragment
+#: then looked like an unstructured application material and was published as
+#: "Please include ... and apply", even though it names nothing a candidate
+#: should provide.
+#:
+#: These patterns are deliberately grammatical rather than a blanket ban on
+#: the verbs.  They match only a *bare* routing action next to a conjunction;
+#: "apply creative judgement" and "submit polished edits" both have objects
+#: and therefore survive.  The helper is also called only after this sentence
+#: demonstrably lost a destination.
+_STRANDED_LEADING_ROUTE = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:e-?mail|send|submit|share|forward|upload|post|apply|message|dm|"
+    r"contact|reach\s+out|ping|drop|fill|register|visit|click|use)\b"
+    r"\s*,?\s*(?:and|or|then)\s+",
+    re.IGNORECASE,
+)
+
+_STRANDED_COORDINATED_ROUTE = re.compile(
+    r"\s*,?\s*\b(?:and|or|then)\b\s+(?:please\s+)?"
+    r"(?:e-?mail|send|submit|share|forward|upload|post|apply|message|dm|"
+    r"contact|reach\s+out|ping|drop|fill|register|visit|click|use)\b"
+    r"(?:\s+(?:now|here|online|directly|instead))?"
+    r"(?=\s*(?:[,;:.!?]|$|\b(?:and|or|then)\b))",
+    re.IGNORECASE,
+)
+
+
+def _strip_stranded_routing_actions(working: str) -> str:
+    """Remove route verbs made objectless by destination sanitisation."""
+
+    leading_removed = bool(_STRANDED_LEADING_ROUTE.match(working))
+    cleaned = _STRANDED_LEADING_ROUTE.sub("", working, count=1)
+    if leading_removed:
+        cleaned = re.sub(
+            r"^([a-z])", lambda match: match.group(1).upper(), cleaned, count=1
+        )
+    return _STRANDED_COORDINATED_ROUTE.sub("", cleaned)
+
+
 #: A sentence that is telling the candidate to send something somewhere.
 #:
 #: This is the open-vocabulary half of the decision, and it is why the channel
@@ -353,6 +435,19 @@ _ROUTE_GOVERNED_CLAUSE = re.compile(
     re.IGNORECASE,
 )
 
+# ``in`` is intentionally absent from the generic destination grammar because
+# it commonly describes the work ("edit in Premiere") or location ("work in
+# Chennai").  Inside an application/screening instruction, however, these
+# bounded channel containers are unambiguously delivery routes.
+_IN_CHANNEL_DESTINATION = re.compile(
+    r"\s*\b(?:in|inside)\b\s+"
+    r"(?:our\s+|the\s+|this\s+|a\s+)?"
+    r"(?:slack|discord|microsoft\s+teams|teams|telegram|whats\s*app|"
+    r"google\s+forms?|typeform|direct\s+message|private\s+message|dm|inbox)"
+    r"(?:\s+(?:workspace|server|channel|group|form|thread|room|message))?\b",
+    re.IGNORECASE,
+)
+
 
 def _is_route_governed(sentence: str, *, address_found: bool) -> bool:
     """Whether this sentence is an instruction to send something somewhere.
@@ -383,10 +478,53 @@ def _strip_destinations(
     found: list[str] = []
     working = sentence
 
-    for pattern in (_EMAIL, _URL, _PHONE):
+    # Schemed URLs, actual email addresses, phones and handles identify
+    # contact routes on their own. A bare dotted token does not: Node.js,
+    # Three.js and Frame.io are ordinary work vocabulary. Bare/obfuscated
+    # domains are removed only when application-routing grammar supplies the
+    # missing destination semantics.
+    for pattern in (_EMAIL, _EXPLICIT_URL, _PHONE, _HANDLE, _OBFUSCATED_EMAIL):
         for match in pattern.findall(working):
             found.append(match if isinstance(match, str) else str(match))
         working = pattern.sub("", working)
+
+    route_shaped = bool(
+        _ROUTE_GOVERNED.match(sentence)
+        or _ROUTE_GOVERNED_CLAUSE.search(sentence)
+        or _PURE_ROUTING.match(sentence)
+    )
+
+    def _bare_domain_is_destination(match: re.Match[str]) -> bool:
+        token = match.group(0)
+        head = sentence[max(0, match.start() - 36) : match.start()]
+        # A path is a route even when the source omitted its scheme. Otherwise
+        # require an actual delivery preposition or a direct address after a
+        # contact verb. This preserves "Share two Node.js samples" and
+        # "review work in Frame.io" while still removing
+        # "send it to jobs.example.com" and "email careers.example.com".
+        if "/" in token:
+            return route_shaped
+        if re.search(r"\b(?:to|at|via|through|on|using|over)\s+$", head, re.I):
+            return route_shaped
+        return bool(
+            re.search(
+                r"(?:^|\b)(?:e-?mail|dm|message|contact|write\s+to)\s+$",
+                head,
+                re.IGNORECASE,
+            )
+        )
+
+    if route_shaped:
+        for match in list(_BARE_DOMAIN.finditer(working)):
+            if _bare_domain_is_destination(match):
+                found.append(match.group(0))
+        working = _BARE_DOMAIN.sub(
+            lambda match: "" if _bare_domain_is_destination(match) else match.group(0),
+            working,
+        )
+        for match in _OBFUSCATED_DOMAIN.findall(working):
+            found.append(match if isinstance(match, str) else str(match))
+        working = _OBFUSCATED_DOMAIN.sub("", working)
 
     route_governed = assume_routing or _is_route_governed(
         sentence, address_found=bool(found)
@@ -546,6 +684,10 @@ def _strip_destinations(
         return match.group(0)
 
     working = _DESTINATION_PHRASE.sub(replace, working)
+    if route_governed:
+        for match in _IN_CHANNEL_DESTINATION.findall(working):
+            found.append(match.strip())
+        working = _IN_CHANNEL_DESTINATION.sub("", working)
     if found:
         # Only when this sentence demonstrably carried routing that was just
         # removed. A bare channel name is otherwise ordinary vocabulary —
@@ -553,6 +695,7 @@ def _strip_destinations(
         # stripping it would cost the recruiter the requirement they wrote.
         working, stranded = _strip_stranded_channels(sentence, working)
         found.extend(stranded)
+        working = _strip_stranded_routing_actions(working)
     return working, found
 
 
@@ -639,7 +782,16 @@ def _tidy(sentence: str) -> str:
     cleaned = re.sub(r"\b(?:or|and)\s+(?=with\b)", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\b(?:to|on|via|at|by)\s+(?=with\b)", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    # Removing a final connective or preposition can create a new whitespace
+    # gap before punctuation after the first punctuation pass has already run.
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
     cleaned = re.sub(r"^[\s,;:.]+", "", cleaned)
+    cleaned = re.sub(
+        r"\b(?:at|by|in|inside|on|through|to|via)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).rstrip(" ,;:")
     cleaned = cleaned.strip()
     if cleaned and cleaned[-1] not in ".!?":
         cleaned = f"{cleaned}."
@@ -664,7 +816,9 @@ def separate_application_instructions(
             sanitized = True
             destinations.extend(found)
 
-        if _PURE_ROUTING.match(sentence) and not _also_asks_for_something(sentence):
+        if (
+            _PURE_ROUTING.match(sentence) or _NAMED_CONTACT_ROUTE.match(sentence)
+        ) and not _also_asks_for_something(sentence):
             # Nothing here but directions. Dropping the sentence loses no
             # requirement, and keeping a hollowed-out version would read as
             # broken English on a public page.
@@ -739,6 +893,6 @@ def contains_external_routing(text: str | None) -> str | None:
         _stripped, found = _strip_destinations(sentence)
         if found:
             return found[0]
-        if _PURE_ROUTING.match(sentence):
+        if _PURE_ROUTING.match(sentence) or _NAMED_CONTACT_ROUTE.match(sentence):
             return sentence.strip()
     return None

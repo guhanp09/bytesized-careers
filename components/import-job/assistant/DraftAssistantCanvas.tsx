@@ -15,6 +15,7 @@ import {
 } from "../../../lib/jobImportEarlyQuestions.ts";
 import type {
   JobImportConversation,
+  JobImportNonNullJsonValue,
   JobImportSourceType,
 } from "../../../lib/jobImportReadiness.ts";
 import {
@@ -88,7 +89,7 @@ export type DraftAssistantCanvasProps = {
   jobTitle?: string | null;
   roleName?: string | null;
   filledCount?: number;
-  onAnswerQuestion?: (fieldPath: string, value: string | string[] | number) => void;
+  onAnswerQuestion?: (fieldPath: string, value: JobImportNonNullJsonValue) => void;
   onSkipQuestion?: () => void;
   onSkipRemaining?: () => void;
   onContinueManually?: () => void;
@@ -569,25 +570,34 @@ function transcriptValue(fieldPath: string, value: unknown): string {
     ...answerOptionsFor(fieldPath),
     ...multiSelectOptionsFor(fieldPath),
   ];
-  const rawValues = (Array.isArray(value) ? value : [value]).flatMap((item) => {
-    if (typeof item === "string" || typeof item === "number") return [String(item)];
+  const labelFor = (raw: string) =>
+    options.find((option) => option.value === raw)?.label ?? readableAnswer(raw);
+  const shownValues = (Array.isArray(value) ? value : [value]).flatMap((item) => {
+    if (typeof item === "string" || typeof item === "number") {
+      return [labelFor(String(item))];
+    }
     if (!item || typeof item !== "object") return [];
     const row = item as Record<string, unknown>;
     const key = typeof row.stage === "string" ? row.stage : row.type;
-    return typeof key === "string" ? [key] : [];
+    if (typeof key !== "string") return [];
+    const customLabel =
+      typeof row.custom_type === "string"
+        ? row.custom_type
+        : typeof row.custom_label === "string"
+          ? row.custom_label
+          : null;
+    const label = customLabel || labelFor(key);
+    if (typeof row.quantity !== "number") return [label];
+    const cadence =
+      typeof row.custom_frequency === "string"
+        ? row.custom_frequency
+        : typeof row.frequency === "string"
+          ? labelFor(row.frequency)
+          : null;
+    return cadence ? [`${row.quantity} × ${label} · ${cadence}`] : [label];
   });
-  if (!rawValues.length) return "Saved";
-  return rawValues
-    .map(
-      (raw) =>
-        options.find((option) => option.value === raw)?.label ??
-        // Never echo a stored value back at the recruiter. A field whose values
-        // come from the schema rather than a local option list has no label
-        // here, and the transcript was showing "evaluation_only" beside a
-        // button that had said "Evaluation only".
-        readableAnswer(raw)
-    )
-    .join(", ");
+  if (!shownValues.length) return "Saved";
+  return shownValues.join(", ");
 }
 
 function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {

@@ -34,6 +34,7 @@ either, so an incomplete figure returns ``None``.
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Final
 
 from app.core.job_import_facts import Quantity
@@ -82,6 +83,8 @@ _WORD_CURRENCY: Final[dict[str, str]] = {
     "pounds": "GBP",
     "aed": "AED",
     "sgd": "SGD",
+    "cad": "CAD",
+    "aud": "AUD",
 }
 
 #: How a stated period maps onto the product's own units. ``pm`` and ``pa`` are
@@ -128,7 +131,7 @@ _UNITS: Final[dict[str, str]] = {
 _FIGURE = re.compile(
     r"""
     (?:(?P<symbol>[₹$€£])\s*)?
-    (?:(?P<currency>INR|US\$|USD|EUR|GBP|AED|SGD|Rs\.?|rupees?|dollars?|euros?|pounds?)\s*)?
+    (?:(?P<currency>INR|US\$|USD|EUR|GBP|AED|SGD|CAD|AUD|Rs\.?|rupees?|dollars?|euros?|pounds?)\s*)?
     (?P<number>\d[\d,]*(?:\.\d+)?)
     (?:\s*(?P<magnitude>k|thousand|lakhs?|lacs?|L|crores?|cr|millions?|mn|m)(?![A-Za-z\d]))?
     """,
@@ -211,7 +214,7 @@ _PAY_LINE_COMPANY: Final[frozenset[str]] = frozenset(
         "salary", "pay", "paid", "compensation", "stipend", "budget", "rate",
         "remuneration", "ctc", "fee", "fees", "payout", "earnings", "income",
         # currencies and periods, which the grammar has already consumed once
-        "inr", "rs", "usd", "eur", "gbp", "aed", "sgd", "rupees", "dollars",
+        "inr", "rs", "usd", "eur", "gbp", "aed", "sgd", "cad", "aud", "rupees", "dollars",
         "per", "an", "month", "monthly", "months", "year", "yearly", "years",
         "annum", "annually", "annual", "hour", "hourly", "hours", "week",
         "weekly", "day", "daily", "project", "video", "post", "episode",
@@ -244,17 +247,21 @@ def owns_its_line(line: str, stated: Quantity | None = None) -> bool:
     return all(word.casefold() in _PAY_LINE_COMPANY for word in _WORD.findall(residue))
 
 
-def _value(number: str, magnitude: str | None) -> int | None:
+def _value(number: str, magnitude: str | None) -> int | float | None:
     digits = number.replace(",", "")
     try:
-        amount = float(digits)
-    except ValueError:  # pragma: no cover - the pattern already requires digits
+        amount = Decimal(digits)
+    except InvalidOperation:  # pragma: no cover - the pattern already requires digits
         return None
     if magnitude:
         amount *= _MAGNITUDES[magnitude.casefold()]
     if amount <= 0:
         return None
-    return int(round(amount))
+    # Preserve a page's exact fractional rate.  The previous round-to-int path
+    # turned ``$25.50/hour`` into $26 and ``$0.50/hour`` into nothing, which is
+    # a materially different offer.  Native Decimal fields accept either this
+    # integral representation or the finite decimal float unchanged.
+    return int(amount) if amount == amount.to_integral_value() else float(amount)
 
 
 def _currency_of(match: re.Match[str]) -> str | None:
@@ -295,7 +302,7 @@ def read_pay(text: str) -> StatedPay | None:
 
         # A range: the second end may drop the currency, the magnitude, or both.
         # "₹15,000 - 20,000 a month" and "₹15-20k a month" are both ordinary.
-        second: int | None = None
+        second: int | float | None = None
         joined = _RANGE_JOIN.match(text, end)
         if joined:
             follower = _FIGURE.match(text, joined.end())
@@ -330,13 +337,17 @@ def read_pay(text: str) -> StatedPay | None:
         excerpt = text[start:end].strip()
 
         if second is not None:
-            low, high = sorted((first, second))
             if _BETWEEN.search(before):
                 start = _BETWEEN.search(before).start()  # type: ignore[union-attr]
             return Quantity(
                 qualifier="range",
-                minimum=low,
-                maximum=high,
+                # Source order is semantic: the first number is the stated
+                # floor and the second the stated ceiling.  Sorting an invalid
+                # ``50,000–30,000`` silently rewrote the employer's text into a
+                # plausible offer.  Preserve it so merged validation can flag
+                # the contradiction for review.
+                minimum=first,
+                maximum=second,
                 unit=unit,
                 currency=currency,
                 text=text[start:end].strip(),

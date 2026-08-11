@@ -16,7 +16,8 @@ most* one continuation, usually zero.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -30,6 +31,7 @@ from app.core.job_import_answer_shapes import (
     answer_shape_for,
     conversation_answer_errors,
     matching_choices,
+    native_schema_constraints,
 )
 from app.core.job_import_conversation import (
     MAX_PROVIDER_CONTINUATIONS,
@@ -92,6 +94,91 @@ class JobImportConversationService:
     def __init__(self, import_service: JobImportService) -> None:
         self.import_service = import_service
 
+    @staticmethod
+    def _require_successful_processing(draft: JobImportDraft) -> None:
+        if draft.processing_status == "processing_failed":
+            raise JobImportError(
+                "JOB_IMPORT_INVALID_TRANSITION",
+                "Draft preparation must be retried before continuing the conversation.",
+                status_code=409,
+            )
+
+    @staticmethod
+    def _effective_answer_errors(
+        values: dict[str, object], *, changed_fields: frozenset[str]
+    ) -> list[str]:
+        """Validate relationships only visible in the merged draft.
+
+        Per-field validation cannot know that a range ceiling is below its
+        floor, or that a fixed engagement ends before it starts. Recruiter
+        answers, confirmed extraction, and grouped answers are merged first so
+        whichever side is answered second cannot create an impossible pair.
+        Unrelated answers are not blocked by an old unresolved pair elsewhere.
+        """
+
+        errors: list[str] = []
+        if changed_fields & {"compensation_mode", "budget_amount", "budget_max"}:
+            amount = values.get("budget_amount")
+            maximum = values.get("budget_max")
+            if amount is not None and maximum is not None:
+                try:
+                    if Decimal(str(maximum)) < Decimal(str(amount)):
+                        errors.append(
+                            "Maximum compensation must be greater than or equal "
+                            "to minimum compensation."
+                        )
+                except (InvalidOperation, TypeError, ValueError):
+                    # Canonical field validation owns malformed individual values.
+                    pass
+
+        if changed_fields & {
+            "expected_weekly_hours_min",
+            "expected_weekly_hours_max",
+        }:
+            minimum = values.get("expected_weekly_hours_min")
+            maximum = values.get("expected_weekly_hours_max")
+            if maximum is not None and minimum is None:
+                errors.append(
+                    "Add minimum weekly hours before setting a maximum."
+                )
+            elif minimum is not None and maximum is not None:
+                try:
+                    if Decimal(str(maximum)) < Decimal(str(minimum)):
+                        errors.append(
+                            "Maximum weekly hours must be greater than or equal "
+                            "to minimum weekly hours."
+                        )
+                except (InvalidOperation, TypeError, ValueError):
+                    # Canonical field validation owns malformed individual values.
+                    pass
+
+        if changed_fields & {
+            "start_timing",
+            "start_date",
+            "duration_type",
+            "engagement_end_date",
+        }:
+            parsed: dict[str, date] = {}
+            for path in ("start_date", "engagement_end_date"):
+                candidate = values.get(path)
+                try:
+                    if isinstance(candidate, datetime):
+                        parsed[path] = candidate.date()
+                    elif isinstance(candidate, date):
+                        parsed[path] = candidate
+                    elif isinstance(candidate, str):
+                        parsed[path] = date.fromisoformat(candidate)
+                except ValueError:
+                    # Canonical field validation owns malformed individual values.
+                    continue
+            if (
+                "start_date" in parsed
+                and "engagement_end_date" in parsed
+                and parsed["engagement_end_date"] <= parsed["start_date"]
+            ):
+                errors.append("The engagement end date must be after its start date.")
+        return errors
+
     # ------------------------------------------------------------------
     # Reading
     # ------------------------------------------------------------------
@@ -110,14 +197,63 @@ class JobImportConversationService:
         return self._snapshot_of(draft, await self._queue_for(draft))
 
     @staticmethod
+    def _safe_active_question(value: object) -> dict[str, Any] | None:
+        """Never expose a conflict control with fewer than two real choices.
+
+        Active questions are checkpointed. Fixing the builder alone would leave
+        an older one-option question broken forever on refresh, so reads apply
+        the same cardinality invariant without mutating or discarding the saved
+        checkpoint.
+        """
+
+        if not isinstance(value, dict):
+            return None
+        question = dict(value)
+        if question.get("reason") not in {
+            "MISSING_IMPORTANT_BUSINESS_DECISION",
+            "GENUINE_AMBIGUITY",
+            "UNRESOLVED_SOURCE_CONFLICT",
+            "OPTIONAL_HIGH_VALUE_REFINEMENT",
+        }:
+            question["reason"] = (
+                "UNRESOLVED_SOURCE_CONFLICT"
+                if isinstance(question.get("alternatives"), list)
+                and len(question["alternatives"]) >= 2
+                else "OPTIONAL_HIGH_VALUE_REFINEMENT"
+                if question.get("kind") == "optional"
+                else "GENUINE_AMBIGUITY"
+                if "suggested_value" in question or "recommended_value" in question
+                else "MISSING_IMPORTANT_BUSINESS_DECISION"
+            )
+        raw_alternatives = question.get("alternatives")
+        if not isinstance(raw_alternatives, list):
+            return question
+
+        alternatives: list[dict[str, Any]] = []
+        for item in raw_alternatives:
+            if not isinstance(item, dict) or "value" not in item:
+                continue
+            if any(
+                existing.get("value") == item.get("value")
+                for existing in alternatives
+            ):
+                continue
+            alternatives.append(item)
+        if len(alternatives) >= 2:
+            question["alternatives"] = alternatives
+        else:
+            question.pop("alternatives", None)
+        return question
+
+    @staticmethod
     def _snapshot_of(
         draft: JobImportDraft, queue: list[QueueCandidate] | None = None
     ) -> ConversationSnapshot:
         state: ConversationState = (
             draft.conversation_state or "source_received"
         )  # type: ignore[assignment]
-        question = (
-            draft.active_question if isinstance(draft.active_question, dict) else None
+        question = JobImportConversationService._safe_active_question(
+            draft.active_question
         )
         manual = (draft.last_completed_stage or "") == _MANUAL_CONTINUATION
         remaining = (
@@ -196,12 +332,23 @@ class JobImportConversationService:
         """
 
         draft = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
+        self._require_successful_processing(draft)
         snapshot = self._snapshot_of(draft)
+
+        if (
+            expected_context_version is not None
+            and expected_context_version != snapshot.recruiter_context_version
+        ):
+            # A duplicate or late submission. The answer already landed; saying
+            # so is honest and, critically, starts no new work.
+            return snapshot
 
         # A click can land a moment after the conversation moved on — the poll
         # refreshes on a timer, so the button the recruiter pressed may already
-        # be one step behind. Refusing it would blame them for the delay, so an
-        # answer to any field still worth answering is simply accepted.
+        # be one step behind. Versioned clients receive the idempotent no-op
+        # above. An unversioned direct caller, however, may answer only the turn
+        # actually on screen; otherwise it could silently populate arbitrary
+        # fields and manufacture completion.
         active_path = (
             snapshot.active_question.get("field_path")
             if snapshot.active_question
@@ -213,20 +360,12 @@ class JobImportConversationService:
                 # Genuinely settled, so the click was a duplicate. Report the
                 # current state rather than an error about it.
                 return snapshot
-            if field_path not in JOB_IMPORT_FIELD_POLICIES:
-                raise JobImportError(
-                    "JOB_IMPORT_UNSUPPORTED_FIELD",
-                    "That detail cannot be answered here.",
-                    status_code=422,
-                )
-
-        if (
-            expected_context_version is not None
-            and expected_context_version != snapshot.recruiter_context_version
-        ):
-            # A duplicate or late submission. The answer already landed; saying
-            # so is honest and, critically, starts no new work.
-            return snapshot
+            raise JobImportError(
+                "JOB_IMPORT_QUESTION_MISMATCH",
+                "Answer the question currently shown before continuing.",
+                status_code=409,
+                details={"active_field_path": active_path},
+            )
 
         policy = JOB_IMPORT_FIELD_POLICIES.get(field_path)
         if policy is None:
@@ -257,14 +396,10 @@ class JobImportConversationService:
                 details={"errors": errors},
             )
 
-        answers = self._stored_answers(draft)
-        answers[field_path] = normalized
-
-        # Conversion reads field rows, so the answer has to become one.
-        await self._persist_answer(draft, field_path, normalized)
-
-        # One choice, both fields. Validated exactly as any other answer, so a
-        # grouped option can never write something the field would refuse.
+        # Validate grouped values before writing anything. A failed range must
+        # leave the entire checkpoint unchanged rather than persisting its first
+        # half and rejecting the second.
+        normalized_extras: dict[str, object] = {}
         for extra_path, extra_value in grouped_extras.items():
             extra_policy = JOB_IMPORT_FIELD_POLICIES.get(extra_path)
             if extra_policy is None:
@@ -274,8 +409,36 @@ class JobImportConversationService:
                     extra_policy, extra_value
                 )
             )
+            extra_errors.extend(
+                conversation_answer_errors(extra_path, extra_normalized)
+            )
             if extra_errors:
                 continue
+            normalized_extras[extra_path] = extra_normalized
+
+        effective_values = await self._effective_values(draft)
+        effective_values[field_path] = normalized
+        effective_values.update(normalized_extras)
+        relationship_errors = self._effective_answer_errors(
+            effective_values,
+            changed_fields=frozenset({field_path, *normalized_extras}),
+        )
+        if relationship_errors:
+            raise JobImportError(
+                "JOB_IMPORT_FIELD_INVALID",
+                "That answer is not valid for this detail.",
+                details={"errors": relationship_errors},
+            )
+
+        answers = self._stored_answers(draft)
+        answers[field_path] = normalized
+
+        # Conversion reads field rows, so the answer has to become one.
+        await self._persist_answer(draft, field_path, normalized)
+
+        # One choice, both fields. Every value and their merged relationship was
+        # validated before the primary answer was persisted.
+        for extra_path, extra_normalized in normalized_extras.items():
             answers[extra_path] = extra_normalized
             await self._persist_answer(draft, extra_path, extra_normalized)
 
@@ -592,9 +755,11 @@ class JobImportConversationService:
                 "conflicting_values": [],
                 "explanation": "Interpreted from exact wording in the job title.",
                 "provider_confidence": {
-                    "origin": "semantic_inference",
+                    "origin": "contextual_inference",
                     "confidence": "high",
                     "rationale_code": "exact_title_signal",
+                    "epistemic_state": "logically_entailed",
+                    "inference_type": "exact_title_signal",
                     "needs_review": False,
                     "risk": policy.inference_risk,
                 },
@@ -667,13 +832,25 @@ class JobImportConversationService:
         await self._apply_title_signals(draft, owner_user_id=owner_user_id)
         await self._resolve_pay_range(draft)
         await self._resolve_compensation_mode(draft)
+        # Conversation answers write the same field rows as the ordinary review
+        # workspace, so they must refresh the same draft-level readiness cache.
+        # Do this after every deterministic consequence has landed (rather than
+        # only after the directly answered row) so the answer response, a
+        # subsequent GET, and an immediate native-draft application all observe
+        # one coherent state.  The final checkpoint store below commits both the
+        # refresh and the next conversation state together.
+        await self.import_service._refresh_draft_state(
+            draft, owner_user_id=owner_user_id
+        )
         queue = await self._queue_for(draft)
         candidate = queue[0] if queue else None
 
         # A provider proposal is only preferred when the server agrees it is
         # askable; otherwise the deterministic queue takes over silently.
         if provider_question is not None:
-            validation = await self._validate_provider_question(draft, provider_question)
+            validation = await self._validate_provider_question(
+                draft, provider_question, queue=queue
+            )
             if validation.ok and validation.accepted is not None:
                 candidate = QueueCandidate(
                     validation.accepted.field_path,
@@ -705,13 +882,14 @@ class JobImportConversationService:
         # roles catalog rather than the job schema, so they are read from there.
         role_choices: list[str] = []
         role_labels: dict[str, str] = {}
+        recommended_role_choices: list[str] = []
         if candidate.field_path == "primary_role_key":
             roles = await self.import_service.repository.list_active_roles()
             by_slug = {role.slug: role.name for role in roles}
-            # A title naming two crafts has already narrowed this to two. Showing
-            # thirty buttons instead would discard what the recruiter wrote.
             named = [slug for slug in await self._title_role_options(draft) if slug in by_slug]
-            for slug in named or list(by_slug)[:40]:
+            recommended_role_choices = named
+            ordered = [*named, *(slug for slug in by_slug if slug not in named)]
+            for slug in ordered[:40]:
                 role_choices.append(slug)
                 # A slug identifies; a name reads. The buttons need the name.
                 role_labels[slug] = by_slug[slug]
@@ -722,8 +900,14 @@ class JobImportConversationService:
             field_row,
             role_choices,
             role_labels,
+            recommended_role_choices,
             await self._title_suggestions(draft),
         )
+        if (
+            candidate.field_path == "primary_role_key"
+            and len(recommended_role_choices) >= 2
+        ):
+            question["reason"] = "GENUINE_AMBIGUITY"
         await self._group_workplace_question(draft, question)
         await self._group_money_question(draft, question)
         # Optional suggestions live in their own phase so the UI can present
@@ -740,7 +924,11 @@ class JobImportConversationService:
         return self._snapshot_of(draft, queue)
 
     async def _validate_provider_question(
-        self, draft: JobImportDraft, proposal: ProposedQuestion
+        self,
+        draft: JobImportDraft,
+        proposal: ProposedQuestion,
+        *,
+        queue: list[QueueCandidate] | None = None,
     ):
         answers = self._stored_answers(draft)
         fields = await self.import_service.repository.list_fields(draft.id)
@@ -756,7 +944,11 @@ class JobImportConversationService:
             resolved_fields=resolved,
             suppressed_fields=suppressed_by_answers(answers),
             active_conditional_fields=await self._active_conditionals(draft),
-            ambiguous_fields=await self._ambiguous_fields(draft),
+            askable_questions=(
+                frozenset((candidate.field_path, candidate.kind) for candidate in queue)
+                if queue is not None
+                else None
+            ),
         )
 
     async def _ambiguous_fields(self, draft: JobImportDraft) -> frozenset[str]:
@@ -798,6 +990,24 @@ class JobImportConversationService:
             and bool(field.evidence)
             and not field.validation_errors
         }
+        required_confirmations: set[str] = set()
+        # The source may explicitly say the hire needs account/analytics
+        # access, while only the recruiter may consent to persisting that
+        # requirement. Preserve the explicit fact as a pending confirmation
+        # turn instead of discarding it as an invalid native row.
+        for field in fields:
+            confidence = field.provider_confidence
+            if (
+                field.field_path == "source_inputs"
+                and field.review_status == "pending"
+                and field.proposed_value is not None
+                and bool(field.evidence)
+                and not field.validation_errors
+                and isinstance(confidence, dict)
+                and confidence.get("sensitive_access_confirmation_required") is True
+            ):
+                suggested[field.field_path] = field.missing_requirement
+                required_confirmations.add(field.field_path)
         return deterministic_question_queue(
             conflicted_fields=conflicted,
             missing_fields=missing,
@@ -811,6 +1021,7 @@ class JobImportConversationService:
             ambiguous_fields=await self._ambiguous_fields(draft),
             suggested_fields=suggested,
             dismissed_fields=frozenset(self._dismissed(draft)),
+            required_confirmation_fields=frozenset(required_confirmations),
         )
 
     async def _effective_values(self, draft: JobImportDraft) -> dict[str, object]:
@@ -891,6 +1102,7 @@ class JobImportConversationService:
         field_row: Any | None = None,
         role_choices: list[str] | None = None,
         role_labels: dict[str, str] | None = None,
+        recommended_role_choices: list[str] | None = None,
         suggestions: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         """Shape the one active question. Presentation copy lives on the client."""
@@ -909,10 +1121,13 @@ class JobImportConversationService:
         question: dict[str, Any] = {
             "field_path": candidate.field_path,
             "kind": candidate.kind,
+            "reason": self._question_reason(candidate, suggestion, field_row),
             "asked_at": datetime.now(UTC).isoformat(),
             "context_version": (draft.recruiter_context_version or 0),
             "answer": shape.as_payload(),
         }
+        if candidate.field_path == "primary_role_key" and recommended_role_choices:
+            question["recommended_choices"] = recommended_role_choices[:5]
 
         # A conflict already knows the candidate answers and where each came
         # from. Dropping them and rendering an empty text box asks the recruiter
@@ -932,10 +1147,23 @@ class JobImportConversationService:
                 if isinstance(item, dict)
             ][:6]
 
-            # For a field with a fixed set of answers, the source's wording is
-            # mapped onto real values — offering the raw phrase back would hand
-            # the recruiter something the field then refuses.
-            if shape.choices:
+            # A catalog may be either a domain or a set of useful shortcuts.
+            # Experience is the latter: its native field is an open 64-character
+            # string and its policy explicitly permits an exact custom value.
+            # Treating the four common bands as a closed enum dropped "1 to 2
+            # yrs" while retaining "1–3 years", producing a one-button question
+            # that claimed the source mentioned both.
+            policy = JOB_IMPORT_FIELD_POLICIES.get(candidate.field_path)
+            native_choices, native_cap, native_is_list = native_schema_constraints(
+                candidate.field_path
+            )
+            open_catalog = bool(
+                shape.choices
+                and policy is not None
+                and policy.custom_values_allowed
+                and native_choices is None
+            )
+            if shape.choices and not open_catalog:
                 allowed = matching_choices(
                     candidate.field_path, [item["value"] for item in raw]
                 )
@@ -945,7 +1173,7 @@ class JobImportConversationService:
                             item["evidence"]
                             for item in raw
                             if isinstance(item["value"], str)
-                            and choice in item["value"].strip().lower()
+                            and choice.casefold() in item["value"].strip().casefold()
                         ),
                         [],
                     )
@@ -955,6 +1183,27 @@ class JobImportConversationService:
                     {"value": choice, "evidence": evidence}
                     for choice, evidence in by_choice.items()
                 ]
+            elif open_catalog:
+                alternatives = []
+                for item in raw:
+                    value = item.get("value")
+                    if native_is_list:
+                        if not isinstance(value, list) or not all(
+                            isinstance(entry, str) for entry in value
+                        ):
+                            continue
+                    else:
+                        if not isinstance(value, str):
+                            continue
+                        if native_cap is not None and len(value) > native_cap:
+                            continue
+                    if conversation_answer_errors(candidate.field_path, value):
+                        continue
+                    if any(existing["value"] == value for existing in alternatives):
+                        continue
+                    # Exact source wording is valid here. Mapping it to the
+                    # nearest suggestion would narrow the claim.
+                    alternatives.append(item)
             else:
                 alternatives = raw
             if candidate.field_path == "location":
@@ -965,7 +1214,18 @@ class JobImportConversationService:
                 alternatives = self._location_alternatives(
                     draft, alternatives, question
                 )
-            if alternatives:
+            # "Which of both?" needs both. If a strict enum could map only one
+            # raw phrase, omit the conflict branch and let the ordinary bounded
+            # choices render instead of presenting a one-option decision.
+            alternatives = [
+                item
+                for index, item in enumerate(alternatives)
+                if not any(
+                    earlier.get("value") == item.get("value")
+                    for earlier in alternatives[:index]
+                )
+            ]
+            if len(alternatives) >= 2:
                 question["alternatives"] = alternatives
                 if "recommended_value" not in question:
                     recommended = self._recommended_alternative(draft, alternatives)
@@ -974,7 +1234,17 @@ class JobImportConversationService:
         if "recommended_value" not in question:
             if (
                 field_row is not None
-                and field_row.provenance_state == "suggested_inference"
+                and (
+                    field_row.provenance_state == "suggested_inference"
+                    or (
+                        candidate.field_path == "source_inputs"
+                        and isinstance(field_row.provider_confidence, dict)
+                        and field_row.provider_confidence.get(
+                            "sensitive_access_confirmation_required"
+                        )
+                        is True
+                    )
+                )
                 and field_row.review_status == "pending"
                 and field_row.proposed_value is not None
             ):
@@ -992,6 +1262,38 @@ class JobImportConversationService:
             question["explanation"] = suggestion.explanation
             question["kind"] = "confirmation"
         return question
+
+    @staticmethod
+    def _question_reason(
+        candidate: QueueCandidate,
+        suggestion: AnswerSuggestion | None,
+        field_row: Any | None,
+    ) -> str:
+        """Return the decision-worthy reason this turn exists.
+
+        Null fields and parser failures are states, not reasons to interrupt a
+        recruiter.  The queue has already established that the field is useful;
+        this label makes its actual product reason explicit for audit, analytics,
+        and checkpoint compatibility.
+        """
+
+        if field_row is not None and getattr(
+            field_row, "provenance_state", None
+        ) == "conflicting_source_values":
+            confidence = getattr(field_row, "provider_confidence", None)
+            if isinstance(confidence, dict) and confidence.get(
+                "epistemic_state"
+            ) == "ambiguous":
+                return "GENUINE_AMBIGUITY"
+            return "UNRESOLVED_SOURCE_CONFLICT"
+        if candidate.kind == "optional":
+            return "OPTIONAL_HIGH_VALUE_REFINEMENT"
+        if suggestion is not None or (
+            field_row is not None
+            and getattr(field_row, "provenance_state", None) == "suggested_inference"
+        ):
+            return "GENUINE_AMBIGUITY"
+        return "MISSING_IMPORTANT_BUSINESS_DECISION"
 
     async def _group_workplace_question(
         self, draft: JobImportDraft, question: dict[str, Any]
@@ -1025,33 +1327,62 @@ class JobImportConversationService:
                 and row.provenance_state in {"missing", "conflicting_source_values"}
             )
 
-        # Only worth grouping while both halves are genuinely open. If one is
-        # already settled the other is an ordinary single question.
-        if not (unresolved("work_mode") and unresolved("location")):
+        work_mode_open = unresolved("work_mode")
+        location_open = unresolved("location")
+        location_row = by_path.get("location")
+        settled_location: object | None = answers.get("location")
+        if settled_location is None and location_row is not None:
+            if location_row.review_status == "edited":
+                settled_location = location_row.edited_value
+            elif location_row.review_status == "confirmed":
+                settled_location = location_row.confirmed_value
+            if settled_location is None:
+                settled_location = location_row.proposed_value
+
+        # A settled place can still be part of the one decision the recruiter
+        # sees. ``Remote, based around Toronto`` is materially clearer than a
+        # bare ``Remote`` choice, and selecting it confirms both halves without
+        # asking a second question. Conversely, if work mode is already known,
+        # a remaining location question should stay an ordinary place control.
+        if not work_mode_open or not (
+            location_open
+            or (isinstance(settled_location, str) and settled_location.strip())
+        ):
             return
 
-        location_row = by_path["location"]
+        places: list[str] = []
+        if location_open and location_row is not None:
+            for entry in self._conflicting_values(location_row):
+                if isinstance(entry, str) and entry.strip() and entry not in places:
+                    places.append(entry.strip())
+            if isinstance(location_row.proposed_value, str) and location_row.proposed_value:
+                if location_row.proposed_value not in places:
+                    places.append(location_row.proposed_value)
+        elif isinstance(settled_location, str) and settled_location.strip():
+            places.append(settled_location.strip())
+
+        resolution = resolve_locations(places) if len(places) > 1 else None
+        if resolution is not None and resolution.recommended is None:
+            # Two genuinely different cities cannot be compressed into a
+            # workplace preset without silently choosing the first one. Keep
+            # the location turn intact: it exposes both source readings and a
+            # bounded custom answer, then work mode can be settled separately.
+            return
+        primary = (
+            resolution.recommended
+            if resolution is not None
+            else (places[0] if places else None)
+        )
+
         # Whichever half the queue reached first, the arrangement is the
-        # decision being made, so that is what gets asked.
+        # decision being made, so that is what gets asked. This mutation must
+        # happen only after proving the places can be grouped; otherwise a real
+        # two-city conflict is relabelled as a work-mode question and loses its
+        # open location answer.
         question["field_path"] = "work_mode"
         question["answer"] = answer_shape_for("work_mode").as_payload()
         question.pop("alternatives", None)
         question.pop("recommended_value", None)
-
-        places: list[str] = []
-        for entry in self._conflicting_values(location_row):
-            if isinstance(entry, str) and entry.strip() and entry not in places:
-                places.append(entry.strip())
-        if isinstance(location_row.proposed_value, str) and location_row.proposed_value:
-            if location_row.proposed_value not in places:
-                places.append(location_row.proposed_value)
-
-        resolution = resolve_locations(places) if len(places) > 1 else None
-        primary = (
-            resolution.recommended
-            if resolution and resolution.recommended
-            else (places[0] if places else None)
-        )
 
         options: list[dict[str, Any]] = []
         if primary:
@@ -1059,7 +1390,7 @@ class JobImportConversationService:
                 {
                     "value": "remote",
                     "label": f"Remote, based around {primary}",
-                    "applies": {"work_mode": "remote"},
+                    "applies": {"work_mode": "remote", "location": primary},
                 }
             )
             options.append(
@@ -1422,6 +1753,7 @@ class JobImportConversationService:
         """Enter the conversation for a draft whose extraction already landed."""
 
         draft = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
+        self._require_successful_processing(draft)
         if draft.conversation_state is None:
             await self._store(draft, {"conversation_state": "validating"})
         return await self._advance(draft, owner_user_id=owner_user_id)

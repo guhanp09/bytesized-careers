@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Final, Literal
+
+import geonamescache
 
 #: How two stated locations relate. Internal vocabulary — never shown to anyone.
 LocationRelation = Literal[
@@ -93,6 +96,24 @@ _REGIONS: Final[dict[str, str]] = {
     "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
     "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
     "DC": "District of Columbia",
+    # Canadian job boards commonly emit ``City, Province, Canada`` or the
+    # abbreviated equivalent. Without classifying the middle component, the
+    # positional fallback mistakes the province for the city (for example,
+    # ``Toronto, Ontario, Canada`` became ``Ontario``). These are administrative
+    # names, not city aliases, so they belong in the same explicit region table.
+    "AB": "Alberta",
+    "BC": "British Columbia",
+    "MB": "Manitoba",
+    "NB": "New Brunswick",
+    "NL": "Newfoundland and Labrador",
+    "NS": "Nova Scotia",
+    "NT": "Northwest Territories",
+    "NU": "Nunavut",
+    "ON": "Ontario",
+    "PE": "Prince Edward Island",
+    "QC": "Quebec",
+    "SK": "Saskatchewan",
+    "YT": "Yukon",
 }
 
 #: Regions this module recognises by name, so a component can be classified.
@@ -115,8 +136,23 @@ _REGION_NAMES: Final[frozenset[str]] = frozenset(
         "texas",
         "england",
         "scotland",
+        # Named US states must be classified just like their abbreviations.
+        # Otherwise ``Salt Lake City, Utah`` leaves both components
+        # unclassified and the positional fallback calls the final component
+        # (Utah) the city.
+        *(value.casefold() for value in _REGIONS.values()),
     }
 )
+
+# Codes whose ordinary job-board spelling is genuinely overloaded. The exact
+# city/code association below disambiguates only these collisions. Everything
+# else continues through the explicit tables above.
+_US_REGION_CODE_COLLISIONS: Final[dict[str, str]] = {
+    "CA": "California",
+    "DE": "Delaware",
+    "IN": "Indiana",
+    "TN": "Tennessee",
+}
 
 #: City names that mean the same city. Explicit, bidirectional, reviewable.
 #:
@@ -185,6 +221,12 @@ KNOWN_LOCALITIES: Final[dict[str, str]] = {
     "bandra": "Mumbai",
     "hinjewadi": "Pune",
     "guindy": "Chennai",
+    # Chennai job boards frequently publish the neighbourhood as
+    # ``addressLocality`` while the visible title/body names Chennai. These are
+    # localities, not competing cities. Keeping that distinction here lets the
+    # importer derive the city without teaching a fetcher about any one site.
+    "nungambakkam": "Chennai",
+    "aminjikarai": "Chennai",
     "salt lake": "Kolkata",
     "gachibowli": "Hyderabad",
     "hitec city": "Hyderabad",
@@ -226,6 +268,7 @@ _NOT_A_PLACE: Final[frozenset[str]] = frozenset(
         "onsite",
         "on site",
         "in office",
+        "in person",
         "telecommute",
         "multiple locations",
         "various",
@@ -258,6 +301,11 @@ _TIMEZONE = re.compile(
     re.IGNORECASE,
 )
 
+_REMOTE_ARRANGEMENT = re.compile(
+    r"\b(?:remote(?:ly)?|work\s+from\s+home|wfh|telecommut(?:e|ing))\b",
+    re.IGNORECASE,
+)
+
 #: A legal entity, which is who is hiring rather than where the job is.
 #:
 #: Only the suffixes, because they are unambiguous. A bare trading name like
@@ -284,6 +332,7 @@ def _is_not_a_place(part: str) -> bool:
     cleaned = part.strip()
     return (
         cleaned.casefold() in _NOT_A_PLACE
+        or bool(_REMOTE_ARRANGEMENT.search(cleaned))
         or bool(_TIMEZONE.match(cleaned))
         or bool(_ADDRESS_FRAGMENT.match(cleaned))
         or bool(_LEGAL_ENTITY.search(cleaned))
@@ -341,6 +390,42 @@ def _clean(value: str) -> str:
 
     collapsed = re.sub(r"\s+", " ", value.replace(" ", " ")).strip()
     return collapsed.strip(" ,;|-/")
+
+
+@lru_cache(maxsize=128)
+def _exact_city_code_meaning(city: str, code: str) -> Literal["country", "us_region"] | None:
+    """Disambiguate an overloaded code from an exact offline city match.
+
+    ``San Francisco, CA`` and ``Toronto, CA`` use the same two letters for two
+    different administrative meanings. Position alone cannot settle that, and
+    silently choosing either one corrupts otherwise explicit source data. The
+    repository already ships an offline GeoNames city catalog; this uses exact
+    names only and asks one bounded question of it: is this city explicitly
+    associated with that country or that U.S. region? No fuzzy match, distance
+    heuristic, or network lookup is involved.
+    """
+
+    normalized = _clean(city).casefold()
+    if not normalized or code not in _US_REGION_CODE_COLLISIONS:
+        return None
+
+    country_match = False
+    region_match = False
+    for item in geonamescache.GeonamesCache().get_cities().values():
+        names = (item.get("name"), item.get("ascii"))
+        if not any(
+            isinstance(name, str) and _clean(name).casefold() == normalized
+            for name in names
+        ):
+            continue
+        if item.get("countrycode") == code:
+            country_match = True
+        if item.get("countrycode") == "US" and item.get("admin1code") == code:
+            region_match = True
+
+    if country_match == region_match:
+        return None
+    return "country" if country_match else "us_region"
 
 
 #: Separators a source uses when it lists several places in one string.
@@ -415,9 +500,17 @@ def parse_location(raw: str) -> LocationParts:
     country: str | None = None
     unclassified: list[str] = []
 
-    for part in components:
+    for index, part in enumerate(components):
         folded = part.casefold()
         upper = part.upper()
+        if upper in _US_REGION_CODE_COLLISIONS and index > 0 and region is None:
+            meaning = _exact_city_code_meaning(components[index - 1], upper)
+            if meaning == "us_region":
+                region = _US_REGION_CODE_COLLISIONS[upper]
+                continue
+            if meaning == "country" and upper in _COUNTRIES and country is None:
+                country = _COUNTRIES[upper]
+                continue
         if upper in _COUNTRIES and country is None:
             country = _COUNTRIES[upper]
             continue
@@ -483,6 +576,18 @@ def _canonical_city(parts: LocationParts) -> str | None:
     return None
 
 
+def city_for_location(raw: str) -> str | None:
+    """Return the city a physical-workplace control can safely store.
+
+    ``location`` is labelled *City* in Post Job. A neighbourhood is useful
+    evidence about that city, but it is not itself a valid city selection. This
+    helper is deliberately narrower than :meth:`LocationParts.display`: it
+    returns a known/canonical city or nothing, never an address-shaped guess.
+    """
+
+    return _canonical_city(_complete(parse_location(raw)))
+
+
 def _complete(parts: LocationParts) -> LocationParts:
     """Fill region and country from the city, when the city is one we know."""
 
@@ -516,24 +621,27 @@ def resolve_locations(
     if not unique:
         return LocationResolution(relation="insufficient_information")
 
-    if len(unique) == 1:
-        parts = _complete(parse_location(unique[0]))
-        return LocationResolution(
-            relation="exact_equivalent",
-            recommended=parts.display(),
-            alternatives=[parts.display()],
-            confident=True,
-        )
-
-    # A remote role: an office address describes the employer, not the work.
-    # Offer the source values unchanged and let the recruiter decide, rather
-    # than promoting a head office into the job's own location.
+    # An office address does not become a remote applicant restriction simply
+    # because it is the only location string available. This must precede the
+    # singleton path, which otherwise confidently promoted that office to the
+    # job's location.
     if work_mode == "remote":
         return LocationResolution(
             relation="insufficient_information",
             recommended=None,
             alternatives=unique,
             normalization_applied=["remote_scope_preserved"],
+        )
+
+    if len(unique) == 1:
+        parts = _complete(parse_location(unique[0]))
+        city = _canonical_city(parts)
+        display = city or parts.display()
+        return LocationResolution(
+            relation="exact_equivalent",
+            recommended=display or None,
+            alternatives=[display] if display else [],
+            confident=bool(city),
         )
 
     parsed = [parse_location(value) for value in unique]
@@ -593,9 +701,10 @@ def resolve_locations(
 
     region, country = CITY_REGIONS.get(city, (None, None))
     localities = [item.locality for item in completed if item.locality]
-    city_only = LocationParts(
-        raw=city, city=city, region=region, country=country
-    ).display()
+    # Post Job's canonical value is the city. Region/country/locality remain in
+    # evidence and audit metadata; putting them in the value makes the native
+    # city control reject an otherwise understood import.
+    city_only = city
 
     if localities:
         # One source named a neighbourhood inside the city the other named.
@@ -607,31 +716,21 @@ def resolve_locations(
             if locality.casefold() in KNOWN_LOCALITIES
             else "source_nested_components"
         )
-        specific = LocationParts(
-            raw=city, locality=locality, city=city, region=region, country=country
-        ).display()
-        alternatives = [specific, city_only]
-        for item in completed:
-            display = item.display()
-            if display not in alternatives:
-                alternatives.append(display)
+        alternatives = [city_only]
         return LocationResolution(
             relation="same_city_different_specificity",
-            recommended=specific,
+            recommended=city_only,
             alternatives=alternatives,
             normalization_applied=normalization,
             alias_applied=alias_applied,
             containment_rule=containment,
+            confident=True,
         )
 
     relation: LocationRelation = (
         "alias_equivalent" if alias_applied else "normalized_equivalent"
     )
     alternatives = [city_only]
-    for item in completed:
-        display = item.display()
-        if display not in alternatives:
-            alternatives.append(display)
     return LocationResolution(
         relation=relation,
         recommended=city_only,

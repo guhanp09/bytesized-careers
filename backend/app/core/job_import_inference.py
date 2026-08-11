@@ -81,10 +81,16 @@ _CAUTIOUS_SEMANTIC_FIELDS: Final[frozenset[str]] = frozenset(
         "duration_unit",
         "revision_policy",
         "revision_rounds",
-        "expected_weekly_hours_min",
-        "expected_weekly_hours_max",
         "hiring_process",
     }
+)
+
+# These may be inferred only through exact source arithmetic (for example,
+# five stated days per week multiplied by eight stated hours per day). The
+# deterministic import layer supplies that contextual decision. General role
+# labels such as "full-time" never authorize a numeric guess.
+_SAFE_SCHEDULE_ARITHMETIC_FIELDS: Final[frozenset[str]] = frozenset(
+    {"expected_weekly_hours_min", "expected_weekly_hours_max"}
 )
 
 _EXPLICIT_ONLY_FIELDS: Final[frozenset[str]] = frozenset(
@@ -113,7 +119,15 @@ _EXPLICIT_ONLY_FIELDS: Final[frozenset[str]] = frozenset(
 def import_decision_policy(field_path: str) -> ImportDecisionPolicy:
     """Return the provider-neutral authority policy for one canonical field."""
 
-    if field_path == "budget_currency":
+    if field_path in _SAFE_SCHEDULE_ARITHMETIC_FIELDS:
+        return ImportDecisionPolicy(
+            risk="medium",
+            allowed_origins=frozenset({"explicit", "contextual_inference"}),
+            auto_fill_confidence="high",
+            suggestion_confidence=None,
+            explicit_evidence_required=True,
+        )
+    if field_path in {"budget_currency", "location"}:
         return ImportDecisionPolicy(
             risk="medium",
             allowed_origins=frozenset({"explicit", "contextual_inference"}),
@@ -298,6 +312,20 @@ def country_from_location(location: str | None) -> str | None:
     if len(countries) > 1:
         return None
     return _country_from_city(location)
+
+
+def explicit_country_from_location(location: str | None) -> str | None:
+    """Return a country only when the source names that country directly.
+
+    Unlike :func:`country_from_location`, this never derives a country from a
+    city. It is therefore safe for remote applicant eligibility: an employer's
+    Chennai office must not silently become an India-only remote role.
+    """
+
+    if not location or not location.strip():
+        return None
+    countries = _country_mentions(location)
+    return next(iter(countries)) if len(countries) == 1 else None
 
 
 def currency_for_country(country_code: str | None) -> str | None:

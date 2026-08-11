@@ -19,6 +19,7 @@ import json
 import pytest
 
 from app.core.job_import_field_descriptions import FIELD_DESCRIPTIONS, describe
+from app.core.job_import_intelligence_matrix import intelligence_matrix
 from app.core.job_import_policy import JOB_IMPORT_FIELD_POLICIES
 from app.core.job_import_request_compaction import (
     SERVER_ENFORCED_KEYS,
@@ -58,6 +59,16 @@ def test_what_the_model_needs_survives() -> None:
     assert compact["value_schema"] == {"type": "string"}
     assert compact["evidence_required"] is True
     assert "employer" in compact["description"].lower()
+    assert compact["allowed_decision_origins"]
+    assert compact["inference_risk"] in {"low", "medium", "high"}
+
+
+def test_explicit_only_field_sends_the_forbidden_inference_boundary() -> None:
+    compact = compact_field_definition(_Definition("budget_amount"))
+
+    assert compact["allowed_decision_origins"] == ["explicit"]
+    assert compact["inference_risk"] == "high"
+    assert any("Do not infer" in item for item in compact["forbidden_semantics"])
 
 
 def test_every_askable_and_extractable_field_is_described() -> None:
@@ -164,7 +175,19 @@ async def test_the_compact_request_is_materially_smaller(client) -> None:
     compact = len(json.dumps(compact_provider_request(request)))
     reduction = (full - compact) / full
     assert reduction >= 0.25, f"only {reduction:.1%} smaller"
-    # Every field is still offered; this is compaction, not truncation.
-    assert len(compact_provider_request(request)["field_definitions"]) == len(
-        request.field_definitions
+    # Only platform-decided route fields are omitted. This is semantic
+    # compaction, not arbitrary truncation.
+    expected_provider_fields = sum(
+        intelligence_matrix()[definition.field_path].provider_visible
+        for definition in request.field_definitions
     )
+    assert len(compact_provider_request(request)["field_definitions"]) == (
+        expected_provider_fields
+    )
+    compact_paths = {
+        row["field_path"]
+        for row in compact_provider_request(request)["field_definitions"]
+    }
+    assert "application_mode" not in compact_paths
+    assert "external_apply_url" not in compact_paths
+    assert "how_to_apply" in compact_paths

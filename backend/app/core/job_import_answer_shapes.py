@@ -18,8 +18,10 @@ from __future__ import annotations
 import re
 import typing
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Final, Literal
+from urllib.parse import urlsplit
 
 from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 
@@ -30,6 +32,7 @@ from app.core.job_domain_taxonomy import (
     CREATOR_JOB_FORMATS,
     CREATOR_JOB_PLATFORMS,
 )
+from app.core.job_import_body_sections import normalize_experience_requirement
 from app.schemas.job import JobCreate
 
 AnswerKind = Literal["choice", "multi_choice", "number", "text", "url", "date", "unknown"]
@@ -52,15 +55,31 @@ class AnswerShape:
     choices: list[str] = field(default_factory=list)
     minimum: float | None = None
     maximum: float | None = None
+    minimum_exclusive: bool = False
+    maximum_exclusive: bool = False
+    #: Count-like numbers use step 1; Decimal fields deliberately retain any
+    #: precision accepted by the native schema.
+    step: float | Literal["any"] | None = None
+    integer_only: bool | None = None
     min_length: int | None = None
     max_length: int | None = None
     #: True when the field stores a list, so one pick becomes a one-item list.
     is_list: bool = False
     #: The key each picked value sits under, for structured rows.
     item_key: str | None = None
+    #: The bounded label paired with an ``other`` structured row.
+    custom_item_key: str | None = None
+    custom_item_value: str | None = None
+    custom_item_max_length: int | None = None
     #: Display text per value. A slug is an identifier, not a label — showing
     #: "Long-form-editor" as a button is the catalog leaking into the interface.
     labels: dict[str, str] = field(default_factory=dict)
+    #: The picker offers useful shortcuts but does not close the native field.
+    #: When true, the client must also offer a custom answer.
+    custom_values_allowed: bool = False
+    #: Makes the epistemic distinction explicit: these choices help someone
+    #: answer; they are not a claim that no other truthful value exists.
+    choices_are_suggestions: bool = False
 
     def as_payload(self) -> dict[str, Any]:
         """Bounded, JSON-safe, and free of anything internal."""
@@ -68,12 +87,31 @@ class AnswerShape:
         payload: dict[str, Any] = {"kind": self.kind}
         if self.choices:
             payload["choices"] = self.choices[:40]
-        for name in ("minimum", "maximum", "min_length", "max_length", "item_key"):
+        for name in (
+            "minimum",
+            "maximum",
+            "step",
+            "integer_only",
+            "min_length",
+            "max_length",
+            "item_key",
+            "custom_item_key",
+            "custom_item_value",
+            "custom_item_max_length",
+        ):
             value = getattr(self, name)
             if value is not None:
                 payload[name] = value
         if self.is_list:
             payload["is_list"] = True
+        if self.minimum_exclusive:
+            payload["minimum_exclusive"] = True
+        if self.maximum_exclusive:
+            payload["maximum_exclusive"] = True
+        if self.custom_values_allowed:
+            payload["custom_values_allowed"] = True
+        if self.choices_are_suggestions:
+            payload["choices_are_suggestions"] = True
         if self.labels:
             payload["labels"] = {
                 value: self.labels[value] for value in payload.get("choices", [])
@@ -129,11 +167,11 @@ _CATALOG_LABELS: dict[str, dict[str, str]] = {
 #:
 #: These are the ones that produced "That answer is not valid for this detail":
 #: the model stores rows, not prose, so the interface has to build the rows.
-_STRUCTURED_ROWS: dict[str, tuple[str, str]] = {
-    # field path -> (nested model field name, its key on each row)
-    "hiring_process": ("hiring_process", "stage"),
-    "source_inputs": ("source_inputs", "type"),
-    "deliverables": ("deliverables", "type"),
+_STRUCTURED_ROWS: dict[str, tuple[str, str, str]] = {
+    # field path -> (nested model field, discriminator, custom-label key)
+    "hiring_process": ("hiring_process", "stage", "custom_label"),
+    "source_inputs": ("source_inputs", "type", "custom_label"),
+    "deliverables": ("deliverables", "type", "custom_type"),
 }
 
 
@@ -169,15 +207,25 @@ def _is_list(annotation: Any) -> bool:
     return False
 
 
-def _bounds(metadata: list[Any]) -> dict[str, Any]:
+def _bounds(
+    metadata: list[Any], *, integer_only: bool | None = None
+) -> dict[str, Any]:
     bounds: dict[str, Any] = {}
     for entry in metadata:
         if isinstance(entry, Gt):
-            bounds["minimum"] = float(entry.gt) + 1
+            bounds["minimum"] = (
+                float(entry.gt) + 1 if integer_only else float(entry.gt)
+            )
+            if not integer_only:
+                bounds["minimum_exclusive"] = True
         elif isinstance(entry, Ge):
             bounds["minimum"] = float(entry.ge)
         elif isinstance(entry, Lt):
-            bounds["maximum"] = float(entry.lt) - 1
+            bounds["maximum"] = (
+                float(entry.lt) - 1 if integer_only else float(entry.lt)
+            )
+            if not integer_only:
+                bounds["maximum_exclusive"] = True
         elif isinstance(entry, Le):
             bounds["maximum"] = float(entry.le)
         elif isinstance(entry, MinLen):
@@ -239,20 +287,49 @@ def answer_shape_for(field_path: str) -> AnswerShape:
     """Describe a valid answer for one field."""
 
     if field_path in _STRUCTURED_ROWS:
-        nested_field, key = _STRUCTURED_ROWS[field_path]
+        nested_field, key, custom_key = _STRUCTURED_ROWS[field_path]
         choices = [value for value in _row_choices(nested_field, key) if value != "other"]
         if choices:
             return AnswerShape(
-                kind="multi_choice", choices=choices, is_list=True, item_key=key
+                kind="multi_choice",
+                choices=choices,
+                is_list=True,
+                item_key=key,
+                custom_item_key=custom_key,
+                custom_item_value="other",
+                min_length=2,
+                custom_item_max_length=80,
+                custom_values_allowed=True,
+                choices_are_suggestions=True,
             )
 
     if field_path in _CATALOG_CHOICES:
         choices = list(_CATALOG_CHOICES[field_path])
         single = field_path in _SINGLE_VALUE_CATALOGS
+        # Experience is intentionally an open native string. Its four catalog
+        # bands are common shortcuts, while exact source values ("12–18 months",
+        # "5+ years") are both valid and more truthful. Catalog controls used by
+        # genuinely closed fields keep their old strict behavior.
+        experience_suggestions = field_path == "experience_level"
+        open_list_suggestions = field_path in {
+            "content_niches",
+            "formats_hired_for",
+        }
+        _native_choices, native_cap, _native_is_list = native_schema_constraints(field_path)
         return AnswerShape(
             kind="choice" if single else "multi_choice",
             choices=choices,
             is_list=not single,
+            min_length=2 if open_list_suggestions else None,
+            max_length=(
+                native_cap
+                if experience_suggestions
+                else 40
+                if open_list_suggestions
+                else None
+            ),
+            custom_values_allowed=experience_suggestions or open_list_suggestions,
+            choices_are_suggestions=experience_suggestions or open_list_suggestions,
             labels={
                 value: _CATALOG_LABELS.get(field_path, {}).get(value, _titlecase(value))
                 for value in choices
@@ -266,15 +343,6 @@ def answer_shape_for(field_path: str) -> AnswerShape:
     annotation = model_field.annotation
     is_list = _is_list(annotation)
     choices = [value for value in _literals(annotation) if value != "other"]
-    bounds = _bounds(list(model_field.metadata or []))
-
-    if choices:
-        return AnswerShape(
-            kind="multi_choice" if is_list else "choice",
-            choices=choices,
-            is_list=is_list,
-            **bounds,
-        )
 
     # No enum: fall back to the primitive the field stores. Annotated wrappers
     # carry the constraints, so they have to be unwrapped to reach the type.
@@ -289,6 +357,19 @@ def answer_shape_for(field_path: str) -> AnswerShape:
         if argument is not type(None)
     ]
     primitive = flattened[0] if flattened else unwrap(annotation)
+    integer_only = primitive is int
+    bounds = _bounds(
+        list(model_field.metadata or []),
+        integer_only=integer_only if primitive in (int, float, Decimal) else None,
+    )
+
+    if choices:
+        return AnswerShape(
+            kind="multi_choice" if is_list else "choice",
+            choices=choices,
+            is_list=is_list,
+            **bounds,
+        )
 
     # A yes/no field is two buttons, not a sentence. Checked before the numeric
     # branch because bool is a subclass of int and would otherwise be offered a
@@ -305,7 +386,15 @@ def answer_shape_for(field_path: str) -> AnswerShape:
     # Money is stored as Decimal, so a bare int/float check missed every
     # compensation field and left them without a numeric control.
     if primitive in (int, float, Decimal):
-        return AnswerShape(kind="number", is_list=is_list, **bounds)
+        return AnswerShape(
+            kind="number",
+            is_list=is_list,
+            integer_only=integer_only,
+            step=1 if integer_only else "any",
+            **bounds,
+        )
+    if field_path == "reference_videos":
+        return AnswerShape(kind="url", is_list=True, **bounds)
     if field_path.endswith("_url"):
         return AnswerShape(kind="url", is_list=is_list, **bounds)
     if field_path.endswith(("_at", "_date")):
@@ -317,6 +406,12 @@ def answer_shape_for(field_path: str) -> AnswerShape:
 
 _DESCRIPTIVE_LIST_FIELDS: Final[frozenset[str]] = frozenset(
     {"responsibilities", "requirements"}
+)
+_INTEGER_ANSWER_FIELDS: Final[frozenset[str]] = frozenset(
+    {"turnaround_value", "duration_value", "revision_rounds"}
+)
+_OPEN_CATALOG_LIST_FIELDS: Final[frozenset[str]] = frozenset(
+    {"content_niches", "formats_hired_for"}
 )
 _MEANINGLESS_PHRASES: Final[frozenset[str]] = frozenset(
     {
@@ -349,10 +444,159 @@ def conversation_answer_errors(field_path: str, value: object) -> list[str]:
     qualification, or start commitment.
     """
 
+    if (
+        value is None
+        or (isinstance(value, str) and not value.strip())
+        or (isinstance(value, (list, dict)) and not value)
+    ):
+        return ["Provide an answer before continuing."]
+
+    if field_path == "title" and isinstance(value, str) and len(value.strip()) < 3:
+        return ["Enter a job title with at least 3 characters."]
+
+    if (
+        field_path == "about_channel"
+        and isinstance(value, str)
+        and len(value.strip()) < 20
+    ):
+        return ["Add at least 20 characters about the channel or employer."]
+
+    if field_path in {"start_date", "deadline_at"}:
+        try:
+            if isinstance(value, str):
+                raw = value.strip().replace("Z", "+00:00")
+                parsed = (
+                    datetime.fromisoformat(raw)
+                    if "T" in raw or " " in raw
+                    else date.fromisoformat(raw)
+                )
+            else:
+                parsed = value
+        except ValueError:
+            return [
+                "Choose a valid application deadline."
+                if field_path == "deadline_at"
+                else "Choose a valid start date."
+            ]
+        if isinstance(parsed, datetime):
+            if field_path == "deadline_at":
+                comparable = (
+                    parsed.replace(tzinfo=UTC)
+                    if parsed.tzinfo is None
+                    else parsed.astimezone(UTC)
+                )
+                if comparable <= datetime.now(UTC):
+                    return ["Choose a future application deadline."]
+                return []
+            parsed = parsed.date()
+        if isinstance(parsed, date):
+            today = datetime.now(UTC).date()
+            if field_path == "deadline_at" and parsed <= today:
+                return ["Choose a future application deadline."]
+            if field_path == "start_date" and parsed < today:
+                return ["Choose today or a future start date."]
+        return []
+
+    if field_path in _INTEGER_ANSWER_FIELDS:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return ["Enter a whole number for this detail."]
+        return []
+
+    if field_path == "reference_videos":
+        if not isinstance(value, list) or not value:
+            return ["Add at least one reference video link."]
+        errors: list[str] = []
+        for index, item in enumerate(value):
+            try:
+                parsed = urlsplit(item) if isinstance(item, str) else None
+                hostname = parsed.hostname if parsed is not None else None
+            except ValueError:
+                parsed = None
+                hostname = None
+            if (
+                parsed is None
+                or parsed.scheme.casefold() not in {"http", "https"}
+                or not hostname
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                errors.append(
+                    f"Item {index + 1} must be a valid http or https link."
+                )
+        return errors
+
+    if field_path in _OPEN_CATALOG_LIST_FIELDS:
+        if not isinstance(value, list) or not value:
+            return ["Select or add at least one specific value."]
+        errors: list[str] = []
+        seen: set[str] = set()
+        for index, item in enumerate(value):
+            normalized = " ".join(item.split()).strip() if isinstance(item, str) else ""
+            folded = normalized.casefold()
+            phrase_key = re.sub(r"[^\w]+", " ", folded).strip()
+            if (
+                len(normalized) < 2
+                or len(normalized) > 40
+                or phrase_key in _MEANINGLESS_PHRASES
+            ):
+                errors.append(
+                    f"Item {index + 1} needs a specific 2–40 character value."
+                )
+            elif folded in seen:
+                errors.append(f"Item {index + 1} duplicates an earlier value.")
+            seen.add(folded)
+        return errors
+
     if field_path == "start_timeframe":
         if not isinstance(value, str) or value not in START_TIMEFRAME_CHOICES:
             return ["Select one of the available start timeframes."]
         return []
+
+    if field_path == "experience_level":
+        if not isinstance(value, str):
+            # Canonical field validation reports the type error.
+            return []
+        normalized = " ".join(value.split()).strip()
+        compact = "".join(character for character in normalized.casefold() if character.isalnum())
+        phrase_key = re.sub(r"[^\w]+", " ", normalized.casefold()).strip()
+        if (
+            not normalized
+            or len(normalized) > 64
+            or phrase_key in _MEANINGLESS_PHRASES
+            or re.search(r"(.)\1{4,}", compact)
+            or (len(compact) >= 8 and len(set(compact)) <= 3)
+            or normalize_experience_requirement(normalized) is None
+        ):
+            return [
+                "Enter a real experience requirement, such as 1–3 years, "
+                "12+ months, or no prior experience required."
+            ]
+        return []
+
+    custom_key = {
+        "deliverables": "custom_type",
+        "source_inputs": "custom_label",
+        "hiring_process": "custom_label",
+    }.get(field_path)
+    discriminator = "stage" if field_path == "hiring_process" else "type"
+    if custom_key is not None and isinstance(value, list):
+        errors: list[str] = []
+        for index, item in enumerate(value):
+            if not isinstance(item, dict) or item.get(discriminator) != "other":
+                continue
+            raw_label = item.get(custom_key)
+            normalized = " ".join(raw_label.split()).strip() if isinstance(raw_label, str) else ""
+            compact = "".join(character for character in normalized.casefold() if character.isalnum())
+            phrase_key = re.sub(r"[^\w]+", " ", normalized.casefold()).strip()
+            if (
+                len(normalized) < 2
+                or len(normalized) > 80
+                or phrase_key in _MEANINGLESS_PHRASES
+                or re.search(r"(.)\1{4,}", compact)
+                or (len(compact) >= 8 and len(set(compact)) <= 3)
+            ):
+                errors.append(f"Item {index + 1} needs a specific custom label.")
+        return errors
 
     if field_path not in _DESCRIPTIVE_LIST_FIELDS:
         return []

@@ -48,7 +48,10 @@ from typing import Final
 #: which is the portfolio mechanism the application form already renders.
 REQUIREMENT_KEYS: Final[tuple[str, ...]] = (
     "expected_rate",
+    "resume",
+    "cover_letter",
     "relevant_portfolio",
+    "fit_note",
     "turnaround",
     "working_hours",
     "relevant_experience",
@@ -56,11 +59,23 @@ REQUIREMENT_KEYS: Final[tuple[str, ...]] = (
     "start_availability",
 )
 
+_REQUIREMENT_KEY_SET: Final[frozenset[str]] = frozenset(REQUIREMENT_KEYS)
+
 #: Wording that names a standard detail, whatever grammar wraps it.
 _REQUIREMENT_PATTERNS: Final[tuple[tuple[str, str], ...]] = (
     ("expected_rate", r"\b(?:expected\s+)?(?:rate|rates|pricing|quote|budget expectation|fee|charges?)\b"),
-    ("relevant_portfolio", r"\b(?:portfolio|showreel|show\s?reel|demo\s?reel|work\s+samples?|samples?\s+of\s+(?:your\s+)?work)\b"),
-    ("relevant_portfolio", r"\b(?:cv|resume|résumé|curriculum\s+vitae)\b"),
+    ("resume", r"\b(?:cv|resume|résumé|curriculum\s+vitae)\b"),
+    (
+        "cover_letter",
+        r"\b(?:cover[\s-]+(?:letter|note)|motivation(?:al)?[\s-]+letter|"
+        r"letter\s+of\s+(?:interest|motivation)|statement\s+of\s+(?:interest|purpose))\b",
+    ),
+    ("relevant_portfolio", r"\b(?:portfolio|showreel|show\s?reel|demo\s?reel|reel|work\s+samples?|samples?\s+of\s+(?:your\s+)?work)\b"),
+    (
+        "fit_note",
+        r"\b(?:fit[\s-]+note|why\s+(?:you(?:'re|\s+are)|this\s+role)|"
+        r"why\s+you\s+(?:fit|are\s+a\s+fit))\b",
+    ),
     ("turnaround", r"\b(?:turnaround|turn\s?around|delivery\s+time|how\s+(?:quickly|fast))\b"),
     ("working_hours", r"\b(?:working\s+hours|work\s+hours|hours\s+(?:you|per)|time\s?zone|timezone|overlap)\b"),
     ("relevant_experience", r"\b(?:years?\s+of\s+experience|relevant\s+experience|prior\s+experience)\b"),
@@ -120,8 +135,27 @@ _MATERIAL_VERBS = re.compile(
     # Instagram work" is asking for the work; the verb is a destination, and
     # leaving it in produced "Please include DM your Instagram work" — a note
     # that both reads wrong and repeats the routing.
-    r"^\s*(?:please\s+)?(?:upload|attach|include|share|send|provide|submit|state|list|add"
-    r"|dm|whats-?app|message|text|ping|mail|e-?mail)\b",
+    r"^\s*(?:please\s+)?(?:we\s+would\s+like\s+to\s+see|we'?d\s+like\s+to\s+see|"
+    r"show\s+us|let\s+us\s+see|upload|attach|bring|enclose|include|share|send|"
+    r"provide|submit|complete|fill(?:\s+(?:out|in))?|forward|apply|contact|"
+    r"reach\s+out|email|get\s+in\s+touch|"
+    r"state|list|add|drop|dm|whats-?app|message|text|ping|mail|e-?mail)\b",
+    re.IGNORECASE,
+)
+
+# A source can request material without using an imperative: “Your YouTube
+# selected work would help us decide.”  That sentence is still an application
+# ask, but treating every “would help” sentence as one would turn ordinary fit
+# prose (“Your attention to detail would help us succeed”) into a required
+# attachment.  Keep this grammar narrow: the candidate owns the object and the
+# object is explicitly offered as evidence for a hiring decision.
+_DECLARATIVE_MATERIAL_REQUEST = re.compile(
+    r"^\s*(?:your|their|his|her|the\s+candidate'?s)\s+"
+    r"(?P<material>.+?)\s+"
+    r"(?:would|will|can|could)\s+help\s+"
+    r"(?:us|me|the\s+(?:hiring\s+)?team)\s+"
+    r"(?:decide|assess|evaluate|review)(?:\s+(?:your|their)\s+(?:application|fit))?"
+    r"[.!?]?\s*$",
     re.IGNORECASE,
 )
 
@@ -161,19 +195,64 @@ _DESCRIBES_THE_WORK = re.compile(
     re.IGNORECASE,
 )
 
+# Application vocabulary is ordinary work vocabulary too.  These noun/verb
+# collisions describe the job even though they contain words such as
+# ``portfolio``, ``cover letter`` or ``prior experience`` that the application
+# form also knows how to collect.  The boundary must prefer omission over
+# turning a responsibility into a candidate requirement.
+_RESPONSIBILITY_NOUN_COLLISION = re.compile(
+    r"^\s*(?:please\s+)?(?:"
+    r"provide\s+portfolio\s+(?:management|strategy|operations?|support|services?)|"
+    r"include\s+cover[\s-]+letter\s+(?:animations?|designs?|graphics?|"
+    r"layouts?|motion|sequences?|styles?|templates?)|"
+    r"apply\s+(?:your\s+)?(?:prior|relevant)\s+experience\s+to\s+"
+    r"(?:build|create|develop|edit|manage|produce|run)"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 def _describes_the_work(sentence: str) -> bool:
     """Whether a sentence describes the job rather than asking for material."""
 
-    return bool(_DESCRIBES_THE_WORK.search(sentence))
+    return bool(
+        _DESCRIBES_THE_WORK.search(sentence)
+        or _RESPONSIBILITY_NOUN_COLLISION.search(sentence)
+    )
 
 
 def _requirement_keys_in(sentence: str) -> list[str]:
     found: list[str] = []
     for key, pattern in _REQUIREMENT_PATTERNS:
-        if key not in found and re.search(pattern, sentence, re.IGNORECASE):
+        if (
+            key in _REQUIREMENT_KEY_SET
+            and key not in found
+            and re.search(pattern, sentence, re.IGNORECASE)
+        ):
             found.append(key)
     return found
+
+
+def sanitize_application_requirement_keys(values: object) -> list[str]:
+    """Keep only canonical job requirement keys, once and in source order.
+
+    Imported values are not trusted merely because they arrived in the field
+    named ``application_requirements``.  This function is intentionally strict:
+    prose, routing clauses, misspellings, and keys the candidate form cannot
+    render are all excluded rather than copied into a public job contract.
+    """
+
+    if not isinstance(values, (list, tuple)):
+        return []
+
+    sanitized: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        key = value.strip()
+        if key in _REQUIREMENT_KEY_SET and key not in sanitized:
+            sanitized.append(key)
+    return sanitized
 
 
 #: Platforms whose names carry information a generic requirement cannot.
@@ -240,6 +319,17 @@ _NAMES_NOTHING: Final[frozenset[str]] = frozenset(
 )
 
 
+def _material_object(sentence: str) -> str | None:
+    """Return the requested material from a supported request grammar."""
+
+    declarative = _DECLARATIVE_MATERIAL_REQUEST.match(sentence)
+    if declarative:
+        return declarative.group("material").strip().strip(".,;:") or None
+    if _MATERIAL_VERBS.match(sentence):
+        return _MATERIAL_VERBS.sub("", sentence.strip(), count=1)
+    return None
+
+
 def _unmatched_items(sentence: str) -> str | None:
     """The requested things in a sentence that no structured field can hold.
 
@@ -247,7 +337,9 @@ def _unmatched_items(sentence: str) -> str | None:
     behind "Please include …" alongside anything else that survived.
     """
 
-    body = _MATERIAL_VERBS.sub("", sentence.strip(), count=1)
+    body = _material_object(sentence)
+    if body is None:
+        return None
     body = re.sub(r"^(?:the\s+requested\s+|your\s+)", "", body, flags=re.IGNORECASE)
     body = re.sub(r"[.!?]+$", "", body).strip()
 
@@ -375,11 +467,20 @@ def classify_application_instructions(text: str | None) -> ClassifiedInstruction
                 questions.append(cleaned)
             continue
 
-        if len(re.findall(r"[A-Za-z]{2,}", sentence)) >= 3:
-            leftovers.append(sentence)
+        # Fail closed at the imported application boundary. Arbitrary prose in
+        # a provider's ``how_to_apply`` field is not automatically an
+        # application material: responsibilities and novel route imperatives
+        # are both ordinary sentences too. Only a transmission-shaped request
+        # can become candidate-facing residual material.
+        if _MATERIAL_VERBS.match(sentence) or _DECLARATIVE_MATERIAL_REQUEST.match(
+            sentence
+        ):
+            remainder = _unmatched_items(sentence)
+            if remainder:
+                leftovers.append(remainder)
 
     return ClassifiedInstructions(
-        requirement_keys=keys,
+        requirement_keys=sanitize_application_requirement_keys(keys),
         screening_questions=questions,
         unstructured_materials=leftovers,
     )

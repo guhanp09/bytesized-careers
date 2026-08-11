@@ -279,6 +279,11 @@ RECRUITER_OPENERS: tuple[str, ...] = (
 JOB_ANSWER_SETS: tuple[dict[str, object], ...] = (
     {
         "expected_rate": {"amount": "2,500", "unit": "per video"},
+        "resume": "https://resume.scenario.invalid/finance-editor",
+        "cover_letter": (
+            "I edit creator-led finance and education videos, and I can bring "
+            "that same retention judgement to this channel."
+        ),
         "turnaround": {"value": "4", "unit": "days"},
         "working_hours": "Evenings IST",
         "relevant_experience": "Finance and education channels, mostly long-form",

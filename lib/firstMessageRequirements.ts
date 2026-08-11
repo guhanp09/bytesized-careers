@@ -195,6 +195,30 @@ export const FIRST_MESSAGE_REQUIREMENTS: RequirementDef[] = [
     },
   },
   {
+    key: "resume",
+    answerType: "link",
+    icon: "file",
+    job: {
+      owner: "Resume or CV",
+      ownerHint: "A link to their current resume or CV.",
+      requester: "Resume or CV link",
+      placeholder: "https://…",
+      summary: "Resume",
+    },
+  },
+  {
+    key: "cover_letter",
+    answerType: "longText",
+    icon: "message-square-text",
+    job: {
+      owner: "Cover letter",
+      ownerHint: "A tailored note for this role.",
+      requester: "Cover letter",
+      placeholder: "Introduce yourself and explain why this role is a fit.",
+      summary: "Cover letter",
+    },
+  },
+  {
     key: "project_brief",
     answerType: "longText",
     icon: "file",

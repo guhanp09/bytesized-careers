@@ -1198,9 +1198,18 @@ async def test_nested_policy_evidence_and_canonical_normalization_are_enforced(
     source_inputs = next(
         field for field in sensitive["fields"] if field["field_path"] == "source_inputs"
     )
-    assert source_inputs["validation_errors"] == [
-        "Sensitive source access must be confirmed through an explicit recruiter edit."
-    ]
+    # The explicit source fact remains reviewable rather than disappearing as
+    # invalid, but provider output can never manufacture recruiter consent.
+    assert source_inputs["validation_errors"] == []
+    assert source_inputs["review_status"] == "pending"
+    assert source_inputs["requires_confirmation"] is True
+    assert source_inputs["proposed_value"][0]["sensitive_access_confirmed"] is False
+    assert (
+        source_inputs["provider_confidence"][
+            "sensitive_access_confirmation_required"
+        ]
+        is True
+    )
     assert (
         await client.patch(
             f"/api/v1/job-imports/drafts/{sensitive_draft['id']}/fields/source_inputs",

@@ -35,7 +35,9 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
+from app.core.job_import_body_sections import labelled_experience
 from app.core.job_import_compensation import StatedPay, owns_its_line, read_pay
+from app.core.job_import_title_signals import title_signals
 
 #: Label rows a job page prints, and the field each one settles.
 #:
@@ -47,10 +49,33 @@ _LABELS: Final[tuple[tuple[str, str], ...]] = (
     ("engagement", r"(?:job\s+type|employment\s+type|type|engagement)"),
 )
 
+#: Values allowed to follow a label separated only by whitespace. A colon,
+#: dash, or line break already proves the label boundary; plain whitespace does
+#: not. In that layout the value itself must begin like the field it claims to
+#: be, otherwise prefixes such as “Salary history” and “Engagement metrics”
+#: borrow authority from the first word.
+_UNDELIMITED_VALUE_START: Final[dict[str, str]] = {
+    "compensation": (
+        r"(?:[₹$€£]|(?-i:[A-Z]{3})\b|Rs\.?\b|\d|up\s+to\b|from\b|"
+        r"minimum\b|maximum\b|at\s+least\b|around\b|approximat(?:e|ely)\b)"
+    ),
+    "engagement": (
+        r"(?:intern(?:ship)?|freelance|contractor|contract|fixed[-_ ]term|"
+        r"part[-_ ]time|full[-_ ]time|retainer|permanent)\b"
+    ),
+}
+
+
 #: "Compensation ₹5,000 / mo" — label, then value, on one line or the next.
-def _label_pattern(label: str) -> re.Pattern[str]:
+def _label_pattern(name: str, label: str) -> re.Pattern[str]:
+    undelimited_start = _UNDELIMITED_VALUE_START[name]
     return re.compile(
-        rf"^[ \t]*{label}[ \t]*[:\-–]?[ \t]*\n?[ \t]*(?P<value>[^\n]{{1,120}})$",
+        # A label has to end before its value.  Making the delimiter optional
+        # let prefixes masquerade as labels: ``Salary history``, ``Engagement
+        # metrics`` and even ``TypeScript`` were all interpreted as offer facts.
+        rf"^[ \t]*{label}(?:(?:[ \t]*[:\-–—][ \t]*(?:\n[ \t]*)?)|"
+        rf"(?:[ \t]+(?={undelimited_start}))|(?:\n[ \t]*))"
+        rf"(?P<value>[^\n]{{1,120}})$",
         re.IGNORECASE | re.MULTILINE,
     )
 
@@ -62,6 +87,7 @@ _ENGAGEMENT_WORDS: Final[tuple[tuple[str, str], ...]] = (
     ("internship", "internship"),
     ("intern", "internship"),
     ("freelance", "ongoing_freelance"),
+    ("contractor", "ongoing_freelance"),
     # Both spellings of the same idea. "fixed-term" was missing while its
     # synonym "contract" was present, so a page using the more precise word got
     # nothing — the generated matrix found the asymmetry.
@@ -128,25 +154,35 @@ class LabelledFacts:
     """What the page printed under a label, in the product's own vocabulary."""
 
     engagement_type: str | None = None
-    budget_amount: int | None = None
+    budget_amount: float | None = None
     #: The upper end, when the page stated one. A page saying "up to ₹20,000"
     #: has named a ceiling and no floor, and the two are not the same fact.
-    budget_max: int | None = None
+    budget_max: float | None = None
     budget_currency: str | None = None
     budget_unit: str | None = None
     compensation_mode: str | None = None
+    #: A dedicated Experience row, in the same quantity the page stated.
+    experience_level: str | None = None
     #: The exact line each value came from, for evidence.
     evidence: dict[str, str] | None = None
+    #: Equal-authority labelled rows that disagree.  Values remain paired with
+    #: their exact source line so the service can create a real review choice.
+    conflicts: dict[str, tuple[tuple[object, str], ...]] | None = None
+    invalid_compensation_range: bool = False
 
 
 def _read_engagement(value: str) -> str | None:
-    lowered = value.casefold()
+    lowered = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    padded = f" {lowered} "
     # "Part-time / Freelance" names two. Freelance decides how the engagement is
     # structured; part-time only describes its volume, which weekly hours carry.
-    if "freelance" in lowered:
+    if " freelance " in padded or " contractor " in padded:
+        if any(f" {word} " in padded for word in ("intern", "internship", "retainer")):
+            return None
         return "ongoing_freelance"
     for word, engagement in _ENGAGEMENT_WORDS:
-        if word in lowered:
+        normalized_word = re.sub(r"[^a-z0-9]+", " ", word.casefold()).strip()
+        if f" {normalized_word} " in padded:
             return engagement
     return None
 
@@ -256,7 +292,7 @@ def _read_compensation(value: str) -> tuple[int, str, str] | None:
 #: the space instead of guessing at points in it, and a heading nobody has seen
 #: is still made of the same parts.
 _OTHER_JOBS_QUALIFIER = (
-    r"(?:similar|related|other|more|additional|recommended|suggested|featured|"
+    r"(?:similar|related|other|more|further|additional|recommended|suggested|featured|"
     r"latest|current|available|open|explore\s+more|browse|view\s+all|see\s+all|"
     r"people\s+also\s+viewed|you\s+m(?:ay|ight)\s+also\s+like|"
     r"(?:jobs?|roles?|careers?)\s+you\s+m(?:ay|ight)\s+like|"
@@ -307,8 +343,10 @@ _BODY_SECTION = re.compile(
 
 #: A labelled row of the kind a job card repeats.
 _LABELLED_ROW = re.compile(
-    r"^[ \t]*(?:compensation|salary|pay|stipend|budget|job\s+type|employment\s+type|"
-    r"type|engagement|location)[ \t]*[:\-–]",
+    r"^[ \t]*(?:(?:compensation|salary|pay|stipend|budget|job\s+type|"
+    r"employment\s+type|type|engagement|location)[ \t]*[:\-–—]|"
+    r"(?:required\s+)?experience(?:\s+(?:required|requirement|level))?"
+    r"[ \t]*(?:[:\-–—]|$))",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -359,7 +397,20 @@ def _first_neighbour_card(text: str) -> int | None:
         preceding = [line for line in preceding if line]
         if len(preceding) < 2:
             continue
-        if all(_looks_like_a_card_line(line) for line in preceding):
+        # The first short line must itself read as a creator-job title. Tool and
+        # skill lists are also pairs of short, punctuation-free lines ("Adobe
+        # Premiere" / "After Effects") and are commonly followed by the
+        # posting's own Experience row. Treating any two short lines as a second
+        # card cut that exact fact out of the primary job.
+        first_signals = title_signals(preceding[0])
+        first_is_job_title = bool(
+            first_signals.settled.get("primary_role_key")
+            or first_signals.suggested.get("primary_role_key")
+            or first_signals.suggested.get("primary_role_key_options")
+        )
+        if first_is_job_title and all(
+            _looks_like_a_card_line(line) for line in preceding
+        ):
             return offsets[max(0, index - len(preceding))]
     return None
 
@@ -413,26 +464,73 @@ def labelled_facts(normalized_text: str | None) -> LabelledFacts:
 
     found: dict[str, object] = {}
     evidence: dict[str, str] = {}
+    conflicts: dict[str, tuple[tuple[object, str], ...]] = {}
 
+    experience = labelled_experience(text)
+    if experience is not None:
+        found["experience_level"] = experience.value
+        evidence["experience_level"] = experience.evidence
+
+    saw_labelled_pay = False
+    invalid_compensation_range = False
     for name, label in _LABELS:
-        match = _label_pattern(label).search(text)
-        if not match:
+        matches = list(_label_pattern(name, label).finditer(text))
+        if not matches:
             continue
-        value = match.group("value").strip()
-        if not value:
-            continue
-
         if name == "engagement":
-            engagement = _read_engagement(value)
-            if engagement:
-                found["engagement_type"] = engagement
-                evidence["engagement_type"] = value
+            alternatives: list[tuple[object, str]] = []
+            for match in matches:
+                value = match.group("value").strip()
+                engagement = _read_engagement(value)
+                if engagement and engagement not in {item[0] for item in alternatives}:
+                    alternatives.append((engagement, value))
+            if len(alternatives) == 1:
+                found["engagement_type"] = alternatives[0][0]
+                evidence["engagement_type"] = alternatives[0][1]
+            elif len(alternatives) > 1:
+                conflicts["engagement_type"] = tuple(alternatives)
         elif name == "compensation":
-            stated = read_pay(value)
-            if stated:
-                _apply_pay(stated, found, evidence, value)
+            candidates: list[tuple[dict[str, object], str]] = []
+            for match in matches:
+                value = match.group("value").strip()
+                stated = read_pay(value)
+                if not stated:
+                    continue
+                if (
+                    stated.minimum is not None
+                    and stated.maximum is not None
+                    and stated.minimum > stated.maximum
+                ):
+                    invalid_compensation_range = True
+                current: dict[str, object] = {}
+                current_evidence: dict[str, str] = {}
+                _apply_pay(stated, current, current_evidence, match.group(0).strip())
+                if current:
+                    candidates.append((current, value))
+            saw_labelled_pay = bool(candidates)
+            if candidates:
+                evidence["compensation"] = candidates[0][1]
+            for field_path in (
+                "budget_amount",
+                "budget_max",
+                "budget_currency",
+                "budget_unit",
+                "compensation_mode",
+            ):
+                alternatives = []
+                for candidate, excerpt in candidates:
+                    if field_path not in candidate:
+                        continue
+                    value = candidate[field_path]
+                    if value not in {item[0] for item in alternatives}:
+                        alternatives.append((value, excerpt))
+                if len(alternatives) == 1:
+                    found[field_path] = alternatives[0][0]
+                    evidence[field_path] = alternatives[0][1]
+                elif len(alternatives) > 1:
+                    conflicts[field_path] = tuple(alternatives)
 
-    if "budget_amount" not in found and "budget_max" not in found:
+    if not saw_labelled_pay and "budget_amount" not in found and "budget_max" not in found:
         # No label carried the pay. Most boards print it as a bare line —
         # "Up to ₹20,000 a month" — which is how the reported listing was
         # missed entirely, and the label reader had no way to see it.
@@ -456,5 +554,8 @@ def labelled_facts(normalized_text: str | None) -> LabelledFacts:
         budget_currency=found.get("budget_currency"),  # type: ignore[arg-type]
         budget_unit=found.get("budget_unit"),  # type: ignore[arg-type]
         compensation_mode=found.get("compensation_mode"),  # type: ignore[arg-type]
+        experience_level=found.get("experience_level"),  # type: ignore[arg-type]
         evidence=evidence or None,
+        conflicts=conflicts or None,
+        invalid_compensation_range=invalid_compensation_range,
     )

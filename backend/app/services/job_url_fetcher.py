@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import math
@@ -9,11 +10,19 @@ import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from app.core.job_import_body_sections import (
+    experience_requirements_from_body,
+    has_conflicting_labelled_experience,
+    labelled_experience,
+    labelled_experience_requirements,
+    normalize_experience_requirement,
+)
 from app.core.job_page_evidence import classify_job_page
 from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
 
@@ -153,6 +162,57 @@ def _distinct_posting_titles(postings: list[dict[str, object]]) -> list[str]:
         if cleaned and cleaned.casefold() not in {t.casefold() for t in seen}:
             seen.append(cleaned)
     return seen[:20]
+
+
+def _posting_identity_fingerprints(postings: list[dict[str, object]]) -> list[str]:
+    """Stable identities for materially distinct JobPosting records.
+
+    Title-only deduplication treated two ``Video Editor`` openings at different
+    employers or locations as one job.  Prefer publisher identifiers/URLs; when
+    absent, fingerprint the bounded identity facts that distinguish postings.
+    Exact syndicated repeats still collapse.
+    """
+
+    fingerprints: list[str] = []
+    for posting in postings[:40]:
+        identifier = posting.get("identifier")
+        if isinstance(identifier, dict):
+            identifier = identifier.get("value") or identifier.get("name")
+        explicit = next(
+            (
+                _bounded_structured_text(value, 500)
+                for value in (posting.get("@id"), posting.get("url"), identifier)
+                if _bounded_structured_text(value, 500)
+            ),
+            None,
+        )
+        if explicit:
+            material: object = {"explicit": explicit}
+        else:
+            organization = posting.get("hiringOrganization")
+            employer = (
+                _bounded_structured_text(organization.get("name"), 255)
+                if isinstance(organization, dict)
+                else None
+            )
+            material = {
+                "title": _bounded_structured_text(posting.get("title"), 255),
+                "employer": employer,
+                "location": _structured_address(posting.get("jobLocation")),
+                "salary": _structured_compensation(posting.get("baseSalary")),
+                "date_posted": _bounded_structured_text(posting.get("datePosted"), 64),
+                "valid_through": _bounded_structured_text(posting.get("validThrough"), 64),
+            }
+        canonical = json.dumps(
+            material,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        if digest not in fingerprints:
+            fingerprints.append(digest)
+    return fingerprints
 
 
 def _safe_json_ld_job(value: object) -> dict[str, object] | None:
@@ -408,6 +468,18 @@ def _structured_address(value: object) -> str | None:
     return ", ".join(dict.fromkeys(part for part in parts if part)) or None
 
 
+def _structured_addresses(value: object) -> list[str]:
+    """Distinct structured locations, kept separate when a page offers many."""
+
+    raw_values = value if isinstance(value, list) else [value]
+    addresses: list[str] = []
+    for raw in raw_values[:8]:
+        address = _structured_address(raw)
+        if address and address.casefold() not in {item.casefold() for item in addresses}:
+            addresses.append(address[:500])
+    return addresses
+
+
 def _structured_location_requirement(value: object) -> str | None:
     if isinstance(value, list):
         values = [
@@ -419,6 +491,44 @@ def _structured_location_requirement(value: object) -> str | None:
     if not isinstance(value, dict):
         return None
     return _bounded_structured_text(value.get("name")) or _structured_address(value)
+
+
+def _structured_location_requirements(value: object) -> list[str]:
+    """Bounded geographic eligibility names from schema.org typed values."""
+
+    raw_values = value if isinstance(value, list) else [value]
+    requirements: list[str] = []
+    for raw in raw_values[:12]:
+        requirement = _structured_location_requirement(raw)
+        if not requirement:
+            continue
+        for part in requirement.split("|"):
+            cleaned = _bounded_structured_text(part, 120)
+            if cleaned and cleaned.casefold() not in {
+                item.casefold() for item in requirements
+            }:
+                requirements.append(cleaned)
+    return requirements[:12]
+
+
+def _numeric_text(value: object) -> str | None:
+    """A finite positive JSON number, including numeric strings, as written."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        raw = str(value)
+    elif isinstance(value, str):
+        raw = value.strip().replace(",", "")
+    else:
+        return None
+    try:
+        number = Decimal(raw)
+    except InvalidOperation:
+        return None
+    if not number.is_finite() or number <= 0:
+        return None
+    return format(number, "f")
 
 
 def _structured_compensation(value: object) -> str | None:
@@ -434,23 +544,23 @@ def _structured_compensation(value: object) -> str | None:
     unit = _bounded_structured_text(value.get("unitText"), 32)
     raw_amount = value.get("value")
     amount: str | None = None
-    if isinstance(raw_amount, (int, float)) and not isinstance(raw_amount, bool):
-        amount = str(raw_amount)
+    if (single_amount := _numeric_text(raw_amount)) is not None:
+        amount = single_amount
     elif isinstance(raw_amount, dict):
-        minimum = raw_amount.get("minValue")
-        maximum = raw_amount.get("maxValue")
-        if isinstance(minimum, (int, float)) and not isinstance(minimum, bool):
-            amount = str(minimum)
-            if isinstance(maximum, (int, float)) and not isinstance(maximum, bool):
-                amount = f"{amount}-{maximum}"
+        minimum = _numeric_text(raw_amount.get("minValue"))
+        maximum = _numeric_text(raw_amount.get("maxValue"))
+        if minimum is not None and maximum is not None:
+            amount = f"{minimum}-{maximum}"
+        elif minimum is not None:
+            amount = f"minimum {minimum}"
+        elif maximum is not None:
+            amount = f"maximum {maximum}"
         else:
             # A single figure lives in `value`, not `minValue`. Reading only the
             # range keys dropped the amount from every page that states one
             # salary — the common case — leaving currency and period behind and
             # the recruiter asked to supply a number the page had printed.
-            single = raw_amount.get("value")
-            if isinstance(single, (int, float)) and not isinstance(single, bool):
-                amount = str(single)
+            amount = _numeric_text(raw_amount.get("value"))
         unit = unit or _bounded_structured_text(raw_amount.get("unitText"), 32)
     parts = [currency, amount, f"per {unit}" if unit else None]
     return " ".join(part for part in parts if part) or None
@@ -477,6 +587,32 @@ def _bounded_structured_values(
     return ", ".join(values)[:maximum_total_length] or None
 
 
+def _bounded_structured_list(
+    value: object,
+    *,
+    maximum_items: int = 8,
+    maximum_item_length: int = 300,
+) -> list[str]:
+    """HTML-safe, bounded list values from standard JobPosting properties."""
+
+    raw_values = value if isinstance(value, list) else [value]
+    items: list[str] = []
+    for raw in raw_values[:maximum_items]:
+        if not isinstance(raw, str):
+            continue
+        readable = _strip_html_fragment(raw)
+        for line in readable.splitlines():
+            cleaned = re.sub(r"^(?:[-*•–—]+|\d+[.)])\s*", "", _clean_text(line)).strip()
+            if not cleaned:
+                continue
+            bounded = cleaned[:maximum_item_length]
+            if bounded.casefold() not in {item.casefold() for item in items}:
+                items.append(bounded)
+            if len(items) >= maximum_items:
+                return items
+    return items
+
+
 _EXPLICIT_EXPERIENCE_RANGE = re.compile(
     r"\b(?P<minimum>\d{1,2})\s*(?:-|\u2013|\u2014|to)\s*"
     r"(?P<maximum>\d{1,2})\s+years?\s+of(?:\s+[\w-]+){0,3}\s+experience\b",
@@ -486,16 +622,53 @@ _EXPLICIT_EXPERIENCE_RANGE = re.compile(
 
 def _structured_experience_requirement(job_posting: dict[str, object]) -> str | None:
     description = job_posting.get("description")
+    prose: tuple[str, ...] = ()
     if isinstance(description, str):
         readable_description = _strip_html_fragment(description)
-        match = _EXPLICIT_EXPERIENCE_RANGE.search(readable_description)
-        if match is not None:
-            minimum = int(match.group("minimum"))
-            maximum = int(match.group("maximum"))
-            if 0 <= minimum <= maximum <= 60:
-                return f"{minimum}\u2013{maximum} years of experience"
+        # A dedicated Experience row is the publisher's field-level statement.
+        # Prefer it to a later prose sentence: the SimplyHired-shaped regression
+        # printed "Experience: 1 to 2 yrs" in its facts, then described an ideal
+        # candidate as having "1–3 years" below. The old broad search skipped the
+        # abbreviation and promoted the weaker prose into Structured experience.
+        labelled = labelled_experience(readable_description)
+        if labelled is not None:
+            if re.search(r"\b(?:years?|months?)$", labelled.value, re.IGNORECASE):
+                return f"{labelled.value} of experience"
+            return labelled.value
+        if has_conflicting_labelled_experience(readable_description):
+            # Comparable dedicated rows are a genuine conflict. Never replace
+            # both with a weaker prose range merely because the singular helper
+            # correctly declined to choose between them.
+            return None
+        prose = experience_requirements_from_body(readable_description)
+        if len(prose) > 1:
+            return None
 
     requirement = job_posting.get("experienceRequirements")
+    if isinstance(requirement, str):
+        readable = _strip_html_fragment(requirement)
+        direct = normalize_experience_requirement(readable)
+        if direct:
+            return (
+                f"{direct} of experience"
+                if re.search(r"\b(?:years?|months?)$", direct, re.IGNORECASE)
+                else direct
+            )
+        prose = experience_requirements_from_body(readable)
+        if len(prose) == 1:
+            return f"{prose[0]} of experience"
+        description_prose = experience_requirements_from_body(
+            _strip_html_fragment(description) if isinstance(description, str) else ""
+        )
+        return (
+            f"{description_prose[0]} of experience"
+            if len(description_prose) == 1
+            else None
+        )
+    if len(prose) == 1:
+        # Explicit wording in the employer's description outranks a mechanical
+        # month floor, which can be a board-generated approximation.
+        return f"{prose[0]} of experience"
     if not isinstance(requirement, dict):
         return None
     months = requirement.get("monthsOfExperience")
@@ -509,6 +682,30 @@ def _structured_experience_requirement(job_posting: dict[str, object]) -> str | 
     ):
         return None
     return f"At least {int(months)} months of experience"
+
+
+def _structured_experience_conflicts(job_posting: dict[str, object]) -> list[str]:
+    """Comparable explicit experience claims that disagree."""
+
+    description = job_posting.get("description")
+    if isinstance(description, str):
+        readable = _strip_html_fragment(description)
+        labelled = labelled_experience_requirements(readable)
+        if len(labelled) > 1:
+            return [row.value for row in labelled][:8]
+        if labelled:
+            return []
+        prose = list(experience_requirements_from_body(readable))
+    else:
+        prose = []
+    requirement = job_posting.get("experienceRequirements")
+    if isinstance(requirement, str):
+        readable = _strip_html_fragment(requirement)
+        direct = normalize_experience_requirement(readable)
+        direct_values = [direct] if direct else list(experience_requirements_from_body(readable))
+        combined = list(dict.fromkeys([*direct_values, *prose]))
+        return combined[:8] if len(combined) > 1 else []
+    return prose[:8] if len(prose) > 1 else []
 
 
 _RESPONSIBILITY_HEADINGS = frozenset(
@@ -531,21 +728,34 @@ _QUALIFICATION_HEADINGS = frozenset(
         "requirements",
         "job requirements",
         "candidate requirements",
+        "required skills",
+        "skills required",
+        "must have skills",
         "skills and qualifications",
+        "requirements and qualifications",
+        "requirements qualifications",
+        "qualifications and requirements",
+        "qualifications requirements",
         "what we are looking for",
         "what were looking for",
     }
 )
-_SECTION_STOP_PREFIXES = (
-    "about ",
-    "apply ",
-    "benefits",
-    "how to apply",
-    "if you ",
-    "please note",
-    "to apply",
-    "we encourage",
-    "what we offer",
+_PREFERRED_QUALIFICATION_HEADINGS = frozenset(
+    {
+        "preferred skills",
+        "preferred skills optional",
+        "preferred qualifications",
+        "preferred qualifications optional",
+        "nice to have",
+    }
+)
+_APPLICATION_ROUTE_LINE = re.compile(
+    r"^(?:apply\s+(?:now|here|at|via|online|by|through|using)\b|to\s+apply\b)",
+    re.IGNORECASE,
+)
+_PREFERRED_QUALIFIER = re.compile(
+    r"\b(?:preferred|optional|nice\s+to\s+have|bonus|ideally|helpful)\b",
+    re.IGNORECASE,
 )
 _SECTION_BOUNDARY_HEADINGS = frozenset(
     {
@@ -579,6 +789,8 @@ def _description_section(value: str) -> tuple[str, str | None] | None:
         section = "responsibilities"
     elif normalized in _QUALIFICATION_HEADINGS:
         section = "qualifications"
+    elif normalized in _PREFERRED_QUALIFICATION_HEADINGS:
+        section = "preferred_qualifications"
     else:
         return None
     inline_value = remainder.strip() if separator else ""
@@ -595,19 +807,54 @@ def _description_section_boundary(value: str) -> bool:
     )
 
 
+_INLINE_DESCRIPTION_BOUNDARY = re.compile(
+    r"\b(?:key\s+responsibilities|responsibilities|"
+    r"requirements(?:\s*&\s*qualifications)?|"
+    r"qualifications(?:\s*&\s*requirements)?|"
+    r"preferred\s+(?:skills|qualifications)|nice\s+to\s+have|"
+    r"salary|compensation|how\s+to\s+apply)\s*:",
+    re.IGNORECASE,
+)
+
+
+def _description_lines(readable: str) -> list[str]:
+    """Physical lines plus labelled clauses embedded on one minified line."""
+
+    lines: list[str] = []
+    for physical in readable.splitlines():
+        cleaned = _clean_text(physical)
+        if not cleaned:
+            continue
+        matches = list(_INLINE_DESCRIPTION_BOUNDARY.finditer(cleaned))
+        starts = [match.start() for match in matches]
+        if not starts:
+            lines.append(cleaned)
+            continue
+        if starts and starts[0] > 0:
+            starts.insert(0, 0)
+        clauses = [
+            _clean_text(cleaned[start:end])
+            for start, end in zip(starts, [*starts[1:], len(cleaned)], strict=True)
+            if _clean_text(cleaned[start:end])
+        ]
+        lines.extend(clauses or [cleaned])
+    return lines
+
+
 def _structured_description_context(description: object) -> dict[str, object]:
     """Keep bounded, labelled facts from the JobPosting description itself."""
 
     if not isinstance(description, str):
         return {}
     readable = _strip_html_fragment(description)
-    lines = [_clean_text(line) for line in readable.splitlines() if _clean_text(line)]
+    lines = _description_lines(readable)
     if not lines:
         return {}
 
     summary_lines: list[str] = []
     responsibilities: list[str] = []
     qualifications: list[str] = []
+    preferred_qualifications: list[str] = []
     active_section: str | None = None
     saw_section = False
     for raw_line in lines:
@@ -625,8 +872,7 @@ def _structured_description_context(description: object) -> dict[str, object]:
         cleaned = re.sub(r"^(?:[-*•–—]+|\d+[.)])\s*", "", raw_line).strip()
         if not cleaned:
             continue
-        lowered = cleaned.casefold()
-        if active_section is not None and lowered.startswith(_SECTION_STOP_PREFIXES):
+        if active_section is not None and _APPLICATION_ROUTE_LINE.match(cleaned):
             active_section = None
             continue
         if active_section == "responsibilities":
@@ -638,12 +884,25 @@ def _structured_description_context(description: object) -> dict[str, object]:
                     responsibilities.append(bounded)
             continue
         if active_section == "qualifications":
-            if len(qualifications) < 5:
+            target = (
+                preferred_qualifications
+                if _PREFERRED_QUALIFIER.search(cleaned)
+                else qualifications
+            )
+            if len(target) < 5:
                 bounded = _bounded_structured_text(cleaned, 300)
                 if bounded and bounded.casefold() not in {
-                    item.casefold() for item in qualifications
+                    item.casefold() for item in target
                 }:
-                    qualifications.append(bounded)
+                    target.append(bounded)
+            continue
+        if active_section == "preferred_qualifications":
+            if len(preferred_qualifications) < 5:
+                bounded = _bounded_structured_text(cleaned, 300)
+                if bounded and bounded.casefold() not in {
+                    item.casefold() for item in preferred_qualifications
+                }:
+                    preferred_qualifications.append(bounded)
             continue
         if not saw_section and len(summary_lines) < 3:
             summary_lines.append(cleaned)
@@ -656,7 +915,34 @@ def _structured_description_context(description: object) -> dict[str, object]:
         context["responsibilities"] = responsibilities
     if qualifications:
         context["qualifications"] = qualifications
+    if preferred_qualifications:
+        context["preferred_qualifications"] = preferred_qualifications
     return context
+
+
+_EXPLICIT_REMOTE_DESCRIPTION = re.compile(
+    r"\b(?:fully\s+remote|100\s*%\s*remote|remote\s+(?:job|role|position)|"
+    r"work\s+from\s+home|wfh)\b",
+    re.IGNORECASE,
+)
+_REMOTE_AREA_DESCRIPTION = re.compile(
+    r"\b(?:remote|work\s+from\s+home|wfh)\s*"
+    r"(?:(?:only\s+)?(?:in|from|within)\s+|[-:–—]\s*|\s+)"
+    r"(?P<area>[A-Za-z][A-Za-z .'/+-]{1,60})(?=$|[.;,])",
+    re.IGNORECASE,
+)
+
+
+def _merge_context_items(context: dict[str, object], key: str, additions: list[str]) -> None:
+    current = context.get(key)
+    values = list(current) if isinstance(current, list) else []
+    for item in additions:
+        if item.casefold() not in {existing.casefold() for existing in values}:
+            values.append(item)
+        if len(values) >= 8:
+            break
+    if values:
+        context[key] = values
 
 
 def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, object]:
@@ -666,7 +952,23 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, obj
     job_title = _bounded_structured_text(job_posting.get("title"), 255)
     if job_title:
         context["job_title"] = job_title
-    context.update(_structured_description_context(job_posting.get("description")))
+    description = job_posting.get("description")
+    context.update(_structured_description_context(description))
+
+    # schema.org exposes these as first-class JobPosting properties.  They are
+    # publisher-owned facts, not hints, and must survive even when the prose
+    # description uses no headings at all.
+    direct_responsibilities = _bounded_structured_list(job_posting.get("responsibilities"))
+    if direct_responsibilities:
+        _merge_context_items(context, "responsibilities", direct_responsibilities)
+    direct_qualifications = _bounded_structured_list(job_posting.get("qualifications"))
+    if direct_qualifications:
+        required: list[str] = []
+        preferred: list[str] = []
+        for item in direct_qualifications:
+            (preferred if _PREFERRED_QUALIFIER.search(item) else required).append(item)
+        _merge_context_items(context, "qualifications", required)
+        _merge_context_items(context, "preferred_qualifications", preferred)
     organization = job_posting.get("hiringOrganization")
     if isinstance(organization, dict):
         employer = _bounded_structured_text(organization.get("name"))
@@ -683,15 +985,31 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, obj
             context["employer_location"] = employer_location
         if about_summary:
             context["about_summary"] = about_summary
-    role_location = _structured_address(job_posting.get("jobLocation"))
-    if role_location:
-        context["role_location"] = role_location
-    remote_eligibility = _structured_location_requirement(
+    role_locations = _structured_addresses(job_posting.get("jobLocation"))
+    if len(role_locations) == 1:
+        context["role_location"] = role_locations[0]
+    elif role_locations:
+        context["role_locations"] = role_locations
+    remote_requirements = _structured_location_requirements(
         job_posting.get("applicantLocationRequirements")
     )
-    if remote_eligibility:
-        context["remote_eligibility"] = remote_eligibility
+    if remote_requirements:
+        context["remote_eligibility"] = " | ".join(remote_requirements)[:500]
+        # Typed Country/AdministrativeArea names are safe geographic labels.
+        # Keep the individual values so a scalar join never hides a choice.
+        context["remote_eligibility_areas"] = remote_requirements
     location_type = _bounded_structured_text(job_posting.get("jobLocationType"), 64)
+    readable_description = (
+        _strip_html_fragment(description) if isinstance(description, str) else ""
+    )
+    if not location_type and _EXPLICIT_REMOTE_DESCRIPTION.search(readable_description):
+        location_type = "TELECOMMUTE"
+    if "remote_eligibility" not in context:
+        area_match = _REMOTE_AREA_DESCRIPTION.search(readable_description)
+        if area_match:
+            area = _bounded_structured_text(area_match.group("area"), 120)
+            if area:
+                context["remote_eligibility"] = area
     if location_type:
         context["location_type"] = location_type
     employment = job_posting.get("employmentType")
@@ -715,6 +1033,17 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, obj
     experience_requirement = _structured_experience_requirement(job_posting)
     if experience_requirement:
         context["experience_requirement"] = experience_requirement
+    experience_conflicts = _structured_experience_conflicts(job_posting)
+    if experience_conflicts:
+        context["experience_requirement_conflicts"] = experience_conflicts
+    for source_key, context_key, maximum in (
+        ("workHours", "work_hours", 160),
+        ("validThrough", "valid_through", 64),
+        ("jobStartDate", "job_start_date", 64),
+    ):
+        value = _bounded_structured_text(job_posting.get(source_key), maximum)
+        if value:
+            context[context_key] = value
     return context
 
 
@@ -725,16 +1054,23 @@ def _structured_context_lines(context: dict[str, object]) -> list[str]:
         "about_summary": "Structured employer summary",
         "responsibilities": "Structured responsibility",
         "qualifications": "Structured qualification",
+        "preferred_qualifications": "Structured preferred qualification",
         "employer_name": "Structured employer",
         "employer_location": "Structured employer location",
         "role_location": "Structured role location",
+        "role_locations": "Structured role location",
         "remote_eligibility": "Structured remote eligibility",
+        "remote_eligibility_areas": "Structured remote eligibility",
         "location_type": "Structured work location type",
         "employment_type": "Structured employment type",
         "compensation": "Structured compensation",
         "industry": "Structured industry",
         "skills": "Structured skills",
         "experience_requirement": "Structured experience requirement",
+        "experience_requirement_conflicts": "Structured conflicting experience requirement",
+        "work_hours": "Structured work hours",
+        "valid_through": "Structured application valid through",
+        "job_start_date": "Structured job start date",
     }
     lines: list[str] = []
     for key, value in context.items():
@@ -827,6 +1163,7 @@ def normalize_public_job_html(
         "canonical_url": canonical_url,
         "json_ld_job_posting": parser.job_posting is not None,
         "json_ld_job_titles": _distinct_posting_titles(parser.job_postings),
+        "json_ld_job_identities": _posting_identity_fingerprints(parser.job_postings),
         "structured_title_found": structured_title is not None,
         "structured_context": structured_context,
     }
@@ -1133,6 +1470,7 @@ class PublicJobUrlFetcher:
                 evidence = classify_job_page(
                     normalized,
                     declared_job_titles=metadata.get("json_ld_job_titles") or [],
+                    declared_job_identities=metadata.get("json_ld_job_identities") or [],
                 )
                 metadata["page_classification"] = evidence.classification
                 metadata["page_classification_reason"] = evidence.reason

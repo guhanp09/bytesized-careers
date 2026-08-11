@@ -385,7 +385,14 @@ test("structured fields are picked, never typed", async () => {
 });
 
 test("picked keys are shaped into exactly what the model stores", async () => {
-  const { shapeMultiSelect } = await import("../lib/jobImportAnswerOptions.ts");
+  const {
+    shapeCustomStructuredAnswer,
+    shapeMultiSelect,
+    shapeStructuredAnswer,
+    shapeStructuredCandidateAnswer,
+    structuredAnswerNeedsSensitiveConfirmation,
+  } =
+    await import("../lib/jobImportAnswerOptions.ts");
   assert.deepEqual(shapeMultiSelect("hiring_process", ["interview", "offer"]), [
     { stage: "interview" },
     { stage: "offer" },
@@ -393,18 +400,250 @@ test("picked keys are shaped into exactly what the model stores", async () => {
   assert.deepEqual(shapeMultiSelect("source_inputs", ["raw_footage"]), [
     { type: "raw_footage" },
   ]);
-  const deliverable = shapeMultiSelect("deliverables", ["long_form_video"])[0];
-  assert.equal(deliverable.type, "long_form_video");
-  assert.equal(typeof deliverable.quantity, "number");
-  assert.ok(deliverable.frequency);
+  assert.equal(
+    shapeMultiSelect("source_inputs", ["analytics_access"]),
+    null,
+    "sensitive access cannot be asserted without the recruiter's confirmation"
+  );
+  assert.deepEqual(
+    shapeMultiSelect("source_inputs", ["analytics_access"], {
+      sensitiveAccessConfirmed: true,
+    }),
+    [{ type: "analytics_access", sensitive_access_confirmed: true }]
+  );
+  assert.equal(
+    shapeMultiSelect("deliverables", ["long_form_video"]),
+    null,
+    "the assistant must not invent a quantity or cadence"
+  );
+  assert.deepEqual(
+    shapeMultiSelect("deliverables", ["long_form_video"], {
+      deliverables: {
+        long_form_video: { quantity: "4", frequency: "per_week" },
+      },
+    }),
+    [{ type: "long_form_video", quantity: 4, frequency: "per_week" }]
+  );
+  assert.deepEqual(
+    shapeCustomStructuredAnswer("hiring_process", "Creative director chat"),
+    [{ stage: "other", custom_label: "Creative director chat" }][0]
+  );
+  assert.deepEqual(
+    shapeCustomStructuredAnswer("deliverables", "Sponsor cutdown", {
+      deliverables: {
+        __custom__: {
+          quantity: 2,
+          frequency: "other",
+          customFrequency: "Every fortnight",
+        },
+      },
+    }),
+    {
+      type: "other",
+      custom_type: "Sponsor cutdown",
+      quantity: 2,
+      frequency: "other",
+      custom_frequency: "Every fortnight",
+    }
+  );
+  assert.equal(
+    shapeMultiSelect("hiring_process", ["invented_stage"]),
+    null,
+    "a stale or unknown stage must not become a persisted row"
+  );
+  assert.equal(
+    shapeMultiSelect("source_inputs", ["raw_footage", "invented_input"]),
+    null
+  );
+  assert.equal(
+    shapeMultiSelect("deliverables", ["invented_deliverable"], {
+      deliverables: {
+        invented_deliverable: { quantity: 1, frequency: "per_week" },
+      },
+    }),
+    null
+  );
+  assert.deepEqual(
+    shapeMultiSelect("hiring_process", ["interview", "interview"]),
+    [{ stage: "interview" }],
+    "duplicate chips must not create duplicate process stages"
+  );
+  assert.equal(
+    shapeCustomStructuredAnswer("deliverables", "Sponsor cutdown", {
+      deliverables: {
+        __custom__: { quantity: 2, frequency: "other", customFrequency: "TBD" },
+      },
+    }),
+    null,
+    "a custom cadence still has to be a real business value"
+  );
+
+  const groundedDeliverable = [
+    { type: "long_form_video", quantity: 4, frequency: "per_month" },
+  ];
+  assert.deepEqual(
+    shapeStructuredAnswer("deliverables", groundedDeliverable),
+    groundedDeliverable
+  );
+  assert.equal(
+    shapeStructuredAnswer("deliverables", [{ type: "long_form_video" }]),
+    null,
+    "one-click provider suggestions cannot bypass quantity and cadence"
+  );
+  const sensitiveSuggestion = [
+    { type: "account_access", sensitive_access_confirmed: true },
+  ];
+  assert.equal(
+    structuredAnswerNeedsSensitiveConfirmation("source_inputs", sensitiveSuggestion),
+    true
+  );
+  assert.equal(
+    shapeStructuredAnswer("source_inputs", sensitiveSuggestion),
+    null,
+    "a provider-supplied flag is not recruiter consent"
+  );
+  assert.deepEqual(
+    shapeStructuredAnswer("source_inputs", sensitiveSuggestion, {
+      sensitiveAccessConfirmed: true,
+    }),
+    [{ type: "account_access", sensitive_access_confirmed: true }]
+  );
+  assert.equal(
+    shapeStructuredCandidateAnswer("source_inputs", ["account_access"]),
+    null,
+    "compact suggestions cannot bypass sensitive-access confirmation either"
+  );
+  assert.deepEqual(
+    shapeStructuredCandidateAnswer(
+      "source_inputs",
+      ["raw_footage", "raw_footage"],
+      { sensitiveAccessConfirmed: false }
+    ),
+    [{ type: "raw_footage" }]
+  );
+  assert.equal(
+    shapeCustomStructuredAnswer("source_inputs", "YouTube account access"),
+    null,
+    "custom wording cannot bypass sensitive-access confirmation"
+  );
+  assert.deepEqual(
+    shapeCustomStructuredAnswer("source_inputs", "YouTube account access", {
+      sensitiveAccessConfirmed: true,
+    }),
+    {
+      type: "other",
+      custom_label: "YouTube account access",
+      sensitive_access_confirmed: true,
+    }
+  );
+  assert.equal(shapeCustomStructuredAnswer("hiring_process", "x"), null);
+  assert.equal(shapeCustomStructuredAnswer("source_inputs", "x"), null);
+});
+
+test("ordinary multi-choice answers stay unique and preserve bounded custom values", async () => {
+  const { shapeStringMultiSelect } = await import(
+    "../lib/jobImportAnswerOptions.ts"
+  );
+
+  assert.deepEqual(
+    shapeStringMultiSelect(
+      ["Education", "education", "Documentary"],
+      "  Science   communication  "
+    ),
+    ["Education", "Documentary", "Science communication"]
+  );
+  assert.deepEqual(shapeStringMultiSelect(["Education"], "education"), [
+    "Education",
+  ]);
+  assert.equal(shapeStringMultiSelect([], "x"), null);
+  assert.equal(shapeStringMultiSelect([], "test"), null);
+
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /const isStringMulti = isMulti && !shape\?\.item_key/);
+  assert.match(turn, /shapeStringChoiceAnswer\(picked\)/);
+  assert.match(turn, /shapeStringChoiceAnswer\(picked, trimmed\)/);
+  assert.match(turn, /const recommendedOpenStringMulti =/);
+  assert.match(turn, /shapeStringMultiSelect\(question\.recommended_value\)/);
+  assert.doesNotMatch(
+    turn,
+    /const isStructuredMulti = isMulti \|\|/,
+    "ordinary string lists must not be shaped as structured rows"
+  );
+});
+
+test("numeric and URL answers are rejected locally before submit", async () => {
+  const { isHttpUrlAnswer, numericAnswerError, shapeHttpUrlList } = await import(
+    "../lib/jobImportAnswerOptions.ts"
+  );
+
+  assert.equal(numericAnswerError("1.5", { integer_only: true, step: 1 }), "Enter a whole number.");
+  assert.equal(numericAnswerError("2", { integer_only: true, step: 1 }), null);
+  assert.equal(
+    numericAnswerError("0.5", {
+      minimum: 0,
+      minimum_exclusive: true,
+      integer_only: false,
+      step: "any",
+    }),
+    null
+  );
+  assert.equal(
+    typeof numericAnswerError("0", {
+      minimum: 0,
+      minimum_exclusive: true,
+      integer_only: false,
+      step: "any",
+    }),
+    "string"
+  );
+
+  assert.equal(isHttpUrlAnswer("https://youtube.com/watch?v=example"), true);
+  assert.equal(isHttpUrlAnswer("http://example.com/video"), true);
+  assert.equal(isHttpUrlAnswer("ftp://example.com/video"), false);
+  assert.equal(isHttpUrlAnswer("not a URL"), false);
+  assert.equal(isHttpUrlAnswer("https://user:secret@example.com/video"), false);
+  assert.deepEqual(
+    shapeHttpUrlList([
+      "https://example.com/reference",
+      "https://example.com/reference",
+    ]),
+    ["https://example.com/reference"]
+  );
+  assert.equal(shapeHttpUrlList(["https://example.com", "ftp://example.com"]), null);
+  assert.equal(shapeHttpUrlList([{ url: "https://example.com" }]), null);
+
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  assert.match(turn, /numericAnswerError\(trimmed, \{/);
+  assert.match(turn, /isHttpUrlAnswer\(trimmed\)/);
+  assert.match(turn, /shapeHttpUrlList\(question\.suggested_value\)/);
+  assert.match(turn, /integerOnly[\s\S]{0,80}\? "numeric"[\s\S]{0,80}: "decimal"/);
+  assert.match(turn, /INTEGER_NUMBER_FIELDS\.has\(question\.field_path\)/);
+});
+
+test("start-date floor uses the recruiter's local calendar rather than UTC", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  const helper = turn.slice(turn.indexOf("function todayIso"), turn.indexOf("function shapeAnswer"));
+
+  assert.match(helper, /getFullYear\(\)/);
+  assert.match(helper, /getMonth\(\)/);
+  assert.match(helper, /getDate\(\)/);
+  assert.doesNotMatch(helper, /toISOString\(\)/);
+  assert.match(turn, /question\.field_path === "deadline_at"[\s\S]{0,80}todayIso\(1\)/);
+  assert.match(turn, /min=\{dateMinimum\}/);
 });
 
 test("grounded list suggestions can be accepted without redoing the extraction", () => {
   const turn = read("components/import-job/assistant/ConversationTurn.tsx");
   assert.match(turn, /const recommendedMulti =/);
+  assert.match(turn, /const recommendedStructured =/);
   assert.match(turn, /conversation-accept-multi-recommendation/);
-  assert.match(turn, /recommendedMulti\.map\(labelFor\)\.join\(", "\)/);
+  assert.match(turn, /conversation-accept-structured-recommendation/);
+  assert.match(turn, /displayValue\(shapedRecommended\)/);
   assert.match(turn, /matches your post/);
+  assert.doesNotMatch(turn, /quantity:\s*1[\s\S]{0,80}frequency:\s*["']per_month/);
+  assert.match(turn, /conversation-sensitive-access-confirmation/);
+  assert.match(turn, /shapeStructuredAnswer/);
+  assert.match(turn, /suggestedStructuredRaw/);
 });
 
 test("free text shows a concrete example rather than an empty invitation", async () => {
@@ -424,6 +663,160 @@ test("Send is gated on a usable answer instead of rejecting one afterwards", () 
   assert.match(turn, /disabled=\{busy \|\| !canSend\}/);
   assert.match(turn, /minimumAnswerLength/);
   assert.match(turn, /isMeaningfulImportAnswer/);
+});
+
+test("experience suggestions keep a visible, bounded custom answer", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+  const readiness = read("lib/jobImportReadiness.ts");
+  const customGate = turn.match(/const customValuesAllowed =[^;]+;/s);
+
+  assert.ok(customGate, "the hybrid control needs one explicit server-owned gate");
+  assert.match(customGate[0], /shape\.custom_values_allowed === true/);
+  assert.match(customGate[0], /shape\?\.kind === "choice"/);
+  assert.doesNotMatch(
+    customGate[0],
+    /experience_level/,
+    "strict enums must not gain a custom answer through a field-name exception"
+  );
+  assert.match(readiness, /custom_values_allowed\?: boolean/);
+  assert.match(turn, /conversation-custom-override/);
+  assert.match(turn, /conversation-custom-answer/);
+  assert.match(turn, /conversation-custom-submit/);
+  assert.match(turn, /maxLength=\{customAnswerMaxLength\}/);
+  assert.match(turn, /Math\.min\(shape\?\.custom_item_max_length \?\? maxLength \?\? 64, 64\)/);
+  assert.match(turn, /aria-describedby=/);
+  assert.match(turn, /aria-invalid=\{showSemanticError \? true : undefined\}/);
+  assert.match(turn, /if \(semanticError\) setCustomAnswerTouched\(true\)/);
+  assert.match(turn, /flex min-w-0 flex-col gap-2 sm:flex-row/);
+});
+
+test("experience conflicts need two alternatives and exact recommendations remain usable", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+
+  assert.match(turn, /const visibleAlternatives =\s*alternatives\.length >= 2/);
+  assert.match(turn, /visibleAlternatives\.map/);
+  assert.match(turn, /const outOfBandRecommendation =/);
+  assert.match(turn, /conversation-accept-custom-recommendation/);
+  assert.match(turn, /beginReply\(outOfBandRecommendation, outOfBandRecommendation\)/);
+  assert.doesNotMatch(
+    turn,
+    /alternatives\.some\(\(item\) => sourceInputAlternativeNeedsConfirmation/,
+    "sensitive access changes how an alternative is accepted, not whether it is shown"
+  );
+  assert.match(turn, /alternativesNeedSensitiveConfirmation/);
+});
+
+test("legacy structured turns and custom deliverables remain usable and ordered", () => {
+  const turn = read("components/import-job/assistant/ConversationTurn.tsx");
+
+  assert.match(turn, /const isLegacyStructuredMulti = !shape && localMultiOptions\.length > 0/);
+  assert.match(turn, /const shapedPicked = isStructuredMulti/);
+  const customDetails = turn.indexOf(
+    'structuredCustomAllowed && question.field_path === "deliverables"'
+  );
+  const addDeliverable = turn.indexOf("Add deliverable", customDetails);
+  assert.ok(customDetails > -1 && addDeliverable > customDetails);
+  assert.match(
+    turn,
+    /picked\.length > 0 && !shapedPicked/,
+    "a valid custom structured answer must work without a preset selection"
+  );
+  assert.match(turn, /const selectedRows = shapedPicked \?\? \[\]/);
+});
+
+test("custom experience wording rejects junk and malformed amounts without becoming an enum", async () => {
+  const { experienceAnswerError } = await import("../lib/jobImportAnswerOptions.ts");
+
+  for (const accepted of [
+    "1–7 years of experience",
+    "10+ years",
+    "12+ months",
+    "At least 5 years",
+    "25 years of professional experience",
+    "Fresher",
+    "Entry-level",
+    "No prior experience required",
+    "Experience preferred",
+    "Any level of experience",
+    "Strong portfolio preferred: no minimum years required",
+  ]) {
+    assert.equal(experienceAnswerError(accepted), null, accepted);
+  }
+
+  for (const rejected of [
+    "",
+    "Aaaaaaaaaaaa",
+    "Kjkklaamaja",
+    "video-editor",
+    "-1 years",
+    "7–1 years",
+    "61 years",
+    "601 months",
+    "Maximum 12+ months",
+    "1 year aaaaa experience",
+    "Two years",
+    "Senior",
+    "years",
+  ]) {
+    assert.equal(typeof experienceAnswerError(rejected), "string", rejected);
+  }
+});
+
+test("custom source-input wording cannot bypass sensitive-access confirmation", async () => {
+  const {
+    shapeCustomStructuredAnswer,
+    sourceInputLabelNeedsSensitiveConfirmation,
+  } = await import("../lib/jobImportAnswerOptions.ts");
+
+  for (const label of [
+    "Log into Instagram",
+    "Sign in to the channel",
+    "Use the creator account",
+    "Creator account admin",
+    "Workspace permissions",
+    "API key",
+    "OAuth token",
+    "2FA code",
+    "session cookie",
+    "private key",
+    "secret token",
+    "Meta Business Manager invite",
+    "Add editor to the YouTube channel",
+    "channel ownership",
+  ]) {
+    assert.equal(sourceInputLabelNeedsSensitiveConfirmation(label), true, label);
+    assert.equal(shapeCustomStructuredAnswer("source_inputs", label), null, label);
+    assert.deepEqual(
+      shapeCustomStructuredAnswer("source_inputs", label, {
+        sensitiveAccessConfirmed: true,
+      }),
+      {
+        type: "other",
+        custom_label: label,
+        sensitive_access_confirmed: true,
+      },
+      label
+    );
+  }
+
+  assert.equal(
+    sourceInputLabelNeedsSensitiveConfirmation("Style guide deck"),
+    false
+  );
+  assert.equal(
+    sourceInputLabelNeedsSensitiveConfirmation("Location access plan"),
+    false,
+    "physical logistics are not account credentials"
+  );
+});
+
+test("ambiguous creator roles show likely choices plus a constrained catalog override", async () => {
+  const source = read("components/import-job/assistant/ConversationTurn.tsx");
+
+  assert.match(source, /conversation-role-choice-with-override/);
+  assert.match(source, /conversation-role-override/);
+  assert.match(source, /recommended_choices/);
+  assert.match(source, /Or choose another creator role/);
 });
 
 test("candidate-facing work prose rejects obvious filler locally", async () => {
@@ -502,6 +895,9 @@ test("structured recruiter answers remain readable in transcript history", () =>
   assert.match(canvas, /const row = item as Record<string, unknown>/);
   assert.match(canvas, /typeof row\.stage === "string" \? row\.stage : row\.type/);
   assert.match(canvas, /multiSelectOptionsFor\(fieldPath\)/);
+  assert.match(canvas, /typeof row\.custom_type === "string"/);
+  assert.match(canvas, /typeof row\.custom_label === "string"/);
+  assert.match(canvas, /`\$\{row\.quantity\} × \$\{label\} · \$\{cadence\}`/);
   assert.doesNotMatch(canvas, /value\.filter\(\(item\) => typeof item === "string"\)/);
 });
 
@@ -510,6 +906,14 @@ test("a committed answer is not reported unsaved when only readback fails", () =
   assert.match(client, /Answer saved\. Refreshing your draft…/);
   assert.match(client, /Promise\.allSettled\(\[/);
   assert.match(client, /setConversation\(nextConversation\)/);
+});
+
+test("returning to a paused tab explicitly restores the waiting turn", () => {
+  const client = read("components/import-job/ImportJobPageClient.tsx");
+  assert.match(client, /document\.visibilityState === "hidden"/);
+  assert.match(client, /pauseJobImportConversation\(accessToken, draft\.id\)/);
+  assert.match(client, /await pendingPause/);
+  assert.match(client, /setConversation\(await beginJobImportConversation/);
 });
 
 test("an in-flight import keeps its resume URL without erasing Next router state", () => {

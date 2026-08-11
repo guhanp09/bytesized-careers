@@ -12,7 +12,13 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.job_application_classification import classify_application_instructions
+from app.core.job_application_classification import (
+    REQUIREMENT_KEYS as APPLICATION_REQUIREMENT_KEYS,
+)
+from app.core.job_application_classification import (
+    classify_application_instructions,
+    sanitize_application_requirement_keys,
+)
 from app.core.job_application_instructions import separate_application_instructions
 from app.core.job_apply_note import compose_public_apply_note
 from app.core.job_domain_taxonomy import (
@@ -38,6 +44,7 @@ from app.core.job_domain_taxonomy import (
     TRIAL_STATUSES,
     TRIAL_WORK_USAGE,
 )
+from app.core.job_import_application_signals import explicit_application_requirements
 from app.core.job_import_attempt_liveness import assess_attempt
 from app.core.job_import_body_sections import experience_from_body
 from app.core.job_import_candidate_copy import candidate_native_copy
@@ -48,6 +55,8 @@ from app.core.job_import_inference import (
     provider_confidence_label,
 )
 from app.core.job_import_labelled_fields import labelled_facts
+from app.core.job_import_location_resolution import city_for_location, resolve_locations
+from app.core.job_import_location_signals import JobCityResolution, resolve_job_city
 from app.core.job_import_native_values import convert_to_native
 from app.core.job_import_policy import (
     AUTO_TRACKED_MISSING_FIELDS,
@@ -58,8 +67,13 @@ from app.core.job_import_policy import (
     import_field_policy,
     is_early_recruiter_question,
 )
-from app.core.job_import_structured_fields import fields_from_structured_context
+from app.core.job_import_screening_safety import safe_imported_screening_questions
+from app.core.job_import_structured_fields import (
+    fields_from_structured_context,
+    structured_compensation_has_inverted_range,
+)
 from app.core.job_import_title_signals import title_signals
+from app.core.job_import_weekly_hours import infer_weekly_hours
 from app.core.job_taxonomy import (
     COMPENSATION_MODES,
     COMPENSATION_UNITS,
@@ -69,14 +83,20 @@ from app.core.job_taxonomy import (
     TURNAROUND_UNITS,
     WORK_MODES,
 )
-from app.core.tool_catalog import TOOL_CATALOG, find_tool_by_key
+from app.core.tool_catalog import TOOL_CATALOG, find_tool, find_tool_by_key
 from app.models import Job, JobImportDraft, JobImportField, JobImportSource
 from app.repositories.job_import_repository import JobImportRepository
-from app.schemas.job import JobCreate, JobUpdate
+from app.schemas.job import (
+    JobCreate,
+    JobUpdate,
+    source_input_label_needs_sensitive_confirmation,
+)
 from app.schemas.job_import import (
     CURRENT_EXTRACTION_SCHEMA_VERSION,
     JobImportApplyRequest,
+    JobImportConflict,
     JobImportConflictResolutionRequest,
+    JobImportConflictValue,
     JobImportDraftInitialize,
     JobImportDraftRead,
     JobImportEvidence,
@@ -137,6 +157,8 @@ _STRUCTURED_EMPLOYMENT_ALIASES = {
     "full_time": ("full time", "fulltime"),
     "part_time": ("part time", "parttime"),
     "internship": ("intern", "internship"),
+    "ongoing_freelance": ("contractor", "freelance"),
+    "fixed_term": ("contract", "temporary", "fixed term"),
 }
 
 
@@ -661,6 +683,7 @@ class JobImportService:
             "duration_units": list(DURATION_UNITS),
             "hiring_process_stages": list(HIRING_PROCESS_STAGES),
             "employer_context_types": list(EMPLOYER_CONTEXT_TYPES),
+            "application_requirement_keys": list(APPLICATION_REQUIREMENT_KEYS),
         }
         definitions: list[JobImportFieldDefinition] = []
         for policy in JOB_IMPORT_FIELD_POLICIES.values():
@@ -677,7 +700,7 @@ class JobImportService:
                 "directly_supplied",
                 "extracted_from_source",
             ]
-            if "semantic_inference" in policy.allowed_origins:
+            if policy.allowed_origins - {"explicit"}:
                 allowed_provenance.append("suggested_inference")
             definitions.append(
                 JobImportFieldDefinition(
@@ -722,7 +745,7 @@ class JobImportService:
             field_definitions=definitions,
             inference_restrictions=[
                 "Never emit CreatorJobs-owned identity, verification, status, ownership, counters, or trust fields.",
-                "Use suggested inference only where that field's allowed_decision_origins includes semantic_inference.",
+                "Use suggested_inference provenance only when the field's allowed_decision_origins permits the matching contextual_inference, semantic_inference, or suggestion origin.",
                 "High-risk and explicit-only fields must never be guessed, defaulted, or derived from market norms.",
                 "Use stable taxonomy keys; do not generate database identifiers.",
                 "Represent contradictory source statements as conflicts instead of selecting one.",
@@ -998,25 +1021,102 @@ class JobImportService:
         return normalized, []
 
     @staticmethod
+    def _pending_sensitive_source_inputs(
+        value: object,
+    ) -> list[dict[str, object]] | None:
+        """Validate an explicit access request without fabricating consent.
+
+        The native ``JobSourceInput`` correctly refuses account access until a
+        recruiter confirms it. That same rule cannot make an explicit source
+        fact disappear during import review. For a provider-extracted source
+        row, validate the row *as if* consent were present, then deliberately
+        store it with consent false so the conversation can ask exactly once.
+        This helper is never used for native job writes.
+        """
+
+        if not isinstance(value, list) or not value:
+            return None
+        validation_rows: list[dict[str, object]] = []
+        sensitive_indexes: set[int] = set()
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                return None
+            item_type = item.get("type")
+            if not isinstance(item_type, str) or item_type not in SOURCE_INPUT_TYPES:
+                return None
+            custom_label = item.get("custom_label")
+            custom_sensitive = bool(
+                item_type == "other"
+                and isinstance(custom_label, str)
+                and source_input_label_needs_sensitive_confirmation(custom_label)
+            )
+            is_sensitive = item_type in {"analytics_access", "account_access"} or custom_sensitive
+            row = dict(item)
+            if is_sensitive:
+                row["sensitive_access_confirmed"] = True
+                sensitive_indexes.add(index)
+            validation_rows.append(row)
+        if not sensitive_indexes:
+            return None
+        try:
+            validated = JobUpdate.model_validate({"source_inputs": validation_rows})
+        except (ValidationError, ValueError, TypeError):
+            return None
+        normalized = validated.model_dump(mode="json", exclude_unset=True)["source_inputs"]
+        if not isinstance(normalized, list):
+            return None
+        pending: list[dict[str, object]] = []
+        for index, item in enumerate(normalized):
+            if not isinstance(item, dict):
+                return None
+            row = dict(item)
+            if index in sensitive_indexes:
+                row["sensitive_access_confirmed"] = False
+            pending.append(row)
+        return pending
+
+    @staticmethod
     def _provider_screening_questions(
         value: object,
         evidence: list[JobImportEvidence],
     ) -> object:
-        """Keep imported requiredness only when the owned source says so."""
+        """Keep requiredness only when that question's own evidence says so."""
 
         if not isinstance(value, list):
             return value
-        evidence_text = " ".join(item.snippet for item in evidence).casefold()
-        requiredness_is_explicit = bool(
-            re.search(
-                r"\b(required|mandatory|must\s+(?:answer|complete|provide|respond))\b",
-                evidence_text,
-            )
-        )
+
+        def requiredness_is_explicit(prompt: object) -> bool:
+            if not isinstance(prompt, str) or not prompt.strip():
+                return False
+            needle = " ".join(prompt.split()).casefold()
+            for item in evidence:
+                snippet = " ".join(item.snippet.split())
+                folded = snippet.casefold()
+                start = folded.find(needle)
+                if start < 0:
+                    continue
+                left_boundaries = [folded.rfind(mark, 0, start) for mark in ".!?;\n"]
+                clause_start = max(left_boundaries) + 1
+                after = start + len(needle)
+                right_boundaries = [
+                    index
+                    for mark in ".!?;\n"
+                    if (index := folded.find(mark, after)) >= 0
+                ]
+                clause_end = min(right_boundaries) + 1 if right_boundaries else len(folded)
+                clause = folded[clause_start:clause_end]
+                if re.search(
+                    r"\b(?:required|mandatory|must\s+(?:answer|complete|provide|respond))\b",
+                    clause,
+                ):
+                    return True
+            return False
+
         return [
             {
                 **item,
-                "required": bool(item.get("required")) and requiredness_is_explicit,
+                "required": bool(item.get("required"))
+                and requiredness_is_explicit(item.get("prompt")),
             }
             if isinstance(item, dict)
             else item
@@ -1077,6 +1177,34 @@ class JobImportService:
             )
         ]
 
+    @staticmethod
+    def _exact_source_evidence(
+        source: JobImportSource,
+        snippets: list[str],
+    ) -> list[JobImportEvidence]:
+        """Evidence rows for exact source lines, never reconstructed prose."""
+
+        source_text = source.original_text or ""
+        evidence: list[JobImportEvidence] = []
+        for snippet in dict.fromkeys(item.strip() for item in snippets if item.strip()):
+            start = source_text.find(snippet)
+            if start < 0:
+                continue
+            evidence.append(
+                JobImportEvidence.model_validate(
+                    {
+                        "snippet": snippet,
+                        "location": {
+                            "char_start": start,
+                            "char_end": start + len(snippet),
+                        },
+                    }
+                )
+            )
+            if len(evidence) >= 5:
+                break
+        return evidence
+
     @classmethod
     def _with_deterministic_context(
         cls,
@@ -1087,7 +1215,28 @@ class JobImportService:
     ) -> JobImportExtractionResponse:
         """Add only server-owned, policy-approved contextual decisions."""
 
-        fields = list(response.fields)
+        weekly_hours = infer_weekly_hours(source.original_text)
+        weekly_hour_paths = {
+            "expected_weekly_hours_min",
+            "expected_weekly_hours_max",
+        }
+        # Numeric hours suggested from general wording such as "full-time" are
+        # not source facts. Only this server-owned exact-schedule parser may
+        # introduce an inferred weekly total.
+        removed_unsupported_hours = any(
+            field.field_path in weekly_hour_paths
+            and field.provenance == "suggested_inference"
+            for field in response.fields
+        )
+        fields = [
+            field
+            for field in response.fields
+            if not (
+                field.field_path in weekly_hour_paths
+                and field.provenance == "suggested_inference"
+            )
+        ]
+        conflicts = list(response.conflicts)
         by_path = {field.field_path: field for field in fields}
         occupied_paths = {
             *by_path,
@@ -1116,8 +1265,30 @@ class JobImportService:
         retrieval = source.retrieval_metadata if isinstance(source.retrieval_metadata, dict) else {}
         structured = retrieval.get("structured_context")
         context = structured if isinstance(structured, dict) else {}
+        try:
+            structured_values = fields_from_structured_context(context)
+        except Exception:  # pragma: no cover - context enrichment is best effort
+            structured_values = {}
+        if work_mode is None:
+            structured_work_mode = structured_values.get("work_mode")
+            work_mode = (
+                structured_work_mode
+                if isinstance(structured_work_mode, str)
+                else None
+            )
         missing_fields = list(response.missing_fields)
         warnings = list(response.warnings)
+        if removed_unsupported_hours and len(warnings) < 30:
+            warnings.append(
+                JobImportProcessingWarning(
+                    code="unsupported_weekly_hours_inference_removed",
+                    message=(
+                        "Provider-inferred weekly hours were removed; only an exact "
+                        "server-verified daily schedule may set them."
+                    ),
+                    field_path="expected_weekly_hours_min",
+                )
+            )
 
         def append_context_field(field: JobImportExtractionField) -> None:
             nonlocal missing_fields
@@ -1130,6 +1301,41 @@ class JobImportService:
                 item for item in missing_fields if item.field_path != field.field_path
             ]
 
+        def force_context_conflict(
+            field_path: str,
+            alternatives: list[tuple[object, list[JobImportEvidence]]],
+            *,
+            explanation: str,
+        ) -> None:
+            """Replace a model choice with explicit structured disagreement."""
+
+            nonlocal missing_fields
+            valid = [(value, evidence) for value, evidence in alternatives if evidence]
+            serialized = {
+                json.dumps(value, ensure_ascii=False, sort_keys=True) for value, _ in valid
+            }
+            if len(serialized) < 2:
+                return
+            existing = by_path.pop(field_path, None)
+            if existing is not None:
+                fields[:] = [item for item in fields if item is not existing]
+            conflicts[:] = [item for item in conflicts if item.field_path != field_path]
+            conflicts.append(
+                JobImportConflict(
+                    field_path=field_path,
+                    values=[
+                        JobImportConflictValue(value=value, evidence=evidence[:5])
+                        for value, evidence in valid[:8]
+                    ],
+                    explanation=explanation,
+                    epistemic_status="conflicting",
+                )
+            )
+            occupied_paths.add(field_path)
+            missing_fields = [
+                item for item in missing_fields if item.field_path != field_path
+            ]
+
         def upgrade_exact_context_match(
             field_path: str,
             expected_value: object,
@@ -1138,6 +1344,8 @@ class JobImportService:
             origin: str,
             rationale_code: str,
             explanation: str,
+            epistemic_status: str,
+            inference_type: str,
         ) -> bool:
             existing = by_path.get(field_path)
             if (
@@ -1187,6 +1395,8 @@ class JobImportService:
                         label="high",
                         metadata=metadata,
                     ),
+                    "epistemic_status": epistemic_status,
+                    "inference_type": inference_type,
                 }
             )
             field_index = next(
@@ -1207,6 +1417,8 @@ class JobImportService:
             rationale_code: str,
             confidence_score: float = 0.99,
             confidence_label: str = "high",
+            epistemic_status: str | None = None,
+            inference_type: str | None = None,
         ) -> bool:
             existing = by_path.get(field_path)
             if existing is None or not evidence:
@@ -1231,6 +1443,8 @@ class JobImportService:
                 evidence=evidence[:5],
                 explanation=explanation,
                 provider_confidence=provider_confidence,
+                epistemic_status=epistemic_status,
+                inference_type=inference_type,
             )
             field_index = next(
                 index for index, item in enumerate(fields) if item is existing
@@ -1250,6 +1464,125 @@ class JobImportService:
                     )
                 )
             return True
+
+        structured_employment_claim = context.get("employment_type")
+        employment_matches = sorted(
+            _structured_engagement_matches(structured_employment_claim)
+        )
+        if len(employment_matches) > 1:
+            employment_values = (
+                [structured_employment_claim]
+                if isinstance(structured_employment_claim, str)
+                else [
+                    item
+                    for item in structured_employment_claim or []
+                    if isinstance(item, str)
+                ]
+                if isinstance(structured_employment_claim, list)
+                else []
+            )
+            evidence = [
+                item
+                for value in employment_values[:5]
+                for item in cls._structured_source_evidence(
+                    source,
+                    label="Structured employment type",
+                    value=value,
+                )
+            ][:5]
+            force_context_conflict(
+                "engagement_type",
+                [(value, evidence) for value in employment_matches],
+                explanation=(
+                    "The page declares multiple incompatible structured employment types."
+                ),
+            )
+
+        experience_conflicts = context.get("experience_requirement_conflicts")
+        if isinstance(experience_conflicts, list):
+            alternatives: list[tuple[object, list[JobImportEvidence]]] = []
+            for value in experience_conflicts[:8]:
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                evidence = cls._structured_source_evidence(
+                    source,
+                    label="Structured conflicting experience requirement",
+                    value=value,
+                )
+                alternatives.append((value, evidence))
+            force_context_conflict(
+                "experience_level",
+                alternatives,
+                explanation=(
+                    "The source states multiple incompatible experience requirements."
+                ),
+            )
+
+        role_locations = context.get("role_locations")
+        if isinstance(role_locations, list) and work_mode in {"onsite", "hybrid"}:
+            alternatives = []
+            seen_locations: set[str] = set()
+            for raw_location in role_locations[:8]:
+                if not isinstance(raw_location, str):
+                    continue
+                city = city_for_location(raw_location)
+                if not city or city.casefold() in seen_locations:
+                    continue
+                seen_locations.add(city.casefold())
+                alternatives.append(
+                    (
+                        city,
+                        cls._structured_source_evidence(
+                            source,
+                            label="Structured role location",
+                            value=raw_location,
+                        ),
+                    )
+                )
+            force_context_conflict(
+                "location",
+                alternatives,
+                explanation="The page declares multiple distinct role locations.",
+            )
+
+        if weekly_hours is not None:
+            evidence = cls._exact_source_evidence(
+                source,
+                list(weekly_hours.evidence_snippets),
+            )
+            if evidence:
+                explanation = (
+                    f"The source states {weekly_hours.days_per_week} days per week "
+                    f"and {weekly_hours.hours_per_day} hours per day, which equals "
+                    f"{weekly_hours.weekly_hours} hours per week."
+                )
+                for field_path in (
+                    "expected_weekly_hours_min",
+                    "expected_weekly_hours_max",
+                ):
+                    append_context_field(
+                        JobImportExtractionField(
+                            field_path=field_path,
+                            value=weekly_hours.weekly_hours,
+                            provenance="suggested_inference",
+                            evidence=evidence,
+                            explanation=explanation,
+                            provider_confidence=JobImportProviderConfidence(
+                                score=1,
+                                label="high",
+                                metadata={
+                                    "origin": "contextual_inference",
+                                    "rationale_code": (
+                                        "weekly_hours_from_explicit_schedule"
+                                    ),
+                                    "days_per_week": weekly_hours.days_per_week,
+                                    "hours_per_day": weekly_hours.hours_per_day,
+                                },
+                            ),
+                            epistemic_status="logically_entailed",
+                            inference_type="schedule_arithmetic",
+                        )
+                    )
 
         structured_title = context.get("job_title")
         title_evidence: list[JobImportEvidence] = []
@@ -1323,17 +1656,21 @@ class JobImportService:
                         provenance="suggested_inference",
                         evidence=title_evidence,
                         explanation=role_explanation,
-                        origin="semantic_inference",
+                        origin="contextual_inference",
                         rationale_code="structured_title_role_normalized",
+                        epistemic_status="logically_entailed",
+                        inference_type="role_title_entailment",
                     )
                 )
                 if not repaired_role and not upgrade_exact_context_match(
                     "primary_role_key",
                     role_key,
                     evidence=title_evidence,
-                    origin="semantic_inference",
+                    origin="contextual_inference",
                     rationale_code="structured_title_single_role",
                     explanation=role_explanation,
+                    epistemic_status="logically_entailed",
+                    inference_type="role_title_entailment",
                 ):
                     append_context_field(
                         JobImportExtractionField(
@@ -1346,10 +1683,12 @@ class JobImportService:
                                 score=0.99,
                                 label="high",
                                 metadata={
-                                    "origin": "semantic_inference",
+                                    "origin": "contextual_inference",
                                     "rationale_code": "structured_title_single_role",
                                 },
                             ),
+                            epistemic_status="logically_entailed",
+                            inference_type="role_title_entailment",
                         ),
                     )
 
@@ -1409,17 +1748,21 @@ class JobImportService:
                         provenance="suggested_inference",
                         evidence=evidence,
                         explanation=engagement_explanation,
-                        origin="semantic_inference",
+                        origin="contextual_inference",
                         rationale_code="structured_employment_type_normalized",
+                        epistemic_status="logically_entailed",
+                        inference_type="structured_employment_mapping",
                     )
                 )
                 if not repaired_engagement and not upgrade_exact_context_match(
                     "engagement_type",
                     engagement_type,
                     evidence=evidence,
-                    origin="semantic_inference",
+                    origin="contextual_inference",
                     rationale_code="structured_employment_type",
                     explanation=engagement_explanation,
+                    epistemic_status="logically_entailed",
+                    inference_type="structured_employment_mapping",
                 ):
                     append_context_field(
                         JobImportExtractionField(
@@ -1432,10 +1775,12 @@ class JobImportService:
                                 score=0.99,
                                 label="high",
                                 metadata={
-                                    "origin": "semantic_inference",
+                                    "origin": "contextual_inference",
                                     "rationale_code": "structured_employment_type",
                                 },
                             ),
+                            epistemic_status="logically_entailed",
+                            inference_type="structured_employment_mapping",
                         ),
                     )
 
@@ -1463,73 +1808,249 @@ class JobImportService:
                 evidence_items.extend(evidence)
             return values, evidence_items[:5]
 
+        def merge_structured_list_field(
+            field_path: str,
+            values: list[str],
+            evidence: list[JobImportEvidence],
+            *,
+            rationale_code: str,
+        ) -> None:
+            """Retain provider items and append exact structured omissions.
+
+            A provider returning the first of three source bullets used to block
+            the other two wholesale because the field path was occupied.  The
+            structured list is publisher-owned evidence, so exact missing items
+            are merged without deleting a provider interpretation or a conflict.
+            """
+
+            if not values or not evidence or field_path in {
+                conflict.field_path for conflict in response.conflicts
+            }:
+                return
+            existing = by_path.get(field_path)
+            if existing is None:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path=field_path,
+                        value=values,
+                        provenance="extracted_from_source",
+                        evidence=evidence,
+                    )
+                )
+                return
+            if not _valid_import_string_list(existing.value):
+                replace_invalid_context_field(
+                    field_path,
+                    values,
+                    provenance="extracted_from_source",
+                    evidence=evidence,
+                    rationale_code=rationale_code,
+                )
+                return
+
+            existing_values = [str(item).strip() for item in existing.value]
+            merged = list(existing_values)
+            seen = {item.casefold() for item in merged}
+            for value in values:
+                if value.casefold() not in seen:
+                    merged.append(value)
+                    seen.add(value.casefold())
+            source_keys = {item.casefold() for item in values}
+            all_existing_are_exact = all(
+                item.casefold() in source_keys for item in existing_values
+            )
+            needs_upgrade = (
+                merged != existing_values
+                or (
+                    all_existing_are_exact
+                    and existing.provenance == "suggested_inference"
+                )
+            )
+            if not needs_upgrade:
+                return
+            merged_evidence = [*existing.evidence]
+            for item in evidence:
+                if item not in merged_evidence:
+                    merged_evidence.append(item)
+                if len(merged_evidence) >= 5:
+                    break
+            update: dict[str, object] = {
+                "value": merged,
+                "evidence": merged_evidence[:5],
+            }
+            if all_existing_are_exact:
+                update.update(
+                    {
+                        "provenance": "extracted_from_source",
+                        "provider_confidence": None,
+                        "epistemic_status": "normalized_explicit",
+                        "inference_type": "structured_list_normalization",
+                        "explanation": None,
+                    }
+                )
+            upgraded = existing.model_copy(update=update)
+            field_index = next(index for index, item in enumerate(fields) if item is existing)
+            fields[field_index] = upgraded
+            by_path[field_path] = upgraded
+            missing_fields[:] = [
+                item for item in missing_fields if item.field_path != field_path
+            ]
+
         responsibilities, responsibility_evidence = grounded_structured_list(
             "responsibilities",
             label="Structured responsibility",
         )
-        if responsibilities and responsibility_evidence:
-            existing_responsibilities = by_path.get("responsibilities")
-            repaired_responsibilities = bool(
-                existing_responsibilities is not None
-                and (
-                    not _valid_import_string_list(existing_responsibilities.value)
-                    or (
-                        existing_responsibilities.value == responsibilities
-                        and existing_responsibilities.provenance == "suggested_inference"
-                    )
-                )
-                and replace_invalid_context_field(
-                    "responsibilities",
-                    responsibilities,
-                    provenance="extracted_from_source",
-                    evidence=responsibility_evidence,
-                    rationale_code="structured_responsibilities_repaired",
-                )
-            )
-            if not repaired_responsibilities:
-                append_context_field(
-                    JobImportExtractionField(
-                        field_path="responsibilities",
-                        value=responsibilities,
-                        provenance="extracted_from_source",
-                        evidence=responsibility_evidence,
-                    )
-                )
+        merge_structured_list_field(
+            "responsibilities",
+            responsibilities,
+            responsibility_evidence,
+            rationale_code="structured_responsibilities_repaired",
+        )
 
         requirements, requirement_evidence = grounded_structured_list(
             "qualifications",
             label="Structured qualification",
         )
-        if requirements and requirement_evidence:
-            existing_requirements = by_path.get("requirements")
-            repaired_requirements = bool(
-                existing_requirements is not None
-                and (
-                    not _valid_import_string_list(existing_requirements.value)
-                    or (
-                        existing_requirements.value == requirements
-                        and existing_requirements.provenance == "suggested_inference"
-                    )
-                )
-                and replace_invalid_context_field(
-                    "requirements",
-                    requirements,
-                    provenance="extracted_from_source",
-                    evidence=requirement_evidence,
-                    rationale_code="structured_requirements_repaired",
-                )
+        merge_structured_list_field(
+            "requirements",
+            requirements,
+            requirement_evidence,
+            rationale_code="structured_requirements_repaired",
+        )
+
+        preferred, preferred_evidence = grounded_structured_list(
+            "preferred_qualifications",
+            label="Structured preferred qualification",
+        )
+        preferred = [item for item in preferred if len(item) <= 120]
+        merge_structured_list_field(
+            "other_preferred_skills",
+            preferred,
+            preferred_evidence,
+            rationale_code="structured_preferred_qualifications_repaired",
+        )
+
+        structured_skills = context.get("skills")
+        if isinstance(structured_skills, str):
+            tool_keys: list[str] = []
+            for token in re.split(r"[,;|]+", structured_skills):
+                entry = find_tool(token)
+                if entry is not None and entry.key not in tool_keys:
+                    tool_keys.append(entry.key)
+            tool_evidence = cls._structured_source_evidence(
+                source,
+                label="Structured skills",
+                value=structured_skills,
             )
-            if not repaired_requirements:
+            merge_structured_list_field(
+                "required_tool_keys",
+                tool_keys,
+                tool_evidence,
+                rationale_code="structured_skill_tool_aliases_repaired",
+            )
+
+        exact_structured_sources: dict[str, tuple[str, object]] = {}
+        compensation_source = context.get("compensation")
+        if isinstance(compensation_source, str):
+            for field_path in (
+                "compensation_mode",
+                "budget_amount",
+                "budget_max",
+                "budget_currency",
+                "budget_unit",
+            ):
+                if field_path in structured_values:
+                    exact_structured_sources[field_path] = (
+                        "Structured compensation",
+                        compensation_source,
+                    )
+        work_hours_source = context.get("work_hours")
+        if isinstance(work_hours_source, str):
+            for field_path in (
+                "expected_weekly_hours_min",
+                "expected_weekly_hours_max",
+            ):
+                if field_path in structured_values:
+                    exact_structured_sources[field_path] = (
+                        "Structured work hours",
+                        work_hours_source,
+                    )
+        deadline_source = context.get("valid_through")
+        if isinstance(deadline_source, str) and "deadline_at" in structured_values:
+            exact_structured_sources["deadline_at"] = (
+                "Structured application valid through",
+                deadline_source,
+            )
+        start_source = context.get("job_start_date")
+        if isinstance(start_source, str):
+            for field_path in ("start_timing", "start_date"):
+                if field_path in structured_values:
+                    exact_structured_sources[field_path] = (
+                        "Structured job start date",
+                        start_source,
+                    )
+
+        response_conflict_paths = {item.field_path for item in conflicts}
+        for field_path, (label, source_value) in exact_structured_sources.items():
+            if field_path in response_conflict_paths:
+                continue
+            evidence = cls._structured_source_evidence(
+                source,
+                label=label,
+                value=source_value,
+            )
+            if not evidence:
+                continue
+            value = structured_values[field_path]
+            if field_path in by_path:
+                replace_invalid_context_field(
+                    field_path,
+                    value,
+                    provenance="extracted_from_source",
+                    evidence=evidence,
+                    rationale_code=f"structured_{field_path}_authoritative",
+                    epistemic_status="normalized_explicit",
+                    inference_type="structured_value_normalization",
+                )
+            else:
                 append_context_field(
                     JobImportExtractionField(
-                        field_path="requirements",
-                        value=requirements,
+                        field_path=field_path,
+                        value=value,
                         provenance="extracted_from_source",
-                        evidence=requirement_evidence,
+                        evidence=evidence,
+                        epistemic_status="normalized_explicit",
+                        inference_type="structured_value_normalization",
                     )
                 )
 
-        structured_summary = context.get("about_summary")
+        if (
+            isinstance(compensation_source, str)
+            and structured_compensation_has_inverted_range(compensation_source)
+        ):
+            for field_path in ("budget_amount", "budget_max"):
+                existing = by_path.pop(field_path, None)
+                if existing is not None:
+                    fields[:] = [item for item in fields if item is not existing]
+                occupied_paths.discard(field_path)
+            if len(warnings) < 30:
+                warnings.append(
+                    JobImportProcessingWarning(
+                        code="structured_compensation_range_inverted",
+                        message=(
+                            "The source states a compensation range whose lower bound "
+                            "exceeds its upper bound; numeric values require review."
+                        ),
+                        field_path="budget_amount",
+                        evidence=cls._structured_source_evidence(
+                            source,
+                            label="Structured compensation",
+                            value=compensation_source,
+                        )[:3],
+                    )
+                )
+
+        structured_summary = structured_values.get("about_channel")
         if (
             isinstance(structured_summary, str)
             and len(structured_summary.strip()) >= 20
@@ -1565,12 +2086,24 @@ class JobImportService:
                         )
                     )
 
-        structured_role_location = context.get("role_location")
-        if isinstance(structured_role_location, str):
+        structured_location = structured_values.get("location")
+        if isinstance(structured_location, str):
+            location_context_key = (
+                "remote_eligibility" if work_mode == "remote" else "role_location"
+            )
+            structured_location_source = context.get(location_context_key)
             evidence = cls._structured_source_evidence(
                 source,
-                label="Structured role location",
-                value=structured_role_location,
+                label=(
+                    "Structured remote eligibility"
+                    if work_mode == "remote"
+                    else "Structured role location"
+                ),
+                value=(
+                    structured_location_source
+                    if isinstance(structured_location_source, str)
+                    else structured_location
+                ),
             )
             if evidence:
                 existing_location = by_path.get("location")
@@ -1582,7 +2115,7 @@ class JobImportService:
                     )
                     and replace_invalid_context_field(
                         "location",
-                        structured_role_location,
+                        structured_location,
                         provenance="extracted_from_source",
                         evidence=evidence,
                         rationale_code="structured_role_location_repaired",
@@ -1592,7 +2125,7 @@ class JobImportService:
                     append_context_field(
                         JobImportExtractionField(
                             field_path="location",
-                            value=structured_role_location,
+                            value=structured_location,
                             provenance="extracted_from_source",
                             evidence=evidence,
                         )
@@ -1647,17 +2180,21 @@ class JobImportService:
                         provenance="suggested_inference",
                         evidence=evidence,
                         explanation=niche_explanation,
-                        origin="contextual_inference",
+                        origin="semantic_inference",
                         rationale_code="structured_industry_niche_normalized",
+                        epistemic_status="plausible_interpretation",
+                        inference_type="industry_niche_mapping",
                     )
                 )
                 if not repaired_niches and not upgrade_exact_context_match(
                     "content_niches",
                     matched_niches,
                     evidence=evidence,
-                    origin="contextual_inference",
+                    origin="semantic_inference",
                     rationale_code="industry_exact_niche_match",
                     explanation=niche_explanation,
+                    epistemic_status="plausible_interpretation",
+                    inference_type="industry_niche_mapping",
                 ):
                     append_context_field(
                         JobImportExtractionField(
@@ -1670,10 +2207,12 @@ class JobImportService:
                                 score=0.99,
                                 label="high",
                                 metadata={
-                                    "origin": "contextual_inference",
+                                    "origin": "semantic_inference",
                                     "rationale_code": "industry_exact_niche_match",
                                 },
                             ),
+                            epistemic_status="plausible_interpretation",
+                            inference_type="industry_niche_mapping",
                         ),
                     )
 
@@ -1766,6 +2305,16 @@ class JobImportService:
                             and provider_confidence.label is not None
                             else "high"
                         ),
+                        epistemic_status=(
+                            "plausible_interpretation"
+                            if provenance == "suggested_inference"
+                            else None
+                        ),
+                        inference_type=(
+                            "experience_band_suggestion"
+                            if provenance == "suggested_inference"
+                            else None
+                        ),
                     )
                 )
                 if not repaired_experience:
@@ -1777,14 +2326,47 @@ class JobImportService:
                             evidence=evidence,
                             explanation=explanation,
                             provider_confidence=provider_confidence,
+                            epistemic_status=(
+                                "plausible_interpretation"
+                                if provenance == "suggested_inference"
+                                else None
+                            ),
+                            inference_type=(
+                                "experience_band_suggestion"
+                                if provenance == "suggested_inference"
+                                else None
+                            ),
                         )
                     )
 
-        if role_location is None and isinstance(context.get("role_location"), str):
+        if role_location is None and isinstance(structured_location, str):
+            role_location = structured_location
+        if (
+            role_location is None
+            and work_mode != "remote"
+            and isinstance(context.get("role_location"), str)
+        ):
             role_location = context["role_location"]
         employer_location = (
             context.get("employer_location")
             if isinstance(context.get("employer_location"), str)
+            else None
+        )
+        # Structured compensation is merged after the initial provider scan.
+        # Recompute here so an exact JSON-LD amount can support a contextual
+        # currency decision, and an exact structured currency can never be
+        # mistaken for provider omission from the stale pre-merge snapshot.
+        amount_present = any(
+            isinstance(field.value, (int, float, str))
+            and not isinstance(field.value, bool)
+            and str(field.value).strip() not in {"", "0", "0.0"}
+            for path in ("budget_amount", "budget_max")
+            if (field := by_path.get(path)) is not None
+        )
+        explicit_currency_field = by_path.get("budget_currency")
+        explicit_currency = (
+            str(explicit_currency_field.value)
+            if explicit_currency_field is not None
             else None
         )
         decision = infer_compensation_currency(
@@ -1852,12 +2434,78 @@ class JobImportService:
                                 "country_code": decision.country_code,
                             },
                         ),
+                        epistemic_status="logically_entailed",
+                        inference_type="location_currency_mapping",
+                    )
+                )
+
+        # Provider omission must not erase an application material the source
+        # asks for explicitly. This fallback is intentionally narrower than a
+        # second extraction pass: it accepts only transmission-shaped source
+        # wording ("submit your resume", "attach a cover letter") and emits
+        # only the canonical inputs CreatorJobs already collects. The source's
+        # email, form, board, or other destination stays private in evidence.
+        application_signals = explicit_application_requirements(source.original_text)
+        application_evidence = cls._exact_source_evidence(
+            source,
+            application_signals.evidence_snippets,
+        )
+        if application_signals.keys and application_evidence:
+            existing_application = by_path.get("application_requirements")
+            existing_keys = sanitize_application_requirement_keys(
+                existing_application.value
+                if existing_application is not None
+                else []
+            )
+            merged_keys = sanitize_application_requirement_keys(
+                [*existing_keys, *application_signals.keys]
+            )
+            if existing_application is not None and merged_keys != existing_keys:
+                merged_evidence = [
+                    *existing_application.evidence,
+                    *(
+                        item
+                        for item in application_evidence
+                        if item not in existing_application.evidence
+                    ),
+                ][:5]
+                merged_application = existing_application.model_copy(
+                    update={
+                        "value": merged_keys,
+                        "provenance": "extracted_from_source",
+                        "evidence": merged_evidence,
+                        "explanation": (
+                            "The source explicitly asks candidates to provide "
+                            "these application materials."
+                        ),
+                        "provider_confidence": None,
+                        "epistemic_status": "normalized_explicit",
+                        "inference_type": "application_material_classification",
+                    }
+                )
+                field_index = next(
+                    index
+                    for index, item in enumerate(fields)
+                    if item is existing_application
+                )
+                fields[field_index] = merged_application
+                by_path["application_requirements"] = merged_application
+            elif existing_application is None:
+                append_context_field(
+                    JobImportExtractionField(
+                        field_path="application_requirements",
+                        value=merged_keys,
+                        provenance="extracted_from_source",
+                        evidence=application_evidence,
+                        epistemic_status="normalized_explicit",
+                        inference_type="application_material_classification",
                     )
                 )
         return JobImportExtractionResponse.model_validate(
             {
                 **response.model_dump(mode="json"),
                 "fields": fields,
+                "conflicts": conflicts,
                 "missing_fields": missing_fields,
                 "warnings": warnings[:30],
             }
@@ -1874,14 +2522,31 @@ class JobImportService:
         provider_metadata = (
             item.provider_confidence.metadata if item.provider_confidence is not None else {}
         )
-        contextual = provider_metadata.get("origin") == "contextual_inference"
-        origin = (
-            "contextual_inference"
-            if contextual
-            else "semantic_inference"
+        epistemic_state = item.epistemic_status or (
+            "plausible_interpretation"
             if item.provenance == "suggested_inference"
             else "explicit"
         )
+        # The typed epistemic claim is the provider's highest-authority account
+        # of what it knows.  Free-form confidence metadata is diagnostic only
+        # and must never upgrade a merely plausible interpretation into a
+        # logically entailed fact.  Metadata remains a compatibility fallback
+        # solely for provider-neutral legacy rows that predate the annotation.
+        if epistemic_state in {"explicit", "normalized_explicit"}:
+            origin = "explicit"
+        elif epistemic_state == "logically_entailed":
+            origin = "contextual_inference"
+        elif epistemic_state == "plausible_interpretation":
+            origin = "semantic_inference"
+        elif item.provenance == "suggested_inference":
+            reported_origin = provider_metadata.get("origin")
+            origin = (
+                reported_origin
+                if reported_origin in {"contextual_inference", "semantic_inference"}
+                else "semantic_inference"
+            )
+        else:
+            origin = "explicit"
         confidence = (
             "high"
             if origin == "explicit"
@@ -1914,6 +2579,12 @@ class JobImportService:
             "rationale_code": rationale,
             "needs_review": not auto_fill,
             "risk": policy.inference_risk,
+            "epistemic_state": epistemic_state,
+            **(
+                {"inference_type": item.inference_type}
+                if item.inference_type is not None
+                else {}
+            ),
         }
         return auto_fill, metadata
 
@@ -1923,15 +2594,25 @@ class JobImportService:
         provenance: str,
         value: object,
         provider_confidence: JobImportProviderConfidence | None = None,
+        epistemic_status: str | None = None,
     ) -> list[str]:
         errors: list[str] = []
         if provenance == "suggested_inference":
-            origin = (
-                "contextual_inference"
-                if provider_confidence is not None
-                and provider_confidence.metadata.get("origin") == "contextual_inference"
-                else "semantic_inference"
-            )
+            if epistemic_status == "logically_entailed":
+                origin = "contextual_inference"
+            elif epistemic_status == "plausible_interpretation":
+                origin = "semantic_inference"
+            else:
+                reported_origin = (
+                    provider_confidence.metadata.get("origin")
+                    if provider_confidence is not None
+                    else None
+                )
+                origin = (
+                    reported_origin
+                    if reported_origin in {"contextual_inference", "semantic_inference"}
+                    else "semantic_inference"
+                )
             if origin not in policy.allowed_origins:
                 errors.append("This field may only be extracted from explicit source wording.")
             if policy.field_path == "source_inputs" and isinstance(value, list):
@@ -2226,7 +2907,18 @@ class JobImportService:
                 if item.field_path == "screening_questions"
                 else item.value
             )
-            normalized, errors = await self._validate_field_value(policy, provider_value)
+            pending_sensitive_source_inputs = (
+                self._pending_sensitive_source_inputs(provider_value)
+                if item.field_path == "source_inputs"
+                and item.provenance in {"directly_supplied", "extracted_from_source"}
+                else None
+            )
+            if pending_sensitive_source_inputs is not None:
+                normalized, errors = pending_sensitive_source_inputs, []
+            else:
+                normalized, errors = await self._validate_field_value(
+                    policy, provider_value
+                )
             unsupported_nested = [
                 error for error in errors if error.startswith("Unsupported nested key")
             ]
@@ -2243,8 +2935,13 @@ class JobImportService:
                 self._provider_inference_errors(
                     policy,
                     item.provenance,
-                    provider_value,
+                    (
+                        normalized
+                        if pending_sensitive_source_inputs is not None
+                        else provider_value
+                    ),
                     item.provider_confidence,
+                    item.epistemic_status,
                 )
             )
             currency_conflict = bool(
@@ -2257,8 +2954,16 @@ class JobImportService:
                 policy,
                 item,
                 validation_errors=errors,
-                force_review=currency_conflict,
+                force_review=(
+                    currency_conflict or pending_sensitive_source_inputs is not None
+                ),
             )
+            if pending_sensitive_source_inputs is not None:
+                decision_metadata = {
+                    **decision_metadata,
+                    "sensitive_access_confirmation_required": True,
+                    "needs_review": True,
+                }
             rows.append(
                 {
                     "draft_id": draft.id,
@@ -2339,6 +3044,7 @@ class JobImportService:
                             "origin": "explicit",
                             "confidence": "high",
                             "rationale_code": "conflicting_explicit_source_values",
+                            "epistemic_state": conflict.epistemic_status,
                             "needs_review": True,
                             "risk": policy.inference_risk,
                         }
@@ -2370,13 +3076,28 @@ class JobImportService:
                     ),
                     "conflicting_values": [],
                     "explanation": item.explanation if item else "Not found in the source.",
-                    "provider_confidence": None,
+                    "provider_confidence": {
+                        "origin": "unknown",
+                        "confidence": None,
+                        "rationale_code": (
+                            "provider_source_technically_unavailable"
+                            if item is not None
+                            and item.epistemic_status == "technically_unavailable"
+                            else "source_value_absent"
+                        ),
+                        "epistemic_state": (
+                            item.epistemic_status if item is not None else "absent"
+                        ),
+                        "needs_review": True,
+                        "risk": policy.inference_risk,
+                    },
                     "missing_requirement": policy.missing_requirement,
                     "requires_confirmation": False,
                     "validation_errors": [],
                 }
             )
 
+        rows = self._resolve_semantically_equivalent_conflicts(rows)
         rows = await self._merge_structured_page_signals(draft, rows, owner_user_id)
         rows = self._merge_recruiter_prefill(draft, rows)
 
@@ -2427,6 +3148,16 @@ class JobImportService:
         fields: list[JobImportField],
     ) -> dict[str, object]:
         payload: dict[str, object] = {}
+        effective_role_slug: str | None = None
+        effective_work_mode = next(
+            (
+                value
+                for field in fields
+                if field.field_path == "work_mode"
+                and isinstance((value := self._effective_field_value(field)), str)
+            ),
+            None,
+        )
         for field in fields:
             value = self._effective_field_value(field)
             if value is None:
@@ -2436,7 +3167,11 @@ class JobImportService:
             # derived value is either represented truthfully or left out — and
             # never bent into a neighbouring value to make it fit, which would
             # publish a claim the source never made.
-            conversion = convert_to_native(field.field_path, value)
+            conversion = convert_to_native(
+                field.field_path,
+                value,
+                work_mode=effective_work_mode,
+            )
             if not conversion.writable:
                 continue
             value = conversion.native_value
@@ -2451,12 +3186,92 @@ class JobImportService:
                         details={"field_path": "primary_role_key"},
                     )
                 payload["primary_role_id"] = role.id
+                effective_role_slug = role.slug
             elif policy.native_field is not None:
                 payload[policy.native_field] = value
+        payload = self._without_inactive_native_dependents(
+            payload, effective_role_slug=effective_role_slug
+        )
         # Two boundaries, in order: what a candidate is asked to do, then
         # what a candidate reads. Both exist because everything upstream can
         # put something in a field that should never reach a listing.
         return candidate_native_copy(self._safe_application_payload(payload))
+
+    @staticmethod
+    def _without_inactive_native_dependents(
+        payload: dict[str, object], *, effective_role_slug: str | None = None
+    ) -> dict[str, object]:
+        """Omit values made inapplicable by a newer controlling decision.
+
+        Imported rows are an audit history, so answering "no trial" must not
+        delete an earlier source-stated trial amount.  Native conversion is a
+        different boundary: emitting both would create an internally
+        contradictory draft that Post Job cannot save.  Controllers therefore
+        filter their inactive descendants only in the conversion copy.
+
+        This mirrors the native form's conditional serialization without
+        fabricating, clearing, or overwriting any stored source/recruiter value.
+        """
+
+        cleaned = dict(payload)
+
+        mode = cleaned.get("compensation_mode")
+        if mode == "negotiable":
+            cleaned.pop("budget_amount", None)
+            cleaned.pop("budget_max", None)
+        elif mode in {"fixed", "approximate"}:
+            cleaned.pop("budget_max", None)
+        if cleaned.get("budget_unit") != "custom":
+            cleaned.pop("budget_unit_custom", None)
+
+        if cleaned.get("revision_policy") != "fixed":
+            cleaned.pop("revision_rounds", None)
+
+        if cleaned.get("start_timing") != "specific_date":
+            cleaned.pop("start_date", None)
+
+        duration_type = cleaned.get("duration_type")
+        if duration_type == "fixed_period":
+            cleaned.pop("engagement_end_date", None)
+        elif duration_type == "until_date":
+            cleaned.pop("duration_value", None)
+            cleaned.pop("duration_unit", None)
+        else:
+            cleaned.pop("duration_value", None)
+            cleaned.pop("duration_unit", None)
+            cleaned.pop("engagement_end_date", None)
+
+        trial_status = cleaned.get("trial_status")
+        trial_details = {
+            "trial_scope",
+            "trial_effort_value",
+            "trial_effort_unit",
+            "trial_compensation_amount",
+            "trial_compensation_currency",
+            "trial_compensation_basis",
+            "trial_work_usage",
+            "trial_portfolio_permission",
+            "trial_attribution",
+            "unpaid_trial_confirmed",
+            "trial_notes",
+        }
+        if trial_status not in {"paid", "unpaid"}:
+            for field in trial_details:
+                cleaned.pop(field, None)
+        elif trial_status == "unpaid":
+            for field in {
+                "trial_compensation_amount",
+                "trial_compensation_currency",
+                "trial_compensation_basis",
+            }:
+                cleaned.pop(field, None)
+        else:
+            cleaned.pop("unpaid_trial_confirmed", None)
+
+        if effective_role_slug is not None and effective_role_slug != "other-creator-role":
+            cleaned.pop("role_specialization", None)
+
+        return cleaned
 
     @staticmethod
     def _safe_application_payload(payload: dict[str, object]) -> dict[str, object]:
@@ -2480,13 +3295,27 @@ class JobImportService:
         ``external_apply_url`` are platform-decided, so an imported value for
         either is a claim about someone else's hiring process, not a setting.
 
-        The deadline stops being a field. It survives as a sentence in the note,
-        which is where a candidate actually reads it.
+        A validated deadline remains the native deadline field.  Candidate
+        surfaces already render that field, so copying it into prose would both
+        duplicate it and lose the machine-readable application boundary.
         """
 
-        deadline = payload.pop("deadline_at", None)
+        deadline = payload.get("deadline_at")
         stated = payload.get("how_to_apply")
-        parsed_deadline = deadline if isinstance(deadline, datetime) else None
+        parsed_deadline: datetime | None = None
+        if isinstance(deadline, datetime):
+            parsed_deadline = deadline
+        elif isinstance(deadline, str):
+            try:
+                candidate = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+            except ValueError:
+                candidate = None
+            if candidate is not None and candidate.tzinfo is not None:
+                parsed_deadline = candidate.astimezone(UTC)
+        if parsed_deadline is not None and parsed_deadline > datetime.now(UTC):
+            payload["deadline_at"] = parsed_deadline
+        else:
+            payload.pop("deadline_at", None)
         source_text = stated if isinstance(stated, str) else None
 
         # A request the application form can already collect becomes a structured
@@ -2500,6 +3329,31 @@ class JobImportService:
         # Classify what survives sanitisation, not the raw source. Reading the
         # original would let "on WhatsApp only" fall out as an unstructured
         # material and land straight back in the note it was removed from.
+        # The provider-facing schema necessarily accepts strings here, but the
+        # native candidate form accepts only canonical requirement keys. Treat
+        # arbitrary entries as untrusted source prose: recover known materials,
+        # discard destinations, and never publish the raw sentence as a label.
+        existing_raw = payload.get("application_requirements")
+        existing_values = list(existing_raw) if isinstance(existing_raw, list) else []
+        canonical_requirements = sanitize_application_requirement_keys(existing_values)
+        for raw_requirement in existing_values:
+            if (
+                not isinstance(raw_requirement, str)
+                or raw_requirement in canonical_requirements
+            ):
+                continue
+            safe_requirement = separate_application_instructions(raw_requirement)
+            recovered = classify_application_instructions(
+                " ".join(safe_requirement.safe_sentences) or None
+            )
+            for key in recovered.requirement_keys:
+                if key not in canonical_requirements:
+                    canonical_requirements.append(key)
+        if canonical_requirements:
+            payload["application_requirements"] = canonical_requirements
+        else:
+            payload.pop("application_requirements", None)
+
         separated = separate_application_instructions(source_text)
         classified = classify_application_instructions(
             " ".join(separated.safe_sentences) or None
@@ -2512,35 +3366,48 @@ class JobImportService:
                     merged.append(key)
             payload["application_requirements"] = merged
 
+        existing_questions = payload.get("screening_questions")
+        question_rows = (
+            list(existing_questions) if isinstance(existing_questions, list) else []
+        )
+        known_prompts = {
+            row.get("prompt") for row in question_rows if isinstance(row, dict)
+        }
+        for prompt in classified.screening_questions:
+            if prompt not in known_prompts:
+                question_rows.append({"prompt": prompt, "required": False})
+
+        safe_screening = safe_imported_screening_questions(question_rows)
+        if safe_screening.requirement_keys:
+            existing = payload.get("application_requirements")
+            merged = list(existing) if isinstance(existing, list) else []
+            for key in safe_screening.requirement_keys:
+                if key not in merged:
+                    merged.append(key)
+            payload["application_requirements"] = merged
+
+        if safe_screening.questions:
+            payload["screening_questions"] = safe_screening.questions
+        else:
+            payload.pop("screening_questions", None)
+
         # The note carries only what nothing else can hold. Repeating a request
         # the form already collects makes a candidate answer it twice, and an
         # evaluative question published here would be asked of everyone who reads
         # the listing rather than of everyone who applies.
-        if classified.requirement_keys:
-            # What is left is a list of things, not a sentence, so it goes in as
-            # materials and the composer supplies the framing.
-            note = compose_public_apply_note(
-                materials=list(classified.unstructured_materials),
-                deadline=parsed_deadline,
-            )
-        else:
-            note = compose_public_apply_note(
-                source_text=source_text,
-                deadline=parsed_deadline,
-            )
-
-        if classified.screening_questions:
-            existing_questions = payload.get("screening_questions")
-            rows = list(existing_questions) if isinstance(existing_questions, list) else []
-            known = {
-                row.get("prompt")
-                for row in rows
-                if isinstance(row, dict)
-            }
-            for prompt in classified.screening_questions:
-                if prompt not in known:
-                    rows.append({"prompt": prompt, "required": False})
-            payload["screening_questions"] = rows[:20]
+        note_materials = [
+            *classified.unstructured_materials,
+            *safe_screening.unstructured_materials,
+        ]
+        # The final imported boundary is fail-closed: only a classified
+        # material request or an exact deadline can become public copy. Raw
+        # provider prose never passes through merely because no known rule
+        # rejected it; that was how novel links, handles and route imperatives
+        # kept finding new spellings around a destination blacklist.
+        note = compose_public_apply_note(
+            materials=note_materials,
+            deadline=None,
+        )
         if note:
             payload["how_to_apply"] = note
         else:
@@ -2549,6 +3416,14 @@ class JobImportService:
         # Never inherited from a source. The candidate applies here.
         payload["application_mode"] = "internal"
         payload.pop("external_apply_url", None)
+        if "application_requirements" in payload:
+            allowed = sanitize_application_requirement_keys(
+                payload.get("application_requirements")
+            )
+            if allowed:
+                payload["application_requirements"] = allowed
+            else:
+                payload.pop("application_requirements", None)
         return payload
 
     @staticmethod
@@ -2798,6 +3673,11 @@ class JobImportService:
             "budget_currency": "compensation",
             "budget_unit": "compensation",
             "engagement_type": "employment_type",
+            "expected_weekly_hours_min": "work_hours",
+            "expected_weekly_hours_max": "work_hours",
+            "deadline_at": "valid_through",
+            "start_timing": "job_start_date",
+            "start_date": "job_start_date",
         }
         key = declared.get(field_path)
         return bool(key and str(context.get(key) or "").strip())
@@ -2817,6 +3697,97 @@ class JobImportService:
         # The same gate conversion applies, asked early: a value the native
         # field will refuse is not a value the draft can hold.
         return convert_to_native(field_path, value).writable
+
+    @staticmethod
+    def _resolve_semantically_equivalent_conflicts(
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Settle conflicts whose alternatives name the same physical city.
+
+        Provider output is deliberately preserved unchanged on the draft for
+        audit.  The field row, however, is the product's decision layer.  When
+        two source strings are merely a city alias or a neighbourhood inside
+        that city, presenting them as competing recruiter choices is false
+        uncertainty and creates avoidable work.
+
+        This rule is intentionally limited to exact, curated geographic
+        equivalence.  Different cities, remote roles, unknown place names, and
+        every other field remain unresolved for a human decision.
+        """
+
+        work_mode = next(
+            (
+                row.get("confirmed_value") or row.get("proposed_value")
+                for row in rows
+                if row.get("field_path") == "work_mode"
+                and row.get("provenance_state") != "conflicting_source_values"
+            ),
+            None,
+        )
+        work_mode = work_mode if isinstance(work_mode, str) else None
+
+        for row in rows:
+            if (
+                row.get("field_path") != "location"
+                or row.get("provenance_state") != "conflicting_source_values"
+            ):
+                continue
+            alternatives = row.get("conflicting_values")
+            if not isinstance(alternatives, list):
+                continue
+            stated = [
+                item.get("value")
+                for item in alternatives
+                if isinstance(item, dict)
+                and isinstance(item.get("value"), str)
+                and item.get("value", "").strip()
+            ]
+            resolution = resolve_locations(stated, work_mode=work_mode)
+            if not resolution.confident or resolution.recommended is None:
+                continue
+            conversion = convert_to_native("location", resolution.recommended)
+            if not conversion.writable:
+                continue
+
+            evidence: list[dict[str, object]] = []
+            for alternative in alternatives:
+                if not isinstance(alternative, dict):
+                    continue
+                for item in alternative.get("evidence") or []:
+                    if isinstance(item, dict) and item not in evidence:
+                        evidence.append(item)
+
+            metadata = row.get("provider_confidence")
+            provider_confidence = dict(metadata) if isinstance(metadata, dict) else {}
+            provider_confidence.update(
+                {
+                    "origin": "contextual_inference",
+                    "confidence": "high",
+                    "rationale_code": "semantically_equivalent_location_values",
+                    "epistemic_state": "logically_entailed",
+                    "needs_review": False,
+                    "risk": JOB_IMPORT_FIELD_POLICIES["location"].inference_risk,
+                    "server_grounded_match": True,
+                    "location_audit": resolution.audit(),
+                }
+            )
+            row.update(
+                {
+                    "provenance_state": "extracted_from_source",
+                    "proposed_value": conversion.native_value,
+                    "confirmed_value": conversion.native_value,
+                    "review_status": "confirmed",
+                    "requires_confirmation": False,
+                    "validation_errors": [],
+                    "evidence": evidence[:8],
+                    "conflicting_values": [],
+                    "explanation": (
+                        "The source's location alternatives resolve to the same city."
+                    ),
+                    "provider_confidence": provider_confidence,
+                }
+            )
+        return rows
 
     async def _merge_structured_page_signals(
         self,
@@ -2849,8 +3820,8 @@ class JobImportService:
 
         metadata = source.retrieval_metadata
         context = metadata.get("structured_context") if isinstance(metadata, dict) else None
-        if not isinstance(context, dict) or not context:
-            return rows
+        if not isinstance(context, dict):
+            context = {}
 
         try:
             structured = fields_from_structured_context(context)
@@ -2878,7 +3849,9 @@ class JobImportService:
             # two disagree, because the employer is the better authority on their
             # own offer.
             labelled = labelled_facts(source.original_text)
+            labelled_conflict_paths = set((labelled.conflicts or {}).keys())
             for path, value in (
+                ("experience_level", labelled.experience_level),
                 ("engagement_type", labelled.engagement_type),
                 ("budget_amount", labelled.budget_amount),
                 ("budget_max", labelled.budget_max),
@@ -2886,8 +3859,39 @@ class JobImportService:
                 ("budget_unit", labelled.budget_unit),
                 ("compensation_mode", labelled.compensation_mode),
             ):
-                if value is not None:
+                if value is not None and path not in labelled_conflict_paths:
                     structured[path] = value
+
+            effective_work_mode = structured.get("work_mode")
+            if not isinstance(effective_work_mode, str):
+                existing_work_mode = next(
+                    (
+                        row.get("confirmed_value") or row.get("proposed_value")
+                        for row in rows
+                        if row.get("field_path") == "work_mode"
+                    ),
+                    None,
+                )
+                effective_work_mode = (
+                    existing_work_mode if isinstance(existing_work_mode, str) else None
+                )
+            city_resolution = (
+                resolve_job_city(
+                    source.original_text,
+                    context,
+                    work_mode=effective_work_mode,
+                )
+                if effective_work_mode in {"hybrid", "onsite"}
+                else JobCityResolution(
+                    rationale_code=(
+                        "remote_geography_preserved"
+                        if effective_work_mode == "remote"
+                        else "work_mode_required_before_physical_city"
+                    )
+                )
+            )
+            if city_resolution.resolved:
+                structured["location"] = city_resolution.city
         except Exception:  # pragma: no cover - enrichment must never break import
             # Enrichment is a bonus. A malformed structured block must never
             # turn a successful extraction into a failure.
@@ -2896,6 +3900,7 @@ class JobImportService:
         labelled_paths = {
             path
             for path, value in (
+                ("experience_level", labelled.experience_level),
                 ("engagement_type", labelled.engagement_type),
                 ("budget_amount", labelled.budget_amount),
                 ("budget_max", labelled.budget_max),
@@ -2903,9 +3908,75 @@ class JobImportService:
                 ("budget_unit", labelled.budget_unit),
                 ("compensation_mode", labelled.compensation_mode),
             )
-            if value is not None
+            if value is not None and path not in labelled_conflict_paths
         }
         by_path = {row["field_path"]: row for row in rows}
+        for field_path, alternatives in (labelled.conflicts or {}).items():
+            policy = JOB_IMPORT_FIELD_POLICIES.get(field_path)
+            if policy is None:
+                continue
+            existing = by_path.get(field_path)
+            if existing is not None and existing.get("authority_state") in {
+                "confirmed_by_recruiter",
+                "edited_by_recruiter",
+                "rejected_by_recruiter",
+            }:
+                continue
+            normalized_values: list[dict[str, object]] = []
+            validation_errors: list[str] = []
+            seen: set[str] = set()
+            for index, (raw_value, excerpt) in enumerate(alternatives[:8]):
+                normalized, errors = await self._validate_field_value(policy, raw_value)
+                key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+                if key in seen:
+                    continue
+                seen.add(key)
+                evidence = self._exact_source_evidence(source, [excerpt])
+                if not evidence:
+                    continue
+                normalized_values.append(
+                    {
+                        "value": normalized,
+                        "evidence": [item.model_dump(mode="json") for item in evidence],
+                    }
+                )
+                validation_errors.extend(
+                    f"Alternative {index + 1}: {error}" for error in errors
+                )
+            if len(normalized_values) < 2:
+                continue
+            conflict_row = {
+                "draft_id": draft.id,
+                "field_path": field_path,
+                "proposed_value": None,
+                "confirmed_value": None,
+                "provenance_state": "conflicting_source_values",
+                "evidence": [],
+                "conflicting_values": normalized_values,
+                "explanation": (
+                    "The page contains multiple dedicated labelled values for this field."
+                ),
+                "provider_confidence": {
+                    "origin": "explicit",
+                    "confidence": "high",
+                    "rationale_code": "conflicting_labelled_source_values",
+                    "epistemic_state": "conflicting",
+                    "needs_review": True,
+                    "risk": policy.inference_risk,
+                },
+                "review_status": "pending",
+                "missing_requirement": policy.missing_requirement,
+                "requires_confirmation": True,
+                "validation_errors": validation_errors,
+            }
+            if existing is not None:
+                existing.update(conflict_row)
+            else:
+                rows.append(conflict_row)
+                by_path[field_path] = conflict_row
+        context_resolved_paths = {
+            "location"
+        } if city_resolution.resolved else set()
         for field_path, value in structured.items():
             policy = JOB_IMPORT_FIELD_POLICIES.get(field_path)
             if policy is None:
@@ -2956,7 +4027,11 @@ class JobImportService:
                 # `labelled_paths` therefore contains only fields the labelled
                 # reader actually *found*. A field absent from it contributes no
                 # opinion here, and cannot displace an evidenced extraction.
-                may_replace = fact_outranks(
+                context_resolved = field_path in context_resolved_paths
+                may_replace = (
+                    not recruiter_owned
+                    and context_resolved
+                ) or fact_outranks(
                     "labelled_source" if employer_labelled else "heuristic",
                     "recruiter" if recruiter_owned else "evidenced_interpretation",
                 )
@@ -2973,6 +4048,29 @@ class JobImportService:
             if errors or normalized is None:
                 continue
 
+            evidence: list[JobImportEvidence] = []
+            rationale_code = "structured_source_value"
+            origin = "explicit"
+            epistemic_state = "normalized_explicit"
+            explanation = "Read from the job page's structured details."
+            labelled_evidence = (
+                (labelled.evidence or {}).get(field_path)
+                if field_path in labelled_paths
+                else None
+            )
+            if isinstance(labelled_evidence, str):
+                evidence = self._exact_source_evidence(source, [labelled_evidence])
+                rationale_code = f"labelled_{field_path}_authoritative"
+                epistemic_state = "normalized_explicit"
+                explanation = "Read from the job page's dedicated labelled field."
+            if field_path in context_resolved_paths:
+                evidence = self._exact_source_evidence(source, city_resolution.evidence)
+                rationale_code = city_resolution.rationale_code or "corroborated_city"
+                origin = "contextual_inference"
+                epistemic_state = "logically_entailed"
+                explanation = (
+                    "The source's title and location details resolve to one city."
+                )
             filled = {
                 "provenance_state": "extracted_from_source",
                 "proposed_value": normalized,
@@ -2980,9 +4078,36 @@ class JobImportService:
                 "review_status": "confirmed",
                 "requires_confirmation": False,
                 "validation_errors": [],
-                "explanation": "Read from the job page's structured details.",
+                "explanation": explanation,
                 "conflicting_values": [],
             }
+            # When an authoritative labelled/contextual decision replaces a
+            # provider reading, replace its stale evidence and review metadata
+            # as well. Ordinary exact structured enrichment keeps provider
+            # evidence on an existing row, matching the pre-existing contract.
+            if existing is None or field_path in labelled_paths | context_resolved_paths:
+                filled["evidence"] = [
+                    item.model_dump(mode="json") for item in evidence
+                ]
+                filled["provider_confidence"] = {
+                    "score": 1.0,
+                    "label": "high",
+                    "metadata": {
+                        "origin": origin,
+                        "confidence": "high",
+                        "rationale_code": rationale_code,
+                        "epistemic_state": epistemic_state,
+                        "needs_review": False,
+                        "risk": policy.inference_risk,
+                        "server_grounded_match": True,
+                    },
+                    "origin": origin,
+                    "confidence": "high",
+                    "rationale_code": rationale_code,
+                    "epistemic_state": epistemic_state,
+                    "needs_review": False,
+                    "risk": policy.inference_risk,
+                }
             if existing is not None:
                 existing.update(filled)
                 continue
@@ -2990,13 +4115,50 @@ class JobImportService:
                 {
                     "draft_id": draft.id,
                     "field_path": field_path,
-                    "evidence": [],
-                    "provider_confidence": None,
                     "missing_requirement": policy.missing_requirement,
                     "edited_value": None,
                     **filled,
                 }
             )
+
+        if labelled.invalid_compensation_range:
+            validation_message = (
+                "The stated compensation range has a lower bound above its upper bound."
+            )
+            for field_path in ("budget_amount", "budget_max", "compensation_mode"):
+                existing = by_path.get(field_path)
+                if existing is None or existing.get("authority_state") in {
+                    "confirmed_by_recruiter",
+                    "edited_by_recruiter",
+                    "rejected_by_recruiter",
+                }:
+                    continue
+                metadata = existing.get("provider_confidence")
+                provider_confidence = (
+                    dict(metadata) if isinstance(metadata, dict) else {}
+                )
+                provider_confidence.update(
+                    {
+                        "origin": "explicit",
+                        "confidence": "high",
+                        "rationale_code": "inverted_labelled_compensation_range",
+                        "epistemic_state": "conflicting",
+                        "needs_review": True,
+                        "risk": JOB_IMPORT_FIELD_POLICIES[field_path].inference_risk,
+                    }
+                )
+                validation_errors = list(existing.get("validation_errors") or [])
+                if validation_message not in validation_errors:
+                    validation_errors.append(validation_message)
+                existing.update(
+                    {
+                        "confirmed_value": None,
+                        "review_status": "pending",
+                        "requires_confirmation": True,
+                        "validation_errors": validation_errors,
+                        "provider_confidence": provider_confidence,
+                    }
+                )
         return rows
 
     @classmethod
@@ -3197,6 +4359,25 @@ class JobImportService:
                     raise JobImportError(
                         "JOB_IMPORT_FIELD_REQUIRES_EDIT_OR_RESOLUTION",
                         "Missing and conflicting fields cannot be accepted as-is.",
+                        status_code=409,
+                    )
+                confidence = (
+                    field.provider_confidence
+                    if isinstance(field.provider_confidence, dict)
+                    else {}
+                )
+                if (
+                    field.field_path == "source_inputs"
+                    and confidence.get("sensitive_access_confirmation_required") is True
+                ):
+                    # A provider may preserve the explicit fact that account or
+                    # analytics access is needed, but clicking “accept” must not
+                    # turn its proposed Boolean into recruiter consent. Requiring
+                    # an edited native value makes that consent explicit and runs
+                    # the ordinary JobSourceInput validator over it.
+                    raise JobImportError(
+                        "JOB_IMPORT_FIELD_REQUIRES_EXPLICIT_EDIT",
+                        "Sensitive source access must be confirmed through an explicit recruiter edit.",
                         status_code=409,
                     )
                 if field.validation_errors:
@@ -3778,6 +4959,31 @@ class JobImportService:
         )
         return str(origin), confidence, needs_review, rationale
 
+    @staticmethod
+    def _epistemic_state(field: JobImportField, *, origin: str) -> str:
+        metadata = field.provider_confidence if isinstance(field.provider_confidence, dict) else {}
+        state = metadata.get("epistemic_state")
+        if state in {
+            "explicit",
+            "normalized_explicit",
+            "logically_entailed",
+            "plausible_interpretation",
+            "ambiguous",
+            "conflicting",
+            "absent",
+            "technically_unavailable",
+        }:
+            return str(state)
+        if field.provenance_state == "conflicting_source_values":
+            return "conflicting"
+        if field.provenance_state == "missing":
+            return "absent"
+        if origin == "contextual_inference":
+            return "logically_entailed"
+        if field.provenance_state == "suggested_inference":
+            return "plausible_interpretation"
+        return "explicit"
+
     @classmethod
     def _field_read(cls, field: JobImportField) -> JobImportFieldRead:
         origin, confidence, needs_review, rationale = cls._decision_read(field)
@@ -3789,6 +4995,7 @@ class JobImportService:
             review_status=field.review_status,
             authority_state=cls._authority_state(field),
             decision_origin=origin,
+            epistemic_state=cls._epistemic_state(field, origin=origin),
             decision_confidence=confidence,
             needs_review=needs_review,
             rationale_code=rationale,

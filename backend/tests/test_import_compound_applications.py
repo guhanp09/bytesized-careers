@@ -96,7 +96,9 @@ class TestTheFiveCompoundSentences:
         )
         classified = classify_application_instructions(source)
 
-        # A CV is a portfolio requirement the form can collect.
+        # A CV and work links are different materials and retain different
+        # candidate controls.
+        assert "resume" in classified.requirement_keys
         assert "relevant_portfolio" in classified.requirement_keys
         # The platform name is detail the generic key cannot carry, so it has to
         # survive somewhere the candidate will read it.
@@ -214,6 +216,29 @@ class TestPlatformNamesAreWorkOrDestinationNeverBoth:
 
 
 class TestNoDestinationEverReachesACandidate:
+    def test_shine_resume_and_cover_letter_route_becomes_structured_only(
+        self,
+    ) -> None:
+        source = (
+            "Submit your resume and cover letter to email or apply through Indeed."
+        )
+
+        separated = separate_application_instructions(source)
+        result = _converted(source)
+
+        assert separated.safe_sentences == [
+            "Submit your resume and cover letter."
+        ]
+        assert any("email" in item.casefold() for item in separated.destination)
+        assert any("indeed" in item.casefold() for item in separated.destination)
+        assert result["application_requirements"] == [
+            "resume",
+            "cover_letter",
+        ]
+        assert "how_to_apply" not in result
+        assert "indeed" not in str(result).casefold()
+        assert "to email" not in str(result).casefold()
+
     @pytest.mark.parametrize(
         "source",
         [
@@ -270,7 +295,7 @@ class TestNoDestinationEverReachesACandidate:
 
 
 class TestDeadlinesAreStatedOnceAndNeverInvented:
-    def test_a_deadline_is_not_a_field_on_an_imported_job(self) -> None:
+    def test_a_deadline_stays_native_and_is_not_duplicated_in_the_note(self) -> None:
         from datetime import UTC, datetime
 
         result = JobImportService._safe_application_payload(
@@ -280,8 +305,10 @@ class TestDeadlinesAreStatedOnceAndNeverInvented:
             }
         )
 
-        assert "deadline_at" not in result
-        assert "31 August 2026" in str(result["how_to_apply"])
+        assert result["deadline_at"] == datetime(2026, 8, 31, tzinfo=UTC)
+        assert result["how_to_apply"] == (
+            "Please include two recent samples with your CreatorJobs application."
+        )
 
     def test_rolling_wording_never_becomes_a_date(self) -> None:
         note = compose_public_apply_note(source_text="Deadline: Rolling — apply early.")

@@ -71,6 +71,24 @@ const DECISION_ORIGINS = [
 
 const DECISION_CONFIDENCES = ["high", "medium", "low"] as const;
 
+const EPISTEMIC_STATES = [
+  "explicit",
+  "normalized_explicit",
+  "logically_entailed",
+  "plausible_interpretation",
+  "ambiguous",
+  "conflicting",
+  "absent",
+  "technically_unavailable",
+] as const;
+
+export const JOB_IMPORT_QUESTION_REASON_CODES = [
+  "MISSING_IMPORTANT_BUSINESS_DECISION",
+  "GENUINE_AMBIGUITY",
+  "UNRESOLVED_SOURCE_CONFLICT",
+  "OPTIONAL_HIGH_VALUE_REFINEMENT",
+] as const;
+
 const SOURCE_TYPES = [
   "pasted_text",
   "rough_description",
@@ -129,6 +147,11 @@ export type JobImportProvenance = (typeof PROVENANCE_STATES)[number];
 
 export type JobImportReviewStatus = (typeof REVIEW_STATES)[number];
 
+export type JobImportEpistemicState = (typeof EPISTEMIC_STATES)[number];
+
+export type JobImportQuestionReasonCode =
+  (typeof JOB_IMPORT_QUESTION_REASON_CODES)[number];
+
 export type JobImportEvidence = {
   snippet: string;
   location?: {
@@ -149,6 +172,7 @@ export type JobImportField = {
   authority_state: (typeof AUTHORITY_STATES)[number];
   decision_origin: (typeof DECISION_ORIGINS)[number];
   decision_confidence: (typeof DECISION_CONFIDENCES)[number] | null;
+  epistemic_state: JobImportEpistemicState;
   needs_review: boolean;
   rationale_code: string | null;
   evidence: JobImportEvidence[];
@@ -251,6 +275,7 @@ export type JobImportConversationState =
 export type JobImportActiveQuestion = {
   field_path: string;
   kind: "mandatory" | "confirmation" | "optional";
+  reason: JobImportQuestionReasonCode;
   asked_at?: string;
   context_version?: number;
   /** Present when the assistant is proposing a value to confirm. */
@@ -264,6 +289,8 @@ export type JobImportActiveQuestion = {
   alternatives?: Array<{ value: unknown; evidence: string[] }>;
   /** The alternative the job title already settles, if any. */
   recommended_value?: unknown;
+  /** Source-named role choices shown before the constrained catalog override. */
+  recommended_choices?: string[];
   /**
    * What a valid answer looks like, derived on the server from the canonical
    * job schema. The client renders from this rather than keeping its own idea
@@ -273,12 +300,30 @@ export type JobImportActiveQuestion = {
   answer?: {
     kind: "choice" | "multi_choice" | "number" | "text" | "url" | "date" | "unknown";
     choices?: string[];
+    /**
+     * The choices are useful shortcuts, not the complete storage domain. When
+     * true, the same turn must also let the recruiter enter a bounded value in
+     * their own words. Absence means false for checkpointed questions created
+     * before this capability existed.
+     */
+    custom_values_allowed?: boolean;
+    /** Explicitly distinguishes suggestion catalogs from schema enums. */
+    choices_are_suggestions?: boolean;
     minimum?: number;
     maximum?: number;
+    minimum_exclusive?: boolean;
+    maximum_exclusive?: boolean;
+    /** Whole-number counts use `1`; Decimal fields retain `"any"`. */
+    step?: number | "any";
+    integer_only?: boolean;
     min_length?: number;
     max_length?: number;
     is_list?: boolean;
     item_key?: string;
+    /** Nested key/value used for a valid structured `other` row. */
+    custom_item_key?: string;
+    custom_item_value?: string;
+    custom_item_max_length?: number;
     /** Display text per value. A slug identifies; a name reads. */
     labels?: Record<string, string>;
   };
@@ -354,6 +399,7 @@ export const decodeJobImportDraft = (value: unknown): JobImportDraft => {
     requireKnownState(field.review_status, REVIEW_STATES, "field review");
     requireKnownState(field.authority_state, AUTHORITY_STATES, "field authority");
     requireKnownState(field.decision_origin, DECISION_ORIGINS, "field decision origin");
+    requireKnownState(field.epistemic_state, EPISTEMIC_STATES, "field epistemic");
     if (field.decision_confidence !== null) {
       requireKnownState(
         field.decision_confidence,
@@ -745,6 +791,7 @@ export type DevelopmentJobImportScenario =
   // Land in the checkpointed conversation, waiting on one question.
   | "checkpoint-currency"
   | "checkpoint-trial"
+  | "checkpoint-experience"
   // A real 503 for the failure surface.
   | "processing-failure"
   // Drafts left genuinely mid-processing, for staged behaviour.

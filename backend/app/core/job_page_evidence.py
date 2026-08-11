@@ -149,6 +149,7 @@ def classify_job_page(
     normalized_text: str | None,
     *,
     declared_job_titles: list[str] | None = None,
+    declared_job_identities: list[str] | None = None,
 ) -> PageEvidence:
     """Decide what this page is, from its own evidence.
 
@@ -166,12 +167,14 @@ def classify_job_page(
         cleaned = " ".join(str(candidate).split()).strip()
         if cleaned and cleaned.casefold() not in {t.casefold() for t in titles}:
             titles.append(cleaned)
+    identities = list(dict.fromkeys(str(item) for item in declared_job_identities or [] if item))
+    declared_jobs = len(identities) if identities else len(titles)
     chars = len(text)
 
     def verdict(classification: PageClass, reason: str) -> PageEvidence:
         return PageEvidence(
             classification=classification,
-            declared_jobs=len(titles),
+            declared_jobs=declared_jobs,
             posting_signals=_count(_POSTING_SIGNALS, text),
             index_signals=_count(_INDEX_SIGNALS, text),
             chars=chars,
@@ -182,13 +185,13 @@ def classify_job_page(
     # Several materially different roles in markup settles it, however the prose
     # reads. Importing "whichever came first" is how a thirty-role index used to
     # become one arbitrary draft.
-    if len(titles) > 1:
+    if declared_jobs > 1:
         return verdict("multi_job_or_index", "several distinct JobPosting records")
 
     if _count(_CHALLENGE_SIGNALS, text) and chars < 2000:
         return verdict("blocked_or_challenge", "the page shows a bot or browser check")
 
-    if len(titles) == 1:
+    if declared_jobs == 1:
         # Markup naming exactly one job is the clearest evidence there is.
         return verdict("single_job", "one JobPosting record")
 

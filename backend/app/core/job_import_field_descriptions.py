@@ -46,10 +46,15 @@ FIELD_DESCRIPTIONS: Final[dict[str, str]] = {
     "tags": "Short free-form keywords describing the role.",
     # --- Arrangement -----------------------------------------------------
     "work_mode": "Whether the work is remote, hybrid or on-site.",
-    "location": "The city or region the work is based in, when not fully remote.",
+    "location": (
+        "For hybrid or on-site work, the physical workplace city; for remote "
+        "work, only an explicit applicant country or region restriction. Never "
+        "use an employer office as a remote-work restriction."
+    ),
     "timezone_overlap": "Any required overlap with a stated timezone.",
     "engagement_type": "The shape of the engagement, such as full time, part time, internship or freelance.",
     "start_timing": "When the work should start.",
+    "start_timeframe": "The legacy broad start window when the source states one.",
     "start_date": "The exact start date, when a specific one is given.",
     "deadline_at": "The application deadline, if the post states one.",
     "duration_type": "Whether the engagement is ongoing, for a fixed period, or project based.",
@@ -85,8 +90,11 @@ FIELD_DESCRIPTIONS: Final[dict[str, str]] = {
     # --- Process ----------------------------------------------------------
     "hiring_process": "The stages of the hiring process, in order.",
     "hiring_process_notes": "Extra detail about how hiring will run.",
-    "how_to_apply": "Instructions the post gives for applying.",
+    "how_to_apply": "Source-stated application material details with no structured home, excluding every external destination or contact route.",
+    "application_mode": "CreatorJobs-owned internal application routing; never extracted from a source.",
+    "external_apply_url": "A platform-owned legacy route that a source import must never populate.",
     "application_requirements": "What a candidate must send with an application.",
+    "screening_questions": "Evaluative questions the post explicitly asks every applicant.",
     "revision_policy": "Whether revisions are unlimited, a fixed number, or unstated.",
     "revision_rounds": "How many revision rounds are included.",
     "revision_notes": "Extra detail about revisions.",
@@ -101,7 +109,11 @@ FIELD_DESCRIPTIONS: Final[dict[str, str]] = {
     "preferred_skills_note": "Extra detail about preferred skills.",
     "required_tool_keys": "Software or tools the post requires, as catalog keys.",
     "other_required_tools": "Required tools that do not match a catalog key.",
-    "experience_level": "How much prior experience the post asks for.",
+    "experience_level": (
+        "The source's exact prior-experience requirement as open text; preserve "
+        "ranges, floors, months and portfolio-with-no-minimum wording, and treat "
+        "the experience taxonomy as suggestions rather than a closed domain."
+    ),
     "source_inputs_notes": "Extra detail about what the creator is given to work from.",
 }
 

@@ -29,6 +29,7 @@ import {
   setJobImportPrefill,
   type JobImportConversation,
   type JobImportDraft,
+  type JobImportNonNullJsonValue,
   type JobImportSource,
   type DevelopmentJobImportScenario,
 } from "../../lib/jobImportReadiness";
@@ -202,6 +203,9 @@ export default function ImportJobPageClient() {
   const requestIdRef = React.useRef<string | null>(null);
   const startedAtRef = React.useRef(0);
   const answeringRef = React.useRef(false);
+  const pauseConversationRef = React.useRef<Promise<JobImportConversation> | null>(
+    null
+  );
   const readbackPendingRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -383,15 +387,36 @@ export default function ImportJobPageClient() {
     };
   }, [accessToken, activeDraftId]);
 
-  // Leaving while a question is open records the pause so returning restores it.
+  // Leaving while a question is open records the pause. Returning explicitly
+  // resumes the same deterministic turn; the read heartbeat remains passive and
+  // never starts provider work.
   React.useEffect(() => {
     if (!accessToken || !draft || !conversation?.waiting) return;
-    const onHide = () => {
-      if (document.visibilityState !== "hidden") return;
-      void pauseJobImportConversation(accessToken, draft.id).catch(() => undefined);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        const request = pauseJobImportConversation(accessToken, draft.id);
+        pauseConversationRef.current = request;
+        void request.catch(() => undefined);
+        return;
+      }
+      const pendingPause = pauseConversationRef.current;
+      void (async () => {
+        try {
+          await pendingPause;
+        } catch {
+          // A best-effort pause failing must not prevent restoring the turn.
+        }
+        if (document.visibilityState !== "visible") return;
+        try {
+          setConversation(await beginJobImportConversation(accessToken, draft.id));
+        } catch {
+          // The passive heartbeat keeps the durable question recoverable.
+        }
+      })();
     };
-    document.addEventListener("visibilitychange", onHide);
-    return () => document.removeEventListener("visibilitychange", onHide);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [accessToken, draft, conversation?.waiting]);
 
   /** Hand off to the ordinary editor. Always an explicit recruiter action. */
@@ -1049,6 +1074,9 @@ export default function ImportJobPageClient() {
                     <option value="checkpoint-trial" className="bg-[#0b0b0f]">
                       Checkpoint · is there a trial?
                     </option>
+                    <option value="checkpoint-experience" className="bg-[#0b0b0f]">
+                      Checkpoint · exact experience override
+                    </option>
                     <option value="delayed-processing" className="bg-[#0b0b0f]">
                       Still preparing · early question
                     </option>
@@ -1123,7 +1151,7 @@ export default function ImportJobPageClient() {
             }
             roleName={livePreview.roleName}
             filledCount={livePreview.provisionalCount + Object.keys(draft?.recruiter_prefill ?? {}).length}
-            onAnswerQuestion={(fieldPath, value: string | string[] | number) =>
+            onAnswerQuestion={(fieldPath, value: JobImportNonNullJsonValue) =>
               void conversationAction((token, id) =>
                 answerJobImportQuestion(
                   token,

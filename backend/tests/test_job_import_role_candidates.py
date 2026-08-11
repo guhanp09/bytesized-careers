@@ -95,6 +95,45 @@ class TestOnlyTheStrongestOptionsAreShown:
         crowded = "Video Editing, Animation, Motion Graphics, Scriptwriting and Copywriting"
         assert len(candidates(crowded)) <= 5
 
+    @pytest.mark.parametrize(
+        ("title", "expected"),
+        [
+            ("Video Editors Needed", "video-editor"),
+            ("Shorts Editors", "shorts-editor"),
+            ("Thumbnail Designers", "thumbnail-designer"),
+            ("YouTube Shorts Video Editor", "shorts-editor"),
+            ("Short Form Video Editor", "shorts-editor"),
+            ("Long Form Video Editor", "long-form-editor"),
+            ("YouTube Long-Form Video Editor", "long-form-editor"),
+            ("Film Editor", "video-editor"),
+            ("Audio Editor", "audio-engineer"),
+            ("Sound Editor", "audio-engineer"),
+            ("Thumbnail Creator", "thumbnail-designer"),
+            ("Thumbnail Editor", "thumbnail-designer"),
+        ],
+    )
+    def test_obvious_occupational_variants_choose_the_specific_role(
+        self, title: str, expected: str
+    ) -> None:
+        assert candidates(title) == [expected]
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Video Editing Software Engineer",
+            "Video Editing App Developer",
+            "Video Editing Instructor",
+            "Graphic Design Teacher",
+            "Animation Instructor",
+            "Sales Executive - Video Editing Software",
+            "Customer Support - Video Editing Platform",
+        ],
+    )
+    def test_a_non_practitioner_job_is_not_filed_under_the_craft_it_mentions(
+        self, title: str
+    ) -> None:
+        assert candidates(title) == []
+
 
 class TestIncidentalMentionsAreNotOptions:
     def test_a_craft_named_only_in_the_body_is_not_offered(self) -> None:

@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.api.deps import get_job_import_provider
 from app.integrations.openai.job_import_adapter import (
     OPENAI_MAX_OUTPUT_TOKENS,
+    OPENAI_REASONING_EFFORT,
     OpenAIJobImportAdapter,
     OpenAIJobImportConfig,
 )
@@ -267,6 +268,14 @@ def _wire_extraction(
         field["value_json"] = json.dumps(
             field.pop("value"), ensure_ascii=False, separators=(",", ":")
         )
+        if field.get("epistemic_status") is None:
+            if field["provenance"] == "suggested_inference":
+                field["epistemic_status"] = "plausible_interpretation"
+                field["inference_type"] = (
+                    field.get("inference_type") or "test_contextual_interpretation"
+                )
+            else:
+                field["epistemic_status"] = "explicit"
         confidence = field.get("provider_confidence")
         if confidence is not None:
             confidence.pop("metadata", None)
@@ -442,6 +451,7 @@ async def test_openai_adapter_builds_server_owned_structured_request() -> None:
     assert call["model"] == "gpt-5.6-luna"
     assert call["text_format"] is OpenAIJobImportExtractionResponse
     assert call["max_output_tokens"] == OPENAI_MAX_OUTPUT_TOKENS
+    assert call["reasoning"] == {"effort": OPENAI_REASONING_EFFORT}
     assert call["store"] is False
     provider_input = call["input"]
     assert isinstance(provider_input, list)
@@ -580,6 +590,7 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
                 ],
                 "explanation": None,
                 "provider_confidence": None,
+                "epistemic_status": "conflicting",
             }
         ]
     elif case == "invalid_warning_evidence":
@@ -596,6 +607,7 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
             {
                 "field_path": "deadline_at",
                 "explanation": None,
+                "epistemic_status": "absent",
                 "evidence_span_ids": ["E0001"],
             }
         ]
@@ -611,6 +623,7 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
             ],
             "explanation": None,
             "provider_confidence": None,
+            "epistemic_status": "conflicting",
         }
         payload["conflicts"] = [dict(conflict) for _ in range(31)]
     elif case == "excessive_warning_count":
@@ -632,10 +645,17 @@ def _post_response_failure_payload(case: str) -> dict[str, object]:
                 ],
                 "explanation": None,
                 "provider_confidence": None,
+                "epistemic_status": "conflicting",
             }
         ]
     elif case == "malformed_missing_field":
-        payload["missing_fields"] = [{"field_path": "INVALID.FIELD", "explanation": None}]
+        payload["missing_fields"] = [
+            {
+                "field_path": "INVALID.FIELD",
+                "explanation": None,
+                "epistemic_status": "absent",
+            }
+        ]
     elif case == "excessive_nesting":
         nested: object = "leaf"
         for _ in range(300):
@@ -734,6 +754,8 @@ async def test_semantically_identical_fields_merge_distinct_valid_evidence_safel
     ).model_dump(mode="json")
     first = payload["fields"][0]
     first["provenance"] = "suggested_inference"
+    first["epistemic_status"] = "plausible_interpretation"
+    first["inference_type"] = "test_contextual_interpretation"
     first["explanation"] = "The first source span supports this role."
     first["provider_confidence"] = {"score": 0.95, "label": "high"}
     duplicate = dict(first)
@@ -760,7 +782,13 @@ async def test_semantically_identical_fields_merge_distinct_valid_evidence_safel
 @pytest.mark.asyncio
 async def test_extracted_field_beats_duplicate_missing_provider_entry() -> None:
     payload = _wire_extraction().model_dump(mode="json")
-    payload["missing_fields"] = [{"field_path": "title", "explanation": "Not found."}]
+    payload["missing_fields"] = [
+        {
+            "field_path": "title",
+            "explanation": "Not found.",
+            "epistemic_status": "absent",
+        }
+    ]
 
     result = await _raw_adapter(payload).extract(_request())
 
@@ -782,9 +810,16 @@ async def test_conflict_beats_duplicate_missing_provider_entry() -> None:
             ],
             "explanation": "Two source amounts.",
             "provider_confidence": None,
+            "epistemic_status": "conflicting",
         }
     ]
-    payload["missing_fields"] = [{"field_path": "budget_amount", "explanation": "Not found."}]
+    payload["missing_fields"] = [
+        {
+            "field_path": "budget_amount",
+            "explanation": "Not found.",
+            "epistemic_status": "absent",
+        }
+    ]
 
     result = await _raw_adapter(payload).extract(_request())
 
@@ -849,12 +884,12 @@ async def test_the_rest_of_a_self_contradicting_reply_survives() -> None:
 
 @pytest.mark.asyncio
 async def test_one_unreadable_value_is_dropped_and_the_rest_survive() -> None:
-    """A value the server cannot parse costs that field, and only that field.
+    """Value decoding isolates the malformed field and retains diagnostics.
 
-    Aborting the extraction meant one malformed value discarded everything else
-    the model read correctly, and the recruiter was asked to type it all in.
-    The field is dropped, recorded as a warning, and the assistant asks about
-    that one detail — which is exactly what it is for.
+    This fixture intentionally has no request field definitions, so it exercises
+    the wire-to-domain decoder alone. Production requests add a completeness
+    gate after decoding; a dropped expected field then makes the whole provider
+    attempt a retryable technical failure rather than recruiter work.
     """
 
     wire = _wire_extraction().model_copy(deep=True)
@@ -1908,6 +1943,7 @@ async def test_a_path_stated_as_both_a_value_and_a_conflict_is_reconciled() -> N
                 {"value_json": '"Another reading"', "evidence_span_ids": spans},
             ],
             "explanation": "The source was read two ways.",
+            "epistemic_status": "ambiguous",
         }
     )
     other_paths = {item["field_path"] for item in payload["fields"][1:]}
@@ -1931,6 +1967,7 @@ async def test_the_same_conflict_stated_twice_is_not_fatal() -> None:
             {"value_json": '"onsite"', "evidence_span_ids": spans},
         ],
         "explanation": "Stated twice.",
+        "epistemic_status": "conflicting",
     }
     payload["conflicts"].extend([duplicate_conflict, dict(duplicate_conflict)])
 

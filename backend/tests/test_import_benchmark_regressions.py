@@ -106,7 +106,9 @@ class TestOneCityFieldHoldsOneCity:
         [
             # The accepted cases must keep working.
             ("Coimbatore, Coimbatore district, IN", "Coimbatore"),
-            ("Brookefield, Bengaluru", "Brookefield, Bengaluru"),
+            # The native physical-location control stores the city; locality is
+            # retained in source evidence rather than stuffed into that value.
+            ("Brookefield, Bengaluru", "Bengaluru"),
             ("San Francisco, California, US", "San Francisco"),
         ],
     )
@@ -115,6 +117,27 @@ class TestOneCityFieldHoldsOneCity:
 
     def test_an_arrangement_alone_is_still_not_a_place(self) -> None:
         assert convert_to_native("location", "Remote, India").native_value is None
+        assert (
+            convert_to_native("location", "Remote anywhere in India").native_value
+            is None
+        )
+
+    def test_a_remote_applicant_country_uses_remote_location_semantics(self) -> None:
+        conversion = convert_to_native(
+            "location", "Remote anywhere in India", work_mode="remote"
+        )
+
+        assert conversion.native_value == "India"
+        assert conversion.writable is True
+
+    @pytest.mark.parametrize(
+        "office",
+        ["Chennai", "Company office: Chennai", "Austin, TX"],
+    )
+    def test_a_remote_office_never_becomes_applicant_eligibility(
+        self, office: str
+    ) -> None:
+        assert convert_to_native("location", office, work_mode="remote").native_value is None
 
 
 class TestOneStrayFieldNameDoesNotDestroyAnExtraction:

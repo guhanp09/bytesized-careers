@@ -5,14 +5,8 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from app.core.job_import_structured_fields import fields_from_structured_context
-from app.core.job_taxonomy import CURRENT_LISTING_SCHEMA_VERSION
 from app.models import JobImportDraft
-from app.schemas.job_import import (
-    CURRENT_EXTRACTION_SCHEMA_VERSION,
-    JobImportExtractionResponse,
-    JobImportProviderMetadata,
-)
+from app.schemas.job_import import JobImportProviderMetadata
 from app.services.job_import_provider import (
     JobImportExtractionProvider,
     JobImportProviderError,
@@ -41,21 +35,9 @@ class JobImportProcessingService:
         "discarded",
         "superseded",
     }
-    #: Provider failures that mean "the reply was the wrong shape", not "the
-    #: service is unavailable". These are recoverable: the source is intact, so
-    #: the draft can still be built and the assistant asks for what it needs.
-    #:
-    #: Two neighbours are deliberately excluded. OPENAI_EVIDENCE_INVALID means
-    #: cited provenance did not resolve, and OPENAI_REFUSED is a content-policy
-    #: signal — both are integrity events worth surfacing rather than smoothing
-    #: over, and both are rare enough not to be the interruption this addresses.
-    #: Failures that must still stop the workflow.
-    #:
-    #: Deliberately tiny. Everything else that can go wrong once a source has
-    #: been accepted is recoverable, because the source itself is intact and the
-    #: assistant can ask for whatever the machine failed to read. These two are
-    #: the exceptions: the draft is not ours to write, or the database refused
-    #: the write — in both cases there is nothing to degrade *to*.
+    #: State and ownership failures that cannot be rewritten as a provider-stage
+    #: failure because another attempt, terminal state, or redaction already owns
+    #: the draft lifecycle.
     _UNRECOVERABLE_CODES = {
         # A newer attempt already owns this draft; degrading would overwrite it.
         "JOB_IMPORT_STALE_PROCESSING_RESULT",
@@ -239,7 +221,7 @@ class JobImportProcessingService:
         status_code: int = 502,
         cause: BaseException | None = None,
     ) -> JobImportProcessResult:
-        """Stop honestly, unless the page itself already told us the answers.
+        """Stop honestly when the provider did not finish reading the source.
 
         The invariant this exists to hold:
 
@@ -251,41 +233,17 @@ class JobImportProcessingService:
         asked about everything the page already said, while the system reported
         success. A timeout became the recruiter's data-entry job.
 
-        So a failed provider stage now fails. The source is preserved, any answers
-        already given are preserved, and the recruiter is offered a bounded retry,
-        the paste-text route, or manual continuation.
-
-        The single exception is a fallback with *real verified data*: a page that
-        published schema.org ``JobPosting`` details we parsed deterministically,
-        with no model involved. That is not a guess and not an empty result, so
-        the import may continue on it — flagged as partial, never as complete.
+        A structured page fragment can safely enrich a completed extraction, but
+        it cannot establish what the provider failed to read from prose. Turning
+        that fragment into a completed processing result would make every
+        uncovered fact the recruiter's problem. Preserve the source and surface
+        the existing retry, paste-text, and manual-continuation recovery instead.
         """
 
         logger.warning(
             "job_import_provider_failed",
             extra={"failure_code": error_code, "draft_id": str(draft_id)},
         )
-
-        verified = await self._verified_structured_fallback(
-            draft_id, owner_user_id=owner_user_id
-        )
-        if verified:
-            logger.info(
-                "job_import_structured_fallback_used",
-                extra={"failure_code": error_code, "field_count": len(verified)},
-            )
-            try:
-                return await self._record_structured_fallback(
-                    draft_id,
-                    owner_user_id=owner_user_id,
-                    processing_attempt_id=processing_attempt_id,
-                    error_code=error_code,
-                    metadata=metadata,
-                )
-            except JobImportError as fallback_error:
-                if fallback_error.code in self._UNRECOVERABLE_CODES:
-                    raise
-                # Fall through to the honest failure below.
 
         await self._mark_failed_if_current(
             draft_id,
@@ -302,91 +260,6 @@ class JobImportProcessingService:
             details=self._safe_failure_details(metadata),
         )
         raise error from cause if cause is not None else error
-
-    async def _verified_structured_fallback(
-        self,
-        draft_id: UUID,
-        *,
-        owner_user_id: UUID,
-    ) -> dict[str, object]:
-        """Fields the page published in machine-readable form, if any."""
-
-        try:
-            draft = await self.import_service.get_draft(
-                draft_id, owner_user_id=owner_user_id
-            )
-            source = await self.import_service.get_source(
-                draft.source_id, owner_user_id=owner_user_id
-            )
-        except JobImportError:
-            return {}
-        metadata = source.retrieval_metadata
-        context = metadata.get("structured_context") if isinstance(metadata, dict) else None
-        if not isinstance(context, dict) or not context:
-            return {}
-        try:
-            return fields_from_structured_context(context)
-        except Exception:  # pragma: no cover - a bonus path must never throw
-            return {}
-
-    async def _record_structured_fallback(
-        self,
-        draft_id: UUID,
-        *,
-        owner_user_id: UUID,
-        processing_attempt_id: UUID,
-        error_code: str,
-        metadata: JobImportProviderMetadata | None,
-    ) -> JobImportProcessResult:
-        """Continue on the page's own machine-readable job data.
-
-        Deliberately *not* an empty extraction. This path runs only when the page
-        published schema.org ``JobPosting`` details that were parsed
-        deterministically, so the draft that results contains real, verified,
-        page-sourced values — the enrichment merge in ``record_extraction_result``
-        fills them in from the same structured context.
-
-        The result is recorded as partial, and the private audit keeps the reason
-        the model stage failed, so this can never be mistaken for a full run.
-        """
-
-        partial = JobImportExtractionResponse.model_validate(
-            {
-                "extraction_schema_version": CURRENT_EXTRACTION_SCHEMA_VERSION,
-                "target_listing_schema_version": CURRENT_LISTING_SCHEMA_VERSION,
-                "fields": [],
-                "conflicts": [],
-                "missing_fields": [],
-                "warnings": [
-                    {
-                        "code": "structured_data_fallback",
-                        "message": (
-                            "Automatic reading did not finish; the draft was "
-                            "prepared from the details the page published itself."
-                        ),
-                    }
-                ],
-            }
-        )
-        provider_metadata = metadata or JobImportProviderMetadata()
-        completed = await self.import_service.record_extraction_result(
-            draft_id,
-            partial,
-            owner_user_id=owner_user_id,
-            provider_metadata=provider_metadata.model_copy(
-                update={
-                    "metadata": {
-                        **provider_metadata.metadata,
-                        "processing_outcome": "structured_data_fallback",
-                        "extraction_completeness": "partial",
-                        "fallback_source": "schema_org_job_posting",
-                        "failed_stage_code": error_code,
-                    }
-                }
-            ),
-            expected_processing_attempt_id=processing_attempt_id,
-        )
-        return JobImportProcessResult(outcome="processed", draft=completed)
 
     @classmethod
     def _current_outcome(

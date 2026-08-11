@@ -28,6 +28,7 @@ import re
 
 import pytest
 
+from app.core.job_application_instructions import separate_application_instructions
 from app.services.job_import_service import JobImportService
 from tests.import_vocabulary import (
     PLATFORMS,
@@ -102,8 +103,8 @@ class TestNoRoutingDestinationEverReachesACandidate:
         "portfolio": "relevant_portfolio",
         "showreel": "relevant_portfolio",
         "reel": "relevant_portfolio",
-        "cv": "relevant_portfolio",
-        "resume": "relevant_portfolio",
+        "cv": "resume",
+        "resume": "resume",
         "work": "relevant_portfolio",
         "samples": "relevant_portfolio",
         "studies": "relevant_portfolio",
@@ -141,10 +142,11 @@ class TestLegitimatePlatformMentionsSurvive:
     @pytest.mark.parametrize("chunk", range(6))
     def test_a_responsibility_keeps_the_platform_it_names(self, chunk: int) -> None:
         for sentence in SKILLS[chunk::6]:
-            note = _note(sentence.text)
+            separated = separate_application_instructions(sentence.text)
+            preserved = " ".join(separated.safe_sentences)
 
-            assert sentence.subject.lower() in note.lower(), (
-                f"{sentence.text!r} lost its platform: {note!r}"
+            assert sentence.subject.lower() in preserved.lower(), (
+                f"{sentence.text!r} lost its platform: {preserved!r}"
             )
 
     @pytest.mark.parametrize("chunk", range(4))
@@ -168,7 +170,11 @@ class TestTheDecisionIsGrammarRatherThanMembership:
         self, platform: str
     ) -> None:
         routed = _note(f"Send your portfolio on {platform}.")
-        described = _note(f"You will manage our {platform} presence.")
+        described = " ".join(
+            separate_application_instructions(
+                f"You will manage our {platform} presence."
+            ).safe_sentences
+        )
 
         assert platform.lower() not in routed.lower(), routed
         assert platform.lower() in described.lower(), described
@@ -187,7 +193,11 @@ class TestTheDecisionIsGrammarRatherThanMembership:
         assert "relevant_portfolio" in (payload.get("application_requirements") or [])
 
     def test_an_entirely_invented_platform_survives_as_job_content(self) -> None:
-        note = _note("You will manage our Zephyrgram presence.")
+        note = " ".join(
+            separate_application_instructions(
+                "You will manage our Zephyrgram presence."
+            ).safe_sentences
+        )
 
         assert "zephyrgram" in note.lower(), note
 

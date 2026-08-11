@@ -33,6 +33,8 @@ ROUTE_SECRET = "ROUTE_SECRET_R2718"
 #: One sentinel per requirement, so a mix-up names itself.
 ANSWERS: dict[str, Any] = {
     "expected_rate": {"amount": "5000", "unit": "per month", "currency": "INR"},
+    "resume": "https://example.invalid/RESUME_SENTINEL_R417",
+    "cover_letter": "COVER_LETTER_SENTINEL_L528 — a tailored application letter",
     "relevant_portfolio": [
         {"id": "p1", "title": "PORTFOLIO_SENTINEL_A731", "url": "https://example.invalid/a"}
     ],

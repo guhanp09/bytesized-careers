@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.db import seed
 from app.db import seed_data_personas as personas
 from app.db.seed_data_job_import import (
+    CHECKPOINT_EXPERIENCE_SOURCE_TEXT,
     DEVELOPMENT_IMPORT_SCENARIOS,
     IN_FLIGHT_IMPORT_SCENARIOS,
     MULTI_CRAFT_SOURCE_TEXT,
@@ -209,6 +210,7 @@ async def create_job_import_review_fixture(
         "ceiling-only-pay": "Freelance Video Editor",
         "checkpoint-currency": "Finance video editor job post",
         "checkpoint-trial": "Gaming thumbnail designer job post",
+        "checkpoint-experience": "Education content strategist job post",
         "delayed-processing": "Public job post being read",
         "refresh-resume": "Public job post being read",
         "answer-precedence": "Weekly review channel job post",
@@ -239,6 +241,9 @@ async def create_job_import_review_fixture(
         ),
     }
     url_fixture = url_fixtures.get(scenario)
+    rough_source_texts = {
+        "checkpoint-experience": CHECKPOINT_EXPERIENCE_SOURCE_TEXT,
+    }
     source = await service.create_source(
         JobImportSourceCreate(
             source_type="public_url" if url_fixture else "rough_description",
@@ -246,9 +251,10 @@ async def create_job_import_review_fixture(
             original_text=(
                 url_fixture[0]
                 if url_fixture
-                else (
+                else rough_source_texts.get(
+                    scenario,
                     f"Development-only {scenario} private source used to inspect the guided "
-                    "recruiter experience without a provider call."
+                    "recruiter experience without a provider call.",
                 )
             ),
             source_url=(

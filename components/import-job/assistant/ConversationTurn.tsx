@@ -6,14 +6,29 @@ import { importFieldLabel } from "../../../lib/importedDraftGuidance.ts";
 import {
   answerOptionsFor,
   controlledAnswerOptionsFor,
+  DELIVERABLE_FREQUENCY_OPTIONS,
+  experienceAnswerError,
+  isHttpUrlAnswer,
   isMeaningfulImportAnswer,
   minimumAnswerLength,
   multiSelectOptionsFor,
+  numericAnswerError,
   questionPhraseFor,
+  shapeCustomStructuredAnswer,
+  shapeHttpUrlList,
   shapeMultiSelect,
+  shapeStringMultiSelect,
+  shapeStructuredAnswer,
+  shapeStructuredCandidateAnswer,
+  sourceInputLabelNeedsSensitiveConfirmation,
+  structuredAnswerNeedsSensitiveConfirmation,
   textExampleFor,
+  type DeliverableAnswerDetail,
 } from "../../../lib/jobImportAnswerOptions.ts";
-import type { JobImportActiveQuestion } from "../../../lib/jobImportReadiness.ts";
+import type {
+  JobImportActiveQuestion,
+  JobImportNonNullJsonValue,
+} from "../../../lib/jobImportReadiness.ts";
 import { DraftAssistantRobot } from "./DraftAssistantRobot.tsx";
 
 /**
@@ -58,6 +73,13 @@ const NUMBER_FIELDS: ReadonlySet<string> = new Set([
   "trial_compensation_amount",
 ]);
 
+/** Native count fields reject fractional answers even on old checkpoints. */
+const INTEGER_NUMBER_FIELDS: ReadonlySet<string> = new Set([
+  "turnaround_value",
+  "revision_rounds",
+  "duration_value",
+]);
+
 /**
  * Today, as the `YYYY-MM-DD` a date input speaks.
  *
@@ -65,8 +87,17 @@ const NUMBER_FIELDS: ReadonlySet<string> = new Set([
  * refusing to offer those days is quieter than rejecting one afterwards. This is
  * a calendar bound, not a timer — nothing here re-renders on a clock.
  */
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function todayIso(offsetDays = 0): string {
+  const now = new Date();
+  const target = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + offsetDays
+  );
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -87,19 +118,6 @@ export function shapeAnswer(
     return Number.isFinite(parsed) ? parsed : text;
   }
   return isList ? [text] : text;
-}
-
-/** Turn picked keys into the rows the field stores, using the server's key. */
-export function shapeRows(
-  selected: readonly string[],
-  itemKey: string | undefined
-): Array<Record<string, unknown>> | string[] {
-  if (!itemKey) return [...selected];
-  return selected.map((value) =>
-    itemKey === "type" && value.length
-      ? { [itemKey]: value, quantity: 1, frequency: "per_month" }
-      : { [itemKey]: value }
-  );
 }
 
 const optionButton =
@@ -193,6 +211,35 @@ export function RecruiterReply({ children }: { children: React.ReactNode }) {
   );
 }
 
+function SensitiveAccessConfirmation({
+  checked,
+  busy,
+  className = "",
+  onChange,
+}: {
+  checked: boolean;
+  busy: boolean;
+  className?: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className={`${className} flex cursor-pointer items-start gap-2 rounded-xl border border-line bg-wash px-3 py-2.5 text-[12px] leading-4 text-secondary`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        disabled={busy}
+        data-testid="conversation-sensitive-access-confirmation"
+        className="mt-0.5 h-4 w-4 rounded border-line-mid bg-base accent-white"
+      />
+      I confirm this role requires the account or analytics access described here.
+      Access details can be agreed securely after hiring.
+    </label>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // The active question
 // ---------------------------------------------------------------------------
@@ -205,7 +252,7 @@ export type ConversationTurnProps = {
   busy: boolean;
   /** A rejected answer, shown under the control that produced it. */
   error?: string | null;
-  onAnswer: (fieldPath: string, value: string | string[] | number) => void;
+  onAnswer: (fieldPath: string, value: JobImportNonNullJsonValue) => void;
   onSkip: () => void;
   onSkipRemaining: () => void;
   onLayoutChange?: () => void;
@@ -224,9 +271,19 @@ export function ConversationTurn({
 }: ConversationTurnProps) {
   const [text, setText] = React.useState("");
   const [picked, setPicked] = React.useState<string[]>([]);
+  const [deliverableDetails, setDeliverableDetails] = React.useState<
+    Record<string, DeliverableAnswerDetail>
+  >({});
+  const [sensitiveAccessConfirmed, setSensitiveAccessConfirmed] =
+    React.useState(false);
+  const [roleOverride, setRoleOverride] = React.useState("");
+  const [customAnswerTouched, setCustomAnswerTouched] = React.useState(false);
   const [submittedReply, setSubmittedReply] = React.useState<string | null>(null);
   const submittedReplyRef = React.useRef<string | null>(null);
   const requestWasBusyRef = React.useRef(false);
+  const customAnswerId = React.useId();
+  const customAnswerHelpId = `${customAnswerId}-help`;
+  const customAnswerErrorId = `${customAnswerId}-error`;
   const label = importFieldLabel(question.field_path)
     .replace(/\s*\([^)]*\)\s*$/, "")
     .trim();
@@ -235,7 +292,22 @@ export function ConversationTurn({
   // The server says what a valid answer is; local option copy only supplies
   // friendlier labels for values it already knows.
   const serverChoices = shape?.choices ?? [];
+  const shapeStringChoiceAnswer = (
+    selected: readonly string[],
+    customValue?: string
+  ) => {
+    const shaped = shapeStringMultiSelect(selected, customValue);
+    if (!shaped) return null;
+    if (
+      shape?.custom_values_allowed !== true &&
+      shaped.some((value) => !serverChoices.includes(value))
+    ) {
+      return null;
+    }
+    return shaped;
+  };
   const labelled = answerOptionsFor(question.field_path, { jobTitle, roleName });
+  const localMultiOptions = multiSelectOptionsFor(question.field_path);
   const controlled = controlledAnswerOptionsFor(
     question.field_path,
     shape?.kind,
@@ -244,13 +316,61 @@ export function ConversationTurn({
   const labelFor = (value: string) =>
     shape?.labels?.[value] ??
     labelled.find((option) => option.value === value)?.label ??
-    multiSelectOptionsFor(question.field_path).find((option) => option.value === value)
-      ?.label ??
+    localMultiOptions.find((option) => option.value === value)?.label ??
     value.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+  const displayValue = (value: unknown): string => {
+    if (Array.isArray(value)) {
+      return value.map(displayValue).filter(Boolean).join(", ");
+    }
+    if (value && typeof value === "object") {
+      const row = value as Record<string, unknown>;
+      const discriminator =
+        typeof row.type === "string"
+          ? row.type
+          : typeof row.stage === "string"
+            ? row.stage
+            : null;
+      const custom =
+        typeof row.custom_type === "string"
+          ? row.custom_type
+          : typeof row.custom_label === "string"
+            ? row.custom_label
+            : null;
+      const name = custom || (discriminator ? labelFor(discriminator) : "");
+      const quantity = typeof row.quantity === "number" ? row.quantity : null;
+      const frequency =
+        typeof row.custom_frequency === "string"
+          ? row.custom_frequency
+          : typeof row.frequency === "string"
+            ? labelFor(row.frequency)
+            : null;
+      if (name && quantity !== null && frequency) {
+        return `${quantity} × ${name} · ${frequency}`;
+      }
+      if (name) return name;
+      const workMode = typeof row.work_mode === "string" ? labelFor(row.work_mode) : "";
+      const location = typeof row.location === "string" ? row.location : "";
+      if (workMode || location) return [workMode, location].filter(Boolean).join(" · ");
+      return "Use the details from the post";
+    }
+    if (typeof value === "string") return labelFor(value);
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return "";
+  };
   const detailFor = (value: string) =>
     labelled.find((option) => option.value === value)?.detail;
 
   const isMulti = shape?.kind === "multi_choice";
+  const isUrl =
+    shape?.kind === "url" || (!shape && question.field_path === "reference_videos");
+  // Checkpointed conversations created before answer-shape metadata existed can
+  // still contain one of the three known structured list questions. Their
+  // controls must remain usable rather than rendering chips with a permanently
+  // disabled submit button.
+  const isLegacyStructuredMulti = !shape && localMultiOptions.length > 0;
+  const isStructuredMulti =
+    (isMulti && Boolean(shape?.item_key)) || isLegacyStructuredMulti;
+  const isStringMulti = isMulti && !shape?.item_key;
   const choices =
     shape?.kind === "choice"
       ? serverChoices.map((value) => ({
@@ -263,43 +383,232 @@ export function ConversationTurn({
         }))
           .sort((left, right) => Number(right.recommended) - Number(left.recommended))
       : controlled;
+  const recommendedRoleChoiceSet = new Set(
+    question.field_path === "primary_role_key"
+      ? (question.recommended_choices ?? [])
+      : []
+  );
+  const recommendedRoleChoices = choices.filter((choice) =>
+    recommendedRoleChoiceSet.has(choice.value)
+  );
+  const overrideRoleChoices = choices.filter(
+    (choice) => !recommendedRoleChoiceSet.has(choice.value)
+  );
   const multi = isMulti
     ? serverChoices.map((value) => ({ value, label: labelFor(value) }))
     : shape
       ? []
-      : multiSelectOptionsFor(question.field_path);
-  const recommendedMulti = isMulti && Array.isArray(question.recommended_value)
+      : localMultiOptions;
+  const allowedMultiValues = isMulti
+    ? serverChoices
+    : localMultiOptions.map((option) => option.value);
+  const recommendedMulti = (isMulti || isLegacyStructuredMulti) &&
+    Array.isArray(question.recommended_value)
     ? question.recommended_value.filter(
         (value): value is string =>
-          typeof value === "string" && serverChoices.includes(value)
+          typeof value === "string" && allowedMultiValues.includes(value)
       )
     : [];
+  const recommendedOpenStringMulti =
+    isStringMulti &&
+    shape?.custom_values_allowed === true &&
+    Array.isArray(question.recommended_value) &&
+    question.recommended_value.every((value) => typeof value === "string")
+      ? shapeStringMultiSelect(question.recommended_value)
+      : null;
+  const recommendedStructuredRaw =
+    isStructuredMulti &&
+    Array.isArray(question.recommended_value) &&
+    question.recommended_value.length > 0 &&
+    question.recommended_value.every(
+      (value) => value !== null && typeof value === "object" && !Array.isArray(value)
+    )
+      ? question.recommended_value
+      : null;
   const phrase = questionPhraseFor(question.field_path);
   const alternatives = question.alternatives ?? [];
+  // A single surviving value is not a conflict. Rendering it under copy that
+  // says the post "mentions both" makes a lossy server normalization look like
+  // a decision the recruiter has to make.
+  const visibleAlternatives = alternatives.length >= 2 ? alternatives : [];
+  const structuredCustomAllowed =
+    shape?.kind === "multi_choice" &&
+    shape.custom_values_allowed === true &&
+    shape.is_list === true &&
+    Boolean(shape.item_key && shape.custom_item_key && shape.custom_item_value);
+  const customValuesAllowed =
+    (shape?.kind === "choice" &&
+      shape.custom_values_allowed === true &&
+      shape.is_list !== true) ||
+    (isStringMulti && shape?.custom_values_allowed === true) ||
+    structuredCustomAllowed;
+  const structuredContext = React.useMemo(
+    () => ({ deliverables: deliverableDetails, sensitiveAccessConfirmed }),
+    [deliverableDetails, sensitiveAccessConfirmed]
+  );
+  const recommendedNeedsSensitiveConfirmation =
+    structuredAnswerNeedsSensitiveConfirmation(
+      question.field_path,
+      recommendedStructuredRaw
+    ) ||
+    (question.field_path === "source_inputs" &&
+      recommendedMulti.some(
+        (value) => value === "analytics_access" || value === "account_access"
+      ));
+  const recommendedStructured = recommendedStructuredRaw
+    ? shapeStructuredAnswer(
+        question.field_path,
+        recommendedStructuredRaw,
+        structuredContext
+      )
+    : null;
+  const suggestedStructuredRaw =
+    isStructuredMulti &&
+    Array.isArray(question.suggested_value) &&
+    question.suggested_value.length > 0
+      ? question.suggested_value
+      : null;
+  const suggestedNeedsSensitiveConfirmation =
+    structuredAnswerNeedsSensitiveConfirmation(
+      question.field_path,
+      suggestedStructuredRaw
+    );
+  const suggestedStructured = suggestedStructuredRaw
+    ? shapeStructuredCandidateAnswer(
+        question.field_path,
+        suggestedStructuredRaw,
+        structuredContext
+      )
+    : null;
+  const suggestedStringMulti =
+    isStringMulti && typeof question.suggested_value === "string"
+      ? shapeStringChoiceAnswer([question.suggested_value])
+      : isStringMulti &&
+          Array.isArray(question.suggested_value) &&
+          question.suggested_value.every((value) => typeof value === "string")
+        ? shapeStringChoiceAnswer(question.suggested_value)
+        : null;
+  const suggestedUrlList = isUrl
+    ? shapeHttpUrlList(question.suggested_value)
+    : null;
+  const canAcceptSuggested =
+    question.suggested_value !== undefined &&
+    question.suggested_value !== null &&
+    (!suggestedStructuredRaw || suggestedStructured !== null) &&
+    (!isStringMulti || suggestedStringMulti !== null) &&
+    (!isUrl || suggestedUrlList !== null);
+  const safeSuggestedValue = suggestedStructuredRaw
+    ? suggestedStructured
+    : isStringMulti
+      ? suggestedStringMulti
+      : isUrl
+        ? suggestedUrlList
+        : question.suggested_value;
+  const alternativesNeedSensitiveConfirmation = visibleAlternatives.some(
+    (alternative) =>
+      structuredAnswerNeedsSensitiveConfirmation(
+        question.field_path,
+        alternative.value
+      )
+  );
+  const shapedPicked = isStructuredMulti
+    ? shapeMultiSelect(question.field_path, picked, structuredContext)
+    : isStringMulti
+      ? shapeStringChoiceAnswer(picked)
+      : null;
+  const shapedRecommended = recommendedMulti.length
+    ? isStructuredMulti
+      ? shapeMultiSelect(question.field_path, recommendedMulti, structuredContext)
+      : recommendedOpenStringMulti ?? shapeStringChoiceAnswer(recommendedMulti)
+    : recommendedOpenStringMulti;
+  const selectedSensitiveInput =
+    question.field_path === "source_inputs" &&
+    picked.some((value) => value === "analytics_access" || value === "account_access");
+  const showSensitiveAccessConfirmationBeforeChoices =
+    alternativesNeedSensitiveConfirmation ||
+    recommendedNeedsSensitiveConfirmation ||
+    suggestedNeedsSensitiveConfirmation;
   // Bounds come from the schema where the server supplied them, so the control
   // enforces exactly what the field accepts.
-  const isNumber = shape?.kind === "number";
+  const isNumber =
+    shape?.kind === "number" || (!shape && NUMBER_FIELDS.has(question.field_path));
   const isDate = shape?.kind === "date";
+  const dateMinimum = question.field_path === "deadline_at"
+    ? todayIso(1)
+    : todayIso();
+  const integerOnly =
+    shape?.integer_only ?? INTEGER_NUMBER_FIELDS.has(question.field_path);
   const minLength = shape?.min_length ?? minimumAnswerLength(question.field_path);
   const maxLength = shape?.max_length;
   const trimmed = text.trim();
-  const numeric = Number(trimmed.replace(/[^0-9.-]/g, ""));
-  const withinNumeric =
-    !isNumber ||
-    (trimmed.length > 0 &&
-      Number.isFinite(numeric) &&
-      (shape?.minimum === undefined || numeric >= shape.minimum) &&
-      (shape?.maximum === undefined || numeric <= shape.maximum));
+  const numericError = isNumber
+    ? numericAnswerError(trimmed, {
+        ...shape,
+        integer_only: integerOnly,
+        step: shape?.step ?? (integerOnly ? 1 : "any"),
+      })
+    : null;
+  const urlError = isUrl && trimmed && !isHttpUrlAnswer(trimmed)
+    ? "Enter a complete http or https link."
+    : null;
+  const semanticError =
+    trimmed && question.field_path === "experience_level"
+      ? experienceAnswerError(trimmed)
+      : null;
+  const showSemanticError = Boolean(semanticError && customAnswerTouched);
   const meaningful = isMeaningfulImportAnswer(question.field_path, trimmed);
+  const openListCustomValue = isStringMulti
+    ? shapeStringChoiceAnswer(picked, trimmed)
+    : null;
   // Send stays disabled until the answer would be accepted, so the recruiter is
   // never told afterwards that what they wrote could not be used.
   const canSend = isDate
-    ? /^\d{4}-\d{2}-\d{2}$/.test(trimmed) && trimmed >= todayIso()
+    ? /^\d{4}-\d{2}-\d{2}$/.test(trimmed) && trimmed >= dateMinimum
     :
     trimmed.length >= (isNumber ? 1 : minLength) &&
     (maxLength === undefined || trimmed.length <= maxLength) &&
-    withinNumeric &&
+    numericError === null &&
+    urlError === null &&
     meaningful;
+  const customStructuredRow = structuredCustomAllowed
+    ? shapeCustomStructuredAnswer(question.field_path, trimmed, structuredContext)
+    : null;
+  const customSourceInputNeedsSensitiveConfirmation =
+    question.field_path === "source_inputs" &&
+    sourceInputLabelNeedsSensitiveConfirmation(trimmed);
+  const customAnswerMaxLength =
+    question.field_path === "experience_level"
+      ? Math.min(shape?.custom_item_max_length ?? maxLength ?? 64, 64)
+      : shape?.custom_item_max_length ?? maxLength ?? 80;
+  const customSubmitDisabled =
+    busy ||
+    !canSend ||
+    (structuredCustomAllowed &&
+      (!customStructuredRow || (picked.length > 0 && !shapedPicked))) ||
+    (isStringMulti && !openListCustomValue);
+
+  const recommendedText =
+    typeof question.recommended_value === "string"
+      ? question.recommended_value.trim()
+      : "";
+  const suggestedText =
+    typeof question.suggested_value === "string"
+      ? question.suggested_value.trim()
+      : "";
+  const recommendationAlreadyVisible =
+    serverChoices.includes(recommendedText) ||
+    visibleAlternatives.some(
+      (alternative) => String(alternative.value ?? "") === recommendedText
+    ) ||
+    suggestedText === recommendedText;
+  const outOfBandRecommendation =
+    customValuesAllowed &&
+    recommendedText.length > 0 &&
+    !recommendationAlreadyVisible &&
+    (question.field_path !== "experience_level" ||
+      experienceAnswerError(recommendedText) === null)
+      ? recommendedText
+      : null;
 
   const heading = phrase?.heading ?? `What should ${label.toLowerCase()} be?`;
   const why =
@@ -307,7 +616,7 @@ export function ConversationTurn({
     whyItMatters(phrase?.prompt, roleName, jobTitle);
 
   const beginReply = (
-    value: string | string[] | number,
+    value: JobImportNonNullJsonValue,
     displayValue: string
   ) => {
     if (busy || submittedReplyRef.current) return;
@@ -328,6 +637,28 @@ export function ConversationTurn({
     beginReply(
       shapeAnswer(question.field_path, trimmed, shape),
       trimmed
+    );
+  };
+
+  const submitCustom = () => {
+    if (!canSend || busy) return;
+    if (isStringMulti) {
+      if (!openListCustomValue) return;
+      beginReply(
+        openListCustomValue,
+        openListCustomValue.map(labelFor).join(", ")
+      );
+      return;
+    }
+    if (!structuredCustomAllowed) {
+      submit();
+      return;
+    }
+    if (!customStructuredRow || (picked.length > 0 && !shapedPicked)) return;
+    const selectedRows = shapedPicked ?? [];
+    beginReply(
+      [...selectedRows, customStructuredRow] as JobImportNonNullJsonValue,
+      [...picked.map(labelFor), trimmed].join(", ")
     );
   };
 
@@ -352,6 +683,16 @@ export function ConversationTurn({
         ? current.filter((item) => item !== value)
         : [...current, value]
     );
+
+  const updateDeliverableDetail = (
+    key: string,
+    patch: Partial<DeliverableAnswerDetail>
+  ) => {
+    setDeliverableDetails((current) => ({
+      ...current,
+      [key]: { ...current[key], ...patch },
+    }));
+  };
 
   return (
     <div
@@ -378,23 +719,90 @@ export function ConversationTurn({
         </>
       ) : (
       <div className="pl-9 sm:pl-11">
-        {alternatives.length ? (
+        {outOfBandRecommendation ? (
+          <button
+            type="button"
+            disabled={busy}
+            data-testid="conversation-accept-custom-recommendation"
+            onClick={() =>
+              beginReply(outOfBandRecommendation, outOfBandRecommendation)
+            }
+            className={`${optionButton} mb-2 border-white/25 bg-white/[0.09]`}
+          >
+            <span className="flex items-baseline justify-between gap-3">
+              <span className="font-medium">Use {outOfBandRecommendation}</span>
+              <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                This matches your post
+              </span>
+            </span>
+          </button>
+        ) : null}
+
+        {showSensitiveAccessConfirmationBeforeChoices ? (
+          <SensitiveAccessConfirmation
+            checked={sensitiveAccessConfirmed}
+            busy={busy}
+            className="mb-3"
+            onChange={setSensitiveAccessConfirmed}
+          />
+        ) : null}
+
+        {visibleAlternatives.length ? (
           <div className="space-y-2" data-testid="conversation-alternatives">
             <p className="mb-1 text-[11px] text-muted">
-              Your post mentions both — which should candidates see?
+              Your post gives more than one answer — which should candidates see?
             </p>
-            {alternatives.map((alternative, index) => {
-              const value = String(alternative.value ?? "");
+            {visibleAlternatives.map((alternative, index) => {
+              if (alternative.value === null || alternative.value === undefined) {
+                return null;
+              }
+              const value = displayValue(alternative.value);
+              const structuredAlternative =
+                isStructuredMulti && Array.isArray(alternative.value)
+                  ? shapeStructuredCandidateAnswer(
+                      question.field_path,
+                      alternative.value,
+                      structuredContext
+                  )
+                  : null;
+              const stringListAlternative =
+                isStringMulti && typeof alternative.value === "string"
+                  ? shapeStringChoiceAnswer([alternative.value])
+                  : isStringMulti &&
+                      Array.isArray(alternative.value) &&
+                      alternative.value.every((item) => typeof item === "string")
+                    ? shapeStringChoiceAnswer(alternative.value)
+                    : null;
+              const urlListAlternative = isUrl
+                ? shapeHttpUrlList(alternative.value)
+                : null;
+              const canAcceptAlternative =
+                (!isStructuredMulti ||
+                  !Array.isArray(alternative.value) ||
+                  structuredAlternative !== null) &&
+                (!isStringMulti || stringListAlternative !== null) &&
+                (!isUrl || urlListAlternative !== null);
+              const acceptedAlternative =
+                structuredAlternative ??
+                stringListAlternative ??
+                urlListAlternative ??
+                alternative.value;
               const recommended =
                 question.recommended_value !== undefined &&
-                String(question.recommended_value) === value;
+                JSON.stringify(question.recommended_value) ===
+                  JSON.stringify(alternative.value);
               return (
                 <button
-                  key={`${value}-${index}`}
+                  key={`${index}-${value}`}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !canAcceptAlternative}
                   data-testid={`conversation-alternative-${index}`}
-                  onClick={() => beginReply(value, value)}
+                  onClick={() =>
+                    beginReply(
+                      acceptedAlternative as JobImportNonNullJsonValue,
+                      value
+                    )
+                  }
                   className={`${optionButton} ${
                     recommended ? "border-white/25 bg-white/[0.09]" : ""
                   }`}
@@ -416,41 +824,68 @@ export function ConversationTurn({
               );
             })}
           </div>
-        ) : question.suggested_value !== undefined ? (
+        ) : canAcceptSuggested && safeSuggestedValue !== null ? (
           <button
             type="button"
             disabled={busy}
             data-testid="conversation-accept-suggestion"
             onClick={() =>
               beginReply(
-                String(question.suggested_value),
-                labelFor(String(question.suggested_value))
+                safeSuggestedValue as JobImportNonNullJsonValue,
+                displayValue(safeSuggestedValue)
               )
             }
             className={`${optionButton} border-white/25 bg-white/[0.09]`}
           >
-            Yes, use {labelFor(String(question.suggested_value))}
+            Yes, use {displayValue(safeSuggestedValue)}
           </button>
         ) : multi.length ? (
           <div data-testid="conversation-multiselect">
-            {recommendedMulti.length ? (
+            {recommendedStructured && !recommendedNeedsSensitiveConfirmation ? (
               <button
                 type="button"
                 disabled={busy}
-                data-testid="conversation-accept-multi-recommendation"
+                data-testid="conversation-accept-structured-recommendation"
                 onClick={() =>
                   beginReply(
-                    (shape?.item_key
-                      ? shapeRows(recommendedMulti, shape.item_key)
-                      : recommendedMulti) as never,
-                    recommendedMulti.map(labelFor).join(", ")
+                    recommendedStructured as JobImportNonNullJsonValue,
+                    displayValue(recommendedStructured)
                   )
                 }
                 className={`${optionButton} mb-3 border-white/25 bg-white/[0.09]`}
               >
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="font-medium">
-                    Use {recommendedMulti.map(labelFor).join(", ")}
+                    Use {displayValue(recommendedStructured)}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                    This matches your post
+                  </span>
+                </span>
+              </button>
+            ) : null}
+            {recommendedNeedsSensitiveConfirmation ? (
+              <p className="mb-3 rounded-xl border border-line bg-wash px-3 py-2 text-[11px] leading-4 text-muted">
+                The post mentions account access. Confirm it explicitly before Bea
+                adds it to the draft.
+              </p>
+            ) : null}
+            {shapedRecommended?.length ? (
+              <button
+                type="button"
+                disabled={busy}
+                data-testid="conversation-accept-multi-recommendation"
+                onClick={() =>
+                  beginReply(
+                    shapedRecommended as JobImportNonNullJsonValue,
+                    displayValue(shapedRecommended)
+                  )
+                }
+                className={`${optionButton} mb-3 border-white/25 bg-white/[0.09]`}
+              >
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium">
+                    Use {displayValue(shapedRecommended)}
                   </span>
                   <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
                     This matches your post
@@ -486,15 +921,105 @@ export function ConversationTurn({
                 );
               })}
             </div>
+            {question.field_path === "deliverables" && picked.length ? (
+              <div
+                className="mt-3 space-y-2 rounded-2xl border border-line bg-wash p-3"
+                data-testid="conversation-deliverable-details"
+              >
+                <p className="text-[11px] leading-4 text-muted">
+                  Add the real quantity and cadence for each deliverable. Bea will
+                  not guess either one.
+                </p>
+                {picked.map((value) => {
+                  const detail = deliverableDetails[value] ?? {};
+                  return (
+                    <div
+                      key={value}
+                      className="grid gap-2 rounded-xl border border-line bg-raised p-2.5 sm:grid-cols-[minmax(0,1fr)_88px_minmax(130px,0.8fr)]"
+                      data-testid={`conversation-deliverable-row-${value}`}
+                    >
+                      <span className="self-center text-[12px] font-medium text-secondary">
+                        {labelFor(value)}
+                      </span>
+                      <label className="grid gap-1 text-[10px] text-muted">
+                        Quantity
+                        <input
+                          type="number"
+                          min={1}
+                          max={10000}
+                          step={1}
+                          value={detail.quantity ?? ""}
+                          onChange={(event) =>
+                            updateDeliverableDetail(value, {
+                              quantity: event.target.value,
+                            })
+                          }
+                          disabled={busy}
+                          aria-label={`${labelFor(value)} quantity`}
+                          className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-[10px] text-muted">
+                        Cadence
+                        <select
+                          value={detail.frequency ?? ""}
+                          onChange={(event) =>
+                            updateDeliverableDetail(value, {
+                              frequency: event.target.value,
+                            })
+                          }
+                          disabled={busy}
+                          aria-label={`${labelFor(value)} cadence`}
+                          className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                        >
+                          <option value="">Choose…</option>
+                          {DELIVERABLE_FREQUENCY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {detail.frequency === "other" ? (
+                        <label className="grid gap-1 text-[10px] text-muted sm:col-start-2 sm:col-span-2">
+                          Exact cadence
+                          <input
+                            type="text"
+                            maxLength={80}
+                            value={detail.customFrequency ?? ""}
+                            onChange={(event) =>
+                              updateDeliverableDetail(value, {
+                                customFrequency: event.target.value,
+                              })
+                            }
+                            disabled={busy}
+                            className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none placeholder:text-subtle focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                            placeholder="e.g. Every fortnight"
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {(selectedSensitiveInput || customSourceInputNeedsSensitiveConfirmation) &&
+            !showSensitiveAccessConfirmationBeforeChoices ? (
+              <SensitiveAccessConfirmation
+                checked={sensitiveAccessConfirmed}
+                busy={busy}
+                className="mt-3"
+                onChange={setSensitiveAccessConfirmed}
+              />
+            ) : null}
             <button
               type="button"
-              disabled={busy || picked.length === 0}
+              disabled={busy || picked.length === 0 || !shapedPicked}
               data-testid="conversation-multiselect-submit"
               onClick={() => {
+                if (!shapedPicked) return;
                 beginReply(
-                  (shape?.item_key
-                    ? shapeRows(picked, shape.item_key)
-                    : shapeMultiSelect(question.field_path, picked)) as never,
+                  shapedPicked as JobImportNonNullJsonValue,
                   picked.map(labelFor).join(", ")
                 );
               }}
@@ -502,6 +1027,65 @@ export function ConversationTurn({
             >
               {picked.length ? `Use ${picked.length} selected` : "Pick at least one"}
             </button>
+          </div>
+        ) : question.field_path === "primary_role_key" &&
+          recommendedRoleChoices.length ? (
+          <div
+            className="grid gap-3"
+            data-testid="conversation-role-choice-with-override"
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {recommendedRoleChoices.map((choice) => (
+                <button
+                  key={choice.value}
+                  type="button"
+                  disabled={busy}
+                  data-testid={`conversation-option-${choice.value}`}
+                  onClick={() => beginReply(choice.value, choice.label)}
+                  className={`${optionButton} border-white/25 bg-white/[0.09]`}
+                >
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium">{choice.label}</span>
+                    <span className="shrink-0 rounded-full bg-state-review-fill px-2 py-0.5 text-[10px] font-semibold text-state-review">
+                      Likely match
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-2 rounded-2xl border border-line bg-wash p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <label className="grid gap-1.5 text-[11px] text-muted">
+                Or choose another creator role
+                <select
+                  value={roleOverride}
+                  onChange={(event) => setRoleOverride(event.target.value)}
+                  disabled={busy}
+                  data-testid="conversation-role-override"
+                  className="h-11 min-w-0 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                >
+                  <option value="">Select a role…</option>
+                  {overrideRoleChoices.map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={busy || !roleOverride}
+                onClick={() => {
+                  const selected = choices.find(
+                    (choice) => choice.value === roleOverride
+                  );
+                  if (selected) beginReply(selected.value, selected.label);
+                }}
+                data-testid="conversation-role-override-submit"
+                className="ui-press surface-primary h-11 cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none disabled:text-disabled"
+              >
+                Use role
+              </button>
+            </div>
           </div>
         ) : choices.length ? (
           <div className="grid gap-2 sm:grid-cols-2">
@@ -539,7 +1123,7 @@ export function ConversationTurn({
             <input
               type="date"
               value={text}
-              min={todayIso()}
+              min={dateMinimum}
               onChange={(event) => setText(event.target.value)}
               disabled={busy}
               aria-label={heading}
@@ -564,7 +1148,7 @@ export function ConversationTurn({
               onChange={(event) =>
                 setText(
                   isNumber
-                    ? event.target.value.replace(/[^0-9.]/g, "")
+                    ? event.target.value.replace(/[^0-9.-]/g, "")
                     : event.target.value
                 )
               }
@@ -578,7 +1162,15 @@ export function ConversationTurn({
               disabled={busy}
               aria-label={heading}
               data-testid="conversation-text-answer"
-              inputMode={NUMBER_FIELDS.has(question.field_path) ? "numeric" : "text"}
+              inputMode={
+                isNumber
+                  ? integerOnly
+                    ? "numeric"
+                    : "decimal"
+                  : isUrl
+                    ? "url"
+                    : "text"
+              }
               aria-invalid={
                 trimmed.length >= minLength && !meaningful ? true : undefined
               }
@@ -597,12 +1189,169 @@ export function ConversationTurn({
           </div>
         )}
 
-        {trimmed.length >= minLength && !meaningful ? (
+        {customValuesAllowed ? (
+          <div
+            className="mt-3 border-t border-line pt-3"
+            data-testid="conversation-custom-override"
+          >
+            <label
+              htmlFor={customAnswerId}
+              className="block text-[12px] font-medium text-secondary"
+            >
+              {question.field_path === "experience_level"
+                ? "Or enter the exact experience requirement"
+                : "Or add another option"}
+            </label>
+            <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+              <input
+                id={customAnswerId}
+                type="text"
+                value={text}
+                maxLength={customAnswerMaxLength}
+                onChange={(event) => setText(event.target.value)}
+                onBlur={() => {
+                  if (trimmed) setCustomAnswerTouched(true);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault();
+                    if (semanticError) setCustomAnswerTouched(true);
+                    submitCustom();
+                  }
+                }}
+                disabled={busy}
+                aria-describedby={[
+                  customAnswerHelpId,
+                  showSemanticError ? customAnswerErrorId : null,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-invalid={showSemanticError ? true : undefined}
+                data-testid="conversation-custom-answer"
+                className="h-12 min-w-0 w-full rounded-2xl border border-line-mid bg-raised px-4 text-sm text-ink outline-none transition-colors placeholder:text-subtle focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                placeholder={textExampleFor(question.field_path)}
+              />
+              {!(structuredCustomAllowed && question.field_path === "deliverables") ? (
+                <button
+                  type="button"
+                  onClick={submitCustom}
+                  disabled={customSubmitDisabled}
+                  data-testid="conversation-custom-submit"
+                  className="ui-press surface-primary min-h-11 w-full shrink-0 cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-overlay disabled:bg-none disabled:text-disabled disabled:shadow-none sm:w-auto"
+                >
+                  Use this
+                </button>
+              ) : null}
+            </div>
+            {structuredCustomAllowed && question.field_path === "deliverables" ? (
+              <div className="mt-2 grid gap-2 rounded-xl border border-line bg-wash p-2.5 sm:grid-cols-[88px_minmax(130px,1fr)]">
+                <label className="grid gap-1 text-[10px] text-muted">
+                  Quantity
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    step={1}
+                    value={deliverableDetails.__custom__?.quantity ?? ""}
+                    onChange={(event) =>
+                      updateDeliverableDetail("__custom__", {
+                        quantity: event.target.value,
+                      })
+                    }
+                    disabled={busy}
+                    aria-label="Custom deliverable quantity"
+                    className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                  />
+                </label>
+                <label className="grid gap-1 text-[10px] text-muted">
+                  Cadence
+                  <select
+                    value={deliverableDetails.__custom__?.frequency ?? ""}
+                    onChange={(event) =>
+                      updateDeliverableDetail("__custom__", {
+                        frequency: event.target.value,
+                      })
+                    }
+                    disabled={busy}
+                    aria-label="Custom deliverable cadence"
+                    className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                  >
+                    <option value="">Choose…</option>
+                    {DELIVERABLE_FREQUENCY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {deliverableDetails.__custom__?.frequency === "other" ? (
+                  <label className="grid gap-1 text-[10px] text-muted sm:col-span-2">
+                    Exact cadence
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={deliverableDetails.__custom__?.customFrequency ?? ""}
+                      onChange={(event) =>
+                        updateDeliverableDetail("__custom__", {
+                          customFrequency: event.target.value,
+                        })
+                      }
+                      disabled={busy}
+                      className="h-10 rounded-xl border border-line-mid bg-base px-3 text-sm text-ink outline-none placeholder:text-subtle focus:border-line-strong focus-visible:ring-2 focus-visible:ring-focus/60"
+                      placeholder="e.g. Every fortnight"
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+            {structuredCustomAllowed && question.field_path === "deliverables" ? (
+              <button
+                type="button"
+                onClick={submitCustom}
+                disabled={customSubmitDisabled}
+                data-testid="conversation-custom-submit"
+                className="ui-press surface-primary mt-2 min-h-11 w-full cursor-pointer rounded-xl border border-white px-4 text-sm font-semibold text-black elev-1 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-overlay disabled:bg-none disabled:text-disabled disabled:shadow-none sm:w-auto"
+              >
+                Add deliverable
+              </button>
+            ) : null}
+            <p id={customAnswerHelpId} className="mt-1.5 text-[11px] leading-4 text-muted">
+              {question.field_path === "experience_level"
+                ? `Use a clear level or amount, up to ${customAnswerMaxLength} characters.`
+                : `Use a specific label, up to ${customAnswerMaxLength} characters.`}
+            </p>
+            {showSemanticError ? (
+              <p
+                id={customAnswerErrorId}
+                className="mt-1.5 text-[12px] leading-4 text-[color:var(--color-state-closed,#f39aa6)]"
+                role="alert"
+                data-testid="conversation-custom-guidance"
+              >
+                {semanticError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {trimmed.length >= minLength && !meaningful && !customValuesAllowed ? (
           <p
             className="mt-2 text-[12px] leading-4 text-muted"
             data-testid="conversation-answer-guidance"
           >
             Add a short, specific phrase that candidates can understand.
+          </p>
+        ) : null}
+
+        {trimmed && (numericError || urlError) && !customValuesAllowed ? (
+          <p
+            className="mt-2 text-[12px] leading-4 text-muted"
+            role="alert"
+            data-testid="conversation-answer-format-guidance"
+          >
+            {numericError ?? urlError}
           </p>
         ) : null}
 
