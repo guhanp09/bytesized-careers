@@ -1,6 +1,5 @@
 "use client";
 
-import { aboutBrandLabel } from "../../lib/jobPresentation";
 import { AnimatePresence } from "framer-motion";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatedStep } from "../ui/StepTransition";
@@ -2293,8 +2292,13 @@ export default function PostJobForm({
 
     if (id === "about") {
       return (
+        // One visible label for one field. The card previously carried a
+        // dynamic "About <Brand>" heading while the control beneath it carried
+        // a second caption of its own, so a recruiter met two names for the
+        // same box. The candidate page still uses the brand heading — that is
+        // where naming the brand actually helps someone reading the job.
         <StepCard
-          title={aboutBrandLabel(hiringDisplayName)}
+          title="About the brand"
           icon="notebook-text"
           bodyClassName="mt-4"
           size="compact"
@@ -2308,19 +2312,17 @@ export default function PostJobForm({
           <div className="flex flex-col gap-4">
             <Field
               id="job-about-brand"
-              label={
-                <span className="inline-flex items-center gap-1.5">
-                  <LabelWithIcon icon="file">Candidate-facing introduction</LabelWithIcon>
-                  <span className="text-muted">*</span>
-                </span>
-              }
+              // The card title is the field's only visible label. The helper
+              // and the required contract are unchanged; the duplicate caption
+              // is what went.
+              label={null}
               helper="Give candidates useful context on the creator or brand, its audience, and why the work matters."
               error={aboutError}
             >
               <div className="flex flex-col gap-3" data-quality-target="job-description">
                 <textarea
                   id="job-about-brand"
-                  aria-label="About the hiring brand or creator"
+                  aria-label="About the brand"
                   aria-required="true"
                   aria-invalid={Boolean(aboutError)}
                   aria-describedby={aboutError ? "job-about-brand-error" : undefined}

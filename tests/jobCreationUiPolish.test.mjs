@@ -53,8 +53,10 @@ test("Post Job keeps a calm decision hierarchy and an editable About the brand f
   assert.match(form, /\{activeScreen\.question\}/);
   assert.match(form, /\{activeScreen\.label\}/);
   assert.match(form, /aria-label="Job posting progress"/);
-  assert.match(form, /title=\{aboutBrandLabel\(hiringDisplayName\)\}/);
-  assert.match(form, />Candidate-facing introduction<\/LabelWithIcon>/);
+  // One visible label for one field; the dynamic brand heading belongs to the
+  // candidate page, where naming the brand tells a reader something.
+  assert.match(form, /title="About the brand"/);
+  assert.doesNotMatch(form, /Candidate-facing introduction/);
   assert.match(form, /stays fully editable/);
   assert.match(form, />Continue<\/span>[\s\S]*aria-hidden="true">→<\/span>/);
 });

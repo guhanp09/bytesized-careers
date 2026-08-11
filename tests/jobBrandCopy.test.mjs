@@ -9,12 +9,14 @@ test("post-job brand context field uses standardized About the brand copy", () =
   const completion = read("lib/draftCompletion.ts");
   const detail = read("components/job-details/JobDescriptionSections.tsx");
 
-  // The literal moved into a shared helper so the editor, the recruiter
-  // preview and the candidate heading cannot drift apart — they had already,
-  // with the same field labelled "About the brand" in one place and "About the
-  // opportunity" in another. The standard copy is still exactly this; it is now
-  // the helper's fallback, asserted in jobPresentation.test.mjs.
-  assert.match(form, /aboutBrandLabel\(/);
+  // The editor names the field once, and statically. It previously carried a
+  // dynamic "About <Brand>" card heading *and* a "Candidate-facing
+  // introduction" caption on the control beneath it, so a recruiter met two
+  // names for one box. Naming the brand is useful to a candidate reading the
+  // job, not to the person filling the field in.
+  assert.match(form, /title="About the brand"/);
+  assert.doesNotMatch(form, /Candidate-facing introduction/);
+  assert.doesNotMatch(form, /title=\{aboutBrandLabel\(/);
   assert.match(form, /Share your brand’s voice, audience, and why this role matters\./);
   assert.match(form, /Share the content creator’s vision, audience, and why this role matters\./);
   assert.doesNotMatch(form, /Tell candidates about your vision in a way that is relevant to this role/);

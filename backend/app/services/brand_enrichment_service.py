@@ -46,8 +46,10 @@ EnrichmentOutcome = Literal[
     "success_existing_description",
     "success_official_site",
     "already_written",
+    "success_source_page",
     "no_reliable_identity",
     "no_official_source",
+    "ambiguous_brand",
     "fetch_failed",
     "insufficient_evidence",
     "model_declined",
@@ -89,6 +91,60 @@ _USEFUL_HEADINGS = (
 )
 
 
+#: Headings under which a job page introduces the company rather than the role.
+#:
+#: Deliberately narrower than the homepage list: a job post is mostly about the
+#: job, so only a section that announces itself as being about the *company* is
+#: taken. "Responsibilities" and "Benefits" describe the work and the package.
+_SOURCE_BRAND_HEADINGS = (
+    "about us", "about the company", "about our company", "who we are",
+    "our company", "our channel", "our story", "our mission", "company overview",
+    "about the team", "about the brand",
+)
+
+#: Wording that is legally or administratively required rather than descriptive.
+#: A page's EEO statement says nothing a candidate wants to know about the brand.
+_NOT_BRAND_COPY = (
+    "equal opportunity", "e-verify", "privacy policy", "cookie",
+    "affirmative action",
+    "reasonable accommodation", "background check", "at-will", "disclaimer",
+)
+
+
+def brand_evidence_from_source_page(text: str | None, *, limit: int = 4000) -> str:
+    """A company introduction the imported job page already carries.
+
+    Only a section that names itself as being about the company counts. The rest
+    of a job post is about the job, and treating "Benefits" or an EEO statement
+    as a brand description produces copy no candidate wants and no employer
+    wrote for that purpose.
+    """
+
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        heading = line.casefold().rstrip(":").strip()
+        if len(line) > 80 or not any(
+            heading.startswith(known) for known in _SOURCE_BRAND_HEADINGS
+        ):
+            continue
+        body: list[str] = []
+        for candidate in lines[index + 1 : index + 10]:
+            lowered = candidate.casefold()
+            if any(marker in lowered for marker in _NOT_BRAND_COPY):
+                break
+            if len(candidate) < 40:
+                # A short line after the paragraph is the next heading.
+                if body:
+                    break
+                continue
+            body.append(candidate)
+        if body:
+            return " ".join(body)[:limit]
+    return ""
+
+
 def brand_evidence_from_page(text: str, *, limit: int = 4000) -> str:
     """The part of an official page that describes the brand.
 
@@ -119,16 +175,99 @@ class BrandEnrichmentService:
         summarizer: BrandSummarizer,
         *,
         fetcher: PublicJobUrlFetcher | None = None,
+        finder: object | None = None,
     ) -> None:
         self._summarizer = summarizer
+        # Optional by design. Without a finder the service behaves exactly as it
+        # did before discovery existed: registered URL or nothing.
+        self._finder = finder
         # The accepted public-URL fetcher, unchanged: SSRF protection, redirect
         # validation, size and time limits, content-type checks. Enrichment adds
         # no new way to reach the network.
         self._fetcher = fetcher or PublicJobUrlFetcher()
 
+    async def _discover(self, identity: BrandIdentity, context):
+        """Ask the finder which site belongs to this brand, then re-check it.
+
+        Returns ``None`` when discovery is not configured at all, which keeps the
+        pre-discovery behaviour intact for any caller that does not supply a
+        finder.
+        """
+
+        from app.core.brand_discovery import BrandContext, accept_discovery
+
+        if self._finder is None:
+            return None
+        resolved = context or BrandContext(name=identity.name)
+        try:
+            found = await self._finder.find_official_site(resolved)
+        except Exception:  # pragma: no cover - discovery is optional
+            # A search outage means no source was found, not that the brand is
+            # unidentifiable. Returning None here would report the wrong reason
+            # and make a transient failure look like a settled verdict.
+            logger.exception("brand_discovery_failed")
+            from app.core.brand_discovery import DiscoveryResult
+
+            return DiscoveryResult("no_match", None, "discovery was unavailable")
+        # The finder is untrusted in the same way the extraction provider is.
+        return accept_discovery(found, context=resolved)
+
+    async def _summarise(
+        self, identity: BrandIdentity, *, evidence: str, evidence_url: str | None
+    ) -> BrandEnrichment | None:
+        """One grounding path for every rung of the ladder.
+
+        Source-page copy, a registered site and a discovered site all arrive
+        here, so a claim the evidence does not support is refused identically
+        wherever the evidence came from.
+        """
+
+        try:
+            proposed = await self._summarizer.summarize(
+                brand_name=identity.name, evidence=evidence
+            )
+        except Exception:  # pragma: no cover - optional enhancement
+            logger.exception("brand_enrichment_summary_failed")
+            return BrandEnrichment("error", evidence_url=evidence_url, detail="summary raised")
+
+        if not (proposed or "").strip():
+            return None
+
+        verdict = verify_summary(proposed, evidence=evidence, brand_name=identity.name)
+        if not verdict.accepted:
+            return None
+
+        return BrandEnrichment(
+            "success_source_page" if evidence_url is None else "success_official_site",
+            about=verdict.summary,
+            evidence_url=evidence_url,
+            detail="summarised from the job page" if evidence_url is None
+            else "summarised from the brand's own site",
+        )
+
     async def enrich(
-        self, identity: BrandIdentity, *, existing_about: str | None
+        self,
+        identity: BrandIdentity,
+        *,
+        existing_about: str | None,
+        source_text: str | None = None,
+        context=None,
     ) -> BrandEnrichment:
+        """Fill an empty About field from the cheapest trustworthy source.
+
+        A strict ladder, cheapest and strongest first. Each rung that answers
+        stops the ladder, so a job whose own page introduces the company costs
+        no search, no fetch and no model call — and a brand nobody can identify
+        costs nothing at all.
+
+        1. the recruiter's own text — nothing runs;
+        2. a description CreatorJobs already holds;
+        3. a company introduction the imported page already carries;
+        4. a registered brand-owned site;
+        5. a site discovered by search, when the brand is identifiable;
+        6. nothing.
+        """
+
         if (existing_about or "").strip():
             # The only branch a recruiter's text needs, and it is first.
             return BrandEnrichment(
@@ -143,17 +282,51 @@ class BrandEnrichmentService:
                 detail="used the brand description CreatorJobs already holds",
             )
 
-        if not identity.may_enrich:
-            return BrandEnrichment(
-                "no_reliable_identity", detail=identity.reason
+        # Level 3. The page the job came from often introduces the company
+        # itself, and that copy is already retrieved, already about the right
+        # employer, and free. Searching the web for something sitting in the
+        # source would be waste and an unnecessary chance to find the wrong
+        # company.
+        from_source = brand_evidence_from_source_page(source_text)
+        if from_source and evidence_is_substantial(from_source):
+            summarised = await self._summarise(
+                identity, evidence=from_source, evidence_url=None
             )
+            if summarised is not None:
+                return summarised
 
-        url = identity.official_url
-        if not url or not is_brand_owned_host(url):
-            return BrandEnrichment(
-                "no_official_source",
-                detail="no brand-owned site is registered for this identity",
-            )
+        url = identity.official_url if is_brand_owned_host(identity.official_url) else None
+
+        if url is None:
+            # Level 5. No registered site. Before discovery existed this was the
+            # end of the road — `may_enrich` meant "pinned firmly enough to
+            # describe *without* looking anything up", and a name alone never
+            # qualified. Discovery changes what a name can lead to, so the
+            # question becomes whether the brand is identifiable enough to
+            # search for, and the discovery *verdict* becomes the authority.
+            #
+            # The safety is unchanged in the only direction that matters:
+            # ambiguous still writes nothing.
+            if not identity.name.strip():
+                return BrandEnrichment("no_reliable_identity", detail=identity.reason)
+
+            discovered = await self._discover(identity, context)
+            if discovered is None:
+                # No finder configured: exactly the pre-discovery behaviour.
+                return BrandEnrichment(
+                    "no_reliable_identity" if not identity.may_enrich else "no_official_source",
+                    detail=identity.reason,
+                )
+            if not discovered.usable:
+                # A blank field costs a paragraph. The wrong company's
+                # description is published under somebody's brand.
+                return BrandEnrichment(
+                    "ambiguous_brand"
+                    if discovered.verdict == "ambiguous"
+                    else "no_official_source",
+                    detail=discovered.detail,
+                )
+            url = discovered.official_url
 
         try:
             retrieval = await self._fetcher.fetch(url)
