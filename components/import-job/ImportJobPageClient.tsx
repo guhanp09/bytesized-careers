@@ -89,10 +89,15 @@ function readableImportError(error: unknown, sourceType: EntryMode): string {
   // index, a bot check, a shell — and writes recruiter-facing wording for each.
   // Collapsing them here told someone whose URL listed thirty jobs that we
   // "couldn't read the page safely", which is both wrong and unactionable.
+  // Pasted text is classified on the server too — three roles pasted together
+  // are not one job — and the same rule applies to its wording: the server
+  // writes the sentence because only the server knows which case it is.
   const RECOVERABLE_URL_CODES = new Set([
     "JOB_IMPORT_URL_MULTIPLE_JOBS",
     "JOB_IMPORT_URL_NO_JOB_CONTENT",
     "JOB_IMPORT_URL_ACCESS_DECLINED",
+    "JOB_IMPORT_TEXT_MULTIPLE_JOBS",
+    "JOB_IMPORT_TEXT_NO_JOB_CONTENT",
   ]);
   if (RECOVERABLE_URL_CODES.has(code)) {
     const detail = error instanceof BackendRequestError ? error.message?.trim() : "";

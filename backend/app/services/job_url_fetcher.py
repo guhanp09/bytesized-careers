@@ -23,6 +23,7 @@ from app.core.job_import_body_sections import (
     labelled_experience_requirements,
     normalize_experience_requirement,
 )
+from app.core.job_import_pasted_source import neutralize_reserved_source_labels
 from app.core.job_page_evidence import classify_job_page
 from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
 
@@ -1136,6 +1137,19 @@ def _job_posting_context(job_posting: dict[str, object] | None) -> dict[str, obj
     return context
 
 
+def _one_line(value: str) -> str:
+    """Flatten a structured value onto the single line its label announces.
+
+    A schema.org value is one field. Nothing stopped a publisher putting a
+    newline inside one, and because these lines are composed as
+    ``label: value``, a value that broke the line could start the next one with
+    a label of its own choosing — publisher prose wearing the server's evidence
+    class. Flattening removes the vector without discarding a word of it.
+    """
+
+    return " ".join(value.split())
+
+
 def _structured_context_lines(context: dict[str, object]) -> list[str]:
     labels = {
         "job_title": "Structured job title",
@@ -1167,9 +1181,11 @@ def _structured_context_lines(context: dict[str, object]) -> list[str]:
         if label is None:
             continue
         if isinstance(value, str):
-            lines.append(f"{label}: {value}")
+            lines.append(f"{label}: {_one_line(value)}")
         elif isinstance(value, list):
-            lines.extend(f"{label}: {item}" for item in value if isinstance(item, str))
+            lines.extend(
+                f"{label}: {_one_line(item)}" for item in value if isinstance(item, str)
+            )
     return lines
 
 
@@ -1200,11 +1216,15 @@ def normalize_public_job_html(
         if isinstance(raw_description, str):
             structured_description = _strip_html_fragment(raw_description)
 
+    # Only the middle piece is the server's own statement about the page. The
+    # title, the description and the visible body are whatever the publisher
+    # wrote, so a line of theirs that opens with the server's evidence label is
+    # stripped of the label and kept as the ordinary prose it is.
     pieces = [
-        structured_title,
+        neutralize_reserved_source_labels(structured_title or ""),
         "\n".join(_structured_context_lines(structured_context)),
-        structured_description,
-        parser.visible_text,
+        neutralize_reserved_source_labels(structured_description or ""),
+        neutralize_reserved_source_labels(parser.visible_text or ""),
     ]
     normalized_lines: list[str] = []
     seen: set[str] = set()

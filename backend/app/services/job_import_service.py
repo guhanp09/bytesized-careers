@@ -63,6 +63,11 @@ from app.core.job_import_labelled_fields import labelled_facts
 from app.core.job_import_location_resolution import city_for_location, resolve_locations
 from app.core.job_import_location_signals import JobCityResolution, resolve_job_city
 from app.core.job_import_native_values import convert_to_native
+from app.core.job_import_pasted_source import (
+    RECRUITER_SUPPLIED_TEXT_TYPES,
+    admit_pasted_source,
+    normalize_pasted_source_text,
+)
 from app.core.job_import_policy import (
     AUTO_TRACKED_MISSING_FIELDS,
     JOB_IMPORT_FIELD_POLICIES,
@@ -77,7 +82,7 @@ from app.core.job_import_structured_fields import (
     fields_from_structured_context,
     structured_compensation_has_inverted_range,
 )
-from app.core.job_import_title_signals import title_signals
+from app.core.job_import_title_signals import leading_job_title, title_signals
 from app.core.job_import_weekly_hours import infer_weekly_hours
 from app.core.job_taxonomy import (
     COMPENSATION_MODES,
@@ -255,12 +260,44 @@ class JobImportService:
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
+    @staticmethod
+    def _prepared_text_payload(payload: JobImportSourceCreate) -> JobImportSourceCreate:
+        """Bring recruiter-supplied text to the condition a fetched page arrives in.
+
+        The URL path normalizes inside the fetcher, which is the server. Pasted
+        text normalized in the browser and was stored as it arrived, so every
+        deterministic reader downstream — weekly hours, the experience grammar,
+        location resolution — met whatever a copied email or a LinkedIn post
+        carried, and only on this path. Doing it here makes the browser's version
+        a convenience for the recruiter rather than the contract, and it is
+        idempotent, so text that already came through the product is untouched.
+
+        Admission runs on the normalized text for the same reason: what the
+        classifier judges must be what the provider will read.
+        """
+
+        if payload.source_type not in RECRUITER_SUPPLIED_TEXT_TYPES:
+            return payload
+        normalized = normalize_pasted_source_text(payload.original_text)
+        if not normalized:
+            return payload
+
+        admission = admit_pasted_source(normalized)
+        if not admission.admitted:
+            raise JobImportError(admission.code, admission.message, status_code=422)
+        if normalized == payload.original_text:
+            return payload
+        return payload.model_copy(update={"original_text": normalized})
+
     async def create_source(
         self,
         payload: JobImportSourceCreate,
         *,
         owner_user_id: UUID,
     ) -> JobImportSource:
+        # Before the fingerprint, so the same job pasted twice in two shapes is
+        # recognised as the same content rather than stored as two sources.
+        payload = self._prepared_text_payload(payload)
         fingerprint = self._source_fingerprint(payload)
         if payload.idempotency_key:
             existing = await self.repository.get_source_by_request_id(
@@ -1802,12 +1839,27 @@ class JobImportService:
 
         structured_title = context.get("job_title")
         title_evidence: list[JobImportEvidence] = []
+        title_wording = "The structured job title"
         if isinstance(structured_title, str):
             title_evidence = cls._structured_source_evidence(
                 source,
                 label="Structured job title",
                 value=structured_title,
             )
+        elif getattr(source, "source_type", None) in RECRUITER_SUPPLIED_TEXT_TYPES:
+            # A page states its title in markup; pasted text states it the way
+            # every job post does, on the opening line. Without this the pasted
+            # path reached the recruiter with no title and no role — and then
+            # asked for both, about a source whose first words had answered
+            # them. The reader only accepts a line that names a role this
+            # product knows, so prose and greetings settle nothing.
+            leading = leading_job_title(source.original_text)
+            if leading is not None:
+                structured_title = leading
+                title_evidence = cls._exact_source_evidence(source, [leading])
+                title_wording = "The job title"
+
+        if isinstance(structured_title, str):
             existing_title = by_path.get("title")
             if existing_title is not None and (
                 not isinstance(existing_title.value, str)
@@ -1845,7 +1897,7 @@ class JobImportService:
             )
             if role_key_is_allowed and isinstance(role_key, str) and title_evidence:
                 role_explanation = (
-                    "The structured job title names exactly one CreatorJobs role."
+                    f"{title_wording} names exactly one CreatorJobs role."
                 )
                 existing_role = by_path.get("primary_role_key")
                 existing_role_token = (
@@ -3039,6 +3091,15 @@ class JobImportService:
             )
         source = await self.get_source(draft.source_id, owner_user_id=owner_user_id)
         active_roles = await self.repository.list_active_roles()
+        # What the provider itself returned, before the server adds anything it
+        # read from the source. The two must stay distinguishable: a reply whose
+        # every field is unsupported is a failed extraction, and it would look
+        # like a successful one the moment server-derived facts were counted as
+        # part of it.
+        provider_paths = {
+            *(item.field_path for item in response.fields),
+            *(item.field_path for item in response.conflicts),
+        }
         response = self._with_deterministic_context(
             response,
             source,
@@ -3105,9 +3166,13 @@ class JobImportService:
                     ],
                 }
             )
-            if not response.fields and not response.conflicts:
-                # Nothing usable survived, which is a genuine extraction failure
-                # rather than something to paper over with an empty draft.
+            if not provider_paths - unsupported:
+                # Nothing the provider supplied survived, which is a genuine
+                # extraction failure rather than something to paper over with an
+                # empty draft — and it stays one however much the server managed
+                # to read from the source on its own. Judging this by the fields
+                # present would have made the same broken reply a failure on a
+                # bare paste and a success on a page with markup.
                 raise JobImportError(
                     "JOB_IMPORT_UNSUPPORTED_FIELD",
                     "Extraction output contained no fields this product supports.",

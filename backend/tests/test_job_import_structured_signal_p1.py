@@ -765,7 +765,11 @@ async def test_structured_employment_conflict_is_stored_pending(
         "/api/v1/job-imports/sources",
         headers=headers,
         json={
-            "source_type": "pasted_text",
+            # Server-composed "Structured …" evidence lines belong to a fetched
+            # page. Recruiter-supplied text may not write them, so this fixture
+            # enters as what it represents.
+            "source_type": "public_url",
+            "source_url": "https://boards.example.com/jobs/1",
             "source_title": "Video Editor",
             "original_text": original_text,
             "idempotency_key": uuid4().hex,

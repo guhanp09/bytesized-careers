@@ -305,7 +305,13 @@ def _labelled_experience_rows(text: str | None) -> tuple[LabelledExperience, ...
         return ()
     rows: list[LabelledExperience] = []
     for match in _LABELLED_EXPERIENCE.finditer(text):
-        normalized = normalize_experience_requirement(match.group("value"))
+        # A row written as a sentence — "Experience: 1 to 2 years." — states the
+        # same fact as one written as a field. The full stop belongs to the
+        # writing, not to the value, and keeping it meant a recruiter who
+        # punctuated their own job post was asked how much experience it needed.
+        normalized = normalize_experience_requirement(
+            match.group("value").rstrip(" \t.;,")
+        )
         if normalized is None:
             continue
         rows.append(

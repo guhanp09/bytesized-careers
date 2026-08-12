@@ -9,10 +9,22 @@ export type NormalizedImportSource = {
   truncated: boolean;
 };
 
-// Bullet glyphs commonly pasted from LinkedIn/WhatsApp/Instagram posts, unified to
-// "- " at line start so segmentation sees one bullet syntax.
-const BULLET_RE =
-  /^[ \t]*(?:[•●▪▸▶‣◦·★⭐✅✔☑◆■□○–—*-]|👉|➡️?|🔹|🔸|✳️?|✨)+[ \t]+/;
+// Typographic bullet glyphs, unified to "- " at line start so segmentation sees
+// one bullet syntax.
+const BULLET_RE = /^[ \t]*(?:[•●▪▸▶‣◦·★◆■□○–—*-])+[ \t]+/;
+
+// A run of pictographs opening a line, after bullets have had their turn:
+// several bullet glyphs live inside these blocks, and a list marker is a list
+// marker rather than decoration.
+//
+// Hiring posts label their rows with emoji
+// — a money bag before the pay, an hourglass before the experience — and the
+// row beneath is a labelled fact the server reads. Removing the decoration is
+// what lets it be read as one. The server applies the identical rule, because
+// the text it stores is the evidence; this keeps the recruiter's character
+// count and preview honest about what will be read.
+const LEADING_PICTOGRAPHS_RE =
+  /^[ \t]*(?:[\u2190-\u21FF\u2300-\u27BF\u2B00-\u2BFF\uFE0F\u20E3]|[\u{1F000}-\u{1FAFF}])+[ \t]*/u;
 
 // Control characters (except \n; \r handled separately) and zero-width characters.
 const STRIP_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200D\u2060\uFEFF]/g;
@@ -41,7 +53,7 @@ export function normalizeImportText(raw: string): NormalizedImportSource {
     .replace(/[“”″]/g, '"');
 
   const lines = text.split("\n").map((line) => {
-    let out = line.replace(BULLET_RE, "- ");
+    let out = line.replace(BULLET_RE, "- ").replace(LEADING_PICTOGRAPHS_RE, "");
     // Collapse intra-line whitespace runs but never touch newlines.
     out = out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
     return out;

@@ -96,10 +96,20 @@ async def _prepare(
         "/api/v1/job-imports/sources",
         headers=headers,
         json={
-            "source_type": "pasted_text",
+            # A page entry is a URL import: its text is composed by the fetcher,
+            # including the server-owned "Structured …" evidence lines. Posting
+            # that text as a paste claimed the recruiter had typed the server's
+            # own labels, which is exactly what recruiter-supplied text is not
+            # allowed to do — so it now enters through the source kind it is.
+            "source_type": "public_url" if source.html is not None else "pasted_text",
             "source_title": title,
             "original_text": text,
             "idempotency_key": uuid4().hex,
+            **(
+                {"source_url": "https://boards.example.com/jobs/1"}
+                if source.html is not None
+                else {}
+            ),
         },
     )
     assert created.status_code == 201, created.text

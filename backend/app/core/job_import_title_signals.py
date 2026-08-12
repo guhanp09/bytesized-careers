@@ -416,3 +416,87 @@ def title_signals(title: str | None, *, extra_text: str | None = None) -> TitleS
         )
 
     return TitleSignals(settled=settled, suggested=suggested)
+
+
+#: How far into a paste a title may be. A recruiter's first line is sometimes a
+#: greeting or a company name, but the title is never buried.
+_TITLE_SEARCH_LINES: Final[int] = 4
+
+#: Decoration a hiring post puts around its own title.
+_TITLE_TRIM = re.compile(r"^[\s\W_]+|[\s!.:;–—-]+$", re.UNICODE)
+
+#: Wording that introduces the title inside the same line, as a post does:
+#: "We're hiring a Video Editor", "Now hiring: Video Editor", "Subject: Fwd: …".
+_TITLE_LEAD_IN = re.compile(
+    r"^(?:.*?\b(?:hiring|looking\s+for|seeking|wanted|we\s+need|"
+    r"job\s+title|position|role|vacancy|subject|fwd)\b\s*[:\-\u2013]?\s*)+"
+    r"(?:an?\s+|the\s+)?",
+    re.IGNORECASE,
+)
+
+#: A title names the job. Past this, the line is describing it instead.
+_TITLE_MAX_WORDS: Final[int] = 8
+
+#: Words that turn a title into a sentence about the title.
+_TITLE_CLAUSE = re.compile(r"\b(?:to|who|that|which|and|because)\b", re.IGNORECASE)
+
+#: A full stop inside the line means it is prose that happens to start here.
+#: "Video Editor. Remote-friendly. San Francisco office." names a role and is
+#: three statements, not a title — and taking it as one would hand the whole
+#: sentence to the title reader, which settles work mode and place from titles.
+_TITLE_SENTENCE_BREAK = re.compile(r"[.!?;]\s")
+
+
+def leading_job_title(text: str | None) -> str | None:
+    """The job's own title, when the source opens by naming it.
+
+    A fetched page states its title in markup, and that is where the import
+    reads it. Pasted text has no markup and states its title the way every job
+    post does — on the first line — so declining to read it would leave the
+    draft with no title, no role, and a question about both, for a source whose
+    opening words answered them.
+
+    Deliberately narrow. A line qualifies only if it *names a role this product
+    knows*, which is a far stronger test than looking title-shaped: an opening
+    sentence of prose, a company name, or a greeting names none, and is left
+    alone. A line that keeps going after the role — "a video editor to join our
+    YouTube team" — is a sentence about the job rather than its title, and is
+    left for the recruiter. That keeps the failure mode "no title read" rather
+    than "a wrong title settled": the recruiter can supply the first, and would
+    have to notice the second.
+    """
+
+    if not text:
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for line in lines[:_TITLE_SEARCH_LINES]:
+        if len(line) > 120:
+            continue
+        for candidate in _title_candidates(line):
+            signals = title_signals(candidate)
+            role = signals.settled.get(
+                "primary_role_key", signals.suggested.get("primary_role_key")
+            )
+            if isinstance(role, str) and role:
+                return candidate
+    return None
+
+
+def _title_candidates(line: str) -> list[str]:
+    """The line with a post's lead-in removed, then the line as written.
+
+    Tightest first, so "We're hiring a Video Editor" settles as "Video Editor"
+    rather than as the sentence that announced it.
+    """
+
+    trimmed = _TITLE_TRIM.sub("", line)
+    without_lead_in = _TITLE_TRIM.sub("", _TITLE_LEAD_IN.sub("", trimmed))
+    candidates = [
+        candidate
+        for candidate in dict.fromkeys((without_lead_in, trimmed))
+        if len(candidate) >= 3
+        and len(candidate.split()) <= _TITLE_MAX_WORDS
+        and not _TITLE_CLAUSE.search(candidate)
+        and not _TITLE_SENTENCE_BREAK.search(candidate)
+    ]
+    return candidates
