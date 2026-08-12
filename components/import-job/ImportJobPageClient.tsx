@@ -746,7 +746,16 @@ export default function ImportJobPageClient() {
       await processDraft(initialized, controller.signal);
     } catch (caught) {
       if (controller.signal.aborted) return;
-      setPhase("failure");
+      // Text the recruiter can fix belongs beside the box they would fix it in.
+      // Three jobs pasted together is not "I couldn't finish this draft" with a
+      // Retry that would fail identically — it is one edit away, and the edit
+      // needs the textarea, which the failure screen replaces.
+      const code =
+        caught instanceof BackendRequestError ? caught.code ?? "" : "";
+      const correctableHere =
+        code === "JOB_IMPORT_TEXT_MULTIPLE_JOBS" ||
+        code === "JOB_IMPORT_TEXT_NO_JOB_CONTENT";
+      setPhase(correctableHere ? "entry" : "failure");
       setError(readableImportError(caught, entryMode));
       trackJobImportEvent("job_import.failed", {
         sourceType: entryMode,

@@ -753,6 +753,86 @@ async def test_a_multi_job_paste_is_refused_by_the_endpoint(
 
 
 @pytest.mark.anyio
+async def test_what_is_judged_is_what_will_be_read(client: AsyncClient) -> None:
+    """Admission runs on the prepared text, not on what arrived.
+
+    An index copied out of a browser carries non-breaking spaces and emoji
+    decoration, and the classifier's evidence — "View all jobs", "Showing 3 of
+    12 jobs" — is written with them. Judging the raw string would let the same
+    three jobs through that the normalised one refuses, which is the worst
+    possible place for the two to disagree.
+    """
+
+    messy = (
+        "\U0001f4cc Current\u00a0openings at Example Studio\r\n"
+        "\U0001f449 Role 1: Video\u00a0Editor \u2014 responsibilities: edit.\r\n"
+        "\U0001f449 Role 2: Thumbnail Designer \u2014 requirements: Photoshop.\r\n"
+        "\U0001f449 Role 3: Social Media Manager \u2014 qualifications: 2 years.\r\n"
+        "\u25aa View\u00a0all jobs. Filter\u00a0by location. Sort\u00a0by date. "
+        "Showing 3 of 12 jobs.\r\n"
+    )
+
+    headers, _owner = await _auth(client, f"paste-messy-index-{next(_COUNTER)}")
+    created = await client.post(
+        "/api/v1/job-imports/sources",
+        headers=headers,
+        json={
+            "source_type": "pasted_text",
+            "original_text": messy,
+            "idempotency_key": uuid4().hex,
+        },
+    )
+
+    assert created.status_code == 422, created.text
+    assert created.json()["error"]["code"] == "JOB_IMPORT_TEXT_MULTIPLE_JOBS"
+
+
+@pytest.mark.anyio
+async def test_the_same_job_pasted_twice_in_two_shapes_is_one_source(
+    client: AsyncClient,
+) -> None:
+    """The fingerprint is taken from the prepared text.
+
+    A recruiter who retries after a hiccup often re-copies rather than reuses
+    what is in the box, and the second copy differs only in invisible ways. If
+    content identity were computed before preparation, the same job would be two
+    different sources — and a retry carrying the same request key would be
+    refused as a conflict over text nobody can see the difference in.
+    """
+
+    headers, _owner = await _auth(client, f"paste-same-{next(_COUNTER)}")
+    key = uuid4().hex
+    clean = (
+        "Video Editor\n"
+        "Compensation: INR 30,000 per month\n"
+        "Responsibilities: edit weekly videos. Qualifications: Premiere Pro.\n"
+    )
+    messy = (
+        "Video\u00a0Editor\r\n"
+        "Compensation: INR\u00a030,000 per month\r\n"
+        "Responsibilities: edit weekly\u00a0videos.\u200b Qualifications: Premiere\u00a0Pro.\r\n"
+    )
+
+    async def create(text: str):
+        return await client.post(
+            "/api/v1/job-imports/sources",
+            headers=headers,
+            json={
+                "source_type": "pasted_text",
+                "original_text": text,
+                "idempotency_key": key,
+            },
+        )
+
+    first = await create(clean)
+    second = await create(messy)
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+
+
+@pytest.mark.anyio
 async def test_the_server_stores_the_text_it_prepared(client: AsyncClient) -> None:
     """A client that skips normalization does not get a weaker import."""
 

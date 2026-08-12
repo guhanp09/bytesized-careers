@@ -49,7 +49,10 @@ test("paste is a first-class input, not a consolation prize", async ({ page }) =
   await expect(page.getByRole("tab", { name: "Public URL" })).toBeVisible();
   await expect(page.getByTestId("import-textarea")).toBeVisible();
   const body = await page.locator("body").innerText();
-  expect(body).toMatch(/Paste an existing post or public URL/);
+  // The page says what both inputs are for, in one sentence, before either is
+  // chosen. Pinned by meaning rather than by the exact wording, which has been
+  // rewritten once already and left this assertion behind.
+  expect(body).toMatch(/Paste the job text .*public URL/);
 });
 
 test("an index URL explains itself and leaves the recruiter mid-flow", async ({ page }) => {
