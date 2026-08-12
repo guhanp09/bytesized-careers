@@ -656,6 +656,39 @@ async def test_pasted_instructions_do_not_become_compensation(
 # One job, and something that is a job at all.
 
 
+@pytest.mark.parametrize(
+    "source", [item for item in CORPUS if item.html or item.pasted_text],
+    ids=lambda item: item.key,
+)
+def test_no_real_job_in_the_corpus_is_ever_refused(source: GoldenSource) -> None:
+    """The guard on the guard, and the reason it exists.
+
+    Two of these were refused when admission required the section vocabulary a
+    published listing uses. One says "Duration: 6 Months. Stipend: 15,000 per
+    month. Work Mode: Onsite"; the other "We pay 35,000 rupees per month. Fully
+    remote within India." Both are jobs, and a recruiter pasting either was told
+    their own job post was not a job.
+
+    That is the worst outcome this check can produce. A wrongly admitted paste
+    is a poor draft discarded in one click; a wrongly refused one cannot be
+    imported at all. So every job this product tests against must pass, and this
+    runs over the whole corpus rather than over examples chosen to pass.
+    """
+
+    text = (
+        visible_copy(source.html or "") if source.html else (source.pasted_text or "")
+    )
+    if not text.strip():
+        pytest.skip(f"{source.key} has no readable copy")
+
+    admission = admit_pasted_source(normalize_pasted_source_text(text))
+
+    assert admission.admitted, (
+        f"{source.key} is a real job and was refused as "
+        f"{admission.evidence.classification}"
+    )
+
+
 class TestOnePasteIsOneJob:
     def test_three_roles_pasted_together_are_refused(self) -> None:
         admission = admit_pasted_source(

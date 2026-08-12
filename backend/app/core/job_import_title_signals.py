@@ -435,10 +435,21 @@ _TITLE_LEAD_IN = re.compile(
 )
 
 #: A title names the job. Past this, the line is describing it instead.
-_TITLE_MAX_WORDS: Final[int] = 8
+#:
+#: Twelve, because real ones run long: "AI Graphics Designer and Video Editor
+#: Intern 6 months onsite" is a title a live board published, and it carries the
+#: engagement and the duration with it. Cutting at eight words read that page's
+#: own title as prose and lost both. What keeps the limit honest is not its size
+#: but the two guards beside it — a clause word or a sentence break disqualifies
+#: a line however short it is.
+_TITLE_MAX_WORDS: Final[int] = 12
 
 #: Words that turn a title into a sentence about the title.
-_TITLE_CLAUSE = re.compile(r"\b(?:to|who|that|which|and|because)\b", re.IGNORECASE)
+#:
+#: Subordinators only. "and" is not one of them: "Graphics Designer and Video
+#: Editor" is a title two crafts wide, and rejecting it lost the page's own
+#: title along with the duration and engagement stated inside it.
+_TITLE_CLAUSE = re.compile(r"\b(?:to|who|that|which|because)\b", re.IGNORECASE)
 
 #: A full stop inside the line means it is prose that happens to start here.
 #: "Video Editor. Remote-friendly. San Francisco office." names a role and is
@@ -473,13 +484,44 @@ def leading_job_title(text: str | None) -> str | None:
         if len(line) > 120:
             continue
         for candidate in _title_candidates(line):
-            signals = title_signals(candidate)
-            role = signals.settled.get(
-                "primary_role_key", signals.suggested.get("primary_role_key")
-            )
-            if isinstance(role, str) and role:
+            if _names_the_job(title_signals(candidate)):
                 return candidate
     return None
+
+
+#: Facts a title states about the job, grouped so one fact counts once.
+_TITLE_FACTS: Final[tuple[tuple[str, ...], ...]] = (
+    ("engagement_type",),
+    ("work_mode",),
+    ("experience_level",),
+    ("duration_type", "duration_value", "duration_unit"),
+)
+
+
+def _names_the_job(signals: TitleSignals) -> bool:
+    """Whether this line is the job's title rather than a line about the job.
+
+    A role is the clearest answer and usually the only one needed. It is not the
+    only one: "AI Graphics Designer and Video Editor Intern 6 months onsite" is a
+    title a live board published, and the role reader declines it on purpose,
+    because two crafts in one title is a genuine ambiguity for the recruiter to
+    settle. Requiring a role therefore threw away the page's own title — and the
+    engagement, duration and work mode stated inside it.
+
+    So several job facts in one short line also qualify. One does not: "Fully
+    remote within India" states a work mode and is a line about the job, and
+    taking it as the title would put it where a candidate reads the role.
+    """
+
+    role = signals.settled.get(
+        "primary_role_key", signals.suggested.get("primary_role_key")
+    )
+    if isinstance(role, str) and role:
+        return True
+    stated = sum(
+        1 for group in _TITLE_FACTS if any(key in signals.settled for key in group)
+    )
+    return stated >= 2
 
 
 def _title_candidates(line: str) -> list[str]:

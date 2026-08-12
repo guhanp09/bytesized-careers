@@ -106,25 +106,46 @@ PASTE_REJECTION_CODES: Final[dict[str, str]] = {
     "not_a_job": "JOB_IMPORT_TEXT_NO_JOB_CONTENT",
 }
 
-#: Wording that says someone is hiring, even when nothing else on the page does.
+#: Evidence that this text is about hiring someone, however it is written.
 #:
-#: The page classifier looks for the sections a published listing has —
-#: responsibilities, qualifications, benefits. A recruiter typing into WhatsApp
-#: writes none of them and is still unmistakably hiring. Without this, "Need a
-#: video editor for our channel, DM me" reads as non-job content, and refusing it
-#: would be refusing the shortest legitimate way to start a job.
-_HIRING_INTENT: Final[tuple[str, ...]] = (
+#: The page classifier looks for the sections a *published listing* has —
+#: responsibilities, qualifications, benefits. Real jobs frequently have none of
+#: them. Two pages in this product's own corpus were refused by that test alone:
+#: one states "Duration: 6 Months. Stipend: 15,000 per month. Work Mode: Onsite",
+#: the other "We pay 35,000 rupees per month. Fully remote within India." Both
+#: are unmistakably jobs and neither uses a single section heading.
+#:
+#: That refusal is the worst outcome available here. A job wrongly admitted
+#: becomes a poor draft the recruiter discards in one click; a job wrongly
+#: refused cannot be imported at all, and the recruiter is told their own job
+#: post is not a job. So this is deliberately broad, and the terms are the
+#: things a hiring text says and a résumé, an article or a marketing page does
+#: not: what is offered, on what terms, for how long, and how to ask for it.
+_HIRING_EVIDENCE: Final[tuple[str, ...]] = (
+    # Someone is hiring.
     r"\b(?:we(?:'re| are)?|now|currently)\s+hiring\b",
     r"\bhiring\s+(?:a|an|for|now)\b",
     r"\blooking\s+for\s+(?:a|an|someone|talented|experienced)\b",
     r"\b(?:need|want|seeking|wanted)\s+(?:a|an|experienced|talented)\b",
     r"\bjoin\s+(?:our|the|my)\s+(?:team|channel|studio|agency)\b",
     r"\b(?:vacancy|vacancies|opening for|position for|job opening)\b",
-    r"\b(?:apply|dm|message|reach out|get in touch)\b",
-    r"\b(?:freelance|full[- ]time|part[- ]time|internship|contract)\s+"
-    r"(?:role|position|opportunity|gig)\b",
     r"\b(?:editor|designer|writer|manager|producer|animator|videographer|"
     r"strategist|marketer)\s+(?:wanted|needed|required)\b",
+    # What it pays.
+    r"\b(?:stipend|salary|compensation|remuneration|budget|ctc)\b",
+    r"\bwe\s+pay\b",
+    r"(?:per|a|/)\s*(?:hour|day|week|month|year|annum)\b",
+    r"\b(?:lpa|per annum)\b",
+    # On what terms, and for how long.
+    r"\b(?:internship|intern|freelance|full[- ]time|part[- ]time|contract|"
+    r"traineeship)\b",
+    r"\b(?:work\s+mode|work\s+setup|on[- ]?site|onsite|hybrid|remote)\b",
+    r"\b(?:duration|start\s+date|notice\s+period|working\s+hours|"
+    r"office\s+location)\b",
+    r"\b(?:deliverable|deliverables|per\s+week|each\s+week|a\s+week)\b",
+    # How to ask for it.
+    r"\b(?:apply|dm|message|reach out|get in touch)\b",
+    r"\b(?:resume|cv|portfolio|cover\s+letter|showreel|work\s+samples)\b",
 )
 
 
@@ -185,8 +206,8 @@ class PasteAdmission:
     message: str = ""
 
 
-def _has_hiring_intent(text: str) -> bool:
-    return any(re.search(pattern, text, re.IGNORECASE) for pattern in _HIRING_INTENT)
+def _reads_as_hiring(text: str) -> bool:
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in _HIRING_EVIDENCE)
 
 
 def admit_pasted_source(text: str) -> PasteAdmission:
@@ -216,7 +237,7 @@ def admit_pasted_source(text: str) -> PasteAdmission:
             PASTE_REJECTION_MESSAGES["multi_job_or_index"],
         )
 
-    if classification in {"not_a_job", "blocked_or_challenge"} and not _has_hiring_intent(
+    if classification in {"not_a_job", "blocked_or_challenge"} and not _reads_as_hiring(
         text
     ):
         # `blocked_or_challenge` means a bot check was pasted instead of a job.
