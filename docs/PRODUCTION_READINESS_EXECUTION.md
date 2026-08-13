@@ -192,4 +192,3 @@ This ledger translates the production-readiness audit into resumable implementat
 | CERT-002 | CRITICAL | Production configuration | CERT-001, all external service items | BLOCKED_EXTERNAL | Real service boot, TLS, cookie, header, readiness and provider probes | NO | YES | Yes | Yes | — |
 | CERT-003 | CRITICAL | Controlled cohort | OPS-008, CERT-002 | BLOCKED_EXTERNAL | Ten-account, seven-day cohort with rollback triggers and SLO review | NO | YES | Yes | Yes | — |
 | CERT-004 | CRITICAL | Release assessment | CERT-001, CERT-002, CERT-003, LEGAL-002 | NOT_STARTED | Evidence review using exact status semantics | NO | YES | Yes | Yes | — |
-
