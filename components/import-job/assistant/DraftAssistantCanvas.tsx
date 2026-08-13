@@ -19,10 +19,8 @@ import type {
   JobImportSourceType,
 } from "../../../lib/jobImportReadiness.ts";
 import {
-  AssistantMessage,
   ConversationComplete,
   ConversationTurn,
-  RecruiterReply,
   TypingBubble,
 } from "./ConversationTurn.tsx";
 import {
@@ -158,9 +156,13 @@ export function DraftAssistantCanvas({
                 ? "scanning"
                 : "reading";
 
+  // "Preparing" beside the words "Your draft is ready" was a contradiction the
+  // recruiter could read in one glance: the flag underneath it is about the
+  // native draft row, which is created when they open it, not about whether
+  // there is anything left for Bea to do.
   const assistantStatus = progress.failed
     ? "Needs attention"
-    : progress.nativeDraftReady
+    : progress.nativeDraftReady || conversation?.ready_for_draft
       ? "Ready"
       : waitingForRecruiter
         ? "Your input"
@@ -190,20 +192,46 @@ export function DraftAssistantCanvas({
   // chronological stream. Keeping one scroll owner is what places the dots
   // directly after the recruiter's reply instead of at the foot of the panel.
   const conversationRef = React.useRef<HTMLDivElement | null>(null);
+  // A measurement anchor, not a second scroll container: the stream still has
+  // exactly one owner. A tall turn scrolled to the bottom put its own question
+  // above the visible area, so the recruiter met three option cards with
+  // nothing saying what they answer. New question: put the question at the top.
+  // Anything else — a reply landing, the typing bubble — is the foot of the
+  // stream and belongs at the bottom.
+  const liveTurnRef = React.useRef<HTMLDivElement | null>(null);
   const answeredCount = answeredEntries.length;
+  const activeQuestionPath = conversation?.active_question?.field_path ?? null;
+  const shownQuestionRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     const node = conversationRef.current;
     if (!node) return;
-    node.scrollTo({
-      top: node.scrollHeight,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+    const questionChanged = shownQuestionRef.current !== activeQuestionPath;
+    shownQuestionRef.current = activeQuestionPath;
+    const live = liveTurnRef.current;
+    if (questionChanged && activeQuestionPath && live) {
+      // Measured against the scroller itself. `offsetTop` is relative to the
+      // nearest positioned ancestor, which is not this container, so it
+      // overshot and put the question above the fold — the exact thing this
+      // exists to prevent.
+      const offset =
+        live.getBoundingClientRect().top -
+        node.getBoundingClientRect().top +
+        node.scrollTop;
+      node.scrollTo({ top: Math.max(offset - 12, 0), behavior });
+      return;
+    }
+    // Pinning the foot of the stream is immediate. Animating it means the
+    // recruiter's own reply and the typing dots are still travelling when they
+    // look for them — the one moment in this surface where a smooth scroll
+    // costs certainty rather than adding polish.
+    node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
   }, [
+    activeQuestionPath,
     answeredCount,
     busy,
-    conversation?.active_question?.field_path,
     conversation?.ready_for_draft,
     conversation?.recruiter_context_version,
     conversationLayoutVersion,
@@ -215,13 +243,16 @@ export function DraftAssistantCanvas({
       className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] xl:gap-6 xl:grid-cols-[minmax(0,1fr)_420px]"
       data-testid="draft-assistant-canvas"
     >
-      {/* On a large screen this is a chat column of fixed height, not a growing
-          card: header and progress pinned, transcript flexing, the live question
-          always at the bottom and always reachable. Left to normal flow the
-          option chips fell below the fold and the recruiter had to scroll the
-          page to answer — which is exactly what a chat layout exists to avoid. */}
+      {/* A chat column: header and progress pinned, transcript flexing, the live
+          question always reachable. Left to normal flow the option chips fell
+          below the fold and the recruiter had to scroll the page to answer,
+          which is exactly what a chat layout exists to avoid.
+          It is a *ceiling* rather than a fixed height. Pinned to the viewport it
+          held four hundred pixels of nothing under a two-option question, and
+          empty space at that scale does not read as calm — it reads as a screen
+          that has stopped working. */}
       <section
-        className={`${panel} flex min-w-0 flex-col lg:h-[calc(100dvh-8rem)] lg:max-h-[820px] lg:min-h-[560px]`}
+        className={`${panel} flex min-w-0 flex-col`}
         aria-labelledby="draft-assistant-title"
         aria-label="Prepare this job draft with Bea"
       >
@@ -277,7 +308,11 @@ export function DraftAssistantCanvas({
         </p>
 
         <div className="shrink-0 border-b border-line pb-5">
-          <ProgressBar ratio={ratio} stages={stages} />
+          <ProgressBar
+            ratio={ratio}
+            stages={stages}
+            settled={Boolean(conversation?.ready_for_draft)}
+          />
         </div>
 
         {/* One chronological chat stream. It uses the same convention as Inbox:
@@ -286,7 +321,7 @@ export function DraftAssistantCanvas({
         <div className="mt-5 flex min-h-0 flex-1 flex-col">
           <div
             ref={conversationRef}
-            className="chat-scroll max-h-[min(66dvh,680px)] min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1.5 [scroll-padding-bottom:1rem] lg:max-h-none lg:flex-1"
+            className="chat-scroll min-h-[280px] max-h-[min(64dvh,620px)] space-y-3 overflow-y-auto overscroll-contain pr-1.5 [scroll-padding-bottom:1rem]"
             data-testid="conversation-scroll"
           >
           {conversation && answeredEntries.length > 0 ? (
@@ -295,7 +330,7 @@ export function DraftAssistantCanvas({
             </div>
           ) : null}
 
-          <div data-testid="conversation-live">
+          <div data-testid="conversation-live" ref={liveTurnRef}>
           {progress.failed ? (
             <FailureMessage error={error} />
           ) : conversation?.ready_for_draft && onOpenDraft ? (
@@ -342,16 +377,22 @@ export function DraftAssistantCanvas({
         </div>
 
         {conversation && !conversation.ready_for_draft && onContinueManually ? (
-          <button
-            type="button"
-            onClick={onContinueManually}
-            disabled={busy}
-            data-testid="conversation-continue-manually"
-            className="ui-press mt-5 inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-line-mid bg-raised px-4 text-xs font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 sm:w-auto sm:self-center"
-          >
-            Continue manually in the full editor
-            <span aria-hidden="true">→</span>
-          </button>
+          // An exit, not an alternative. As a full-width bordered button it was
+          // the loudest control under the answers — the recruiter's eye landed
+          // on the way out before the way forward. It stays one tab stop away
+          // and one click away; it just stops competing.
+          <div className="mt-4 shrink-0 border-t border-line pt-3.5">
+            <button
+              type="button"
+              onClick={onContinueManually}
+              disabled={busy}
+              data-testid="conversation-continue-manually"
+              className="ui-press inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg px-1 text-[12px] font-medium text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Skip the questions and finish in the editor
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
         ) : null}
 
         {preview ? (
@@ -385,9 +426,19 @@ export function DraftAssistantCanvas({
 function ProgressBar({
   ratio,
   stages,
+  settled = false,
 }: {
   ratio: number;
   stages: ReturnType<typeof jobImportStages>;
+  /**
+   * Nothing is left for the recruiter to answer.
+   *
+   * The last stage stays "active" until the native draft row exists, which
+   * happens when they press the button — so the caption said "Preparing your
+   * private draft" directly above the words "Your draft is ready." The stages
+   * are not the recruiter's model of this, and only the caption is presentation.
+   */
+  settled?: boolean;
 }) {
   const percent = Math.round(ratio * 100);
   const active = stages.find((stage) => stage.status === "active");
@@ -398,18 +449,22 @@ function ProgressBar({
   // recruiter is expected to follow, when the point is a single job quietly
   // getting further along.
   return (
-    <div className="mt-5">
+    <div className="mt-4">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[11px] font-medium text-muted">
           {failed
             ? "Draft preparation paused"
-            : paused
-              ? "Ready for your answer"
-              : active?.activeLabel ?? "Draft prepared"}
+            : settled
+              ? "Everything I could prepare is in"
+              : paused
+                ? "Ready for your answer"
+                : active?.activeLabel ?? "Draft prepared"}
         </p>
-        <p className="text-[10px] tabular-nums text-subtle" aria-hidden="true">
-          {percent}%
-        </p>
+        {/* No percentage. It was truthful and still unusable: a recruiter can do
+            nothing with 86%, and printing it invited the reading that the
+            remaining 14% is work they are behind on. The bar carries the same
+            information as a shape, and the exact value stays on the
+            progressbar's own ARIA state for anyone who needs it. */}
       </div>
       <div
         role="progressbar"
@@ -475,17 +530,54 @@ function WorkingMessage({
       </>
     );
   }
+  // The stage label already sits above the bar, one line up. Repeating it here
+  // as a 20px heading printed the same sentence twice, sixty pixels apart, and
+  // left the recruiter reading the room instead of watching the work.
+  // No avatar here. Bea is already on screen in the panel header a few pixels
+  // above, and a second drawing of the same speaker directly beneath the first
+  // is noise, not presence. The indent keeps this line on the same axis as the
+  // questions that follow it.
   return (
-    <div className="ui-rise">
-      <h2 id="draft-assistant-heading" className="text-xl font-semibold text-white">
-        {activeLabel ?? "Your draft is ready"}
-      </h2>
-      <p className="mt-2 text-sm leading-6 text-white/55">
-        {delayMessage ??
-          (sourceType === "public_url"
-            ? "I\u2019m reading the public post and matching what it says to the fields in your normal Post Job draft."
-            : "I\u2019m reading what you supplied and matching it to the fields in your normal Post Job draft.")}
-      </p>
+    <div className="ui-rise flex items-start gap-3 pl-9 sm:gap-3.5 sm:pl-11">
+      <div className="min-w-0 flex-1">
+        {/* The stage is named once, above the bar. Printing it again here as a
+            heading put the same sentence on the screen twice, sixty pixels
+            apart, which is how a waiting screen starts to look like a stuck
+            one. The heading stays for assistive technology, where there is no
+            "above the bar". */}
+        <h2 id="draft-assistant-heading" className="sr-only">
+          {activeLabel ?? "Your draft is ready"}
+        </h2>
+        <p className="max-w-md text-[15px] leading-6 text-secondary">
+          {delayMessage ??
+            (sourceType === "public_url"
+              ? "Reading the post and filling in what it already answers."
+              : "Reading what you gave me and filling in what it already answers.")}
+        </p>
+        <ArrivingDraftLines />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The draft arriving, as shape rather than as a number.
+ *
+ * The panel used to hold one heading and four hundred pixels of nothing, which
+ * reads as a stalled screen however honest the bar above it is. These are the
+ * rows of a job post filling in \u2014 deliberately abstract, deliberately not
+ * pretending to be the real values, and they settle rather than loop, so the
+ * surface stops moving once there is nothing left to say.
+ */
+function ArrivingDraftLines() {
+  return (
+    <div className="mt-5 max-w-sm space-y-2.5" aria-hidden="true">
+      {["w-11/12", "w-4/5", "w-8/12", "w-6/12"].map((width) => (
+        <div
+          key={width}
+          className={`ui-skeleton h-2.5 rounded-full ${width} motion-reduce:animate-none`}
+        />
+      ))}
     </div>
   );
 }
@@ -601,21 +693,35 @@ function transcriptValue(fieldPath: string, value: unknown): string {
 }
 
 function AnswerTranscript({ entries }: { entries: [string, unknown][] }) {
+  // Settled work, at the size settled work deserves. As full-height bubbles
+  // four answered questions filled the panel and pushed the live turn out of
+  // view, so the recruiter scrolled through what they had already decided to
+  // reach what they had not. One line each, question and answer on the same
+  // row, and the whole block recedes.
   return (
-    <div className="ui-rise space-y-3" data-testid="conversation-transcript">
-      {entries.map(([fieldPath, value], index) => {
+    <div className="ui-rise space-y-1.5" data-testid="conversation-transcript">
+      {entries.map(([fieldPath, value]) => {
         const phrase = questionPhraseFor(fieldPath);
         const heading =
           phrase?.heading ??
           importFieldLabel(fieldPath).replace(/\s*\([^)]*\)\s*$/, "").trim();
         const shown = transcriptValue(fieldPath, value);
         return (
-          <React.Fragment key={fieldPath}>
-            <AssistantMessage showAvatar={index === 0} muted>
-              <p className="text-[13px] leading-5">{heading}</p>
-            </AssistantMessage>
-            <RecruiterReply>{shown}</RecruiterReply>
-          </React.Fragment>
+          <div
+            key={fieldPath}
+            className="flex items-baseline gap-3 pl-9 text-[12px] leading-5 sm:pl-11"
+          >
+            <span className="min-w-0 flex-1 truncate text-muted" title={heading}>
+              {heading}
+            </span>
+            <span
+              className="min-w-0 max-w-[55%] truncate font-medium text-secondary"
+              data-testid="conversation-reply"
+              title={shown}
+            >
+              {shown}
+            </span>
+          </div>
         );
       })}
     </div>
@@ -656,12 +762,16 @@ function PreviewRail({
     return () => window.clearTimeout(timer);
   }, [ratio]);
 
+  // Reference, not the main event. It answers "what will candidates see" for a
+  // recruiter who glances right; at full brightness beside a question it was
+  // the busiest thing on the page — six section headings competing with one
+  // decision — so it sits back until looked at.
   return (
     <aside
       className={[
-        "sticky top-6 hidden min-w-0 transition-[filter] duration-500 lg:block",
+        "group/preview sticky top-6 hidden min-w-0 transition-[filter,opacity] duration-300 lg:block",
         "motion-reduce:transition-none",
-        pulse ? "brightness-110" : "brightness-100",
+        pulse ? "opacity-100 brightness-105" : "opacity-[0.82] hover:opacity-100",
       ].join(" ")}
       aria-label="Candidate preview being prepared"
       data-testid="draft-assistant-preview-rail"
@@ -686,16 +796,20 @@ function PreviewRail({
 
       <div>
         {preview ?? (
-          <div className="space-y-4" aria-hidden="true">
-            {[
-              "h-4 w-2/3 rounded-full",
-              "h-8 w-full rounded-xl",
-              "h-7 w-24 rounded-full",
-              "h-20 w-full rounded-2xl",
-            ].map((shape) => (
+          // The listing taking shape rather than four grey slabs: a title line,
+          // a couple of facts, a paragraph. Skeletons that match nothing read as
+          // a page that failed to load.
+          <div
+            className="space-y-3 rounded-[28px] border border-line bg-panel p-5"
+            aria-hidden="true"
+          >
+            <div className="ui-skeleton h-3 w-24 rounded-full motion-reduce:animate-none" />
+            <div className="ui-skeleton h-5 w-4/5 rounded-full motion-reduce:animate-none" />
+            <div className="h-2" />
+            {["w-full", "w-11/12", "w-9/12"].map((width) => (
               <div
-                key={shape}
-                className={`${shape} ui-skeleton motion-reduce:animate-none`}
+                key={width}
+                className={`ui-skeleton h-2.5 rounded-full ${width} motion-reduce:animate-none`}
               />
             ))}
           </div>

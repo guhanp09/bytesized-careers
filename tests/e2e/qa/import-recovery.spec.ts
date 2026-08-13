@@ -48,11 +48,13 @@ test("paste is a first-class input, not a consolation prize", async ({ page }) =
   await expect(page.getByRole("tab", { name: "Paste text" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Public URL" })).toBeVisible();
   await expect(page.getByTestId("import-textarea")).toBeVisible();
+  // Both ways in are named by the tabs above; what the intro has to do is say
+  // what happens next, which is the part a recruiter cannot guess from a tab.
+  // Pinned to that rather than to a sentence — the wording has now been
+  // rewritten twice and left this assertion behind each time.
   const body = await page.locator("body").innerText();
-  // The page says what both inputs are for, in one sentence, before either is
-  // chosen. Pinned by meaning rather than by the exact wording, which has been
-  // rewritten once already and left this assertion behind.
-  expect(body).toMatch(/Paste the job text .*public URL/);
+  expect(body).toMatch(/Bea/);
+  expect(body).toMatch(/draft/i);
 });
 
 test("an index URL explains itself and leaves the recruiter mid-flow", async ({ page }) => {

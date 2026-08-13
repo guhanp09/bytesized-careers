@@ -28,7 +28,13 @@ test("Bea reads as one accessible conversation with a nearby manual exit", () =>
   assert.match(canvas, /progress\.nativeDraftReady[\s\S]*"Ready"/);
   assert.match(canvas, /conversation-scroll/);
   assert.match(canvas, /conversation-continue-manually/);
-  assert.match(canvas, /min-h-11 w-full[\s\S]*sm:w-auto sm:self-center/);
+  // The exit must stay reachable and comfortably tappable. It is deliberately
+  // no longer a full-width button: as the widest control under the answers it
+  // was the loudest thing on the screen, and the eye found the way out before
+  // the way forward. What matters is that it exists, sits beside the
+  // conversation, and clears the 44px target — not that it fills the column.
+  const manualExit = canvas.slice(canvas.indexOf("conversation-continue-manually"));
+  assert.match(manualExit.slice(0, 400), /min-h-11/);
   assert.match(turn, /<RecruiterReply>\{submittedReply\}<\/RecruiterReply>[\s\S]*conversation-thinking/);
   assert.match(turn, /w-\[30px\] shrink-0 sm:w-8/);
   assert.doesNotMatch(turn, /hidden w-8 shrink-0 sm:block/);

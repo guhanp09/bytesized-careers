@@ -52,6 +52,8 @@ import {
 } from "../../lib/jobImportPreview";
 import {
   importGhostButton,
+  importHelperClass,
+  importQuietAction,
   importInputBase,
   importPanelClass,
   importPrimaryButton,
@@ -883,30 +885,40 @@ export default function ImportJobPageClient() {
     );
   }
 
+  // The page title belongs to the moment before any work starts. Once Bea is
+  // reading — and certainly once she is asking something — it is a 30px
+  // instruction to do what the recruiter has already done, sitting above the
+  // one thing they are supposed to look at. So it steps aside, and the stage
+  // owns the screen. The stage keeps its own heading inside the canvas.
+  const atEntry = phase === "entry" || phase === "failure";
+
   return (
     <main className="surface-canvas min-h-[calc(100vh-56px)] px-4 py-6 text-ink sm:px-6 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-7xl space-y-6">
-        <PageHeader
-          eyebrow="POST A JOB"
-          title="Turn an existing post into a draft"
-          description="Paste the job text or add a public URL. Bea will prepare what it can and ask only for the decisions that still need you."
-        />
+      <div
+        className={`mx-auto w-full ${atEntry ? "max-w-3xl" : "max-w-7xl"} ${
+          atEntry ? "space-y-7" : "space-y-5"
+        }`}
+      >
+        {atEntry ? (
+          <PageHeader
+            eyebrow="POST A JOB"
+            title="Turn an existing post into a draft"
+            description="Give Bea the job you already wrote. She reads it, fills in the draft, and asks only what she can’t work out."
+          />
+        ) : null}
         <p aria-live="polite" className="sr-only">
           {announcement}
         </p>
 
         {phase === "entry" ? (
-          <div className="mx-auto max-w-3xl space-y-4">
-            <div className="flex items-start gap-2.5 px-1 text-xs leading-5 text-muted">
-              <Icon name="shield" className="mt-0.5 h-4 w-4 shrink-0 text-secondary" />
-              <p>
-                Private by default. Nothing is published until you review the draft and post it yourself.
-              </p>
-            </div>
+          <div className="space-y-4">
+            {/* A quiet segmented control rather than a pair of tab buttons the
+                width of the card: the choice is between two equal ways in, and
+                neither is the advanced one. */}
             <div
               role="tablist"
               aria-label="Import source"
-              className="grid w-full max-w-sm grid-cols-2 rounded-2xl border border-line bg-panel p-1 elev-1"
+              className="inline-grid w-full max-w-[320px] grid-cols-2 gap-1 rounded-2xl border border-line bg-panel p-1 elev-1"
             >
               {(
                 [
@@ -922,10 +934,10 @@ export default function ImportJobPageClient() {
                   aria-selected={entryMode === mode}
                   aria-controls={`import-panel-${mode}`}
                   tabIndex={entryMode === mode ? 0 : -1}
-                  className={`ui-press h-11 cursor-pointer rounded-xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 motion-reduce:transition-none ${
+                  className={`ui-press h-10 cursor-pointer rounded-xl px-4 text-[13px] font-semibold transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 motion-reduce:transition-none ${
                     entryMode === mode
-                      ? "surface-primary text-black elev-1"
-                      : "text-muted hover:bg-wash hover:text-ink"
+                      ? "bg-elevated text-ink elev-1"
+                      : "text-muted hover:bg-wash hover:text-secondary"
                   }`}
                   onClick={() => selectEntryMode(mode)}
                   onKeyDown={(event) => {
@@ -977,23 +989,15 @@ export default function ImportJobPageClient() {
                 className={importPanelClass}
                 data-testid="url-import-panel"
               >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-raised text-secondary elev-1">
-                    <Icon name="globe" className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h2 className="text-base font-semibold tracking-tight text-ink">Import a public job page</h2>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      Use a page anyone can open without signing in. If a site blocks access, you can paste the text instead.
-                    </p>
-                  </div>
-                </div>
-                <label
-                  htmlFor="job-import-url"
-                  className="mt-6 block text-xs font-semibold text-secondary"
-                >
-                  Public listing URL
-                </label>
+                {/* The heading is the label. A separate "Public listing URL"
+                    caption above the field said the same thing a third time,
+                    after the tab and the title had already said it. */}
+                <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+                  Link the job page
+                </h2>
+                <p className="mt-1.5 text-[13px] leading-5 text-muted">
+                  Use a page anyone can open without signing in.
+                </p>
                 <input
                   id="job-import-url"
                   type="url"
@@ -1009,14 +1013,18 @@ export default function ImportJobPageClient() {
                     }
                   }}
                   placeholder="https://example.com/jobs/video-editor"
-                  className={`${importInputBase} mt-2`}
+                  aria-label="Public listing URL"
+                  className={`${importInputBase} mt-5 h-12 text-[15px]`}
                   autoComplete="url"
                   data-testid="import-url-input"
                 />
-                <div className="mt-5 flex justify-end">
+                <div className="mt-4 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className={importHelperClass}>
+                    If a site blocks access, paste the text instead — it reads the same.
+                  </p>
                   <button
                     type="button"
-                    className={importPrimaryButton}
+                    className={`${importPrimaryButton} w-full sm:w-auto`}
                     disabled={!url.trim()}
                     onClick={() => void prepare()}
                     data-testid="import-url-prepare"
@@ -1026,6 +1034,10 @@ export default function ImportJobPageClient() {
                 </div>
               </section>
             )}
+            <p className="flex items-start gap-2 px-1 text-[12px] leading-5 text-muted">
+              <Icon name="shield" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle" />
+              Private while you work on it. Nothing is published until you post it yourself.
+            </p>
             {error ? (
               <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.07] px-4 py-3 text-sm leading-6 text-amber-50">
                 <Icon name="alert" className="mt-1 h-4 w-4 shrink-0 text-amber-200/90" />
@@ -1197,37 +1209,44 @@ export default function ImportJobPageClient() {
         ) : null}
 
         {phase === "failure" ? (
-          <section className={`${importPanelClass} mx-auto max-w-3xl`} data-testid="job-import-failure">
+          <section className={importPanelClass} data-testid="job-import-failure">
             {/* Bea stays present through a failure. Swapping her for a warning
                 icon made the failure read as a different product rather than the
-                same assistant reporting that it could not finish. */}
-            <DraftAssistantRobot state="failed" size={44} />
-            <h2 className="mt-4 text-lg font-semibold">I couldn’t finish this draft</h2>
-            <p role="alert" className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-              {error}
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" className={importPrimaryButton} onClick={retry}>
-                Retry
-              </button>
-              <button type="button" className={importGhostButton} onClick={continueManually}>
-                Continue manually
-              </button>
-              {entryMode === "url" ? (
-                <button
-                  type="button"
-                  className={importGhostButton}
-                  onClick={() => {
-                    setPhase("entry");
-                    selectEntryMode("text");
-                  }}
-                >
-                  Paste text instead
-                </button>
-              ) : null}
-              <button type="button" className={importGhostButton} onClick={startDifferentImport}>
-                Start a different import
-              </button>
+                same assistant reporting that it could not finish.
+                Calm, and one obvious way forward: four equal buttons in a row
+                made the recruiter choose a recovery strategy at the moment they
+                had least appetite for one. Retry leads; the rest are text. */}
+            <div className="flex items-start gap-3 sm:gap-3.5">
+              <div className="w-[30px] shrink-0 sm:w-8">
+                <DraftAssistantRobot state="failed" size={30} className="mt-0.5" />
+              </div>
+              <div className="min-w-0 max-w-[34rem]">
+                <h2 className="text-[19px] font-semibold leading-7 tracking-[-0.01em] text-ink sm:text-[21px]">
+                  I couldn’t finish this draft
+                </h2>
+                <p role="alert" className="mt-2 text-[13px] leading-6 text-muted">
+                  {error}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <button type="button" className={importPrimaryButton} onClick={retry}>
+                    Retry
+                  </button>
+                  {entryMode === "url" ? (
+                    <button type="button" className={importQuietAction} onClick={() => {
+                      setPhase("entry");
+                      selectEntryMode("text");
+                    }}>
+                      Paste text instead
+                    </button>
+                  ) : null}
+                  <button type="button" className={importQuietAction} onClick={continueManually}>
+                    Continue manually
+                  </button>
+                  <button type="button" className={importQuietAction} onClick={startDifferentImport}>
+                    Start over
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
         ) : null}

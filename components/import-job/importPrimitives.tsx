@@ -36,6 +36,15 @@ export const importPrimaryButton =
 export const importGhostButton =
   "ui-press inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-line-mid bg-raised px-4 text-sm font-semibold text-secondary transition-colors hover:border-line-strong hover:bg-elevated hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-40";
 
+/** A secondary route out, weighted as prose rather than as a control.
+ *
+ * Recovery screens acquired a row of equally-sized buttons, which asks the
+ * recruiter to compare four strategies at the moment they have least appetite
+ * for one. Exactly one action leads; these are the alternatives, and they stay
+ * full-size targets while looking like what they are. */
+export const importQuietAction =
+  "ui-press inline-flex min-h-11 cursor-pointer items-center rounded-lg text-[13px] font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60";
+
 export const importHelperClass = "text-[11px] text-muted";
 
 export const importAmberTextClass = "text-[12px] text-amber-200/90";

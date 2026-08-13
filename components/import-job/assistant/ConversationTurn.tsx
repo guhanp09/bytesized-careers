@@ -120,8 +120,16 @@ export function shapeAnswer(
   return isList ? [text] : text;
 }
 
+// Six designed states, not five plus a browser default: rest, hover, focus,
+// pressed, disabled, and the recommended variant applied on top. The lift on
+// hover is 1px — enough to feel like the card answered, small enough that a
+// column of them does not ripple.
 const optionButton =
-  "ui-press w-full cursor-pointer rounded-xl border border-line-mid bg-raised px-4 py-3 text-left text-sm text-ink transition-colors hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-50";
+  "ui-press group/option w-full cursor-pointer rounded-2xl border border-line-mid bg-raised px-4 py-3.5 text-left text-sm text-ink transition-[transform,background-color,border-color] duration-150 hover:-translate-y-px hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:hover:translate-y-0";
+
+/** Passing on an optional question: available, quiet, still 44px to hit. */
+const skipAction =
+  "ui-press inline-flex min-h-11 cursor-pointer items-center rounded-lg text-[12px] font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-40";
 
 // ---------------------------------------------------------------------------
 // Message primitives
@@ -132,10 +140,21 @@ export function AssistantMessage({
   children,
   showAvatar = true,
   muted = false,
+  prominent = false,
 }: {
   children: React.ReactNode;
   showAvatar?: boolean;
   muted?: boolean;
+  /**
+   * The live question, rather than a line of history.
+   *
+   * It loses the bubble. A container around the one thing on screen the
+   * recruiter has to act on adds an edge to look at and shrinks the words
+   * inside it, and the question was ending up smaller than the page title above
+   * it. Typography carries it instead; history keeps the bubble, which is what
+   * makes settled turns read as settled.
+   */
+  prominent?: boolean;
 }) {
   return (
     <div className="flex items-start gap-2.5 sm:gap-3">
@@ -146,8 +165,15 @@ export function AssistantMessage({
       </div>
       <div
         className={[
-          "min-w-0 max-w-[88%] overflow-hidden rounded-2xl rounded-tl-md px-4 py-3 break-words [overflow-wrap:anywhere]",
-          muted ? "bg-wash text-muted" : "bg-raised text-default elev-1",
+          "min-w-0 overflow-hidden break-words [overflow-wrap:anywhere]",
+          prominent
+            ? "max-w-[34rem] pt-0.5 text-ink"
+            : "max-w-[88%] rounded-2xl rounded-tl-md px-4 py-3",
+          prominent
+            ? ""
+            : muted
+              ? "bg-wash text-muted"
+              : "bg-raised text-default elev-1",
         ].join(" ")}
       >
         {children}
@@ -700,14 +726,14 @@ export function ConversationTurn({
       data-testid="conversation-turn"
       data-kind={question.kind}
     >
-      <AssistantMessage>
+      <AssistantMessage prominent>
         <p
-          className="text-[15px] font-semibold leading-6 text-ink"
+          className="text-[19px] font-semibold leading-7 tracking-[-0.01em] text-ink sm:text-[21px] sm:leading-8"
           data-field={question.field_path}
         >
           {heading}
         </p>
-        <p className="mt-1.5 text-[13px] leading-5 text-muted">{why}</p>
+        <p className="mt-2 text-[13px] leading-6 text-muted">{why}</p>
       </AssistantMessage>
 
       {submittedReply ? (
@@ -718,7 +744,11 @@ export function ConversationTurn({
           ) : null}
         </>
       ) : (
-      <div className="pl-9 sm:pl-11">
+      // One measure for the whole turn. The question is capped at 34rem for
+      // readability; letting the answers run the full width of a 1680px column
+      // made a three-word option 730px wide and broke the alignment between
+      // what was asked and what answers it.
+      <div className="max-w-[34rem] pl-9 sm:pl-11">
         {outOfBandRecommendation ? (
           <button
             type="button"
@@ -749,7 +779,7 @@ export function ConversationTurn({
 
         {visibleAlternatives.length ? (
           <div className="space-y-2" data-testid="conversation-alternatives">
-            <p className="mb-1 text-[11px] text-muted">
+            <p className="mb-2 text-[12px] leading-5 text-secondary">
               Your post gives more than one answer — which should candidates see?
             </p>
             {visibleAlternatives.map((alternative, index) => {
@@ -1034,7 +1064,11 @@ export function ConversationTurn({
             className="grid gap-3"
             data-testid="conversation-role-choice-with-override"
           >
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div
+              className={`grid gap-2 ${
+                recommendedRoleChoices.length > 3 ? "sm:grid-cols-2" : ""
+              }`}
+            >
               {recommendedRoleChoices.map((choice) => (
                 <button
                   key={choice.value}
@@ -1088,7 +1122,11 @@ export function ConversationTurn({
             </div>
           </div>
         ) : choices.length ? (
-          <div className="grid gap-2 sm:grid-cols-2">
+          // One column up to three options, two beyond it. Two columns for
+          // three left the third stranded beside a gap, which reads as a
+          // missing option rather than as a layout; a short list also gains
+          // from each option owning a full line.
+          <div className={`grid gap-2 ${choices.length > 3 ? "sm:grid-cols-2" : ""}`}>
             {choices.map((choice) => (
               <button
                 key={choice.value}
@@ -1190,17 +1228,22 @@ export function ConversationTurn({
         )}
 
         {customValuesAllowed ? (
+          // Suggestions are shortcuts; they are not the domain. A hairline rule
+          // and a 12px caption made "anything else" read as the fallback for
+          // when the real answers do not fit, which is backwards for an open
+          // field. It gets the same surface and the same reading weight as the
+          // options above it.
           <div
-            className="mt-3 border-t border-line pt-3"
+            className="mt-3 rounded-2xl border border-line bg-wash px-4 py-3.5"
             data-testid="conversation-custom-override"
           >
             <label
               htmlFor={customAnswerId}
-              className="block text-[12px] font-medium text-secondary"
+              className="block text-[13px] font-medium text-secondary"
             >
               {question.field_path === "experience_level"
-                ? "Or enter the exact experience requirement"
-                : "Or add another option"}
+                ? "Or type the exact requirement"
+                : "Or type your own"}
             </label>
             <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
               <input
@@ -1369,24 +1412,30 @@ export function ConversationTurn({
         ) : null}
 
         {optional ? (
-          <div className="mt-2 flex flex-wrap gap-2">
+          // Two ways past an optional question, and they are not the same size
+          // of decision: one skips this, the other skips every remaining
+          // suggestion. Side by side as identical links they read as a pair of
+          // synonyms, so the wider one is named for what it does and separated
+          // by the word between them.
+          <div className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-subtle">
             <button
               type="button"
               disabled={busy}
               onClick={() => beginAction("Not now", onSkip)}
               data-testid="conversation-skip"
-              className="inline-flex min-h-11 cursor-pointer items-center rounded-xl px-2 text-[12px] font-medium text-muted transition-colors hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+              className={skipAction}
             >
-              Not now
+              Skip this one
             </button>
+            <span aria-hidden="true">·</span>
             <button
               type="button"
               disabled={busy}
               onClick={() => beginAction("Skip suggestions", onSkipRemaining)}
               data-testid="conversation-skip-remaining"
-              className="inline-flex min-h-11 cursor-pointer items-center rounded-xl px-2 text-[12px] font-medium text-muted transition-colors hover:bg-wash hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+              className={skipAction}
             >
-              Skip suggestions
+              Skip all optional questions
             </button>
           </div>
         ) : null}
@@ -1433,38 +1482,47 @@ export function ConversationComplete({
   onOpenDraft: () => void;
   busy: boolean;
 }) {
+  // The end of the work deserves to look like the end of the work. As one more
+  // grey bubble in the stream, finishing looked exactly like being asked
+  // something — the recruiter had just handed over a job post and watched it
+  // become a draft, and the product's reaction was a sentence the same size as
+  // every other sentence.
   return (
-    <div className="space-y-3" data-testid="conversation-complete">
-      <AssistantMessage>
-        <p className="text-[15px] font-semibold leading-6 text-white">
-          Your draft is ready.
-        </p>
-        <p className="mt-1.5 text-[13px] leading-5 text-white/55">
-          {manual
-            ? "I saved everything you decided — you can finish the rest in the editor."
-            : // Naming the source here read badly, because the label is usually
-              // the job title: "I filled in what Visual Content Creator - Video
-              // Editing, VFX & Animation covered". The header already shows
-              // which source this is, so the sentence does not need to.
-              "I filled in what the listing covered and used your answers for the rest."}
-          {filledCount > 0
-            ? ` ${filledCount} ${filledCount === 1 ? "detail is" : "details are"} in place.`
-            : ""}
-        </p>
-      </AssistantMessage>
-      <div className="pl-0 sm:pl-11">
-        <button
-          type="button"
-          onClick={onOpenDraft}
-          disabled={busy}
-          data-testid="conversation-open-draft"
-          className="ui-press surface-primary min-h-11 cursor-pointer rounded-xl border border-white px-5 text-sm font-semibold text-black elev-2 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none"
-        >
-          Open job draft
-        </button>
-        <p className="mt-2 text-[11px] text-muted">
-          It stays private until you publish it yourself.
-        </p>
+    <div className="ui-rise pt-1" data-testid="conversation-complete">
+      <div className="flex items-start gap-2.5 sm:gap-3">
+        <div className="w-[30px] shrink-0 sm:w-8">
+          <DraftAssistantRobot state="celebrating" size={30} className="mt-0.5" />
+        </div>
+        <div className="min-w-0 max-w-[34rem]">
+          <p className="text-[21px] font-semibold leading-8 tracking-[-0.01em] text-ink sm:text-[24px]">
+            Your draft is ready.
+          </p>
+          <p className="mt-2 text-[13px] leading-6 text-muted">
+            {manual
+              ? "I saved everything you decided — you can finish the rest in the editor."
+              : // Naming the source here read badly, because the label is usually
+                // the job title: "I filled in what Visual Content Creator - Video
+                // Editing, VFX & Animation covered". The header already shows
+                // which source this is, so the sentence does not need to.
+                "I filled in what the listing covered and used your answers for the rest."}
+            {filledCount > 0
+              ? ` ${filledCount} ${filledCount === 1 ? "detail is" : "details are"} in place.`
+              : ""}
+          </p>
+          <button
+            type="button"
+            onClick={onOpenDraft}
+            disabled={busy}
+            data-testid="conversation-open-draft"
+            className="ui-press surface-primary mt-5 inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border border-white px-5 text-sm font-semibold text-black elev-2 transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-raised disabled:bg-none motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+          >
+            Open job draft
+            <span aria-hidden="true">→</span>
+          </button>
+          <p className="mt-2.5 text-[11px] text-muted">
+            It stays private until you publish it yourself.
+          </p>
+        </div>
       </div>
     </div>
   );

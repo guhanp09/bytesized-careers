@@ -12,11 +12,11 @@ import {
   importTextareaBase,
 } from "./importPrimitives";
 
-const PLACEHOLDER = [
-  "Paste your hiring post here.",
-  "",
-  "Example: 🎬 We're hiring! Looking for a long-form video editor for our finance YouTube channel. ₹25–35k/month, remote. 2+ years with Premiere Pro. DM to apply.",
-].join("\n");
+// One line, not two paragraphs. The box is the affordance; a placeholder that
+// explains the box competes with the copy the recruiter is about to drop into
+// it, and the example was longer than most real hiring posts.
+const PLACEHOLDER =
+  "Paste the job post — a LinkedIn post, a WhatsApp message, an email, anything you already wrote.";
 
 export default function PastePanel({
   text,
@@ -56,21 +56,26 @@ export default function PastePanel({
 
   return (
     <section className={importPanelClass}>
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-raised text-secondary elev-1">
-          <Icon name="file" className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold tracking-tight text-ink">Paste a job post</h2>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Add the existing copy as-is. Bea will turn it into a CreatorJobs draft.
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          {/* The icon tile is gone. It labelled a box that is already
+              unmistakably a box for text, and it pushed the heading off the
+              card's left edge so nothing on the surface shared an axis. */}
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+            Paste the job post
+          </h2>
+          <p className="mt-1.5 text-[13px] leading-5 text-muted">
+            Exactly as you wrote it. Formatting, emoji and all.
           </p>
         </div>
         {restoredFromSession ? (
           <span className={`${importHelperClass} shrink-0 rounded-full bg-wash-strong px-2.5 py-1`}>Restored</span>
         ) : pastedNote ? (
-          <span className={`${importHelperClass} shrink-0 rounded-full bg-wash-strong px-2.5 py-1`} data-testid="import-paste-note">
-            Ready
+          <span
+            className={`${importHelperClass} ui-rise shrink-0 rounded-full bg-wash-strong px-2.5 py-1`}
+            data-testid="import-paste-note"
+          >
+            Got it
           </span>
         ) : null}
       </div>
@@ -92,15 +97,21 @@ export default function PastePanel({
         autoComplete="off"
         spellCheck={false}
         data-testid="import-textarea"
-        className={`${importTextareaBase} mt-5 min-h-[240px] resize-y text-[14px] leading-6 sm:min-h-[300px]`}
+        className={`${importTextareaBase} mt-5 min-h-[220px] resize-y text-[14px] leading-6 sm:min-h-[260px]`}
       />
 
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
-        <p id="import-text-help" className={`${importHelperClass} max-w-md leading-5`}>
-          Works with LinkedIn posts, WhatsApp messages, Instagram captions, and emails. Plain text works
-          best.
+      <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-2">
+        <p id="import-text-help" className={`${importHelperClass} max-w-sm leading-5`}>
+          {/* Only shown while it is still useful. Once there is text on the
+              screen, listing where text can come from is telling the recruiter
+              something they have already done. */}
+          {count ? "⌘⏎ prepares the draft." : "Plain text reads best."}
         </p>
-        <p id="import-text-count" className={`${importHelperClass} tabular-nums`} aria-live="polite">
+        <p
+          id="import-text-count"
+          className={`${importHelperClass} tabular-nums ${count ? "" : "opacity-0"}`}
+          aria-live="polite"
+        >
           {count.toLocaleString("en-US")} / {MAX_IMPORT_CHARS.toLocaleString("en-US")}
         </p>
       </div>
@@ -120,7 +131,7 @@ export default function PastePanel({
         ) : null}
         <button
           type="button"
-          className={importPrimaryButton}
+          className={`${importPrimaryButton} flex-1 sm:flex-none`}
           onClick={onPrepare}
           disabled={prepareDisabled}
           data-testid="import-prepare"
