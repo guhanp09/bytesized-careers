@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import ipaddress
 import json
 import math
 import re
-import socket
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -26,6 +22,13 @@ from app.core.job_import_body_sections import (
 from app.core.job_import_pasted_source import neutralize_reserved_source_labels
 from app.core.job_page_evidence import classify_job_page
 from app.schemas.job_import import MAX_IMPORT_SOURCE_TEXT_LENGTH
+from app.services.safe_outbound_fetch import (
+    Resolver,
+    SafeOutboundFetcher,
+    SafeOutboundFetchError,
+    SafeOutboundFetchPolicy,
+    default_public_resolver,
+)
 
 #: What the recruiter is told when a page cannot be imported directly.
 #:
@@ -100,9 +103,6 @@ URL_TIMEOUT_RETRIES = 1
 URL_USER_AGENT = "CreatorJobs-PublicJobImporter/1.0"
 BRAND_URL_USER_AGENT = "CreatorJobs-BrandEnrichment/1.0"
 ALLOWED_URL_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
-
-Resolver = Callable[[str, int], Awaitable[list[ipaddress.IPv4Address | ipaddress.IPv6Address]]]
-
 
 class PublicJobUrlFetchError(Exception):
     def __init__(self, code: str, message: str, *, status_code: int = 422) -> None:
@@ -1347,123 +1347,107 @@ def normalize_public_brand_html(
     }
 
 
-async def _default_resolver(
-    hostname: str,
-    port: int,
-) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
-    loop = asyncio.get_running_loop()
-    try:
-        rows = await loop.getaddrinfo(
-            hostname,
-            port,
-            family=socket.AF_UNSPEC,
-            type=socket.SOCK_STREAM,
+_SAFE_FETCH_ERROR_MAPPING: dict[str, tuple[str, str, int]] = {
+    "URL_INVALID": (
+        "JOB_IMPORT_URL_INVALID",
+        "Enter a valid public job-listing URL.",
+        422,
+    ),
+    "SCHEME_UNSUPPORTED": (
+        "JOB_IMPORT_URL_SCHEME_UNSUPPORTED",
+        "Only public HTTP and HTTPS job-listing URLs are supported.",
+        422,
+    ),
+    "CREDENTIALS_FORBIDDEN": (
+        "JOB_IMPORT_URL_CREDENTIALS_FORBIDDEN",
+        "URLs containing usernames or passwords are not supported.",
+        422,
+    ),
+    "DNS_FAILED": (
+        "JOB_IMPORT_URL_DNS_FAILED",
+        "The public page address could not be resolved.",
+        422,
+    ),
+    "DNS_TIMEOUT": (
+        "JOB_IMPORT_URL_DNS_FAILED",
+        "The public page address could not be resolved.",
+        422,
+    ),
+    "REDIRECT_INVALID": (
+        "JOB_IMPORT_URL_REDIRECT_INVALID",
+        "The public page returned an invalid redirect.",
+        422,
+    ),
+    "TOO_MANY_REDIRECTS": (
+        "JOB_IMPORT_URL_TOO_MANY_REDIRECTS",
+        "The public page redirected too many times.",
+        422,
+    ),
+    "CONTENT_TYPE_UNSUPPORTED": (
+        "JOB_IMPORT_URL_CONTENT_TYPE_UNSUPPORTED",
+        "That URL does not point to a supported text or HTML page.",
+        415,
+    ),
+    "RESPONSE_TOO_LARGE": (
+        "JOB_IMPORT_URL_RESPONSE_TOO_LARGE",
+        "The public page is too large to import safely.",
+        413,
+    ),
+    "TIMEOUT": (
+        "JOB_IMPORT_URL_TIMEOUT",
+        "The public page took too long to respond.",
+        504,
+    ),
+    "FETCH_FAILED": (
+        "JOB_IMPORT_URL_FETCH_FAILED",
+        "The public page could not be retrieved.",
+        502,
+    ),
+}
+
+_UNSAFE_SAFE_FETCH_CODES = frozenset(
+    {
+        "HOST_UNSAFE",
+        "DESTINATION_UNSAFE",
+        "PORT_UNSAFE",
+        "PEER_UNVERIFIED",
+        "PEER_MISMATCH",
+    }
+)
+
+
+def _job_fetch_error_from_safe_fetch(exc: SafeOutboundFetchError) -> PublicJobUrlFetchError:
+    if exc.code in _UNSAFE_SAFE_FETCH_CODES:
+        return PublicJobUrlFetchError(
+            "JOB_IMPORT_URL_UNSAFE_DESTINATION",
+            "That address is not a public website.",
         )
-    except socket.gaierror as exc:
-        raise PublicJobUrlFetchError(
-            "JOB_IMPORT_URL_DNS_FAILED",
-            "The public page address could not be resolved.",
-        ) from exc
-    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
-    for row in rows:
-        raw = row[4][0]
-        try:
-            address = ipaddress.ip_address(raw)
-        except ValueError:
-            continue
-        if address not in addresses:
-            addresses.append(address)
-    if not addresses:
-        raise PublicJobUrlFetchError(
-            "JOB_IMPORT_URL_DNS_FAILED",
-            "The public page address could not be resolved.",
-        )
-    return addresses
+    code, message, status_code = _SAFE_FETCH_ERROR_MAPPING.get(
+        exc.code,
+        _SAFE_FETCH_ERROR_MAPPING["FETCH_FAILED"],
+    )
+    return PublicJobUrlFetchError(code, message, status_code=status_code)
 
 
 class PublicJobUrlFetcher:
     def __init__(
         self,
         *,
-        resolver: Resolver = _default_resolver,
+        resolver: Resolver = default_public_resolver,
         transport: httpx.AsyncBaseTransport | None = None,
         allow_test_loopback: bool = False,
         max_response_bytes: int = MAX_URL_RESPONSE_BYTES,
         require_job_content: bool = True,
         user_agent: str = URL_USER_AGENT,
     ) -> None:
-        self._resolver = resolver
-        self._transport = transport
-        self._allow_test_loopback = allow_test_loopback
+        self._outbound_fetcher = SafeOutboundFetcher(
+            resolver=resolver,
+            transport=transport,
+            allow_test_loopback=allow_test_loopback,
+        )
         self._max_response_bytes = max_response_bytes
         self._require_job_content = require_job_content
         self._user_agent = user_agent
-
-    async def _validate_destination(self, raw_url: str) -> str:
-        try:
-            parts = urlsplit(raw_url)
-            port = parts.port
-        except ValueError as exc:
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_INVALID",
-                "Enter a valid public job-listing URL.",
-            ) from exc
-        if parts.scheme.casefold() not in {"http", "https"}:
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_SCHEME_UNSUPPORTED",
-                "Only public HTTP and HTTPS job-listing URLs are supported.",
-            )
-        if parts.username is not None or parts.password is not None:
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_CREDENTIALS_FORBIDDEN",
-                "URLs containing usernames or passwords are not supported.",
-            )
-        hostname = parts.hostname
-        if not hostname:
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_INVALID",
-                "Enter a valid public job-listing URL.",
-            )
-        normalized_host = hostname.rstrip(".").casefold()
-        if (
-            normalized_host == "localhost"
-            or normalized_host.endswith((".localhost", ".local", ".internal"))
-            or ("." not in normalized_host and ":" not in normalized_host)
-        ):
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_UNSAFE_DESTINATION",
-                "That address is not a public website.",
-            )
-        resolved_port = port or (443 if parts.scheme.casefold() == "https" else 80)
-        addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address]
-        try:
-            literal = ipaddress.ip_address(normalized_host)
-        except ValueError:
-            try:
-                addresses = await self._resolver(normalized_host, resolved_port)
-            except PublicJobUrlFetchError:
-                raise
-            except (OSError, TimeoutError) as exc:
-                raise PublicJobUrlFetchError(
-                    "JOB_IMPORT_URL_DNS_FAILED",
-                    "The public page address could not be resolved.",
-                ) from exc
-        else:
-            addresses = [literal]
-        if not self._allow_test_loopback and any(not address.is_global for address in addresses):
-            raise PublicJobUrlFetchError(
-                "JOB_IMPORT_URL_UNSAFE_DESTINATION",
-                "That address is not a public website.",
-            )
-        return urlunsplit(
-            (
-                parts.scheme.casefold(),
-                parts.netloc,
-                parts.path or "/",
-                parts.query,
-                "",
-            )
-        )
 
     async def fetch(self, raw_url: str) -> PublicJobUrlRetrieval:
         """Retrieve a public page, retrying a timeout once and nothing else.
@@ -1481,16 +1465,7 @@ class PublicJobUrlFetcher:
         for attempt in range(URL_TIMEOUT_RETRIES + 1):
             last = attempt >= URL_TIMEOUT_RETRIES
             try:
-                async with asyncio.timeout(URL_TOTAL_TIMEOUT_SECONDS):
-                    return await self._fetch_with_operation_timeouts(raw_url)
-            except TimeoutError as exc:
-                # The whole-attempt deadline.
-                if last:
-                    raise PublicJobUrlFetchError(
-                        "JOB_IMPORT_URL_TIMEOUT",
-                        "The public page took too long to respond.",
-                        status_code=504,
-                    ) from exc
+                return await self._fetch_with_operation_timeouts(raw_url)
             except PublicJobUrlFetchError as exc:
                 # A single stalled operation, already named by the layer below.
                 # Anything else it raises is an answer about the page, so it
@@ -1503,199 +1478,117 @@ class PublicJobUrlFetcher:
         self,
         raw_url: str,
     ) -> PublicJobUrlRetrieval:
-        entered_url = await self._validate_destination(raw_url)
-        current_url = entered_url
-        timeout = httpx.Timeout(
-            URL_READ_TIMEOUT_SECONDS,
-            connect=URL_CONNECT_TIMEOUT_SECONDS,
+        policy = SafeOutboundFetchPolicy(
+            max_response_bytes=self._max_response_bytes,
+            allowed_content_types=ALLOWED_URL_CONTENT_TYPES,
+            user_agent=self._user_agent,
+            accept="text/html, application/xhtml+xml, text/plain;q=0.8",
+            max_redirects=MAX_URL_REDIRECTS,
+            connect_timeout_seconds=URL_CONNECT_TIMEOUT_SECONDS,
+            read_timeout_seconds=URL_READ_TIMEOUT_SECONDS,
+            total_timeout_seconds=URL_TOTAL_TIMEOUT_SECONDS,
         )
-        async with httpx.AsyncClient(
-            follow_redirects=False,
-            timeout=timeout,
-            trust_env=False,
-            transport=self._transport,
-        ) as client:
-            for redirect_count in range(MAX_URL_REDIRECTS + 1):
-                # Resolve immediately before every network request, including every
-                # redirect target. This narrows the DNS-rebinding window and ensures
-                # redirects never bypass the destination policy.
-                current_url = await self._validate_destination(current_url)
-                try:
-                    async with client.stream(
-                        "GET",
-                        current_url,
-                        headers={
-                            "User-Agent": self._user_agent,
-                            "Accept": "text/html, application/xhtml+xml, text/plain;q=0.8",
-                        },
-                    ) as response:
-                        if response.status_code in {301, 302, 303, 307, 308}:
-                            location = response.headers.get("location")
-                            if not location:
-                                raise PublicJobUrlFetchError(
-                                    "JOB_IMPORT_URL_REDIRECT_INVALID",
-                                    "The public page returned an invalid redirect.",
-                                )
-                            if redirect_count >= MAX_URL_REDIRECTS:
-                                raise PublicJobUrlFetchError(
-                                    "JOB_IMPORT_URL_TOO_MANY_REDIRECTS",
-                                    "The public page redirected too many times.",
-                                )
-                            current_url = urljoin(current_url, location)
-                            continue
-                        if response.status_code == 401:
-                            raise PublicJobUrlFetchError(
-                                "JOB_IMPORT_URL_AUTH_REQUIRED",
-                                "This page requires sign-in and cannot be imported.",
-                            )
-                        if response.status_code == 403:
-                            # Not a sign-in wall. A 403 here is almost always a
-                            # site declining automated access — a bot check
-                            # answering "Just a moment..." rather than a login
-                            # form. Telling the recruiter to sign in sends them
-                            # looking for a password that would not help, so the
-                            # message says what actually happened and points at
-                            # the paste fallback, which does work.
-                            raise PublicJobUrlFetchError(
-                                "JOB_IMPORT_URL_ACCESS_DECLINED",
-                                "This site declined an automated request for the "
-                                "page. Open it in your browser and paste the job "
-                                "text instead.",
-                            )
-                        if response.status_code >= 400:
-                            raise PublicJobUrlFetchError(
-                                "JOB_IMPORT_URL_FETCH_FAILED",
-                                "The public page could not be retrieved.",
-                                status_code=502,
-                            )
-                        content_type = (
-                            response.headers.get("content-type", "")
-                            .split(";", 1)[0]
-                            .strip()
-                            .casefold()
-                        )
-                        if content_type not in ALLOWED_URL_CONTENT_TYPES:
-                            raise PublicJobUrlFetchError(
-                                "JOB_IMPORT_URL_CONTENT_TYPE_UNSUPPORTED",
-                                "That URL does not point to a supported text or HTML page.",
-                                status_code=415,
-                            )
-                        content_length = response.headers.get("content-length")
-                        if content_length and content_length.isdigit():
-                            if int(content_length) > self._max_response_bytes:
-                                raise PublicJobUrlFetchError(
-                                    "JOB_IMPORT_URL_RESPONSE_TOO_LARGE",
-                                    "The public page is too large to import safely.",
-                                    status_code=413,
-                                )
-                        body = bytearray()
-                        async for chunk in response.aiter_bytes():
-                            body.extend(chunk)
-                            if len(body) > self._max_response_bytes:
-                                raise PublicJobUrlFetchError(
-                                    "JOB_IMPORT_URL_RESPONSE_TOO_LARGE",
-                                    "The public page is too large to import safely.",
-                                    status_code=413,
-                                )
-                        encoding = response.encoding or "utf-8"
-                        page_text = bytes(body).decode(encoding, errors="replace")
-                except PublicJobUrlFetchError:
-                    raise
-                except httpx.TimeoutException as exc:
-                    raise PublicJobUrlFetchError(
-                        "JOB_IMPORT_URL_TIMEOUT",
-                        "The public page took too long to respond.",
-                        status_code=504,
-                    ) from exc
-                except httpx.HTTPError as exc:
-                    raise PublicJobUrlFetchError(
-                        "JOB_IMPORT_URL_FETCH_FAILED",
-                        "The public page could not be retrieved.",
-                        status_code=502,
-                    ) from exc
+        try:
+            response = await self._outbound_fetcher.fetch(raw_url, policy)
+        except SafeOutboundFetchError as exc:
+            raise _job_fetch_error_from_safe_fetch(exc) from exc
 
-                if content_type == "text/plain":
-                    normalized = "\n".join(
-                        line
-                        for line in (_clean_text(item) for item in page_text.splitlines())
-                        if line
-                    )[:MAX_IMPORT_SOURCE_TEXT_LENGTH]
-                    if not normalized:
-                        raise PublicJobUrlFetchError(
-                            "JOB_IMPORT_URL_EMPTY_CONTENT",
-                            "The public page did not contain readable job-listing text.",
-                        )
-                    title = None
-                    metadata: dict[str, object] = {
-                        "canonical_url": None,
-                        "json_ld_job_posting": False,
-                        "structured_title_found": False,
-                    }
-                elif self._require_job_content:
-                    normalized, title, metadata = normalize_public_job_html(
-                        page_text,
-                        final_url=current_url,
-                    )
-                else:
-                    normalized, title, metadata = normalize_public_brand_html(
-                        page_text,
-                        final_url=current_url,
-                    )
-                if len(normalized) < 80 and re.search(
-                    r"\b(sign in|log in|authentication required)\b",
-                    normalized,
-                    flags=re.IGNORECASE,
-                ):
-                    raise PublicJobUrlFetchError(
-                        "JOB_IMPORT_URL_AUTH_REQUIRED",
-                        "This page requires sign-in and cannot be imported.",
-                    )
+        if response.status_code == 401:
+            raise PublicJobUrlFetchError(
+                "JOB_IMPORT_URL_AUTH_REQUIRED",
+                "This page requires sign-in and cannot be imported.",
+            )
+        if response.status_code == 403:
+            # A 403 here is normally a site declining automation, not a login
+            # form. The paste fallback is the useful next step for a recruiter.
+            raise PublicJobUrlFetchError(
+                "JOB_IMPORT_URL_ACCESS_DECLINED",
+                "This site declined an automated request for the page. Open it in "
+                "your browser and paste the job text instead.",
+            )
+        if not 200 <= response.status_code < 300:
+            raise PublicJobUrlFetchError(
+                "JOB_IMPORT_URL_FETCH_FAILED",
+                "The public page could not be retrieved.",
+                status_code=502,
+            )
 
-                # Fetching a page is not the same as finding a job on it, and
-                # what came back instead decides what the recruiter should be
-                # told. A board index, a bot check and a client-rendered shell
-                # all need different sentences and all need the paste path.
-                if self._require_job_content:
-                    evidence = classify_job_page(
-                        normalized,
-                        declared_job_titles=metadata.get("json_ld_job_titles") or [],
-                        declared_job_identities=metadata.get("json_ld_job_identities") or [],
-                    )
-                    metadata["page_classification"] = evidence.classification
-                    metadata["page_classification_reason"] = evidence.reason
-                    if not evidence.may_extract:
-                        raise PublicJobUrlFetchError(
-                            _CLASSIFICATION_CODES[evidence.classification],
-                            _CLASSIFICATION_MESSAGES[evidence.classification],
-                        )
-                else:
-                    # The same parser and every network-safety check, without
-                    # asking a company homepage to prove it is a single job.
-                    metadata["page_classification"] = "brand_page"
-                    metadata["page_classification_reason"] = (
-                        "job-content classification is not applicable"
-                    )
-
-                metadata.update(
-                    {
-                        "status_code": response.status_code,
-                        "redirect_count": redirect_count,
-                        "retrieved_content_type": content_type,
-                        "response_bytes": len(body),
-                    }
+        page_text = response.body.decode(response.encoding, errors="replace")
+        if response.content_type == "text/plain":
+            normalized = "\n".join(
+                line
+                for line in (_clean_text(item) for item in page_text.splitlines())
+                if line
+            )[:MAX_IMPORT_SOURCE_TEXT_LENGTH]
+            if not normalized:
+                raise PublicJobUrlFetchError(
+                    "JOB_IMPORT_URL_EMPTY_CONTENT",
+                    "The public page did not contain readable job-listing text.",
                 )
-                return PublicJobUrlRetrieval(
-                    entered_url=entered_url,
-                    final_url=current_url,
-                    title=title,
-                    normalized_text=normalized,
-                    content_type=content_type,
-                    retrieved_at=datetime.now(UTC),
-                    metadata=metadata,
+            title = None
+            metadata: dict[str, object] = {
+                "canonical_url": None,
+                "json_ld_job_posting": False,
+                "structured_title_found": False,
+            }
+        elif self._require_job_content:
+            normalized, title, metadata = normalize_public_job_html(
+                page_text,
+                final_url=response.final_url,
+            )
+        else:
+            normalized, title, metadata = normalize_public_brand_html(
+                page_text,
+                final_url=response.final_url,
+            )
+        if len(normalized) < 80 and re.search(
+            r"\b(sign in|log in|authentication required)\b",
+            normalized,
+            flags=re.IGNORECASE,
+        ):
+            raise PublicJobUrlFetchError(
+                "JOB_IMPORT_URL_AUTH_REQUIRED",
+                "This page requires sign-in and cannot be imported.",
+            )
+
+        # Fetching a page is not the same as finding a job on it. A board
+        # index, bot challenge, and client-rendered shell each need a truthful
+        # fallback rather than an apparently successful empty import.
+        if self._require_job_content:
+            evidence = classify_job_page(
+                normalized,
+                declared_job_titles=metadata.get("json_ld_job_titles") or [],
+                declared_job_identities=metadata.get("json_ld_job_identities") or [],
+            )
+            metadata["page_classification"] = evidence.classification
+            metadata["page_classification_reason"] = evidence.reason
+            if not evidence.may_extract:
+                raise PublicJobUrlFetchError(
+                    _CLASSIFICATION_CODES[evidence.classification],
+                    _CLASSIFICATION_MESSAGES[evidence.classification],
                 )
-        raise PublicJobUrlFetchError(
-            "JOB_IMPORT_URL_TOO_MANY_REDIRECTS",
-            "The public page redirected too many times.",
+        else:
+            metadata["page_classification"] = "brand_page"
+            metadata["page_classification_reason"] = (
+                "job-content classification is not applicable"
+            )
+
+        metadata.update(
+            {
+                "status_code": response.status_code,
+                "redirect_count": response.redirect_count,
+                "retrieved_content_type": response.content_type,
+                "response_bytes": len(response.body),
+            }
+        )
+        return PublicJobUrlRetrieval(
+            entered_url=response.entered_url,
+            final_url=response.final_url,
+            title=title,
+            normalized_text=normalized,
+            content_type=response.content_type,
+            retrieved_at=datetime.now(UTC),
+            metadata=metadata,
         )
 
 
@@ -1711,7 +1604,7 @@ class PublicBrandUrlFetcher(PublicJobUrlFetcher):
     def __init__(
         self,
         *,
-        resolver: Resolver = _default_resolver,
+        resolver: Resolver = default_public_resolver,
         transport: httpx.AsyncBaseTransport | None = None,
         allow_test_loopback: bool = False,
     ) -> None:

@@ -1020,12 +1020,16 @@ def test_supported_months_become_a_recruiter_confirmed_band_suggestion() -> None
         "http://127.0.0.1/job",
         "http://127.1/job",
         "http://10.0.0.1/job",
+        "http://100.64.0.1/job",
         "http://172.16.0.1/job",
         "http://192.168.1.1/job",
         "http://169.254.169.254/latest/meta-data",
+        "http://224.0.0.1/job",
+        "http://93.184.216.34:22/job",
         "http://[::1]/job",
         "http://[fc00::1]/job",
         "http://[fe80::1]/job",
+        "http://[64:ff9b::127.0.0.1]/job",
     ],
 )
 async def test_fetcher_rejects_unsafe_destinations(url: str) -> None:

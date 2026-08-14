@@ -31,23 +31,36 @@ test("URL entry explains the public retrieval boundary and keeps a paste fallbac
   assert.match(page, /Enter a public HTTP or HTTPS URL without sign-in credentials/);
 });
 
-test("server URL retrieval owns SSRF, redirect, content, timeout, and size policy", () => {
-  const fetcher = read("backend/app/services/job_url_fetcher.py");
-  for (const boundary of [
+test("server URL retrieval uses the shared pinned SSRF and bounded-content policy", () => {
+  const wrapper = read("backend/app/services/job_url_fetcher.py");
+  const boundary = read("backend/app/services/safe_outbound_fetch.py");
+  for (const contract of [
     "is_global",
+    "is_multicast",
     "username",
     "password",
+    "DEFAULT_ALLOWED_PORTS",
+    "_PinnedNetworkBackend",
+    "PEER_MISMATCH",
+    "validate_destination\\(current_url",
+    "trust_env=False",
+    "follow_redirects=False",
+    "User-Agent",
+  ]) {
+    assert.match(boundary, new RegExp(contract));
+  }
+  assert.match(boundary, /"authorization"/);
+  assert.match(boundary, /"cookie"/);
+  assert.match(boundary, /_FORBIDDEN_REQUEST_HEADERS/);
+  for (const productPolicy of [
     "MAX_URL_REDIRECTS",
     "MAX_URL_RESPONSE_BYTES",
     "URL_CONNECT_TIMEOUT_SECONDS",
     "URL_TOTAL_TIMEOUT_SECONDS",
     "ALLOWED_URL_CONTENT_TYPES",
-    "trust_env=False",
-    "follow_redirects=False",
-    "User-Agent",
   ]) {
-    assert.match(fetcher, new RegExp(boundary));
+    assert.match(wrapper, new RegExp(productPolicy));
   }
-  assert.doesNotMatch(fetcher, /Cookie|Authorization/);
-  assert.match(fetcher, /await self\._validate_destination\(current_url\)/);
+  assert.match(wrapper, /SafeOutboundFetcher/);
+  assert.match(wrapper, /await self\._outbound_fetcher\.fetch\(raw_url, policy\)/);
 });

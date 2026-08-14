@@ -41,10 +41,10 @@ This ledger translates the production-readiness audit into resumable implementat
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| WEB-001 | CRITICAL | Shared outbound fetch | AUTH-005 | NOT_STARTED | IPv4/IPv6 private, reserved, metadata, port, proxy, timeout, size, type tests | NO | POSSIBLE | Yes | Yes | — |
-| WEB-002 | CRITICAL | Redirect/DNS SSRF | WEB-001 | NOT_STARTED | Per-hop validation and DNS-rebinding/peer-verification tests | NO | POSSIBLE | Yes | Yes | — |
+| WEB-001 | CRITICAL | Shared outbound fetch | AUTH-005 | VALIDATED | IPv4/IPv6 private, reserved, metadata, port, proxy, timeout, size, type tests | NO | NO | Yes | Yes | Phase 2A shared outbound-fetch checkpoint: 72 primitive security tests, 327 dependent tests, and complete backend suite green |
+| WEB-002 | CRITICAL | Redirect/DNS SSRF | WEB-001 | VALIDATED | Per-hop validation and DNS-rebinding/peer-verification tests | NO | NO | Yes | Yes | Phase 2A pins TCP to each validated DNS answer while retaining original TLS identity, verifies the peer, and creates a fresh cookie-free pool per redirect; escape/rebinding tests green |
 | WEB-003 | CRITICAL | Organization identity fetch | WEB-001, WEB-002 | NOT_STARTED | Authentication, quotas, redirect and bounded-stream integration tests | NO | NO | Yes | Yes | — |
-| WEB-004 | CRITICAL | Import/preview fetches | WEB-001, WEB-002 | NOT_STARTED | AI URL import, link preview, oEmbed, and enrichment integration tests | NO | NO | Yes | Yes | — |
+| WEB-004 | CRITICAL | Import/preview fetches | WEB-001, WEB-002 | IN_PROGRESS | AI URL import, link preview, oEmbed, and enrichment integration tests | NO | NO | Yes | Yes | Phase 2A migrates authenticated job URL import and brand enrichment to the validated shared boundary; portfolio HTML/oEmbed preview migration remains Phase 2B |
 | WEB-005 | HIGH | Internal redirects | AUTH-001 | NOT_STARTED | External, protocol-relative, slash, backslash, control and encoded-scheme tests | NO | NO | Yes | Yes | — |
 | WEB-006 | CRITICAL | User-supplied URLs | BASE-003 | NOT_STARTED | Portfolio, profile, media, social, application, interview malicious URL tests | POSSIBLE | NO | Yes | Yes | — |
 | WEB-007 | CRITICAL | Structured data | BASE-003 | NOT_STARTED | `</script>`, angle, ampersand, U+2028/U+2029 JSON-LD tests | NO | NO | Yes | Yes | — |

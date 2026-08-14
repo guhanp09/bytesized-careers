@@ -19,6 +19,8 @@ dependencies = [
   "greenlet>=3.0.3",
   "google-auth[requests]>=2.38.0,<3.0.0",
   "openai>=2.49.0,<3.0.0",
+  "httpx>=0.28.1,<0.29.0",
+  "httpcore>=1.0.9,<1.1.0",
   "babel>=2.17.0",
   "geonamescache>=3.0.0",
 ]

@@ -76,6 +76,18 @@ supports pasted text, rough descriptions, externally sourced listing text, and
 securely normalized public job URLs. Successful extraction remains private and stops at recruiter review—it
 does not create or publish a native job.
 
+Public job and brand-page retrieval use the shared
+`app.services.safe_outbound_fetch.SafeOutboundFetcher`. It accepts only HTTP(S)
+on ports 80/443, rejects non-public IPv4/IPv6 and embedded transition addresses,
+pins each TCP connection to the DNS answer that passed validation, verifies the
+connected peer, starts a fresh pool for every revalidated redirect, ignores
+environment proxies, sends no cookies or credentials, and enforces total,
+operation, content-type, redirect, and decoded-body limits. The
+`allow_test_loopback` constructor seam is for disposable local fixtures only and
+must never be enabled by production configuration. Other user-influenced
+fetchers are tracked in `docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md` until they
+are migrated to the same boundary.
+
 ## Local Development (uv)
 Install dependencies:
 ```bash
