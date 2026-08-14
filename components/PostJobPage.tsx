@@ -29,6 +29,7 @@ import {
   updateJob,
 } from "../lib/backendClient";
 import { refreshYouTubeConnection } from "../lib/identity/youtubeConnection";
+import { googleYouTubeAuthorizationParams } from "../lib/googleOAuthPolicy";
 import { findToolCatalogEntry } from "../lib/toolCatalog";
 import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
@@ -2543,8 +2544,7 @@ export default function PostJobPage() {
     if (sessionStatus !== "authenticated") {
       await signIn("google", {
         callbackUrl: "/post-job?yt_connect=1",
-        prompt: "select_account",
-      });
+      }, googleYouTubeAuthorizationParams({ selectAccount: true }));
       return;
     }
 
@@ -2567,8 +2567,7 @@ export default function PostJobPage() {
       if (errorMessage.includes("youtube_reauth_required")) {
         await signIn("google", {
           callbackUrl: "/post-job?yt_connect=1",
-          prompt: "consent",
-        });
+        }, googleYouTubeAuthorizationParams());
         return;
       }
       setIdentityError(errorMessage);

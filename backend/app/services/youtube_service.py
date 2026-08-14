@@ -155,20 +155,62 @@ def _parse_int(value: object) -> int | None:
     return None
 
 
-async def fetch_user_youtube_channels(access_token: str) -> list[YouTubeChannelResult]:
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.get(
-            "https://www.googleapis.com/youtube/v3/channels",
-            params={"part": "snippet", "mine": "true", "maxResults": "50"},
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+def _youtube_error_reasons(response: httpx.Response) -> set[str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return set()
+    errors = error.get("errors")
+    if not isinstance(errors, list):
+        return set()
+    return {
+        reason
+        for item in errors
+        if isinstance(item, dict)
+        and isinstance((reason := item.get("reason")), str)
+    }
 
-    if response.status_code in {401, 403}:
+
+async def fetch_user_youtube_channels(
+    access_token: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[YouTubeChannelResult]:
+    try:
+        async with httpx.AsyncClient(
+            timeout=15,
+            follow_redirects=False,
+            trust_env=False,
+            transport=transport,
+        ) as client:
+            response = await client.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                params={"part": "snippet", "mine": "true", "maxResults": "50"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+    except httpx.HTTPError as exc:
+        raise YouTubeAPIError("YouTube API is temporarily unavailable") from exc
+
+    if response.status_code == 401:
         raise YouTubeReauthRequiredError("youtube_reauth_required")
-    if response.status_code >= 400:
+    if response.status_code == 403 and _youtube_error_reasons(response).intersection(
+        {"authError", "insufficientPermissions"}
+    ):
+        raise YouTubeReauthRequiredError("youtube_reauth_required")
+    if response.status_code != 200:
         raise YouTubeAPIError(f"YouTube API error ({response.status_code})")
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise YouTubeAPIError("YouTube API returned an invalid response") from exc
+    if not isinstance(payload, dict):
+        raise YouTubeAPIError("YouTube API returned an invalid response")
     raw_items = payload.get("items")
     if not isinstance(raw_items, list):
         return []
@@ -201,7 +243,11 @@ async def fetch_youtube_video_metadata(video_id: str) -> YouTubeVideoMetadataRes
     if not api_key:
         raise YouTubeAPIError("YouTube metadata import is not configured yet. Add YOUTUBE_API_KEY or add this project manually.")
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(
+        timeout=15,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
         response = await client.get(
             "https://www.googleapis.com/youtube/v3/videos",
             params={

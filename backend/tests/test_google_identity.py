@@ -20,6 +20,8 @@ from app.services.google_identity import (
     GoogleIdentityProviderUnavailableError,
     GoogleIdentityVerificationError,
     GoogleIdentityVerifier,
+    google_access_token_matches_identity,
+    google_oidc_access_token_hash,
 )
 
 
@@ -61,6 +63,27 @@ async def test_google_verifier_uses_google_library_and_derives_trusted_claims(
     assert identity.display_name == "Verified Creator"
 
 
+async def test_google_verifier_preserves_signed_access_token_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access_token = "access-token-from-the-same-google-response"
+
+    def fake_verify(_raw_token, _request, _audience):  # noqa: ANN001
+        return _verified_claims(
+            at_hash=google_oidc_access_token_hash(access_token)
+        )
+
+    monkeypatch.setattr(
+        google_identity_module.google_id_token,
+        "verify_oauth2_token",
+        fake_verify,
+    )
+    identity = await GoogleIdentityVerifier(TEST_GOOGLE_CLIENT_ID).verify("signed-id-token")
+
+    assert google_access_token_matches_identity(identity, access_token) is True
+    assert google_access_token_matches_identity(identity, "different-token") is False
+
+
 @pytest.mark.parametrize(
     ("claim_overrides", "library_error"),
     [
@@ -70,6 +93,8 @@ async def test_google_verifier_uses_google_library_and_derives_trusted_claims(
         ({"sub": ""}, None),
         ({"email_verified": False}, None),
         ({"email": "not-an-email"}, None),
+        ({"at_hash": 123}, None),
+        ({"at_hash": "not-a-valid-google-access-token-hash"}, None),
         ({}, ValueError("invalid signature")),
     ],
 )
@@ -266,7 +291,7 @@ async def test_existing_email_with_google_link_rejects_a_different_subject(
     assert second.status_code == 409
 
 
-async def test_authenticated_oauth_update_cannot_prelink_an_unverified_subject(
+async def test_authenticated_user_cannot_upload_unverified_provider_credentials(
     client: AsyncClient,
 ) -> None:
     register = await client.post(
@@ -300,7 +325,10 @@ async def test_authenticated_oauth_update_cannot_prelink_an_unverified_subject(
         headers={"Authorization": f"Bearer {bearer}"},
         json={"access_token": "unverified-provider-token"},
     )
-    assert update.status_code == 409
+    # Credentials are accepted only alongside a provider-signed ID token at the
+    # verified exchange. The old bearer-authenticated mutation is intentionally
+    # absent rather than retaining a caller-controlled subject/token path.
+    assert update.status_code == 404
 
     altered_subject = await client.post(
         "/api/v1/me/oauth/google/upsert",
@@ -310,4 +338,4 @@ async def test_authenticated_oauth_update_cannot_prelink_an_unverified_subject(
             "access_token": "unverified-provider-token",
         },
     )
-    assert altered_subject.status_code == 422
+    assert altered_subject.status_code == 404

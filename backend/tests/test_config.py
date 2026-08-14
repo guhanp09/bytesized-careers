@@ -112,6 +112,8 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "DATABASE_URL" in message
     assert "EMAIL_MODE" in message
     assert "GOOGLE_CLIENT_ID" in message
+    assert "GOOGLE_CLIENT_SECRET" in message
+    assert "GOOGLE_OAUTH_EXCHANGE_SECRET" in message
     assert "OAUTH_CREDENTIAL_KEYS" in message
     assert "OAUTH_CREDENTIAL_WRITE_MODE" in message
     assert "JWT_ACCESS_TOKEN_EXPIRES_MINUTES" in message
@@ -142,6 +144,8 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "SMTP_PASSWORD": "smtp-test-placeholder",
         "SMTP_FROM_EMAIL": "support@creatorjobs.example",
         "GOOGLE_CLIENT_ID": "creatorjobs.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "production-google-client-secret",
+        "GOOGLE_OAUTH_EXCHANGE_SECRET": "production-google-oauth-exchange-secret-2026",
         "RATE_LIMIT_BACKEND": "redis",
         "REDIS_URL": "redis://redis.example:6379/0",
         "OAUTH_CREDENTIAL_KEYS": json.dumps({"production_key": key}),
@@ -162,6 +166,35 @@ def test_production_validation_accepts_encrypted_only_oauth_credentials(
 
     assert production_settings.oauth_credential_keys is not None
     assert str(production_settings.oauth_credential_keys) == "**********"
+
+
+def test_production_requires_nonblank_google_refresh_client_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production_settings = _safe_production_settings(GOOGLE_CLIENT_SECRET="   ")
+    monkeypatch.setattr(config, "settings", production_settings)
+
+    with pytest.raises(RuntimeError, match="GOOGLE_CLIENT_SECRET"):
+        config.validate_production_settings()
+
+
+def test_production_rejects_example_google_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production_settings = _safe_production_settings(
+        GOOGLE_CLIENT_ID="your-google-client-id",
+        GOOGLE_CLIENT_SECRET="your-google-client-secret",
+        GOOGLE_OAUTH_EXCHANGE_SECRET="replace-with-a-random-server-only-secret",
+    )
+    monkeypatch.setattr(config, "settings", production_settings)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        config.validate_production_settings()
+
+    message = str(exc_info.value)
+    assert "GOOGLE_CLIENT_ID" in message
+    assert "GOOGLE_CLIENT_SECRET" in message
+    assert "GOOGLE_OAUTH_EXCHANGE_SECRET" in message
 
 
 def test_production_dual_write_requires_explicit_temporary_acknowledgement(

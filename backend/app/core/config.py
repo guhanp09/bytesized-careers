@@ -100,6 +100,19 @@ class Settings(BaseSettings):
         alias="STRONG_AUTH_SECRET_ACTIVE_KEY_ID",
     )
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
+    google_client_secret: SecretStr | None = Field(
+        default=None,
+        max_length=2048,
+        alias="GOOGLE_CLIENT_SECRET",
+    )
+    # Shared only by the NextAuth server and backend. Browsers and public API
+    # clients must never receive the credential-authority boundary secret.
+    google_oauth_exchange_secret: SecretStr | None = Field(
+        default=None,
+        min_length=32,
+        max_length=512,
+        alias="GOOGLE_OAUTH_EXCHANGE_SECRET",
+    )
     # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
     # AES keys. SecretStr keeps the entire keyring out of settings repr/logs.
     # Keep previous keys configured until every row has been explicitly rotated.
@@ -238,6 +251,8 @@ UNSAFE_SECRET_VALUES = {
     "dev-secret",
     "insecure",
     "replace-me",
+    "replace-with-a-random-server-only-secret",
+    "your-google-client-secret",
 }
 
 
@@ -313,8 +328,35 @@ def validate_production_settings() -> None:
         failures.append("SMTP_PASSWORD is required in production.")
     if settings.smtp_port <= 0:
         failures.append("SMTP_PORT must be a positive integer.")
-    if not settings.google_client_id or not settings.google_client_id.strip():
+    if (
+        not settings.google_client_id
+        or not settings.google_client_id.strip()
+        or settings.google_client_id.strip().lower()
+        in {"replace-me", "your-google-client-id"}
+    ):
         failures.append("GOOGLE_CLIENT_ID is required for verified Google sign-in.")
+    google_client_secret = (
+        settings.google_client_secret.get_secret_value().strip()
+        if settings.google_client_secret is not None
+        else ""
+    )
+    if (
+        not google_client_secret
+        or google_client_secret.lower() in UNSAFE_SECRET_VALUES
+    ):
+        failures.append("GOOGLE_CLIENT_SECRET is required for server-owned Google refresh.")
+    google_exchange_secret = (
+        settings.google_oauth_exchange_secret.get_secret_value().strip()
+        if settings.google_oauth_exchange_secret is not None
+        else ""
+    )
+    if (
+        not google_exchange_secret
+        or google_exchange_secret.lower() in UNSAFE_SECRET_VALUES
+    ):
+        failures.append(
+            "GOOGLE_OAUTH_EXCHANGE_SECRET is required for server-owned Google authorization."
+        )
     from app.core.oauth_credentials import (
         OAuthCredentialConfigurationError,
         build_oauth_credential_cipher,

@@ -3,23 +3,43 @@
 ## Resume summary
 
 ```text
-LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1D-3 — administrator TOTP enrollment/challenge/recovery browser UX and end-to-end privilege validation
-NEXT ATOMIC SLICE: Phase 1E — minimize ordinary Google-login scopes and complete server-owned provider disconnect/revocation
-CURRENT HEAD: Phase 1D-3 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0058_strong_auth_totp
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0058 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; the database enforces both OAuth ownership invariants; provider credentials and TOTP factor secrets use separate, versioned AES-256-GCM keyrings; backend password/Google logins issue durable session families with one-time hash-only refresh credentials; authenticated HTTP requests treat signed `sid` as a database-backed revocation boundary; administrator requests pass a global policy gate backed only by fresh assurance on their durable database session; the deliberately narrow base-auth boundary owns logout and real factor ceremonies; one encrypted pending/confirmed TOTP credential is serialized per administrator, TOTP steps are one-use across instances, recovery codes are 160-bit/hash-only/one-use, failed factor proofs lock durably, and factor activation/recovery/change revokes affected sibling or all session families; `/api/security/strong-auth` is the same-origin browser adapter, derives Google primary proof only from a policy-bounded encrypted HttpOnly NextAuth cookie, never accepts a provider token from browser JSON, and the production admin layout renders no shell until authoritative factor status is satisfied
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID
-NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; app.models.AuthSession/AuthRefreshCredential; app.core.auth_assurance; app.core.strong_auth_secrets.StrongAuthSecretCipher; app.core.totp; app.models.StrongAuthTotpCredential/StrongAuthRecoveryCode; app.services.strong_auth_service.StrongAuthService; app/api/security/strong-auth same-origin adapter; lib/strongAuthClient browser contract; components/security/StrongAuthControls; scripts.rotate_oauth_credentials
-OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; real OAuth and strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification and provider revocation; a physical authenticator-device/live-Google browser drill and lost-all-factors support procedure; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures from the Phase 0 matrix remain unrerun as a whole; one previously documented Settings sign-out flake timed out in the final combined browser run and passed its isolated rerun; every Phase 1D-3 strong-auth case and the focused security, frontend, build, and uncontended backend gates are green; whole-tree Ruff has the same 93 known findings while every changed Python file passes
-COMMANDS TO RESUME: see "Phase 1D-3 atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: lib/auth.ts; app/api/identity/connect/start/route.ts; app/api/identity/disconnect/route.ts; app/api/identity/status/route.ts; lib/youtubeIdentity.ts; lib/backendClient.ts; backend/app/services/oauth_credential_storage.py; backend/app/services/google_identity.py; backend/app/api/v1/routers/auth.py; backend/app/models/oauth_account.py; tests/providerSessionSecurity.test.mjs; tests/e2e/settings.spec.ts; docs/PRODUCTION_READINESS_EXECUTION.md
+LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
+LAST COMPLETED ATOMIC SLICE: Phase 1E — least-privilege Google login and revocable, refreshable server-owned YouTube authorization
+NEXT ATOMIC SLICE: Phase 2A — inventory every server-side outbound fetch and establish the shared hardened outbound-fetch contract before migrating callers
+CURRENT HEAD: Phase 1E checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; ordinary Google login is identity-only; explicit YouTube consent uses a centralized incremental/offline scope policy; feature credentials cross from NextAuth to FastAPI only with a server-only shared secret and an access token cryptographically bound to the signed ID token `at_hash`; Google/YouTube authority must succeed before credentials or canonical channel links commit; provider credentials refresh through a fixed, proxy-independent, redirect-free, bounded token endpoint and only provider-confirmed grant loss clears them; disconnect remotely revokes then unconditionally clears every local credential copy, channel link, and channel avatar while retaining the stable Google subject; OAuth connection changes append credential-free audit events under migration 0059; same-origin refresh/disconnect routes reject cross-origin and QA use; the existing durable session, encrypted credential, and administrator TOTP architecture remains unchanged
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID
+NEW SERVICES: app.core.oauth_scopes exact policy; app.services.google_oauth_refresh fixed/bounded provider refresh; app.services.google_oauth_revocation fixed/bounded provider revoke; app.models.OAuthConnectionEvent; migration 0059_oauth_connection_events; lib/googleOAuthPolicy centralized browser authorization policy; authenticated same-origin YouTube disconnect client/route; all previously documented Google identity, credential encryption, durable session, and strong-auth services
+OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
+KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures from the Phase 0 matrix remain unrerun as a whole and are owned by later phases; Phase 1E's final backend, frontend, migration, security, build, and 12-case Settings browser gates are green; whole-tree Ruff retains unrelated baseline findings while every changed Python file passes
+COMMANDS TO RESUME: see "Phase 1E atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: docs/PRODUCTION_READINESS_EXECUTION.md; backend/app/services/job_url_fetcher.py (including PublicBrandUrlFetcher); backend/app/services/brand_enrichment_probe.py; backend/app/services/profile_service.py; backend/app/services/youtube_service.py; backend/app/services/google_oauth_refresh.py; backend/app/services/google_oauth_revocation.py; app/api/profile/organization-identity/route.ts; app/api/location/autocomplete/route.ts; app/api/location/details/route.ts; lib/backendClient.ts; tests for every fetcher before designing the shared Phase 2 service
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1E atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1E
+Status: COMPLETE (local engineering; AUTH-004 and AUTH-009 are BLOCKED_EXTERNAL, AUTH-007/010 continue in their owning later phases)
+Initial HEAD: 22e9bd1586db1aabf3453bcd62182ed31bec0cfd
+Final HEAD: Phase 1E checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(oauth): minimize scopes and add revocable YouTube grants
+Files materially changed: centralized frontend/backend Google scope policies; NextAuth Google callback/exchange boundary; Auth, Settings, YouHub, Post Job, and platform-removal UI; same-origin YouTube refresh/disconnect routes and clients; Google identity access-token binding; OAuth repository/service lifecycle; provider refresh/revocation services; YouTube API error classification; OAuth connection-event model/migration; production configuration/examples/README; focused backend, unit, migration, and browser security tests; execution ledger and handoff
+Migrations: 0059_oauth_connection_events additively creates credential-free authorization/revocation audit history with ownership FKs, nonnegative removal counts, and lookup indexes; downgrade is allowed only while the table is empty and otherwise refuses security-audit destruction; fresh disposable PostgreSQL upgraded, downgraded through 0059, and re-upgraded successfully
+Behavior changed: ordinary Continue with Google requests only openid/email/profile and never asks for offline or YouTube access; Settings, YouHub, and Post Job request youtube.readonly incrementally with explicit consent only when needed; only a YouTube-scoped callback sends provider credentials server-to-server; basic login cannot overwrite an existing feature grant and clears only legacy credentials that never had a supported feature scope; the backend requires a matching server secret, verifies the signed ID-token/access-token `at_hash`, and confirms `mine=true` authority before committing credentials or replacing channel links; expired or unauthorized access tokens refresh once server-side, rotated refresh tokens are preserved across a downstream outage, explicit grant loss clears local authority, and transient quota/config/provider failures retain it; disconnect revokes Google remotely when possible and always clears all local credential copies, channel links, and channel avatar state without deleting the stable Google subject; the former bearer-authenticated provider-token upsert no longer exists; cross-origin and QA refresh/disconnect calls fail closed
+Security assumptions: production NextAuth and FastAPI share one random 32–512 character GOOGLE_OAUTH_EXCHANGE_SECRET that is never public; backend GOOGLE_CLIENT_ID exactly matches the ID-token audience and GOOGLE_CLIENT_SECRET belongs to that OAuth client; Google continues issuing RS256 ID tokens whose OIDC at_hash uses SHA-256; stored feature grants always carry the exact youtube.readonly scope; PostgreSQL user-then-OAuth row locks serialize authorization, refresh, and disconnect; provider responses are untrusted, bounded where credentials are exchanged/revoked, never logged, and temporary failures do not destroy authority; the current Google consent screen and real provider behavior remain external verification gates
+Tests run: changed-code Ruff; focused Google identity/scope/exchange/refresh/revocation/disconnect/encryption/config/migration/channel suites; complete backend pytest; Alembic heads/current; fresh disposable PostgreSQL migration/downgrade/re-upgrade suite; TypeScript; ESLint; complete frontend unit suite; production build; provider-session security suite; complete Settings Chromium suite; git diff checks
+Exact results: changed-code Ruff passed; final focused backend matrix 109 passed / 6 warnings, with earlier combined refresh/revocation/migration matrix 112 passed; complete backend 6,538 passed / 64 skipped / 88 warnings in 318.29s; one Alembic head 0059_oauth_connection_events; configured local SQLite remains unstamped; disposable PostgreSQL 29 passed / 2 warnings; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,137 passed / 0 failed/skipped; production build passed with 33 static-generation entries; provider-session security 9 passed; Settings Chromium 12 passed; git diff checks passed
+Known external failures: no real Google account, consent screen, OAuth client, refresh token, revocation, provider outage, production shared secret, hosted database, or production keyring was used; live consent/reconnect/refresh/revoke and hosted encrypted-only rollout remain BLOCKED_EXTERNAL; full Phase 0 standard/QA browser failure matrices were not rerun because their deterministic failures belong to Phases 2/4/11
+Remaining risks: production shared-secret/keyring/Google configuration and live provider behavior are unverified; provider credential rows have not been backfilled/cut over on hosted infrastructure; the general browser-visible short-lived backend access bearer and remaining HTTP boundaries continue under AUTH-007/Phase 2; Redis-atomic abuse controls remain Phase 3; shared hardened outbound fetching, redirects, URL contracts, JSON-LD, and response headers remain Phase 2; operational monitoring/alerting remain Phase 12; release remains NO-GO
+Next phase: Phase 2A atomic slice — first inventory and classify every server-side outbound fetch, then design one hardened fetch primitive and its complete DNS/IP/redirect/size/timeout/content-type tests before migrating a bounded caller set; do not create parallel SSRF implementations
+Important commands: `rg -n 'httpx\.|fetch\(|requests\.|urlopen|AsyncClient|ClientSession' backend/app app lib`; inspect `backend/app/services/job_url_fetcher.py`, `backend/app/services/brand_enrichment_probe.py`, `backend/app/services/profile_service.py`, and existing SSRF tests; run `git branch --show-current && git status --short`; verify `.venv/bin/python -m alembic heads`; retain the final Phase 1 security matrices while Phase 2 changes shared network boundaries
+```
 
 ## Phase 1D-3 atomic checkpoint
 
@@ -328,8 +348,8 @@ Do not weaken these tests without first proving that their asserted product cont
 - Phase 1A removed the caller-asserted Google identity takeover: `/auth/oauth/google` now accepts a signed ID token and derives identity only after server verification.
 - Phase 1A made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Phase 1C-1 added the inverse database uniqueness constraint and deterministic PostgreSQL races, so AUTH-002 is now `VALIDATED`.
 - Phase 1B removed Google access/refresh tokens, provider subject, OAuth metadata, and raw claims from the browser session and from the encrypted NextAuth JWT. A sentinel-bearing legacy JWT produced a clean `/api/auth/session` response in Playwright.
-- YouHub, Post Job, Settings, and the legacy identity routes now refresh YouTube through backend-held OAuth credentials. The same-origin `/api/identity/youtube/refresh` route returns channel data or bounded error codes, never provider credentials.
-- Provider credentials have a locally validated AES-256-GCM storage path, rotation keyring, additive migration, and idempotent backfill/rewrap command. Production rows remain unverified and may remain plaintext until the external dual-backfill/encrypted-only rollout is actually completed; provider disconnect/revocation is also still absent.
+- YouHub, Post Job, and Settings refresh or disconnect YouTube through authenticated same-origin server routes that reject cross-origin and QA use, return bounded states, and never expose provider credentials.
+- Provider credentials have a locally validated AES-256-GCM storage path, rotation keyring, additive migration, idempotent backfill/rewrap command, fixed-endpoint refresh, remote revocation, unconditional local clearing, and credential-free audit history. Production rows remain unverified and may remain plaintext until the external dual-backfill/encrypted-only rollout is actually completed; real Google behavior is also unverified.
 - Backend refresh tokens are durable, hash-only, one-time credentials grouped into persistent families. Rotation is serialized on PostgreSQL; delayed replay revokes the family and records compromise; production cannot boot in stateless `legacy` mode.
 - Signed access-token `sid` now resolves through live database state on every non-QA authenticated request. Revocation therefore stops both refresh and subsequent HTTP access immediately; `persistent` rejects claimless access while bounded `migration` mode accepts it until its production-capped <=60-minute expiry.
 - Current-session logout prefers the server-held refresh credential, logout-all revokes every durable family, and Settings exposes a confirmed all-device workflow. NextAuth performs current-family revocation inside its same-origin sign-out event without serializing its refresh credential into `/api/auth/session`.
@@ -337,41 +357,31 @@ Do not weaken these tests without first proving that their asserted product cont
 - Active-session inventory/individual device controls remain a non-blocking hardening extension; long-lived WebSocket disconnect, abuse throttling/audit, and production revocation-failure alerting remain AUTH-010/Phase 8/Phase 12 work.
 - Administrator TOTP is a complete locally validated factor lifecycle: secrets are encrypted under a dedicated keyring, TOTP steps and recovery codes are one-use, failures lock durably, factor changes revoke session families, and every privileged backend route checks current durable-session assurance. The browser adds password/Google primary reauthentication, enrollment, challenge, one-time recovery display, rotation, disablement, and a production fail-closed no-shell gate. AUTH-008 is `VALIDATED`.
 - The browser factor adapter is same-origin, action-allowlisted, size-bounded, no-store, and rejects cross-site POSTs. Google reauthentication proof is held for at most five minutes in the encrypted HttpOnly NextAuth JWT cookie and is never serialized into the Session API; ordinary browser JSON cannot supply it.
-- The rollout is deliberately additive: land 0056, run bounded `migration` mode until the final legacy refresh expires, then use `persistent`; land 0057 and 0058, provision the dedicated strong-auth keyring, then enable administrator strong-auth enforcement. Downgrade/old-binary rollback after persistent issuance requires JWT signing-secret rotation/global logout, downgrade of 0057 is refused once assurance state has been used, and downgrade of 0058 is refused while factor material exists.
-- Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
+- The rollout is deliberately additive: land 0056, run bounded `migration` mode until the final legacy refresh expires, then use `persistent`; land 0057 and 0058, provision the dedicated strong-auth keyring, then enable administrator strong-auth enforcement; land 0059 before code emits OAuth connection events. Downgrade/old-binary rollback after persistent issuance requires JWT signing-secret rotation/global logout, downgrade of 0057 is refused once assurance state has been used, downgrade of 0058 is refused while factor material exists, and downgrade of 0059 is refused once audit history exists.
+- Ordinary Google login requests identity scopes only. YouTube authorization is explicit and incremental, the access token must match the signed OIDC `at_hash`, a server-only exchange secret gates persistence, and a successful provider authority check precedes credential/channel commits. Live provider validation remains `BLOCKED_EXTERNAL`.
 
-Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, local encrypted credential architecture, persistent refresh-family foundation, authoritative access checks, explicit logout contracts, security-event revocation, and real administrator strong authentication are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, accept caller-selected session IDs or provider proof in browser strong-auth JSON, trust JWT claims for strong-auth elevation, broaden the base-auth dependency beyond logout/factor ceremonies, change either documented lock order without real PostgreSQL race tests, retire an OAuth/strong-auth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified.
+Phase 1 must remain additive and migration-safe. The browser-field removal, least-privilege server-owned YouTube lifecycle, OAuth ownership constraints, local encrypted credential architecture, persistent refresh-family foundation, authoritative access checks, explicit logout contracts, security-event revocation, and real administrator strong authentication are complete locally. Do not bypass the verified exchange, reintroduce browser provider credentials, accept caller-selected session IDs or provider proof in browser strong-auth JSON, trust JWT claims for strong-auth elevation, broaden the base-auth dependency beyond logout/factor ceremonies, change the user-then-OAuth lock order without real PostgreSQL race tests, retire an OAuth/strong-auth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified.
 
-## Phase 1 files to read first
+## Phase 2 files to read first
 
-- `backend/app/api/v1/routers/auth.py`
-- `backend/app/api/deps.py`
-- `backend/app/services/auth_service.py`
-- `backend/app/core/security.py`
-- `backend/app/core/auth_assurance.py`
-- `backend/app/repositories/auth_repository.py`
-- `backend/app/models/auth_session.py`
-- `backend/app/models/oauth_account.py`
-- `backend/app/schemas/auth.py`
-- `backend/app/core/config.py`
-- `backend/app/core/oauth_credentials.py`
-- `backend/app/services/oauth_credential_storage.py`
-- `backend/scripts/rotate_oauth_credentials.py`
-- `backend/tests/test_auth_and_channels.py`
-- `backend/tests/test_auth_sessions.py`
-- `backend/tests/test_auth_sessions_postgres.py`
-- `lib/auth.ts`
-- `lib/backendTokenRefresh.ts`
-- `lib/strongAuthReauthentication.ts`
-- `lib/strongAuthClient.ts`
-- `app/api/security/strong-auth/route.ts`
-- `components/security/StrongAuthControls.tsx`
-- `types/next-auth.d.ts` if present, plus components identified by `rg 'session\?\.user\?\.(accessToken|refreshToken)'`
-- `backend/alembic/versions/0058_strong_auth_totp.py`, `0057_admin_session_assurance.py`, `0056_persistent_auth_sessions.py`, and their lineage before designing any migration
+- `backend/app/services/job_url_fetcher.py`
+- `backend/app/services/job_import_url_service.py`
+- `backend/app/services/brand_enrichment_probe.py`
+- `backend/app/services/brand_enrichment_service.py`
+- `backend/app/services/profile_service.py`
+- `backend/app/services/youtube_service.py`
+- `backend/app/services/google_oauth_refresh.py`
+- `backend/app/services/google_oauth_revocation.py`
+- `app/api/profile/organization-identity/route.ts`
+- `app/api/location/autocomplete/route.ts`
+- `app/api/location/details/route.ts`
+- `backend/tests/test_job_url_import.py`
+- `backend/tests/test_brand_url_fetcher.py`
+- every additional caller/test returned by the outbound-fetch inventory before designing a shared primitive
 
 ## Important commands
 
-Before the next Phase 1 slice:
+Before Phase 2A:
 
 ```bash
 cd /Users/guhanpurushothaman/creator-jobs-phase1
@@ -385,10 +395,10 @@ git show-ref | rg 'messaging-paused|pre-messaging-merge|integrated-import-messag
 Focused discovery:
 
 ```bash
-rg -n 'exchange_google_oauth|OAuthGoogleExchangeRequest|provider_account_id|accessToken|refreshToken|refresh_backend_session' backend/app backend/tests lib app components
-sed -n '1,240p' backend/app/api/v1/routers/auth.py
-sed -n '430,570p' backend/app/services/auth_service.py
-sed -n '130,540p' lib/auth.ts
+rg -n 'httpx\.|fetch\(|requests\.|urlopen|AsyncClient|ClientSession' backend/app app lib
+sed -n '1300,1760p' backend/app/services/job_url_fetcher.py
+sed -n '1,280p' backend/app/services/brand_enrichment_probe.py
+sed -n '1,260p' app/api/profile/organization-identity/route.ts
 ```
 
 Migration safety:

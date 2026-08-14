@@ -5,7 +5,6 @@ from app.schemas.auth import (
     LoginResponse,
     LogoutRequest,
     OAuthGoogleExchangeRequest,
-    OAuthUpsertRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     PasswordResetResponse,
@@ -97,6 +96,7 @@ from app.schemas.me import (
     MeYouTubeChannelRead,
     OnboardingIntentUpdateRequest,
     YouTubeChannelsResponse,
+    YouTubeDisconnectResponse,
     YouTubeRefreshResponse,
 )
 from app.schemas.profile import (
@@ -213,7 +213,6 @@ __all__ = [
     "NotificationListResponse",
     "NotificationRead",
     "OnboardingIntentUpdateRequest",
-    "OAuthUpsertRequest",
     "PasswordResetConfirmRequest",
     "PasswordResetRequest",
     "PasswordResetResponse",
@@ -301,5 +300,6 @@ __all__ = [
     "UserRolesUpsertRequest",
     "VerifyEmailRequest",
     "YouTubeChannelsResponse",
+    "YouTubeDisconnectResponse",
     "YouTubeRefreshResponse",
 ]

@@ -19,3 +19,15 @@ export type IdentityConnectResponse = {
   options: VerifiedIdentity[];
   error?: string;
 };
+
+export type IdentityDisconnectResponse = {
+  ok: true;
+  disconnected: true;
+  provider_revocation:
+    | "confirmed"
+    | "already_invalid"
+    | "rejected"
+    | "unavailable"
+    | "not_applicable";
+  channel_links_removed: number;
+};

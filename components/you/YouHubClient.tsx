@@ -40,7 +40,11 @@ import {
   updateMyPortfolioItem,
   updateMyProfile,
 } from "../../lib/backendClient";
-import { refreshYouTubeConnection } from "../../lib/identity/youtubeConnection";
+import {
+  disconnectYouTubeConnection,
+  refreshYouTubeConnection,
+} from "../../lib/identity/youtubeConnection";
+import { googleYouTubeAuthorizationParams } from "../../lib/googleOAuthPolicy";
 import { Job } from "../../lib/types";
 import { Icon } from "../Icons";
 import { JobCard } from "../JobCard";
@@ -2083,8 +2087,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     if (sessionStatus !== "authenticated") {
       await signIn("google", {
         callbackUrl: "/you?yt_connect=1",
-        prompt: "select_account",
-      });
+      }, googleYouTubeAuthorizationParams({ selectAccount: true }));
       return;
     }
 
@@ -2101,8 +2104,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       if (errorMessage.includes("youtube_reauth_required")) {
         await signIn("google", {
           callbackUrl: "/you?yt_connect=1",
-          prompt: "consent",
-        });
+        }, googleYouTubeAuthorizationParams());
         return;
       }
       setError(errorMessage);
@@ -2125,14 +2127,35 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const removePlatformAccount = useCallback(
     async (platformKey: PlatformKey, account: ConnectedPlatformAccount) => {
       if (platformKey === "youtube") {
-        // TODO: Wire to backend endpoint when per-account YouTube disconnect is available.
-        setError(`Removing ${account.displayName || "this YouTube account"} is not available yet.`);
+        try {
+          const result = await disconnectYouTubeConnection();
+          setChannelOptions([]);
+          try {
+            const refreshedProfile = await withFreshBackendToken((token) => getMyProfile(token));
+            setProfile(refreshedProfile);
+            hydrateFromProfile(refreshedProfile);
+          } catch {
+            // The disconnect already succeeded; reload will reconcile profile state.
+          }
+          if (
+            result.provider_revocation === "rejected" ||
+            result.provider_revocation === "unavailable"
+          ) {
+            setError(
+              "YouTube was disconnected locally, but Google did not confirm remote revocation. Remove CreatorJobs from your Google Account permissions as a precaution."
+            );
+          } else {
+            setError(null);
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not disconnect YouTube.");
+        }
         return;
       }
       // TODO: Wire to backend endpoint when Instagram disconnect is available.
       setError(`Removing ${account.displayName || "this Instagram account"} is not available yet.`);
     },
-    []
+    [hydrateFromProfile, withFreshBackendToken]
   );
 
   const toggleRoleSelection = useCallback(

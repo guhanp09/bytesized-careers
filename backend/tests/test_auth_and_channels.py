@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from conftest import (
     TestSessionLocal,
     google_id_token_for_test,
+    google_oauth_exchange_headers,
     valid_published_job_payload,
 )
 from httpx import AsyncClient
@@ -488,7 +489,7 @@ async def test_password_reset_email_failure_returns_safe_error(
     )
 
 
-async def test_google_oauth_upsert_and_refresh_channels(
+async def test_verified_google_oauth_exchange_and_refresh_channels(
     client: AsyncClient, monkeypatch
 ) -> None:
     async def fake_fetch_user_youtube_channels(_access_token: str) -> list[YouTubeChannelResult]:
@@ -511,9 +512,12 @@ async def test_google_oauth_upsert_and_refresh_channels(
 
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
+        headers=google_oauth_exchange_headers(),
         json={
             "id_token": google_id_token_for_test(
-                email="oauth-user@example.com", subject="google-account-123"
+                email="oauth-user@example.com",
+                subject="google-account-123",
+                access_token="token-abc",
             ),
             "access_token": "token-abc",
             "refresh_token": "refresh-abc",
@@ -531,7 +535,11 @@ async def test_google_oauth_upsert_and_refresh_channels(
     assert len(me_after_exchange_data["verified_youtube_channels"]) == 1
     assert me_after_exchange_data["verified_youtube_channels"][0]["channel_id"] == "UC_TEST_123"
 
-    upsert = await client.post(
+    # Provider credentials may only arrive with an independently verified Google
+    # identity. The former bearer-authenticated upsert let a caller attach an
+    # unrelated provider token to their account and was therefore not a valid
+    # product contract.
+    unverified_upsert = await client.post(
         "/api/v1/me/oauth/google/upsert",
         headers={"Authorization": f"Bearer {bearer}"},
         json={
@@ -541,7 +549,7 @@ async def test_google_oauth_upsert_and_refresh_channels(
             "scope": "openid email profile https://www.googleapis.com/auth/youtube.readonly",
         },
     )
-    assert upsert.status_code == 200
+    assert unverified_upsert.status_code == 404
 
     refresh = await client.post(
         "/api/v1/me/youtube/refresh",
@@ -652,9 +660,12 @@ async def test_youtube_job_create_requires_linked_channel(
 
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
+        headers=google_oauth_exchange_headers(),
         json={
             "id_token": google_id_token_for_test(
-                email="poster-user@example.com", subject="google-poster-account"
+                email="poster-user@example.com",
+                subject="google-poster-account",
+                access_token="token-post",
             ),
             "access_token": "token-post",
             "refresh_token": "refresh-post",

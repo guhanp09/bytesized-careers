@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -46,3 +47,16 @@ class YouTubeChannelsResponse(BaseModel):
 class YouTubeRefreshResponse(BaseModel):
     status: str = "ok"
     channels: list[MeYouTubeChannelRead]
+
+
+class YouTubeDisconnectResponse(BaseModel):
+    status: str = "ok"
+    disconnected: bool = True
+    provider_revocation: Literal[
+        "confirmed",
+        "already_invalid",
+        "rejected",
+        "unavailable",
+        "not_applicable",
+    ]
+    channel_links_removed: int = Field(ge=0)

@@ -8,6 +8,7 @@ import { Icon } from "../components/Icons";
 import { isEmailAuthEnabled } from "../lib/authVisibility";
 import { registerWithEmail, resendVerification } from "../lib/backendClient";
 import { shouldShowDevEmailInboxLink } from "../lib/devEmailInbox";
+import { GOOGLE_ACCOUNT_SELECTION_PARAMS } from "../lib/googleOAuthPolicy";
 
 type AuthMode = "login" | "signup";
 
@@ -19,7 +20,7 @@ const getAuthErrorMessage = (value: string | null) => {
     case "OAuthSignin":
     case "OAuthCallback":
     case "OAuthCreateAccount":
-      return "YouTube login failed during the Google callback. Check Google OAuth credentials and redirect URIs.";
+      return "Google sign-in failed during the callback. Check Google OAuth credentials and redirect URIs.";
     case "AccessDenied":
       return "Google sign-in was cancelled or access was denied.";
     case "Callback":
@@ -219,7 +220,7 @@ export default function AuthPage() {
     }
   };
 
-  const continueWithYouTube = async () => {
+  const continueWithGoogle = async () => {
     setError(null);
     setNotice(null);
     setVerificationUrl(null);
@@ -230,12 +231,10 @@ export default function AuthPage() {
         {
           callbackUrl: nextAfterAuth,
         },
-        {
-          prompt: "consent select_account",
-        }
+        GOOGLE_ACCOUNT_SELECTION_PARAMS
       );
     } catch {
-      setError("Could not start YouTube login. Check your Google OAuth setup and try again.");
+      setError("Could not start Google sign-in. Check your Google OAuth setup and try again.");
       setBusy(false);
     }
   };
@@ -427,7 +426,7 @@ export default function AuthPage() {
 
         <button
           type="button"
-          onClick={continueWithYouTube}
+          onClick={continueWithGoogle}
           disabled={busy}
           className={[
             emailAuthEnabled ? "" : "mt-5",
@@ -435,8 +434,8 @@ export default function AuthPage() {
             busy ? "opacity-60 pointer-events-none" : "hover:bg-white/[0.08]",
           ].join(" ")}
         >
-          <Icon name="youtube" className="h-4 w-4" />
-          {busy ? "Starting YouTube login..." : "Continue with YouTube"}
+          <Icon name="log-in" className="h-4 w-4" />
+          {busy ? "Starting Google sign-in..." : "Continue with Google"}
         </button>
 
         <p className="mt-4 text-xs text-muted">

@@ -6,7 +6,11 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from conftest import TestSessionLocal, google_id_token_for_test
+from conftest import (
+    TestSessionLocal,
+    google_id_token_for_test,
+    google_oauth_exchange_headers,
+)
 from pydantic import SecretStr
 from sqlalchemy import select
 
@@ -19,6 +23,7 @@ from app.core.oauth_credentials import (
     OAuthCredentialValues,
     build_oauth_credential_cipher,
 )
+from app.core.oauth_scopes import GOOGLE_YOUTUBE_READONLY_SCOPE
 from app.models import OAuthAccount
 from app.services.oauth_credential_storage import OAuthCredentialStorage
 from app.services.youtube_service import YouTubeChannelResult
@@ -189,6 +194,29 @@ def test_encrypted_only_storage_clears_plaintext_and_preserves_refresh_on_update
     assert account.refresh_token is None
 
 
+@pytest.mark.parametrize("write_mode", ["plaintext", "dual", "encrypted_only"])
+def test_storage_clear_removes_every_credential_copy(write_mode: str) -> None:
+    storage = OAuthCredentialStorage(
+        cipher=None if write_mode == "plaintext" else _cipher(),
+        write_mode=write_mode,
+    )
+    account = _account(expires_at=123, scope=GOOGLE_YOUTUBE_READONLY_SCOPE)
+    storage.write(
+        account,
+        access_token="access-secret",
+        refresh_token="refresh-secret",
+        preserve_refresh_token=False,
+    )
+
+    storage.clear(account)
+
+    assert account.access_token is None
+    assert account.refresh_token is None
+    assert account.access_token_ciphertext is None
+    assert account.refresh_token_ciphertext is None
+    assert account.credentials_encrypted_at is None
+
+
 def test_encrypted_only_storage_fails_closed_without_plaintext_fallback() -> None:
     account = _account(access_token="legacy-access", refresh_token="legacy-refresh")
     storage = OAuthCredentialStorage(cipher=_cipher(), write_mode="encrypted_only")
@@ -264,19 +292,25 @@ async def test_google_exchange_and_youtube_refresh_use_encrypted_credentials(
         "app.services.me_service.fetch_user_youtube_channels",
         fake_fetch,
     )
+    monkeypatch.setattr(
+        "app.services.auth_service.fetch_user_youtube_channels",
+        fake_fetch,
+    )
 
     subject = f"encrypted-google-{uuid.uuid4()}"
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
+        headers=google_oauth_exchange_headers(),
         json={
             "id_token": google_id_token_for_test(
                 email=f"{subject}@example.com",
                 subject=subject,
+                access_token="provider-access-secret",
             ),
             "access_token": "provider-access-secret",
             "refresh_token": "provider-refresh-secret",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
-            "scope": "openid email profile",
+            "scope": f"openid email profile {GOOGLE_YOUTUBE_READONLY_SCOPE}",
         },
     )
     assert exchange.status_code == 200, exchange.text
@@ -302,6 +336,11 @@ async def test_google_exchange_and_youtube_refresh_use_encrypted_credentials(
         headers={"Authorization": f"Bearer {exchange.json()['access_token']}"},
     )
     assert refresh.status_code == 200, refresh.text
-    assert observed_access_tokens == ["provider-access-secret"]
+    # Incremental consent syncs once during the verified callback, then the
+    # explicit refresh proves the encrypted credential can be read again.
+    assert observed_access_tokens == [
+        "provider-access-secret",
+        "provider-access-secret",
+    ]
     assert "provider-access-secret" not in refresh.text
     assert "provider-refresh-secret" not in refresh.text

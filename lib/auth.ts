@@ -22,6 +22,10 @@ import {
   readStrongAuthGoogleReauthentication,
   rememberStrongAuthGoogleReauthentication,
 } from "./strongAuthReauthentication";
+import {
+  GOOGLE_IDENTITY_AUTHORIZATION_PARAMS,
+  hasGoogleYouTubeReadScope,
+} from "./googleOAuthPolicy";
 
 /**
  * Same loopback rule as lib/backendClient.ts: `localhost` resolves to ::1 first
@@ -168,11 +172,18 @@ const exchangeGoogleOAuthForBackendToken = async (params: {
   expiresAt?: number;
   scope?: string;
 }): Promise<BackendLoginResponse> => {
+  const youtubeAuthorized = hasGoogleYouTubeReadScope(params.scope);
+  const internalExchangeSecret = process.env.GOOGLE_OAUTH_EXCHANGE_SECRET;
   let response: Response;
   try {
     response = await fetch(`${getBackendBaseUrl()}/auth/oauth/google`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(youtubeAuthorized && internalExchangeSecret
+          ? { "X-CreatorJobs-OAuth-Exchange": internalExchangeSecret }
+          : {}),
+      },
       cache: "no-store",
       body: JSON.stringify({
         id_token: params.idToken,
@@ -203,11 +214,7 @@ const providers = [
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     authorization: {
-      params: {
-        scope: "openid email profile https://www.googleapis.com/auth/youtube.readonly",
-        access_type: "offline",
-        prompt: "consent",
-      },
+      params: GOOGLE_IDENTITY_AUTHORIZATION_PARAMS,
     },
   }),
   CredentialsProvider({
@@ -349,12 +356,16 @@ export const authOptions: NextAuthOptions = {
         if (!idToken) {
           throw new Error("Google did not provide an identity token");
         }
+        const youtubeAuthorized = hasGoogleYouTubeReadScope(account.scope);
         const exchange = await exchangeGoogleOAuthForBackendToken({
           idToken,
-          accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          expiresAt: account.expires_at,
-          scope: typeof account.scope === "string" ? account.scope : undefined,
+          accessToken: youtubeAuthorized ? account.access_token : undefined,
+          refreshToken: youtubeAuthorized ? account.refresh_token : undefined,
+          expiresAt: youtubeAuthorized ? account.expires_at : undefined,
+          scope:
+            youtubeAuthorized && typeof account.scope === "string"
+              ? account.scope
+              : undefined,
         });
         applyBackendLoginPayload(token, exchange);
         token.backendUserId = exchange.user.id;

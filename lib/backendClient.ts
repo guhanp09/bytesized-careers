@@ -1394,6 +1394,18 @@ export type BackendYouTubeRefreshResponse = {
   channels: BackendMeYouTubeChannel[];
 };
 
+export type BackendYouTubeDisconnectResponse = {
+  status: string;
+  disconnected: boolean;
+  provider_revocation:
+    | "confirmed"
+    | "already_invalid"
+    | "rejected"
+    | "unavailable"
+    | "not_applicable";
+  channel_links_removed: number;
+};
+
 export type ListJobsParams = {
   q?: string;
   role?: string | string[];
@@ -2358,6 +2370,15 @@ export async function refreshMyYouTubeChannels(
   accessToken: string
 ): Promise<BackendYouTubeRefreshResponse> {
   return requestJson<BackendYouTubeRefreshResponse>("/me/youtube/refresh", {
+    method: "POST",
+    accessToken,
+  });
+}
+
+export async function disconnectMyYouTube(
+  accessToken: string
+): Promise<BackendYouTubeDisconnectResponse> {
+  return requestJson<BackendYouTubeDisconnectResponse>("/me/youtube/disconnect", {
     method: "POST",
     accessToken,
   });

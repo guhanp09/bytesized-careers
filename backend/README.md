@@ -53,6 +53,10 @@ Key vars:
 - `STRONG_AUTH_SECRET_KEYS` + `STRONG_AUTH_SECRET_ACTIVE_KEY_ID` (dedicated,
   rotation-ready AES-256-GCM keyring for TOTP secrets; required in production
   and intentionally separate from OAuth credential encryption)
+- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (server-owned Google identity
+  verification and YouTube refresh client; both are required in production)
+- `GOOGLE_OAUTH_EXCHANGE_SECRET` (random 32+ character server-to-server secret
+  shared with NextAuth; required before feature-scoped Google credentials are accepted)
 - `OAUTH_CREDENTIAL_KEYS` + `OAUTH_CREDENTIAL_ACTIVE_KEY_ID` (server-only
   AES-256-GCM keyring for Google access/refresh credentials)
 - `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;
@@ -196,8 +200,8 @@ Base prefix: `/api/v1`
 - `DELETE /portfolio/items/{id}`
 - `GET /portfolio/{user_id}`
 - `GET /users/{username}/public-profile`
-- `POST /me/oauth/google/upsert`
 - `POST /me/youtube/refresh`
+- `POST /me/youtube/disconnect`
 - `GET /me/youtube/channels`
 - `POST /dev/seed/jobs` (development only, idempotent)
 
@@ -207,8 +211,15 @@ Base prefix: `/api/v1`
 - Verify email with `POST /auth/verify-email`.
 - Resend verification link with `POST /auth/resend-verification` (always returns generic success).
 - Login with `POST /auth/login` to obtain bearer token.
-- Link Google OAuth credentials to the current user with `POST /me/oauth/google/upsert`.
-- Refresh and persist linked YouTube channels with `POST /me/youtube/refresh`.
+- Ordinary Google sign-in requests identity scopes only. Grant YouTube read
+  access through the verified `POST /auth/oauth/google` server exchange; it
+  requires a signed Google ID token bound to the access token and the internal
+  exchange header before credentials are stored.
+- Refresh and persist linked YouTube channels with `POST /me/youtube/refresh`;
+  expired grants refresh server-side and temporary provider failures retain the
+  last known authorization.
+- Revoke and locally clear all YouTube authority with
+  `POST /me/youtube/disconnect`; the stable Google identity binding remains.
 - Read persisted linked channels with `GET /me/youtube/channels`.
 - Manage profile/privacy with `GET/PATCH /me/profile` and `PATCH /me/privacy`.
 - Manage portfolio items with `/me/portfolio` CRUD endpoints.

@@ -19,7 +19,6 @@ from app.schemas import (
     HiringIdentityVerificationResponse,
     MeRead,
     MeYouTubeChannelRead,
-    OAuthUpsertRequest,
     OnboardingIntentUpdateRequest,
     PortfolioItemCreate,
     PortfolioItemRead,
@@ -29,11 +28,11 @@ from app.schemas import (
     ProfileRead,
     ProfileUpdateRequest,
     YouTubeChannelsResponse,
+    YouTubeDisconnectResponse,
     YouTubeRefreshResponse,
 )
 from app.services.me_service import (
     MeService,
-    OAuthAccountNotLinkedError,
     YouTubeAPIError,
     YouTubeReauthRequiredError,
 )
@@ -143,26 +142,6 @@ async def update_onboarding_intent(
 
 
 @router.post(
-    "/oauth/google/upsert",
-    response_model=AuthStatusResponse,
-    summary="Upsert current user's Google OAuth tokens",
-)
-async def upsert_google_oauth(
-    payload: OAuthUpsertRequest,
-    current_user: User = Depends(get_current_user),
-    service: MeService = Depends(get_me_service),
-) -> AuthStatusResponse:
-    try:
-        await service.upsert_google_oauth_account(current_user, payload)
-    except OAuthAccountNotLinkedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Verify Google sign-in before updating OAuth credentials",
-        ) from exc
-    return AuthStatusResponse(status="ok")
-
-
-@router.post(
     "/youtube/refresh",
     response_model=YouTubeRefreshResponse,
     summary="Refresh linked YouTube channels from Google OAuth tokens",
@@ -179,6 +158,22 @@ async def refresh_youtube_channels(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     return YouTubeRefreshResponse(status="ok", channels=_channels_to_response(channels))
+
+
+@router.post(
+    "/youtube/disconnect",
+    response_model=YouTubeDisconnectResponse,
+    summary="Disconnect YouTube and revoke stored Google API authority",
+)
+async def disconnect_youtube(
+    current_user: User = Depends(get_current_user),
+    service: MeService = Depends(get_me_service),
+) -> YouTubeDisconnectResponse:
+    outcome = await service.disconnect_youtube(current_user)
+    return YouTubeDisconnectResponse(
+        provider_revocation=outcome.provider_revocation,
+        channel_links_removed=outcome.channel_links_removed,
+    )
 
 
 @router.get(

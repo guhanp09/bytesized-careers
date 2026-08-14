@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import secrets
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,8 @@ from app.api.deps import (
     get_strong_auth_service,
     resolve_access_token_context,
 )
+from app.core.config import settings
+from app.core.oauth_scopes import has_google_youtube_read_scope
 from app.core.rate_limit import (
     AUTH_EMAIL_LIMIT,
     AUTH_LOGIN_LIMIT,
@@ -60,6 +64,8 @@ from app.services.auth_service import (
     AuthService,
     EmailAlreadyExistsError,
     EmailNotVerifiedError,
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthAuthorizationProviderUnavailableError,
     InvalidCredentialsError,
     InvalidPasswordResetTokenError,
     InvalidUsernameError,
@@ -604,9 +610,33 @@ async def strong_auth_disable(
 )
 async def oauth_google_exchange(
     payload: OAuthGoogleExchangeRequest,
+    internal_exchange_secret: Annotated[
+        str | None,
+        Header(alias="X-CreatorJobs-OAuth-Exchange"),
+    ] = None,
     _limit: None = rate_limit(AUTH_LOGIN_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> LoginResponse:
+    if has_google_youtube_read_scope(payload.scope):
+        configured = (
+            settings.google_oauth_exchange_secret.get_secret_value()
+            if settings.google_oauth_exchange_secret is not None
+            else None
+        )
+        if not configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google authorization is temporarily unavailable",
+            )
+        if (
+            internal_exchange_secret is None
+            or len(internal_exchange_secret) > 512
+            or not secrets.compare_digest(internal_exchange_secret, configured)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Google authorization could not be verified",
+            )
     try:
         user, tokens = await service.exchange_google_oauth(payload)
     except GoogleIdentityVerificationError as exc:
@@ -614,9 +644,15 @@ async def oauth_google_exchange(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Google identity token",
         ) from exc
+    except GoogleOAuthAuthorizationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google authorization could not be verified",
+        ) from exc
     except (
         GoogleIdentityConfigurationError,
         GoogleIdentityProviderUnavailableError,
+        GoogleOAuthAuthorizationProviderUnavailableError,
     ) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

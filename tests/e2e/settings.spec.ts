@@ -206,6 +206,15 @@ async function mockSettingsMutations(page: Page) {
     });
   });
 
+  await page.route("**/api/identity/disconnect", async (route) => {
+    await fulfillJson(route, {
+      ok: true,
+      disconnected: true,
+      provider_revocation: "confirmed",
+      channel_links_removed: 1,
+    });
+  });
+
   await page.route("**/api/v1/notifications/mark-all-read", async (route) => {
     await fulfillJson(route, { status: "ok" });
   });
@@ -352,6 +361,26 @@ test.describe("Settings page", () => {
     await expect(page).toHaveURL(/\/auth\?mode=login&next=%2Fsettings$/);
   });
 
+  test("rejects cross-origin YouTube refresh and disconnect requests", async ({ page, context }) => {
+    await signInAsOwner(context);
+
+    const refresh = await page.request.post("/api/identity/youtube/refresh", {
+      headers: { Origin: "https://attacker.example" },
+    });
+    const disconnect = await page.request.post("/api/identity/disconnect", {
+      headers: {
+        Origin: "https://attacker.example",
+        "Content-Type": "application/json",
+      },
+      data: { platform: "youtube" },
+    });
+
+    expect(refresh.status()).toBe(403);
+    expect(await refresh.json()).toEqual({ error: "origin_rejected" });
+    expect(disconnect.status()).toBe(403);
+    expect(await disconnect.json()).toEqual({ error: "origin_rejected" });
+  });
+
   test("confirms and revokes all backend sessions before signing out locally", async ({ page, context }) => {
     test.slow();
     await signInAsOwner(context);
@@ -401,9 +430,36 @@ test.describe("Settings page", () => {
     await mockSettingsMutations(page);
 
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
-    await page.getByTestId("settings-row-connected-youtube").getByRole("button", { name: /Refresh/ }).click();
+    // Empty accounts enter through Connect; prelinked accounts enter through
+    // Refresh. Both actions exercise the same server-owned refresh contract.
+    await page
+      .getByTestId("settings-row-connected-youtube")
+      .getByRole("button", { name: /Connect|Refresh/ })
+      .click();
 
     await expect(page.getByTestId("settings-row-connected-youtube")).toContainText("Settings E2E Channel");
+    await expect(page).toHaveURL(/\/settings$/);
+  });
+
+  test("disconnects YouTube without signing out of Google", async ({ page, context }) => {
+    await signInAsOwner(context);
+    await mockSettingsMutations(page);
+
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    const row = page.getByTestId("settings-row-connected-youtube");
+    await row.getByRole("button", { name: /Connect/ }).click();
+    await expect(row).toContainText("Settings E2E Channel");
+
+    page.once("dialog", (dialog) => dialog.accept());
+    const disconnectRequest = page.waitForRequest("**/api/identity/disconnect");
+    await row.getByRole("button", { name: "Disconnect" }).click();
+    const request = await disconnectRequest;
+
+    expect(request.method()).toBe("POST");
+    expect(JSON.parse(request.postData() || "{}")).toEqual({ platform: "youtube" });
+    await expect(row).toContainText("YouTube disconnected");
+    await expect(row).toContainText("None connected");
+    await expect(row).not.toContainText("Settings E2E Channel");
     await expect(page).toHaveURL(/\/settings$/);
   });
 

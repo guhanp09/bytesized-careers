@@ -196,6 +196,16 @@ class OAuthCredentialStorage:
             account.access_token = None
             account.refresh_token = None
 
+    @staticmethod
+    def clear(account: OAuthAccount) -> None:
+        """Irrecoverably remove every local copy of provider credentials."""
+
+        account.access_token = None
+        account.refresh_token = None
+        account.access_token_ciphertext = None
+        account.refresh_token_ciphertext = None
+        account.credentials_encrypted_at = None
+
     def _plaintext_source_for_rewrap(self, account: OAuthAccount) -> OAuthCredentialValues:
         """Resolve transitional rows for an explicit operator-owned rewrite.
 

@@ -22,6 +22,7 @@ from app.models.marketplace import (
     TalentListing,
 )
 from app.models.oauth_account import OAuthAccount
+from app.models.oauth_connection_event import OAuthConnectionEvent
 from app.models.password_reset_token import PasswordResetToken
 from app.models.portfolio_item import PortfolioItem
 from app.models.review import Engagement, EngagementReview
@@ -64,6 +65,7 @@ __all__ = [
     "InteractionTransitionRequest",
     "Notification",
     "OAuthAccount",
+    "OAuthConnectionEvent",
     "PasswordResetToken",
     "PortfolioItem",
     "Report",

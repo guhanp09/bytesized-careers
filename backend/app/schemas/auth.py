@@ -83,15 +83,6 @@ class OAuthGoogleExchangeRequest(BaseModel):
     scope: str | None = Field(default=None, max_length=4096)
 
 
-class OAuthUpsertRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    access_token: str | None = Field(default=None, max_length=16384)
-    refresh_token: str | None = Field(default=None, max_length=16384)
-    expires_at: int | None = None
-    scope: str | None = Field(default=None, max_length=4096)
-
-
 class AuthUserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

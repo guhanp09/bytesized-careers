@@ -12,6 +12,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.account_types import PublicAccountType
 from app.core.config import settings
+from app.core.oauth_scopes import (
+    GOOGLE_YOUTUBE_READONLY_SCOPE,
+    has_google_youtube_read_scope,
+)
 from app.core.onboarding_intent import (
     OnboardingIntent,
     normalize_onboarding_intent,
@@ -38,7 +42,11 @@ from app.repositories.auth_repository import (
 )
 from app.schemas.auth import OAuthGoogleExchangeRequest
 from app.services.email_service import capture_dev_auth_email, send_auth_email
-from app.services.google_identity import GoogleIdentityVerifierProtocol, VerifiedGoogleIdentity
+from app.services.google_identity import (
+    GoogleIdentityVerifierProtocol,
+    VerifiedGoogleIdentity,
+    google_access_token_matches_identity,
+)
 from app.services.profile_rules import normalize_username, validate_username_format
 from app.services.youtube_service import (
     YouTubeAPIError,
@@ -71,6 +79,14 @@ class AccountSuspendedError(Exception):
 
 class EmailNotVerifiedError(Exception):
     pass
+
+
+class GoogleOAuthAuthorizationError(Exception):
+    """The Google API credential is absent, unbound, or lacks the claimed grant."""
+
+
+class GoogleOAuthAuthorizationProviderUnavailableError(Exception):
+    """Google could not confirm a feature authorization safely."""
 
 
 class InvalidUsernameError(Exception):
@@ -189,26 +205,34 @@ class AuthService:
         scope: str | None,
     ) -> int:
         if not access_token:
-            return 0
-        # Only call YouTube when OAuth scope includes the channel read scope.
-        if not scope or "youtube.readonly" not in scope:
-            return 0
+            raise GoogleOAuthAuthorizationError(
+                "Google did not return a YouTube access token"
+            )
+        # Only call YouTube when the provider returned the exact channel scope.
+        if not has_google_youtube_read_scope(scope):
+            raise GoogleOAuthAuthorizationError(
+                "Google did not return the YouTube authorization scope"
+            )
 
         try:
             channels = await fetch_user_youtube_channels(access_token)
-        except (YouTubeReauthRequiredError, YouTubeAPIError) as exc:
-            logger.warning(
-                "google_oauth_youtube_sync_skipped",
-                extra={"user_id": str(user.id), "reason": str(exc)},
-            )
-            return 0
+        except YouTubeReauthRequiredError as exc:
+            raise GoogleOAuthAuthorizationError(
+                "Google did not confirm YouTube authorization"
+            ) from exc
+        except YouTubeAPIError as exc:
+            raise GoogleOAuthAuthorizationProviderUnavailableError(
+                "Google could not confirm YouTube authorization"
+            ) from exc
         except Exception as exc:  # pragma: no cover - defensive guard for external API failures
-            logger.warning(
-                "google_oauth_youtube_sync_failed",
-                extra={"user_id": str(user.id), "reason": str(exc)},
-            )
-            return 0
+            raise GoogleOAuthAuthorizationProviderUnavailableError(
+                "Google could not confirm YouTube authorization"
+            ) from exc
 
+        # A successful `mine=true` response is authoritative for the current
+        # Google grant. Remove links no longer returned before recreating the
+        # confirmed set; failed provider calls never reach this mutation.
+        await self.repository.delete_user_youtube_channel_links(user_id=user.id)
         for item in channels:
             channel_row = await self.repository.upsert_youtube_channel(
                 channel_id=item.channel_id,
@@ -224,6 +248,88 @@ class AuthService:
             user.display_name = channels[0].title
 
         return len(channels)
+
+    async def _persist_google_authorization(
+        self,
+        *,
+        user: User,
+        identity: VerifiedGoogleIdentity,
+        payload: OAuthGoogleExchangeRequest,
+    ) -> int:
+        """Persist only feature-scoped Google credentials.
+
+        The verified subject row is always retained as the stable login binding.
+        Identity-only access tokens are neither needed nor stored. A routine
+        login also cannot overwrite a previously granted YouTube credential.
+        """
+
+        youtube_authorized = has_google_youtube_read_scope(payload.scope)
+        if not youtube_authorized:
+            account = await self.repository.upsert_oauth_account(
+                user_id=user.id,
+                provider="google",
+                provider_account_id=identity.subject,
+                access_token=None,
+                refresh_token=None,
+                expires_at=None,
+                scope=None,
+                store_credentials=False,
+            )
+            stored_credentials_present = any(
+                value is not None
+                for value in (
+                    account.access_token,
+                    account.refresh_token,
+                    account.access_token_ciphertext,
+                    account.refresh_token_ciphertext,
+                )
+            )
+            if (
+                stored_credentials_present
+                and not has_google_youtube_read_scope(account.scope)
+            ):
+                # Compatibility cleanup for rows written before identity and
+                # feature authorization were separated. Never erase a valid
+                # youtube.readonly grant during an ordinary login.
+                await self.repository.clear_oauth_credentials(account)
+                await self.repository.add_oauth_connection_event(
+                    user_id=user.id,
+                    oauth_account_id=account.id,
+                    provider="google",
+                    action="google_non_feature_credentials_cleared",
+                )
+            return 0
+
+        if not payload.access_token or not google_access_token_matches_identity(
+            identity,
+            payload.access_token,
+        ):
+            raise GoogleOAuthAuthorizationError(
+                "Google authorization tokens do not belong to the same response"
+            )
+
+        synced_channel_count = await self._sync_youtube_channels_for_user(
+            user=user,
+            access_token=payload.access_token,
+            scope=payload.scope,
+        )
+        account = await self.repository.upsert_oauth_account(
+            user_id=user.id,
+            provider="google",
+            provider_account_id=identity.subject,
+            access_token=payload.access_token,
+            refresh_token=payload.refresh_token,
+            expires_at=payload.expires_at,
+            scope=GOOGLE_YOUTUBE_READONLY_SCOPE,
+            store_credentials=True,
+        )
+        await self.repository.add_oauth_connection_event(
+            user_id=user.id,
+            oauth_account_id=account.id,
+            provider="google",
+            action="youtube_authorized",
+        )
+        return synced_channel_count
 
     @staticmethod
     def _should_log_verification_link() -> bool:
@@ -620,12 +726,16 @@ class AuthService:
                     "google_oauth_concurrent_exchange_converged",
                     extra={"user_id": str(email_user.id)},
                 )
+                await self._persist_google_authorization(
+                    user=email_user,
+                    identity=identity,
+                    payload=payload,
+                )
                 tokens = await self._issue_login_token_pair(
                     email_user,
                     authentication_method="google",
                 )
-                if settings.auth_session_mode != "legacy":
-                    await self.repository.commit()
+                await self.repository.commit()
                 return email_user, tokens
             raise OAuthAccountCollisionError(
                 "Concurrent Google identity linkage conflict"
@@ -706,19 +816,10 @@ class AuthService:
             if user.display_name is None and incoming_display_name:
                 user.display_name = incoming_display_name
 
-        await self.repository.upsert_oauth_account(
-            user_id=user.id,
-            provider="google",
-            provider_account_id=identity.subject,
-            access_token=payload.access_token,
-            refresh_token=payload.refresh_token,
-            expires_at=payload.expires_at,
-            scope=payload.scope,
-        )
-        synced_channel_count = await self._sync_youtube_channels_for_user(
+        synced_channel_count = await self._persist_google_authorization(
             user=user,
-            access_token=payload.access_token,
-            scope=payload.scope,
+            identity=identity,
+            payload=payload,
         )
         tokens = await self._issue_login_token_pair(
             user,

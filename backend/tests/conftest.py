@@ -8,14 +8,17 @@ import sys
 import time
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.api.deps import get_db, get_google_identity_verifier
+from app.core.config import settings
 from app.db.base import Base
 from app.db.session import enable_sqlite_foreign_keys
 from app.main import app
@@ -24,10 +27,18 @@ from app.services.email_service import clear_dev_auth_emails
 from app.services.google_identity import (
     GoogleIdentityVerificationError,
     VerifiedGoogleIdentity,
+    google_oidc_access_token_hash,
 )
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_creatorjobs_backend.db"
 TEST_GOOGLE_CLIENT_ID = "creatorjobs-tests.apps.googleusercontent.com"
+TEST_GOOGLE_OAUTH_EXCHANGE_SECRET = "creatorjobs-test-google-oauth-exchange-secret"
+
+
+def google_oauth_exchange_headers() -> dict[str, str]:
+    return {
+        "X-CreatorJobs-OAuth-Exchange": TEST_GOOGLE_OAUTH_EXCHANGE_SECRET,
+    }
 
 
 def google_id_token_for_test(
@@ -39,6 +50,7 @@ def google_id_token_for_test(
     audience: str = TEST_GOOGLE_CLIENT_ID,
     issuer: str = "https://accounts.google.com",
     expires_at: int | None = None,
+    access_token: str | None = None,
 ) -> str:
     """Create a deterministic credential understood only by the test verifier."""
 
@@ -50,6 +62,9 @@ def google_id_token_for_test(
         "email": email,
         "email_verified": email_verified,
         "name": display_name,
+        "at_hash": (
+            google_oidc_access_token_hash(access_token) if access_token else None
+        ),
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
@@ -95,6 +110,11 @@ class FakeGoogleIdentityVerifier:
             subject=subject,
             email=email.strip().lower(),
             display_name=display_name if isinstance(display_name, str) else None,
+            access_token_hash=(
+                claims.get("at_hash")
+                if isinstance(claims.get("at_hash"), str)
+                else None
+            ),
         )
 
 
@@ -216,3 +236,14 @@ async def clear_dev_auth_email_outbox() -> AsyncGenerator[None, None]:
     clear_dev_auth_emails()
     yield
     clear_dev_auth_emails()
+
+
+@pytest.fixture(autouse=True)
+def configure_test_google_oauth_exchange_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "google_oauth_exchange_secret",
+        SecretStr(TEST_GOOGLE_OAUTH_EXCHANGE_SECRET),
+    )

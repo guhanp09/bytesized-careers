@@ -111,7 +111,10 @@ export default function PlatformLogosRow({
     account: ConnectedPlatformAccount
   ) => {
     if (!isOwnerView || !onRemoveAccount) return;
-    const confirmMessage = `Remove this ${platformLabel} account?`;
+    const confirmMessage =
+      platformKey === "youtube"
+        ? "Disconnect YouTube from CreatorJobs? This removes every verified YouTube channel and revokes stored YouTube access. Google sign-in remains linked."
+        : `Remove this ${platformLabel} account?`;
     if (!window.confirm(confirmMessage)) return;
 
     const accountKey = `${platformKey}:${account.id}`;

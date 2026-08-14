@@ -9,6 +9,7 @@ import LocationAutocompleteField from "../you/LocationAutocompleteField";
 import { copyTextToClipboard } from "../ui";
 import {
   describeActionError,
+  getMyProfile,
   listMyYouTubeChannels,
   logoutAllBackendSessions,
   markAllNotificationsRead,
@@ -25,7 +26,11 @@ import {
   type BackendProfileUpdatePayload,
   type BackendPrivacySettings,
 } from "../../lib/backendClient";
-import { refreshYouTubeConnection } from "../../lib/identity/youtubeConnection";
+import {
+  disconnectYouTubeConnection,
+  refreshYouTubeConnection,
+} from "../../lib/identity/youtubeConnection";
+import { googleYouTubeAuthorizationParams } from "../../lib/googleOAuthPolicy";
 import { getCustomLocationValidationError, normalizeCustomLocationInput } from "../../lib/locationValidation";
 import type { LocationDetails } from "../../lib/locationTypes";
 import {
@@ -203,6 +208,9 @@ export default function SettingsClient({
   const [me, setMe] = useState(initialMe);
   const [profile, setProfile] = useState(initialProfile);
   const [channels, setChannels] = useState(initialChannels);
+  const [channelsUnavailable, setChannelsUnavailable] = useState(
+    loadErrors.channels
+  );
   const [notifications, setNotifications] = useState(initialNotifications);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("account");
   const [activeEditor, setActiveEditor] = useState<string | null>(null);
@@ -493,25 +501,66 @@ export default function SettingsClient({
     try {
       const refreshed = await refreshYouTubeConnection();
       setChannels(refreshed.channels);
+      setChannelsUnavailable(false);
       setFeedback(rowId, { state: "saved" });
     } catch (error) {
       if (error instanceof Error && error.message.includes("youtube_reauth_required")) {
-        await signIn("google", {
-          callbackUrl: "/settings",
-          prompt: "consent",
-        });
+        await signIn(
+          "google",
+          { callbackUrl: "/settings" },
+          googleYouTubeAuthorizationParams()
+        );
         return;
       }
       try {
         const listed = await listMyYouTubeChannels(backendAccessToken);
         setChannels(listed.channels);
+        setChannelsUnavailable(false);
         setFeedback(rowId, { state: "saved" });
       } catch {
+        setChannelsUnavailable(true);
         setFeedback(rowId, {
           state: "error",
           message: describeActionError(error, "Could not refresh YouTube channels."),
         });
       }
+    }
+  };
+
+  const disconnectChannels = async () => {
+    if (
+      !window.confirm(
+        "Disconnect YouTube from CreatorJobs? This removes every verified channel and revokes stored YouTube access. Your Google sign-in remains linked."
+      )
+    ) {
+      return;
+    }
+    const rowId = "connected-youtube";
+    setFeedback(rowId, { state: "saving" });
+    try {
+      const result = await disconnectYouTubeConnection();
+      setChannels([]);
+      setChannelsUnavailable(false);
+      try {
+        applyProfile(await getMyProfile(backendAccessToken));
+      } catch {
+        // The disconnect already succeeded. A reload will reconcile the
+        // profile/avatar reset if this best-effort refresh is unavailable.
+      }
+      const remoteUnconfirmed =
+        result.provider_revocation === "rejected" ||
+        result.provider_revocation === "unavailable";
+      setFeedback(rowId, {
+        state: remoteUnconfirmed ? "error" : "saved",
+        message: remoteUnconfirmed
+          ? "Disconnected locally; Google revocation was not confirmed."
+          : "YouTube disconnected.",
+      });
+    } catch (error) {
+      setFeedback(rowId, {
+        state: "error",
+        message: describeActionError(error, "Could not disconnect YouTube."),
+      });
     }
   };
 
@@ -1107,14 +1156,25 @@ export default function SettingsClient({
             <SettingRow
               rowId="connected-youtube"
               title="Verified YouTube channels"
-              description="Refresh linked channels from your current Google OAuth connection."
-              status={channels.length ? `${channels.length} connected` : loadErrors.channels ? "Unavailable" : "None connected"}
+              description="Connect YouTube only when you need verified channels. Disconnecting removes all linked channels but keeps Google sign-in available."
+              status={channels.length ? `${channels.length} connected` : channelsUnavailable ? "Unavailable" : "None connected"}
               statusTone={channels.length ? "active" : "neutral"}
               feedback={rowFeedback["connected-youtube"]}
               action={
-                <RowActionButton icon="refresh" onClick={() => void refreshChannels()}>
-                  Refresh
-                </RowActionButton>
+                <>
+                  <RowActionButton icon="refresh" onClick={() => void refreshChannels()}>
+                    {channels.length ? "Refresh" : "Connect"}
+                  </RowActionButton>
+                  {channels.length ? (
+                    <RowActionButton
+                      icon="x"
+                      tone="danger"
+                      onClick={() => void disconnectChannels()}
+                    >
+                      Disconnect
+                    </RowActionButton>
+                  ) : null}
+                </>
               }
             >
               {channels.length ? (
@@ -1207,7 +1267,7 @@ export default function SettingsClient({
               title="Sign-in method"
               description={
                 sessionUser.provider === "google"
-                  ? "You sign in with Google. This connection also powers your verified YouTube channels."
+                  ? "You sign in with Google. YouTube channel access is granted separately and can be revoked above."
                   : usesPasswordSignIn
                     ? "You sign in with your email and password."
                     : "The authentication method used for this session."

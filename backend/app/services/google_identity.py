@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -35,6 +38,27 @@ class VerifiedGoogleIdentity:
     subject: str
     email: str
     display_name: str | None
+    access_token_hash: str | None = None
+
+
+def google_oidc_access_token_hash(access_token: str) -> str:
+    """Return the OIDC ``at_hash`` value for Google's RS256 ID tokens."""
+
+    digest = hashlib.sha256(access_token.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest[: len(digest) // 2]).decode().rstrip("=")
+
+
+def google_access_token_matches_identity(
+    identity: VerifiedGoogleIdentity,
+    access_token: str,
+) -> bool:
+    expected = identity.access_token_hash
+    if not expected:
+        return False
+    return hmac.compare_digest(
+        expected,
+        google_oidc_access_token_hash(access_token),
+    )
 
 
 class GoogleIdentityVerifierProtocol(Protocol):
@@ -112,8 +136,24 @@ class GoogleIdentityVerifier:
         if isinstance(raw_name, str):
             display_name = raw_name.strip()[:255] or None
 
+        raw_access_token_hash = claims.get("at_hash")
+        if raw_access_token_hash is not None:
+            if (
+                not isinstance(raw_access_token_hash, str)
+                or len(raw_access_token_hash) != 22
+                or any(
+                    character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                    for character in raw_access_token_hash
+                )
+            ):
+                raise GoogleIdentityVerificationError("Invalid Google identity token")
+            access_token_hash = raw_access_token_hash
+        else:
+            access_token_hash = None
+
         return VerifiedGoogleIdentity(
             subject=subject.strip(),
             email=email,
             display_name=display_name,
+            access_token_hash=access_token_hash,
         )

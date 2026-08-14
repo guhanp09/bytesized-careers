@@ -15,6 +15,7 @@ from app.models import (
     HiringIdentity,
     Job,
     OAuthAccount,
+    OAuthConnectionEvent,
     PasswordResetToken,
     PortfolioItem,
     Role,
@@ -362,8 +363,9 @@ class AuthRepository:
         refresh_token: str | None,
         expires_at: int | None,
         scope: str | None,
+        store_credentials: bool = True,
     ) -> OAuthAccount:
-        row = await self.get_oauth_account_by_provider_subject(
+        row = await self.get_oauth_account_by_provider_subject_for_update(
             provider=provider,
             provider_account_id=provider_account_id,
         )
@@ -383,15 +385,16 @@ class AuthRepository:
                 user_id=user_id,
                 provider=provider,
                 provider_account_id=provider_account_id,
-                expires_at=expires_at,
-                scope=scope,
+                expires_at=expires_at if store_credentials else None,
+                scope=scope if store_credentials else None,
             )
-            self.oauth_credential_storage.write(
-                row,
-                access_token=access_token,
-                refresh_token=refresh_token,
-                preserve_refresh_token=False,
-            )
+            if store_credentials:
+                self.oauth_credential_storage.write(
+                    row,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    preserve_refresh_token=False,
+                )
             self.session.add(row)
             await self.session.flush()
             await self.session.refresh(row)
@@ -401,13 +404,14 @@ class AuthRepository:
             raise OAuthAccountCollisionError(
                 "This Google identity is already linked to another account"
             )
-        self.oauth_credential_storage.write(
-            row,
-            access_token=access_token,
-            refresh_token=refresh_token,
-        )
-        row.expires_at = expires_at
-        row.scope = scope
+        if store_credentials:
+            self.oauth_credential_storage.write(
+                row,
+                access_token=access_token,
+                refresh_token=refresh_token,
+            )
+            row.expires_at = expires_at
+            row.scope = scope
         await self.session.flush()
         await self.session.refresh(row)
         return row
@@ -421,6 +425,23 @@ class AuthRepository:
         stmt: Select[tuple[OAuthAccount]] = select(OAuthAccount).where(
             OAuthAccount.provider == provider,
             OAuthAccount.provider_account_id == provider_account_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_oauth_account_by_provider_subject_for_update(
+        self,
+        *,
+        provider: str,
+        provider_account_id: str,
+    ) -> OAuthAccount | None:
+        stmt: Select[tuple[OAuthAccount]] = (
+            select(OAuthAccount)
+            .where(
+                OAuthAccount.provider == provider,
+                OAuthAccount.provider_account_id == provider_account_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -456,6 +477,59 @@ class AuthRepository:
             .limit(1)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_oauth_account_for_user_for_update(
+        self,
+        *,
+        user_id: UUID,
+        provider: str,
+    ) -> OAuthAccount | None:
+        stmt: Select[tuple[OAuthAccount]] = (
+            select(OAuthAccount)
+            .where(
+                OAuthAccount.user_id == user_id,
+                OAuthAccount.provider == provider,
+            )
+            .order_by(OAuthAccount.updated_at.desc())
+            .limit(1)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def clear_oauth_credentials(self, account: OAuthAccount) -> None:
+        self.oauth_credential_storage.clear(account)
+        account.expires_at = None
+        account.scope = None
+        await self.session.flush()
+
+    async def delete_user_youtube_channel_links(self, *, user_id: UUID) -> int:
+        result = await self.session.execute(
+            delete(UserYouTubeChannel).where(UserYouTubeChannel.user_id == user_id)
+        )
+        return max(int(result.rowcount or 0), 0)
+
+    async def add_oauth_connection_event(
+        self,
+        *,
+        user_id: UUID,
+        oauth_account_id: UUID,
+        provider: str,
+        action: str,
+        provider_revocation_status: str | None = None,
+        channel_links_removed: int = 0,
+    ) -> OAuthConnectionEvent:
+        row = OAuthConnectionEvent(
+            user_id=user_id,
+            oauth_account_id=oauth_account_id,
+            provider=provider,
+            action=action,
+            provider_revocation_status=provider_revocation_status,
+            channel_links_removed=channel_links_removed,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
 
     async def upsert_youtube_channel(
         self,
