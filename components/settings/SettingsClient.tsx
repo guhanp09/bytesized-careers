@@ -9,6 +9,7 @@ import { copyTextToClipboard } from "../ui";
 import {
   describeActionError,
   listMyYouTubeChannels,
+  logoutAllBackendSessions,
   markAllNotificationsRead,
   requestPasswordReset,
   updateMyOnboardingIntent,
@@ -207,6 +208,7 @@ export default function SettingsClient({
   const [rowFeedback, setRowFeedback] = useState<Record<string, RowFeedback>>({});
   const [resetLinkSent, setResetLinkSent] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [confirmingSignOutAll, setConfirmingSignOutAll] = useState(false);
   const feedbackTimers = useRef<Record<string, number>>({});
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -564,6 +566,21 @@ export default function SettingsClient({
   const handleSignOut = () => {
     setSigningOut(true);
     void signOut({ callbackUrl: "/" });
+  };
+
+  const handleSignOutAll = async () => {
+    const rowId = "security-sign-out-all";
+    setFeedback(rowId, { state: "saving" });
+    try {
+      await logoutAllBackendSessions(backendAccessToken);
+      setSigningOut(true);
+      await signOut({ callbackUrl: "/" });
+    } catch (error) {
+      setFeedback(rowId, {
+        state: "error",
+        message: describeActionError(error, "Could not sign out your other sessions."),
+      });
+    }
   };
 
   const sectionButtons = useMemo(
@@ -1226,6 +1243,50 @@ export default function SettingsClient({
                 </RowActionButton>
               }
             />
+
+            <SettingRow
+              rowId="security-sign-out-all"
+              title="Sign out everywhere"
+              description="Revoke every active CreatorJobs session for this account, including this device."
+              feedback={rowFeedback["security-sign-out-all"]}
+              danger
+              action={
+                <RowActionButton
+                  icon="log-out"
+                  tone="danger"
+                  onClick={() => setConfirmingSignOutAll(true)}
+                  disabled={signingOut || rowFeedback["security-sign-out-all"]?.state === "saving"}
+                >
+                  Sign out everywhere
+                </RowActionButton>
+              }
+            >
+              {confirmingSignOutAll ? (
+                <InlinePanel
+                  actions={
+                    <>
+                      <CancelButton
+                        onClick={() => setConfirmingSignOutAll(false)}
+                        disabled={rowFeedback["security-sign-out-all"]?.state === "saving"}
+                      />
+                      <RowActionButton
+                        tone="danger"
+                        onClick={() => void handleSignOutAll()}
+                        disabled={rowFeedback["security-sign-out-all"]?.state === "saving"}
+                      >
+                        {rowFeedback["security-sign-out-all"]?.state === "saving"
+                          ? "Revoking sessions…"
+                          : "Confirm sign out everywhere"}
+                      </RowActionButton>
+                    </>
+                  }
+                >
+                  <p className="text-sm leading-6 text-muted">
+                    You will need to sign in again on every browser and device.
+                  </p>
+                </InlinePanel>
+              ) : null}
+            </SettingRow>
           </SettingsSection>
 
           <SettingsSection

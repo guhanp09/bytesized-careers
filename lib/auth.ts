@@ -7,6 +7,7 @@ import {
   buildSafeBackendSessionFields,
   markBackendRefreshFailed,
   refreshBackendAccessToken,
+  revokeBackendSession,
   shouldRefreshBackendToken,
   type BackendLoginPayload,
 } from "./backendTokenRefresh";
@@ -518,6 +519,31 @@ export const authOptions: NextAuthOptions = {
           | undefined;
       }
       return session;
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      const refreshToken =
+        typeof token.backendRefreshToken === "string"
+          ? token.backendRefreshToken
+          : undefined;
+      const accessToken =
+        typeof token.backendAccessToken === "string"
+          ? token.backendAccessToken
+          : undefined;
+      try {
+        // This event runs inside the same-origin NextAuth route. The refresh
+        // credential stays in the encrypted server-side JWT cookie and is
+        // never serialized into the browser-visible session object.
+        await revokeBackendSession({
+          backendBaseUrl: getBackendBaseUrl(),
+          refreshToken,
+          accessToken,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown error";
+        console.error(`[auth] Backend session revocation failed: ${message}`);
+      }
     },
   },
   secret: process.env.NEXTAUTH_SECRET,

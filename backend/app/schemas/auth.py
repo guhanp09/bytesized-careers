@@ -62,6 +62,17 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(min_length=16)
 
 
+class LogoutRequest(BaseModel):
+    """Server-to-server logout proof; browser sessions never serialize this value."""
+
+    refresh_token: str | None = Field(default=None, min_length=16, max_length=8192)
+
+
+class SessionRevocationResponse(BaseModel):
+    status: str = "ok"
+    revoked_sessions: int = Field(ge=0)
+
+
 class OAuthGoogleExchangeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

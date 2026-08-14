@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.security import hash_password
+from app.core.security import SESSION_ID_CLAIM, decode_refresh_token, hash_password
 from app.models import AuthSession, User
 from app.repositories.auth_repository import AuthRepository
 from app.services import auth_service
@@ -35,15 +35,15 @@ class _UnusedGoogleVerifier:
 
 
 class _CoordinatedRefreshRepository(AuthRepository):
-    """Make both requests reach the credential lock before either proceeds."""
+    """Make both requests reach the family lock before either proceeds."""
 
     def __init__(self, session: AsyncSession, barrier: asyncio.Barrier):
         super().__init__(session)
         self._barrier = barrier
 
-    async def get_auth_refresh_credential_for_update(self, *, token_hash: str):
+    async def get_auth_session_for_update(self, *, session_id: uuid.UUID):
         await asyncio.wait_for(self._barrier.wait(), timeout=5)
-        return await super().get_auth_refresh_credential_for_update(token_hash=token_hash)
+        return await super().get_auth_session_for_update(session_id=session_id)
 
 
 async def _create_user_and_login(
@@ -81,6 +81,24 @@ async def _coordinated_refresh(
             _UnusedGoogleVerifier(),
         )
         return await service.refresh_backend_session(refresh_token)
+
+
+async def _coordinated_logout(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    barrier: asyncio.Barrier,
+):
+    async with factory() as session:
+        service = AuthService(
+            _CoordinatedRefreshRepository(session, barrier),
+            _UnusedGoogleVerifier(),
+        )
+        return await service.revoke_current_session(
+            user_id=user_id,
+            session_id=session_id,
+        )
 
 
 async def test_auth_session_migration_installs_durable_constraints_and_indexes() -> None:
@@ -196,3 +214,50 @@ async def test_concurrent_refresh_has_one_winner_without_revoking_successor(
 
     assert refreshed_user.id == user_id
     assert next_tokens.refresh_token != successful_tokens.refresh_token
+
+
+async def test_refresh_and_logout_share_lock_order_and_finish_revoked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    factory = _session_factory()
+    user_id, original = await _create_user_and_login(factory)
+    session_id = uuid.UUID(decode_refresh_token(original)[SESSION_ID_CLAIM])
+    barrier = asyncio.Barrier(2)
+
+    refresh_outcome, logout_outcome = await asyncio.wait_for(
+        asyncio.gather(
+            _coordinated_refresh(
+                factory,
+                refresh_token=original,
+                barrier=barrier,
+            ),
+            _coordinated_logout(
+                factory,
+                user_id=user_id,
+                session_id=session_id,
+                barrier=barrier,
+            ),
+            return_exceptions=True,
+        ),
+        timeout=10,
+    )
+
+    assert logout_outcome == 1
+    assert isinstance(refresh_outcome, tuple) or isinstance(
+        refresh_outcome, InvalidCredentialsError
+    )
+    candidate_refresh = (
+        refresh_outcome[1].refresh_token
+        if isinstance(refresh_outcome, tuple)
+        else original
+    )
+
+    async with factory() as session:
+        auth_session = await session.get(AuthSession, session_id)
+        assert auth_session is not None
+        assert auth_session.revoked_at is not None
+        assert auth_session.revocation_reason == "logout"
+        service = AuthService(AuthRepository(session), _UnusedGoogleVerifier())
+        with pytest.raises(InvalidCredentialsError):
+            await service.refresh_backend_session(candidate_refresh)

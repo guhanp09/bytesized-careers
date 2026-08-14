@@ -47,6 +47,17 @@ type RefreshFetch = (
   }
 ) => Promise<Pick<Response, "ok" | "json" | "status">>;
 
+type SessionRevocationFetch = (
+  input: string,
+  init: {
+    method: "POST";
+    headers: Record<string, string>;
+    cache: "no-store";
+    body: string;
+    signal: AbortSignal;
+  }
+) => Promise<Pick<Response, "ok" | "status">>;
+
 // NextAuth can invoke its JWT callback more than once for the same browser
 // request burst. A rotating refresh credential is one-time use, so coalesce
 // identical server-side refreshes and let every caller consume the same
@@ -192,6 +203,50 @@ export async function refreshBackendAccessToken({
     if (inFlightBackendRefreshes.get(requestKey) === request) {
       inFlightBackendRefreshes.delete(requestKey);
     }
+  }
+}
+
+export async function revokeBackendSession({
+  backendBaseUrl,
+  refreshToken,
+  accessToken,
+  fetchImpl = fetch,
+  timeoutMs = 3000,
+}: {
+  backendBaseUrl: string;
+  refreshToken?: string | null;
+  accessToken?: string | null;
+  fetchImpl?: SessionRevocationFetch;
+  timeoutMs?: number;
+}): Promise<void> {
+  if (!refreshToken && !accessToken) return;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (!refreshToken && accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(
+      `${backendBaseUrl.replace(/\/+$/, "")}/auth/logout`,
+      {
+        method: "POST",
+        headers,
+        cache: "no-store",
+        body: JSON.stringify(
+          refreshToken ? { refresh_token: refreshToken } : {}
+        ),
+        signal: controller.signal,
+      }
+    );
+    // A repeated/late logout can legitimately find an already-invalid family.
+    // NextAuth must still clear its same-origin cookie in that case.
+    if (!response.ok && response.status !== 401) {
+      throw new Error(`Backend session revocation failed with ${response.status}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

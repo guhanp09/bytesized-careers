@@ -3,6 +3,7 @@ from app.schemas.auth import (
     AuthUserRead,
     LoginRequest,
     LoginResponse,
+    LogoutRequest,
     OAuthGoogleExchangeRequest,
     OAuthUpsertRequest,
     PasswordResetConfirmRequest,
@@ -12,6 +13,7 @@ from app.schemas.auth import (
     RegisterRequest,
     ResendVerificationRequest,
     ResendVerificationResponse,
+    SessionRevocationResponse,
     VerifyEmailRequest,
 )
 from app.schemas.creator_profile import (
@@ -192,6 +194,7 @@ __all__ = [
     "LaunchCheckoutRequest",
     "LoginRequest",
     "LoginResponse",
+    "LogoutRequest",
     "MeRead",
     "MeYouTubeChannelRead",
     "OAuthGoogleExchangeRequest",
@@ -246,6 +249,7 @@ __all__ = [
     "CompletionResponseRequest",
     "ResendVerificationRequest",
     "ResendVerificationResponse",
+    "SessionRevocationResponse",
     "RegisterRequest",
     "RefreshTokenRequest",
     "ReportCreate",

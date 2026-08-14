@@ -352,6 +352,29 @@ test.describe("Settings page", () => {
     await expect(page).toHaveURL(/\/auth\?mode=login&next=%2Fsettings$/);
   });
 
+  test("confirms and revokes all backend sessions before signing out locally", async ({ page, context }) => {
+    test.slow();
+    await signInAsOwner(context);
+    let authorizationHeader: string | null = null;
+    await page.route("**/api/v1/auth/logout-all", async (route) => {
+      if (route.request().method() !== "OPTIONS") {
+        authorizationHeader = route.request().headers()["authorization"] || null;
+      }
+      await fulfillJson(route, { status: "ok", revoked_sessions: 3 });
+    });
+
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    const row = page.getByTestId("settings-row-security-sign-out-all");
+    await row.getByRole("button", { name: "Sign out everywhere", exact: true }).click();
+    await expect(row).toContainText("You will need to sign in again on every browser and device.");
+    await row.getByRole("button", { name: "Confirm sign out everywhere" }).click();
+
+    await page.waitForURL("**/");
+    expect(authorizationHeader).toBe("Bearer e2e-offline-token");
+    await page.goto("/settings", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/auth\?mode=login&next=%2Fsettings$/);
+  });
+
   test("credentials users can send a password reset email", async ({ page, context }) => {
     await signInAsOwner(context, { provider: "credentials" });
 

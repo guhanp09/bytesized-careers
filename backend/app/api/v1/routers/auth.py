@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_auth_service
+from app.api.deps import (
+    AuthenticatedAccessDependency,
+    bearer_scheme,
+    get_auth_service,
+    get_db,
+    resolve_access_token_context,
+)
 from app.core.rate_limit import AUTH_EMAIL_LIMIT, AUTH_LOGIN_LIMIT, AUTH_REGISTER_LIMIT, rate_limit
 from app.repositories.auth_repository import OAuthAccountCollisionError
 from app.schemas import (
@@ -10,6 +18,7 @@ from app.schemas import (
     AuthUserRead,
     LoginRequest,
     LoginResponse,
+    LogoutRequest,
     OAuthGoogleExchangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
@@ -18,6 +27,7 @@ from app.schemas import (
     RegisterRequest,
     ResendVerificationRequest,
     ResendVerificationResponse,
+    SessionRevocationResponse,
     VerifyEmailRequest,
 )
 from app.services.auth_service import (
@@ -218,6 +228,71 @@ async def refresh_backend_session(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     return _login_response(user, tokens)
+
+
+@router.post(
+    "/logout",
+    response_model=SessionRevocationResponse,
+    summary="Revoke the current backend session",
+)
+async def logout(
+    payload: LogoutRequest,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
+) -> SessionRevocationResponse:
+    """Revoke current durable state without trusting a caller-selected session ID."""
+
+    try:
+        if payload.refresh_token is not None:
+            revoked = await service.revoke_session_from_refresh_token(
+                payload.refresh_token
+            )
+        else:
+            if credentials is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Missing session credential",
+                )
+            context = await resolve_access_token_context(
+                session=session,
+                token=credentials.credentials,
+            )
+            if context is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication credentials",
+                )
+            if context.is_qa_persona:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="QA persona sessions cannot manage account sessions",
+                )
+            revoked = await service.revoke_current_session(
+                user_id=context.user.id,
+                session_id=context.session_id,
+            )
+    except InvalidCredentialsError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    return SessionRevocationResponse(revoked_sessions=revoked)
+
+
+@router.post(
+    "/logout-all",
+    response_model=SessionRevocationResponse,
+    summary="Revoke every backend session for the current account",
+)
+async def logout_all(
+    context: AuthenticatedAccessDependency,
+    service: AuthService = Depends(get_auth_service),
+) -> SessionRevocationResponse:
+    if context.is_qa_persona:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="QA persona sessions cannot manage account sessions",
+        )
+    revoked = await service.revoke_all_sessions(user_id=context.user.id)
+    return SessionRevocationResponse(revoked_sessions=revoked)
 
 
 @router.post(

@@ -702,7 +702,12 @@ class AuthService:
         )
         return user, tokens
 
-    async def refresh_backend_session(self, refresh_token: str) -> tuple[User, AuthTokenPair]:
+    @staticmethod
+    def _decode_refresh_identity(
+        refresh_token: str,
+    ) -> tuple[UUID, UUID | None, UUID | None]:
+        """Verify a refresh JWT and return its user/session/credential identity."""
+
         try:
             payload = decode_refresh_token(refresh_token)
         except TokenError as exc:
@@ -711,7 +716,6 @@ class AuthService:
         subject = payload.get("sub")
         if not isinstance(subject, str):
             raise InvalidCredentialsError("Invalid refresh token subject")
-
         try:
             user_id = UUID(subject)
         except ValueError as exc:
@@ -721,8 +725,24 @@ class AuthService:
         credential_claim = payload.get(TOKEN_ID_CLAIM)
         token_version = payload.get(SESSION_TOKEN_VERSION_CLAIM)
         has_persistent_claims = session_claim is not None or credential_claim is not None
+        if not has_persistent_claims:
+            return user_id, None, None
+        if (
+            not isinstance(session_claim, str)
+            or not isinstance(credential_claim, str)
+            or type(token_version) is not int
+            or token_version != 1
+        ):
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+        try:
+            return user_id, UUID(session_claim), UUID(credential_claim)
+        except ValueError as exc:
+            raise InvalidCredentialsError("Invalid or expired refresh token") from exc
 
-        if settings.auth_session_mode == "legacy":
+    async def refresh_backend_session(self, refresh_token: str) -> tuple[User, AuthTokenPair]:
+        user_id, session_id, credential_id = self._decode_refresh_identity(refresh_token)
+
+        if session_id is None and settings.auth_session_mode == "legacy":
             user = await self.repository.get_user_by_id(user_id)
             if user is None:
                 raise InvalidCredentialsError("Invalid refresh token subject")
@@ -730,7 +750,7 @@ class AuthService:
                 raise AccountSuspendedError("Account suspended")
             return user, self.create_token_pair(user)
 
-        if not has_persistent_claims:
+        if session_id is None:
             if settings.auth_session_mode != "migration":
                 raise InvalidCredentialsError("Invalid or expired refresh token")
             user = await self.repository.get_user_by_id(user_id)
@@ -745,28 +765,15 @@ class AuthService:
             await self.repository.commit()
             return user, tokens
 
-        if (
-            not isinstance(session_claim, str)
-            or not isinstance(credential_claim, str)
-            or type(token_version) is not int
-            or token_version != 1
-        ):
-            raise InvalidCredentialsError("Invalid or expired refresh token")
-        try:
-            session_id = UUID(session_claim)
-            credential_id = UUID(credential_claim)
-        except ValueError as exc:
-            raise InvalidCredentialsError("Invalid or expired refresh token") from exc
-
+        # Every session mutation locks the family before any credential row.
+        # This is the shared ordering used by refresh and both logout paths.
+        session = await self.repository.get_auth_session_for_update(session_id=session_id)
         credential = await self.repository.get_auth_refresh_credential_for_update(
             token_hash=hash_refresh_token(refresh_token),
         )
-        if credential is None:
-            await self.repository.rollback()
-            raise InvalidCredentialsError("Invalid or expired refresh token")
-        session = await self.repository.get_auth_session_for_update(session_id=session_id)
         if (
             session is None
+            or credential is None
             or credential.id != credential_id
             or credential.session_id != session_id
             or session.user_id != user_id
@@ -834,3 +841,84 @@ class AuthService:
         )
         await self.repository.commit()
         return user, tokens
+
+    async def revoke_session_from_refresh_token(self, refresh_token: str) -> int:
+        """Revoke the family proven by a server-held refresh credential.
+
+        Used by NextAuth's server-side sign-out event so logout remains
+        effective even after the short-lived access token has expired. Legacy
+        stateless refresh credentials have no durable family to revoke.
+        """
+
+        user_id, session_id, credential_id = self._decode_refresh_identity(refresh_token)
+        if session_id is None:
+            if settings.auth_session_mode == "persistent":
+                raise InvalidCredentialsError("Invalid or expired refresh token")
+            user = await self.repository.get_user_by_id(user_id)
+            if user is None:
+                raise InvalidCredentialsError("Invalid refresh token subject")
+            return 0
+
+        session = await self.repository.get_auth_session_for_update(session_id=session_id)
+        credential = await self.repository.get_auth_refresh_credential_for_update(
+            token_hash=hash_refresh_token(refresh_token),
+        )
+        if (
+            session is None
+            or credential is None
+            or credential.id != credential_id
+            or credential.session_id != session_id
+            or session.user_id != user_id
+        ):
+            await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+
+        was_active = session.revoked_at is None
+        await self.repository.revoke_auth_session(
+            session,
+            revoked_at=datetime.now(UTC),
+            reason="logout",
+        )
+        await self.repository.commit()
+        return int(was_active)
+
+    async def revoke_current_session(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID | None,
+    ) -> int:
+        """Revoke the durable session bound to an authenticated access token."""
+
+        if session_id is None:
+            # A migration/legacy access JWT is still stateless and cannot be
+            # selectively revoked. Its production lifetime is capped at one
+            # hour while the rollout is in migration mode.
+            return 0
+
+        session = await self.repository.get_auth_session_for_update(session_id=session_id)
+        if session is None or session.user_id != user_id:
+            await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid authentication credentials")
+        was_active = session.revoked_at is None
+        await self.repository.revoke_auth_session(
+            session,
+            revoked_at=datetime.now(UTC),
+            reason="logout",
+        )
+        await self.repository.commit()
+        return int(was_active)
+
+    async def revoke_all_sessions(self, *, user_id: UUID) -> int:
+        """Revoke every durable login family owned by one authenticated user."""
+
+        sessions = await self.repository.get_auth_sessions_for_user_for_update(
+            user_id=user_id
+        )
+        count = await self.repository.revoke_auth_sessions(
+            sessions,
+            revoked_at=datetime.now(UTC),
+            reason="logout_all",
+        )
+        await self.repository.commit()
+        return count

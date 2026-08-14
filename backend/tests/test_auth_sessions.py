@@ -15,6 +15,7 @@ from app.core.security import (
     SESSION_ID_CLAIM,
     SESSION_TOKEN_VERSION_CLAIM,
     TOKEN_ID_CLAIM,
+    create_access_token,
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
@@ -325,3 +326,209 @@ async def test_suspension_blocks_new_login_and_revokes_refresh_family(
     assert auth_session.revocation_reason == "account_suspended"
     assert auth_session.revoked_at is not None
     assert credential.revoked_at is not None
+
+
+async def test_refresh_proved_logout_immediately_revokes_only_current_family(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    user = await _create_verified_user()
+    first = (await _login(client, user)).json()
+    second = (await _login(client, user)).json()
+    first_headers = {"Authorization": f"Bearer {first['access_token']}"}
+    second_headers = {"Authorization": f"Bearer {second['access_token']}"}
+
+    assert (await client.get("/api/v1/me", headers=first_headers)).status_code == 200
+    logged_out = await client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": first["refresh_token"]},
+    )
+
+    assert logged_out.status_code == 200
+    assert logged_out.json() == {"status": "ok", "revoked_sessions": 1}
+    assert (await client.get("/api/v1/me", headers=first_headers)).status_code == 401
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": first["refresh_token"]},
+        )
+    ).status_code == 401
+    assert (await client.get("/api/v1/me", headers=second_headers)).status_code == 200
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": second["refresh_token"]},
+        )
+    ).status_code == 200
+
+    repeated = await client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": first["refresh_token"]},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["revoked_sessions"] == 0
+
+
+async def test_access_proved_logout_derives_session_and_rejects_subject_mismatch(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    first_user = await _create_verified_user()
+    second_user = await _create_verified_user()
+    first = (await _login(client, first_user)).json()
+    second = (await _login(client, second_user)).json()
+    second_session_id = decode_access_token(second["access_token"])[SESSION_ID_CLAIM]
+    mismatched_access = create_access_token(
+        str(first_user.id),
+        additional_claims={SESSION_ID_CLAIM: second_session_id},
+    )
+
+    rejected = await client.post(
+        "/api/v1/auth/logout",
+        json={},
+        headers={"Authorization": f"Bearer {mismatched_access}"},
+    )
+    assert rejected.status_code == 401
+    assert (
+        await client.get(
+            "/api/v1/me",
+            headers={"Authorization": f"Bearer {second['access_token']}"},
+        )
+    ).status_code == 200
+
+    accepted = await client.post(
+        "/api/v1/auth/logout",
+        json={},
+        headers={"Authorization": f"Bearer {first['access_token']}"},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["revoked_sessions"] == 1
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": first["refresh_token"]},
+        )
+    ).status_code == 401
+
+
+async def test_logout_all_revokes_every_existing_family_and_allows_new_login(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    user = await _create_verified_user()
+    first = (await _login(client, user)).json()
+    second = (await _login(client, user)).json()
+
+    response = await client.post(
+        "/api/v1/auth/logout-all",
+        headers={"Authorization": f"Bearer {first['access_token']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "revoked_sessions": 2}
+    for token_pair in (first, second):
+        assert (
+            await client.get(
+                "/api/v1/me",
+                headers={"Authorization": f"Bearer {token_pair['access_token']}"},
+            )
+        ).status_code == 401
+        assert (
+            await client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": token_pair["refresh_token"]},
+            )
+        ).status_code == 401
+
+    replacement = await _login(client, user)
+    assert replacement.status_code == 200
+    assert (
+        await client.get(
+            "/api/v1/me",
+            headers={"Authorization": f"Bearer {replacement.json()['access_token']}"},
+        )
+    ).status_code == 200
+
+
+async def test_persistent_access_requires_live_database_session_while_migration_accepts_legacy(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await _create_verified_user()
+    legacy_access = create_access_token(str(user.id))
+    headers = {"Authorization": f"Bearer {legacy_access}"}
+
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    assert (await client.get("/api/v1/me", headers=headers)).status_code == 401
+
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "migration")
+    assert (await client.get("/api/v1/me", headers=headers)).status_code == 200
+
+
+async def test_access_token_is_rejected_after_database_expiry_or_unknown_session(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    user = await _create_verified_user()
+    token_pair = (await _login(client, user)).json()
+    claims = decode_access_token(token_pair["access_token"])
+
+    async with TestSessionLocal() as session:
+        auth_session = await session.get(AuthSession, UUID(claims[SESSION_ID_CLAIM]))
+        assert auth_session is not None
+        auth_session.absolute_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+    expired = await client.get(
+        "/api/v1/me",
+        headers={"Authorization": f"Bearer {token_pair['access_token']}"},
+    )
+    unknown = await client.get(
+        "/api/v1/me",
+        headers={
+            "Authorization": "Bearer "
+            + create_access_token(
+                str(user.id),
+                additional_claims={SESSION_ID_CLAIM: str(uuid4())},
+            )
+        },
+    )
+
+    assert expired.status_code == 401
+    assert unknown.status_code == 401
+
+
+async def test_refresh_logout_rejects_validly_signed_cross_user_session_claims(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    first_user = await _create_verified_user()
+    second_user = await _create_verified_user()
+    first = (await _login(client, first_user)).json()
+    second = (await _login(client, second_user)).json()
+    second_claims = decode_refresh_token(second["refresh_token"])
+    forged_cross_user = create_refresh_token(
+        str(first_user.id),
+        session_id=second_claims[SESSION_ID_CLAIM],
+        token_id=second_claims[TOKEN_ID_CLAIM],
+    )
+
+    response = await client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": forged_cross_user},
+    )
+
+    assert response.status_code == 401
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": second["refresh_token"]},
+        )
+    ).status_code == 200
+    first_session, _ = await _load_session_and_credential(first["refresh_token"])
+    assert first_session.revoked_at is None

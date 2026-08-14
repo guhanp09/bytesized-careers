@@ -233,6 +233,27 @@ class AuthRepository:
         )
         return (await self.session.execute(statement)).scalar_one_or_none()
 
+    async def get_auth_sessions_for_user_for_update(
+        self,
+        *,
+        user_id: UUID,
+    ) -> list[AuthSession]:
+        """Lock a user's session families in a deterministic order.
+
+        Refresh, current-session logout, and all-session logout all acquire an
+        ``auth_sessions`` lock before touching refresh credentials. Keeping one
+        lock order avoids a credential/session deadlock during concurrent
+        rotation and revocation.
+        """
+
+        statement: Select[tuple[AuthSession]] = (
+            select(AuthSession)
+            .where(AuthSession.user_id == user_id)
+            .order_by(AuthSession.id)
+            .with_for_update()
+        )
+        return list((await self.session.execute(statement)).scalars().all())
+
     async def revoke_auth_session(
         self,
         session: AuthSession,
@@ -254,6 +275,35 @@ class AuthRepository:
             .values(revoked_at=revoked_at)
         )
         await self.session.execute(statement)
+
+    async def revoke_auth_sessions(
+        self,
+        sessions: list[AuthSession],
+        *,
+        revoked_at: datetime,
+        reason: str,
+    ) -> int:
+        """Revoke locked session families and every credential they contain."""
+
+        session_ids = [session.id for session in sessions]
+        newly_revoked = 0
+        for session in sessions:
+            if session.revoked_at is None:
+                session.revoked_at = revoked_at
+                session.revocation_reason = reason
+                newly_revoked += 1
+
+        if session_ids:
+            statement = (
+                update(AuthRefreshCredential)
+                .where(
+                    AuthRefreshCredential.session_id.in_(session_ids),
+                    AuthRefreshCredential.revoked_at.is_(None),
+                )
+                .values(revoked_at=revoked_at)
+            )
+            await self.session.execute(statement)
+        return newly_revoked
 
     async def upsert_oauth_account(
         self,

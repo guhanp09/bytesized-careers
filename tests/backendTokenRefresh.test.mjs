@@ -7,6 +7,7 @@ import {
   buildSafeBackendSessionFields,
   markBackendRefreshFailed,
   refreshBackendAccessToken,
+  revokeBackendSession,
   shouldRefreshBackendToken,
 } from "../lib/backendTokenRefresh.ts";
 
@@ -229,4 +230,63 @@ test("refresh rejects a response that omits the rotated refresh credential", asy
     }),
     /no rotated refresh token/
   );
+});
+
+test("server-side logout prefers refresh proof without sending an access header", async () => {
+  const calls = [];
+  await revokeBackendSession({
+    backendBaseUrl: "http://backend.test/api/v1/",
+    refreshToken: "server-held-refresh",
+    accessToken: "fallback-access",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200 };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "http://backend.test/api/v1/auth/logout");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    refresh_token: "server-held-refresh",
+  });
+  assert.equal("Authorization" in calls[0].init.headers, false);
+  assert.equal(calls[0].init.cache, "no-store");
+  assert.ok(calls[0].init.signal instanceof AbortSignal);
+});
+
+test("server-side logout falls back to access proof and treats repeated logout as safe", async () => {
+  const calls = [];
+  await revokeBackendSession({
+    backendBaseUrl: "http://backend.test/api/v1",
+    accessToken: "short-lived-access",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return { ok: false, status: 401 };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(calls[0].init.body), {});
+  assert.equal(calls[0].init.headers.Authorization, "Bearer short-lived-access");
+});
+
+test("server-side logout is bounded and surfaces backend failures", async () => {
+  await assert.rejects(
+    revokeBackendSession({
+      backendBaseUrl: "http://backend.test/api/v1",
+      refreshToken: "refresh",
+      fetchImpl: async () => ({ ok: false, status: 503 }),
+    }),
+    /revocation failed with 503/
+  );
+
+  let calls = 0;
+  await revokeBackendSession({
+    backendBaseUrl: "http://backend.test/api/v1",
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: true, status: 200 };
+    },
+  });
+  assert.equal(calls, 0);
 });

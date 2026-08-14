@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
@@ -18,14 +19,14 @@ from app.core.qa_personas import (
     qa_persona_feature_enabled,
     qa_session_is_revoked,
 )
-from app.core.security import TokenError, decode_access_token
+from app.core.security import SESSION_ID_CLAIM, TokenError, decode_access_token
 from app.db import seed_data_personas as qa_personas
 from app.db.session import get_db_session
 from app.integrations.openai.job_import_adapter import (
     OpenAIJobImportAdapter,
     OpenAIJobImportConfig,
 )
-from app.models import Job, User
+from app.models import AuthSession, Job, User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.job_import_repository import JobImportRepository
 from app.repositories.job_repository import JobRepository
@@ -168,12 +169,19 @@ async def get_profile_service(
     return ProfileService(repository)
 
 
-async def resolve_access_token_user(
+@dataclass(frozen=True)
+class AuthenticatedAccessContext:
+    user: User
+    session_id: UUID | None
+    is_qa_persona: bool = False
+
+
+async def resolve_access_token_context(
     *,
     session: AsyncSession,
     token: str,
-) -> User | None:
-    """Resolve the same trusted backend identity used by HTTP and WebSockets."""
+) -> AuthenticatedAccessContext | None:
+    """Resolve trusted identity and its authoritative durable session family."""
     try:
         payload = decode_access_token(token)
     except TokenError as exc:
@@ -188,7 +196,9 @@ async def resolve_access_token_user(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from exc
 
-    if "qa" in payload:
+    is_qa_persona = "qa" in payload
+    auth_session_id: UUID | None = None
+    if is_qa_persona:
         claims = parse_qa_token_claims(payload)
         if claims is None or not qa_persona_feature_enabled():
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid QA session")
@@ -208,6 +218,52 @@ async def resolve_access_token_user(
             or await qa_session_is_revoked(session, claims.session_id)
         ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="QA session revoked")
+    else:
+        session_claim = payload.get(SESSION_ID_CLAIM)
+        if session_claim is None:
+            if settings.auth_session_mode == "persistent":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token",
+                )
+        else:
+            if not isinstance(session_claim, str):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token",
+                )
+            try:
+                auth_session_id = UUID(session_claim)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token",
+                ) from exc
+
+            auth_session = (
+                await session.execute(
+                    select(AuthSession).where(AuthSession.id == auth_session_id)
+                )
+            ).scalar_one_or_none()
+            now = datetime.now(UTC)
+            absolute_expires_at = (
+                auth_session.absolute_expires_at
+                if auth_session is not None
+                else None
+            )
+            if absolute_expires_at is not None and absolute_expires_at.tzinfo is None:
+                absolute_expires_at = absolute_expires_at.replace(tzinfo=UTC)
+            if (
+                auth_session is None
+                or auth_session.user_id != user_id
+                or auth_session.revoked_at is not None
+                or absolute_expires_at is None
+                or absolute_expires_at <= now
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token",
+                )
 
     stmt = select(User).where(User.id == user_id)
     user = (await session.execute(stmt)).scalar_one_or_none()
@@ -238,7 +294,22 @@ async def resolve_access_token_user(
             await session.commit()
         except Exception:  # pragma: no cover - activity tracking must never block auth
             await session.rollback()
-    return user
+    return AuthenticatedAccessContext(
+        user=user,
+        session_id=auth_session_id,
+        is_qa_persona=is_qa_persona,
+    )
+
+
+async def resolve_access_token_user(
+    *,
+    session: AsyncSession,
+    token: str,
+) -> User | None:
+    """Resolve the same trusted backend identity used by HTTP and WebSockets."""
+
+    context = await resolve_access_token_context(session=session, token=token)
+    return context.user if context is not None else None
 
 
 async def _resolve_user_from_credentials(
@@ -247,6 +318,24 @@ async def _resolve_user_from_credentials(
     credentials: HTTPAuthorizationCredentials,
 ) -> User | None:
     return await resolve_access_token_user(session=session, token=credentials.credentials)
+
+
+async def get_current_access_context(
+    session: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthenticatedAccessContext:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+    context = await resolve_access_token_context(
+        session=session,
+        token=credentials.credentials,
+    )
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+        )
+    return context
 
 
 async def get_optional_current_user(
@@ -275,6 +364,10 @@ async def get_current_user(
 
 CurrentUserDependency = Annotated[User, Depends(get_current_user)]
 AuthenticatedUserDependency = CurrentUserDependency
+AuthenticatedAccessDependency = Annotated[
+    AuthenticatedAccessContext,
+    Depends(get_current_access_context),
+]
 
 
 async def require_authenticated_user(current_user: CurrentUserDependency) -> User:

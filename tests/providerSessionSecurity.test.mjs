@@ -147,6 +147,7 @@ test("NextAuth session callback and frontend types cannot reintroduce provider f
   const postJob = readFileSync("components/PostJobPage.tsx", "utf8");
   const backendClient = readFileSync("lib/backendClient.ts", "utf8");
   const refreshRoute = readFileSync("app/api/identity/youtube/refresh/route.ts", "utf8");
+  const settingsClient = readFileSync("components/settings/SettingsClient.tsx", "utf8");
 
   assert.match(authSource, /clearLegacyProviderCredentialState\(token\)/);
   assert.match(authSource, /session\.user = buildSafeAuthSessionUser\(token, session\.user\)/);
@@ -160,4 +161,8 @@ test("NextAuth session callback and frontend types cannot reintroduce provider f
   assert.match(refreshRoute, /getServerSession\(authOptions\)/);
   assert.match(refreshRoute, /refreshMyYouTubeChannels\(session\.backendAccessToken\)/);
   assert.doesNotMatch(refreshRoute, /providerAccountId|refreshToken|account\.access_token/);
+  assert.match(authSource, /events:\s*{[\s\S]*async signOut\(\{ token \}\)/);
+  assert.match(authSource, /revokeBackendSession\(\{[\s\S]*refreshToken,[\s\S]*accessToken,/);
+  assert.match(settingsClient, /logoutAllBackendSessions\(backendAccessToken\)/);
+  assert.match(backendClient, /"\/auth\/logout-all"/);
 });

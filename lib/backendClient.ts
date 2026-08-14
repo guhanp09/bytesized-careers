@@ -337,6 +337,11 @@ export type BackendAuthStatusResponse = {
   verification_url?: string | null;
 };
 
+export type BackendSessionRevocationResponse = {
+  status: string;
+  revoked_sessions: number;
+};
+
 export type BackendAccountType = "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN";
 export type BackendPublicAccountType = Exclude<BackendAccountType, "ADMIN">;
 export type BackendOnboardingIntent =
@@ -2184,6 +2189,15 @@ export async function confirmPasswordReset(
   return requestJson<BackendPasswordResetResponse>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify({ token, password }),
+  });
+}
+
+export async function logoutAllBackendSessions(
+  accessToken: string
+): Promise<BackendSessionRevocationResponse> {
+  return requestJson<BackendSessionRevocationResponse>("/auth/logout-all", {
+    method: "POST",
+    accessToken,
   });
 }
 
