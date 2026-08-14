@@ -1,7 +1,7 @@
 "use client";
 
 import React, { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { signOut } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 
 import { Icon } from "../Icons";
 import LocationAutocompleteField from "../you/LocationAutocompleteField";
@@ -10,7 +10,6 @@ import {
   describeActionError,
   listMyYouTubeChannels,
   markAllNotificationsRead,
-  refreshMyYouTubeChannels,
   requestPasswordReset,
   updateMyOnboardingIntent,
   updateMyPrivacy,
@@ -24,6 +23,7 @@ import {
   type BackendProfileUpdatePayload,
   type BackendPrivacySettings,
 } from "../../lib/backendClient";
+import { refreshYouTubeConnection } from "../../lib/identity/youtubeConnection";
 import { getCustomLocationValidationError, normalizeCustomLocationInput } from "../../lib/locationValidation";
 import type { LocationDetails } from "../../lib/locationTypes";
 import {
@@ -73,7 +73,6 @@ type SettingsSessionUser = {
   email?: string | null;
   image?: string | null;
   provider?: string;
-  providerAccountId?: string;
   username?: string;
   accountType?: string;
   onboardingIntent?: BackendOnboardingIntent;
@@ -489,10 +488,17 @@ export default function SettingsClient({
     const rowId = "connected-youtube";
     setFeedback(rowId, { state: "saving" });
     try {
-      const refreshed = await refreshMyYouTubeChannels(backendAccessToken);
+      const refreshed = await refreshYouTubeConnection();
       setChannels(refreshed.channels);
       setFeedback(rowId, { state: "saved" });
     } catch (error) {
+      if (error instanceof Error && error.message.includes("youtube_reauth_required")) {
+        await signIn("google", {
+          callbackUrl: "/settings",
+          prompt: "consent",
+        });
+        return;
+      }
       try {
         const listed = await listMyYouTubeChannels(backendAccessToken);
         setChannels(listed.channels);

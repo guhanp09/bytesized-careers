@@ -109,9 +109,10 @@ Frontend API routes:
 | `/api/auth/[...nextauth]` | GET, POST | NextAuth handler | Used by auth/session |
 | `/api/jobs` | POST | Local mock job creation | Used when local mocks are enabled |
 | `/api/identity/status` | GET | Returns verified YouTube identity from backend session | Used by `Header` and dormant `ProfileHeaderCard` |
-| `/api/identity/connect/start` | POST | Fetches YouTube channel options from Google access token | Not used by current primary UI |
-| `/api/identity/select` | POST | Links a selected YouTube identity in local auth store | Not used by current primary UI |
+| `/api/identity/connect/start` | POST | Refreshes YouTube options through the backend-held Google connection | Legacy compatibility route |
+| `/api/identity/select` | POST | Validates a backend-verified channel before linking it in the legacy local identity store | Legacy compatibility route |
 | `/api/identity/disconnect` | POST | Clears identity cookie by platform | Not used by current primary UI |
+| `/api/identity/youtube/refresh` | POST | Authenticated server-owned refresh using backend-held OAuth credentials | Used by YouHub, Post Job, and Settings |
 
 ## 4. Public Job Feed `/`
 
@@ -970,7 +971,6 @@ Auth/session:
 
 Profile and identity:
 
-- `upsertGoogleOAuthForMe`.
 - `refreshMyYouTubeChannels`.
 - `listMyYouTubeChannels`.
 - `getMyProfile`.
@@ -1029,6 +1029,8 @@ Frontend identity API routes also appear dormant in current primary UI:
 - `/api/identity/connect/start`.
 - `/api/identity/select`.
 - `/api/identity/disconnect`.
+
+The active YouTube connection route is `/api/identity/youtube/refresh`; browser code never receives Google provider credentials.
 
 ## 18. Placeholder, Mock, Or Incomplete Interactions
 

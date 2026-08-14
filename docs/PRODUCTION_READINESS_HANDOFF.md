@@ -4,22 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1A — verified Google identity and collision-safe linkage
-NEXT ATOMIC SLICE: Phase 1B — remove browser-visible Google credentials without breaking YouTube connection
-CURRENT HEAD: Phase 1A checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+LAST COMPLETED ATOMIC SLICE: Phase 1B — browser-safe provider sessions and server-owned YouTube refresh
+NEXT ATOMIC SLICE: Phase 1C — finish OAuth linkage concurrency proof, then add rotation-ready encryption for stored Google credentials
+CURRENT HEAD: Phase 1B checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0053_brand_about_enrichment_state
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade reached 0053 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens with google-auth and derives subject/email/name only from signed claims; NextAuth performs the exchange server-to-server; OAuth credential refresh can update only an already verified link
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth forwards them only during the server-side verified exchange, scrubs legacy credential fields from JWT cookies, and exposes an allowlisted public session; browser YouTube flows call authenticated `/api/identity/youtube/refresh`, which uses backend-held credentials
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID (required at production boot and must match the NextAuth Google client ID)
 NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
 KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures, detailed below
-COMMANDS TO RESUME: see "Phase 1A atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: lib/auth.ts; types/next-auth.d.ts; components/you/YouHubClient.tsx; components/PostJobPage.tsx; backend OAuth account model/repository; backend token/session security
+COMMANDS TO RESUME: see "Phase 1B atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: backend/app/models/oauth_account.py; backend/app/repositories/auth_repository.py; backend/app/services/auth_service.py; backend/alembic/versions; backend tests for Google identity; lib/auth.ts; lib/authSession.ts
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1B atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1B
+Status: COMPLETE (Phase 1 remains in progress)
+Initial HEAD: e1276e75b0584a622aaa561db983502cd191a266
+Final HEAD: Phase 1B checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(session): keep Google credentials server-side
+Files materially changed: NextAuth JWT/session callback and declarations; safe-session helper; YouHub, Post Job, and Settings YouTube flows; authenticated YouTube refresh API; legacy identity routes; frontend backend-client credential surface; unit/browser security tests; execution ledger and handoff
+Migrations: None
+Behavior changed: Google provider access/refresh credentials, provider subject, scope/expiry metadata, and raw profile claims are no longer copied into the NextAuth JWT or `/api/auth/session`; existing cookies are scrubbed on their next JWT callback and their JWT subject is normalized to the canonical backend user ID; the public session keeps only the non-secret provider name; browser YouTube refresh/reconnect now calls a same-origin authenticated server route, which delegates to the backend's stored OAuth account; legacy identity routes also use backend-held credentials; Settings now initiates Google re-consent when the backend reports `youtube_reauth_required`
+Security assumptions: the verified Google exchange remains the only creator/updater of a provider link; backend-held OAuth credentials are authoritative; SameSite/HttpOnly NextAuth cookies and current same-origin routing remain intact; provider credentials are still plaintext in the database pending AUTH-004; CreatorJobs backend access tokens remain browser-visible pending the additive persistent-session/browser-boundary work
+Tests run: provider-session security unit suite; all frontend unit tests; TypeScript; ESLint; production build; focused backend Google/auth tests; complete Settings Playwright suite plus direct `/api/auth/session` sentinel test
+Exact results: provider-session security 5 passed; frontend unit 1,119 passed / 0 failed; TypeScript passed; ESLint passed with 0 errors / 33 pre-existing warnings; production build passed and generated 32 static pages; backend focused auth 33 passed / 7 warnings; complete Settings Playwright suite 9 passed, including the direct `/api/auth/session` credential-sentinel regression and server-owned YouTube refresh
+Known external failures: real Google consent/re-consent, provider revocation, and provider outage exercises require configured staging Google credentials; none were used
+Remaining risks: OAuth credentials need at-rest encryption/key rotation and revocation; concurrent provider-link races need deterministic PostgreSQL proof; backend refresh sessions remain stateless/non-revocable; basic Google login still requests offline YouTube scope; full browser/backend cookie boundary and admin strong authentication remain
+Next phase: Phase 1C atomic slice — validate concurrent OAuth-link collision behavior on disposable PostgreSQL, then implement a coherent rotation-ready at-rest credential encryption slice only if migration/test budget remains sufficient
+Important commands: `rg -n 'access_token|refresh_token|provider_account_id' backend/app/models backend/app/repositories backend/app/services`; `cd backend && .venv/bin/python -m alembic heads`; `node --test tests/providerSessionSecurity.test.mjs`; `npx playwright test tests/e2e/settings.spec.ts`
+```
 
 ## Phase 1A atomic checkpoint
 
@@ -147,14 +167,15 @@ Do not weaken these tests without first proving that their asserted product cont
 
 - Phase 1A removed the caller-asserted Google identity takeover: `/auth/oauth/google` now accepts a signed ID token and derives identity only after server verification.
 - Phase 1A also made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Sequential subject/email collision tests pass; concurrent PostgreSQL collision recovery remains to validate before AUTH-002 can become `VALIDATED`.
-- `lib/auth.ts` still copies Google access and refresh tokens, provider metadata, and profile claims into browser-visible session fields. This is the next atomic slice.
-- YouHub and Post Job still use those browser-visible provider credentials to refresh YouTube channel state. Replace this with a server-owned connection contract before deleting the fields; do not silently break YouTube connection.
+- Phase 1B removed Google access/refresh tokens, provider subject, OAuth metadata, and raw claims from the browser session and from the encrypted NextAuth JWT. A sentinel-bearing legacy JWT produced a clean `/api/auth/session` response in Playwright.
+- YouHub, Post Job, Settings, and the legacy identity routes now refresh YouTube through backend-held OAuth credentials. The same-origin `/api/identity/youtube/refresh` route returns channel data or bounded error codes, never provider credentials.
+- Provider credentials remain plaintext in the OAuth account table. At-rest encryption, a rotation contract, log/redaction audit, and revocation are the next credential-security work.
 - Backend refresh tokens are stateless JWTs without one-time rotation, persistence, family revocation, or reuse detection.
 - Access credentials default to 14 days. Password reset, suspension, and logout do not provide complete session-family revocation.
 - Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
 - Admin authorization exists, but strong administrator authentication/MFA enforcement does not.
 
-Phase 1 must remain additive and migration-safe. Do not remove browser-visible provider fields until explicit YouTube connection/reconnection has a tested server-owned replacement.
+Phase 1 must remain additive and migration-safe. The browser-field removal and server-owned YouTube replacement are complete; do not bypass the verified exchange or reintroduce browser provider credentials while implementing storage encryption and persistent sessions.
 
 ## Phase 1 files to read first
 

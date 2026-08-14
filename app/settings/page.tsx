@@ -77,7 +77,6 @@ export default async function SettingsPage() {
             email: session.user.email,
             image: session.user.image,
             provider: session.user.provider,
-            providerAccountId: session.user.providerAccountId,
             username: session.user.username,
             accountType: session.user.accountType,
             onboardingIntent: session.user.onboardingIntent,

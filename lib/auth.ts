@@ -10,6 +10,10 @@ import {
   shouldRefreshBackendToken,
   type BackendLoginPayload,
 } from "./backendTokenRefresh";
+import {
+  buildSafeAuthSessionUser,
+  clearLegacyProviderCredentialState,
+} from "./authSession";
 import { isQaPersonaUiAllowed } from "./qaPersonas";
 
 /**
@@ -245,20 +249,11 @@ export const authOptions: NextAuthOptions = {
     error: "/auth",
   },
   callbacks: {
-    async jwt({ token, account, profile, user, trigger, session }) {
+    async jwt({ token, account, user, trigger, session }) {
       if (account) {
-        token.accessToken = account.access_token;
-        token.refreshToken = account.refresh_token;
         token.provider = account.provider;
-        token.providerAccountId = account.providerAccountId;
-        token.oauthExpiresAt = account.expires_at;
-        if (typeof account.scope === "string") {
-          token.oauthScope = account.scope;
-        }
       }
-      if (profile) {
-        token.profile = profile as Record<string, unknown>;
-      }
+      clearLegacyProviderCredentialState(token);
 
       // Keep the JWT in sync when client-side onboarding updates account type.
       if (trigger === "update" && session?.user) {
@@ -471,29 +466,7 @@ export const authOptions: NextAuthOptions = {
       session.backendUserId = backendSession.backendUserId;
       session.backendAccessTokenExpiresAt = backendSession.backendAccessTokenExpiresAt;
       session.backendAuthError = backendSession.backendAuthError;
-      session.user = {
-        ...session.user,
-        accessToken: token.accessToken as string | undefined,
-        refreshToken: token.refreshToken as string | undefined,
-        provider: token.provider as string | undefined,
-        providerAccountId: token.providerAccountId as string | undefined,
-        oauthExpiresAt: token.oauthExpiresAt as number | undefined,
-        oauthScope: token.oauthScope as string | undefined,
-        profile: token.profile as Record<string, unknown> | undefined,
-        userId: token.sub as string | undefined,
-        backendUserId: token.backendUserId as string | undefined,
-        username: token.username as string | undefined,
-        accountType: token.accountType as "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN" | undefined,
-        accountTypeSelectedAt: token.accountTypeSelectedAt as string | null | undefined,
-        onboardingIntent: token.onboardingIntent as
-          | "LOOKING_FOR_WORK"
-          | "HIRING_CREATOR_TALENT"
-          | "BOTH"
-          | "DECIDE_LATER"
-          | undefined,
-        onboardingIntentSelectedAt: token.onboardingIntentSelectedAt as string | null | undefined,
-        name: (token.displayName as string | undefined) || session.user?.name || undefined,
-      };
+      session.user = buildSafeAuthSessionUser(token, session.user);
 
       const qaUser = token.qaPersonaUser as BackendAuthUser | undefined;
       if (

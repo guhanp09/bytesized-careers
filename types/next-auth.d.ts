@@ -33,13 +33,7 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      accessToken?: string;
-      refreshToken?: string;
       provider?: string;
-      providerAccountId?: string;
-      oauthExpiresAt?: number;
-      oauthScope?: string;
-      profile?: Record<string, unknown>;
       userId?: string;
       backendUserId?: string;
       username?: string;
@@ -47,19 +41,13 @@ declare module "next-auth" {
       accountTypeSelectedAt?: string | null;
       onboardingIntent?: CreatorJobsOnboardingIntent;
       onboardingIntentSelectedAt?: string | null;
-      youtubeChannelId?: string;
     };
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
-    accessToken?: string;
-    refreshToken?: string;
     provider?: string;
-    providerAccountId?: string;
-    oauthExpiresAt?: number;
-    oauthScope?: string;
     backendAccessToken?: string;
     backendTokenType?: string;
     backendRefreshToken?: string;
@@ -73,7 +61,6 @@ declare module "next-auth/jwt" {
     accountTypeSelectedAt?: string | null;
     onboardingIntent?: CreatorJobsOnboardingIntent;
     onboardingIntentSelectedAt?: string | null;
-    profile?: Record<string, unknown>;
     qaPersonaAccessToken?: string;
     qaPersonaAccessTokenExpiresAt?: number;
     qaPersonaKey?: string;

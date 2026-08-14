@@ -1332,13 +1332,6 @@ export type BackendEntitlement = {
   created_at: string;
 };
 
-export type BackendOAuthUpsertPayload = {
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expires_at?: number | null;
-  scope?: string | null;
-};
-
 export type BackendYouTubeChannelsResponse = {
   channels: BackendMeYouTubeChannel[];
 };
@@ -2216,17 +2209,6 @@ export async function updateMyOnboardingIntent(
   return requestJson<BackendMeResponse>("/me/onboarding-intent", {
     method: "PATCH",
     body: JSON.stringify({ onboarding_intent: onboardingIntent }),
-    accessToken,
-  });
-}
-
-export async function upsertGoogleOAuthForMe(
-  accessToken: string,
-  payload: BackendOAuthUpsertPayload
-): Promise<BackendAuthStatusResponse> {
-  return requestJson<BackendAuthStatusResponse>("/me/oauth/google/upsert", {
-    method: "POST",
-    body: JSON.stringify(payload),
     accessToken,
   });
 }

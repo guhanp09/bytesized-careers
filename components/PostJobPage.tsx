@@ -24,12 +24,11 @@ import {
   listMyHiringIdentities,
   listMyYouTubeChannels,
   listRoles,
-  refreshMyYouTubeChannels,
   requestMyHiringIdentityVerification,
   getBrandAboutState,
   updateJob,
-  upsertGoogleOAuthForMe,
 } from "../lib/backendClient";
+import { refreshYouTubeConnection } from "../lib/identity/youtubeConnection";
 import { findToolCatalogEntry } from "../lib/toolCatalog";
 import { ReferenceTimestampNote, ReferenceVideo, StartTimeframe } from "../lib/types";
 import { getJobDraftCompletion } from "../lib/draftCompletion";
@@ -1528,11 +1527,6 @@ export default function PostJobPage() {
   );
   const backendAccessToken = session?.backendAccessToken;
   const activeBackendAccessToken = resolvedBackendAccessToken || backendAccessToken;
-  const oauthProviderAccountId = session?.user?.providerAccountId;
-  const oauthAccessToken = session?.user?.accessToken;
-  const oauthRefreshToken = session?.user?.refreshToken;
-  const oauthExpiresAt = session?.user?.oauthExpiresAt;
-  const oauthScope = session?.user?.oauthScope;
   React.useEffect(() => {
     if (backendAccessToken) {
       setResolvedBackendAccessToken(backendAccessToken);
@@ -2559,24 +2553,10 @@ export default function PostJobPage() {
       return;
     }
 
-    if (!oauthProviderAccountId || !oauthAccessToken) {
-      await signIn("google", {
-        callbackUrl: "/post-job?yt_connect=1",
-        prompt: "consent",
-      });
-      return;
-    }
-
     setIdentityLoading(true);
     setIdentityError(null);
     try {
-      await withFreshBackendToken((token) => upsertGoogleOAuthForMe(token, {
-        access_token: oauthAccessToken,
-        refresh_token: oauthRefreshToken || null,
-        expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
-        scope: typeof oauthScope === "string" ? oauthScope : null,
-      }));
-      const refreshed = await withFreshBackendToken((token) => refreshMyYouTubeChannels(token));
+      const refreshed = await refreshYouTubeConnection();
       applyVerifiedChannels(refreshed.channels);
       if (!refreshed.channels.length) {
         setIdentityError("No YouTube channels were returned for this Google account.");
@@ -2598,13 +2578,7 @@ export default function PostJobPage() {
   }, [
     applyVerifiedChannels,
     activeBackendAccessToken,
-    oauthAccessToken,
-    oauthExpiresAt,
-    oauthProviderAccountId,
-    oauthRefreshToken,
-    oauthScope,
     sessionStatus,
-    withFreshBackendToken,
   ]);
 
   React.useEffect(() => {

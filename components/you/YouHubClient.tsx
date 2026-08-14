@@ -32,16 +32,15 @@ import {
   listMyYouTubeChannels,
   previewPortfolioLink,
   previewPortfolioYouTube,
-  refreshMyYouTubeChannels,
   upsertMyContentStyle,
   upsertMyRoles,
   upsertMyRolesByName,
-  upsertGoogleOAuthForMe,
   uploadMyAvatar,
   uploadMyBanner,
   updateMyPortfolioItem,
   updateMyProfile,
 } from "../../lib/backendClient";
+import { refreshYouTubeConnection } from "../../lib/identity/youtubeConnection";
 import { Job } from "../../lib/types";
 import { Icon } from "../Icons";
 import { JobCard } from "../JobCard";
@@ -1395,11 +1394,6 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const [portfolioFilterSource, setPortfolioFilterSource] = useState<string>("all");
   const [portfolioFilterRole, setPortfolioFilterRole] = useState("");
   const backendToken = resolvedBackendAccessToken || backendAccessToken;
-  const oauthProviderAccountId = session?.user?.providerAccountId;
-  const oauthAccessToken = session?.user?.accessToken;
-  const oauthRefreshToken = session?.user?.refreshToken;
-  const oauthExpiresAt = session?.user?.oauthExpiresAt;
-  const oauthScope = session?.user?.oauthScope;
   const offlineProfileIdentity = useMemo<OfflineProfileIdentity>(() => {
     const email = session?.user?.email || "local@creatorjobs.dev";
     const username = offlineUsernameFrom(session?.user?.username || email);
@@ -2094,25 +2088,9 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       return;
     }
 
-    if (!oauthProviderAccountId || !oauthAccessToken) {
-      await signIn("google", {
-        callbackUrl: "/you?yt_connect=1",
-        prompt: "consent",
-      });
-      return;
-    }
-
     setError(null);
     try {
-      const refreshed = await withFreshBackendToken(async (token) => {
-        await upsertGoogleOAuthForMe(token, {
-          access_token: oauthAccessToken,
-          refresh_token: oauthRefreshToken || null,
-          expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
-          scope: typeof oauthScope === "string" ? oauthScope : null,
-        });
-        return refreshMyYouTubeChannels(token);
-      });
+      const refreshed = await refreshYouTubeConnection();
       setChannelOptions(refreshed.channels || []);
       if (!refreshed.channels?.length) {
         setError("No YouTube channels were returned for this Google account.");
@@ -2130,13 +2108,7 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
       setError(errorMessage);
     }
   }, [
-    oauthAccessToken,
-    oauthExpiresAt,
-    oauthProviderAccountId,
-    oauthRefreshToken,
-    oauthScope,
     sessionStatus,
-    withFreshBackendToken,
   ]);
 
   const connectPlatformAccount = useCallback(

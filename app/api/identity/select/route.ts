@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../../lib/auth";
-import { fetchYouTubeChannels } from "../../../../lib/identity/youtube";
+import { listMyYouTubeChannels } from "../../../../lib/backendClient";
 import { linkUserToIdentity } from "../../../../lib/auth/store";
 import { IdentityPlatform } from "../../../../lib/identity/types";
 
@@ -25,13 +25,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  const accessToken = session?.user?.accessToken;
-  if (!accessToken) {
+  const backendToken = session?.backendAccessToken;
+  if (!backendToken || session.backendAuthError) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
-  const channels = await fetchYouTubeChannels(accessToken);
-  const identity = channels.find((c) => c.brandId === brandId);
+  let channels;
+  try {
+    channels = (await listMyYouTubeChannels(backendToken)).channels;
+  } catch {
+    return NextResponse.json({ error: "Could not load verified channels." }, { status: 502 });
+  }
+  const channel = channels.find((item) => item.channel_id === brandId);
+  const identity = channel
+    ? {
+        platform: "youtube" as const,
+        brandId: channel.channel_id,
+        name: channel.title,
+        imageUrl: channel.thumbnail_url || null,
+        followersCount: null,
+        handle: null,
+        verifiedAt: new Date().toISOString(),
+      }
+    : null;
   if (!identity) {
     return NextResponse.json({ error: "Identity not found." }, { status: 404 });
   }

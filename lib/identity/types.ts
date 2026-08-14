@@ -17,4 +17,5 @@ export type IdentityStatusResponse = {
 
 export type IdentityConnectResponse = {
   options: VerifiedIdentity[];
+  error?: string;
 };

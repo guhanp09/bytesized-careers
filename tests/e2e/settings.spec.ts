@@ -17,7 +17,6 @@ async function signInAsOwner(context: BrowserContext, overrides: Record<string, 
       accountType: "BOTH",
       onboardingIntent: "BOTH",
       provider: "google",
-      providerAccountId: "google-demo-owner",
       ...overrides,
     },
     secret: SESSION_SECRET,
@@ -193,7 +192,7 @@ async function mockSettingsMutations(page: Page) {
     await fulfillJson(route, me({ onboarding_intent: body.onboarding_intent || "BOTH" }));
   });
 
-  await page.route("**/api/v1/me/youtube/refresh", async (route) => {
+  await page.route("**/api/identity/youtube/refresh", async (route) => {
     await fulfillJson(route, {
       status: "ok",
       channels: [
@@ -213,6 +212,37 @@ async function mockSettingsMutations(page: Page) {
 }
 
 test.describe("Settings page", () => {
+  test("auth session never serializes legacy Google provider credentials", async ({ page, context }) => {
+    await signInAsOwner(context, {
+      sub: "e2e-google-primary-subject-secret",
+      accessToken: "e2e-provider-access-secret",
+      refreshToken: "e2e-provider-refresh-secret",
+      providerAccountId: "e2e-google-subject-secret",
+      oauthExpiresAt: 1_999_999_999,
+      oauthScope: "openid email private-scope",
+      profile: { sub: "e2e-raw-profile-subject" },
+    });
+
+    const response = await page.request.get("/api/auth/session");
+    expect(response.ok()).toBeTruthy();
+    const session = (await response.json()) as { user?: Record<string, unknown> };
+    expect(session.user?.provider).toBe("google");
+    expect(session.user?.userId).toBe("e2e-owner");
+    for (const field of [
+      "accessToken",
+      "refreshToken",
+      "providerAccountId",
+      "oauthExpiresAt",
+      "oauthScope",
+      "profile",
+    ]) {
+      expect(session.user).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify(session)).not.toMatch(
+      /e2e-provider-(?:access|refresh)-secret|e2e-google-(?:primary-)?subject-secret|e2e-raw-profile-subject/
+    );
+  });
+
   test("signed-out users are redirected to login with the settings return path", async ({ page }) => {
     await page.goto("/settings", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/auth\?mode=login&next=%2Fsettings$/);
@@ -323,7 +353,7 @@ test.describe("Settings page", () => {
   });
 
   test("credentials users can send a password reset email", async ({ page, context }) => {
-    await signInAsOwner(context, { provider: "credentials", providerAccountId: undefined });
+    await signInAsOwner(context, { provider: "credentials" });
 
     await page.route("**/api/v1/auth/password-reset/request", async (route) => {
       await fulfillJson(route, {

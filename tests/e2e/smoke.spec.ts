@@ -16,7 +16,6 @@ async function signInAsCandidate(context: BrowserContext) {
       backendUserId: "e2e-candidate",
       accountType: "TALENT",
       provider: "google",
-      providerAccountId: "google-candidate-e2e",
     },
     secret: SESSION_SECRET,
   });
