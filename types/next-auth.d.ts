@@ -61,6 +61,8 @@ declare module "next-auth/jwt" {
     accountTypeSelectedAt?: string | null;
     onboardingIntent?: CreatorJobsOnboardingIntent;
     onboardingIntentSelectedAt?: string | null;
+    strongAuthGoogleReauthIdToken?: string;
+    strongAuthGoogleReauthExpiresAt?: number;
     qaPersonaAccessToken?: string;
     qaPersonaAccessTokenExpiresAt?: number;
     qaPersonaKey?: string;

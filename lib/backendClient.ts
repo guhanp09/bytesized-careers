@@ -342,6 +342,54 @@ export type BackendSessionRevocationResponse = {
   revoked_sessions: number;
 };
 
+export type BackendStrongAuthMethod = "totp" | "recovery_code";
+
+export type BackendStrongAuthStatus = {
+  required: boolean;
+  enrolled: boolean;
+  enrollment_pending: boolean;
+  enrollment_expires_at?: string | null;
+  recovery_codes_remaining: number;
+  strong_auth_satisfied: boolean;
+  strong_auth_method?: BackendStrongAuthMethod | "webauthn" | null;
+  strong_auth_expires_at?: string | null;
+  available_methods: BackendStrongAuthMethod[];
+};
+
+export type BackendStrongAuthEnrollment = {
+  secret: string;
+  provisioning_uri: string;
+  expires_at: string;
+};
+
+export type BackendStrongAuthVerification = {
+  status: string;
+  method: BackendStrongAuthMethod;
+  expires_at: string;
+  recovery_codes_remaining: number;
+};
+
+export type BackendStrongAuthEnrollmentConfirmation =
+  BackendStrongAuthVerification & {
+    recovery_codes: string[];
+  };
+
+export type BackendStrongAuthRecoveryCodes = {
+  status: string;
+  recovery_codes: string[];
+  expires_at: string;
+};
+
+export type BackendStrongAuthDisableResponse = {
+  status: string;
+  revoked_sessions: number;
+};
+
+export type BackendStrongAuthPrimaryCredential = {
+  password?: string;
+  google_id_token?: string;
+};
+
 export type BackendAccountType = "TALENT" | "EMPLOYER" | "BOTH" | "ADMIN";
 export type BackendPublicAccountType = Exclude<BackendAccountType, "ADMIN">;
 export type BackendOnboardingIntent =
@@ -2198,6 +2246,85 @@ export async function logoutAllBackendSessions(
   return requestJson<BackendSessionRevocationResponse>("/auth/logout-all", {
     method: "POST",
     accessToken,
+  });
+}
+
+export async function getBackendStrongAuthStatus(
+  accessToken: string
+): Promise<BackendStrongAuthStatus> {
+  return requestJson<BackendStrongAuthStatus>("/auth/strong-auth/status", {
+    accessToken,
+    timeoutMs: 1500,
+  });
+}
+
+export async function startBackendStrongAuthEnrollment(
+  accessToken: string,
+  primary: BackendStrongAuthPrimaryCredential
+): Promise<BackendStrongAuthEnrollment> {
+  return requestJson<BackendStrongAuthEnrollment>("/auth/strong-auth/totp/enroll", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({ primary }),
+  });
+}
+
+export async function confirmBackendStrongAuthEnrollment(
+  accessToken: string,
+  code: string
+): Promise<BackendStrongAuthEnrollmentConfirmation> {
+  return requestJson<BackendStrongAuthEnrollmentConfirmation>(
+    "/auth/strong-auth/totp/confirm",
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify({ code }),
+    }
+  );
+}
+
+export async function challengeBackendStrongAuth(
+  accessToken: string,
+  method: BackendStrongAuthMethod,
+  code: string
+): Promise<BackendStrongAuthVerification> {
+  return requestJson<BackendStrongAuthVerification>("/auth/strong-auth/challenge", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({ method, code }),
+  });
+}
+
+export async function regenerateBackendStrongAuthRecoveryCodes(
+  accessToken: string,
+  code: string
+): Promise<BackendStrongAuthRecoveryCodes> {
+  return requestJson<BackendStrongAuthRecoveryCodes>(
+    "/auth/strong-auth/recovery-codes/regenerate",
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify({ code }),
+    }
+  );
+}
+
+export async function disableBackendStrongAuth(
+  accessToken: string,
+  {
+    method,
+    code,
+    primary,
+  }: {
+    method: BackendStrongAuthMethod;
+    code: string;
+    primary: BackendStrongAuthPrimaryCredential;
+  }
+): Promise<BackendStrongAuthDisableResponse> {
+  return requestJson<BackendStrongAuthDisableResponse>("/auth/strong-auth/disable", {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({ method, code, primary }),
   });
 }
 

@@ -138,6 +138,7 @@ async def test_password_enrollment_is_encrypted_confirmed_and_audited(
     assert status_before.status_code == 200
     assert status_before.headers["cache-control"] == "no-store"
     assert status_before.json() == {
+        "required": True,
         "enrolled": False,
         "enrollment_pending": False,
         "enrollment_expires_at": None,
@@ -573,11 +574,13 @@ async def test_non_admin_and_unconfigured_enrollment_fail_closed(
     admin_access = str(admin["access_token"])
     monkeypatch.setattr(settings, "strong_auth_secret_keys", None)
     monkeypatch.setattr(settings, "strong_auth_secret_active_key_id", None)
+    monkeypatch.setattr(settings, "admin_strong_auth_required", False)
     status_response = await client.get(
         "/api/v1/auth/strong-auth/status",
         headers=_auth(admin_access),
     )
     assert status_response.status_code == 200
+    assert status_response.json()["required"] is False
     unavailable = await client.post(
         "/api/v1/auth/strong-auth/totp/enroll",
         headers=_auth(admin_access),

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { notFound } from "next/navigation";
 import AdminShell from "../../components/admin/AdminShell";
+import { AdminStrongAuthBoundary } from "../../components/security/StrongAuthControls";
 import { authOptions } from "../../lib/auth";
 import { isProductionRuntime } from "../../lib/backendClient";
 import { isDevToolsAllowed } from "../../lib/devTools";
@@ -22,13 +23,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <main className="min-h-[calc(100dvh-56px)] bg-[#0b0b0f] text-white">
-      <AdminShell
-        accessToken={session.backendAccessToken}
-        environment={isProductionRuntime() ? "production" : "development"}
-        devToolsAllowed={isDevToolsAllowed()}
+      <AdminStrongAuthBoundary
+        provider={session.user.provider}
+        failClosed={isProductionRuntime()}
       >
-        {children}
-      </AdminShell>
+        <AdminShell
+          accessToken={session.backendAccessToken}
+          environment={isProductionRuntime() ? "production" : "development"}
+          devToolsAllowed={isDevToolsAllowed()}
+        >
+          {children}
+        </AdminShell>
+      </AdminStrongAuthBoundary>
     </main>
   );
 }

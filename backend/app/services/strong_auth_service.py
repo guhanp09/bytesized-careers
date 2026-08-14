@@ -108,6 +108,7 @@ class BaseAccessContext(Protocol):
 
 @dataclass(frozen=True)
 class StrongAuthStatus:
+    required: bool
     enrolled: bool
     enrollment_pending: bool
     enrollment_expires_at: datetime | None
@@ -522,6 +523,7 @@ class StrongAuthService:
             now=now,
         )
         return StrongAuthStatus(
+            required=settings.admin_strong_auth_required,
             enrolled=enrolled,
             enrollment_pending=pending,
             enrollment_expires_at=pending_expiry if pending else None,

@@ -4,6 +4,7 @@ import React, { type ChangeEvent, useEffect, useMemo, useRef, useState } from "r
 import { signIn, signOut } from "next-auth/react";
 
 import { Icon } from "../Icons";
+import { AdminStrongAuthSettings } from "../security/StrongAuthControls";
 import LocationAutocompleteField from "../you/LocationAutocompleteField";
 import { copyTextToClipboard } from "../ui";
 import {
@@ -1214,6 +1215,10 @@ export default function SettingsClient({
               status={signInMethodLabel(sessionUser.provider)}
               statusTone="readonly"
             />
+
+            {sessionUser.accountType === "ADMIN" ? (
+              <AdminStrongAuthSettings provider={sessionUser.provider} />
+            ) : null}
 
             {usesPasswordSignIn && email.includes("@") ? (
               <SettingRow

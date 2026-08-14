@@ -163,6 +163,8 @@ test("NextAuth session callback and frontend types cannot reintroduce provider f
   assert.doesNotMatch(refreshRoute, /providerAccountId|refreshToken|account\.access_token/);
   assert.match(authSource, /events:\s*{[\s\S]*async signOut\(\{ token \}\)/);
   assert.match(authSource, /revokeBackendSession\(\{[\s\S]*refreshToken,[\s\S]*accessToken,/);
+  assert.doesNotMatch(authSource, /session\.strongAuthGoogleReauth(?:IdToken|ExpiresAt)\s*=/);
+  assert.doesNotMatch(declarations.split('declare module "next-auth/jwt"')[0], /strongAuthGoogleReauth/);
   assert.match(settingsClient, /logoutAllBackendSessions\(backendAccessToken\)/);
   assert.match(backendClient, /"\/auth\/logout-all"/);
 });

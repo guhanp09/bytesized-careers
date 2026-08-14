@@ -429,6 +429,7 @@ async def strong_auth_status(
         if result.recovery_codes_remaining > 0:
             available_methods.append("recovery_code")
     return StrongAuthStatusResponse(
+        required=result.required,
         enrolled=result.enrolled,
         enrollment_pending=result.enrollment_pending,
         enrollment_expires_at=result.enrollment_expires_at,

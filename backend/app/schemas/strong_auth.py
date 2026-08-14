@@ -43,6 +43,7 @@ class StrongAuthDisableRequest(StrongAuthCodeRequest):
 
 
 class StrongAuthStatusResponse(BaseModel):
+    required: bool
     enrolled: bool
     enrollment_pending: bool
     enrollment_expires_at: datetime | None = None

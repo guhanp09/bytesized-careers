@@ -5,6 +5,7 @@ import {
   BACKEND_TOKEN_REFRESH_BUFFER_MS,
   applyBackendLoginPayload,
   buildSafeBackendSessionFields,
+  jwtExpiresAtMs,
   markBackendRefreshFailed,
   refreshBackendAccessToken,
   revokeBackendSession,
@@ -16,6 +17,11 @@ import {
   clearLegacyProviderCredentialState,
 } from "./authSession";
 import { isQaPersonaUiAllowed } from "./qaPersonas";
+import {
+  clearStrongAuthGoogleReauthentication,
+  readStrongAuthGoogleReauthentication,
+  rememberStrongAuthGoogleReauthentication,
+} from "./strongAuthReauthentication";
 
 /**
  * Same loopback rule as lib/backendClient.ts: `localhost` resolves to ::1 first
@@ -255,6 +261,7 @@ export const authOptions: NextAuthOptions = {
         token.provider = account.provider;
       }
       clearLegacyProviderCredentialState(token);
+      readStrongAuthGoogleReauthentication(token);
 
       // Keep the JWT in sync when client-side onboarding updates account type.
       if (trigger === "update" && session?.user) {
@@ -280,6 +287,7 @@ export const authOptions: NextAuthOptions = {
 
       // Credentials login path: backend token is returned directly.
       if (user && "backendAccessToken" in user && typeof user.backendAccessToken === "string") {
+        clearStrongAuthGoogleReauthentication(token);
         applyBackendLoginPayload(token, {
           access_token: user.backendAccessToken,
           token_type:
@@ -356,6 +364,14 @@ export const authOptions: NextAuthOptions = {
         token.accountTypeSelectedAt = exchange.user.account_type_selected_at || null;
         token.onboardingIntent = exchange.user.onboarding_intent || "DECIDE_LATER";
         token.onboardingIntentSelectedAt = exchange.user.onboarding_intent_selected_at || null;
+        if (exchange.user.account_type === "ADMIN") {
+          rememberStrongAuthGoogleReauthentication(token, {
+            idToken,
+            idTokenExpiresAt: jwtExpiresAtMs(idToken),
+          });
+        } else {
+          clearStrongAuthGoogleReauthentication(token);
+        }
       }
 
       if (
