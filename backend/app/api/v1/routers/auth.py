@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_auth_service
 from app.core.rate_limit import AUTH_EMAIL_LIMIT, AUTH_LOGIN_LIMIT, AUTH_REGISTER_LIMIT, rate_limit
+from app.repositories.auth_repository import OAuthAccountCollisionError
 from app.schemas import (
     AuthStatusResponse,
     AuthUserRead,
@@ -30,6 +31,11 @@ from app.services.auth_service import (
     UsernameAlreadyTakenError,
 )
 from app.services.email_service import EmailDeliveryError
+from app.services.google_identity import (
+    GoogleIdentityConfigurationError,
+    GoogleIdentityProviderUnavailableError,
+    GoogleIdentityVerificationError,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -217,10 +223,29 @@ async def refresh_backend_session(
 )
 async def oauth_google_exchange(
     payload: OAuthGoogleExchangeRequest,
+    _limit: None = rate_limit(AUTH_LOGIN_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> LoginResponse:
     try:
         user, tokens = await service.exchange_google_oauth(payload)
+    except GoogleIdentityVerificationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google identity token",
+        ) from exc
+    except (
+        GoogleIdentityConfigurationError,
+        GoogleIdentityProviderUnavailableError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is temporarily unavailable",
+        ) from exc
+    except OAuthAccountCollisionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google identity cannot be linked to this account",
+        ) from exc
     except InvalidUsernameError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except UsernameAlreadyTakenError as exc:

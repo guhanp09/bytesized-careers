@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, google_id_token_for_test
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -15,8 +15,7 @@ async def _create_oauth_user(client: AsyncClient, *, email: str, provider_id: st
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": email,
-            "provider_account_id": provider_id,
+            "id_token": google_id_token_for_test(email=email, subject=provider_id),
             "access_token": f"{provider_id}-access-token",
             "refresh_token": f"{provider_id}-refresh-token",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,

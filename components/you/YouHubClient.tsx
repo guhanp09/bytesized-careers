@@ -17,7 +17,6 @@ import {
   createMyPortfolioItem,
   canUseLocalMockFallback,
   deleteMyPortfolioItem,
-  exchangeGoogleOAuthForBackend,
   getMyContentStyle,
   getMyProfileCompletion,
   updateMyOnboardingIntent,
@@ -1401,9 +1400,6 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
   const oauthRefreshToken = session?.user?.refreshToken;
   const oauthExpiresAt = session?.user?.oauthExpiresAt;
   const oauthScope = session?.user?.oauthScope;
-  const oauthEmail =
-    session?.user?.email ||
-    (typeof session?.user?.profile?.email === "string" ? session.user.profile.email : undefined);
   const offlineProfileIdentity = useMemo<OfflineProfileIdentity>(() => {
     const email = session?.user?.email || "local@creatorjobs.dev";
     const username = offlineUsernameFrom(session?.user?.username || email);
@@ -1503,23 +1499,15 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     if (tokenRecoveryPromiseRef.current) {
       return tokenRecoveryPromiseRef.current;
     }
-    if (sessionStatus !== "authenticated" || !oauthEmail || !oauthProviderAccountId) {
+    if (sessionStatus !== "authenticated") {
       return null;
     }
 
     const recoveryPromise = (async () => {
       setRecoveringBackendToken(true);
       try {
-        const result = await exchangeGoogleOAuthForBackend({
-          email: oauthEmail,
-          provider_account_id: oauthProviderAccountId,
-          display_name: session?.user?.name || undefined,
-          access_token: oauthAccessToken || null,
-          refresh_token: oauthRefreshToken || null,
-          expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
-          scope: typeof oauthScope === "string" ? oauthScope : null,
-        });
-        const nextToken = result.access_token?.trim();
+        const refreshedSession = await updateSession();
+        const nextToken = refreshedSession?.backendAccessToken?.trim();
         if (!nextToken) {
           return null;
         }
@@ -1537,14 +1525,8 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     tokenRecoveryPromiseRef.current = recoveryPromise;
     return recoveryPromise;
   }, [
-    oauthAccessToken,
-    oauthEmail,
-    oauthExpiresAt,
-    oauthProviderAccountId,
-    oauthRefreshToken,
-    oauthScope,
-    session?.user?.name,
     sessionStatus,
+    updateSession,
   ]);
 
   const withFreshBackendToken = useCallback(
@@ -2124,7 +2106,6 @@ export default function YouHubClient({ backendAccessToken, mode = "display" }: Y
     try {
       const refreshed = await withFreshBackendToken(async (token) => {
         await upsertGoogleOAuthForMe(token, {
-          provider_account_id: oauthProviderAccountId,
           access_token: oauthAccessToken,
           refresh_token: oauthRefreshToken || null,
           expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,

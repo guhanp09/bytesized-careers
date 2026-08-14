@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     jwt_refresh_token_expires_minutes: int = Field(
         default=60 * 24 * 30, alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES"
     )
+    google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
     youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -199,6 +200,8 @@ def validate_production_settings() -> None:
         failures.append("SMTP_PASSWORD is required in production.")
     if settings.smtp_port <= 0:
         failures.append("SMTP_PORT must be a positive integer.")
+    if not settings.google_client_id or not settings.google_client_id.strip():
+        failures.append("GOOGLE_CLIENT_ID is required for verified Google sign-in.")
     if settings.rate_limit_backend == "memory" and not settings.allow_memory_rate_limit_in_production:
         failures.append(
             "RATE_LIMIT_BACKEND must be 'redis' in production, or explicitly set "

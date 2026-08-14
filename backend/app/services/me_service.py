@@ -21,6 +21,10 @@ from app.services.youtube_service import (
 logger = logging.getLogger(__name__)
 
 
+class OAuthAccountNotLinkedError(Exception):
+    pass
+
+
 class MeService:
     def __init__(self, repository: AuthRepository):
         self.repository = repository
@@ -53,10 +57,18 @@ class MeService:
         return user
 
     async def upsert_google_oauth_account(self, user: User, payload: OAuthUpsertRequest) -> None:
+        existing = await self.repository.get_oauth_account_for_user(
+            user_id=user.id,
+            provider="google",
+        )
+        if existing is None:
+            raise OAuthAccountNotLinkedError(
+                "Google identity must be verified before credentials can be updated"
+            )
         await self.repository.upsert_oauth_account(
             user_id=user.id,
             provider="google",
-            provider_account_id=payload.provider_account_id,
+            provider_account_id=existing.provider_account_id,
             access_token=payload.access_token,
             refresh_token=payload.refresh_token,
             expires_at=payload.expires_at,
@@ -111,4 +123,9 @@ class MeService:
         )
         return await self.repository.list_user_youtube_channels(user_id=user.id)
 
-__all__ = ["MeService", "YouTubeAPIError", "YouTubeReauthRequiredError"]
+__all__ = [
+    "MeService",
+    "OAuthAccountNotLinkedError",
+    "YouTubeAPIError",
+    "YouTubeReauthRequiredError",
+]

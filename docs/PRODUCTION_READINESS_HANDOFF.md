@@ -4,21 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-NEXT PHASE: Phase 1 — Critical authentication and identity security
-CURRENT HEAD: Phase 0 checkpoint commit (run `git rev-parse HEAD`; exact hash is also in the session report)
+LAST COMPLETED ATOMIC SLICE: Phase 1A — verified Google identity and collision-safe linkage
+NEXT ATOMIC SLICE: Phase 1B — remove browser-visible Google credentials without breaking YouTube connection
+CURRENT HEAD: Phase 1A checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0053_brand_about_enrichment_state
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade reached 0053 successfully
-IMPORTANT NEW ARCHITECTURE: None; Phase 0 changes documentation only
-NEW ENVIRONMENT VARIABLES: None
-NEW SERVICES: None
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens with google-auth and derives subject/email/name only from signed claims; NextAuth performs the exchange server-to-server; OAuth credential refresh can update only an already verified link
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID (required at production boot and must match the NextAuth Google client ID)
+NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
 KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures, detailed below
-COMMANDS TO RESUME: see "Important commands"
-FILES TO READ FIRST: backend auth router/service/security/repository/models/schemas, lib/auth.ts, backend/tests/test_auth_and_channels.py, current Alembic head
+COMMANDS TO RESUME: see "Phase 1A atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: lib/auth.ts; types/next-auth.d.ts; components/you/YouHubClient.tsx; components/PostJobPage.tsx; backend OAuth account model/repository; backend token/session security
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1A atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1A
+Status: COMPLETE (Phase 1 remains in progress)
+Initial HEAD: 832d0332d66c2abf2d6e2d168c2ac51ae7258fa6
+Final HEAD: Phase 1A checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(auth): verify Google identity server-side
+Files materially changed: backend Google identity service/config/dependencies/auth schema/router/service/repository; authenticated OAuth update boundary; NextAuth exchange and browser token-recovery callers; auth/security tests; execution ledger and handoff
+Migrations: None
+Behavior changed: `/auth/oauth/google` now requires a Google-issued ID token; email, subject, verified-email state, and display name derive only from verified claims; caller identity fields are forbidden; provider subjects cannot be reassigned; `/me/oauth/google/upsert` cannot create or choose a link; NextAuth fails closed when backend Google authentication fails; browser recovery now asks the server-owned NextAuth session to refresh instead of rebuilding identity from browser fields; production boot requires backend GOOGLE_CLIENT_ID; Google exchange uses the auth-login rate limit
+Security assumptions: backend GOOGLE_CLIENT_ID exactly matches the Google OAuth client used by NextAuth; google-auth owns signature/JWKS validation; Google's documented issuers remain accounts.google.com and https://accounts.google.com; HTTPS termination and real provider credentials remain external deployment gates
+Tests run: focused Google/auth/config pytest; dependent job/import pytest; full backend pytest; focused Ruff; TypeScript; ESLint; all frontend unit tests; production frontend build
+Exact results: 38 focused auth/config tests passed; 422 dependent backend tests passed; full backend 6,405 passed / 49 skipped / 88 warnings; focused Ruff passed; TypeScript passed; ESLint passed with the pre-existing 33 warnings; frontend unit 1,114 passed / 0 failed; production build passed with 31 static pages
+Known external failures: real Google login/JWKS/provider-outage exercise requires configured Google credentials and staging; no external service was changed
+Remaining risks: Google access/refresh credentials and provider metadata are still serialized into browser-visible sessions; provider credentials remain plaintext at rest; backend refresh sessions remain stateless and non-revocable; concurrent OAuth-link races still need deterministic PostgreSQL validation/recovery; Google login still requests YouTube/offline scopes; admin strong-auth work remains
+Next phase: Phase 1B atomic slice — remove browser-visible Google provider credentials while preserving explicit YouTube connection/reconnection
+Important commands: `rg -n 'accessToken|refreshToken|providerAccountId|oauthScope|profile' lib/auth.ts types/next-auth.d.ts app components`; `APP_ENV=test .venv/bin/python -m pytest tests/test_google_identity.py tests/test_auth_and_channels.py`; `npx tsc --noEmit`
+```
 
 ## Phase checkpoint
 
@@ -122,18 +143,18 @@ The nine failures that passed serially remain flake candidates and must not be s
 
 Do not weaken these tests without first proving that their asserted product contract is wrong.
 
-## Highest-risk findings to preserve into Phase 1
+## Phase 1 current risk state
 
-- `POST /api/v1/auth/oauth/google` accepts caller-provided email, provider subject, and Google tokens, marks the email verified, and returns a backend credential. This is an account-takeover path.
-- OAuth-account upsert can reassign an existing provider subject to another user.
-- `lib/auth.ts` copies Google access and refresh tokens into browser-visible session fields.
-- Profile, Post Job, and project clients then forward those provider tokens and identity fields back to backend identity endpoints.
+- Phase 1A removed the caller-asserted Google identity takeover: `/auth/oauth/google` now accepts a signed ID token and derives identity only after server verification.
+- Phase 1A also made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Sequential subject/email collision tests pass; concurrent PostgreSQL collision recovery remains to validate before AUTH-002 can become `VALIDATED`.
+- `lib/auth.ts` still copies Google access and refresh tokens, provider metadata, and profile claims into browser-visible session fields. This is the next atomic slice.
+- YouHub and Post Job still use those browser-visible provider credentials to refresh YouTube channel state. Replace this with a server-owned connection contract before deleting the fields; do not silently break YouTube connection.
 - Backend refresh tokens are stateless JWTs without one-time rotation, persistence, family revocation, or reuse detection.
 - Access credentials default to 14 days. Password reset, suspension, and logout do not provide complete session-family revocation.
 - Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
 - Admin authorization exists, but strong administrator authentication/MFA enforcement does not.
 
-Phase 1 must be additive and migration-safe. Do not remove the existing authentication contract until both frontend and backend use its verified replacement and compatibility tests pass.
+Phase 1 must remain additive and migration-safe. Do not remove browser-visible provider fields until explicit YouTube connection/reconnection has a tested server-owned replacement.
 
 ## Phase 1 files to read first
 

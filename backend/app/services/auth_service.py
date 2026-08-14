@@ -26,9 +26,13 @@ from app.core.security import (
 )
 from app.middleware.request_id import get_request_id
 from app.models import User
-from app.repositories.auth_repository import AuthRepository
+from app.repositories.auth_repository import (
+    AuthRepository,
+    OAuthAccountCollisionError,
+)
 from app.schemas.auth import OAuthGoogleExchangeRequest
 from app.services.email_service import capture_dev_auth_email, send_auth_email
+from app.services.google_identity import GoogleIdentityVerifierProtocol
 from app.services.profile_rules import normalize_username, validate_username_format
 from app.services.youtube_service import (
     YouTubeAPIError,
@@ -82,8 +86,13 @@ class AuthTokenPair:
 
 
 class AuthService:
-    def __init__(self, repository: AuthRepository):
+    def __init__(
+        self,
+        repository: AuthRepository,
+        google_identity_verifier: GoogleIdentityVerifierProtocol,
+    ):
         self.repository = repository
+        self.google_identity_verifier = google_identity_verifier
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -150,12 +159,10 @@ class AuthService:
         self,
         *,
         email: str,
-        payload: OAuthGoogleExchangeRequest,
+        display_name: str | None,
     ) -> str:
         for raw_candidate in (
-            payload.youtube_handle,
-            payload.youtube_channel_title,
-            payload.display_name,
+            display_name,
             email.split("@")[0],
         ):
             seed = self._to_username_seed(raw_candidate)
@@ -468,21 +475,48 @@ class AuthService:
         return user, self.create_token_pair(user)
 
     async def exchange_google_oauth(self, payload: OAuthGoogleExchangeRequest) -> tuple[User, AuthTokenPair]:
-        email = self.normalize_email(payload.email)
-        user = await self.repository.get_user_by_email(email)
+        identity = await self.google_identity_verifier.verify(payload.id_token)
+        email = self.normalize_email(identity.email)
+        oauth_account = await self.repository.get_oauth_account_by_provider_subject(
+            provider="google",
+            provider_account_id=identity.subject,
+        )
+        email_user = await self.repository.get_user_by_email(email)
         now = datetime.now(UTC)
-        incoming_display_name = (payload.display_name or "").strip() or None
-        normalized_username: str | None = None
+        incoming_display_name = (identity.display_name or "").strip() or None
 
-        if payload.username:
-            normalized_username = await self._validate_available_username(
-                payload.username,
-                current_user_id=str(user.id) if user is not None else None,
-            )
-        elif user is None or user.username is None:
+        if oauth_account is not None:
+            user = await self.repository.get_user_by_id(oauth_account.user_id)
+            if user is None:
+                raise OAuthAccountCollisionError(
+                    "Google identity linkage is inconsistent"
+                )
+            if email_user is not None and email_user.id != user.id:
+                raise OAuthAccountCollisionError(
+                    "Google identity and verified email resolve to different accounts"
+                )
+            if user.email != email:
+                user.email = email
+        else:
+            user = email_user
+            if user is not None:
+                existing_google_account = await self.repository.get_oauth_account_for_user(
+                    user_id=user.id,
+                    provider="google",
+                )
+                if (
+                    existing_google_account is not None
+                    and existing_google_account.provider_account_id != identity.subject
+                ):
+                    raise OAuthAccountCollisionError(
+                        "A different Google identity is already linked to this account"
+                    )
+
+        normalized_username: str | None = None
+        if user is None or user.username is None:
             normalized_username = await self._build_google_oauth_username(
                 email=email,
-                payload=payload,
+                display_name=incoming_display_name,
             )
 
         if user is None:
@@ -504,7 +538,7 @@ class AuthService:
         await self.repository.upsert_oauth_account(
             user_id=user.id,
             provider="google",
-            provider_account_id=payload.provider_account_id,
+            provider_account_id=identity.subject,
             access_token=payload.access_token,
             refresh_token=payload.refresh_token,
             expires_at=payload.expires_at,

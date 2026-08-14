@@ -151,47 +151,40 @@ const loginWithBackendCredentials = async (
 };
 
 const exchangeGoogleOAuthForBackendToken = async (params: {
-  email: string;
-  providerAccountId: string;
-  displayName?: string;
-  youtubeHandle?: string;
-  youtubeChannelTitle?: string;
+  idToken: string;
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
   scope?: string;
-}): Promise<BackendLoginResponse | null> => {
+}): Promise<BackendLoginResponse> => {
+  let response: Response;
   try {
-    const response = await fetch(`${getBackendBaseUrl()}/auth/oauth/google`, {
+    response = await fetch(`${getBackendBaseUrl()}/auth/oauth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
       body: JSON.stringify({
-        email: params.email,
-        provider_account_id: params.providerAccountId,
-        display_name: params.displayName || null,
-        youtube_handle: params.youtubeHandle || null,
-        youtube_channel_title: params.youtubeChannelTitle || null,
+        id_token: params.idToken,
         access_token: params.accessToken || null,
         refresh_token: params.refreshToken || null,
         expires_at: params.expiresAt ?? null,
         scope: params.scope || null,
       }),
     });
-    if (!response.ok) {
-      if (process.env.NODE_ENV === "development") {
-        console.warn(`[auth] Backend Google OAuth exchange failed with ${response.status}`);
-      }
-      return null;
-    }
-    return (await response.json()) as BackendLoginResponse;
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[auth] Backend Google OAuth exchange unreachable: ${message}`);
     }
-    return null;
+    throw new Error("Backend Google authentication unavailable");
   }
+  if (!response.ok) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn(`[auth] Backend Google OAuth exchange failed with ${response.status}`);
+    }
+    throw new Error("Backend Google authentication failed");
+  }
+  return (await response.json()) as BackendLoginResponse;
 };
 
 const providers = [
@@ -348,56 +341,25 @@ export const authOptions: NextAuthOptions = {
 
       // Google login path: exchange provider identity for backend JWT.
       if (account?.provider === "google") {
-        const emailFromProfile =
-          typeof profile?.email === "string"
-            ? profile.email
-            : typeof token.email === "string"
-              ? token.email
-              : undefined;
-        const providerAccountId =
-          typeof account.providerAccountId === "string"
-            ? account.providerAccountId
-            : undefined;
-        if (emailFromProfile && providerAccountId) {
-          const rawProfile = profile as Record<string, unknown> | undefined;
-          const profileName =
-            typeof rawProfile?.name === "string"
-              ? rawProfile.name
-              : typeof token.name === "string"
-                ? token.name
-                : undefined;
-          const profileHandle =
-            typeof rawProfile?.["preferred_username"] === "string"
-              ? rawProfile["preferred_username"]
-              : typeof rawProfile?.["custom_url"] === "string"
-                ? rawProfile["custom_url"]
-                : undefined;
-          const profileChannelTitle =
-            typeof rawProfile?.["channel_title"] === "string"
-              ? rawProfile["channel_title"]
-              : undefined;
-          const exchange = await exchangeGoogleOAuthForBackendToken({
-            email: emailFromProfile,
-            providerAccountId,
-            displayName: profileName,
-            youtubeHandle: profileHandle,
-            youtubeChannelTitle: profileChannelTitle,
-            accessToken: account.access_token,
-            refreshToken: account.refresh_token,
-            expiresAt: account.expires_at,
-            scope: typeof account.scope === "string" ? account.scope : undefined,
-          });
-          if (exchange) {
-            applyBackendLoginPayload(token, exchange);
-            token.backendUserId = exchange.user.id;
-            if (exchange.user.username) token.username = exchange.user.username;
-            if (exchange.user.display_name) token.displayName = exchange.user.display_name;
-            token.accountType = exchange.user.account_type || "TALENT";
-            token.accountTypeSelectedAt = exchange.user.account_type_selected_at || null;
-            token.onboardingIntent = exchange.user.onboarding_intent || "DECIDE_LATER";
-            token.onboardingIntentSelectedAt = exchange.user.onboarding_intent_selected_at || null;
-          }
+        const idToken = typeof account.id_token === "string" ? account.id_token : undefined;
+        if (!idToken) {
+          throw new Error("Google did not provide an identity token");
         }
+        const exchange = await exchangeGoogleOAuthForBackendToken({
+          idToken,
+          accessToken: account.access_token,
+          refreshToken: account.refresh_token,
+          expiresAt: account.expires_at,
+          scope: typeof account.scope === "string" ? account.scope : undefined,
+        });
+        applyBackendLoginPayload(token, exchange);
+        token.backendUserId = exchange.user.id;
+        if (exchange.user.username) token.username = exchange.user.username;
+        if (exchange.user.display_name) token.displayName = exchange.user.display_name;
+        token.accountType = exchange.user.account_type || "TALENT";
+        token.accountTypeSelectedAt = exchange.user.account_type_selected_at || null;
+        token.onboardingIntent = exchange.user.onboarding_intent || "DECIDE_LATER";
+        token.onboardingIntentSelectedAt = exchange.user.onboarding_intent_selected_at || null;
       }
 
       if (

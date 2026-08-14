@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import httpx
 import openai
 import pytest
-from conftest import TestSessionLocal
+from conftest import TestSessionLocal, google_id_token_for_test
 from httpx import AsyncClient
 from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
@@ -386,8 +386,9 @@ async def _auth(client: AsyncClient, label: str) -> tuple[dict[str, str], UUID]:
     response = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": f"{label}@example.com",
-            "provider_account_id": f"google-{label}",
+            "id_token": google_id_token_for_test(
+                email=f"{label}@example.com", subject=f"google-{label}"
+            ),
             "access_token": f"token-{label}",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
             "scope": "openid email profile",

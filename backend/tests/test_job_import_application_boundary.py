@@ -19,7 +19,7 @@ from app.schemas.job_import import (
 )
 from app.services.job_import_provider import JobImportProviderResult
 from app.services.job_import_service import JobImportService
-from tests.conftest import valid_published_job_payload
+from tests.conftest import google_id_token_for_test, valid_published_job_payload
 
 SOURCE_TEXT = """Video Editor
 Interested candidates can submit resume and cover letter to jobs@example.com or apply through Indeed.
@@ -113,8 +113,9 @@ async def _auth(client: AsyncClient, label: str) -> tuple[dict[str, str], UUID]:
     response = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": f"{label}@example.com",
-            "provider_account_id": f"google-{label}",
+            "id_token": google_id_token_for_test(
+                email=f"{label}@example.com", subject=f"google-{label}"
+            ),
             "access_token": f"token-{label}",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
             "scope": "openid email profile",

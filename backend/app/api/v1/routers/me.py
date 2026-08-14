@@ -31,7 +31,12 @@ from app.schemas import (
     YouTubeChannelsResponse,
     YouTubeRefreshResponse,
 )
-from app.services.me_service import MeService, YouTubeAPIError, YouTubeReauthRequiredError
+from app.services.me_service import (
+    MeService,
+    OAuthAccountNotLinkedError,
+    YouTubeAPIError,
+    YouTubeReauthRequiredError,
+)
 from app.services.profile_service import (
     PortfolioItemNotFoundError,
     ProfileNotFoundError,
@@ -147,7 +152,13 @@ async def upsert_google_oauth(
     current_user: User = Depends(get_current_user),
     service: MeService = Depends(get_me_service),
 ) -> AuthStatusResponse:
-    await service.upsert_google_oauth_account(current_user, payload)
+    try:
+        await service.upsert_google_oauth_account(current_user, payload)
+    except OAuthAccountNotLinkedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Verify Google sign-in before updating OAuth credentials",
+        ) from exc
     return AuthStatusResponse(status="ok")
 
 

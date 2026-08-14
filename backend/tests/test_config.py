@@ -106,4 +106,5 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "CORS_ORIGINS" in message
     assert "DATABASE_URL" in message
     assert "EMAIL_MODE" in message
+    assert "GOOGLE_CLIENT_ID" in message
     assert "RATE_LIMIT_BACKEND" in message

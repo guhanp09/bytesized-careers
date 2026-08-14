@@ -18,7 +18,6 @@ import {
   createJob,
   deleteMyHiringIdentity,
   describeActionError,
-  exchangeGoogleOAuthForBackend,
   listMyBackendJobs,
   isBackendAuthError,
   isLocalMocksEnabled,
@@ -1196,7 +1195,7 @@ function PublishReadyDialog({
 export default function PostJobPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session, status: sessionStatus } = useSession();
+  const { data: session, status: sessionStatus, update: updateSession } = useSession();
   const connectParam = searchParams.get("yt_connect");
   const draftId = searchParams.get("draftId") || "";
   const partialImportDraftId = !draftId ? searchParams.get("importDraftId") || "" : "";
@@ -1534,10 +1533,6 @@ export default function PostJobPage() {
   const oauthRefreshToken = session?.user?.refreshToken;
   const oauthExpiresAt = session?.user?.oauthExpiresAt;
   const oauthScope = session?.user?.oauthScope;
-  const oauthEmail =
-    session?.user?.email ||
-    (typeof session?.user?.profile?.email === "string" ? session.user.profile.email : undefined);
-
   React.useEffect(() => {
     if (backendAccessToken) {
       setResolvedBackendAccessToken(backendAccessToken);
@@ -1548,22 +1543,14 @@ export default function PostJobPage() {
     if (tokenRecoveryPromiseRef.current) {
       return tokenRecoveryPromiseRef.current;
     }
-    if (sessionStatus !== "authenticated" || !oauthEmail || !oauthProviderAccountId) {
+    if (sessionStatus !== "authenticated") {
       return null;
     }
 
     const recoveryPromise = (async () => {
       try {
-        const result = await exchangeGoogleOAuthForBackend({
-          email: oauthEmail,
-          provider_account_id: oauthProviderAccountId,
-          display_name: session?.user?.name || undefined,
-          access_token: oauthAccessToken || null,
-          refresh_token: oauthRefreshToken || null,
-          expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
-          scope: typeof oauthScope === "string" ? oauthScope : null,
-        });
-        const nextToken = result.access_token?.trim();
+        const refreshedSession = await updateSession();
+        const nextToken = refreshedSession?.backendAccessToken?.trim();
         if (!nextToken) {
           return null;
         }
@@ -1579,14 +1566,8 @@ export default function PostJobPage() {
     tokenRecoveryPromiseRef.current = recoveryPromise;
     return recoveryPromise;
   }, [
-    oauthAccessToken,
-    oauthEmail,
-    oauthExpiresAt,
-    oauthProviderAccountId,
-    oauthRefreshToken,
-    oauthScope,
-    session?.user?.name,
     sessionStatus,
+    updateSession,
   ]);
 
   const withFreshBackendToken = useCallback(
@@ -2590,7 +2571,6 @@ export default function PostJobPage() {
     setIdentityError(null);
     try {
       await withFreshBackendToken((token) => upsertGoogleOAuthForMe(token, {
-        provider_account_id: oauthProviderAccountId,
         access_token: oauthAccessToken,
         refresh_token: oauthRefreshToken || null,
         expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,

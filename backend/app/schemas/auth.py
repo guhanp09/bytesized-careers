@@ -63,24 +63,22 @@ class RefreshTokenRequest(BaseModel):
 
 
 class OAuthGoogleExchangeRequest(BaseModel):
-    email: EmailStr
-    provider_account_id: str = Field(min_length=1, max_length=255)
-    username: str | None = Field(default=None, min_length=3, max_length=20)
-    display_name: str | None = Field(default=None, max_length=255)
-    youtube_handle: str | None = Field(default=None, max_length=255)
-    youtube_channel_title: str | None = Field(default=None, max_length=255)
-    access_token: str | None = None
-    refresh_token: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str = Field(min_length=64, max_length=8192)
+    access_token: str | None = Field(default=None, max_length=16384)
+    refresh_token: str | None = Field(default=None, max_length=16384)
     expires_at: int | None = None
-    scope: str | None = None
+    scope: str | None = Field(default=None, max_length=4096)
 
 
 class OAuthUpsertRequest(BaseModel):
-    provider_account_id: str = Field(min_length=1, max_length=255)
-    access_token: str | None = None
-    refresh_token: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    access_token: str | None = Field(default=None, max_length=16384)
+    refresh_token: str | None = Field(default=None, max_length=16384)
     expires_at: int | None = None
-    scope: str | None = None
+    scope: str | None = Field(default=None, max_length=4096)
 
 
 class AuthUserRead(BaseModel):

@@ -28,6 +28,10 @@ from app.models import (
 )
 
 
+class OAuthAccountCollisionError(Exception):
+    """A provider identity is already linked through a different account path."""
+
+
 class AuthRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -159,12 +163,22 @@ class AuthRepository:
         expires_at: int | None,
         scope: str | None,
     ) -> OAuthAccount:
-        stmt: Select[tuple[OAuthAccount]] = select(OAuthAccount).where(
-            OAuthAccount.provider == provider,
-            OAuthAccount.provider_account_id == provider_account_id,
+        row = await self.get_oauth_account_by_provider_subject(
+            provider=provider,
+            provider_account_id=provider_account_id,
         )
-        row = (await self.session.execute(stmt)).scalar_one_or_none()
         if row is None:
+            existing_for_user = await self.get_oauth_account_for_user(
+                user_id=user_id,
+                provider=provider,
+            )
+            if (
+                existing_for_user is not None
+                and existing_for_user.provider_account_id != provider_account_id
+            ):
+                raise OAuthAccountCollisionError(
+                    "A different Google identity is already linked to this account"
+                )
             row = OAuthAccount(
                 user_id=user_id,
                 provider=provider,
@@ -179,14 +193,30 @@ class AuthRepository:
             await self.session.refresh(row)
             return row
 
-        row.user_id = user_id
+        if row.user_id != user_id:
+            raise OAuthAccountCollisionError(
+                "This Google identity is already linked to another account"
+            )
         row.access_token = access_token
-        row.refresh_token = refresh_token
+        if refresh_token is not None:
+            row.refresh_token = refresh_token
         row.expires_at = expires_at
         row.scope = scope
         await self.session.flush()
         await self.session.refresh(row)
         return row
+
+    async def get_oauth_account_by_provider_subject(
+        self,
+        *,
+        provider: str,
+        provider_account_id: str,
+    ) -> OAuthAccount | None:
+        stmt: Select[tuple[OAuthAccount]] = select(OAuthAccount).where(
+            OAuthAccount.provider == provider,
+            OAuthAccount.provider_account_id == provider_account_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def get_latest_oauth_account_for_user(
         self,

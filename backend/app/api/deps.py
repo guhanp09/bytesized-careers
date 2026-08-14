@@ -32,6 +32,7 @@ from app.repositories.job_repository import JobRepository
 from app.repositories.search_repository import SearchRepository
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services.auth_service import AuthService
+from app.services.google_identity import GoogleIdentityVerifier
 from app.services.job_import_conversation_service import JobImportConversationService
 from app.services.job_import_processing_service import JobImportProcessingService
 from app.services.job_import_provider import JobImportExtractionProvider
@@ -140,8 +141,17 @@ async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRe
     return AuthRepository(session)
 
 
-async def get_auth_service(repository: AuthRepository = Depends(get_auth_repository)) -> AuthService:
-    return AuthService(repository)
+def get_google_identity_verifier() -> GoogleIdentityVerifier:
+    return GoogleIdentityVerifier(settings.google_client_id)
+
+
+async def get_auth_service(
+    repository: AuthRepository = Depends(get_auth_repository),
+    google_identity_verifier: GoogleIdentityVerifier = Depends(
+        get_google_identity_verifier
+    ),
+) -> AuthService:
+    return AuthService(repository, google_identity_verifier)
 
 
 async def get_me_service(repository: AuthRepository = Depends(get_auth_repository)) -> MeService:

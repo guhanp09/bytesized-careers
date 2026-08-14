@@ -26,16 +26,16 @@ This ledger translates the production-readiness audit into resumable implementat
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| AUTH-001 | CRITICAL | Google authentication | BASE-003 | NOT_STARTED | Forged token, signature, issuer, audience, expiry, subject, verified-email tests | NO | YES | Yes | Yes | — |
-| AUTH-002 | CRITICAL | OAuth account linkage | AUTH-001 | NOT_STARTED | Existing-subject and existing-email collision; no reassignment; concurrent link tests | POSSIBLE | NO | Yes | Yes | — |
-| AUTH-003 | CRITICAL | Browser session privacy | AUTH-001 | NOT_STARTED | `/api/auth/session` and serialized-session leakage tests | NO | NO | Yes | Yes | — |
+| AUTH-001 | CRITICAL | Google authentication | BASE-003 | VALIDATED | Forged token, signature, issuer, audience, expiry, subject, verified-email tests | NO | YES | Yes | Yes | Phase 1A Google identity checkpoint commit |
+| AUTH-002 | CRITICAL | OAuth account linkage | AUTH-001 | IMPLEMENTED | Existing-subject and existing-email collision; no reassignment; concurrent link tests | POSSIBLE | NO | Yes | Yes | Phase 1A checkpoint; concurrent-link validation remains |
+| AUTH-003 | CRITICAL | Browser session privacy | AUTH-001 | IN_PROGRESS | `/api/auth/session` and serialized-session leakage tests | NO | NO | Yes | Yes | — |
 | AUTH-004 | HIGH | Provider credentials | AUTH-003 | NOT_STARTED | Encryption, key rotation, redaction, and revocation tests | POSSIBLE | YES | Yes | Yes | — |
 | AUTH-005 | CRITICAL | Backend sessions | AUTH-001 | NOT_STARTED | Rotation, replay, expiry, concurrent refresh, and migration-compatibility tests | YES | NO | Yes | Yes | — |
 | AUTH-006 | CRITICAL | Session revocation | AUTH-005 | NOT_STARTED | Logout, logout-all, password reset, suspension, credential-change tests | YES | NO | Yes | Yes | — |
 | AUTH-007 | HIGH | Browser/backend boundary | AUTH-005 | NOT_STARTED | Cookie, CSRF/origin, server-only credential, and API compatibility tests | POSSIBLE | NO | Yes | Yes | — |
 | AUTH-008 | CRITICAL | Admin authentication | AUTH-005 | NOT_STARTED | MFA enforcement, recovery, elevation, and privilege-boundary tests | POSSIBLE | YES | Yes | Yes | — |
 | AUTH-009 | HIGH | Google/YouTube scopes | AUTH-001, AUTH-003 | NOT_STARTED | Basic login without YouTube; incremental consent; reconnect/revoke tests | POSSIBLE | YES | Yes | Yes | — |
-| AUTH-010 | HIGH | Auth abuse controls | AUTH-001, AUTH-005 | NOT_STARTED | OAuth and refresh throttling, enumeration, and audit tests | NO | YES | Yes | Yes | — |
+| AUTH-010 | HIGH | Auth abuse controls | AUTH-001, AUTH-005 | IN_PROGRESS | OAuth and refresh throttling, enumeration, and audit tests | NO | YES | Yes | Yes | — |
 
 ## Phase 2 — Core web security boundaries
 

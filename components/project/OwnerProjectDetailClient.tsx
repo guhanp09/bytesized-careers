@@ -5,7 +5,6 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  exchangeGoogleOAuthForBackend,
   getMyProfile,
   isBackendAuthError,
   listMyPortfolio,
@@ -71,7 +70,7 @@ export default function OwnerProjectDetailClient({
   projectId,
   initialBackendAccessToken,
 }: OwnerProjectDetailClientProps) {
-  const { data: session, status: sessionStatus } = useSession();
+  const { status: sessionStatus, update: updateSession } = useSession();
   const tokenRecoveryPromiseRef = useRef<Promise<string | null> | null>(null);
   const loadRequestIdRef = useRef(0);
   const [backendAccessToken, setBackendAccessToken] = useState<string | undefined>(
@@ -81,15 +80,6 @@ export default function OwnerProjectDetailClient({
   const [error, setError] = useState<ProjectDetailError | null>(null);
   const [profile, setProfile] = useState<BackendProfileResponse | null>(null);
   const [project, setProject] = useState<BackendPortfolioItem | null>(null);
-
-  const oauthProviderAccountId = session?.user?.providerAccountId;
-  const oauthAccessToken = session?.user?.accessToken;
-  const oauthRefreshToken = session?.user?.refreshToken;
-  const oauthExpiresAt = session?.user?.oauthExpiresAt;
-  const oauthScope = session?.user?.oauthScope;
-  const oauthEmail =
-    session?.user?.email ||
-    (typeof session?.user?.profile?.email === "string" ? session.user.profile.email : undefined);
 
   useEffect(() => {
     if (initialBackendAccessToken) {
@@ -101,22 +91,14 @@ export default function OwnerProjectDetailClient({
     if (tokenRecoveryPromiseRef.current) {
       return tokenRecoveryPromiseRef.current;
     }
-    if (sessionStatus !== "authenticated" || !oauthEmail || !oauthProviderAccountId) {
+    if (sessionStatus !== "authenticated") {
       return null;
     }
 
     const recoveryPromise = (async () => {
       try {
-        const result = await exchangeGoogleOAuthForBackend({
-          email: oauthEmail,
-          provider_account_id: oauthProviderAccountId,
-          display_name: session?.user?.name || undefined,
-          access_token: oauthAccessToken || null,
-          refresh_token: oauthRefreshToken || null,
-          expires_at: typeof oauthExpiresAt === "number" ? oauthExpiresAt : null,
-          scope: typeof oauthScope === "string" ? oauthScope : null,
-        });
-        const nextToken = result.access_token?.trim();
+        const refreshedSession = await updateSession();
+        const nextToken = refreshedSession?.backendAccessToken?.trim();
         if (!nextToken) {
           return null;
         }
@@ -132,14 +114,8 @@ export default function OwnerProjectDetailClient({
     tokenRecoveryPromiseRef.current = recoveryPromise;
     return recoveryPromise;
   }, [
-    oauthAccessToken,
-    oauthEmail,
-    oauthExpiresAt,
-    oauthProviderAccountId,
-    oauthRefreshToken,
-    oauthScope,
-    session?.user?.name,
     sessionStatus,
+    updateSession,
   ]);
 
   const withFreshBackendToken = useCallback(

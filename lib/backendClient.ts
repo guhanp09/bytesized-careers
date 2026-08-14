@@ -358,37 +358,6 @@ export type BackendProfileCapabilities = {
   missingHiringFields?: string[];
 };
 
-export type BackendOAuthGoogleExchangePayload = {
-  email: string;
-  provider_account_id: string;
-  username?: string | null;
-  display_name?: string | null;
-  youtube_handle?: string | null;
-  youtube_channel_title?: string | null;
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expires_at?: number | null;
-  scope?: string | null;
-};
-
-export type BackendLoginExchangeResponse = {
-  access_token: string;
-  token_type: string;
-  refresh_token?: string | null;
-  access_token_expires_at?: number | null;
-  refresh_token_expires_at?: number | null;
-  user: {
-    id: string;
-    email: string;
-    username?: string | null;
-    display_name?: string | null;
-    account_type: BackendAccountType;
-    account_type_selected_at?: string | null;
-    onboarding_intent: BackendOnboardingIntent;
-    onboarding_intent_selected_at?: string | null;
-  };
-};
-
 export type BackendResendVerificationResponse = {
   ok: boolean;
   message: string;
@@ -1364,7 +1333,6 @@ export type BackendEntitlement = {
 };
 
 export type BackendOAuthUpsertPayload = {
-  provider_account_id: string;
   access_token?: string | null;
   refresh_token?: string | null;
   expires_at?: number | null;
@@ -2223,15 +2191,6 @@ export async function confirmPasswordReset(
   return requestJson<BackendPasswordResetResponse>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify({ token, password }),
-  });
-}
-
-export async function exchangeGoogleOAuthForBackend(
-  payload: BackendOAuthGoogleExchangePayload
-): Promise<BackendLoginExchangeResponse> {
-  return requestJson<BackendLoginExchangeResponse>("/auth/oauth/google", {
-    method: "POST",
-    body: JSON.stringify(payload),
   });
 }
 

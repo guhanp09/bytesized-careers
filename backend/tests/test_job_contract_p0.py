@@ -10,12 +10,12 @@ import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from conftest import TestSessionLocal, google_id_token_for_test
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.core.security import create_access_token
 from app.models import Job, Role, User
-from conftest import TestSessionLocal
 
 
 def _load_migration(filename: str):
@@ -31,8 +31,9 @@ async def _auth(client: AsyncClient, label: str) -> tuple[dict[str, str], str]:
     response = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": f"{label}@example.com",
-            "provider_account_id": f"google-{label}",
+            "id_token": google_id_token_for_test(
+                email=f"{label}@example.com", subject=f"google-{label}"
+            ),
             "access_token": f"token-{label}",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
             "scope": "openid email profile",

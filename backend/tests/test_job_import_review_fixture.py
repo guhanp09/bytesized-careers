@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from conftest import google_id_token_for_test
 from httpx import AsyncClient
 
 from app.core import config
@@ -11,8 +12,9 @@ async def _auth(client: AsyncClient, label: str) -> dict[str, str]:
     response = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": f"{label}@example.com",
-            "provider_account_id": f"google-{label}",
+            "id_token": google_id_token_for_test(
+                email=f"{label}@example.com", subject=f"google-{label}"
+            ),
             "access_token": f"token-{label}",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
             "scope": "openid email profile",

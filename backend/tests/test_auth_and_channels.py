@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from conftest import TestSessionLocal, valid_published_job_payload
+from conftest import (
+    TestSessionLocal,
+    google_id_token_for_test,
+    valid_published_job_payload,
+)
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
@@ -465,8 +469,9 @@ async def test_google_oauth_upsert_and_refresh_channels(
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": "oauth-user@example.com",
-            "provider_account_id": "google-account-123",
+            "id_token": google_id_token_for_test(
+                email="oauth-user@example.com", subject="google-account-123"
+            ),
             "access_token": "token-abc",
             "refresh_token": "refresh-abc",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
@@ -487,7 +492,6 @@ async def test_google_oauth_upsert_and_refresh_channels(
         "/api/v1/me/oauth/google/upsert",
         headers={"Authorization": f"Bearer {bearer}"},
         json={
-            "provider_account_id": "google-account-123",
             "access_token": "token-abc",
             "refresh_token": "refresh-abc",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
@@ -517,9 +521,11 @@ async def test_google_oauth_auto_generates_username_and_display_name(client: Asy
     first = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": "oauth-auto-name-1@example.com",
-            "provider_account_id": "google-auto-name-1",
-            "display_name": "Creator Studio",
+            "id_token": google_id_token_for_test(
+                email="oauth-auto-name-1@example.com",
+                subject="google-auto-name-1",
+                display_name="Creator Studio",
+            ),
             "access_token": "token-one",
             "refresh_token": "refresh-one",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
@@ -536,9 +542,11 @@ async def test_google_oauth_auto_generates_username_and_display_name(client: Asy
     second = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": "oauth-auto-name-2@example.com",
-            "provider_account_id": "google-auto-name-2",
-            "display_name": "Creator Studio",
+            "id_token": google_id_token_for_test(
+                email="oauth-auto-name-2@example.com",
+                subject="google-auto-name-2",
+                display_name="Creator Studio",
+            ),
             "access_token": "token-two",
             "refresh_token": "refresh-two",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,
@@ -554,8 +562,9 @@ async def test_youtube_refresh_requires_reauth_when_token_missing(client: AsyncC
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": "reauth-user@example.com",
-            "provider_account_id": "google-account-reauth",
+            "id_token": google_id_token_for_test(
+                email="reauth-user@example.com", subject="google-account-reauth"
+            ),
             "access_token": None,
             "refresh_token": None,
             "expires_at": None,
@@ -601,8 +610,9 @@ async def test_youtube_job_create_requires_linked_channel(
     exchange = await client.post(
         "/api/v1/auth/oauth/google",
         json={
-            "email": "poster-user@example.com",
-            "provider_account_id": "google-poster-account",
+            "id_token": google_id_token_for_test(
+                email="poster-user@example.com", subject="google-poster-account"
+            ),
             "access_token": "token-post",
             "refresh_token": "refresh-post",
             "expires_at": int(datetime.now(UTC).timestamp()) + 3600,

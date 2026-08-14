@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import os
 import sys
+import time
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -11,14 +15,91 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_google_identity_verifier
 from app.db.base import Base
 from app.db.session import enable_sqlite_foreign_keys
 from app.main import app
 from app.models import Role
 from app.services.email_service import clear_dev_auth_emails
+from app.services.google_identity import (
+    GoogleIdentityVerificationError,
+    VerifiedGoogleIdentity,
+)
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_creatorjobs_backend.db"
+TEST_GOOGLE_CLIENT_ID = "creatorjobs-tests.apps.googleusercontent.com"
+
+
+def google_id_token_for_test(
+    *,
+    email: str,
+    subject: str,
+    display_name: str | None = None,
+    email_verified: bool = True,
+    audience: str = TEST_GOOGLE_CLIENT_ID,
+    issuer: str = "https://accounts.google.com",
+    expires_at: int | None = None,
+) -> str:
+    """Create a deterministic credential understood only by the test verifier."""
+
+    claims = {
+        "iss": issuer,
+        "aud": audience,
+        "exp": expires_at if expires_at is not None else int(time.time()) + 3600,
+        "sub": subject,
+        "email": email,
+        "email_verified": email_verified,
+        "name": display_name,
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+    ).decode().rstrip("=")
+    return f"test-google-id.{encoded}.test-signature"
+
+
+class FakeGoogleIdentityVerifier:
+    """Test-only verifier; production tests exercise the Google-backed verifier directly."""
+
+    async def verify(self, raw_id_token: str) -> VerifiedGoogleIdentity:
+        try:
+            prefix, encoded, signature = raw_id_token.split(".", 2)
+            if prefix != "test-google-id" or signature != "test-signature":
+                raise ValueError
+            padding = "=" * (-len(encoded) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(encoded + padding))
+            if not isinstance(claims, dict):
+                raise ValueError
+        except (
+            ValueError,
+            TypeError,
+            UnicodeDecodeError,
+            binascii.Error,
+            json.JSONDecodeError,
+        ) as exc:
+            raise GoogleIdentityVerificationError("Invalid Google identity token") from exc
+
+        if claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}:
+            raise GoogleIdentityVerificationError("Invalid Google identity token")
+        if claims.get("aud") != TEST_GOOGLE_CLIENT_ID:
+            raise GoogleIdentityVerificationError("Invalid Google identity token")
+        if not isinstance(claims.get("exp"), int) or claims["exp"] <= time.time():
+            raise GoogleIdentityVerificationError("Invalid Google identity token")
+        if claims.get("email_verified") is not True:
+            raise GoogleIdentityVerificationError("Invalid Google identity token")
+        subject = claims.get("sub")
+        email = claims.get("email")
+        if not isinstance(subject, str) or not subject or not isinstance(email, str) or not email:
+            raise GoogleIdentityVerificationError("Invalid Google identity token")
+        display_name = claims.get("name")
+        return VerifiedGoogleIdentity(
+            subject=subject,
+            email=email.strip().lower(),
+            display_name=display_name if isinstance(display_name, str) else None,
+        )
+
+
+def override_get_google_identity_verifier() -> FakeGoogleIdentityVerifier:
+    return FakeGoogleIdentityVerifier()
 
 
 test_engine = create_async_engine(TEST_DATABASE_URL, future=True)
@@ -104,6 +185,9 @@ async def setup_test_db() -> AsyncGenerator[None, None]:
         await conn.run_sync(Base.metadata.create_all)
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_google_identity_verifier] = (
+        override_get_google_identity_verifier
+    )
     yield
 
     app.dependency_overrides.clear()
