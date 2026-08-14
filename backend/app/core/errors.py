@@ -42,12 +42,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
                 request=request,
                 details=exc.detail,
             ),
+            headers=exc.headers,
         )
     return JSONResponse(
         status_code=exc.status_code,
         content=error_payload(
             code=f"http_{exc.status_code}", message=str(exc.detail), request=request
         ),
+        headers=exc.headers,
     )
 
 

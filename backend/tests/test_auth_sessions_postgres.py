@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.security import (
@@ -223,6 +224,19 @@ async def test_auth_session_migration_installs_durable_constraints_and_indexes()
                 )
             ).scalars()
         )
+        assurance_constraint = (
+            await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_constraint
+                    WHERE conrelid = 'auth_sessions'::regclass
+                      AND conname = 'ck_auth_sessions_strong_auth_complete'
+                      AND contype = 'c'
+                    """
+                )
+            )
+        ).scalar_one()
 
     assert columns == [
         ("auth_refresh_credentials", "id", "NO"),
@@ -242,6 +256,9 @@ async def test_auth_session_migration_installs_durable_constraints_and_indexes()
         ("auth_sessions", "revocation_reason", "YES"),
         ("auth_sessions", "compromise_detected_at", "YES"),
         ("auth_sessions", "created_at", "NO"),
+        ("auth_sessions", "strong_auth_method", "YES"),
+        ("auth_sessions", "strong_auth_verified_at", "YES"),
+        ("auth_sessions", "strong_auth_expires_at", "YES"),
     ]
     assert foreign_keys == [
         ("auth_refresh_credentials", "n"),
@@ -253,6 +270,26 @@ async def test_auth_session_migration_installs_durable_constraints_and_indexes()
         "ix_auth_refresh_session_issued",
         "ix_auth_sessions_user_id",
     } <= indexes
+    assert int(assurance_constraint) == 1
+
+
+async def test_auth_session_assurance_constraint_rejects_partial_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    factory = _session_factory()
+    user_id, _refresh_token = await _create_user_and_login(factory)
+
+    async with factory() as session:
+        auth_session = (
+            await session.execute(
+                select(AuthSession).where(AuthSession.user_id == user_id)
+            )
+        ).scalar_one()
+        auth_session.strong_auth_method = "totp"
+        with pytest.raises(IntegrityError):
+            await session.commit()
+        await session.rollback()
 
 
 async def test_concurrent_refresh_has_one_winner_without_revoking_successor(

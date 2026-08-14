@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
-    AuthenticatedAccessDependency,
+    BaseAuthenticatedAccessDependency,
     bearer_scheme,
     get_auth_service,
     get_db,
@@ -257,6 +257,7 @@ async def logout(
             context = await resolve_access_token_context(
                 session=session,
                 token=credentials.credentials,
+                enforce_admin_strong_auth=False,
             )
             if context is None:
                 raise HTTPException(
@@ -283,7 +284,7 @@ async def logout(
     summary="Revoke every backend session for the current account",
 )
 async def logout_all(
-    context: AuthenticatedAccessDependency,
+    context: BaseAuthenticatedAccessDependency,
     service: AuthService = Depends(get_auth_service),
 ) -> SessionRevocationResponse:
     if context.is_qa_persona:

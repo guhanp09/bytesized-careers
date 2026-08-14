@@ -116,6 +116,7 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "OAUTH_CREDENTIAL_WRITE_MODE" in message
     assert "JWT_ACCESS_TOKEN_EXPIRES_MINUTES" in message
     assert "AUTH_SESSION_MODE" in message
+    assert "ADMIN_STRONG_AUTH_REQUIRED" in message
     assert "RATE_LIMIT_BACKEND" in message
 
 
@@ -128,6 +129,7 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "JWT_ACCESS_TOKEN_EXPIRES_MINUTES": 15,
         "JWT_REFRESH_TOKEN_EXPIRES_MINUTES": 30 * 24 * 60,
         "AUTH_SESSION_MODE": "persistent",
+        "ADMIN_STRONG_AUTH_REQUIRED": True,
         "FRONTEND_BASE_URL": "https://creatorjobs.example",
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
@@ -191,6 +193,21 @@ def test_production_auth_session_migration_requires_explicit_temporary_acknowled
     )
     monkeypatch.setattr(config, "settings", acknowledged)
     config.validate_production_settings()
+
+
+def test_production_requires_administrator_strong_auth_enforcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unsafe = _safe_production_settings(ADMIN_STRONG_AUTH_REQUIRED=False)
+    monkeypatch.setattr(config, "settings", unsafe)
+
+    with pytest.raises(RuntimeError, match="ADMIN_STRONG_AUTH_REQUIRED"):
+        config.validate_production_settings()
+
+    with pytest.raises(ValueError):
+        config.Settings(ADMIN_STRONG_AUTH_MAX_AGE_MINUTES=4)
+    with pytest.raises(ValueError):
+        config.Settings(ADMIN_STRONG_AUTH_MAX_AGE_MINUTES=61)
 
 
 @pytest.mark.parametrize(

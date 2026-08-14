@@ -46,6 +46,10 @@ Key vars:
   required only while `AUTH_SESSION_MODE=migration`)
 - `REFRESH_REUSE_GRACE_SECONDS` (0–30 seconds; duplicate refreshes are rejected,
   and reuse after this race window revokes the complete session family)
+- `ADMIN_STRONG_AUTH_REQUIRED` (must be `true` in production; ADMIN access then
+  requires fresh database-backed second-factor assurance on its durable session)
+- `ADMIN_STRONG_AUTH_MAX_AGE_MINUTES` (5–60 minute upper bound even if stored
+  assurance metadata claims a later expiry)
 - `OAUTH_CREDENTIAL_KEYS` + `OAUTH_CREDENTIAL_ACTIVE_KEY_ID` (server-only
   AES-256-GCM keyring for Google access/refresh credentials)
 - `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;

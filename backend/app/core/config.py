@@ -72,6 +72,18 @@ class Settings(BaseSettings):
         le=30,
         alias="REFRESH_REUSE_GRACE_SECONDS",
     )
+    # Additive administrator assurance gate. It remains off for backwards-
+    # compatible local development, but production must explicitly enable it.
+    admin_strong_auth_required: bool = Field(
+        default=False,
+        alias="ADMIN_STRONG_AUTH_REQUIRED",
+    )
+    admin_strong_auth_max_age_minutes: int = Field(
+        default=15,
+        ge=5,
+        le=60,
+        alias="ADMIN_STRONG_AUTH_MAX_AGE_MINUTES",
+    )
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
     # AES keys. SecretStr keeps the entire keyring out of settings repr/logs.
@@ -237,6 +249,8 @@ def validate_production_settings() -> None:
             "Migration auth sessions require explicit temporary legacy-refresh compatibility "
             "acknowledgement."
         )
+    if not settings.admin_strong_auth_required:
+        failures.append("ADMIN_STRONG_AUTH_REQUIRED must be true in production.")
     if settings.debug:
         failures.append("DEBUG must be false in production.")
     if not settings.frontend_base_url or any(

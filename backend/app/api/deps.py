@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.account_types import isAdmin
+from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
 from app.core.qa_personas import (
     is_qa_controller_email,
@@ -173,6 +174,9 @@ async def get_profile_service(
 class AuthenticatedAccessContext:
     user: User
     session_id: UUID | None
+    strong_auth_method: str | None = None
+    strong_auth_verified_at: datetime | None = None
+    strong_auth_expires_at: datetime | None = None
     is_qa_persona: bool = False
 
 
@@ -180,6 +184,7 @@ async def resolve_access_token_context(
     *,
     session: AsyncSession,
     token: str,
+    enforce_admin_strong_auth: bool = True,
 ) -> AuthenticatedAccessContext | None:
     """Resolve trusted identity and its authoritative durable session family."""
     try:
@@ -198,6 +203,7 @@ async def resolve_access_token_context(
 
     is_qa_persona = "qa" in payload
     auth_session_id: UUID | None = None
+    auth_session: AuthSession | None = None
     if is_qa_persona:
         claims = parse_qa_token_claims(payload)
         if claims is None or not qa_persona_feature_enabled():
@@ -279,6 +285,39 @@ async def resolve_access_token_context(
             detail="Account suspended. Contact support for details.",
         )
 
+    if (
+        enforce_admin_strong_auth
+        and settings.admin_strong_auth_required
+        and isAdmin(user)
+        and (
+            is_qa_persona
+            or auth_session is None
+            or not has_fresh_strong_auth(
+                method=auth_session.strong_auth_method,
+                verified_at=auth_session.strong_auth_verified_at,
+                expires_at=auth_session.strong_auth_expires_at,
+                max_age_minutes=settings.admin_strong_auth_max_age_minutes,
+            )
+        )
+    ):
+        logger.warning(
+            "admin_strong_auth_required",
+            extra={
+                "user_id": str(user.id),
+                "session_id": str(auth_session_id) if auth_session_id else None,
+                "qa_persona": is_qa_persona,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator strong authentication required",
+            headers={
+                "WWW-Authenticate": (
+                    'Bearer error="insufficient_user_authentication"'
+                )
+            },
+        )
+
     # Coarse activity signal for the admin directory: touch at most every 15
     # minutes so authenticated traffic doesn't turn into constant writes.
     # expire_on_commit=False on the session factory keeps `user` usable after
@@ -297,6 +336,19 @@ async def resolve_access_token_context(
     return AuthenticatedAccessContext(
         user=user,
         session_id=auth_session_id,
+        strong_auth_method=(
+            auth_session.strong_auth_method if auth_session is not None else None
+        ),
+        strong_auth_verified_at=(
+            auth_session.strong_auth_verified_at
+            if auth_session is not None
+            else None
+        ),
+        strong_auth_expires_at=(
+            auth_session.strong_auth_expires_at
+            if auth_session is not None
+            else None
+        ),
         is_qa_persona=is_qa_persona,
     )
 
@@ -338,6 +390,35 @@ async def get_current_access_context(
     return context
 
 
+async def get_current_base_access_context(
+    session: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthenticatedAccessContext:
+    """Resolve first-factor identity for logout and strong-auth ceremonies only.
+
+    Ordinary product and administrator routes must use
+    ``get_current_access_context`` so an administrator cannot bypass the
+    assurance gate by choosing a weaker dependency.
+    """
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
+    context = await resolve_access_token_context(
+        session=session,
+        token=credentials.credentials,
+        enforce_admin_strong_auth=False,
+    )
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+        )
+    return context
+
+
 async def get_optional_current_user(
     session: AsyncSession = Depends(get_db),
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
@@ -367,6 +448,10 @@ AuthenticatedUserDependency = CurrentUserDependency
 AuthenticatedAccessDependency = Annotated[
     AuthenticatedAccessContext,
     Depends(get_current_access_context),
+]
+BaseAuthenticatedAccessDependency = Annotated[
+    AuthenticatedAccessContext,
+    Depends(get_current_base_access_context),
 ]
 
 

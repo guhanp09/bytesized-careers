@@ -4,22 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1C-5 — atomic security-event revocation and login serialization
-NEXT ATOMIC SLICE: Phase 1D-1 — administrator strong-auth enforcement contracts and fail-closed gates
-CURRENT HEAD: Phase 1C-5 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0056_persistent_auth_sessions
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0056 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; the database enforces both OAuth ownership invariants; provider credentials use versioned AES-256-GCM storage; backend password/Google logins issue durable session families with one-time hash-only refresh credentials; authenticated HTTP requests treat signed `sid` as a database-backed revocation boundary; refresh/current logout keep a session-before-credential lock order, while login issuance, reset issuance/confirmation, and suspension serialize on the user row before touching session families; every post-lock ORM read refreshes stale identity-map state; NextAuth sign-out proves the family server-to-server with its encrypted-cookie refresh credential; Settings exposes confirmed all-device revocation
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS
-NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; app.models.AuthSession/AuthRefreshCredential; scripts.rotate_oauth_credentials
+LAST COMPLETED ATOMIC SLICE: Phase 1D-1 — administrator strong-auth enforcement foundation
+NEXT ATOMIC SLICE: Phase 1D-2 — real TOTP credential, enrollment, challenge, and recovery backend lifecycle
+CURRENT HEAD: Phase 1D-1 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+CURRENT ALEMBIC HEAD: 0057_admin_session_assurance
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0057 successfully
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; the database enforces both OAuth ownership invariants; provider credentials use versioned AES-256-GCM storage; backend password/Google logins issue durable session families with one-time hash-only refresh credentials; authenticated HTTP requests treat signed `sid` as a database-backed revocation boundary; refresh/current logout keep a session-before-credential lock order, while login issuance, reset issuance/confirmation, and suspension serialize on the user row before touching session families; every post-lock ORM read refreshes stale identity-map state; NextAuth sign-out proves the family server-to-server with its encrypted-cookie refresh credential; administrator requests now pass a global policy gate backed only by fresh assurance on their durable database session, while logout deliberately retains a base-auth escape path; migration 0057 elevates no existing session
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES
+NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; app.models.AuthSession/AuthRefreshCredential; app.core.auth_assurance; scripts.rotate_oauth_credentials
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; real OAuth keyring provisioning plus hosted credential backfill/encrypted-only verification and provider revocation; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
-KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures from the Phase 0 matrix remain unrerun as a whole; this slice's focused security, PostgreSQL, frontend, and backend gates are green; whole-tree Ruff has 93 known findings while every changed Python file passes
-COMMANDS TO RESUME: see "Phase 1C-5 atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: backend/app/core/admin_permissions.py; backend/app/api/v1/routers/admin.py; backend/app/api/deps.py; backend/app/services/auth_service.py; backend/app/repositories/auth_repository.py; backend/app/models/auth_session.py; backend/app/core/security.py; backend/tests/test_admin_panel.py; backend/tests/test_auth_sessions.py; backend/tests/test_auth_sessions_postgres.py; lib/auth.ts
+KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures from the Phase 0 matrix remain unrerun as a whole; this slice's focused security, PostgreSQL, frontend, build, and backend gates are green; whole-tree Ruff has the same 93 known findings while every changed Python file passes
+COMMANDS TO RESUME: see "Phase 1D-1 atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: backend/app/core/auth_assurance.py; backend/app/api/deps.py; backend/app/api/v1/routers/auth.py; backend/app/models/auth_session.py; backend/alembic/versions/0057_admin_session_assurance.py; backend/app/core/oauth_credentials.py; backend/app/services/auth_service.py; backend/app/repositories/auth_repository.py; backend/app/core/rate_limit.py; backend/tests/test_admin_strong_auth.py; backend/tests/test_auth_sessions_postgres.py; lib/auth.ts; app/admin/layout.tsx
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1D-1 atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1D-1
+Status: COMPLETE (Phase 1 and AUTH-008 remain in progress)
+Initial HEAD: 5dd829a896f01de0238182f668ecca54f03d27c3
+Final HEAD: Phase 1D-1 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(admin): add strong-auth enforcement foundation
+Files materially changed: administrator assurance policy helper; authoritative access dependency and deliberately narrow base-auth logout dependency; durable auth-session model; Alembic 0057; production configuration and environment documentation; canonical HTTP error handler; focused administrator/config/migration/PostgreSQL tests; execution ledger and handoff
+Migrations: 0057_admin_session_assurance additively appends nullable `strong_auth_method`, `strong_auth_verified_at`, and `strong_auth_expires_at` columns plus a completeness/supported-method/chronology check constraint; it elevates no row; downgrade refuses after any assurance field has been used because an old binary would bypass the boundary
+Behavior changed: when `ADMIN_STRONG_AUTH_REQUIRED=true`, every ADMIN request—including ordinary owner/participant routes outside `/admin`—requires a live durable session with fresh database-backed TOTP, WebAuthn, or recovery-code assurance; signed JWT `amr`/`acr` claims cannot elevate a session; QA and claimless administrator sessions fail closed; stored expiry is capped by the configured 5–60 minute maximum age; under-elevated administrators can still revoke the current/all session families; custom HTTP error rendering now preserves security response headers such as `WWW-Authenticate`; production configuration refuses to boot with the administrator gate disabled
+Security assumptions: no endpoint in this slice writes assurance and migration 0057 sets no assurance, so this is an enforcement foundation rather than pretend MFA; enabling the required production gate before the next factor slices intentionally denies administrator product access except safe logout; only a successful server-side factor verifier may populate all three assurance fields atomically; ordinary product/admin routes must continue using `get_current_access_context`; `get_current_base_access_context` is limited to logout and future factor ceremonies; the durable session remains the revocation boundary and access-token claims remain untrusted for elevation
+Tests run: assurance policy tests; administrator privilege, forged-claim, expiry, non-admin, logout-all, admin-panel, session, migration-downgrade, and production-config tests; focused Ruff on every changed Python file; complete backend pytest; TypeScript; ESLint; complete frontend unit suite; production build; fresh disposable PostgreSQL migration/downgrade/re-upgrade and database constraint suite; Alembic heads/current; whole-tree Ruff baseline; `git diff --check`
+Exact results: focused backend 50 passed / 9 warnings; changed-code Ruff passed; backend 6,457 passed / 61 skipped / 88 warnings in 308.96s; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,125 passed / 0 failed in 3.18s; production build passed with 32 static pages; disposable PostgreSQL suite 26 passed / 2 warnings; one Alembic head `0057_admin_session_assurance`; configured local SQLite remains unstamped; whole-tree Ruff remains at the pre-existing 93 findings; `git diff --check` passed
+Known external failures: no real factor device/provider, hosted database, production cookie, multi-instance deployment, Google credential, or provider outage was exercised; authenticated GitHub inspection and the AUTH-004 provider/keyring rollout remain external; the Phase 0 standard/QA browser failure matrices were not rerun because this slice changed no frontend behavior
+Remaining risks: administrators have no product-accessible enrollment/challenge/recovery flow yet, so AUTH-008 is `IN_PROGRESS` and production remains `NO-GO`; TOTP secrets need encrypted storage, enrollment confirmation, replay prevention, recovery-code one-time consumption, abuse controls, audit events, factor-reset/session-revocation semantics, and browser UX; browser access bearers remain visible to application JavaScript under AUTH-007; Google incremental scopes/provider revocation, hosted OAuth encryption cutover, security monitoring, and prior deterministic browser failures remain
+Next phase: Phase 1D-2 atomic slice — implement a genuine encrypted TOTP credential and server-side enrollment/confirmation/elevation/recovery lifecycle using the narrow base-auth ceremony boundary, hash-only single-use recovery codes, replay protection, bounded attempts, auditability, and session revocation on factor changes; do not mark AUTH-008 validated until the frontend and full recovery/privilege matrix are complete
+Important commands: `rg -n 'encrypt|AESGCM|SecretStr|rate_limit|AdminAuditLog|AuthSession|BaseAuthenticatedAccessDependency' backend/app backend/tests`; inspect `backend/app/core/oauth_credentials.py`, `backend/app/core/rate_limit.py`, `backend/app/models/admin.py`, and auth repository/service patterns; before migration run `.venv/bin/python -m alembic heads` and `./scripts/test_interaction_status_postgres.sh`; start with focused `APP_ENV=test .venv/bin/python -m pytest tests/test_admin_strong_auth.py tests/test_auth_sessions.py tests/test_config.py`
+```
 
 ## Phase 1C-5 atomic checkpoint
 
@@ -275,11 +295,11 @@ Do not weaken these tests without first proving that their asserted product cont
 - Current-session logout prefers the server-held refresh credential, logout-all revokes every durable family, and Settings exposes a confirmed all-device workflow. NextAuth performs current-family revocation inside its same-origin sign-out event without serializing its refresh credential into `/api/auth/session`.
 - Password reset and both administrator-suspension entry points now revoke every durable family atomically. Password/reset issuance, reset confirmation, existing-account Google login, and suspension share a user-first lock boundary, so a concurrent old-password/provider login either commits before the security event and is revoked or observes the new security state and fails. AUTH-006 is `VALIDATED`.
 - Active-session inventory/individual device controls remain a non-blocking hardening extension; long-lived WebSocket disconnect, abuse throttling/audit, and production revocation-failure alerting remain AUTH-010/Phase 8/Phase 12 work.
-- The rollout is deliberately additive: land 0056, run bounded `migration` mode until the final legacy refresh expires, then use `persistent`. Downgrade/old-binary rollback after persistent issuance requires JWT signing-secret rotation/global logout.
+- The rollout is deliberately additive: land 0056, run bounded `migration` mode until the final legacy refresh expires, then use `persistent`; land 0057 before enabling administrator strong-auth enforcement. Downgrade/old-binary rollback after persistent issuance requires JWT signing-secret rotation/global logout, and downgrade of 0057 is refused once assurance state has been used.
 - Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
-- Admin authorization exists, but strong administrator authentication/MFA enforcement does not.
+- Administrator authorization now has a global database-backed strong-auth enforcement boundary. It rejects forged JWT assurance claims, caps proof age, fails closed for QA/claimless sessions, and preserves a logout escape path; no enrollment/challenge/recovery writer exists yet, so this is not a completed MFA system and AUTH-008 remains `IN_PROGRESS`.
 
-Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, local encrypted credential architecture, persistent refresh-family foundation, authoritative access checks, explicit logout contracts, and security-event revocation are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, accept caller-selected session IDs, change either documented lock order without real PostgreSQL race tests, retire an OAuth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified.
+Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, local encrypted credential architecture, persistent refresh-family foundation, authoritative access checks, explicit logout contracts, security-event revocation, and administrator assurance enforcement foundation are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, accept caller-selected session IDs, trust JWT claims for strong-auth elevation, broaden the base-auth dependency beyond logout/factor ceremonies, change either documented lock order without real PostgreSQL race tests, retire an OAuth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified.
 
 ## Phase 1 files to read first
 
@@ -287,6 +307,7 @@ Phase 1 must remain additive and migration-safe. The browser-field removal, serv
 - `backend/app/api/deps.py`
 - `backend/app/services/auth_service.py`
 - `backend/app/core/security.py`
+- `backend/app/core/auth_assurance.py`
 - `backend/app/repositories/auth_repository.py`
 - `backend/app/models/auth_session.py`
 - `backend/app/models/oauth_account.py`
@@ -301,7 +322,7 @@ Phase 1 must remain additive and migration-safe. The browser-field removal, serv
 - `lib/auth.ts`
 - `lib/backendTokenRefresh.ts`
 - `types/next-auth.d.ts` if present, plus components identified by `rg 'session\?\.user\?\.(accessToken|refreshToken)'`
-- `backend/alembic/versions/0056_persistent_auth_sessions.py` and its predecessor before designing any migration
+- `backend/alembic/versions/0057_admin_session_assurance.py`, `0056_persistent_auth_sessions.py`, and their lineage before designing any migration
 
 ## Important commands
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Uuid, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,6 +13,17 @@ class AuthSession(Base):
     """One durable login/session family for a user and authentication event."""
 
     __tablename__ = "auth_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "(strong_auth_method IS NULL AND strong_auth_verified_at IS NULL "
+            "AND strong_auth_expires_at IS NULL) OR "
+            "(strong_auth_method IN ('recovery_code', 'totp', 'webauthn') "
+            "AND strong_auth_verified_at IS NOT NULL "
+            "AND strong_auth_expires_at IS NOT NULL "
+            "AND strong_auth_expires_at > strong_auth_verified_at)",
+            name="ck_auth_sessions_strong_auth_complete",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -26,6 +37,20 @@ class AuthSession(Base):
         index=True,
     )
     authentication_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Set only after a real second-factor verifier succeeds. Access JWT claims
+    # never confer assurance; the authoritative state lives on this family.
+    strong_auth_method: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    strong_auth_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    strong_auth_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     absolute_expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
