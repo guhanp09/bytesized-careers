@@ -122,6 +122,21 @@ def rate_limit(rule: RateLimitRule):
 AUTH_REGISTER_LIMIT = RateLimitRule("auth_register", limit=30, window_seconds=600)
 AUTH_LOGIN_LIMIT = RateLimitRule("auth_login", limit=60, window_seconds=300)
 AUTH_EMAIL_LIMIT = RateLimitRule("auth_email", limit=30, window_seconds=600)
+STRONG_AUTH_ENROLL_LIMIT = RateLimitRule(
+    "strong_auth_enroll",
+    limit=5,
+    window_seconds=3600,
+)
+STRONG_AUTH_CHALLENGE_LIMIT = RateLimitRule(
+    "strong_auth_challenge",
+    limit=20,
+    window_seconds=300,
+)
+STRONG_AUTH_FACTOR_CHANGE_LIMIT = RateLimitRule(
+    "strong_auth_factor_change",
+    limit=5,
+    window_seconds=3600,
+)
 MARKETPLACE_ACTION_LIMIT = RateLimitRule("marketplace_action", limit=120, window_seconds=300)
 REPORT_LIMIT = RateLimitRule("report", limit=30, window_seconds=600)
 CHECKOUT_LIMIT = RateLimitRule("checkout", limit=30, window_seconds=600)

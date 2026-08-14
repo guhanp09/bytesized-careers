@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,9 +11,22 @@ from app.api.deps import (
     bearer_scheme,
     get_auth_service,
     get_db,
+    get_strong_auth_service,
     resolve_access_token_context,
 )
-from app.core.rate_limit import AUTH_EMAIL_LIMIT, AUTH_LOGIN_LIMIT, AUTH_REGISTER_LIMIT, rate_limit
+from app.core.rate_limit import (
+    AUTH_EMAIL_LIMIT,
+    AUTH_LOGIN_LIMIT,
+    AUTH_REGISTER_LIMIT,
+    STRONG_AUTH_CHALLENGE_LIMIT,
+    STRONG_AUTH_ENROLL_LIMIT,
+    STRONG_AUTH_FACTOR_CHANGE_LIMIT,
+    rate_limit,
+)
+from app.core.strong_auth_secrets import (
+    StrongAuthSecretDecryptionError,
+    StrongAuthSecretEncryptionError,
+)
 from app.repositories.auth_repository import OAuthAccountCollisionError
 from app.schemas import (
     AuthStatusResponse,
@@ -28,6 +43,16 @@ from app.schemas import (
     ResendVerificationRequest,
     ResendVerificationResponse,
     SessionRevocationResponse,
+    StrongAuthCodeRequest,
+    StrongAuthDisableRequest,
+    StrongAuthDisableResponse,
+    StrongAuthEnrollmentConfirmationResponse,
+    StrongAuthEnrollmentResponse,
+    StrongAuthEnrollmentStartRequest,
+    StrongAuthRecoveryCodesResponse,
+    StrongAuthStatusResponse,
+    StrongAuthTotpCodeRequest,
+    StrongAuthVerificationResponse,
     VerifyEmailRequest,
 )
 from app.services.auth_service import (
@@ -47,8 +72,27 @@ from app.services.google_identity import (
     GoogleIdentityProviderUnavailableError,
     GoogleIdentityVerificationError,
 )
+from app.services.strong_auth_service import (
+    StrongAuthAlreadyEnrolledError,
+    StrongAuthEnrollmentExpiredError,
+    StrongAuthError,
+    StrongAuthInvalidCodeError,
+    StrongAuthLockedError,
+    StrongAuthNotConfiguredError,
+    StrongAuthNotEnrolledError,
+    StrongAuthPermissionError,
+    StrongAuthPersistentSessionRequiredError,
+    StrongAuthPrimaryReauthenticationError,
+    StrongAuthService,
+    StrongAuthSessionError,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
+
+
+def _prevent_sensitive_response_caching(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
 
 
 def _login_response(user, tokens) -> LoginResponse:
@@ -59,6 +103,74 @@ def _login_response(user, tokens) -> LoginResponse:
         access_token_expires_at=tokens.access_token_expires_at,
         refresh_token_expires_at=tokens.refresh_token_expires_at,
         user=AuthUserRead.model_validate(user),
+    )
+
+
+def _strong_auth_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, StrongAuthLockedError):
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed strong-authentication attempts. Try again later.",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        )
+    if isinstance(exc, StrongAuthEnrollmentExpiredError):
+        return HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Strong-authentication enrollment expired. Start again.",
+        )
+    if isinstance(
+        exc,
+        StrongAuthAlreadyEnrolledError | StrongAuthNotEnrolledError,
+    ):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, StrongAuthPersistentSessionRequiredError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A durable authenticated session is required",
+        )
+    if isinstance(exc, StrongAuthSessionError):
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated session is no longer active",
+        )
+    if isinstance(
+        exc,
+        StrongAuthInvalidCodeError
+        | StrongAuthPrimaryReauthenticationError
+        | StrongAuthPermissionError,
+    ):
+        return HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Strong authentication failed"
+                if not isinstance(exc, StrongAuthPermissionError)
+                else str(exc)
+            ),
+            headers={
+                "WWW-Authenticate": (
+                    'Bearer error="insufficient_user_authentication"'
+                )
+            },
+        )
+    if isinstance(
+        exc,
+        StrongAuthNotConfiguredError
+        | StrongAuthSecretEncryptionError
+        | StrongAuthSecretDecryptionError
+        | GoogleIdentityConfigurationError
+        | GoogleIdentityProviderUnavailableError,
+    ):
+        logger.error(
+            "strong_auth_unavailable",
+            extra={"reason_type": type(exc).__name__},
+        )
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Strong authentication is temporarily unavailable",
+        )
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Strong authentication failed",
     )
 
 
@@ -294,6 +406,193 @@ async def logout_all(
         )
     revoked = await service.revoke_all_sessions(user_id=context.user.id)
     return SessionRevocationResponse(revoked_sessions=revoked)
+
+
+@router.get(
+    "/strong-auth/status",
+    response_model=StrongAuthStatusResponse,
+    summary="Read administrator strong-authentication state",
+)
+async def strong_auth_status(
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthStatusResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        result = await service.status(context)
+    except StrongAuthError as exc:
+        raise _strong_auth_http_error(exc) from exc
+    available_methods = []
+    if result.enrolled:
+        available_methods.append("totp")
+        if result.recovery_codes_remaining > 0:
+            available_methods.append("recovery_code")
+    return StrongAuthStatusResponse(
+        enrolled=result.enrolled,
+        enrollment_pending=result.enrollment_pending,
+        enrollment_expires_at=result.enrollment_expires_at,
+        recovery_codes_remaining=result.recovery_codes_remaining,
+        strong_auth_satisfied=result.strong_auth_satisfied,
+        strong_auth_method=result.strong_auth_method,
+        strong_auth_expires_at=result.strong_auth_expires_at,
+        available_methods=available_methods,
+    )
+
+
+@router.post(
+    "/strong-auth/totp/enroll",
+    response_model=StrongAuthEnrollmentResponse,
+    summary="Start a primary-credential-bound TOTP enrollment",
+)
+async def strong_auth_totp_enroll(
+    payload: StrongAuthEnrollmentStartRequest,
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    _limit: None = rate_limit(STRONG_AUTH_ENROLL_LIMIT),
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthEnrollmentResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        result = await service.start_enrollment(
+            context,
+            password=payload.primary.password,
+            google_id_token=payload.primary.google_id_token,
+        )
+    except (
+        StrongAuthError,
+        StrongAuthSecretEncryptionError,
+        GoogleIdentityConfigurationError,
+        GoogleIdentityProviderUnavailableError,
+    ) as exc:
+        raise _strong_auth_http_error(exc) from exc
+    return StrongAuthEnrollmentResponse(
+        secret=result.secret,
+        provisioning_uri=result.provisioning_uri,
+        expires_at=result.expires_at,
+    )
+
+
+@router.post(
+    "/strong-auth/totp/confirm",
+    response_model=StrongAuthEnrollmentConfirmationResponse,
+    summary="Confirm TOTP enrollment and return one-time recovery codes",
+)
+async def strong_auth_totp_confirm(
+    payload: StrongAuthTotpCodeRequest,
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    _limit: None = rate_limit(STRONG_AUTH_CHALLENGE_LIMIT),
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthEnrollmentConfirmationResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        result, recovery_codes = await service.confirm_enrollment(
+            context,
+            code=payload.code,
+        )
+    except (
+        StrongAuthError,
+        StrongAuthSecretDecryptionError,
+    ) as exc:
+        raise _strong_auth_http_error(exc) from exc
+    return StrongAuthEnrollmentConfirmationResponse(
+        method=result.method,
+        expires_at=result.expires_at,
+        recovery_codes_remaining=result.recovery_codes_remaining,
+        recovery_codes=list(recovery_codes),
+    )
+
+
+@router.post(
+    "/strong-auth/challenge",
+    response_model=StrongAuthVerificationResponse,
+    summary="Elevate the current durable session with TOTP or a recovery code",
+)
+async def strong_auth_challenge(
+    payload: StrongAuthCodeRequest,
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    _limit: None = rate_limit(STRONG_AUTH_CHALLENGE_LIMIT),
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthVerificationResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        result = await service.challenge(
+            context,
+            method=payload.method,
+            code=payload.code,
+        )
+    except (
+        StrongAuthError,
+        StrongAuthSecretDecryptionError,
+    ) as exc:
+        raise _strong_auth_http_error(exc) from exc
+    return StrongAuthVerificationResponse(
+        method=result.method,
+        expires_at=result.expires_at,
+        recovery_codes_remaining=result.recovery_codes_remaining,
+    )
+
+
+@router.post(
+    "/strong-auth/recovery-codes/regenerate",
+    response_model=StrongAuthRecoveryCodesResponse,
+    summary="Replace every recovery code after a fresh TOTP proof",
+)
+async def strong_auth_recovery_codes_regenerate(
+    payload: StrongAuthTotpCodeRequest,
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    _limit: None = rate_limit(STRONG_AUTH_FACTOR_CHANGE_LIMIT),
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthRecoveryCodesResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        result = await service.regenerate_recovery_codes(
+            context,
+            totp_code=payload.code,
+        )
+    except (
+        StrongAuthError,
+        StrongAuthSecretDecryptionError,
+    ) as exc:
+        raise _strong_auth_http_error(exc) from exc
+    return StrongAuthRecoveryCodesResponse(
+        recovery_codes=list(result.codes),
+        expires_at=result.expires_at,
+    )
+
+
+@router.post(
+    "/strong-auth/disable",
+    response_model=StrongAuthDisableResponse,
+    summary="Disable the factor after primary and strong reauthentication",
+)
+async def strong_auth_disable(
+    payload: StrongAuthDisableRequest,
+    response: Response,
+    context: BaseAuthenticatedAccessDependency,
+    _limit: None = rate_limit(STRONG_AUTH_FACTOR_CHANGE_LIMIT),
+    service: StrongAuthService = Depends(get_strong_auth_service),
+) -> StrongAuthDisableResponse:
+    _prevent_sensitive_response_caching(response)
+    try:
+        revoked = await service.disable(
+            context,
+            method=payload.method,
+            code=payload.code,
+            password=payload.primary.password,
+            google_id_token=payload.primary.google_id_token,
+        )
+    except (
+        StrongAuthError,
+        StrongAuthSecretDecryptionError,
+        GoogleIdentityConfigurationError,
+        GoogleIdentityProviderUnavailableError,
+    ) as exc:
+        raise _strong_auth_http_error(exc) from exc
+    return StrongAuthDisableResponse(revoked_sessions=revoked)
 
 
 @router.post(

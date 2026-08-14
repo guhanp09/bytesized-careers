@@ -144,6 +144,18 @@ from app.schemas.reviews import (
     ReviewWorkspaceResponse,
     StartResponseRequest,
 )
+from app.schemas.strong_auth import (
+    StrongAuthCodeRequest,
+    StrongAuthDisableRequest,
+    StrongAuthDisableResponse,
+    StrongAuthEnrollmentConfirmationResponse,
+    StrongAuthEnrollmentResponse,
+    StrongAuthEnrollmentStartRequest,
+    StrongAuthRecoveryCodesResponse,
+    StrongAuthStatusResponse,
+    StrongAuthTotpCodeRequest,
+    StrongAuthVerificationResponse,
+)
 
 __all__ = [
     "AuthStatusResponse",
@@ -250,6 +262,16 @@ __all__ = [
     "ResendVerificationRequest",
     "ResendVerificationResponse",
     "SessionRevocationResponse",
+    "StrongAuthCodeRequest",
+    "StrongAuthDisableRequest",
+    "StrongAuthDisableResponse",
+    "StrongAuthEnrollmentConfirmationResponse",
+    "StrongAuthEnrollmentResponse",
+    "StrongAuthEnrollmentStartRequest",
+    "StrongAuthRecoveryCodesResponse",
+    "StrongAuthStatusResponse",
+    "StrongAuthTotpCodeRequest",
+    "StrongAuthVerificationResponse",
     "RegisterRequest",
     "RefreshTokenRequest",
     "ReportCreate",

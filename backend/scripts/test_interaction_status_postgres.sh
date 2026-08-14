@@ -29,6 +29,7 @@ PYTHONPATH=. "$PYTHON_BIN" tests/interaction_migration_fixtures.py
   tests/test_auth_session_migration.py \
   tests/test_auth_sessions_postgres.py \
   tests/test_oauth_credential_migration.py \
+  tests/test_strong_auth_postgres.py \
   tests/test_interaction_migration_postgres.py \
   tests/test_interaction_transitions_postgres.py \
   -q

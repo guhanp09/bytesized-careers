@@ -117,6 +117,7 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "JWT_ACCESS_TOKEN_EXPIRES_MINUTES" in message
     assert "AUTH_SESSION_MODE" in message
     assert "ADMIN_STRONG_AUTH_REQUIRED" in message
+    assert "STRONG_AUTH_SECRET_KEYS" in message
     assert "RATE_LIMIT_BACKEND" in message
 
 
@@ -130,6 +131,8 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "JWT_REFRESH_TOKEN_EXPIRES_MINUTES": 30 * 24 * 60,
         "AUTH_SESSION_MODE": "persistent",
         "ADMIN_STRONG_AUTH_REQUIRED": True,
+        "STRONG_AUTH_SECRET_KEYS": json.dumps({"strong_auth_key": key}),
+        "STRONG_AUTH_SECRET_ACTIVE_KEY_ID": "strong_auth_key",
         "FRONTEND_BASE_URL": "https://creatorjobs.example",
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
@@ -208,6 +211,26 @@ def test_production_requires_administrator_strong_auth_enforcement(
         config.Settings(ADMIN_STRONG_AUTH_MAX_AGE_MINUTES=4)
     with pytest.raises(ValueError):
         config.Settings(ADMIN_STRONG_AUTH_MAX_AGE_MINUTES=61)
+
+
+def test_production_requires_valid_dedicated_strong_auth_secret_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = _safe_production_settings(
+        STRONG_AUTH_SECRET_KEYS=None,
+        STRONG_AUTH_SECRET_ACTIVE_KEY_ID=None,
+    )
+    monkeypatch.setattr(config, "settings", missing)
+    with pytest.raises(RuntimeError, match="STRONG_AUTH_SECRET_KEYS"):
+        config.validate_production_settings()
+
+    malformed = _safe_production_settings(
+        STRONG_AUTH_SECRET_KEYS='{"key":"not-base64!"}',
+        STRONG_AUTH_SECRET_ACTIVE_KEY_ID="key",
+    )
+    monkeypatch.setattr(config, "settings", malformed)
+    with pytest.raises(RuntimeError, match="Strong-auth secret encryption"):
+        config.validate_production_settings()
 
 
 @pytest.mark.parametrize(

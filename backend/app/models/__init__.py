@@ -33,6 +33,7 @@ from app.models.role_system import (
     UserRole,
     UserRoleAnswer,
 )
+from app.models.strong_auth import StrongAuthRecoveryCode, StrongAuthTotpCredential
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.models.user_youtube_channel import UserYouTubeChannel
@@ -69,6 +70,8 @@ __all__ = [
     "Role",
     "RoleQuestion",
     "RoleQuestionOption",
+    "StrongAuthRecoveryCode",
+    "StrongAuthTotpCredential",
     "User",
     "UserBlock",
     "SavedJob",

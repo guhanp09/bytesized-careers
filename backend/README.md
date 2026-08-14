@@ -50,6 +50,9 @@ Key vars:
   requires fresh database-backed second-factor assurance on its durable session)
 - `ADMIN_STRONG_AUTH_MAX_AGE_MINUTES` (5–60 minute upper bound even if stored
   assurance metadata claims a later expiry)
+- `STRONG_AUTH_SECRET_KEYS` + `STRONG_AUTH_SECRET_ACTIVE_KEY_ID` (dedicated,
+  rotation-ready AES-256-GCM keyring for TOTP secrets; required in production
+  and intentionally separate from OAuth credential encryption)
 - `OAUTH_CREDENTIAL_KEYS` + `OAUTH_CREDENTIAL_ACTIVE_KEY_ID` (server-only
   AES-256-GCM keyring for Google access/refresh credentials)
 - `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;

@@ -21,6 +21,10 @@ from app.core.qa_personas import (
     qa_session_is_revoked,
 )
 from app.core.security import SESSION_ID_CLAIM, TokenError, decode_access_token
+from app.core.strong_auth_secrets import (
+    StrongAuthSecretConfigurationError,
+    build_strong_auth_secret_cipher,
+)
 from app.db import seed_data_personas as qa_personas
 from app.db.session import get_db_session
 from app.integrations.openai.job_import_adapter import (
@@ -46,6 +50,7 @@ from app.services.me_service import MeService
 from app.services.oauth_credential_storage import OAuthCredentialStorage
 from app.services.profile_service import ProfileService
 from app.services.search_service import SearchService
+from app.services.strong_auth_service import StrongAuthService
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +163,35 @@ async def get_auth_service(
     ),
 ) -> AuthService:
     return AuthService(repository, google_identity_verifier)
+
+
+async def get_strong_auth_service(
+    session: AsyncSession = Depends(get_db),
+    google_identity_verifier: GoogleIdentityVerifier = Depends(
+        get_google_identity_verifier
+    ),
+) -> StrongAuthService:
+    keyring_json = (
+        settings.strong_auth_secret_keys.get_secret_value()
+        if settings.strong_auth_secret_keys is not None
+        else None
+    )
+    try:
+        cipher = build_strong_auth_secret_cipher(
+            keyring_json=keyring_json,
+            active_key_id=settings.strong_auth_secret_active_key_id,
+        )
+    except StrongAuthSecretConfigurationError as exc:
+        logger.error("strong_auth_secret_configuration_invalid")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Strong authentication is temporarily unavailable",
+        ) from exc
+    return StrongAuthService(
+        session,
+        cipher=cipher,
+        google_identity_verifier=google_identity_verifier,
+    )
 
 
 async def get_me_service(repository: AuthRepository = Depends(get_auth_repository)) -> MeService:

@@ -84,6 +84,21 @@ class Settings(BaseSettings):
         le=60,
         alias="ADMIN_STRONG_AUTH_MAX_AGE_MINUTES",
     )
+    # Dedicated rotation-ready keyring for TOTP secrets. It is intentionally
+    # separate from OAuth token encryption so compromise/rotation domains do
+    # not overlap. Recovery codes are never encrypted or stored in plaintext.
+    strong_auth_secret_keys: SecretStr | None = Field(
+        default=None,
+        max_length=32 * 1024,
+        alias="STRONG_AUTH_SECRET_KEYS",
+    )
+    strong_auth_secret_active_key_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        alias="STRONG_AUTH_SECRET_ACTIVE_KEY_ID",
+    )
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
     # AES keys. SecretStr keeps the entire keyring out of settings repr/logs.
@@ -251,6 +266,29 @@ def validate_production_settings() -> None:
         )
     if not settings.admin_strong_auth_required:
         failures.append("ADMIN_STRONG_AUTH_REQUIRED must be true in production.")
+    from app.core.strong_auth_secrets import (
+        StrongAuthSecretConfigurationError,
+        build_strong_auth_secret_cipher,
+    )
+
+    strong_auth_keyring_json = (
+        settings.strong_auth_secret_keys.get_secret_value()
+        if settings.strong_auth_secret_keys is not None
+        else None
+    )
+    try:
+        strong_auth_cipher = build_strong_auth_secret_cipher(
+            keyring_json=strong_auth_keyring_json,
+            active_key_id=settings.strong_auth_secret_active_key_id,
+        )
+    except StrongAuthSecretConfigurationError as exc:
+        failures.append(f"Strong-auth secret encryption configuration is invalid: {exc}")
+        strong_auth_cipher = None
+    if strong_auth_cipher is None:
+        failures.append(
+            "STRONG_AUTH_SECRET_KEYS and STRONG_AUTH_SECRET_ACTIVE_KEY_ID are required "
+            "in production."
+        )
     if settings.debug:
         failures.append("DEBUG must be false in production.")
     if not settings.frontend_base_url or any(
