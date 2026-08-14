@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Admin panel API (docs/ADMIN_PANEL_PLAN.md).
 
 Every route is authorized through a *permission key* (see
@@ -10,6 +8,8 @@ privacy-sensitive reported-conversation view) writes an `AdminAuditLog` entry
 in the same transaction via `record_admin_action`.
 """
 
+from __future__ import annotations
+
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -18,18 +18,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
-from app.core.admin_permissions import require_permission
+from app.api.deps import get_auth_repository, get_db
 from app.core.account_types import is_admin
+from app.core.admin_permissions import require_permission
 from app.core.config import settings
 from app.core.marketplace import JOB_STATUSES, TALENT_LISTING_STATUSES
 from app.models import (
+    AdminAuditLog,
     Conversation,
     EmailOutbox,
-    Entitlement,
     EngagementReview,
+    Entitlement,
     HiringIdentity,
-    AdminAuditLog,
     InteractionStatusEvent,
     Job,
     JobApplication,
@@ -42,6 +42,7 @@ from app.models import (
 )
 from app.notifications import dispatch_notification
 from app.notifications.registry import EVENT_REGISTRY
+from app.repositories.auth_repository import AuthRepository
 from app.schemas.admin import (
     AdminAbuseSignalRow,
     AdminAbuseSignalsResponse,
@@ -386,8 +387,16 @@ async def admin_suspend_user(
     payload: AdminSuspendRequest,
     admin_user: User = Depends(require_permission("users.suspend")),
     session: AsyncSession = Depends(get_db),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
 ) -> AdminUserItem:
-    user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (
+        await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if is_admin(user):
@@ -399,6 +408,11 @@ async def admin_suspend_user(
     user.suspended_at = _now()
     user.suspension_reason = payload.reason
     user.suspended_by_user_id = admin_user.id
+    revoked_sessions = await auth_repository.revoke_auth_sessions_for_user(
+        user_id=user.id,
+        revoked_at=user.suspended_at,
+        reason="account_suspended",
+    )
     record_admin_action(
         session,
         actor=admin_user,
@@ -407,7 +421,10 @@ async def admin_suspend_user(
         target_id=user.id,
         target_label=f"User — {user.display_name or user.username or user.email}",
         before=before,
-        after={"suspended_at": user.suspended_at.isoformat()},
+        after={
+            "suspended_at": user.suspended_at.isoformat(),
+            "revoked_sessions": revoked_sessions,
+        },
         justification=payload.reason,
     )
     await session.commit()
@@ -423,7 +440,14 @@ async def admin_unsuspend_user(
     admin_user: User = Depends(require_permission("users.suspend")),
     session: AsyncSession = Depends(get_db),
 ) -> AdminUserItem:
-    user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (
+        await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.suspended_at is None:
@@ -952,6 +976,7 @@ async def admin_resolve_report(
     payload: AdminReportResolveRequest,
     admin_user: User = Depends(require_permission("reports.resolve")),
     session: AsyncSession = Depends(get_db),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
 ) -> AdminReportItem:
     report = (await session.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
     if report is None:
@@ -1031,6 +1056,16 @@ async def admin_resolve_report(
         target_user = await _report_target_owner(session, report)
         if target_user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report target user not found")
+        target_user = (
+            await session.execute(
+                select(User)
+                .where(User.id == target_user.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if target_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report target user not found")
         if is_admin(target_user):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin accounts cannot be suspended")
         if target_user.suspended_at is None:
@@ -1038,6 +1073,11 @@ async def admin_resolve_report(
             target_user.suspended_at = _now()
             target_user.suspension_reason = reason
             target_user.suspended_by_user_id = admin_user.id
+            revoked_sessions = await auth_repository.revoke_auth_sessions_for_user(
+                user_id=target_user.id,
+                revoked_at=target_user.suspended_at,
+                reason="account_suspended",
+            )
             record_admin_action(
                 session,
                 actor=admin_user,
@@ -1046,7 +1086,10 @@ async def admin_resolve_report(
                 target_id=target_user.id,
                 target_label=f"User — {target_user.display_name or target_user.username or target_user.email}",
                 before={"suspended_at": None},
-                after={"suspended_at": target_user.suspended_at.isoformat()},
+                after={
+                    "suspended_at": target_user.suspended_at.isoformat(),
+                    "revoked_sessions": revoked_sessions,
+                },
                 justification=reason,
                 report_id=report.id,
             )

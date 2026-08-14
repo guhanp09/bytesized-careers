@@ -393,7 +393,12 @@ class AuthService:
 
     async def request_password_reset_for_email(self, *, email: str) -> str | None:
         normalized_email = self.normalize_email(email)
-        user = await self.repository.get_user_by_email(normalized_email)
+        # Reset issuance and every session-producing login serialize on the
+        # user row. Concurrent reset requests therefore leave only the token
+        # from the transaction that committed last usable.
+        user = await self.repository.get_user_by_email_for_update(
+            normalized_email
+        )
         if user is None or not user.password_hash:
             return None
 
@@ -417,18 +422,22 @@ class AuthService:
         )
 
     async def reset_password(self, *, token: str, password: str) -> User:
-        row = await self.repository.get_password_reset_token(token)
+        candidate = await self.repository.get_password_reset_token(token)
+        if candidate is None:
+            raise InvalidPasswordResetTokenError("Invalid or expired password reset token")
+
+        # Security events and login issuance share a user-first lock order.
+        # Reading the token once supplies its owner; both records are then
+        # re-read under locks before any security state changes.
+        user = await self.repository.get_user_by_id_for_update(candidate.user_id)
+        row = await self.repository.get_password_reset_token_for_update(token)
         now = datetime.now(UTC)
-        if row is None:
+        if row is None or user is None or row.user_id != user.id:
             raise InvalidPasswordResetTokenError("Invalid or expired password reset token")
         expires_at = row.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if row.used_at is not None or expires_at <= now:
-            raise InvalidPasswordResetTokenError("Invalid or expired password reset token")
-
-        user = await self.repository.get_user_by_id(row.user_id)
-        if user is None:
             raise InvalidPasswordResetTokenError("Invalid or expired password reset token")
 
         user.password_hash = hash_password(password)
@@ -438,6 +447,11 @@ class AuthService:
             used_at=now,
         )
         row.used_at = now
+        await self.repository.revoke_auth_sessions_for_user(
+            user_id=user.id,
+            revoked_at=now,
+            reason="password_reset",
+        )
         await self.repository.commit()
         return user
 
@@ -550,7 +564,12 @@ class AuthService:
 
     async def login_with_password(self, *, email: str, password: str) -> tuple[User, AuthTokenPair]:
         normalized_email = self.normalize_email(email)
-        user = await self.repository.get_user_by_email(normalized_email)
+        # Holding the user lock through credential verification and durable
+        # issuance prevents an old-password login from committing a fresh
+        # family after password reset or suspension has scanned the families.
+        user = await self.repository.get_user_by_email_for_update(
+            normalized_email
+        )
         if user is None or not user.password_hash:
             raise InvalidCredentialsError("Invalid email or password")
         if not verify_password(password, user.password_hash):
@@ -588,6 +607,13 @@ class AuthService:
                 and email_user is not None
                 and oauth_account.user_id == email_user.id
             ):
+                email_user = await self.repository.get_user_by_id_for_update(
+                    email_user.id
+                )
+                if email_user is None:
+                    raise OAuthAccountCollisionError(
+                        "Google identity linkage is inconsistent"
+                    ) from exc
                 if email_user.suspended_at is not None:
                     raise AccountSuspendedError("Account suspended") from exc
                 logger.info(
@@ -621,7 +647,9 @@ class AuthService:
         incoming_display_name = (identity.display_name or "").strip() or None
 
         if oauth_account is not None:
-            user = await self.repository.get_user_by_id(oauth_account.user_id)
+            user = await self.repository.get_user_by_id_for_update(
+                oauth_account.user_id
+            )
             if user is None:
                 raise OAuthAccountCollisionError(
                     "Google identity linkage is inconsistent"
@@ -635,6 +663,11 @@ class AuthService:
         else:
             user = email_user
             if user is not None:
+                user = await self.repository.get_user_by_id_for_update(user.id)
+                if user is None:
+                    raise OAuthAccountCollisionError(
+                        "Google identity linkage is inconsistent"
+                    )
                 existing_google_account = await self.repository.get_oauth_account_for_user(
                     user_id=user.id,
                     provider="google",
@@ -912,11 +945,8 @@ class AuthService:
     async def revoke_all_sessions(self, *, user_id: UUID) -> int:
         """Revoke every durable login family owned by one authenticated user."""
 
-        sessions = await self.repository.get_auth_sessions_for_user_for_update(
-            user_id=user_id
-        )
-        count = await self.repository.revoke_auth_sessions(
-            sessions,
+        count = await self.repository.revoke_auth_sessions_for_user(
+            user_id=user_id,
             revoked_at=datetime.now(UTC),
             reason="logout_all",
         )

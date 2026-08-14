@@ -65,6 +65,15 @@ class AuthRepository:
         stmt: Select[tuple[User]] = select(User).where(User.email == email)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def get_user_by_email_for_update(self, email: str) -> User | None:
+        statement: Select[tuple[User]] = (
+            select(User)
+            .where(User.email == email)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none()
+
     async def get_user_by_username(self, username: str) -> User | None:
         stmt: Select[tuple[User]] = select(User).where(User.username == username)
         return (await self.session.execute(stmt)).scalar_one_or_none()
@@ -72,6 +81,15 @@ class AuthRepository:
     async def get_user_by_id(self, user_id: UUID) -> User | None:
         stmt: Select[tuple[User]] = select(User).where(User.id == user_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_user_by_id_for_update(self, user_id: UUID) -> User | None:
+        statement: Select[tuple[User]] = (
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none()
 
     async def create_user(
         self,
@@ -164,6 +182,18 @@ class AuthRepository:
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def get_password_reset_token_for_update(
+        self,
+        token: str,
+    ) -> PasswordResetToken | None:
+        statement: Select[tuple[PasswordResetToken]] = (
+            select(PasswordResetToken)
+            .where(PasswordResetToken.token == token)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none()
+
     async def invalidate_unused_password_reset_tokens_for_user(
         self, *, user_id: UUID, used_at: datetime
     ) -> None:
@@ -222,6 +252,7 @@ class AuthRepository:
             select(AuthRefreshCredential)
             .where(AuthRefreshCredential.token_hash == token_hash)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return (await self.session.execute(statement)).scalar_one_or_none()
 
@@ -230,6 +261,7 @@ class AuthRepository:
             select(AuthSession)
             .where(AuthSession.id == session_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return (await self.session.execute(statement)).scalar_one_or_none()
 
@@ -251,6 +283,7 @@ class AuthRepository:
             .where(AuthSession.user_id == user_id)
             .order_by(AuthSession.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return list((await self.session.execute(statement)).scalars().all())
 
@@ -304,6 +337,20 @@ class AuthRepository:
             )
             await self.session.execute(statement)
         return newly_revoked
+
+    async def revoke_auth_sessions_for_user(
+        self,
+        *,
+        user_id: UUID,
+        revoked_at: datetime,
+        reason: str,
+    ) -> int:
+        sessions = await self.get_auth_sessions_for_user_for_update(user_id=user_id)
+        return await self.revoke_auth_sessions(
+            sessions,
+            revoked_at=revoked_at,
+            reason=reason,
+        )
 
     async def upsert_oauth_account(
         self,

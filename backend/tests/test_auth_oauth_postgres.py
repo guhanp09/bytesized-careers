@@ -36,38 +36,20 @@ class _StaticGoogleVerifier:
 
 
 class _CoordinatedAuthRepository(AuthRepository):
-    """Pause immediately before each competing OAuth write.
+    """Pause immediately before each competing OAuth user lock.
 
     Both services complete their read-side collision checks before either is
-    allowed to insert. This makes the production race deterministic instead of
-    relying on scheduler timing.
+    allowed to serialize identity mutation and session issuance. This makes
+    the production race deterministic instead of relying on scheduler timing.
     """
 
     def __init__(self, session: AsyncSession, barrier: asyncio.Barrier):
         super().__init__(session)
         self._barrier = barrier
 
-    async def upsert_oauth_account(
-        self,
-        *,
-        user_id: uuid.UUID,
-        provider: str,
-        provider_account_id: str,
-        access_token: str | None,
-        refresh_token: str | None,
-        expires_at: int | None,
-        scope: str | None,
-    ) -> OAuthAccount:
+    async def get_user_by_id_for_update(self, user_id: uuid.UUID):
         await asyncio.wait_for(self._barrier.wait(), timeout=5)
-        return await super().upsert_oauth_account(
-            user_id=user_id,
-            provider=provider,
-            provider_account_id=provider_account_id,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=expires_at,
-            scope=scope,
-        )
+        return await super().get_user_by_id_for_update(user_id)
 
 
 async def _create_user(

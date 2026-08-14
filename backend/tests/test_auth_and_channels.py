@@ -10,7 +10,7 @@ from conftest import (
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
-from app.models import EmailVerificationToken, PasswordResetToken, User
+from app.models import AuthSession, EmailVerificationToken, PasswordResetToken, User
 from app.services import auth_service
 from app.services.email_service import EmailDeliveryError
 from app.services.youtube_service import YouTubeChannelResult
@@ -343,7 +343,11 @@ async def test_password_reset_unknown_email_returns_generic_success(client: Asyn
     assert data["reset_url"] is None
 
 
-async def test_password_reset_updates_password_and_rejects_reuse(client: AsyncClient) -> None:
+async def test_password_reset_updates_password_revokes_sessions_and_rejects_reuse(
+    client: AsyncClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
     email = "reset-user@example.com"
     old_password = "supersecure123"
     new_password = "newsecure123"
@@ -356,6 +360,18 @@ async def test_password_reset_updates_password_and_rejects_reuse(client: AsyncCl
     verification_token = (await _load_latest_verification_token_row_for_email(email)).token
     verify = await client.post("/api/v1/auth/verify-email", json={"token": verification_token})
     assert verify.status_code == 200
+
+    first_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": old_password},
+    )
+    second_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": old_password},
+    )
+    assert first_login.status_code == second_login.status_code == 200
+    first_session = first_login.json()
+    second_session = second_login.json()
 
     request = await client.post("/api/v1/auth/password-reset/request", json={"email": email})
     assert request.status_code == 200
@@ -370,6 +386,33 @@ async def test_password_reset_updates_password_and_rejects_reuse(client: AsyncCl
     )
     assert confirm.status_code == 200
     assert confirm.json() == {"ok": True, "message": "Password updated. You can log in now.", "reset_url": None}
+
+    for token_pair in (first_session, second_session):
+        assert (
+            await client.get(
+                "/api/v1/me",
+                headers={"Authorization": f"Bearer {token_pair['access_token']}"},
+            )
+        ).status_code == 401
+        assert (
+            await client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": token_pair["refresh_token"]},
+            )
+        ).status_code == 401
+
+    async with TestSessionLocal() as session:
+        user = (await session.execute(select(User).where(User.email == email))).scalar_one()
+        auth_sessions = list(
+            (
+                await session.execute(
+                    select(AuthSession).where(AuthSession.user_id == user.id)
+                )
+            ).scalars()
+        )
+    assert len(auth_sessions) == 2
+    assert all(row.revocation_reason == "password_reset" for row in auth_sessions)
+    assert all(row.revoked_at is not None for row in auth_sessions)
 
     old_login = await client.post("/api/v1/auth/login", json={"email": email, "password": old_password})
     assert old_login.status_code == 401

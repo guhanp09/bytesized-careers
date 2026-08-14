@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from app.services import auth_service
 from conftest import create_valid_published_job, valid_published_job_payload
 
 PERSONAS_URL = "/api/v1/dev/personas"
@@ -134,9 +135,19 @@ async def test_users_directory_search_and_detail(client: AsyncClient) -> None:
     assert body["reports_about"] == []
 
 
-async def test_suspension_locks_account_and_hides_public_content(client: AsyncClient) -> None:
+async def test_suspension_revokes_all_sessions_and_hides_public_content(
+    client: AsyncClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
     admin = await _admin_token(client)
     owner_token = await _register_verified_login(client, email="adm_suspend@example.com", username="adm_suspend")
+    second_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "adm_suspend@example.com", "password": "Password123!"},
+    )
+    assert second_login.status_code == 200
+    second_session = second_login.json()
     job_id = await _published_job(client, owner_token, title="Suspension visibility job")
     listing_id = await _published_listing(client, owner_token, title="Suspension visibility listing")
     user_id = (await client.get("/api/v1/admin/users?q=adm_suspend", headers=_auth(admin))).json()["items"][0]["id"]
@@ -154,8 +165,21 @@ async def test_suspension_locks_account_and_hides_public_content(client: AsyncCl
     assert suspended.status_code == 200
     assert suspended.json()["suspended_at"]
 
-    # The account is locked out (valid token, locked account -> 403)...
-    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 403
+    # Suspension is a credential-revocation event, so neither an access token
+    # nor a refresh family remains authenticated.
+    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 401
+    assert (
+        await client.get(
+            "/api/v1/me/jobs",
+            headers=_auth(second_session["access_token"]),
+        )
+    ).status_code == 401
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": second_session["refresh_token"]},
+        )
+    ).status_code == 401
     # ...and their content has no public presence.
     assert (await client.get(f"/api/v1/jobs/{job_id}")).status_code == 404
     assert (await client.get(f"/api/v1/talent-listings/{listing_id}")).status_code == 404
@@ -163,7 +187,8 @@ async def test_suspension_locks_account_and_hides_public_content(client: AsyncCl
     jobs_list = (await client.get("/api/v1/jobs?limit=100")).json()
     assert all(item["id"] != job_id for item in jobs_list["items"])
 
-    # Double-suspend conflicts; unsuspend restores access.
+    # Double-suspend conflicts. Unsuspension permits a new login but never
+    # resurrects credentials invalidated by the security event.
     assert (
         await client.post(f"/api/v1/admin/users/{user_id}/suspend", headers=_auth(admin), json={"reason": "again"})
     ).status_code == 409
@@ -171,14 +196,32 @@ async def test_suspension_locks_account_and_hides_public_content(client: AsyncCl
         f"/api/v1/admin/users/{user_id}/unsuspend", headers=_auth(admin), json={"reason": "Appeal accepted."}
     )
     assert restored.status_code == 200
-    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 200
+    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 401
+    fresh_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "adm_suspend@example.com", "password": "Password123!"},
+    )
+    assert fresh_login.status_code == 200
+    assert (
+        await client.get(
+            "/api/v1/me/jobs",
+            headers=_auth(fresh_login.json()["access_token"]),
+        )
+    ).status_code == 200
     assert (await client.get(f"/api/v1/jobs/{job_id}")).status_code == 200
 
     # Both actions are in the audit log with justifications.
     audit = await client.get("/api/v1/admin/audit-log?target_type=user", headers=_auth(admin))
-    actions = [(row["action"], row["justification"]) for row in audit.json()["items"]]
+    audit_items = audit.json()["items"]
+    actions = [(row["action"], row["justification"]) for row in audit_items]
     assert ("user.suspend", "Repeated off-platform payment pressure.") in actions
     assert ("user.unsuspend", "Appeal accepted.") in actions
+    suspend_audit = next(
+        row
+        for row in audit_items
+        if row["action"] == "user.suspend" and row["target_id"] == user_id
+    )
+    assert suspend_audit["after_json"]["revoked_sessions"] == 2
 
 
 async def test_admin_accounts_cannot_be_suspended(client: AsyncClient) -> None:
@@ -333,9 +376,19 @@ async def test_report_queue_hydration_resolution_and_reopen(client: AsyncClient)
     assert any(row["action"] == "job.state.hide" and row["report_id"] == report_id for row in rows)
 
 
-async def test_report_warn_and_suspend_actions_target_the_owner(client: AsyncClient) -> None:
+async def test_report_warn_and_suspend_actions_target_the_owner(
+    client: AsyncClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
     admin = await _admin_token(client)
     owner_token = await _register_verified_login(client, email="adm_rw_owner@example.com", username="adm_rw_owner")
+    owner_second_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "adm_rw_owner@example.com", "password": "Password123!"},
+    )
+    assert owner_second_login.status_code == 200
+    owner_second_session = owner_second_login.json()
     reporter = await _register_verified_login(client, email="adm_rw_rep@example.com", username="adm_rw_rep")
     listing_id = await _published_listing(client, owner_token, title="Warnable listing")
     report_id = await _file_report(
@@ -365,7 +418,27 @@ async def test_report_warn_and_suspend_actions_target_the_owner(client: AsyncCli
         json={"action": "suspend_user", "user_note": "Repeated scam attempts."},
     )
     assert suspended.status_code == 200
-    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 403
+    assert (await client.get("/api/v1/me/jobs", headers=_auth(owner_token))).status_code == 401
+    assert (
+        await client.get(
+            "/api/v1/me/jobs",
+            headers=_auth(owner_second_session["access_token"]),
+        )
+    ).status_code == 401
+    assert (
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": owner_second_session["refresh_token"]},
+        )
+    ).status_code == 401
+
+    audit = await client.get("/api/v1/admin/audit-log?target_type=user", headers=_auth(admin))
+    suspension_entry = next(
+        row
+        for row in audit.json()["items"]
+        if row["action"] == "user.suspend" and row["report_id"] == second_report
+    )
+    assert suspension_entry["after_json"]["revoked_sessions"] == 2
 
 
 # ---------------------------------------------------------------------------

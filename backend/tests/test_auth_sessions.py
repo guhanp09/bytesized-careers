@@ -21,11 +21,25 @@ from app.core.security import (
     decode_refresh_token,
     hash_password,
     hash_refresh_token,
+    verify_password,
 )
-from app.models import AuthRefreshCredential, AuthSession, User
+from app.models import AuthRefreshCredential, AuthSession, PasswordResetToken, User
+from app.repositories.auth_repository import AuthRepository
 from app.services import auth_service
+from app.services.auth_service import AuthService
 
 PASSWORD = "session-security-password"
+
+
+class _UnusedGoogleVerifier:
+    async def verify(self, _raw_id_token: str):
+        raise AssertionError("Google verification is not used by this test")
+
+
+class _FailingCommitAuthRepository(AuthRepository):
+    async def commit(self) -> None:
+        await self.session.flush()
+        raise RuntimeError("forced commit failure")
 
 
 def test_auth_repository_is_importable_before_the_services_package() -> None:
@@ -143,6 +157,58 @@ async def test_persistent_google_login_uses_the_same_session_contract(
     auth_session, credential = await _load_session_and_credential(refresh_token)
     assert auth_session.authentication_method == "google"
     assert credential.token_hash == hash_refresh_token(refresh_token)
+
+
+async def test_password_reset_commit_failure_rolls_back_password_token_and_sessions(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(auth_service.settings, "auth_session_mode", "persistent")
+    user = await _create_verified_user()
+    refresh_token = (await _login(client, user)).json()["refresh_token"]
+    reset_token = f"rollback-reset-{uuid4().hex}"
+
+    async with TestSessionLocal() as session:
+        repository = AuthRepository(session)
+        await repository.create_password_reset_token(
+            user_id=user.id,
+            token=reset_token,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        await repository.commit()
+
+    async with TestSessionLocal() as session:
+        service = AuthService(
+            _FailingCommitAuthRepository(session),
+            _UnusedGoogleVerifier(),
+        )
+        with pytest.raises(RuntimeError, match="forced commit failure"):
+            await service.reset_password(
+                token=reset_token,
+                password="replacement-password",
+            )
+        await session.rollback()
+
+    async with TestSessionLocal() as session:
+        persisted_user = await session.get(User, user.id)
+        reset_row = (
+            await session.execute(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.token == reset_token
+                )
+            )
+        ).scalar_one()
+        auth_session, _credential = await _load_session_and_credential(refresh_token)
+
+    assert persisted_user is not None
+    assert verify_password(PASSWORD, persisted_user.password_hash or "")
+    assert not verify_password(
+        "replacement-password",
+        persisted_user.password_hash or "",
+    )
+    assert reset_row.used_at is None
+    assert auth_session.revoked_at is None
+    assert auth_session.revocation_reason is None
 
 
 async def test_persistent_refresh_rotates_once_and_tolerates_only_immediate_race(
