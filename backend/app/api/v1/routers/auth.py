@@ -21,6 +21,7 @@ from app.schemas import (
     VerifyEmailRequest,
 )
 from app.services.auth_service import (
+    AccountSuspendedError,
     AuthService,
     EmailAlreadyExistsError,
     EmailNotVerifiedError,
@@ -194,6 +195,8 @@ async def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except EmailNotVerifiedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AccountSuspendedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     return _login_response(user, tokens)
 
@@ -211,6 +214,8 @@ async def refresh_backend_session(
         user, tokens = await service.refresh_backend_session(payload.refresh_token)
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except AccountSuspendedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     return _login_response(user, tokens)
 
@@ -246,6 +251,8 @@ async def oauth_google_exchange(
             status_code=status.HTTP_409_CONFLICT,
             detail="Google identity cannot be linked to this account",
         ) from exc
+    except AccountSuspendedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidUsernameError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except UsernameAlreadyTakenError as exc:

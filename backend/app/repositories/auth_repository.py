@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import Select, and_, delete, func, select, update
@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.oauth_credentials import OAuthCredentialValues
 from app.models import (
+    AuthRefreshCredential,
+    AuthSession,
     EmailVerificationToken,
     HiringIdentity,
     Job,
@@ -27,7 +29,9 @@ from app.models import (
     UserYouTubeChannel,
     YouTubeChannel,
 )
-from app.services.oauth_credential_storage import OAuthCredentialStorage
+
+if TYPE_CHECKING:
+    from app.services.oauth_credential_storage import OAuthCredentialStorage
 
 
 class OAuthAccountCollisionError(Exception):
@@ -44,9 +48,18 @@ class AuthRepository:
         # Direct repository construction is common in isolated domain tests.
         # Application requests inject the configured storage policy in deps.py;
         # this fallback preserves local/test behavior without inventing a key.
-        self.oauth_credential_storage = (
-            oauth_credential_storage or OAuthCredentialStorage.plaintext_compatibility()
-        )
+        if oauth_credential_storage is None:
+            # Import lazily so repositories remain importable before the
+            # services package. Its compatibility exports include AuthService,
+            # which itself depends on this repository.
+            from app.services.oauth_credential_storage import (
+                OAuthCredentialStorage as OAuthCredentialStorageImpl,
+            )
+
+            oauth_credential_storage = (
+                OAuthCredentialStorageImpl.plaintext_compatibility()
+            )
+        self.oauth_credential_storage = oauth_credential_storage
 
     async def get_user_by_email(self, email: str) -> User | None:
         stmt: Select[tuple[User]] = select(User).where(User.email == email)
@@ -163,6 +176,84 @@ class AuthRepository:
             .values(used_at=used_at)
         )
         await self.session.execute(stmt)
+
+    async def create_auth_session(
+        self,
+        *,
+        session_id: UUID,
+        user_id: UUID,
+        authentication_method: str,
+        absolute_expires_at: datetime,
+    ) -> AuthSession:
+        row = AuthSession(
+            id=session_id,
+            user_id=user_id,
+            authentication_method=authentication_method,
+            absolute_expires_at=absolute_expires_at,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def create_auth_refresh_credential(
+        self,
+        *,
+        credential_id: UUID,
+        session_id: UUID,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> AuthRefreshCredential:
+        row = AuthRefreshCredential(
+            id=credential_id,
+            session_id=session_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def get_auth_refresh_credential_for_update(
+        self,
+        *,
+        token_hash: str,
+    ) -> AuthRefreshCredential | None:
+        statement: Select[tuple[AuthRefreshCredential]] = (
+            select(AuthRefreshCredential)
+            .where(AuthRefreshCredential.token_hash == token_hash)
+            .with_for_update()
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none()
+
+    async def get_auth_session_for_update(self, *, session_id: UUID) -> AuthSession | None:
+        statement: Select[tuple[AuthSession]] = (
+            select(AuthSession)
+            .where(AuthSession.id == session_id)
+            .with_for_update()
+        )
+        return (await self.session.execute(statement)).scalar_one_or_none()
+
+    async def revoke_auth_session(
+        self,
+        session: AuthSession,
+        *,
+        revoked_at: datetime,
+        reason: str,
+        compromise_detected: bool = False,
+    ) -> None:
+        session.revoked_at = session.revoked_at or revoked_at
+        session.revocation_reason = session.revocation_reason or reason
+        if compromise_detected:
+            session.compromise_detected_at = session.compromise_detected_at or revoked_at
+        statement = (
+            update(AuthRefreshCredential)
+            .where(
+                AuthRefreshCredential.session_id == session.id,
+                AuthRefreshCredential.revoked_at.is_(None),
+            )
+            .values(revoked_at=revoked_at)
+        )
+        await self.session.execute(statement)
 
     async def upsert_oauth_account(
         self,

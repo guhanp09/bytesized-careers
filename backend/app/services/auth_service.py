@@ -6,7 +6,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 
@@ -18,16 +18,20 @@ from app.core.onboarding_intent import (
     onboarding_intent_from_legacy_account_type,
 )
 from app.core.security import (
+    SESSION_ID_CLAIM,
+    SESSION_TOKEN_VERSION_CLAIM,
+    TOKEN_ID_CLAIM,
     TokenError,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
     get_token_expires_at,
     hash_password,
+    hash_refresh_token,
     verify_password,
 )
 from app.middleware.request_id import get_request_id
-from app.models import User
+from app.models import AuthRefreshCredential, AuthSession, User
 from app.repositories.auth_repository import (
     AuthRepository,
     OAuthAccountCollisionError,
@@ -58,6 +62,10 @@ class InvalidPasswordResetTokenError(Exception):
 
 
 class InvalidCredentialsError(Exception):
+    pass
+
+
+class AccountSuspendedError(Exception):
     pass
 
 
@@ -453,7 +461,13 @@ class AuthService:
         await self.repository.commit()
         return user
 
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
     def create_token_pair(self, user: User) -> AuthTokenPair:
+        """Create the rollback-compatible stateless token pair."""
+
         subject = str(user.id)
         access_token = create_access_token(subject=subject)
         refresh_token = create_refresh_token(subject=subject)
@@ -462,6 +476,76 @@ class AuthService:
             refresh_token=refresh_token,
             access_token_expires_at=get_token_expires_at(access_token),
             refresh_token_expires_at=get_token_expires_at(refresh_token),
+        )
+
+    async def _create_persistent_token_pair(
+        self,
+        user: User,
+        *,
+        authentication_method: str,
+        session: AuthSession | None = None,
+        previous_credential: AuthRefreshCredential | None = None,
+        now: datetime | None = None,
+    ) -> AuthTokenPair:
+        issued_at = now or datetime.now(UTC)
+        if session is None:
+            session_id = uuid4()
+            absolute_expires_at = issued_at + timedelta(
+                minutes=settings.jwt_refresh_token_expires_minutes
+            )
+            session = await self.repository.create_auth_session(
+                session_id=session_id,
+                user_id=user.id,
+                authentication_method=authentication_method,
+                absolute_expires_at=absolute_expires_at,
+            )
+        else:
+            session_id = session.id
+            absolute_expires_at = self._as_utc(session.absolute_expires_at)
+
+        if absolute_expires_at <= issued_at:
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+
+        credential_id = uuid4()
+        refresh_token = create_refresh_token(
+            subject=str(user.id),
+            expires_at=absolute_expires_at,
+            session_id=str(session_id),
+            token_id=str(credential_id),
+        )
+        access_token = create_access_token(
+            subject=str(user.id),
+            additional_claims={SESSION_ID_CLAIM: str(session_id)},
+        )
+        replacement = await self.repository.create_auth_refresh_credential(
+            credential_id=credential_id,
+            session_id=session_id,
+            token_hash=hash_refresh_token(refresh_token),
+            expires_at=absolute_expires_at,
+        )
+        if previous_credential is not None:
+            previous_credential.used_at = issued_at
+            previous_credential.replaced_by_id = replacement.id
+            session.last_refreshed_at = issued_at
+
+        return AuthTokenPair(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_token_expires_at=get_token_expires_at(access_token),
+            refresh_token_expires_at=get_token_expires_at(refresh_token),
+        )
+
+    async def _issue_login_token_pair(
+        self,
+        user: User,
+        *,
+        authentication_method: str,
+    ) -> AuthTokenPair:
+        if settings.auth_session_mode == "legacy":
+            return self.create_token_pair(user)
+        return await self._create_persistent_token_pair(
+            user,
+            authentication_method=authentication_method,
         )
 
     async def login_with_password(self, *, email: str, password: str) -> tuple[User, AuthTokenPair]:
@@ -473,8 +557,16 @@ class AuthService:
             raise InvalidCredentialsError("Invalid email or password")
         if user.email_verified_at is None:
             raise EmailNotVerifiedError("Email is not verified")
+        if user.suspended_at is not None:
+            raise AccountSuspendedError("Account suspended")
 
-        return user, self.create_token_pair(user)
+        tokens = await self._issue_login_token_pair(
+            user,
+            authentication_method="password",
+        )
+        if settings.auth_session_mode != "legacy":
+            await self.repository.commit()
+        return user, tokens
 
     async def exchange_google_oauth(self, payload: OAuthGoogleExchangeRequest) -> tuple[User, AuthTokenPair]:
         identity = await self.google_identity_verifier.verify(payload.id_token)
@@ -496,11 +588,19 @@ class AuthService:
                 and email_user is not None
                 and oauth_account.user_id == email_user.id
             ):
+                if email_user.suspended_at is not None:
+                    raise AccountSuspendedError("Account suspended") from exc
                 logger.info(
                     "google_oauth_concurrent_exchange_converged",
                     extra={"user_id": str(email_user.id)},
                 )
-                return email_user, self.create_token_pair(email_user)
+                tokens = await self._issue_login_token_pair(
+                    email_user,
+                    authentication_method="google",
+                )
+                if settings.auth_session_mode != "legacy":
+                    await self.repository.commit()
+                return email_user, tokens
             raise OAuthAccountCollisionError(
                 "Concurrent Google identity linkage conflict"
             ) from exc
@@ -547,6 +647,9 @@ class AuthService:
                         "A different Google identity is already linked to this account"
                     )
 
+        if user is not None and user.suspended_at is not None:
+            raise AccountSuspendedError("Account suspended")
+
         normalized_username: str | None = None
         if user is None or user.username is None:
             normalized_username = await self._build_google_oauth_username(
@@ -584,6 +687,10 @@ class AuthService:
             access_token=payload.access_token,
             scope=payload.scope,
         )
+        tokens = await self._issue_login_token_pair(
+            user,
+            authentication_method="google",
+        )
         await self.repository.commit()
         logger.info(
             "google_oauth_exchange_complete",
@@ -593,7 +700,7 @@ class AuthService:
                 "youtube_channels_synced": synced_channel_count,
             },
         )
-        return user, self.create_token_pair(user)
+        return user, tokens
 
     async def refresh_backend_session(self, refresh_token: str) -> tuple[User, AuthTokenPair]:
         try:
@@ -610,8 +717,120 @@ class AuthService:
         except ValueError as exc:
             raise InvalidCredentialsError("Invalid refresh token subject") from exc
 
+        session_claim = payload.get(SESSION_ID_CLAIM)
+        credential_claim = payload.get(TOKEN_ID_CLAIM)
+        token_version = payload.get(SESSION_TOKEN_VERSION_CLAIM)
+        has_persistent_claims = session_claim is not None or credential_claim is not None
+
+        if settings.auth_session_mode == "legacy":
+            user = await self.repository.get_user_by_id(user_id)
+            if user is None:
+                raise InvalidCredentialsError("Invalid refresh token subject")
+            if user.suspended_at is not None:
+                raise AccountSuspendedError("Account suspended")
+            return user, self.create_token_pair(user)
+
+        if not has_persistent_claims:
+            if settings.auth_session_mode != "migration":
+                raise InvalidCredentialsError("Invalid or expired refresh token")
+            user = await self.repository.get_user_by_id(user_id)
+            if user is None:
+                raise InvalidCredentialsError("Invalid refresh token subject")
+            if user.suspended_at is not None:
+                raise AccountSuspendedError("Account suspended")
+            tokens = await self._create_persistent_token_pair(
+                user,
+                authentication_method="legacy_refresh_migration",
+            )
+            await self.repository.commit()
+            return user, tokens
+
+        if (
+            not isinstance(session_claim, str)
+            or not isinstance(credential_claim, str)
+            or type(token_version) is not int
+            or token_version != 1
+        ):
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+        try:
+            session_id = UUID(session_claim)
+            credential_id = UUID(credential_claim)
+        except ValueError as exc:
+            raise InvalidCredentialsError("Invalid or expired refresh token") from exc
+
+        credential = await self.repository.get_auth_refresh_credential_for_update(
+            token_hash=hash_refresh_token(refresh_token),
+        )
+        if credential is None:
+            await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+        session = await self.repository.get_auth_session_for_update(session_id=session_id)
+        if (
+            session is None
+            or credential.id != credential_id
+            or credential.session_id != session_id
+            or session.user_id != user_id
+        ):
+            await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+
+        now = datetime.now(UTC)
+        if session.revoked_at is not None or credential.revoked_at is not None:
+            await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+        if (
+            self._as_utc(session.absolute_expires_at) <= now
+            or self._as_utc(credential.expires_at) <= now
+        ):
+            await self.repository.revoke_auth_session(
+                session,
+                revoked_at=now,
+                reason="expired",
+            )
+            await self.repository.commit()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+        if credential.used_at is not None:
+            used_at = self._as_utc(credential.used_at)
+            if (now - used_at).total_seconds() > settings.refresh_reuse_grace_seconds:
+                await self.repository.revoke_auth_session(
+                    session,
+                    revoked_at=now,
+                    reason="refresh_reuse",
+                    compromise_detected=True,
+                )
+                await self.repository.commit()
+                logger.warning(
+                    "auth_refresh_reuse_detected",
+                    extra={"user_id": str(user_id), "session_id": str(session_id)},
+                )
+            else:
+                await self.repository.rollback()
+            raise InvalidCredentialsError("Invalid or expired refresh token")
+
         user = await self.repository.get_user_by_id(user_id)
         if user is None:
+            await self.repository.revoke_auth_session(
+                session,
+                revoked_at=now,
+                reason="user_missing",
+            )
+            await self.repository.commit()
             raise InvalidCredentialsError("Invalid refresh token subject")
+        if user.suspended_at is not None:
+            await self.repository.revoke_auth_session(
+                session,
+                revoked_at=now,
+                reason="account_suspended",
+            )
+            await self.repository.commit()
+            raise AccountSuspendedError("Account suspended")
 
-        return user, self.create_token_pair(user)
+        tokens = await self._create_persistent_token_pair(
+            user,
+            authentication_method=session.authentication_method,
+            session=session,
+            previous_credential=credential,
+            now=now,
+        )
+        await self.repository.commit()
+        return user, tokens

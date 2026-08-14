@@ -98,7 +98,7 @@ class AuthUserRead(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    refresh_token: str | None = None
+    refresh_token: str
     access_token_expires_at: int | None = None
     refresh_token_expires_at: int | None = None
     user: AuthUserRead

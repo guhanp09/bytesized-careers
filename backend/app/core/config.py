@@ -43,15 +43,34 @@ class Settings(BaseSettings):
 
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    # Beta posture: there is no app-level refresh for credentials users yet, so a
-    # short access-token TTL forced people to re-login (~hourly) mid-action on
-    # apply/save. Default to a 14-day window so beta sessions stay usable. Override
-    # via env and add refresh-token rotation before tightening this for scale.
+    # Preserve the historical 14-day default for development/test compatibility.
+    # Production boot requires this to be at most 60 minutes and requires the
+    # persistent rotating session architecture below.
     jwt_access_token_expires_minutes: int = Field(
-        default=60 * 24 * 14, alias="JWT_ACCESS_TOKEN_EXPIRES_MINUTES"
+        default=60 * 24 * 14,
+        ge=5,
+        le=60 * 24 * 14,
+        alias="JWT_ACCESS_TOKEN_EXPIRES_MINUTES",
     )
     jwt_refresh_token_expires_minutes: int = Field(
-        default=60 * 24 * 30, alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES"
+        default=60 * 24 * 30,
+        ge=60,
+        le=60 * 24 * 90,
+        alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES",
+    )
+    auth_session_mode: Literal["legacy", "migration", "persistent"] = Field(
+        default="legacy",
+        alias="AUTH_SESSION_MODE",
+    )
+    allow_legacy_refresh_compatibility_in_production: bool = Field(
+        default=False,
+        alias="ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION",
+    )
+    refresh_reuse_grace_seconds: int = Field(
+        default=5,
+        ge=0,
+        le=30,
+        alias="REFRESH_REUSE_GRACE_SECONDS",
     )
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
     # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
@@ -202,6 +221,22 @@ def validate_production_settings() -> None:
     failures: list[str] = []
     if settings.jwt_secret.strip().lower() in UNSAFE_SECRET_VALUES:
         failures.append("JWT_SECRET must be set to a strong non-placeholder value.")
+    if settings.jwt_access_token_expires_minutes > 60:
+        failures.append(
+            "JWT_ACCESS_TOKEN_EXPIRES_MINUTES must be 60 or less in production."
+        )
+    if settings.jwt_refresh_token_expires_minutes <= settings.jwt_access_token_expires_minutes:
+        failures.append("JWT refresh-token lifetime must exceed the access-token lifetime.")
+    if settings.auth_session_mode == "legacy":
+        failures.append("AUTH_SESSION_MODE cannot be legacy in production.")
+    if (
+        settings.auth_session_mode == "migration"
+        and not settings.allow_legacy_refresh_compatibility_in_production
+    ):
+        failures.append(
+            "Migration auth sessions require explicit temporary legacy-refresh compatibility "
+            "acknowledgement."
+        )
     if settings.debug:
         failures.append("DEBUG must be false in production.")
     if not settings.frontend_base_url or any(

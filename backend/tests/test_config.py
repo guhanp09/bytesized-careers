@@ -91,6 +91,8 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
         APP_ENV="production",
         DEBUG=True,
         JWT_SECRET="change-me",
+        JWT_ACCESS_TOKEN_EXPIRES_MINUTES=14 * 24 * 60,
+        JWT_REFRESH_TOKEN_EXPIRES_MINUTES=30 * 24 * 60,
         FRONTEND_BASE_URL="http://localhost:3000",
         CORS_ORIGINS='["http://localhost:3000"]',
         DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/creatorjobs",
@@ -112,6 +114,8 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "GOOGLE_CLIENT_ID" in message
     assert "OAUTH_CREDENTIAL_KEYS" in message
     assert "OAUTH_CREDENTIAL_WRITE_MODE" in message
+    assert "JWT_ACCESS_TOKEN_EXPIRES_MINUTES" in message
+    assert "AUTH_SESSION_MODE" in message
     assert "RATE_LIMIT_BACKEND" in message
 
 
@@ -121,6 +125,9 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "APP_ENV": "production",
         "DEBUG": False,
         "JWT_SECRET": "a-production-secret-that-is-not-a-placeholder",
+        "JWT_ACCESS_TOKEN_EXPIRES_MINUTES": 15,
+        "JWT_REFRESH_TOKEN_EXPIRES_MINUTES": 30 * 24 * 60,
+        "AUTH_SESSION_MODE": "persistent",
         "FRONTEND_BASE_URL": "https://creatorjobs.example",
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
@@ -167,3 +174,49 @@ def test_production_dual_write_requires_explicit_temporary_acknowledgement(
     )
     monkeypatch.setattr(config, "settings", acknowledged)
     config.validate_production_settings()
+
+
+def test_production_auth_session_migration_requires_explicit_temporary_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration_settings = _safe_production_settings(AUTH_SESSION_MODE="migration")
+    monkeypatch.setattr(config, "settings", migration_settings)
+
+    with pytest.raises(RuntimeError, match="legacy-refresh compatibility acknowledgement"):
+        config.validate_production_settings()
+
+    acknowledged = _safe_production_settings(
+        AUTH_SESSION_MODE="migration",
+        ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION=True,
+    )
+    monkeypatch.setattr(config, "settings", acknowledged)
+    config.validate_production_settings()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"AUTH_SESSION_MODE": "legacy"}, "AUTH_SESSION_MODE cannot be legacy"),
+        (
+            {"JWT_ACCESS_TOKEN_EXPIRES_MINUTES": 61},
+            "JWT_ACCESS_TOKEN_EXPIRES_MINUTES must be 60 or less",
+        ),
+        (
+            {
+                "JWT_ACCESS_TOKEN_EXPIRES_MINUTES": 60,
+                "JWT_REFRESH_TOKEN_EXPIRES_MINUTES": 60,
+            },
+            "refresh-token lifetime must exceed",
+        ),
+    ],
+)
+def test_production_rejects_unsafe_backend_session_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    production_settings = _safe_production_settings(**overrides)
+    monkeypatch.setattr(config, "settings", production_settings)
+
+    with pytest.raises(RuntimeError, match=message):
+        config.validate_production_settings()

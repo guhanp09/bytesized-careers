@@ -4,22 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1C-2 — rotation-ready encryption for stored Google credentials
-NEXT ATOMIC SLICE: Phase 1C-3 — additive persistent, rotating backend session families
-CURRENT HEAD: Phase 1C-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0055_oauth_credential_encryption
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0055 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; browser YouTube flows use a server-owned route; the database enforces both OAuth ownership invariants; provider access/refresh credentials now use versioned AES-256-GCM envelopes bound to provider subject and token field, with explicit plaintext/dual/encrypted-only storage policies and an idempotent rotation command
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION
-NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; scripts.rotate_oauth_credentials
+LAST COMPLETED ATOMIC SLICE: Phase 1C-3 — persistent rotating backend session families
+NEXT ATOMIC SLICE: Phase 1C-4 — enforce session revocation for access tokens and add current/all-session logout contracts
+CURRENT HEAD: Phase 1C-3 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+CURRENT ALEMBIC HEAD: 0056_persistent_auth_sessions
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0056 successfully
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; the database enforces both OAuth ownership invariants; provider credentials use versioned AES-256-GCM storage; backend password/Google logins can now issue durable session families with one-time, hash-only refresh credentials, PostgreSQL-serialized rotation, delayed-reuse compromise revocation, and an explicit legacy -> migration -> persistent rollout
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS
+NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; app.models.AuthSession/AuthRefreshCredential; scripts.rotate_oauth_credentials
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; real OAuth keyring provisioning plus hosted credential backfill/encrypted-only verification and provider revocation; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
 KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures, detailed below
-COMMANDS TO RESUME: see "Phase 1C-2 atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: backend/app/core/security.py; backend/app/services/auth_service.py; backend/app/api/v1/routers/auth.py; backend/app/repositories/auth_repository.py; backend/app/core/oauth_credentials.py; backend/app/services/oauth_credential_storage.py; backend/alembic/versions/0055_oauth_credential_encryption.py
+COMMANDS TO RESUME: see "Phase 1C-3 atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: backend/app/models/auth_session.py; backend/app/core/security.py; backend/app/services/auth_service.py; backend/app/api/deps.py; backend/app/api/v1/routers/auth.py; backend/app/repositories/auth_repository.py; backend/alembic/versions/0056_persistent_auth_sessions.py; lib/auth.ts; lib/backendTokenRefresh.ts; backend/tests/test_auth_sessions.py
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1C-3 atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1C-3
+Status: COMPLETE (Phase 1 remains in progress; AUTH-005 is VALIDATED and AUTH-006 is IN_PROGRESS)
+Initial HEAD: e18f5800ee2fb4f2df1f095affd77bd2179cfa82
+Final HEAD: Phase 1C-3 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(session): add persistent rotating refresh sessions
+Files materially changed: auth-session/refresh-credential models and repository; token creation/refresh service and auth router; production configuration; Alembic 0056; NextAuth refresh singleflight; backend/frontend security, migration, import-order, and PostgreSQL race tests; environment/operator docs; execution ledger and handoff
+Migrations: 0056_persistent_auth_sessions additively creates `auth_sessions` and `auth_refresh_credentials`; raw refresh values never enter the database; the downgrade refuses while any unexpired session family exists because removing server state would reactivate used or revoked signed credentials
+Behavior changed: `legacy` retains the old stateless behavior for local/rollback compatibility; `migration` issues persistent families while temporarily accepting claimless legacy refresh JWTs; `persistent` rejects legacy refresh JWTs; password and Google logins share durable issuance; each refresh rotates once under row locks; immediate duplicate use is rejected without falsely revoking the family, while delayed reuse revokes every family credential and records compromise; suspended accounts cannot log in and presented persistent families are revoked; NextAuth coalesces identical same-process refresh callbacks and rejects a backend response without a replacement credential; production boot requires a <=60-minute access lifetime and forbids `legacy`
+Security assumptions: deploy migration 0056 before enabling non-legacy issuance; use `migration` only for a bounded compatibility window with explicit acknowledgement; do not switch to `persistent` until the last stateless refresh issued by an old instance has expired (or deliberately rotate JWT_SECRET and accept global logout); never roll an old stateless binary back over live persistent credentials without a signing-secret rotation/global logout; SHA-256 is safe here because signed refresh JWTs contain high-entropy UUID credential IDs; PostgreSQL row locking is authoritative for multi-instance rotation; the reuse grace prevents a false family-compromise decision but never accepts the duplicate credential; access-token session revocation is intentionally the next atomic slice
+Tests run: focused auth/session/config/migration pytest; isolated repository-first import regression; focused Ruff on every touched Python file; full backend pytest; TypeScript; all frontend unit tests; ESLint; production build; production-mode backend import; fresh disposable PostgreSQL upgrade/downgrade/re-upgrade plus schema and forced concurrency tests; diagnostic Alembic drift check; complete Settings Playwright; one real-backend QA customer/API journey with `AUTH_SESSION_MODE=persistent`; `git diff --check`
+Exact results: focused auth checkpoint 54 passed / 7 warnings; focused Ruff passed; full backend 6,443 passed / 56 skipped / 88 warnings in 297.31s; TypeScript passed; frontend unit 1,122 passed / 0 failed; ESLint 0 errors / 33 known warnings; production build passed with 32 static pages; production-mode backend import passed; one Alembic head `0056_persistent_auth_sessions`; disposable PostgreSQL suite 21 passed / 2 warnings; whole-tree Ruff remains at 110 known findings; diagnostic `alembic check` reported only pre-existing unrelated drift and no auth-session operation; Settings Playwright 9 passed; persistent-session real-backend QA probe 1 passed
+Known external failures: no hosted database migration or session rollout ran; no real production cookies, Google credentials, load balancer, or multi-instance staging were exercised; live OAuth/keyring work from AUTH-004 remains external; no push or deployment occurred
+Remaining risks: AUTH-006 still needs access-token revocation enforcement, current-session logout, logout-all, password-reset/credential-change all-family revocation, immediate suspension revocation, and active-session management; same-process frontend singleflight does not coordinate separate frontend instances (the backend safely produces one winner without family revocation, but a losing callback can still require retry); refresh abuse throttling/audit work remains AUTH-010; browser access bearers remain visible to application JavaScript under AUTH-007; ordinary Google login still requests YouTube/offline scope; admin strong authentication remains; production must complete the explicit migration window; whole-tree Ruff and Alembic drift are known baseline debt
+Next phase: Phase 1C-4 atomic slice — make the `sid` access claim authoritative, add authenticated current-session and all-session revocation APIs, wire same-origin logout without exposing refresh credentials, and cover revoked-access/logout concurrency before adding password-reset/suspension triggers
+Important commands: `cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_auth_sessions.py tests/test_auth_and_channels.py tests/test_config.py`; `.venv/bin/python -m alembic heads`; `./scripts/test_interaction_status_postgres.sh`; `cd .. && node --test tests/backendTokenRefresh.test.mjs && npx tsc --noEmit`; inspect `backend/app/api/deps.py`, `backend/app/services/auth_service.py`, `backend/app/repositories/auth_repository.py`, `lib/auth.ts`, and the NextAuth sign-out callers before designing revocation
+```
 
 ## Phase 1C-2 atomic checkpoint
 
@@ -210,19 +230,22 @@ Do not weaken these tests without first proving that their asserted product cont
 - Phase 1B removed Google access/refresh tokens, provider subject, OAuth metadata, and raw claims from the browser session and from the encrypted NextAuth JWT. A sentinel-bearing legacy JWT produced a clean `/api/auth/session` response in Playwright.
 - YouHub, Post Job, Settings, and the legacy identity routes now refresh YouTube through backend-held OAuth credentials. The same-origin `/api/identity/youtube/refresh` route returns channel data or bounded error codes, never provider credentials.
 - Provider credentials have a locally validated AES-256-GCM storage path, rotation keyring, additive migration, and idempotent backfill/rewrap command. Production rows remain unverified and may remain plaintext until the external dual-backfill/encrypted-only rollout is actually completed; provider disconnect/revocation is also still absent.
-- Backend refresh tokens are stateless JWTs without one-time rotation, persistence, family revocation, or reuse detection.
-- Access credentials default to 14 days. Password reset, suspension, and logout do not provide complete session-family revocation.
+- Backend refresh tokens can now be durable, hash-only, one-time credentials grouped into persistent families. Rotation is serialized on PostgreSQL; delayed replay revokes the family and records compromise; production cannot boot in stateless `legacy` mode.
+- The historical 14-day access default remains only for development/test compatibility; production boot caps access tokens at 60 minutes. Access-token session revocation, password-reset/logout-all triggers, and immediate suspension revocation remain AUTH-006 work.
+- The rollout is deliberately additive: land 0056, run bounded `migration` mode until the final legacy refresh expires, then use `persistent`. Downgrade/old-binary rollback after persistent issuance requires JWT signing-secret rotation/global logout.
 - Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
 - Admin authorization exists, but strong administrator authentication/MFA enforcement does not.
 
-Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, and local encrypted credential architecture are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, retire an OAuth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified while implementing persistent sessions.
+Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, local encrypted credential architecture, and persistent refresh-family foundation are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, retire an OAuth key before a zero-pending rotation audit, remove plaintext columns before the hosted encrypted-only contract is verified, or make revoked access enforcement depend on schema/API changes that have not landed together.
 
 ## Phase 1 files to read first
 
 - `backend/app/api/v1/routers/auth.py`
+- `backend/app/api/deps.py`
 - `backend/app/services/auth_service.py`
 - `backend/app/core/security.py`
 - `backend/app/repositories/auth_repository.py`
+- `backend/app/models/auth_session.py`
 - `backend/app/models/oauth_account.py`
 - `backend/app/schemas/auth.py`
 - `backend/app/core/config.py`
@@ -230,9 +253,12 @@ Phase 1 must remain additive and migration-safe. The browser-field removal, serv
 - `backend/app/services/oauth_credential_storage.py`
 - `backend/scripts/rotate_oauth_credentials.py`
 - `backend/tests/test_auth_and_channels.py`
+- `backend/tests/test_auth_sessions.py`
+- `backend/tests/test_auth_sessions_postgres.py`
 - `lib/auth.ts`
+- `lib/backendTokenRefresh.ts`
 - `types/next-auth.d.ts` if present, plus components identified by `rg 'session\?\.user\?\.(accessToken|refreshToken)'`
-- `backend/alembic/versions/0055_oauth_credential_encryption.py` and its predecessor before designing any migration
+- `backend/alembic/versions/0056_persistent_auth_sessions.py` and its predecessor before designing any migration
 
 ## Important commands
 
@@ -268,4 +294,4 @@ APP_ENV=test .venv/bin/python -m alembic current
 .venv/bin/python -m scripts.rotate_oauth_credentials
 ```
 
-No push, production deployment, hosted Neon access, Vercel change, or Render change occurred during Phase 0.
+No push, production deployment, hosted Neon access, Vercel change, or Render change occurred through the latest atomic checkpoint.

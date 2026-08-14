@@ -1,4 +1,5 @@
 from app.models.admin_audit_log import AdminAuditLog
+from app.models.auth_session import AuthRefreshCredential, AuthSession
 from app.models.conversation import Conversation, Message
 from app.models.email_outbox import EmailOutbox
 from app.models.email_verification_token import EmailVerificationToken
@@ -40,6 +41,8 @@ from app.models.youtube_channel import YouTubeChannel
 
 __all__ = [
     "AdminAuditLog",
+    "AuthRefreshCredential",
+    "AuthSession",
     "Conversation",
     "Message",
     "EmailOutbox",

@@ -38,6 +38,14 @@ Key vars:
 - `CORS_ORIGINS`
 - `LOG_LEVEL`
 - `JWT_SECRET`
+- `JWT_ACCESS_TOKEN_EXPIRES_MINUTES` (production maximum: 60)
+- `JWT_REFRESH_TOKEN_EXPIRES_MINUTES`
+- `AUTH_SESSION_MODE` (`migration` only for the bounded legacy-token rollout;
+  `persistent` for steady-state production)
+- `ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION` (temporary acknowledgement
+  required only while `AUTH_SESSION_MODE=migration`)
+- `REFRESH_REUSE_GRACE_SECONDS` (0–30 seconds; duplicate refreshes are rejected,
+  and reuse after this race window revokes the complete session family)
 - `OAUTH_CREDENTIAL_KEYS` + `OAUTH_CREDENTIAL_ACTIVE_KEY_ID` (server-only
   AES-256-GCM keyring for Google access/refresh credentials)
 - `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;

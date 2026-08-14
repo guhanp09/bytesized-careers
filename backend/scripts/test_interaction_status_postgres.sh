@@ -26,6 +26,8 @@ PYTHONPATH=. "$PYTHON_BIN" tests/interaction_migration_fixtures.py
 "$PYTHON_BIN" -m alembic upgrade head
 "$PYTHON_BIN" -m pytest \
   tests/test_auth_oauth_postgres.py \
+  tests/test_auth_session_migration.py \
+  tests/test_auth_sessions_postgres.py \
   tests/test_oauth_credential_migration.py \
   tests/test_interaction_migration_postgres.py \
   tests/test_interaction_transitions_postgres.py \

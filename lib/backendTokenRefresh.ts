@@ -47,6 +47,12 @@ type RefreshFetch = (
   }
 ) => Promise<Pick<Response, "ok" | "json" | "status">>;
 
+// NextAuth can invoke its JWT callback more than once for the same browser
+// request burst. A rotating refresh credential is one-time use, so coalesce
+// identical server-side refreshes and let every caller consume the same
+// replacement pair.
+const inFlightBackendRefreshes = new Map<string, Promise<BackendLoginPayload>>();
+
 export function jwtExpiresAtMs(token?: string | null): number | undefined {
   if (!token) return undefined;
   const parts = token.split(".");
@@ -132,14 +138,14 @@ export function buildSafeBackendSessionFields(token: SafeBackendSessionFields): 
   };
 }
 
-export async function refreshBackendAccessToken({
+async function requestBackendAccessTokenRefresh({
   backendBaseUrl,
   refreshToken,
-  fetchImpl = fetch,
+  fetchImpl,
 }: {
   backendBaseUrl: string;
   refreshToken: string;
-  fetchImpl?: RefreshFetch;
+  fetchImpl: RefreshFetch;
 }): Promise<BackendLoginPayload> {
   const response = await fetchImpl(`${backendBaseUrl.replace(/\/+$/, "")}/auth/refresh`, {
     method: "POST",
@@ -150,7 +156,43 @@ export async function refreshBackendAccessToken({
   if (!response.ok) {
     throw new Error(`Backend token refresh failed with ${response.status}`);
   }
-  return (await response.json()) as BackendLoginPayload;
+  const payload = (await response.json()) as BackendLoginPayload;
+  if (typeof payload.access_token !== "string" || !payload.access_token) {
+    throw new Error("Backend token refresh returned no access token");
+  }
+  if (typeof payload.refresh_token !== "string" || !payload.refresh_token) {
+    throw new Error("Backend token refresh returned no rotated refresh token");
+  }
+  return payload;
+}
+
+export async function refreshBackendAccessToken({
+  backendBaseUrl,
+  refreshToken,
+  fetchImpl = fetch,
+}: {
+  backendBaseUrl: string;
+  refreshToken: string;
+  fetchImpl?: RefreshFetch;
+}): Promise<BackendLoginPayload> {
+  const normalizedBaseUrl = backendBaseUrl.replace(/\/+$/, "");
+  const requestKey = `${normalizedBaseUrl}\u0000${refreshToken}`;
+  const existing = inFlightBackendRefreshes.get(requestKey);
+  if (existing) return existing;
+
+  const request = requestBackendAccessTokenRefresh({
+    backendBaseUrl: normalizedBaseUrl,
+    refreshToken,
+    fetchImpl,
+  });
+  inFlightBackendRefreshes.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    if (inFlightBackendRefreshes.get(requestKey) === request) {
+      inFlightBackendRefreshes.delete(requestKey);
+    }
+  }
 }
 
 function base64UrlDecode(value: string): string {

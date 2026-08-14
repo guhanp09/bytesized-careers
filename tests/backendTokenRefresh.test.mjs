@@ -143,3 +143,90 @@ test("refreshBackendAccessToken throws on failed refresh", async () => {
     /Backend token refresh failed with 401/
   );
 });
+
+test("concurrent refreshes for one credential are coalesced", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    await gate;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: "shared-access",
+        refresh_token: "shared-rotated-refresh",
+      }),
+    };
+  };
+
+  const first = refreshBackendAccessToken({
+    backendBaseUrl: "http://backend.test/api/v1",
+    refreshToken: "single-use-refresh",
+    fetchImpl,
+  });
+  const second = refreshBackendAccessToken({
+    backendBaseUrl: "http://backend.test/api/v1/",
+    refreshToken: "single-use-refresh",
+    fetchImpl,
+  });
+
+  assert.equal(calls, 1);
+  release();
+  const [firstPayload, secondPayload] = await Promise.all([first, second]);
+  assert.deepEqual(firstPayload, secondPayload);
+  assert.equal(calls, 1);
+});
+
+test("a failed coalesced refresh is evicted so a later retry can run", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return { ok: false, status: 503, json: async () => ({}) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: "recovered-access",
+        refresh_token: "recovered-refresh",
+      }),
+    };
+  };
+
+  await assert.rejects(
+    refreshBackendAccessToken({
+      backendBaseUrl: "http://backend.test/api/v1",
+      refreshToken: "retryable-refresh",
+      fetchImpl,
+    }),
+    /503/
+  );
+  const recovered = await refreshBackendAccessToken({
+    backendBaseUrl: "http://backend.test/api/v1",
+    refreshToken: "retryable-refresh",
+    fetchImpl,
+  });
+
+  assert.equal(recovered.refresh_token, "recovered-refresh");
+  assert.equal(calls, 2);
+});
+
+test("refresh rejects a response that omits the rotated refresh credential", async () => {
+  await assert.rejects(
+    refreshBackendAccessToken({
+      backendBaseUrl: "http://backend.test/api/v1",
+      refreshToken: "single-use-refresh",
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: "access-only" }),
+      }),
+    }),
+    /no rotated refresh token/
+  );
+});
