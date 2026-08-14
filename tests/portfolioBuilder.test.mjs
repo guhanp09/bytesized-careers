@@ -226,3 +226,26 @@ test("owner overview portfolio rail uses the shared popup instead of project rou
   assert.match(source, /itemControlsId="owner-overview-portfolio-popup"/);
   assert.doesNotMatch(source, /href=\{`\/you\/projects/);
 });
+
+test("a refused or failed link preview keeps the creator's URL and their way forward", () => {
+  // The backend preview boundary now rejects unsafe targets before it makes a
+  // request, and it answers a provider outage with a bounded failure instead of
+  // a partial page. Both arrive here as a rejected promise, and both are
+  // ordinary: the creator pasted a link the product could not read, which must
+  // never cost them the link, the draft they were filling in, or the ability to
+  // finish the entry by hand.
+  const source = read(BUILDER);
+  const failure = source.slice(source.indexOf("const refreshProjectPreview"));
+  const handler = failure.slice(failure.indexOf("} catch {"), failure.indexOf("} finally {"));
+
+  assert.ok(handler.length > 0, "the preview call must handle failure");
+  // The pasted URL survives the failure, in the draft the builder saves from.
+  assert.match(handler, /sourceUrl: normalizedUrl/);
+  // The step still resolves successfully, so the builder does not block or
+  // reset; the creator is told what happened and continues manually.
+  assert.match(handler, /return true;/);
+  assert.match(handler, /setLocalError\(sourceFallbackMessage\(/);
+  // Nothing about a failed preview may discard what the creator already typed.
+  assert.doesNotMatch(handler, /title: ""/);
+  assert.doesNotMatch(handler, /setDraft\(EMPTY|resetDraft|setDraft\(initial/);
+});

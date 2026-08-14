@@ -76,7 +76,7 @@ supports pasted text, rough descriptions, externally sourced listing text, and
 securely normalized public job URLs. Successful extraction remains private and stops at recruiter review—it
 does not create or publish a native job.
 
-Public job and brand-page retrieval use the shared
+Public job, brand-page, and portfolio-preview retrieval use the shared
 `app.services.safe_outbound_fetch.SafeOutboundFetcher`. It accepts only HTTP(S)
 on ports 80/443, rejects non-public IPv4/IPv6 and embedded transition addresses,
 pins each TCP connection to the DNS answer that passed validation, verifies the
@@ -87,6 +87,12 @@ operation, content-type, redirect, and decoded-body limits. The
 must never be enabled by production configuration. Other user-influenced
 fetchers are tracked in `docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md` until they
 are migrated to the same boundary.
+
+Portfolio HTML previews accept only bounded HTML/plain-text responses. YouTube
+and Vimeo oEmbed calls additionally require an exact built-in provider endpoint,
+refuse redirects, accept only JSON, and cap decoded responses at 64 KiB. Preview
+network/provider failures retain the existing manual-entry path; unsafe URLs are
+rejected before a request is made.
 
 ## Local Development (uv)
 Install dependencies:

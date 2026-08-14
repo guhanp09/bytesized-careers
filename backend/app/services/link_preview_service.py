@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import asyncio
-import ipaddress
-import socket
+import json
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
-import httpx
-
 from app.schemas import PortfolioLinkPreviewPublicMetrics, PortfolioLinkPreviewResponse
+from app.services.safe_outbound_fetch import (
+    SafeOutboundFetcher,
+    SafeOutboundFetchError,
+    SafeOutboundFetchPolicy,
+)
 from app.services.youtube_service import (
     YouTubeAPIError,
     extract_video_id,
@@ -17,9 +18,59 @@ from app.services.youtube_service import (
 )
 
 MAX_PREVIEW_BYTES = 512 * 1024
+MAX_OEMBED_BYTES = 64 * 1024
+#: Ceilings for each metadata field read out of an untrusted page or provider.
+#: The stored portfolio title is capped at 255 characters, so a longer suggestion
+#: could never be saved as offered; the rest are bounded for the same reason.
+MAX_METADATA_TITLE_CHARS = 255
+MAX_METADATA_DESCRIPTION_CHARS = 2000
+MAX_METADATA_NAME_CHARS = 255
+MAX_METADATA_URL_CHARS = 2048
 MAX_REDIRECTS = 3
 REQUEST_TIMEOUT_SECONDS = 6.0
 USER_AGENT = "CreatorJobs-LinkPreview/1.0"
+OEMBED_USER_AGENT = "CreatorJobs-LinkPreview-oEmbed/1.0"
+
+HTML_PREVIEW_POLICY = SafeOutboundFetchPolicy(
+    max_response_bytes=MAX_PREVIEW_BYTES,
+    allowed_content_types=frozenset({"text/html", "application/xhtml+xml", "text/plain"}),
+    user_agent=USER_AGENT,
+    accept="text/html, application/xhtml+xml, text/plain;q=0.5",
+    max_redirects=MAX_REDIRECTS,
+    connect_timeout_seconds=3.0,
+    read_timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+    total_timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+)
+OEMBED_POLICY = SafeOutboundFetchPolicy(
+    max_response_bytes=MAX_OEMBED_BYTES,
+    allowed_content_types=frozenset({"application/json"}),
+    user_agent=OEMBED_USER_AGENT,
+    accept="application/json",
+    max_redirects=0,
+    connect_timeout_seconds=3.0,
+    read_timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+    total_timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+    max_url_length=8192,
+)
+ALLOWED_OEMBED_ENDPOINTS = frozenset(
+    {
+        "https://www.youtube.com/oembed",
+        "https://vimeo.com/api/oembed.json",
+    }
+)
+
+_OUTBOUND_VALIDATION_CODES = frozenset(
+    {
+        "URL_INVALID",
+        "SCHEME_UNSUPPORTED",
+        "CREDENTIALS_FORBIDDEN",
+        "HOST_UNSAFE",
+        "DESTINATION_UNSAFE",
+        "PORT_UNSAFE",
+        "PEER_UNVERIFIED",
+        "PEER_MISMATCH",
+    }
+)
 
 MANUAL_CONTEXT_FIELDS = ["role", "contribution", "tools", "outcome"]
 
@@ -51,23 +102,31 @@ def _hostname(url: str) -> str:
     return host
 
 
+def _is_host_or_subdomain(host: str, domain: str) -> bool:
+    return host == domain or host.endswith(f".{domain}")
+
+
 def detect_link_source(url: str) -> str:
     host = _hostname(url)
-    if host == "youtu.be" or host.endswith("youtube.com") or host.endswith("youtube-nocookie.com"):
+    if (
+        host == "youtu.be"
+        or _is_host_or_subdomain(host, "youtube.com")
+        or _is_host_or_subdomain(host, "youtube-nocookie.com")
+    ):
         return "youtube"
-    if host == "vimeo.com" or host.endswith(".vimeo.com"):
+    if _is_host_or_subdomain(host, "vimeo.com"):
         return "vimeo"
     if host == "drive.google.com":
         return "drive"
     if host == "docs.google.com":
         return "google_docs"
-    if host.endswith("notion.so") or host.endswith("notion.site"):
+    if _is_host_or_subdomain(host, "notion.so") or _is_host_or_subdomain(host, "notion.site"):
         return "notion"
-    if host.endswith("behance.net"):
+    if _is_host_or_subdomain(host, "behance.net"):
         return "behance"
-    if host.endswith("instagram.com"):
+    if _is_host_or_subdomain(host, "instagram.com"):
         return "instagram"
-    if host.endswith("tiktok.com"):
+    if _is_host_or_subdomain(host, "tiktok.com"):
         return "tiktok"
     return "website" if host else "unknown"
 
@@ -129,98 +188,65 @@ def _manual_response(
     )
 
 
-def _is_blocked_hostname(host: str) -> bool:
-    if not host:
-        return True
-    if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost") or host.endswith(".local"):
-        return True
+def _raise_preview_boundary_error(exc: SafeOutboundFetchError) -> NoReturn:
+    if exc.code in _OUTBOUND_VALIDATION_CODES:
+        message = (
+            "Work links must use http or https."
+            if exc.code in {"URL_INVALID", "SCHEME_UNSUPPORTED"}
+            else "This link cannot be previewed."
+        )
+        raise LinkPreviewValidationError(message) from exc
+    raise LinkPreviewFetchError("Public preview metadata is temporarily unavailable.") from exc
+
+
+async def _assert_public_http_url(
+    url: str,
+    *,
+    fetcher: SafeOutboundFetcher | None = None,
+) -> None:
+    boundary = fetcher or SafeOutboundFetcher()
     try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return _is_blocked_ip(address)
+        await boundary.validate_destination(url, HTML_PREVIEW_POLICY)
+    except SafeOutboundFetchError as exc:
+        _raise_preview_boundary_error(exc)
 
 
-def _is_blocked_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    return bool(
-        address.is_private
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_reserved
-        or address.is_multicast
-        or address.is_unspecified
-    )
-
-
-async def _assert_public_http_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise LinkPreviewValidationError("Work links must use http or https.")
-    host = parsed.hostname.lower()
-    if _is_blocked_hostname(host):
-        raise LinkPreviewValidationError("This link cannot be previewed.")
-
+async def _fetch_text_url(
+    url: str,
+    *,
+    fetcher: SafeOutboundFetcher | None = None,
+) -> tuple[str, str]:
+    boundary = fetcher or SafeOutboundFetcher()
     try:
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        resolved = await asyncio.to_thread(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise LinkPreviewFetchError("Could not resolve this link.") from exc
-
-    for _family, _, _, _, sockaddr in resolved:
-        raw_ip = sockaddr[0]
-        try:
-            address = ipaddress.ip_address(raw_ip)
-        except ValueError:
-            continue
-        if _is_blocked_ip(address):
-            raise LinkPreviewValidationError("This link cannot be previewed.")
+        response = await boundary.fetch(url, HTML_PREVIEW_POLICY)
+    except SafeOutboundFetchError as exc:
+        _raise_preview_boundary_error(exc)
+    if not 200 <= response.status_code < 300:
+        raise LinkPreviewFetchError(f"Preview request failed ({response.status_code}).")
+    return response.final_url, response.body.decode(response.encoding, errors="replace")
 
 
-async def _fetch_text_url(url: str) -> tuple[str, str]:
-    current_url = url
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT}) as client:
-        for _ in range(MAX_REDIRECTS + 1):
-            await _assert_public_http_url(current_url)
-            try:
-                async with client.stream("GET", current_url, follow_redirects=False) as response:
-                    if response.status_code in {301, 302, 303, 307, 308}:
-                        location = response.headers.get("location")
-                        if not location:
-                            raise LinkPreviewFetchError("Redirect response was missing a location.")
-                        current_url = urljoin(current_url, location)
-                        continue
-                    if response.status_code >= 400:
-                        raise LinkPreviewFetchError(f"Preview request failed ({response.status_code}).")
-
-                    chunks: list[bytes] = []
-                    total = 0
-                    async for chunk in response.aiter_bytes():
-                        total += len(chunk)
-                        if total > MAX_PREVIEW_BYTES:
-                            remaining = MAX_PREVIEW_BYTES - (total - len(chunk))
-                            if remaining > 0:
-                                chunks.append(chunk[:remaining])
-                            break
-                        chunks.append(chunk)
-                    encoding = response.encoding or "utf-8"
-                    return str(response.url), b"".join(chunks).decode(encoding, errors="replace")
-            except httpx.HTTPError as exc:
-                raise LinkPreviewFetchError(str(exc)) from exc
-    raise LinkPreviewFetchError("Too many redirects.")
-
-
-async def _fetch_oembed_json(endpoint: str, work_url: str) -> dict[str, Any]:
+async def _fetch_oembed_json(
+    endpoint: str,
+    work_url: str,
+    *,
+    fetcher: SafeOutboundFetcher | None = None,
+) -> dict[str, Any]:
+    if endpoint not in ALLOWED_OEMBED_ENDPOINTS:
+        raise LinkPreviewFetchError("This oEmbed provider is not supported.")
     query = urlencode({"url": work_url, "format": "json"})
     url = f"{endpoint}?{query}"
-    await _assert_public_http_url(url)
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT}) as client:
-        try:
-            response = await client.get(url, follow_redirects=True)
-            if response.status_code >= 400:
-                raise LinkPreviewFetchError(f"oEmbed request failed ({response.status_code}).")
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise LinkPreviewFetchError(str(exc)) from exc
+    boundary = fetcher or SafeOutboundFetcher()
+    try:
+        response = await boundary.fetch(url, OEMBED_POLICY)
+    except SafeOutboundFetchError as exc:
+        _raise_preview_boundary_error(exc)
+    if not 200 <= response.status_code < 300:
+        raise LinkPreviewFetchError(f"oEmbed request failed ({response.status_code}).")
+    try:
+        payload = json.loads(response.body.decode(response.encoding))
+    except (LookupError, UnicodeError, json.JSONDecodeError) as exc:
+        raise LinkPreviewFetchError("The oEmbed provider returned invalid JSON.") from exc
     return payload if isinstance(payload, dict) else {}
 
 
@@ -262,6 +288,21 @@ class OpenGraphParser(HTMLParser):
         return " ".join(" ".join(self.title_chunks).split()).strip()
 
 
+def _bounded(value: str, limit: int) -> str:
+    """Clamp one metadata field read out of an untrusted page.
+
+    The fetch boundary caps the body, but a single `og:description` may still be
+    most of that body. These values are returned to the browser and offered as
+    defaults for a saved portfolio item, so each field is limited to a length
+    that is usable in the product rather than to whatever the page chose.
+    Truncation is deliberate: a preview is a suggestion the creator edits, and
+    refusing the whole preview because one field is long would cost them the
+    rest of it.
+    """
+
+    return value[:limit] if len(value) > limit else value
+
+
 def _first_meta(parser: OpenGraphParser, *keys: str) -> str:
     for key in keys:
         value = parser.meta.get(key)
@@ -276,12 +317,18 @@ def _parse_html_metadata(html: str, base_url: str) -> dict[str, str]:
     canonical = parser.canonical_url or _first_meta(parser, "og:url")
     image = _first_meta(parser, "og:image", "twitter:image", "twitter:image:src")
     return {
-        "canonical_url": urljoin(base_url, canonical) if canonical else base_url,
-        "title": _first_meta(parser, "og:title", "twitter:title") or parser.title,
-        "description": _first_meta(parser, "og:description", "twitter:description", "description"),
-        "thumbnail_url": urljoin(base_url, image) if image else "",
-        "provider_name": _first_meta(parser, "og:site_name", "application-name") or _provider_name(detect_link_source(base_url), base_url),
-        "author_name": _first_meta(parser, "article:author", "author"),
+        "canonical_url": _bounded(urljoin(base_url, canonical) if canonical else base_url, MAX_METADATA_URL_CHARS),
+        "title": _bounded(_first_meta(parser, "og:title", "twitter:title") or parser.title, MAX_METADATA_TITLE_CHARS),
+        "description": _bounded(
+            _first_meta(parser, "og:description", "twitter:description", "description"),
+            MAX_METADATA_DESCRIPTION_CHARS,
+        ),
+        "thumbnail_url": _bounded(urljoin(base_url, image) if image else "", MAX_METADATA_URL_CHARS),
+        "provider_name": _bounded(
+            _first_meta(parser, "og:site_name", "application-name") or _provider_name(detect_link_source(base_url), base_url),
+            MAX_METADATA_NAME_CHARS,
+        ),
+        "author_name": _bounded(_first_meta(parser, "article:author", "author"), MAX_METADATA_NAME_CHARS),
     }
 
 
