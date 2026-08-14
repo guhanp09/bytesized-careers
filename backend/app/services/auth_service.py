@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.account_types import PublicAccountType
 from app.core.config import settings
 from app.core.onboarding_intent import (
@@ -32,7 +34,7 @@ from app.repositories.auth_repository import (
 )
 from app.schemas.auth import OAuthGoogleExchangeRequest
 from app.services.email_service import capture_dev_auth_email, send_auth_email
-from app.services.google_identity import GoogleIdentityVerifierProtocol
+from app.services.google_identity import GoogleIdentityVerifierProtocol, VerifiedGoogleIdentity
 from app.services.profile_rules import normalize_username, validate_username_format
 from app.services.youtube_service import (
     YouTubeAPIError,
@@ -476,6 +478,39 @@ class AuthService:
 
     async def exchange_google_oauth(self, payload: OAuthGoogleExchangeRequest) -> tuple[User, AuthTokenPair]:
         identity = await self.google_identity_verifier.verify(payload.id_token)
+        try:
+            return await self._exchange_verified_google_oauth(payload=payload, identity=identity)
+        except IntegrityError as exc:
+            # The read-before-write checks keep ordinary collisions legible, but
+            # only the database can arbitrate simultaneous links. Roll back the
+            # failed transaction before inspecting the winner.
+            await self.repository.rollback()
+            email = self.normalize_email(identity.email)
+            oauth_account = await self.repository.get_oauth_account_by_provider_subject(
+                provider="google",
+                provider_account_id=identity.subject,
+            )
+            email_user = await self.repository.get_user_by_email(email)
+            if (
+                oauth_account is not None
+                and email_user is not None
+                and oauth_account.user_id == email_user.id
+            ):
+                logger.info(
+                    "google_oauth_concurrent_exchange_converged",
+                    extra={"user_id": str(email_user.id)},
+                )
+                return email_user, self.create_token_pair(email_user)
+            raise OAuthAccountCollisionError(
+                "Concurrent Google identity linkage conflict"
+            ) from exc
+
+    async def _exchange_verified_google_oauth(
+        self,
+        *,
+        payload: OAuthGoogleExchangeRequest,
+        identity: VerifiedGoogleIdentity,
+    ) -> tuple[User, AuthTokenPair]:
         email = self.normalize_email(identity.email)
         oauth_account = await self.repository.get_oauth_account_by_provider_subject(
             provider="google",

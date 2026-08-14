@@ -13,6 +13,7 @@ class OAuthAccount(Base):
     __tablename__ = "oauth_accounts"
     __table_args__ = (
         UniqueConstraint("provider", "provider_account_id", name="uq_oauth_provider_account_id"),
+        UniqueConstraint("user_id", "provider", name="uq_oauth_user_provider"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

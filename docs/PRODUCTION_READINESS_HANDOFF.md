@@ -4,22 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1B — browser-safe provider sessions and server-owned YouTube refresh
-NEXT ATOMIC SLICE: Phase 1C — finish OAuth linkage concurrency proof, then add rotation-ready encryption for stored Google credentials
-CURRENT HEAD: Phase 1B checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0053_brand_about_enrichment_state
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade reached 0053 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth forwards them only during the server-side verified exchange, scrubs legacy credential fields from JWT cookies, and exposes an allowlisted public session; browser YouTube flows call authenticated `/api/identity/youtube/refresh`, which uses backend-held credentials
+LAST COMPLETED ATOMIC SLICE: Phase 1C-1 — database-enforced OAuth linkage concurrency safety
+NEXT ATOMIC SLICE: Phase 1C-2 — rotation-ready encryption for stored Google credentials
+CURRENT HEAD: Phase 1C-1 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+CURRENT ALEMBIC HEAD: 0054_oauth_link_uniqueness
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0054 successfully
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; browser YouTube flows use a server-owned route; the database now enforces both one user per provider subject and one provider identity per user, while identical concurrent exchanges converge after constraint arbitration
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID (required at production boot and must match the NextAuth Google client ID)
 NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
 KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures, detailed below
-COMMANDS TO RESUME: see "Phase 1B atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: backend/app/models/oauth_account.py; backend/app/repositories/auth_repository.py; backend/app/services/auth_service.py; backend/alembic/versions; backend tests for Google identity; lib/auth.ts; lib/authSession.ts
+COMMANDS TO RESUME: see "Phase 1C-1 atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: backend/app/models/oauth_account.py; backend/app/repositories/auth_repository.py; backend/app/services/auth_service.py; backend/app/core/config.py; backend/alembic/versions/0054_oauth_link_uniqueness.py; backend/tests/test_auth_oauth_postgres.py
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1C-1 atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1C-1
+Status: COMPLETE (Phase 1 remains in progress)
+Initial HEAD: f60463629f32b3dbcfe0728a978514a4d694af3a
+Final HEAD: Phase 1C-1 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(auth): enforce concurrent OAuth link ownership
+Files materially changed: OAuth account model; AuthService concurrent-conflict recovery; Alembic 0054; disposable PostgreSQL auth race tests; PostgreSQL migration test runner; execution ledger and handoff
+Migrations: 0054_oauth_link_uniqueness adds `uq_oauth_user_provider` on `(user_id, provider)` after a non-destructive ambiguous-link preflight; downgrade removes only that constraint
+Behavior changed: simultaneous different Google subjects for one CreatorJobs user now have exactly one winner and one conflict; one Google subject cannot be claimed by different users; simultaneous identical exchanges converge successfully on one user/link instead of surfacing an unhandled database error
+Security assumptions: one Google provider identity per CreatorJobs user is the established product contract; the existing `(provider, provider_account_id)` constraint remains authoritative for subject ownership; ambiguous legacy rows must be investigated, never auto-merged; PostgreSQL constraint arbitration is authoritative under concurrency
+Tests run: focused Google/auth SQLite tests; focused Ruff; Alembic heads/current; fresh disposable PostgreSQL upgrade, downgrade to 0038, fixture load, re-upgrade, migration tests, interaction tests, and four deterministic OAuth concurrency tests; full backend pytest
+Exact results: focused Google/auth 33 passed / 7 warnings; Ruff passed; one Alembic head `0054_oauth_link_uniqueness`; disposable PostgreSQL suite 14 passed / 2 warnings; full backend 6,405 passed / 53 skipped / 88 warnings in 303.37s
+Known external failures: the hosted production database was not inspected; migration 0054 deliberately refuses any ambiguous pre-existing `(user_id, provider)` duplicates and requires security review before retry
+Remaining risks: provider credentials remain plaintext at rest; key rotation and provider revocation are absent; backend refresh sessions remain stateless/non-revocable; Google login still requests YouTube/offline scope; admin strong authentication remains
+Next phase: Phase 1C-2 atomic slice — add versioned application-layer encryption for provider access/refresh credentials with an expand/backfill/compatibility-safe migration and key-rotation tests
+Important commands: `cd backend && .venv/bin/python -m alembic heads`; `./scripts/test_interaction_status_postgres.sh`; `APP_ENV=test .venv/bin/python -m pytest tests/test_google_identity.py tests/test_auth_and_channels.py`; inspect `app/core/config.py`, `app/models/oauth_account.py`, and every OAuth token read/write before designing 0055
+```
 
 ## Phase 1B atomic checkpoint
 
@@ -166,7 +186,7 @@ Do not weaken these tests without first proving that their asserted product cont
 ## Phase 1 current risk state
 
 - Phase 1A removed the caller-asserted Google identity takeover: `/auth/oauth/google` now accepts a signed ID token and derives identity only after server verification.
-- Phase 1A also made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Sequential subject/email collision tests pass; concurrent PostgreSQL collision recovery remains to validate before AUTH-002 can become `VALIDATED`.
+- Phase 1A made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Phase 1C-1 added the inverse database uniqueness constraint and deterministic PostgreSQL races, so AUTH-002 is now `VALIDATED`.
 - Phase 1B removed Google access/refresh tokens, provider subject, OAuth metadata, and raw claims from the browser session and from the encrypted NextAuth JWT. A sentinel-bearing legacy JWT produced a clean `/api/auth/session` response in Playwright.
 - YouHub, Post Job, Settings, and the legacy identity routes now refresh YouTube through backend-held OAuth credentials. The same-origin `/api/identity/youtube/refresh` route returns channel data or bounded error codes, never provider credentials.
 - Provider credentials remain plaintext in the OAuth account table. At-rest encryption, a rotation contract, log/redaction audit, and revocation are the next credential-security work.

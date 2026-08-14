@@ -27,7 +27,7 @@ This ledger translates the production-readiness audit into resumable implementat
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | AUTH-001 | CRITICAL | Google authentication | BASE-003 | VALIDATED | Forged token, signature, issuer, audience, expiry, subject, verified-email tests | NO | YES | Yes | Yes | Phase 1A Google identity checkpoint commit |
-| AUTH-002 | CRITICAL | OAuth account linkage | AUTH-001 | IMPLEMENTED | Existing-subject and existing-email collision; no reassignment; concurrent link tests | POSSIBLE | NO | Yes | Yes | Phase 1A checkpoint; concurrent-link validation remains |
+| AUTH-002 | CRITICAL | OAuth account linkage | AUTH-001 | VALIDATED | Existing-subject and existing-email collision; no reassignment; concurrent link tests | YES | NO | Yes | Yes | Phase 1A sequential checks + Phase 1C PostgreSQL uniqueness/concurrency checkpoint |
 | AUTH-003 | CRITICAL | Browser session privacy | AUTH-001 | VALIDATED | `/api/auth/session` and serialized-session leakage tests | NO | NO | Yes | Yes | Phase 1B browser-session privacy checkpoint commit |
 | AUTH-004 | HIGH | Provider credentials | AUTH-003 | IN_PROGRESS | Encryption, key rotation, redaction, and revocation tests | POSSIBLE | YES | Yes | Yes | Phase 1B removed browser/JWT copies; at-rest encryption and revocation remain |
 | AUTH-005 | CRITICAL | Backend sessions | AUTH-001 | NOT_STARTED | Rotation, replay, expiry, concurrent refresh, and migration-compatibility tests | YES | NO | Yes | Yes | — |

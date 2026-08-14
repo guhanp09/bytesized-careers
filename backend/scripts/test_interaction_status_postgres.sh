@@ -25,6 +25,7 @@ export POSTGRES_TEST_DATABASE_URL="$DATABASE_URL"
 PYTHONPATH=. "$PYTHON_BIN" tests/interaction_migration_fixtures.py
 "$PYTHON_BIN" -m alembic upgrade head
 "$PYTHON_BIN" -m pytest \
+  tests/test_auth_oauth_postgres.py \
   tests/test_interaction_migration_postgres.py \
   tests/test_interaction_transitions_postgres.py \
   -q
