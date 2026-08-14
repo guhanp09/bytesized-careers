@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import Select, and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.oauth_credentials import OAuthCredentialValues
 from app.models import (
     EmailVerificationToken,
     HiringIdentity,
@@ -26,6 +27,7 @@ from app.models import (
     UserYouTubeChannel,
     YouTubeChannel,
 )
+from app.services.oauth_credential_storage import OAuthCredentialStorage
 
 
 class OAuthAccountCollisionError(Exception):
@@ -33,8 +35,18 @@ class OAuthAccountCollisionError(Exception):
 
 
 class AuthRepository:
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        oauth_credential_storage: OAuthCredentialStorage | None = None,
+    ):
         self.session = session
+        # Direct repository construction is common in isolated domain tests.
+        # Application requests inject the configured storage policy in deps.py;
+        # this fallback preserves local/test behavior without inventing a key.
+        self.oauth_credential_storage = (
+            oauth_credential_storage or OAuthCredentialStorage.plaintext_compatibility()
+        )
 
     async def get_user_by_email(self, email: str) -> User | None:
         stmt: Select[tuple[User]] = select(User).where(User.email == email)
@@ -183,10 +195,14 @@ class AuthRepository:
                 user_id=user_id,
                 provider=provider,
                 provider_account_id=provider_account_id,
-                access_token=access_token,
-                refresh_token=refresh_token,
                 expires_at=expires_at,
                 scope=scope,
+            )
+            self.oauth_credential_storage.write(
+                row,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                preserve_refresh_token=False,
             )
             self.session.add(row)
             await self.session.flush()
@@ -197,9 +213,11 @@ class AuthRepository:
             raise OAuthAccountCollisionError(
                 "This Google identity is already linked to another account"
             )
-        row.access_token = access_token
-        if refresh_token is not None:
-            row.refresh_token = refresh_token
+        self.oauth_credential_storage.write(
+            row,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
         row.expires_at = expires_at
         row.scope = scope
         await self.session.flush()
@@ -217,6 +235,11 @@ class AuthRepository:
             OAuthAccount.provider_account_id == provider_account_id,
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    def get_oauth_credential_values(self, account: OAuthAccount) -> OAuthCredentialValues:
+        """Return redacted-repr provider credentials through the storage policy."""
+
+        return self.oauth_credential_storage.read(account)
 
     async def get_latest_oauth_account_for_user(
         self,

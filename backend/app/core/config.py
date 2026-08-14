@@ -54,6 +54,32 @@ class Settings(BaseSettings):
         default=60 * 24 * 30, alias="JWT_REFRESH_TOKEN_EXPIRES_MINUTES"
     )
     google_client_id: str | None = Field(default=None, alias="GOOGLE_CLIENT_ID")
+    # JSON keyring mapping stable key IDs to base64/base64url-encoded 32-byte
+    # AES keys. SecretStr keeps the entire keyring out of settings repr/logs.
+    # Keep previous keys configured until every row has been explicitly rotated.
+    oauth_credential_keys: SecretStr | None = Field(
+        default=None,
+        max_length=32 * 1024,
+        alias="OAUTH_CREDENTIAL_KEYS",
+    )
+    oauth_credential_active_key_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+        alias="OAUTH_CREDENTIAL_ACTIVE_KEY_ID",
+    )
+    oauth_credential_write_mode: Literal["plaintext", "dual", "encrypted_only"] = Field(
+        default="plaintext",
+        alias="OAUTH_CREDENTIAL_WRITE_MODE",
+    )
+    # A temporary expand/rollback escape hatch. Production steady state must be
+    # encrypted_only; dual mode is accepted only when an operator explicitly
+    # acknowledges that plaintext remains during a controlled migration window.
+    allow_oauth_plaintext_compatibility_in_production: bool = Field(
+        default=False,
+        alias="ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION",
+    )
     youtube_api_key: str | None = Field(default=None, alias="YOUTUBE_API_KEY")
     youtube_data_api_key: str | None = Field(default=None, alias="YOUTUBE_DATA_API_KEY")
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -202,6 +228,38 @@ def validate_production_settings() -> None:
         failures.append("SMTP_PORT must be a positive integer.")
     if not settings.google_client_id or not settings.google_client_id.strip():
         failures.append("GOOGLE_CLIENT_ID is required for verified Google sign-in.")
+    from app.core.oauth_credentials import (
+        OAuthCredentialConfigurationError,
+        build_oauth_credential_cipher,
+    )
+
+    keyring_json = (
+        settings.oauth_credential_keys.get_secret_value()
+        if settings.oauth_credential_keys is not None
+        else None
+    )
+    try:
+        credential_cipher = build_oauth_credential_cipher(
+            keyring_json=keyring_json,
+            active_key_id=settings.oauth_credential_active_key_id,
+        )
+    except OAuthCredentialConfigurationError as exc:
+        failures.append(f"OAuth credential encryption configuration is invalid: {exc}")
+        credential_cipher = None
+    if credential_cipher is None:
+        failures.append(
+            "OAUTH_CREDENTIAL_KEYS and OAUTH_CREDENTIAL_ACTIVE_KEY_ID are required in production."
+        )
+    if settings.oauth_credential_write_mode == "plaintext":
+        failures.append("OAUTH_CREDENTIAL_WRITE_MODE cannot be plaintext in production.")
+    if (
+        settings.oauth_credential_write_mode == "dual"
+        and not settings.allow_oauth_plaintext_compatibility_in_production
+    ):
+        failures.append(
+            "Dual OAuth credential writes require explicit temporary production compatibility "
+            "acknowledgement."
+        )
     if settings.rate_limit_backend == "memory" and not settings.allow_memory_rate_limit_in_production:
         failures.append(
             "RATE_LIMIT_BACKEND must be 'redis' in production, or explicitly set "

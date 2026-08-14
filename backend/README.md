@@ -38,6 +38,10 @@ Key vars:
 - `CORS_ORIGINS`
 - `LOG_LEVEL`
 - `JWT_SECRET`
+- `OAUTH_CREDENTIAL_KEYS` + `OAUTH_CREDENTIAL_ACTIVE_KEY_ID` (server-only
+  AES-256-GCM keyring for Google access/refresh credentials)
+- `OAUTH_CREDENTIAL_WRITE_MODE` (`dual` only during the recoverable migration;
+  `encrypted_only` for production steady state)
 - `YOUTUBE_API_KEY` (server-side YouTube Data API v3 key for portfolio metadata import)
 - `OPENAI_API_KEY` (server-side only; required only for private text job-import processing)
 - `OPENAI_MODEL` (defaults to `gpt-5.6-luna`; clients cannot override it)
@@ -63,6 +67,19 @@ Run migrations:
 ```bash
 uv run alembic upgrade head
 ```
+
+Audit or rotate stored OAuth credentials after migration 0055 (dry-run by
+default; output contains counts and key IDs, never credentials):
+
+```bash
+.venv/bin/python -m scripts.rotate_oauth_credentials
+.venv/bin/python -m scripts.rotate_oauth_credentials --apply --confirm development
+```
+
+The safe production rollout is: deploy the additive migration and `dual` mode
+with the temporary compatibility acknowledgement, run and verify the backfill,
+then deploy `encrypted_only` and rerun the command to clear plaintext. Keep all
+old decryption keys until a final dry-run reports zero rows needing rewrap.
 
 Run dev server:
 ```bash

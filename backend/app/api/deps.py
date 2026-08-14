@@ -41,6 +41,7 @@ from app.services.job_import_url_service import JobImportUrlService
 from app.services.job_service import JobNotFoundError, JobService
 from app.services.job_url_fetcher import PublicJobUrlFetcher
 from app.services.me_service import MeService
+from app.services.oauth_credential_storage import OAuthCredentialStorage
 from app.services.profile_service import ProfileService
 from app.services.search_service import SearchService
 
@@ -138,7 +139,10 @@ async def get_job_import_url_service(
 
 
 async def get_auth_repository(session: AsyncSession = Depends(get_db)) -> AuthRepository:
-    return AuthRepository(session)
+    return AuthRepository(
+        session,
+        oauth_credential_storage=OAuthCredentialStorage.from_settings(settings),
+    )
 
 
 def get_google_identity_verifier() -> GoogleIdentityVerifier:

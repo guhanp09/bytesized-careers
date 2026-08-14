@@ -90,14 +90,21 @@ class MeService:
             user_id=user.id,
             provider="google",
         )
-        if oauth is None or not oauth.access_token:
+        if oauth is None:
+            raise YouTubeReauthRequiredError("youtube_reauth_required")
+        credentials = self.repository.get_oauth_credential_values(oauth)
+        if not credentials.access_token:
             raise YouTubeReauthRequiredError("youtube_reauth_required")
 
         now_epoch = int(datetime.now(UTC).timestamp())
-        if oauth.expires_at is not None and oauth.expires_at <= now_epoch and not oauth.refresh_token:
+        if (
+            oauth.expires_at is not None
+            and oauth.expires_at <= now_epoch
+            and not credentials.refresh_token
+        ):
             raise YouTubeReauthRequiredError("youtube_reauth_required")
 
-        channels = await fetch_user_youtube_channels(oauth.access_token)
+        channels = await fetch_user_youtube_channels(credentials.access_token)
         for item in channels:
             channel_row = await self.repository.upsert_youtube_channel(
                 channel_id=item.channel_id,

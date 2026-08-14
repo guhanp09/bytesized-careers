@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import json
+
 import pytest
 from jose import jwt
 
@@ -107,4 +110,60 @@ def test_production_validation_rejects_localhost_and_debug(monkeypatch: pytest.M
     assert "DATABASE_URL" in message
     assert "EMAIL_MODE" in message
     assert "GOOGLE_CLIENT_ID" in message
+    assert "OAUTH_CREDENTIAL_KEYS" in message
+    assert "OAUTH_CREDENTIAL_WRITE_MODE" in message
     assert "RATE_LIMIT_BACKEND" in message
+
+
+def _safe_production_settings(**overrides: object) -> config.Settings:
+    key = base64.urlsafe_b64encode(bytes([23]) * 32).decode().rstrip("=")
+    values: dict[str, object] = {
+        "APP_ENV": "production",
+        "DEBUG": False,
+        "JWT_SECRET": "a-production-secret-that-is-not-a-placeholder",
+        "FRONTEND_BASE_URL": "https://creatorjobs.example",
+        "CORS_ORIGINS": '["https://creatorjobs.example"]',
+        "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
+        "EMAIL_MODE": "smtp",
+        "SMTP_HOST": "smtp.example",
+        "SMTP_USERNAME": "creatorjobs",
+        "SMTP_PASSWORD": "smtp-test-placeholder",
+        "SMTP_FROM_EMAIL": "support@creatorjobs.example",
+        "GOOGLE_CLIENT_ID": "creatorjobs.apps.googleusercontent.com",
+        "RATE_LIMIT_BACKEND": "redis",
+        "REDIS_URL": "redis://redis.example:6379/0",
+        "OAUTH_CREDENTIAL_KEYS": json.dumps({"production_key": key}),
+        "OAUTH_CREDENTIAL_ACTIVE_KEY_ID": "production_key",
+        "OAUTH_CREDENTIAL_WRITE_MODE": "encrypted_only",
+    }
+    values.update(overrides)
+    return config.Settings(**values)
+
+
+def test_production_validation_accepts_encrypted_only_oauth_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production_settings = _safe_production_settings()
+    monkeypatch.setattr(config, "settings", production_settings)
+
+    config.validate_production_settings()
+
+    assert production_settings.oauth_credential_keys is not None
+    assert str(production_settings.oauth_credential_keys) == "**********"
+
+
+def test_production_dual_write_requires_explicit_temporary_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production_settings = _safe_production_settings(OAUTH_CREDENTIAL_WRITE_MODE="dual")
+    monkeypatch.setattr(config, "settings", production_settings)
+
+    with pytest.raises(RuntimeError, match="explicit temporary production compatibility"):
+        config.validate_production_settings()
+
+    acknowledged = _safe_production_settings(
+        OAUTH_CREDENTIAL_WRITE_MODE="dual",
+        ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION=True,
+    )
+    monkeypatch.setattr(config, "settings", acknowledged)
+    config.validate_production_settings()

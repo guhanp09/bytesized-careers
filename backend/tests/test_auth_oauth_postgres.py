@@ -141,6 +141,35 @@ async def test_oauth_link_migration_installs_both_identity_invariants() -> None:
     assert int(constraint_count) == 2
 
 
+async def test_oauth_credential_encryption_migration_is_additive() -> None:
+    factory = _session_factory()
+    async with factory() as session:
+        columns = (
+            await session.execute(
+                text(
+                    """
+                    SELECT column_name, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'oauth_accounts'
+                      AND column_name IN (
+                        'access_token_ciphertext',
+                        'refresh_token_ciphertext',
+                        'credentials_encrypted_at'
+                      )
+                    ORDER BY column_name
+                    """
+                )
+            )
+        ).all()
+
+    assert columns == [
+        ("access_token_ciphertext", "YES"),
+        ("credentials_encrypted_at", "YES"),
+        ("refresh_token_ciphertext", "YES"),
+    ]
+
+
 async def test_concurrent_different_subjects_cannot_attach_to_one_user() -> None:
     factory = _session_factory()
     email = f"pg-one-user-{uuid.uuid4()}@example.com"

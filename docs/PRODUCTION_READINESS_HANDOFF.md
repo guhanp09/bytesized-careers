@@ -4,22 +4,42 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 0 — Baseline and preservation
-LAST COMPLETED ATOMIC SLICE: Phase 1C-1 — database-enforced OAuth linkage concurrency safety
-NEXT ATOMIC SLICE: Phase 1C-2 — rotation-ready encryption for stored Google credentials
-CURRENT HEAD: Phase 1C-1 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0054_oauth_link_uniqueness
-CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0054 successfully
-IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; browser YouTube flows use a server-owned route; the database now enforces both one user per provider subject and one provider identity per user, while identical concurrent exchanges converge after constraint arbitration
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID (required at production boot and must match the NextAuth Google client ID)
-NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier
-OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
+LAST COMPLETED ATOMIC SLICE: Phase 1C-2 — rotation-ready encryption for stored Google credentials
+NEXT ATOMIC SLICE: Phase 1C-3 — additive persistent, rotating backend session families
+CURRENT HEAD: Phase 1C-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+CURRENT ALEMBIC HEAD: 0055_oauth_credential_encryption
+CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0055 successfully
+IMPORTANT NEW ARCHITECTURE: FastAPI verifies Google ID tokens and owns provider credentials; NextAuth exposes only an allowlisted session; browser YouTube flows use a server-owned route; the database enforces both OAuth ownership invariants; provider access/refresh credentials now use versioned AES-256-GCM envelopes bound to provider subject and token field, with explicit plaintext/dual/encrypted-only storage policies and an idempotent rotation command
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION
+NEW SERVICES: app.services.google_identity.GoogleIdentityVerifier; app.core.oauth_credentials.OAuthCredentialCipher; app.services.oauth_credential_storage.OAuthCredentialStorage; scripts.rotate_oauth_credentials
+OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; real OAuth keyring provisioning plus hosted credential backfill/encrypted-only verification and provider revocation; Google/provider credentials; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
 KNOWN TEST FAILURES: 17 deterministic standard Playwright failures and 6 real-backend QA failures, detailed below
-COMMANDS TO RESUME: see "Phase 1C-1 atomic checkpoint" and "Important commands"
-FILES TO READ FIRST: backend/app/models/oauth_account.py; backend/app/repositories/auth_repository.py; backend/app/services/auth_service.py; backend/app/core/config.py; backend/alembic/versions/0054_oauth_link_uniqueness.py; backend/tests/test_auth_oauth_postgres.py
+COMMANDS TO RESUME: see "Phase 1C-2 atomic checkpoint" and "Important commands"
+FILES TO READ FIRST: backend/app/core/security.py; backend/app/services/auth_service.py; backend/app/api/v1/routers/auth.py; backend/app/repositories/auth_repository.py; backend/app/core/oauth_credentials.py; backend/app/services/oauth_credential_storage.py; backend/alembic/versions/0055_oauth_credential_encryption.py
 RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 1C-2 atomic checkpoint
+
+```text
+Phase: Phase 1 — Critical authentication and identity security, atomic slice 1C-2
+Status: COMPLETE (Phase 1 and AUTH-004 remain in progress)
+Initial HEAD: bd52e97f10428c00dc55889b0be5f338e82703be
+Final HEAD: Phase 1C-2 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(auth): encrypt stored OAuth credentials
+Files materially changed: OAuth credential cryptographic primitive and storage policy; OAuth account model/repository/YouTube credential consumer; production configuration and dependency injection; Alembic 0055; idempotent rotation CLI; focused unit/API/rotation/PostgreSQL tests; backend dependency declaration/lock; backend environment and operator documentation; execution ledger and handoff
+Migrations: 0055_oauth_credential_encryption additively adds nullable `access_token_ciphertext`, `refresh_token_ciphertext`, and `credentials_encrypted_at`; it performs no implicit data rewrite, preserves plaintext columns for an explicit expand/backfill/contract rollout, and refuses a downgrade that would discard encrypted-only credentials
+Behavior changed: configured OAuth writes can run in temporary rollback-compatible `dual` mode or steady-state `encrypted_only` mode; encrypted-only writes clear plaintext and reads never fall back to plaintext; YouTube refresh decrypts only inside the backend repository boundary; AES-GCM additional authenticated data binds ciphertext to its provider, provider subject, and token field; old keys decrypt while new writes use only the active key; the operator command is dry-run by default, requires exact APP_ENV confirmation to write, locks and commits bounded batches, resumes idempotently, and never emits credential values
+Security assumptions: every configured key is independently generated 32-byte secret material held only in the server secret manager; key IDs are non-secret stable labels; all historical keys remain available until every row is verified on the active key; `dual` mode is a temporary acknowledged migration state and not production steady state; migration 0055 must land before code expecting its columns; hosted plaintext must not be cleared until dual backfill and rollback readiness have been verified; database/host compromise is outside application-layer key custody and the keyring must not share that trust boundary
+Tests run: focused OAuth cipher/storage/rotation/config/Google/auth pytest; focused Ruff on every touched Python file; full backend pytest; Python compileall; uv lock consistency; rotation CLI help and fail-closed default; Alembic heads; fresh disposable PostgreSQL upgrade, downgrade to 0038, fixture load, re-upgrade, schema/concurrency/interaction tests; `git diff --check`; whole-tree Ruff baseline comparison; diagnostic Alembic model-drift check
+Exact results: 61 focused tests passed / 7 warnings; focused Ruff passed; full backend 6,428 passed / 54 skipped / 88 warnings in 292.94s; compileall passed; uv resolved-lock check passed with 62 packages; rotation CLI help passed and default plaintext configuration failed closed with exit 2; one Alembic head `0055_oauth_credential_encryption`; disposable PostgreSQL suite 17 passed / 2 warnings; whole-tree Ruff reported 110 known findings versus 111 at Phase 0; diagnostic `alembic check` reported only pre-existing unrelated model drift and no OAuth credential-column operation
+Known external failures: no production keyring was provisioned; no hosted database was inspected or backfilled; no live Google token was encrypted/decrypted or revoked; no production secret manager or staging deployment was touched
+Remaining risks: AUTH-004 remains `IN_PROGRESS` until a real keyring is provisioned, hosted rows complete dual backfill, encrypted-only mode clears and verifies plaintext, old-key retirement is proven, and provider disconnect/revocation is implemented; backend refresh sessions remain stateless/non-revocable; ordinary Google login still requests YouTube/offline scope; admin strong authentication remains; whole-tree Ruff and Alembic drift are known baseline debt
+Next phase: Phase 1C-3 atomic slice — design and implement additive persistent session families with hashed rotating refresh credentials, replay/reuse detection, and compatibility-safe issuance before wiring revocation/logout behavior
+Important commands: `cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_oauth_credentials.py tests/test_rotate_oauth_credentials.py tests/test_config.py tests/test_google_identity.py tests/test_auth_and_channels.py`; `.venv/bin/python -m alembic heads`; `./scripts/test_interaction_status_postgres.sh`; with a disposable configured database and non-secret test keyring, `.venv/bin/python -m scripts.rotate_oauth_credentials` before any `--apply`; inspect `app/core/security.py`, `app/services/auth_service.py`, and auth router/session response contracts before designing migration 0056
+```
 
 ## Phase 1C-1 atomic checkpoint
 
@@ -189,13 +209,13 @@ Do not weaken these tests without first proving that their asserted product cont
 - Phase 1A made provider-subject reassignment fail closed and removed browser-driven identity reconstruction. Phase 1C-1 added the inverse database uniqueness constraint and deterministic PostgreSQL races, so AUTH-002 is now `VALIDATED`.
 - Phase 1B removed Google access/refresh tokens, provider subject, OAuth metadata, and raw claims from the browser session and from the encrypted NextAuth JWT. A sentinel-bearing legacy JWT produced a clean `/api/auth/session` response in Playwright.
 - YouHub, Post Job, Settings, and the legacy identity routes now refresh YouTube through backend-held OAuth credentials. The same-origin `/api/identity/youtube/refresh` route returns channel data or bounded error codes, never provider credentials.
-- Provider credentials remain plaintext in the OAuth account table. At-rest encryption, a rotation contract, log/redaction audit, and revocation are the next credential-security work.
+- Provider credentials have a locally validated AES-256-GCM storage path, rotation keyring, additive migration, and idempotent backfill/rewrap command. Production rows remain unverified and may remain plaintext until the external dual-backfill/encrypted-only rollout is actually completed; provider disconnect/revocation is also still absent.
 - Backend refresh tokens are stateless JWTs without one-time rotation, persistence, family revocation, or reuse detection.
 - Access credentials default to 14 days. Password reset, suspension, and logout do not provide complete session-family revocation.
 - Google login requests YouTube/offline scopes during ordinary sign-in rather than using incremental authorization.
 - Admin authorization exists, but strong administrator authentication/MFA enforcement does not.
 
-Phase 1 must remain additive and migration-safe. The browser-field removal and server-owned YouTube replacement are complete; do not bypass the verified exchange or reintroduce browser provider credentials while implementing storage encryption and persistent sessions.
+Phase 1 must remain additive and migration-safe. The browser-field removal, server-owned YouTube replacement, OAuth ownership constraints, and local encrypted credential architecture are complete. Do not bypass the verified exchange, reintroduce browser provider credentials, retire an OAuth key before a zero-pending rotation audit, or remove plaintext columns before the hosted encrypted-only contract is verified while implementing persistent sessions.
 
 ## Phase 1 files to read first
 
@@ -206,10 +226,13 @@ Phase 1 must remain additive and migration-safe. The browser-field removal and s
 - `backend/app/models/oauth_account.py`
 - `backend/app/schemas/auth.py`
 - `backend/app/core/config.py`
+- `backend/app/core/oauth_credentials.py`
+- `backend/app/services/oauth_credential_storage.py`
+- `backend/scripts/rotate_oauth_credentials.py`
 - `backend/tests/test_auth_and_channels.py`
 - `lib/auth.ts`
 - `types/next-auth.d.ts` if present, plus components identified by `rg 'session\?\.user\?\.(accessToken|refreshToken)'`
-- `backend/alembic/versions/0053_brand_about_enrichment_state.py` and its predecessor before designing any migration
+- `backend/alembic/versions/0055_oauth_credential_encryption.py` and its predecessor before designing any migration
 
 ## Important commands
 
@@ -240,6 +263,9 @@ cd /Users/guhanpurushothaman/creator-jobs-phase1/backend
 .venv/bin/python -m alembic heads
 APP_ENV=test .venv/bin/python -m alembic current
 ./scripts/test_interaction_status_postgres.sh
+# Dry-run only unless the target environment, keyring, migration, and rollback
+# posture have been independently verified.
+.venv/bin/python -m scripts.rotate_oauth_credentials
 ```
 
 No push, production deployment, hosted Neon access, Vercel change, or Render change occurred during Phase 0.

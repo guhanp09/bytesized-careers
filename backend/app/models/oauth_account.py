@@ -25,8 +25,17 @@ class OAuthAccount(Base):
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     provider_account_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # Expand/contract migration fields for application-layer encryption. The
+    # legacy plaintext columns remain temporarily nullable so a dual-write
+    # deployment can be rolled back before an explicit, verified backfill clears
+    # them. Production steady state is enforced by OAUTH_CREDENTIAL_WRITE_MODE.
     access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refresh_token_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credentials_encrypted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
