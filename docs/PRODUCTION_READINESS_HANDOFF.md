@@ -3,10 +3,10 @@
 ## Resume summary
 
 ```text
-LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
-CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2J (WEB-008B) — the complete Content-Security-Policy, nonce-based and enforcing
-NEXT ATOMIC SLICE: Phase 2 certification, then Phase 3 starting at RATE-001. WEB-008 is the last Phase 2 local engineering item and it is VALIDATED
+LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
+CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
+LAST COMPLETED ATOMIC SLICE: Phase 2J (WEB-008B) — the complete Content-Security-Policy, nonce-based and enforcing, followed by the Phase 2 certification checkpoint
+NEXT ATOMIC SLICE: Phase 3 opens at RATE-001 (Redis-backed atomic rate limiting). Read the current in-process limiter first — `rg -n "rate.?limit" backend/app --glob '!tests'` — and decide the 3A/3B split from what is actually there rather than from the illustrative decomposition. DEP-001/DEP-002 (dependency audits) have no dependency on RATE-001 and are a smaller, safer opening slice if budget is short
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,23 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 2 certification (local)
+
+```text
+Phase: Phase 2 — Core web security boundaries
+Status: LOCALLY COMPLETE. Every Phase 2 ledger row (WEB-001 … WEB-008) is VALIDATED
+Certified at: Phase 2J checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Boundaries exercised: SafeOutboundFetcher and its per-hop destination predicates; job URL fetching; portfolio and oEmbed previews; hiring identity verification; organization page resolution; the YouTube custom-path resolver; safe internal redirects; inline JSON-LD serialization; stored external URL validation; render-safe external hrefs; response headers; the content security policy
+Backend: 6,700 passed / 64 skipped / 0 failed, one uncontended run, no overlapping pytest at any point
+Frontend unit: 1,181 passed / 0 failed
+TypeScript: passed. ESLint: 0 errors / 33 known warnings. Production build: passed
+Real-backend QA browser: 283 passed / 7 failed / 2 skipped, then differing specs re-run serially. Five of the seven are recorded baseline items; two (`qa-personas.spec.ts:602`, `workspace-interviews.spec.ts:246`) passed on serial re-run and are flakes. Two recorded baseline items (`draft-assistant.spec.ts:581`, `workspace-performance.spec.ts:108`) passed in this run, so the recorded six-item QA baseline is itself partly non-deterministic and should be re-established rather than trusted as a fixed list
+Standard browser: 444 passed / 26 failed. The recorded baseline for this suite is "26 failures on the initial parallel run, 17 reproduced serially", so the count matches exactly. Every failure is a locator or copy assertion in the recorded categories; the log contains zero occurrences of "Content Security Policy", "Refused to execute/load/connect", "BLOCKED_BY_CSP" or "nonce", and no hydration failure. No failure is attributable to Phase 2
+Alembic heads: 0059_oauth_connection_events (single head). Alembic current: local configured SQLite is unversioned, unchanged from the recorded state
+PostgreSQL migration harness: NOT RE-RUN this session. `docker` invocation is not permitted in this environment, and Phase 2 introduced no migration, so the harness would exercise nothing this phase changed. The last recorded run reached 0059 through upgrade/downgrade/re-upgrade on disposable PostgreSQL. This is an environment limitation, not a passing result — do not read it as one
+External gates still open: HSTS preload eligibility and real deployed-domain HSTS behaviour; live Google consent/reconnect/refresh/revoke drill; hosted credential backfill. No domain was submitted to any preload list
 ```
 
 ## Phase 2J atomic checkpoint (WEB-008B)
