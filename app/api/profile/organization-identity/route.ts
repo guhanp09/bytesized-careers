@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from "next/server";
 
+import { authOptions } from "../../../../lib/auth";
 import {
   decodeExperienceHtmlEntities,
   inferExperienceFromUrl,
@@ -9,6 +11,34 @@ import {
 import { resolveYouTubeChannelIdentity } from "../../../../lib/youtubeIdentity";
 
 export const runtime = "nodejs";
+
+/**
+ * This route asks the server to fetch a URL the caller chose.
+ *
+ * It was reachable by anyone on the internet, which made it a free
+ * server-side request generator pointed at whatever a stranger typed. Both
+ * callers — Post a Job authorization and the profile experience editor — are
+ * already behind a signed-in session, so requiring one costs the product
+ * nothing and removes the anonymous surface entirely.
+ *
+ * This is a reduction in exposure, not a fix for the retrieval itself: the
+ * fetch below still resolves DNS in this runtime, follows its own redirects,
+ * and screens hosts with a pattern list that a decimal-encoded address or a
+ * name that resolves privately would walk straight through. Moving it to the
+ * backend's pinned `SafeOutboundFetcher` is the next slice (OF-006/OF-007), and
+ * until then the caller must at least be someone with an account.
+ */
+const sameOrigin = (request: NextRequest): boolean => {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== request.nextUrl.origin) return false;
+  return request.headers.get("sec-fetch-site") !== "cross-site";
+};
+
+const noStoreJson = <T,>(payload: T, status = 200) => {
+  const response = NextResponse.json(payload, { status });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+};
 
 const MAX_HTML_BYTES = 200_000;
 const FETCH_TIMEOUT_MS = 2500;
@@ -123,7 +153,18 @@ const resolveInstagramFromUrl = (parsedUrl: URL): InstagramResolution | null => 
   };
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  if (!sameOrigin(request)) {
+    return noStoreJson({ error: "origin_rejected" }, 403);
+  }
+  // A QA persona is a real signed-in account in the environments that have
+  // them, and this endpoint reveals nothing about the caller, so it is not
+  // excluded the way the provider-credential routes exclude it.
+  const session = await getServerSession(authOptions);
+  if (!session?.backendAccessToken || session.backendAuthError) {
+    return noStoreJson({ error: "authentication_required" }, 401);
+  }
+
   const body = (await request.json().catch(() => null)) as { url?: unknown } | null;
   const rawUrl = typeof body?.url === "string" ? body.url : "";
   const normalizedUrl = normalizeExperienceUrl(rawUrl);

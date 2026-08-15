@@ -5,9 +5,9 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2C — backend hiring-identity verification on the shared boundary, with the platform allowlist enforced as a per-hop destination predicate
-NEXT ATOMIC SLICE: Phase 2D — the unauthenticated Next organization resolver (OF-006) and its YouTube HTML fallback (OF-007): require an authenticated same-origin session, proxy the retrieval to a backend service that uses `SafeOutboundFetcher` with a YouTube/Instagram destination predicate, and bound request/response; `app/api/profile/organization-identity/route.ts` and `lib/youtubeIdentity.resolveCustomPathByHtml` are the entry points
-CURRENT HEAD: Phase 2C checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+LAST COMPLETED ATOMIC SLICE: Phase 2D-1 — the organization resolver requires an authenticated same-origin session, closing the anonymous server-side fetch surface
+NEXT ATOMIC SLICE: Phase 2D-2 — move the organization resolver's retrieval itself to a backend endpoint using `SafeOutboundFetcher` with a YouTube/Instagram destination predicate (the Phase 2C pattern), bound request and response, and route `lib/youtubeIdentity.resolveCustomPathByHtml` through it; keep the existing resolution outcomes and the Instagram URL-derived fallback
+CURRENT HEAD: Phase 2D-1 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2D-1 atomic checkpoint
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2D-1
+Status: COMPLETE (WEB-003 remains IN_PROGRESS; the retrieval itself is 2D-2)
+Initial HEAD: 36fd7175de8900a0f381f5bbdb89f4ffd2009b21
+Final HEAD: Phase 2D-1 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): require a session for organization resolution
+Files materially changed: organization-identity Next route (same-origin check, session requirement, no-store responses); resolver browser spec moved from the anonymous mock harness to the authenticated QA harness; outbound inventory; execution ledger and handoff
+Migrations: None
+Behavior changed: `POST /api/profile/organization-identity` now refuses cross-site callers with 403 and anonymous callers with 401 instead of fetching a URL chosen by anyone on the internet; both product callers (Post a Job authorization and the profile experience editor) already run behind a signed-in session, so no user-visible flow changes; QA personas remain accepted because they are real accounts and this endpoint reveals nothing about the caller
+Security assumptions: this closes the anonymous surface and does NOT fix the retrieval — the fetch still resolves DNS in the Next runtime, follows its own redirects, and screens hosts with a pattern list that a decimal-encoded address or a privately-resolving name would pass; that is 2D-2's work and the inventory records OF-006 as AUTH_GATED_PHASE_2D_1 rather than migrated
+Tests run: authenticated resolver browser suite; TypeScript; ESLint; complete frontend unit suite; production build; git diff checks
+Exact results: organization resolver Chromium 6 passed, including an explicit anonymous-caller rejection; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,138 passed / 0 failed; production build passed; `git diff --check` and `git diff --cached --check` passed; the backend was not touched by this slice so its suite was not rerun
+Task-caused failures resolved: the previous `tests/e2e/instagram-resolver.spec.ts` asserted the anonymous contract this slice deliberately removes; its product assertions were preserved by moving them into the authenticated QA harness rather than relaxing the route
+Known external failures: none introduced; live Instagram enrichment is still never asserted
+Remaining risks: OF-006/OF-007 retrieval remains unpinned until 2D-2; WEB-005 internal redirects, WEB-006 stored URLs, WEB-007 JSON-LD escaping and WEB-008 HTTP boundaries remain
+Next phase: Phase 2D-2 atomic slice — add a backend organization-resolution endpoint that uses `SafeOutboundFetcher` with a destination predicate for the supported platforms, have the Next route proxy to it with the caller's backend token, bound the response, and keep Instagram's URL-derived fallback behaviour intact
+Important commands: `sed -n '1,90p' app/api/profile/organization-identity/route.ts`; `rg -n 'resolveCustomPathByHtml|resolveYouTubeChannelIdentity' lib app`; `npx playwright test -c playwright.qa.config.ts tests/e2e/qa/organization-resolver.spec.ts`; never start a second pytest while a suite is running
+```
 
 ## Phase 2C atomic checkpoint
 
