@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import get_current_user, get_me_service, get_profile_service
+from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import User
 from app.schemas import (
     AccountTypeUpdateRequest,
@@ -20,6 +21,8 @@ from app.schemas import (
     MeRead,
     MeYouTubeChannelRead,
     OnboardingIntentUpdateRequest,
+    OrganizationPageRequest,
+    OrganizationPageResponse,
     PortfolioItemCreate,
     PortfolioItemRead,
     PortfolioItemUpdate,
@@ -35,6 +38,10 @@ from app.services.me_service import (
     MeService,
     YouTubeAPIError,
     YouTubeReauthRequiredError,
+)
+from app.services.organization_page_service import (
+    OrganizationPageError,
+    read_organization_page,
 )
 from app.services.profile_service import (
     PortfolioItemNotFoundError,
@@ -452,3 +459,40 @@ async def delete_my_portfolio_item(
     except PortfolioItemNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return AuthStatusResponse(status="ok")
+
+
+@router.post(
+    "/organization-page",
+    response_model=OrganizationPageResponse,
+    summary="Read bounded public metadata for an organization or channel URL",
+)
+async def read_my_organization_page(
+    payload: OrganizationPageRequest,
+    _limit: None = rate_limit(MARKETPLACE_ACTION_LIMIT),
+    current_user: User = Depends(get_current_user),
+) -> OrganizationPageResponse:
+    """Fetch a public page the signed-in user named, on the server's terms.
+
+    The retrieval used to happen in the Next runtime, where it resolved DNS
+    itself and followed its own redirects. It now goes through the shared
+    pinned boundary, and only the handful of fields the resolver uses come back
+    — the browser never receives the page.
+
+    An unreadable page is an ordinary outcome, not an error: the caller falls
+    back to the identity it can derive from the URL, which is why this answers
+    with empty fields rather than a failure status.
+    """
+
+    _ = current_user
+    try:
+        metadata = await read_organization_page(payload.url)
+    except OrganizationPageError:
+        return OrganizationPageResponse()
+    return OrganizationPageResponse(
+        final_url=metadata.final_url,
+        site_name=metadata.site_name,
+        title=metadata.title,
+        image_url=metadata.image_url,
+        icon_url=metadata.icon_url,
+        youtube_channel_id=metadata.youtube_channel_id,
+    )

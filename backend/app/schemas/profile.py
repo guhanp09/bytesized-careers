@@ -305,6 +305,28 @@ PortfolioLinkPreviewConfidence = Literal["high", "medium", "low"]
 PortfolioLinkPreviewStatus = Literal["ok", "partial", "manual_required"]
 
 
+class OrganizationPageRequest(BaseModel):
+    """A public organization or channel URL the signed-in user typed."""
+
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class OrganizationPageResponse(BaseModel):
+    """The bounded fields the resolver actually uses.
+
+    Deliberately not the page. The browser never needs remote HTML to suggest an
+    organization name and a logo, and anything it does not receive cannot be
+    rendered, stored, or reflected by mistake.
+    """
+
+    final_url: str = ""
+    site_name: str = ""
+    title: str = ""
+    image_url: str = ""
+    icon_url: str = ""
+    youtube_channel_id: str = ""
+
+
 class PortfolioLinkPreviewRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
 

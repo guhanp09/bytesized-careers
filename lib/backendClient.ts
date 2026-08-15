@@ -2644,6 +2644,34 @@ export async function previewPortfolioYouTube(
   });
 }
 
+export type BackendOrganizationPage = {
+  final_url: string;
+  site_name: string;
+  title: string;
+  image_url: string;
+  icon_url: string;
+  youtube_channel_id: string;
+};
+
+/**
+ * Bounded public metadata for an organization or channel URL.
+ *
+ * The retrieval is the backend's, not this runtime's: it goes through the
+ * shared pinned outbound boundary, and only these fields come back. Empty
+ * fields mean the page could not be read, which is an ordinary outcome the
+ * caller answers with URL-derived identity rather than an error.
+ */
+export async function readOrganizationPage(
+  accessToken: string,
+  url: string
+): Promise<BackendOrganizationPage> {
+  return requestJson<BackendOrganizationPage>("/me/organization-page", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+    accessToken,
+  });
+}
+
 export async function previewPortfolioLink(
   accessToken: string,
   url: string

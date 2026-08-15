@@ -5,9 +5,9 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2E — HTML-safe JSON-LD serialization for every inline structured-data block (WEB-007 VALIDATED)
-NEXT ATOMIC SLICE: Phase 2D-2 — move the organization resolver's retrieval itself to a backend endpoint using `SafeOutboundFetcher` with a YouTube/Instagram destination predicate (the Phase 2C pattern), bound request and response, and route `lib/youtubeIdentity.resolveCustomPathByHtml` through it; keep the existing resolution outcomes and the Instagram URL-derived fallback. WEB-005 (internal redirect validation) and WEB-006 (stored user URLs) are the other open Phase 2 items, and WEB-008 (CSP/trusted host/CORS/COOP/CORP) should come last because it constrains everything above it
-CURRENT HEAD: Phase 2E checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+LAST COMPLETED ATOMIC SLICE: Phase 2D-2 — organization page reads moved to an authenticated backend endpoint on the shared pinned boundary; the Next runtime no longer fetches arbitrary external HTML from this route
+NEXT ATOMIC SLICE: Phase 2D-3 — switch `lib/youtubeIdentity.resolveCustomPathByHtml` (OF-007) from its own Node fetch to `readOrganizationPage(...).youtube_channel_id`, which the backend already returns for a YouTube page; keep the URL-only deterministic fallbacks and the fixed YouTube Data API calls unchanged. After that: WEB-005 (one canonical internal-redirect validator plus a redirect-target inventory), WEB-006 (stored/user-supplied URL storage and display contracts, distinct from the SSRF fetch policy), then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, because header policy should be written against the application's settled behaviour
+CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2D-2 atomic checkpoint
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2D-2
+Status: COMPLETE (WEB-003 remains IN_PROGRESS; OF-007 is the remaining caller)
+Initial HEAD: ff3c819fec1dd40e6ffb2d69434fac5d93bee72a
+Final HEAD: Phase 2D-2 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): read organization pages behind the backend boundary
+Files materially changed: new `app/services/organization_page_service.py`; new authenticated `POST /me/organization-page`; organization page request/response schemas; typed frontend backend client; organization-identity Next route rewritten as an orchestration boundary with its HTML scraping helpers removed; new 15-case backend suite; outbound inventory; execution ledger and handoff
+Migrations: None; Alembic remains at the single 0059_oauth_connection_events head
+Behavior changed: the Next runtime no longer fetches arbitrary external HTML for organization resolution. It requires a session, decides the identity strategy, and asks the backend to read the page; the backend fetches through `SafeOutboundFetcher` and returns only `final_url`, `site_name`, `title`, `image_url`, `icon_url` and `youtube_channel_id`. YouTube and Instagram pages additionally carry a per-hop destination predicate, so a platform profile cannot redirect the request off its platform. A general company URL keeps no allowlist on purpose — real organizations redirect across domains — and is bounded by the generic public-address policy. Resolution outcomes, the Instagram URL-derived fallback, and the unreadable-page fallback are unchanged; an unreadable page answers 200 with empty fields so best-effort enrichment never blocks the workflow
+Security assumptions: only http(s) values leave the service, so a `javascript:` or `data:` icon can never be handed back as an image URL; every returned field is length-bounded; no remote HTML crosses to the Next runtime or the browser; the route's remaining private-host regex is a fast input check and is explicitly documented as not the boundary; the platform predicate is caller-owned and the generic fetcher still knows nothing about YouTube or Instagram
+Tests run: new organization-page suite; hiring-identity fetch; shared boundary; profile features; link preview; complete uncontended backend pytest; changed-file Ruff; TypeScript; ESLint; complete frontend unit suite; production build; authenticated resolver browser suite; git diff checks
+Exact results: organization page 15 passed; dependent backend matrix 148 passed in 12.60s; complete backend 6,664 passed / 64 skipped / 88 warnings in 331.38s with zero failures; changed-file Ruff passed; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,143 passed / 0 failed; production build passed; organization resolver Chromium 6 passed; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: none; the platform-predicate cases were verified non-vacuous by temporarily setting `destination_allowed=None`, which let all four platform redirect escapes through before it was restored
+Known external failures: no live YouTube, Instagram or third-party site was contacted; page shapes are represented by fixtures
+Remaining risks: OF-007 still fetches YouTube HTML from the Next runtime; WEB-005, WEB-006 and WEB-008 remain; fixed provider clients (OF-103/104/105) still lack uniform response bounds
+Next phase: Phase 2D-3 atomic slice as described in the resume summary
+Important commands: `rg -n 'resolveCustomPathByHtml' lib app`; `cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_organization_page.py`; `npx playwright test -c playwright.qa.config.ts tests/e2e/qa/organization-resolver.spec.ts`; never start a second pytest while a suite is running
+```
 
 ## Phase 2E atomic checkpoint
 

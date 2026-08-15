@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 import { authOptions } from "../../../../lib/auth";
+import { readOrganizationPage } from "../../../../lib/backendClient";
 import {
   decodeExperienceHtmlEntities,
   inferExperienceFromUrl,
@@ -13,20 +14,20 @@ import { resolveYouTubeChannelIdentity } from "../../../../lib/youtubeIdentity";
 export const runtime = "nodejs";
 
 /**
- * This route asks the server to fetch a URL the caller chose.
+ * Organization/channel identity resolution for the signed-in product surfaces.
  *
- * It was reachable by anyone on the internet, which made it a free
- * server-side request generator pointed at whatever a stranger typed. Both
- * callers — Post a Job authorization and the profile experience editor — are
- * already behind a signed-in session, so requiring one costs the product
- * nothing and removes the anonymous surface entirely.
+ * This route once fetched whatever URL a caller typed, for anyone on the
+ * internet, from the Next runtime: its own DNS resolution, its own redirect
+ * following, environment proxies honoured, and a private-host pattern list a
+ * decimal-encoded address walks straight through.
  *
- * This is a reduction in exposure, not a fix for the retrieval itself: the
- * fetch below still resolves DNS in this runtime, follows its own redirects,
- * and screens hosts with a pattern list that a decimal-encoded address or a
- * name that resolves privately would walk straight through. Moving it to the
- * backend's pinned `SafeOutboundFetcher` is the next slice (OF-006/OF-007), and
- * until then the caller must at least be someone with an account.
+ * It is now an orchestration boundary and nothing more. It requires a
+ * same-origin signed-in caller, decides which identity strategy applies, and
+ * asks the backend to read the page — where the shared `SafeOutboundFetcher`
+ * pins each connection to the address that passed validation, re-validates
+ * every redirect, refuses non-public destinations, and returns only the handful
+ * of fields this resolver uses. No remote HTML reaches this runtime or the
+ * browser.
  */
 const sameOrigin = (request: NextRequest): boolean => {
   const origin = request.headers.get("origin");
@@ -40,9 +41,6 @@ const noStoreJson = <T,>(payload: T, status = 200) => {
   return response;
 };
 
-const MAX_HTML_BYTES = 200_000;
-const FETCH_TIMEOUT_MS = 2500;
-
 const PRIVATE_HOST_PATTERNS = [
   /^localhost$/i,
   /^127\./,
@@ -54,29 +52,11 @@ const PRIVATE_HOST_PATTERNS = [
   /^\[?::1\]?$/i,
 ];
 
+// A fast, obviously-wrong-input check so a private URL is answered without a
+// round trip. It is not the security boundary and never was: the backend
+// resolves, pins and re-validates every hop, and refuses anything non-public
+// whatever this pattern list thinks.
 const isBlockedHost = (host: string) => PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(host));
-
-const attrValue = (tag: string, attr: string) => {
-  const match = tag.match(new RegExp(`${attr}\\s*=\\s*["']([^"']+)["']`, "i"));
-  return decodeExperienceHtmlEntities(match?.[1]) || null;
-};
-
-const metaContent = (html: string, key: string) => {
-  const propertyPattern = new RegExp(`<meta\\b[^>]*(?:property|name)\\s*=\\s*["']${key}["'][^>]*>`, "i");
-  const tag = html.match(propertyPattern)?.[0];
-  return tag ? attrValue(tag, "content") : null;
-};
-
-const linkHref = (html: string, relName: string) => {
-  const linkPattern = new RegExp(`<link\\b[^>]*rel\\s*=\\s*["'][^"']*${relName}[^"']*["'][^>]*>`, "i");
-  const tag = html.match(linkPattern)?.[0];
-  return tag ? attrValue(tag, "href") : null;
-};
-
-const titleText = (html: string) => {
-  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  return decodeExperienceHtmlEntities(match?.[1]?.replace(/\s+/g, " ").trim()) || null;
-};
 
 const absolutize = (value: string | null, baseUrl: string) => {
   if (!value) return null;
@@ -253,23 +233,12 @@ export async function POST(request: NextRequest) {
     let metadataName: string | null = null;
     let metadataLogo: string | null = null;
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      const response = await fetch(canonicalUrl, {
-        signal: controller.signal,
-        headers: {
-          accept: "text/html,application/xhtml+xml",
-          "user-agent": "CreatorJobs local profile resolver",
-        },
-        redirect: "follow",
-      });
-      clearTimeout(timeout);
-      const contentType = response.headers.get("content-type") || "";
-      if (response.ok && contentType.toLowerCase().includes("text/html")) {
-        const html = (await response.text()).slice(0, MAX_HTML_BYTES);
-        metadataName = metaContent(html, "og:title") || metaContent(html, "twitter:title") || null;
-        metadataLogo = metaContent(html, "og:image") || metaContent(html, "twitter:image") || null;
-      }
+      // The server-owned read. Instagram commonly serves a login wall to server
+      // fetches, so this stays strictly best-effort: empty fields fall through
+      // to the identity the URL already gave us.
+      const page = await readOrganizationPage(session.backendAccessToken, canonicalUrl);
+      metadataName = page.title || null;
+      metadataLogo = page.image_url || null;
     } catch {
       // Unreadable public page is expected for Instagram; fall back to URL identity.
     }
@@ -300,43 +269,25 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const response = await fetch(normalizedUrl, {
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent": "CreatorJobs local profile resolver",
-      },
-      redirect: "follow",
-    });
-    clearTimeout(timeout);
-
-    const contentType = response.headers.get("content-type") || "";
-    if (!response.ok || !contentType.toLowerCase().includes("text/html")) {
+    // The page is read by the backend through the shared pinned boundary, and
+    // only these fields come back. Nothing in this runtime touches a URL the
+    // user chose, so there is no DNS to re-resolve and no redirect to follow.
+    const page = await readOrganizationPage(session.backendAccessToken, normalizedUrl);
+    const rawMetadataName = page.site_name || page.title;
+    if (!rawMetadataName && !page.image_url && !page.icon_url) {
       return NextResponse.json({
         ...fallback,
         error: "We could not read this page. Check the URL or enter the name manually.",
       });
     }
 
-    const html = (await response.text()).slice(0, MAX_HTML_BYTES);
-    const rawMetadataName =
-      metaContent(html, "og:site_name") ||
-      metaContent(html, "og:title") ||
-      metaContent(html, "twitter:title") ||
-      titleText(html);
     const metadataName = resolveExperienceOrganizationName({
       rawName: rawMetadataName,
       platform: inferred.platform,
       normalizedUrl,
     });
-    const metadataLogo =
-      metaContent(html, "og:image") ||
-      metaContent(html, "twitter:image") ||
-      linkHref(html, "apple-touch-icon") ||
-      linkHref(html, "icon");
-    const faviconUrl = absolutize(linkHref(html, "icon"), normalizedUrl) || inferred.faviconUrl;
+    const metadataLogo = page.image_url || page.icon_url;
+    const faviconUrl = page.icon_url || inferred.faviconUrl;
 
     return NextResponse.json({
       normalizedUrl,
