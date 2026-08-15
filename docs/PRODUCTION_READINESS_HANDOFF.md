@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2F — one canonical internal-redirect validator, fixing a live open redirect on the sign-in page (WEB-005 VALIDATED)
-NEXT ATOMIC SLICE: WEB-006 — stored/user-supplied URL contracts. Inventory the stored external links (portfolio `source_url`, profile socials, experience organization URLs, application/interview links) and separate three concerns that are currently conflated: what may be *stored*, what may be *rendered as a link or image*, and what may be *fetched* (already solved by `SafeOutboundFetcher`). Do not reuse the SSRF fetch policy as the storage validator, and do not destroy grandfathered legacy rows — prefer validate-on-write plus a safe-render contract. Then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, written against the application's settled behaviour
+LAST COMPLETED ATOMIC SLICE: Phase 2G (WEB-006A) — canonical stored-URL validation for profile and portfolio writes
+NEXT ATOMIC SLICE: WEB-006B — render-safe external navigation. Stored rows written before this validator existed may still hold anything, so the render layer must fail closed independently: add a `safeExternalHref` helper and apply it at the `href`/`src` sinks fed by stored URLs (`components/profile/ProfileExperienceList.tsx`, `components/profile/PublicProfileTabs.tsx`, `components/you/PortfolioPreview.tsx`, `components/project/ProjectDetailPage.tsx`, `components/you/ReceivedApplicationsClient.tsx`, `components/first-message/FirstMessageSummary.tsx`, `components/admin/AdminVerificationClient.tsx`), returning undefined for anything that is not http(s) so a legacy `javascript:` value renders as inert text rather than a link. Then WEB-006C for any remaining application/interview URL fields, then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last. Original WEB-006 context: Inventory the stored external links (portfolio `source_url`, profile socials, experience organization URLs, application/interview links) and separate three concerns that are currently conflated: what may be *stored*, what may be *rendered as a link or image*, and what may be *fetched* (already solved by `SafeOutboundFetcher`). Do not reuse the SSRF fetch policy as the storage validator, and do not destroy grandfathered legacy rows — prefer validate-on-write plus a safe-render contract. Then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, written against the application's settled behaviour
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2G atomic checkpoint (WEB-006A)
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2G / WEB-006A
+Status: COMPLETE (WEB-006 moves to IN_PROGRESS; render safety is WEB-006B)
+Initial HEAD: af74f771d610f3b9fe2d94607db73bb3d27af623
+Final HEAD: Phase 2G checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): decide once what a stored link may be
+Files materially changed: new `app/core/external_url.py`; profile service `_is_http_url` chokepoint; profile/portfolio write schemas; new 36-case suite; execution ledger and handoff
+Migrations: None; no legacy row was rewritten
+Behavior changed: one implementation now answers "may this be stored". The existing service check — which already refused `javascript:` but accepted embedded credentials, control characters, single-label internal names, and any length — delegates to it, keeping its documented 400 responses. Portfolio `source_url`/`media_url`/`youtube_url`/`thumbnail_url` and profile `avatar_url`/`instagram_url` had no validation at all and now enforce it at the schema, which is their only chokepoint. Bare domains are still accepted and normalized to https, so nothing a creator actually types stopped working
+Security assumptions: this is the *storage* contract only. Render safety is a separate contract that must fail closed independently, because rows written before this slice may hold anything — that is WEB-006B and it is why no destructive migration was written. Server-side fetch safety remains `SafeOutboundFetcher`'s and reusing it here would be wrong in both directions: it would reject a real link whose host is unreachable, and it would never see a `javascript:` value because that one never reaches a socket. `hiring_website_or_social_url` is deliberately validated only in the service, because adding a schema validator would turn its documented 400 into a 422
+Tests run: new stored-URL suite; profile/portfolio/creator-profile dependent matrix; complete uncontended backend pytest; changed-file Ruff; TypeScript; complete frontend unit suite; production build; git diff checks
+Exact results: stored-URL 36 passed; dependent matrix 30 passed; complete backend 6,700 passed / 64 skipped / 88 warnings in 317.55s with zero failures; changed-file Ruff passed; TypeScript passed; frontend unit 1,154 passed / 0 failed; production build passed; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: one test expectation of mine was wrong rather than the implementation — a *trailing* CRLF is stripped as normalization and never reaches storage, so the case now asserts that contract; a control character in the middle of a URL cannot be stripped and is still refused
+Known external failures: none introduced
+Remaining risks: legacy stored rows are untouched by design and can still hold an executable scheme until WEB-006B lands; application/interview URL fields have not been inventoried yet; WEB-008 remains
+Next phase: WEB-006B as described in the resume summary
+Important commands: `rg -n 'href=\{' components | rg -i 'url' | head -30`; `cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_external_url_storage.py tests/test_profile_features.py`
+```
 
 ## Phase 2F atomic checkpoint
 

@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.core.account_types import is_admin
 from app.core.config import settings
+from app.core.external_url import ExternalUrlError, canonicalize_external_url
 from app.models import HiringIdentity, PortfolioItem, User, YouTubeChannel
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.creator_profile import (
@@ -237,8 +238,19 @@ def _clean_optional_text(value: Any) -> str | None:
 
 
 def _is_http_url(value: str) -> bool:
-    parsed = urlparse(value.strip())
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    """Whether a stored link is one the product will accept.
+
+    One implementation, shared with the schema-level fields that have no service
+    check. The scheme test this replaced already refused `javascript:`, but it
+    accepted embedded credentials, control characters, single-label internal
+    names, and anything of any length — none of which is a link somebody meant
+    to share, and each of which ends up in an attribute later.
+    """
+
+    try:
+        return canonicalize_external_url(value) is not None
+    except ExternalUrlError:
+        return False
 
 
 def _allowed_hiring_identity_url(value: str | None, platform: str) -> bool:

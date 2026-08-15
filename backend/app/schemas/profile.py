@@ -4,9 +4,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.core.account_types import AccountType
+from app.core.external_url import stored_external_url
 from app.core.onboarding_intent import OnboardingIntent
 from app.schemas.creator_profile import ContentStyleRead, RoleAnswerSummary, RoleRead
 from app.schemas.profile_capabilities import ProfileCapabilities
@@ -194,6 +195,14 @@ class ProfileUpdateRequest(BaseModel):
     hiring_niches: list[str] | None = None
     hiring_genres: list[str] | None = None
     hiring_formats: list[str] | None = None
+
+    # These have no service-level check today, so the schema is their only
+    # chokepoint. `hiring_website_or_social_url` is deliberately absent: it is
+    # already validated in the service with a documented 400 contract, and
+    # duplicating it here would change that response to a 422.
+    _check_urls = field_validator("avatar_url", "instagram_url")(
+        stored_external_url(1024)
+    )
     creator_platforms: list[str] | None = None
     hiring_channels_or_pages_managed: str | None = None
 
@@ -234,6 +243,10 @@ class PortfolioItemBase(BaseModel):
     youtube_url: str | None = Field(default=None, max_length=2048)
     thumbnail_url: str | None = Field(default=None, max_length=2048)
     thumbnail_options: list[dict[str, object]] = Field(default_factory=list)
+
+    _check_urls = field_validator(
+        "source_url", "media_url", "youtube_url", "thumbnail_url"
+    )(stored_external_url(2048))
     channel_name: str | None = Field(default=None, max_length=255)
     channel_id: str | None = Field(default=None, max_length=255)
     views: int | None = None
