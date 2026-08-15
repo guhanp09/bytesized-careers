@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
 from threading import Lock
 from typing import Protocol
 
@@ -96,18 +98,92 @@ def _build_backend() -> RateLimitBackend:
 _limiter: RateLimitBackend = _build_backend()
 
 
-def _client_key(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
+def _parse_networks(raw: str | None) -> tuple[IPv4Network | IPv6Network, ...]:
+    """The configured proxy addresses, as networks. Unparseable entries are dropped."""
+
+    if not raw:
+        return ()
+    networks: list[IPv4Network | IPv6Network] = []
+    for entry in raw.split(","):
+        candidate = entry.strip()
+        if not candidate:
+            continue
+        try:
+            # `strict=False` so a bare address and a CIDR block are both accepted.
+            networks.append(ip_network(candidate, strict=False))
+        except ValueError:
+            # A typo in configuration must not silently widen trust. Dropping the
+            # entry means that proxy is simply not trusted, which fails safe.
+            continue
+    return tuple(networks)
+
+
+@lru_cache(maxsize=1)
+def _trusted_proxies() -> tuple[IPv4Network | IPv6Network, ...]:
+    return _parse_networks(settings.trusted_proxy_ips)
+
+
+def _is_trusted(candidate: str, networks: tuple[IPv4Network | IPv6Network, ...]) -> bool:
+    if not networks:
+        return False
+    try:
+        address = ip_address(candidate)
+    except ValueError:
+        return False
+    return any(address in network for network in networks)
+
+
+def client_identity(request: Request) -> str:
+    """Who this request is, for the purpose of counting it.
+
+    `X-Forwarded-For` is a string the caller chose. It is only evidence when the
+    peer that handed it to us is a proxy we put there ourselves — otherwise every
+    limit in the product is one header away from being meaningless, because a
+    different value produces a different bucket.
+
+    The chain is read right to left, which is the only direction that is
+    trustworthy: entries are appended by each hop, so the rightmost ones were
+    written by our own infrastructure and anything further left could have been
+    supplied by the client. The first address that is not one of our proxies is
+    the closest thing to the real caller.
+    """
+
+    peer = request.client.host if request.client else None
+    if not peer:
+        return "unknown"
+
+    networks = _trusted_proxies()
+    if not _is_trusted(peer, networks):
+        # Either nothing is configured in front of us, or this connection did not
+        # come through it. Believe the socket and nothing else.
+        return peer
+
+    forwarded = request.headers.get("x-forwarded-for")
+    if not forwarded:
+        return peer
+
+    for entry in reversed(forwarded.split(",")):
+        hop = entry.strip()
+        if not hop or _is_trusted(hop, networks):
+            continue
+        try:
+            address = ip_address(hop)
+        except ValueError:
+            # A malformed hop is not an identity. Stop rather than reach further
+            # left into entries the client could have written.
+            break
+        # `::ffff:1.2.3.4` is the same caller as `1.2.3.4`, and two spellings
+        # would otherwise be two separate allowances.
+        mapped = getattr(address, "ipv4_mapped", None)
+        return str(mapped or address)
+    return peer
 
 
 def rate_limit(rule: RateLimitRule):
     async def dependency(request: Request) -> None:
         if settings.app_env == "test":
             return
-        allowed, retry_after = await _limiter.hit(key=_client_key(request), rule=rule)
+        allowed, retry_after = await _limiter.hit(key=client_identity(request), rule=rule)
         if allowed:
             return
         raise HTTPException(

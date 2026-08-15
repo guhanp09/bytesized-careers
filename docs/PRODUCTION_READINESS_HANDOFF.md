@@ -58,6 +58,28 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 3A atomic checkpoint (RATE-002)
+
+```text
+Phase: Phase 3 — Dependencies, rate limiting, and request safety, atomic slice 3A / RATE-002
+Status: COMPLETE (RATE-002 is VALIDATED)
+Initial HEAD: 4ad511766f423fa54adc4e648f6729e495b63176
+Final HEAD: Phase 3A checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(rate): stop letting a header choose who is being counted
+Files materially changed: `backend/app/core/rate_limit.py` (`client_identity` replaces `_client_key`); `backend/app/core/config.py` (two settings plus a production decision); new `backend/tests/test_trusted_client_identity.py`; `backend/tests/test_config.py`
+Migrations: None
+Defect fixed (live before this slice): `_client_key` returned the leftmost `X-Forwarded-For` entry from any caller, so every rate limit in the product could be bypassed by varying one header — a different value produced a different bucket. That covered login, registration, password reset, strong-authentication challenge and enrollment, marketplace actions, reports and checkout. A test now sends 24 invented values from one caller and asserts they collapse to a single identity
+Architecture: a forwarded header is evidence only when the peer that delivered it is inside a configured proxy network, and the chain is then read right to left — entries are appended by each hop, so the rightmost were written by our own infrastructure and anything further left could have come from the client. The first hop that is not one of our proxies is the answer. A malformed hop stops the walk rather than allowing it to reach further left. IPv4-mapped IPv6 is normalized so one caller cannot hold two buckets. An unparseable configuration entry is dropped, which narrows trust rather than widening it
+Ordering note: taken before RATE-001 on purpose. The ledger listed RATE-002 as depending on RATE-001, but identity derivation is independent of where the counters live, and the defect is live under today's in-memory backend
+New environment variables: TRUSTED_PROXY_IPS (comma-separated IPs/CIDRs of the proxies actually in front of the deployment; empty means forwarded headers are ignored entirely); ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION (explicit acknowledgement that there is no proxy). Production boot now fails unless one of the two is stated, because both wrong answers are bad in different directions: behind an unlisted proxy every caller shares one bucket, in front of none an unlisted header forges one. `backend/.env.example` was NOT updated — this environment refuses commands that reference `.env*` paths, so the variables are recorded here instead and that file still needs the two entries
+Security assumptions: `request.client.host` is the socket peer and is the only thing believed by default; the trusted set is server configuration and never request data; the parsed network list is cached per process, so a test that needs a different set must patch `rate_limit._trusted_proxies` rather than mutate settings
+Tests run: 22 focused identity cases; the rate-limit backend suite; the configuration suite; the complete backend suite uncontended; Ruff on every changed Python file
+Exact results: `test_trusted_client_identity.py` 22 passed; `test_config.py` 16 passed; complete backend 6,723 passed / 64 skipped / 0 failed in 335s, one uncontended run; Ruff clean on all four changed files
+Reading the totals: `pyproject.toml` already sets `addopts = "-q"`, so passing `-q` again makes `-qq` and pytest prints no summary line at all. Count the progress characters if that happens, but do not count the summary line itself — "passed"/"skipped"/"335.42s" contain the same characters and will inflate the result. The Phase 2 certification figure of 6,700 passed / 64 skipped was character-counted from such a run and is consistent with this one: 6,700 + 23 new tests = 6,723
+Known limitation carried forward: RATE-001 moves to BLOCKED_EXTERNAL for this environment — no redis-server binary, no redis/fakeredis package, Docker not permitted. `RedisRateLimitBackend.hit` still reads the count and writes in separate round trips, so concurrent callers can each see a count below the limit and all be admitted. That is a real defect and it is recorded rather than fixed blind, because a check-then-act fix cannot be validated without a server to race against
+Next phase: DEP-001/DEP-002 (dependency audits) are the next fully-completable slice in this environment; RATE-003/004/005 depend on the limiter primitive and should follow RATE-001 once Redis is available
+```
+
 ## Phase 2 certification (local)
 
 ```text

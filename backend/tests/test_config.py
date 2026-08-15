@@ -148,6 +148,7 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "GOOGLE_OAUTH_EXCHANGE_SECRET": "production-google-oauth-exchange-secret-2026",
         "RATE_LIMIT_BACKEND": "redis",
         "REDIS_URL": "redis://redis.example:6379/0",
+        "TRUSTED_PROXY_IPS": "10.0.0.0/8",
         "OAUTH_CREDENTIAL_KEYS": json.dumps({"production_key": key}),
         "OAUTH_CREDENTIAL_ACTIVE_KEY_ID": "production_key",
         "OAUTH_CREDENTIAL_WRITE_MODE": "encrypted_only",
@@ -293,3 +294,28 @@ def test_production_rejects_unsafe_backend_session_configuration(
 
     with pytest.raises(RuntimeError, match=message):
         config.validate_production_settings()
+
+
+def test_production_requires_a_decision_about_what_sits_in_front(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither answer is safe to assume.
+
+    With a proxy in front and nothing configured, every caller collapses into
+    one bucket and the limits stop working for real users. With nothing in front
+    and a header believed anyway, a caller mints their own bucket per request.
+    So production has to say which it is.
+    """
+
+    unstated = _safe_production_settings(TRUSTED_PROXY_IPS=None)
+    monkeypatch.setattr(config, "settings", unstated)
+
+    with pytest.raises(RuntimeError, match="TRUSTED_PROXY_IPS"):
+        config.validate_production_settings()
+
+    acknowledged = _safe_production_settings(
+        TRUSTED_PROXY_IPS=None,
+        ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION=True,
+    )
+    monkeypatch.setattr(config, "settings", acknowledged)
+    config.validate_production_settings()

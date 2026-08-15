@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     allow_memory_rate_limit_in_production: bool = Field(
         default=False, alias="ALLOW_MEMORY_RATE_LIMIT_IN_PRODUCTION"
     )
+    # The addresses of the proxies that actually sit in front of this application,
+    # as exact IPs or CIDR blocks, comma separated. Empty means "nothing is in
+    # front of us", and forwarded headers are then ignored completely — because a
+    # forwarded header from an unknown peer is just a string the caller chose.
+    trusted_proxy_ips: str | None = Field(default=None, alias="TRUSTED_PROXY_IPS")
+    # Deploying with no proxy is legitimate, but it is a decision rather than a
+    # default: behind an unlisted proxy every caller shares one bucket, and
+    # in front of none an unlisted header would forge one.
+    allow_direct_client_ips_in_production: bool = Field(
+        default=False, alias="ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION"
+    )
 
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
     cors_origins: list[str] = Field(default_factory=list, alias="CORS_ORIGINS")
@@ -396,6 +407,13 @@ def validate_production_settings() -> None:
         )
     if settings.rate_limit_backend == "redis" and not settings.redis_url:
         failures.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis.")
+    if not settings.trusted_proxy_ips and not settings.allow_direct_client_ips_in_production:
+        failures.append(
+            "TRUSTED_PROXY_IPS must list the proxies in front of this deployment, or "
+            "ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION=true must acknowledge that there are none. "
+            "Getting this wrong either shares one rate-limit bucket across every caller or "
+            "lets a caller forge their own."
+        )
 
     if failures:
         joined = " ".join(failures)
