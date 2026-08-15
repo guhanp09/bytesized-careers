@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2D-3 — YouTube custom-path resolution uses the server-owned endpoint, removing the last arbitrary page fetch from the Next runtime (WEB-003 VALIDATED)
-NEXT ATOMIC SLICE: WEB-005 (one canonical internal-redirect validator plus a redirect-target inventory), WEB-006 (stored/user-supplied URL storage and display contracts, distinct from the SSRF fetch policy), then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, because header policy should be written against the application's settled behaviour
+LAST COMPLETED ATOMIC SLICE: Phase 2F — one canonical internal-redirect validator, fixing a live open redirect on the sign-in page (WEB-005 VALIDATED)
+NEXT ATOMIC SLICE: WEB-006 — stored/user-supplied URL contracts. Inventory the stored external links (portfolio `source_url`, profile socials, experience organization URLs, application/interview links) and separate three concerns that are currently conflated: what may be *stored*, what may be *rendered as a link or image*, and what may be *fetched* (already solved by `SafeOutboundFetcher`). Do not reuse the SSRF fetch policy as the storage validator, and do not destroy grandfathered legacy rows — prefer validate-on-write plus a safe-render contract. Then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, written against the application's settled behaviour
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2F atomic checkpoint
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2F
+Status: COMPLETE (WEB-005 is VALIDATED)
+Initial HEAD: 2f8a967d2177234e9cd6bb9ebb3c3aaf7b0db297
+Final HEAD: Phase 2F checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): stop the sign-in page redirecting off-site
+Files materially changed: new `lib/safeRedirect.ts`; sign-in page redirect handling; new nine-case validator suite; execution ledger and handoff
+Migrations: None
+Behavior changed: `/auth?next=` is validated once at the source and every consumer reads the validated value. The live defect was `router.push(result.url || nextAfterAuth)`, which navigated to whatever the query string contained after a successful sign-in — an open redirect on the one page where a victim has just been asked to trust what they are looking at. Legitimate application paths, including query and hash, are preserved exactly; anything else falls back to `/you` rather than failing loudly, because a bad `next` is usually a stale link
+Security assumptions: NextAuth's default `redirect` callback already constrains `callbackUrl` to the deployment origin, but that protection is implicit and does not cover `router.push`, so the validator is applied at the source rather than relied upon downstream; the check accepts only a single-leading-slash path, rejects backslashes before and after one decode, rejects userinfo, control characters and unparseable values, and resolves against an opaque base so nothing about the real origin can influence the decision
+Tests run: redirect validator suite; TypeScript; ESLint; complete frontend unit suite; production build; git diff checks. Backend untouched
+Exact results: safeRedirect 9 passed and verified non-vacuous by reverting the call-site guard; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,154 passed / 0 failed; production build passed; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: none
+Known external failures: none introduced
+Remaining risks: WEB-006 stored/user-supplied URL contracts and WEB-008 response headers remain in Phase 2; every other redirect target in the tree is a literal string, so no further consumers needed migrating in this slice
+Next phase: WEB-006 as described in the resume summary
+Important commands: `rg -n 'callbackUrl|returnTo|searchParams.get\("next"\)' app components lib`; `node --test --experimental-strip-types tests/safeRedirect.test.mjs`
+```
 
 ## Phase 2D-3 atomic checkpoint
 

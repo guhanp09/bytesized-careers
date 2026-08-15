@@ -9,6 +9,7 @@ import { isEmailAuthEnabled } from "../lib/authVisibility";
 import { registerWithEmail, resendVerification } from "../lib/backendClient";
 import { shouldShowDevEmailInboxLink } from "../lib/devEmailInbox";
 import { GOOGLE_ACCOUNT_SELECTION_PARAMS } from "../lib/googleOAuthPolicy";
+import { safeInternalPath } from "../lib/safeRedirect";
 
 type AuthMode = "login" | "signup";
 
@@ -84,7 +85,10 @@ export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const modeFromQuery = useMemo(() => parseMode(searchParams.get("mode")), [searchParams]);
-  const nextAfterAuth = searchParams.get("next") || "/you";
+  // A sign-in page is where an open redirect is worth the most: the person has
+  // just been asked to trust it. `next` is validated once, here, and every use
+  // below reads the validated value.
+  const nextAfterAuth = safeInternalPath(searchParams.get("next"), "/you");
   const authError = searchParams.get("error");
   const emailAuthEnabled = isEmailAuthEnabled({
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
@@ -164,7 +168,7 @@ export default function AuthPage() {
         callbackUrl: nextAfterAuth,
       });
       if (result?.ok) {
-        router.push(result.url || nextAfterAuth);
+        router.push(safeInternalPath(result.url, nextAfterAuth));
         return;
       }
       setError("Login failed. Check your credentials and verify your email first.");
