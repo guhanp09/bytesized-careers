@@ -9,10 +9,8 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID
-
-import httpx
 
 from app.core.account_types import is_admin
 from app.core.config import settings
@@ -66,13 +64,18 @@ from app.schemas.profile import (
     SocialYouTubeConnection,
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
+from app.services import review_service
 from app.services.profile_rules import (
     DEFAULT_PRIVACY_SETTINGS,
     can_change_username,
     normalize_username,
     validate_username_format,
 )
-from app.services import review_service
+from app.services.safe_outbound_fetch import (
+    SafeOutboundFetcher,
+    SafeOutboundFetchError,
+    SafeOutboundFetchPolicy,
+)
 from app.services.youtube_service import (
     extract_video_id,
     fetch_youtube_video_metadata,
@@ -117,6 +120,16 @@ HIRING_IDENTITY_CODE_TTL = timedelta(hours=24)
 HIRING_IDENTITY_MAX_CODE_CHECKS = 8
 HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT = 5.0
 HIRING_IDENTITY_PUBLIC_BIO_MAX_CHARS = 2_000_000
+#: The byte ceiling the shared boundary enforces while streaming.
+#:
+#: The character cap above trims what verification searches; this refuses the
+#: transfer itself, which the previous client could not do because it read the
+#: whole body before slicing. Four megabytes leaves ample room for the real
+#: profile pages while bounding a hostile or broken one.
+HIRING_IDENTITY_PUBLIC_BIO_MAX_BYTES = 4 * 1024 * 1024
+HIRING_IDENTITY_PUBLIC_MAX_REDIRECTS = 4
+#: One whole attempt, redirects included, rather than per operation.
+HIRING_IDENTITY_PUBLIC_TOTAL_TIMEOUT = 15.0
 HIRING_IDENTITY_ALLOWED_HOSTS = {
     "YOUTUBE": {"youtube.com", "www.youtube.com", "m.youtube.com"},
     "INSTAGRAM": {"instagram.com", "www.instagram.com"},
@@ -1412,80 +1425,78 @@ class ProfileService:
         return unique_candidates
 
     @staticmethod
-    async def _get_allowed_public_page(
-        client: httpx.AsyncClient,
-        public_url: str,
-        platform: str,
-    ) -> httpx.Response:
-        next_url = public_url
-        for _ in range(4):
-            response = await client.get(next_url, follow_redirects=False)
-            if response.status_code not in {301, 302, 303, 307, 308}:
-                if not _allowed_hiring_identity_url(str(response.url), platform):
-                    raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-                return response
-            location = response.headers.get("location")
-            if not location:
-                raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-            redirected_url = urljoin(str(response.url), location)
-            if not _allowed_hiring_identity_url(redirected_url, platform):
-                raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-            next_url = redirected_url
-        raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+    def _hiring_identity_public_policy(platform: str) -> SafeOutboundFetchPolicy:
+        """The shared network policy, plus this feature's own destination rule.
+
+        Verification may read a creator's own YouTube or Instagram profile page
+        and nothing else. That allowlist used to be re-checked by hand around a
+        client that resolved DNS itself, followed its own redirects, honoured
+        environment proxies, and materialised the whole body before slicing it.
+        The platform rule is now handed to the shared boundary as a predicate, so
+        it is evaluated on the entered URL and again on every hop, immediately
+        before a connection is opened — and the connection is pinned to the
+        address that passed.
+        """
+
+        return SafeOutboundFetchPolicy(
+            max_response_bytes=HIRING_IDENTITY_PUBLIC_BIO_MAX_BYTES,
+            allowed_content_types=frozenset({"text/html", "application/xhtml+xml"}),
+            user_agent="Mozilla/5.0 (compatible; CreatorJobsVerification/1.0)",
+            accept="text/html,application/xhtml+xml",
+            max_redirects=HIRING_IDENTITY_PUBLIC_MAX_REDIRECTS,
+            connect_timeout_seconds=HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT,
+            read_timeout_seconds=HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT,
+            total_timeout_seconds=HIRING_IDENTITY_PUBLIC_TOTAL_TIMEOUT,
+            destination_allowed=lambda candidate: _allowed_hiring_identity_url(candidate, platform),
+        )
 
     @staticmethod
-    def _public_page_looks_unreadable(identity: HiringIdentity, response: httpx.Response, text: str) -> bool:
-        final_url = str(response.url).lower()
+    def _public_page_looks_unreadable(identity: HiringIdentity, final_url: str, text: str) -> bool:
+        lowered_url = final_url.lower()
         sample = text[:200_000].lower()
         if identity.platform == "YOUTUBE":
-            return "consent.youtube.com" in final_url or "before you continue to youtube" in sample
+            return "consent.youtube.com" in lowered_url or "before you continue to youtube" in sample
         if identity.platform == "INSTAGRAM":
-            return "login • instagram" in sample or "log in to instagram" in sample
+            return "login \u2022 instagram" in sample or "log in to instagram" in sample
         return False
 
     @staticmethod
-    async def _fetch_public_hiring_identity_text(identity: HiringIdentity) -> str:
+    async def _fetch_public_hiring_identity_text(
+        identity: HiringIdentity,
+        *,
+        fetcher: SafeOutboundFetcher | None = None,
+    ) -> str:
         public_urls = ProfileService._public_hiring_identity_urls(identity)
+        boundary = fetcher or SafeOutboundFetcher()
+        policy = ProfileService._hiring_identity_public_policy(identity.platform)
         chunks: list[str] = []
         last_error: ProfileValidationError | None = None
 
-        try:
-            async with httpx.AsyncClient(
-                timeout=HIRING_IDENTITY_PUBLIC_BIO_TIMEOUT,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; CreatorJobsVerification/1.0)",
-                    "Accept": "text/html,application/xhtml+xml",
-                },
-            ) as client:
-                for public_url in public_urls:
-                    try:
-                        response = await ProfileService._get_allowed_public_page(
-                            client,
-                            public_url,
-                            identity.platform,
-                        )
-                    except httpx.HTTPError as exc:
-                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-                        last_error.__cause__ = exc
-                        continue
-                    except ProfileValidationError as exc:
-                        last_error = exc
-                        continue
-                    content_type = (response.headers.get("content-type") or "").lower()
-                    if response.status_code >= 400 or "text/html" not in content_type:
-                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-                        continue
-                    response_text = response.text[:HIRING_IDENTITY_PUBLIC_BIO_MAX_CHARS]
-                    if not response_text.strip() or ProfileService._public_page_looks_unreadable(
-                        identity,
-                        response,
-                        response_text,
-                    ):
-                        last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
-                        continue
-                    chunks.append(response_text)
-        except httpx.HTTPError as exc:
-            raise ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR) from exc
+        for public_url in public_urls:
+            try:
+                response = await boundary.fetch(public_url, policy)
+            except SafeOutboundFetchError as exc:
+                # Every refusal reads the same to the recruiter. The distinction
+                # between "not an allowed profile page" and "that host resolved
+                # somewhere private" is a fact about someone else's network and
+                # is not theirs to act on.
+                last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                last_error.__cause__ = exc
+                continue
+            if not 200 <= response.status_code < 300:
+                last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                continue
+            response_text = response.body.decode(response.encoding, errors="replace")[
+                :HIRING_IDENTITY_PUBLIC_BIO_MAX_CHARS
+            ]
+            if not response_text.strip() or ProfileService._public_page_looks_unreadable(
+                identity,
+                response.final_url,
+                response_text,
+            ):
+                last_error = ProfileValidationError(HIRING_IDENTITY_PUBLIC_PAGE_READ_ERROR)
+                continue
+            chunks.append(response_text)
 
         if not chunks:
             if last_error is not None:

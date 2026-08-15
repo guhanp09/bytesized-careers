@@ -79,6 +79,21 @@ class SafeOutboundFetchPolicy:
     dns_timeout_seconds: float = DEFAULT_DNS_TIMEOUT_SECONDS
     allowed_ports: frozenset[int] = field(default_factory=lambda: DEFAULT_ALLOWED_PORTS)
     max_url_length: int = DEFAULT_MAX_URL_LENGTH
+    #: An extra, caller-owned constraint on every destination.
+    #:
+    #: Some callers may reach only a specific set of pages — a hiring-identity
+    #: verification may read a creator's own YouTube or Instagram profile and
+    #: nothing else. That rule is product policy and does not belong in a generic
+    #: network primitive, but it has to be enforced where the redirects are
+    #: resolved: checking it only around the first call leaves the caller's
+    #: allowlist satisfied by an unrelated site the first hop redirected to.
+    #:
+    #: So the caller supplies the predicate and this class decides *when* it
+    #: runs: on the entered URL and again on every hop, before a connection is
+    #: opened. It receives the normalized absolute URL. Returning False fails the
+    #: fetch closed; raising is treated the same way. Default is None, which
+    #: leaves the generic policy exactly as it was.
+    destination_allowed: Callable[[str], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.max_response_bytes <= 0:
@@ -463,16 +478,37 @@ class SafeOutboundFetcher:
         if resolved_port not in policy.allowed_ports and not test_loopback:
             raise SafeOutboundFetchError("PORT_UNSAFE", "That network port is not allowed.")
 
-        return ValidatedOutboundDestination(
-            url=urlunsplit(
-                (
-                    scheme,
-                    _canonical_netloc(hostname, resolved_port, explicit_port=explicit_port),
-                    parts.path or "/",
-                    parts.query,
-                    "",
+        normalized_url = urlunsplit(
+            (
+                scheme,
+                _canonical_netloc(hostname, resolved_port, explicit_port=explicit_port),
+                parts.path or "/",
+                parts.query,
+                "",
+            )
+        )
+
+        # The caller's own rule about *where* it is allowed to go, applied to the
+        # normalized URL after the network policy has passed. It runs here rather
+        # than at the call site because this method is what every redirect hop
+        # goes through, and a rule that only guards the first request is not a
+        # rule about the destination.
+        if policy.destination_allowed is not None:
+            try:
+                permitted = bool(policy.destination_allowed(normalized_url))
+            except Exception as exc:  # pragma: no cover - defensive
+                raise SafeOutboundFetchError(
+                    "DESTINATION_NOT_PERMITTED",
+                    "That address is not allowed for this request.",
+                ) from exc
+            if not permitted:
+                raise SafeOutboundFetchError(
+                    "DESTINATION_NOT_PERMITTED",
+                    "That address is not allowed for this request.",
                 )
-            ),
+
+        return ValidatedOutboundDestination(
+            url=normalized_url,
             hostname=hostname,
             port=resolved_port,
             addresses=tuple(unique_addresses),
