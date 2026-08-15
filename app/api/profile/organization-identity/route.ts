@@ -144,6 +144,9 @@ export async function POST(request: NextRequest) {
   if (!session?.backendAccessToken || session.backendAuthError) {
     return noStoreJson({ error: "authentication_required" }, 401);
   }
+  // Captured once so the closures below keep the narrowed type and, more
+  // importantly, so the caller's token is what reaches the backend.
+  const accessToken = session.backendAccessToken;
 
   const body = (await request.json().catch(() => null)) as { url?: unknown } | null;
   const rawUrl = typeof body?.url === "string" ? body.url : "";
@@ -183,6 +186,17 @@ export async function POST(request: NextRequest) {
   const inferred = inferExperienceFromUrl(normalizedUrl);
   const youtubeIdentity = await resolveYouTubeChannelIdentity(normalizedUrl, {
     apiKey: process.env.YOUTUBE_DATA_API_KEY || process.env.YOUTUBE_API_KEY,
+    // A custom path is the one YouTube shape whose channel id lives only in the
+    // page. The backend reads it through the pinned boundary and returns the id
+    // alone; nothing here fetches youtube.com.
+    resolveChannelIdFromPage: async (pageUrl) => {
+      try {
+        const page = await readOrganizationPage(accessToken, pageUrl);
+        return page.youtube_channel_id || null;
+      } catch {
+        return null;
+      }
+    },
     warn:
       process.env.NODE_ENV === "development"
         ? (message) => {
@@ -236,7 +250,7 @@ export async function POST(request: NextRequest) {
       // The server-owned read. Instagram commonly serves a login wall to server
       // fetches, so this stays strictly best-effort: empty fields fall through
       // to the identity the URL already gave us.
-      const page = await readOrganizationPage(session.backendAccessToken, canonicalUrl);
+      const page = await readOrganizationPage(accessToken, canonicalUrl);
       metadataName = page.title || null;
       metadataLogo = page.image_url || null;
     } catch {
@@ -272,7 +286,7 @@ export async function POST(request: NextRequest) {
     // The page is read by the backend through the shared pinned boundary, and
     // only these fields come back. Nothing in this runtime touches a URL the
     // user chose, so there is no DNS to re-resolve and no redirect to follow.
-    const page = await readOrganizationPage(session.backendAccessToken, normalizedUrl);
+    const page = await readOrganizationPage(accessToken, normalizedUrl);
     const rawMetadataName = page.site_name || page.title;
     if (!rawMetadataName && !page.image_url && !page.icon_url) {
       return NextResponse.json({

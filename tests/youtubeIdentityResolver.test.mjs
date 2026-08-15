@@ -154,3 +154,64 @@ test("returns null logo when channel has no thumbnails", async () => {
   assert.equal(result?.name, "Marques Brownlee");
   assert.equal(result?.logoUrl, null);
 });
+
+test("a custom path asks the server for the channel id and never fetches the page", async () => {
+  // `youtube.com/somebrand` is the one shape the Data API cannot look up
+  // directly: the id lives in the page. Reading that page is a fetch of a URL a
+  // user chose, so it belongs to the backend's pinned boundary — this runtime
+  // only asks for the id.
+  clearYouTubeIdentityCacheForTests();
+  const requested = [];
+  const fetcher = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.includes("youtube.com/somebrand")) {
+      throw new Error("the page must never be fetched from this runtime");
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({
+        items: [
+          {
+            id: "UCabcdefghijklmnopqrstuv",
+            snippet: { title: "Some Brand", customUrl: "@somebrand", thumbnails: {} },
+          },
+        ],
+      }),
+    };
+  };
+
+  const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/somebrand", {
+    apiKey: "test-key",
+    fetcher,
+    resolveChannelIdFromPage: async () => "UCabcdefghijklmnopqrstuv",
+  });
+
+  assert.equal(result.externalId, "UCabcdefghijklmnopqrstuv");
+  assert.equal(result.source, "youtube_data_api");
+  assert.ok(
+    requested.every((url) => url.includes("googleapis.com")),
+    `only fixed provider endpoints may be called, saw ${requested.join(", ")}`
+  );
+});
+
+test("without a server-side resolver a custom path falls back instead of fetching", async () => {
+  clearYouTubeIdentityCacheForTests();
+  const requested = [];
+  const fetcher = async (input) => {
+    requested.push(String(input));
+    throw new Error("nothing should be fetched");
+  };
+
+  const result = await resolveYouTubeChannelIdentity("https://www.youtube.com/somebrand", {
+    apiKey: "test-key",
+    fetcher,
+  });
+
+  // Losing an enrichment is cheaper than keeping an unpinned fetch alive for it.
+  assert.notEqual(result, null);
+  assert.notEqual(result.source, "youtube_data_api");
+  assert.deepEqual(requested, []);
+});

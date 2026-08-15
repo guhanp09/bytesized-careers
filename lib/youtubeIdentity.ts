@@ -24,6 +24,20 @@ type ResolveYouTubeOptions = {
   fetcher?: Fetcher;
   timeoutMs?: number;
   warn?: (message: string) => void;
+  /**
+   * How to turn a YouTube custom-path URL into its channel id.
+   *
+   * A custom path — `youtube.com/somebrand` — is the one shape the Data API
+   * cannot look up directly; the channel id has to be read out of the page. That
+   * read is a fetch of a URL a user chose, so it does not happen here: the
+   * caller supplies a resolver backed by the server-owned bounded endpoint,
+   * which fetches through the shared pinned boundary and returns the id alone.
+   *
+   * Without one, a custom path falls back to the URL-derived identity rather
+   * than fetching from this runtime. That is deliberate — losing an enrichment
+   * is cheaper than keeping an unpinned fetch alive for it.
+   */
+  resolveChannelIdFromPage?: (normalizedUrl: string) => Promise<string | null>;
 };
 
 type YouTubeThumbnail = {
@@ -201,39 +215,18 @@ const resolveVideoChannel = async (apiKey: string, fetcher: Fetcher, timeoutMs: 
   return channelId ? resolveChannelByFilter(apiKey, fetcher, timeoutMs, "id", channelId) : null;
 };
 
-const extractChannelIdFromYouTubeHtml = (html: string) => {
-  const compact = html.slice(0, 300_000);
-  return (
-    compact.match(/youtube\.com\/channel\/(UC[\w-]{20,})/i)?.[1] ||
-    compact.match(/"channelId"\s*:\s*"(UC[\w-]{20,})"/i)?.[1] ||
-    compact.match(/"browseId"\s*:\s*"(UC[\w-]{20,})"/i)?.[1] ||
-    compact.match(CHANNEL_ID_PATTERN)?.[0] ||
-    null
-  );
-};
-
-const resolveCustomPathByHtml = async (normalizedUrl: string, apiKey: string, fetcher: Fetcher, timeoutMs: number) => {
+const resolveCustomPathByChannelId = async (
+  normalizedUrl: string,
+  apiKey: string,
+  fetcher: Fetcher,
+  timeoutMs: number,
+  resolveChannelIdFromPage?: (normalizedUrl: string) => Promise<string | null>
+) => {
   const url = new URL(normalizedUrl);
-  const host = url.hostname.toLowerCase();
-  if (!YOUTUBE_HOSTS.has(host)) return null;
+  if (!YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) return null;
+  if (!resolveChannelIdFromPage) return null;
 
-  const response = await fetchWithTimeout(
-    fetcher,
-    normalizedUrl,
-    {
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent": "CreatorJobs YouTube identity resolver",
-      },
-      redirect: "follow",
-    },
-    timeoutMs
-  );
-  if (!response.ok) return null;
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().includes("text/html")) return null;
-
-  const channelId = extractChannelIdFromYouTubeHtml(await response.text());
+  const channelId = await resolveChannelIdFromPage(normalizedUrl);
   return channelId ? resolveChannelByFilter(apiKey, fetcher, timeoutMs, "id", channelId) : null;
 };
 
@@ -334,7 +327,13 @@ export async function resolveYouTubeChannelIdentity(input: string, options: Reso
     } else if (parsed.type === "video") {
       resolved = await resolveVideoChannel(apiKey, fetcher, timeoutMs, parsed.videoId);
     } else if (parsed.type === "customPath") {
-      resolved = await resolveCustomPathByHtml(parsed.normalizedUrl, apiKey, fetcher, timeoutMs);
+      resolved = await resolveCustomPathByChannelId(
+        parsed.normalizedUrl,
+        apiKey,
+        fetcher,
+        timeoutMs,
+        options.resolveChannelIdFromPage
+      );
     }
 
     return store(resolved || fallbackIdentity(parsed, parsed.normalizedUrl));

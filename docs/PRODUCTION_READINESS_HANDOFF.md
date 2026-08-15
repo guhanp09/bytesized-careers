@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2D-2 — organization page reads moved to an authenticated backend endpoint on the shared pinned boundary; the Next runtime no longer fetches arbitrary external HTML from this route
-NEXT ATOMIC SLICE: Phase 2D-3 — switch `lib/youtubeIdentity.resolveCustomPathByHtml` (OF-007) from its own Node fetch to `readOrganizationPage(...).youtube_channel_id`, which the backend already returns for a YouTube page; keep the URL-only deterministic fallbacks and the fixed YouTube Data API calls unchanged. After that: WEB-005 (one canonical internal-redirect validator plus a redirect-target inventory), WEB-006 (stored/user-supplied URL storage and display contracts, distinct from the SSRF fetch policy), then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, because header policy should be written against the application's settled behaviour
+LAST COMPLETED ATOMIC SLICE: Phase 2D-3 — YouTube custom-path resolution uses the server-owned endpoint, removing the last arbitrary page fetch from the Next runtime (WEB-003 VALIDATED)
+NEXT ATOMIC SLICE: WEB-005 (one canonical internal-redirect validator plus a redirect-target inventory), WEB-006 (stored/user-supplied URL storage and display contracts, distinct from the SSRF fetch policy), then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, because header policy should be written against the application's settled behaviour
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2D-3 atomic checkpoint
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2D-3
+Status: COMPLETE (WEB-003 is VALIDATED)
+Initial HEAD: dca6c11272c6d29a161d6025db81fd6c4f54ebcc
+Final HEAD: Phase 2D-3 checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): resolve youtube custom paths server-side
+Files materially changed: `lib/youtubeIdentity.ts` custom-path resolution and its HTML extractor removal; organization-identity route wiring; resolver regression tests; outbound inventory; execution ledger and handoff
+Migrations: None
+Behavior changed: a YouTube custom path (`youtube.com/somebrand`) is the one shape the Data API cannot look up directly, and its channel id lives in the page. That page is no longer fetched from the Next runtime; the caller injects a resolver backed by `POST /me/organization-page`, which reads it through the shared pinned boundary and returns the id alone. Without an injected resolver a custom path falls back to URL-derived identity rather than fetching, which is deliberate: losing an enrichment is cheaper than keeping an unpinned fetch alive for it. Handle, channel-id, username and video shapes are unchanged and still use the fixed Data API endpoints
+Security assumptions: `lib/youtubeIdentity` now has no code path that fetches a page; the only URLs it requests are the fixed googleapis.com endpoints (OF-104, tracked separately); the injected resolver receives the caller's own backend token
+Tests run: YouTube identity resolver suite including two new cases; TypeScript; ESLint; complete frontend unit suite; production build; authenticated resolver browser suite; git diff checks. The backend was not modified by this slice, and its complete suite passed at the immediately preceding commit
+Exact results: YouTube resolver 11 passed; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,145 passed / 0 failed; production build passed; organization resolver Chromium 6 passed; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: none; one new test asserts that only googleapis.com hosts are contacted and fails if the page is fetched
+Known external failures: none introduced
+Remaining risks: WEB-005 internal redirects, WEB-006 stored/user-supplied URL contracts, and WEB-008 response headers remain in Phase 2; per-user quotas for these endpoints are Phase 3 RATE-003
+Next phase: WEB-005 — inventory every user-influenced redirect/return target (`next`, `returnTo`, `callbackUrl`, invitation and auth callbacks) and introduce one canonical internal-redirect validator, migrating consumers incrementally
+Important commands: `rg -n 'callbackUrl|returnTo|[?&]next=|redirect\(' app lib components | head -50`; `node --test --experimental-strip-types tests/youtubeIdentityResolver.test.mjs`
+```
 
 ## Phase 2D-2 atomic checkpoint
 
