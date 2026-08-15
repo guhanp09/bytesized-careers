@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -374,7 +375,10 @@ export default function ProjectDetailPage({
 
   const publicMetrics = project.public_metrics || {};
   const manualMetrics = project.manual_metrics || {};
-  const sourceUrl = normalizeProjectHref(externalProjectUrl(project));
+  // A project saved before stored-link validation existed can still hold
+  // anything. When the link is not one a browser may be pointed at, the card
+  // renders as ordinary content rather than as an inert clickable surface.
+  const sourceUrl = safeExternalHref(normalizeProjectHref(externalProjectUrl(project)));
   const role = roleForProject(project);
   const timeline = formatTimeline(project);
   const publishedDate = formatDateShort(asString(publicMetrics.published_at) || project.published_at || project.published_date);

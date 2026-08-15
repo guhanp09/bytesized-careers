@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import { useState } from "react";
 import {
   decideAdminHiringIdentity,
@@ -212,7 +213,7 @@ export default function AdminVerificationClient({ accessToken }: { accessToken: 
               <div className="mt-3 flex flex-wrap gap-2">
                 {selected.url ? (
                   <a
-                    href={selected.url}
+                    href={safeExternalHref(selected.url)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-white/65 underline-offset-2 hover:text-white hover:underline"
@@ -222,7 +223,7 @@ export default function AdminVerificationClient({ accessToken }: { accessToken: 
                 ) : null}
                 {selected.proof_url ? (
                   <a
-                    href={selected.proof_url}
+                    href={safeExternalHref(selected.proof_url)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-white/65 underline-offset-2 hover:text-white hover:underline"

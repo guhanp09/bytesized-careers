@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import { useState, type ReactNode } from "react";
 
 import type { BackendProfileExperienceItem } from "../../lib/backendClient";
@@ -127,7 +128,7 @@ function ExperienceLinkDialog({
           {links.map((link) => (
             <a
               key={link.id}
-              href={link.url}
+              href={safeExternalHref(link.url)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white/72 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"

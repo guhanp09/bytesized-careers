@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   BackendPublicProfileResponse,
@@ -362,7 +363,7 @@ function HiringForRail({ items }: { items: BackendRepresentedChannel[] }) {
           return (
             <a
               key={`hiring-for-${item.id}`}
-              href={item.url || undefined}
+              href={safeExternalHref(item.url)}
               target={item.url ? "_blank" : undefined}
               rel={item.url ? "noopener noreferrer" : undefined}
               aria-label={item.url ? `Open ${item.name}` : item.name}

@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import Link from "next/link";
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { Icon } from "../Icons";
@@ -218,7 +219,7 @@ export default function ReceivedApplicationsClient({
                       {selectedApplicant.portfolioLinks.map((link) => (
                         <li key={link.url}>
                           <a
-                            href={link.url}
+                            href={safeExternalHref(link.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-1.5 text-sm text-white/75 hover:text-white transition-colors cursor-pointer"

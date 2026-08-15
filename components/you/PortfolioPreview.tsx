@@ -13,6 +13,7 @@
  * one; everything else gets a deterministic local poster.
  */
 
+import { safeExternalHref } from "../../lib/externalHref";
 import { useState } from "react";
 import { Icon } from "../Icons";
 import {
@@ -184,7 +185,7 @@ export function PortfolioLead({
   return (
     <a
       data-testid="portfolio-lead"
-      href={item.url}
+      href={safeExternalHref(item.url)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(event) => event.stopPropagation()}
@@ -270,7 +271,7 @@ function PortfolioThumb({ item, size = "sm" }: { item: CreatorPortfolioItem; siz
   }
   return (
     <a
-      href={item.url}
+      href={safeExternalHref(item.url)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(event) => event.stopPropagation()}
@@ -335,7 +336,7 @@ export function PortfolioReview({ items }: { items: CreatorPortfolioItem[] }) {
           <li key={item.id} data-testid="portfolio-review-item">
             {item.url ? (
               <a
-                href={item.url}
+                href={safeExternalHref(item.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`Open “${item.title}” in a new tab`}

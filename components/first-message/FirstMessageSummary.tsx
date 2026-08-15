@@ -1,5 +1,6 @@
 "use client";
 
+import { safeExternalHref } from "../../lib/externalHref";
 import React, { Fragment } from "react";
 import {
   CUSTOM_INSTRUCTION_REQUIREMENT_KEY,
@@ -289,7 +290,7 @@ export default function FirstMessageSummary({
     ) : link.url ? (
       <a
         key={`${link.url}-${idx}`}
-        href={link.url}
+        href={safeExternalHref(link.url)}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex max-w-full cursor-pointer items-center gap-1.5 font-medium text-blue-300 underline-offset-4 transition-colors hover:text-blue-200 hover:underline focus:outline-none focus:ring-2 focus:ring-white/18"

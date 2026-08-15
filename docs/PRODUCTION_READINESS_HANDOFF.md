@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2G (WEB-006A) — canonical stored-URL validation for profile and portfolio writes
-NEXT ATOMIC SLICE: WEB-006B — render-safe external navigation. Stored rows written before this validator existed may still hold anything, so the render layer must fail closed independently: add a `safeExternalHref` helper and apply it at the `href`/`src` sinks fed by stored URLs (`components/profile/ProfileExperienceList.tsx`, `components/profile/PublicProfileTabs.tsx`, `components/you/PortfolioPreview.tsx`, `components/project/ProjectDetailPage.tsx`, `components/you/ReceivedApplicationsClient.tsx`, `components/first-message/FirstMessageSummary.tsx`, `components/admin/AdminVerificationClient.tsx`), returning undefined for anything that is not http(s) so a legacy `javascript:` value renders as inert text rather than a link. Then WEB-006C for any remaining application/interview URL fields, then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last. Original WEB-006 context: Inventory the stored external links (portfolio `source_url`, profile socials, experience organization URLs, application/interview links) and separate three concerns that are currently conflated: what may be *stored*, what may be *rendered as a link or image*, and what may be *fetched* (already solved by `SafeOutboundFetcher`). Do not reuse the SSRF fetch policy as the storage validator, and do not destroy grandfathered legacy rows — prefer validate-on-write plus a safe-render contract. Then WEB-008 (CSP/trusted host/CORS/COOP/CORP) last, written against the application's settled behaviour
+LAST COMPLETED ATOMIC SLICE: Phase 2H (WEB-006B) — render-safe external navigation; WEB-006 is VALIDATED
+NEXT ATOMIC SLICE: WEB-008 — response/security headers, the last Phase 2 item. Inventory the origins the application actually needs before writing any CSP: Google authentication and identity, YouTube and Vimeo embeds, portfolio media hosts, the configured backend API origin, Next assets and fonts, and any realtime/WebSocket endpoint in use. Implement in Next middleware or `next.config` headers, verify Google sign-in and video embeds explicitly in the QA browser suite, and prefer the narrowest working policy over a wildcard. Mark only live TLS/domain-dependent headers (HSTS preload) as BLOCKED_EXTERNAL. After WEB-008, run the Phase 2 certification checkpoint and move to Phase 3 (RATE-001 Redis-backed atomic rate limiting is the first slice)
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2H atomic checkpoint (WEB-006B)
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2H / WEB-006B
+Status: COMPLETE (WEB-006 is VALIDATED)
+Initial HEAD: 72a4775553e094d14edf625b5ad23dbc4ca10d7c
+Final HEAD: Phase 2H checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): a stored link is not automatically a place to go
+Files materially changed: new `lib/externalHref.ts`; seven components that render stored URLs; new five-case suite including a sink-coverage guard; execution ledger and handoff
+Migrations: None; no legacy row was rewritten, which is the reason this slice exists
+Behavior changed: every `href` fed by a stored URL now passes through `safeExternalHref`, which returns `undefined` for anything that is not an absolute http(s) URL without credentials. A row written before Phase 2G's storage validator can still hold `javascript:alert(1)`; it now renders as inert text rather than as navigation. The project detail card goes further and does not render its clickable surface at all when the link is unusable, because an inert full-bleed card would look broken
+Security assumptions: storage, render and fetch are three separate contracts and the render layer must fail closed on data it did not write — "the backend validates it now" is only true for rows written after it started to; `safeExternalHref` and `safeExternalImageSrc` are deliberately separate functions even though both currently accept exactly http(s), so that loosening one later cannot silently loosen the other; a sink-coverage test fails if any of the seven components renders a stored URL directly again
+Tests run: render-guard suite; TypeScript; ESLint; complete frontend unit suite; production build; git diff checks. The backend was not modified by this slice and its complete suite passed at the immediately preceding commit
+Exact results: externalHref 5 passed; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,159 passed / 0 failed; production build passed; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: `InteractiveProjectLink` requires a string href, so the project page now gates the link wrapper on the safe value rather than passing a possibly-undefined one
+Known external failures: none introduced
+Remaining risks: WEB-008 is the last open Phase 2 item; application/interview URL fields were inventoried and are rendered through the same guarded components, so no separate WEB-006C was needed
+Next phase: WEB-008 as described in the resume summary
+Important commands: `node --test --experimental-strip-types tests/externalHref.test.mjs`; `rg -n 'href=\{' components | rg -i url`
+```
 
 ## Phase 2G atomic checkpoint (WEB-006A)
 
