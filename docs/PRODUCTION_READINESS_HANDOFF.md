@@ -58,6 +58,26 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 3B atomic checkpoint (DEP-001A)
+
+```text
+Phase: Phase 3, atomic slice 3B / DEP-001A — the critical authentication dependency
+Status: COMPLETE (DEP-001 remains IN_PROGRESS; `next` itself is DEP-001B)
+Initial HEAD: 85dc4e6c36b8408963ee40272e2c2027169c9c00
+Final HEAD: Phase 3B checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(auth): take the next-auth patch that closes three advisories
+Files materially changed: `package.json`, `package-lock.json`
+Migrations: None
+Advisories resolved: GHSA-7rqj-j65f-68wh (critical — email normalizer validated before Unicode normalization, homoglyph `@` bypass); GHSA-xmf8-cvqr-rfgj (high — `getToken()` throws on a malformed Bearer header); GHSA-x445-f3h2-j279 (moderate — OAuth state/nonce/PKCE cookies not bound to the provider that set them); GHSA-w5hq-g745-h8pq (moderate — `uuid` missing buffer bounds check, transitive, fixed by next-auth's bump to `uuid ^11.1.1`)
+Why these matter here rather than in the abstract: `app/api/security/strong-auth/route.ts` calls `getToken` on a caller-supplied request, which is exactly the malformed-Bearer surface; and `lib/auth.ts` configures Google plus Credentials providers, which is the OAuth cookie-binding surface. The email-normalizer advisory is fixed but less relevant — no Email provider is configured
+Scope discipline: 4.24.14 → 4.24.15 is a patch inside the existing `^4.24.14` range. next-auth v5 (Auth.js) is a beta major and a migration, not a remediation, so it was not considered
+Audit movement: production findings 6 → 4 (critical 1 → 0, moderate 1 → 0)
+Tests run: TypeScript; ESLint; complete frontend unit suite; production build (via the QA harness); browser verification of the credentialed login path
+Exact results: TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,181 passed / 0 failed; build passed; QA browser 12 passed (CSP suite 6 + organization resolver 6, both of which sign in)
+Backend: untouched by this slice
+Next slice: DEP-001B — `next` 16.2.6 → 16.3.1
+```
+
 ## Phase 3A atomic checkpoint (RATE-002)
 
 ```text
