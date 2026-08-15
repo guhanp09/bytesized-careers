@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
-LAST COMPLETED ATOMIC SLICE: Phase 2J (WEB-008B) — the complete Content-Security-Policy, nonce-based and enforcing, followed by the Phase 2 certification checkpoint
-NEXT ATOMIC SLICE: Phase 3 opens at RATE-001 (Redis-backed atomic rate limiting). Read the current in-process limiter first — `rg -n "rate.?limit" backend/app --glob '!tests'` — and decide the 3A/3B split from what is actually there rather than from the illustrative decomposition. DEP-001/DEP-002 (dependency audits) have no dependency on RATE-001 and are a smaller, safer opening slice if budget is short
+LAST COMPLETED ATOMIC SLICE: Phase 3A (RATE-002) — client identity is derived from the socket peer and a configured proxy set, not from whatever the caller wrote in X-Forwarded-For
+NEXT ATOMIC SLICE: DEP-001 / DEP-002 (dependency audits and controlled upgrades) — the next work that is fully completable in this environment. RATE-001 is BLOCKED_EXTERNAL here for want of any Redis (no server binary, no redis/fakeredis package, Docker not permitted), and RATE-003/004/005 all sit behind the limiter primitive it provides. Two things are outstanding and small: `backend/.env.example` still needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands that touch `.env*` paths, so it could not be done from here), and `RedisRateLimitBackend.hit` has a recorded check-then-act race that must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
