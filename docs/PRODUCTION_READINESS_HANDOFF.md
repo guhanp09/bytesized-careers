@@ -5,9 +5,9 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2D-1 — the organization resolver requires an authenticated same-origin session, closing the anonymous server-side fetch surface
-NEXT ATOMIC SLICE: Phase 2D-2 — move the organization resolver's retrieval itself to a backend endpoint using `SafeOutboundFetcher` with a YouTube/Instagram destination predicate (the Phase 2C pattern), bound request and response, and route `lib/youtubeIdentity.resolveCustomPathByHtml` through it; keep the existing resolution outcomes and the Instagram URL-derived fallback
-CURRENT HEAD: Phase 2D-1 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
+LAST COMPLETED ATOMIC SLICE: Phase 2E — HTML-safe JSON-LD serialization for every inline structured-data block (WEB-007 VALIDATED)
+NEXT ATOMIC SLICE: Phase 2D-2 — move the organization resolver's retrieval itself to a backend endpoint using `SafeOutboundFetcher` with a YouTube/Instagram destination predicate (the Phase 2C pattern), bound request and response, and route `lib/youtubeIdentity.resolveCustomPathByHtml` through it; keep the existing resolution outcomes and the Instagram URL-derived fallback. WEB-005 (internal redirect validation) and WEB-006 (stored user URLs) are the other open Phase 2 items, and WEB-008 (CSP/trusted host/CORS/COOP/CORP) should come last because it constrains everything above it
+CURRENT HEAD: Phase 2E checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -22,6 +22,27 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## Phase 2E atomic checkpoint
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2E
+Status: COMPLETE (WEB-007 is VALIDATED)
+Initial HEAD: 6a6e85bc8c2f9809eb5bd28349ab2ac9feaf9ada
+Final HEAD: Phase 2E checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): make inline structured data html-safe
+Files materially changed: new `lib/jsonLd.ts` serializer; public job and talent detail pages; new injection test suite; execution ledger and handoff
+Migrations: None
+Behavior changed: every inline `application/ld+json` block now serializes through `serializeJsonLd`, which escapes `<`, `>`, `&`, U+2028 and U+2029 as JSON `\uXXXX` sequences; consumers parse identical values, but an HTML parser can no longer be made to end the script block early from recruiter- or creator-supplied text
+Security assumptions: `JSON.stringify` produces valid JSON and valid JSON is not safe inside HTML — an HTML parser ends a script at the first `</script` sequence wherever it appears, including inside a string; `&` is escaped so an entity cannot reconstruct a delimiter; the serializer deliberately takes a value rather than a pre-serialized string, because a string argument would mean the escaping decision had already been made elsewhere; any future inline structured-data block must use it, which the call-site test enforces
+Tests run: JSON-LD injection suite; TypeScript; ESLint; complete frontend unit suite; production build; git diff checks
+Exact results: JSON-LD injection 5 passed and verified non-vacuous by temporarily reverting one call site, which failed the call-site guard; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,143 passed / 0 failed; production build passed; `git diff --check` and `git diff --cached --check` passed; the backend was not touched by this slice so its suite was not rerun
+Task-caused failures resolved: none
+Known external failures: none introduced
+Remaining risks: OF-006/OF-007 retrieval remains unpinned (2D-2); WEB-005 internal redirects and WEB-006 stored user URLs remain NOT_STARTED; WEB-008 response headers remain and should be sequenced last in Phase 2
+Next phase: Phase 2D-2 atomic slice as described in the resume summary
+Important commands: `rg -n 'application/ld\+json' app components`; `node --test --experimental-strip-types tests/jsonLdInjection.test.mjs`; `npx tsc --noEmit`
+```
 
 ## Phase 2D-1 atomic checkpoint
 

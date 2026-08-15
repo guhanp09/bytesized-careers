@@ -47,7 +47,7 @@ This ledger translates the production-readiness audit into resumable implementat
 | WEB-004 | CRITICAL | Import/preview fetches | WEB-001, WEB-002 | VALIDATED | AI URL import, link preview, oEmbed, and enrichment integration tests | NO | NO | Yes | Yes | Phase 2A migrates job import/brand enrichment; Phase 2B migrates authenticated portfolio HTML and exact-provider redirect-free oEmbed, bounds each metadata field read from an untrusted page, and keeps the manual-entry fallback, with 29 focused link-preview cases, a 175-case dependent matrix, and full backend/frontend gates green |
 | WEB-005 | HIGH | Internal redirects | AUTH-001 | NOT_STARTED | External, protocol-relative, slash, backslash, control and encoded-scheme tests | NO | NO | Yes | Yes | — |
 | WEB-006 | CRITICAL | User-supplied URLs | BASE-003 | NOT_STARTED | Portfolio, profile, media, social, application, interview malicious URL tests | POSSIBLE | NO | Yes | Yes | — |
-| WEB-007 | CRITICAL | Structured data | BASE-003 | NOT_STARTED | `</script>`, angle, ampersand, U+2028/U+2029 JSON-LD tests | NO | NO | Yes | Yes | — |
+| WEB-007 | CRITICAL | Structured data | BASE-003 | VALIDATED | `</script>`, angle, ampersand, U+2028/U+2029 JSON-LD tests | NO | NO | Yes | Yes | Phase 2E adds `lib/jsonLd.serializeJsonLd`, applies it to every inline structured-data block on the public job and talent pages, and covers tag-breakout, entity, separator, round-trip and call-site coverage in five cases |
 | WEB-008 | HIGH | HTTP boundaries | WEB-005, WEB-007 | NOT_STARTED | CSP, Trusted Host, CORS, COOP/CORP and production header tests | NO | YES | Yes | Yes | — |
 
 ## Phase 3 — Dependencies, rate limiting, and request safety

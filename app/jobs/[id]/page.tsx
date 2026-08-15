@@ -21,6 +21,7 @@ import { getMockPublicTalentProfile } from "../../../lib/mockPublicTalentProfile
 import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../../lib/profileRating";
 import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import type { Job } from "../../../lib/types";
+import { serializeJsonLd } from "../../../lib/jsonLd";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -155,7 +156,7 @@ export default async function JobDetailsPage({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               "@context": "https://schema.org",
               "@type": "BreadcrumbList",
               itemListElement: [
@@ -224,7 +225,7 @@ export default async function JobDetailsPage({
     <main className="min-h-screen text-white bg-[#0b0b0f]">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jobPostingJsonLd) }}
       />
       <div className="px-4 pb-28 pt-8 sm:px-6 lg:pb-8">
         <div className="mx-auto grid max-w-6xl min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">

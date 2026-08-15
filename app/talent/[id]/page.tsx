@@ -24,6 +24,7 @@ import { buildProfileReviewsHref, profileRatingSummaryFromProfile } from "../../
 import { getSeoFilterRoute, isSeoRouteIndexApproved } from "../../../lib/seoFilterRoutes";
 import { formatTalentListingExperience } from "../../../lib/talentListing";
 import { getTalentInterestedRecruiters, getTalentResponseRate } from "../../../lib/listingStats";
+import { serializeJsonLd } from "../../../lib/jsonLd";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -413,7 +414,7 @@ export default async function TalentListingPage({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLd({
               "@context": "https://schema.org",
               "@type": "BreadcrumbList",
               itemListElement: [
