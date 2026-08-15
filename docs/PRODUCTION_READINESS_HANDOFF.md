@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2H (WEB-006B) — render-safe external navigation; WEB-006 is VALIDATED
-NEXT ATOMIC SLICE: WEB-008 — response/security headers, the last Phase 2 item. Inventory the origins the application actually needs before writing any CSP: Google authentication and identity, YouTube and Vimeo embeds, portfolio media hosts, the configured backend API origin, Next assets and fonts, and any realtime/WebSocket endpoint in use. Implement in Next middleware or `next.config` headers, verify Google sign-in and video embeds explicitly in the QA browser suite, and prefer the narrowest working policy over a wildcard. Mark only live TLS/domain-dependent headers (HSTS preload) as BLOCKED_EXTERNAL. After WEB-008, run the Phase 2 certification checkpoint and move to Phase 3 (RATE-001 Redis-backed atomic rate limiting is the first slice)
+LAST COMPLETED ATOMIC SLICE: Phase 2I (WEB-008A) — frame-ancestors, COOP and CORP on the existing header baseline
+NEXT ATOMIC SLICE: WEB-008B — the full Content-Security-Policy. The origin inventory is already done and is recorded below; the open decision is inline scripts. `app/layout.tsx` renders a theme-bootstrap script via `dangerouslySetInnerHTML`, and Next's App Router emits its own inline bootstrap, so `script-src` needs either a nonce threaded through middleware and the layout, or a documented `'unsafe-inline'` with a written justification — do not pick the second by default. Ship the policy Report-Only first, drive the QA browser suite, read the console for violations, and only then enforce
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -22,6 +22,54 @@ RELEASE ASSESSMENT: NO-GO
 ```
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
+
+## WEB-008B CSP origin inventory (gathered Phase 2I, reuse it)
+
+```text
+connect-src   'self' + the configured backend origin from NEXT_PUBLIC_BACKEND_URL,
+              plus its ws:/wss: form — lib/realtimeMessaging.ts derives the socket
+              URL from getBackendApiBaseUrl() and swaps the scheme. Parse and
+              normalize that origin; never interpolate the raw env value into the
+              header (tests/securityHeaders.test.mjs enforces this).
+frame-src     https://www.youtube.com https://www.youtube-nocookie.com
+              https://player.vimeo.com — portfolio/work embeds.
+img-src       'self' data: blob: plus remote portfolio media. Creators link work
+              anywhere, so a narrow host list is not practical here; decide
+              deliberately between `https:` for images only (documented) and a
+              proxying approach, and do not let that decision leak into other
+              directives.
+script-src    The open question. Next App Router inline bootstrap plus the theme
+              bootstrap in app/layout.tsx. Nonce via middleware is the correct
+              answer if hydration survives it.
+style-src     Tailwind ships a stylesheet, but inline styles are used; expect to
+              need 'unsafe-inline' for styles and document it.
+font-src      'self' — no external font host is referenced anywhere in the tree.
+default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
+Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
+              Places and YouTube Data API are called server-side only, so they do
+              not belong in connect-src.
+```
+
+## Phase 2I atomic checkpoint (WEB-008A)
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2I / WEB-008A
+Status: COMPLETE (WEB-008 remains IN_PROGRESS; the CSP itself is WEB-008B)
+Initial HEAD: c278f8dfe9d1366680d0dcea421f978b84d566d9
+Final HEAD: Phase 2I checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): say who may frame and reach into these pages
+Files materially changed: `next.config.ts` response headers; new seven-case header contract suite; execution ledger and handoff
+Migrations: None
+Behavior changed: every response now also carries `Content-Security-Policy: frame-ancestors 'none'`, `Cross-Origin-Opener-Policy: same-origin-allow-popups` and `Cross-Origin-Resource-Policy: same-origin`. The existing nosniff, Referrer-Policy, X-Frame-Options, Permissions-Policy and production-gated HSTS headers are unchanged. `frame-ancestors` is the only directive shipped, deliberately: a `script-src` chosen without an inline-script decision breaks the application rather than protecting it
+Security assumptions: `X-Frame-Options: DENY` and `frame-ancestors 'none'` must keep agreeing, or the answer depends on the browser; COOP is `same-origin-allow-popups` rather than `same-origin` because strict isolation severs the opener a popup sign-in flow depends on, and Google auth is one configuration change away from being one; HSTS stays gated on server-side `isStrictProductionEnv()` and must never be decided by a `NEXT_PUBLIC_` value; no header value may be built by interpolating configuration, because a stray semicolon in an origin rewrites the directive list
+Tests run: header contract suite; TypeScript; ESLint; complete frontend unit suite; production build; QA browser suite covering the authenticated resolver and paste surfaces; git diff checks. Backend untouched
+Exact results: security headers 7 passed and verified non-vacuous by introducing a wildcard, which failed two guards; TypeScript passed; ESLint 0 errors / 33 known warnings; frontend unit 1,166 passed / 0 failed; production build passed; QA Chromium 15 passed with the new headers live; `git diff --check` and `git diff --cached --check` passed
+Task-caused failures resolved: none
+Known external failures: HSTS preload eligibility remains BLOCKED_EXTERNAL — the header is implemented and gated, but only a deployed HTTPS domain can verify it, and no domain was submitted to any preload list
+Remaining risks: without `script-src`/`connect-src`/`img-src`/`frame-src` the policy does not yet constrain code execution or exfiltration; that is WEB-008B and the inventory it needs is recorded above
+Next phase: WEB-008B as described in the resume summary
+Important commands: `node --test --experimental-strip-types tests/securityHeaders.test.mjs`; `rg -n 'dangerouslySetInnerHTML' app/layout.tsx`; `npx playwright test -c playwright.qa.config.ts tests/e2e/qa/organization-resolver.spec.ts`
+```
 
 ## Phase 2H atomic checkpoint (WEB-006B)
 

@@ -98,6 +98,32 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), payment=()",
           },
+          // The modern statement of "nobody frames this". `X-Frame-Options`
+          // stays because it is what older browsers read, and the two agree;
+          // `frame-ancestors` is the one a modern browser obeys, and it is the
+          // only directive shipped here. A full policy needs a decision about
+          // inline scripts that this slice does not make, and a half-considered
+          // `script-src` breaks the application rather than protecting it.
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'",
+          },
+          // Google sign-in is a redirect flow today, but a popup flow is one
+          // configuration change away and strict `same-origin` silently severs
+          // the opener that such a flow depends on. This keeps the isolation
+          // that matters — other origins cannot reach into this window — while
+          // leaving that door open.
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+          // CreatorJobs pages and assets are not building blocks for other
+          // sites. This says so at the resource level, which is the half
+          // `frame-ancestors` does not cover.
+          {
+            key: "Cross-Origin-Resource-Policy",
+            value: "same-origin",
+          },
           ...productionHeaders,
         ],
       },
