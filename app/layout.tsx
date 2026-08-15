@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -49,7 +50,9 @@ import VisualThemeToggle from "../components/theme/VisualThemeToggle";
 import { VISUAL_THEME_BOOTSTRAP_SCRIPT } from "../lib/visualTheme";
 import AppContent from "../components/AppContent";
 
-export default function RootLayout({
+import { CSP_NONCE_HEADER } from "../lib/contentSecurityPolicy";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -58,6 +61,10 @@ export default function RootLayout({
   // at all (not merely hidden), so the dev tooling cannot be reached in production.
   const devToolsEnabled = isDevToolsAllowed();
   const qaPersonaEnabled = isQaPersonaUiAllowed();
+  // Set by middleware, one value per response. Reading it here is also what
+  // keeps every page rendering per request: a nonce baked into build-time HTML
+  // would not match the policy sent with it, and the page would refuse to run.
+  const nonce = (await headers()).get(CSP_NONCE_HEADER) ?? undefined;
   return (
     <html lang="en">
       <body
@@ -65,7 +72,7 @@ export default function RootLayout({
       >
         {/* Apply a stored "enhanced" theme choice before first paint (no flash).
             The visual theme is a reversible CSS-token preview; see lib/visualTheme.ts. */}
-        <script dangerouslySetInnerHTML={{ __html: VISUAL_THEME_BOOTSTRAP_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VISUAL_THEME_BOOTSTRAP_SCRIPT }} />
         <AuthProvider>
           <Header />
           <SmartTypingProvider />

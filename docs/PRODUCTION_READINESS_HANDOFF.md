@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 1 — Critical authentication and identity security (local engineering complete; listed external/cross-phase gates remain)
 CURRENT PHASE: Phase 2 — Core web security boundaries
-LAST COMPLETED ATOMIC SLICE: Phase 2I (WEB-008A) — frame-ancestors, COOP and CORP on the existing header baseline
-NEXT ATOMIC SLICE: WEB-008B — the full Content-Security-Policy. The origin inventory is already done and is recorded below; the open decision is inline scripts. `app/layout.tsx` renders a theme-bootstrap script via `dangerouslySetInnerHTML`, and Next's App Router emits its own inline bootstrap, so `script-src` needs either a nonce threaded through middleware and the layout, or a documented `'unsafe-inline'` with a written justification — do not pick the second by default. Ship the policy Report-Only first, drive the QA browser suite, read the console for violations, and only then enforce
+LAST COMPLETED ATOMIC SLICE: Phase 2J (WEB-008B) — the complete Content-Security-Policy, nonce-based and enforcing
+NEXT ATOMIC SLICE: Phase 2 certification, then Phase 3 starting at RATE-001. WEB-008 is the last Phase 2 local engineering item and it is VALIDATED
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -23,7 +23,15 @@ RELEASE ASSESSMENT: NO-GO
 
 The machine-readable work status is in `docs/PRODUCTION_READINESS_EXECUTION.md`. The older `docs/PRODUCTION_READINESS.md` predates the current product and audit; treat it as historical context, not the active source of truth.
 
-## WEB-008B CSP origin inventory (gathered Phase 2I, reuse it)
+## WEB-008B CSP origin inventory (gathered Phase 2I, spent in Phase 2J)
+
+The inventory below is what the shipped policy was built from. Two entries were
+corrected by inspection when the policy was written: there is no `<iframe>`
+anywhere in the tree, so `frame-src` is `'none'` rather than a provider list —
+portfolio video is linked and thumbnailed, and the oEmbed `embed_html` a
+provider returns is stored but never rendered; and `data:`/`blob:` in `img-src`
+are both genuinely required, the first by a `url("data:…")` in the built CSS and
+the second by `URL.createObjectURL` upload previews in `components/you/YouHubClient.tsx`.
 
 ```text
 connect-src   'self' + the configured backend origin from NEXT_PUBLIC_BACKEND_URL,
@@ -48,6 +56,32 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 2J atomic checkpoint (WEB-008B)
+
+```text
+Phase: Phase 2 — Core web security boundaries, atomic slice 2J / WEB-008B
+Status: COMPLETE (WEB-008 is VALIDATED)
+Initial HEAD: 99e17d9b439e3377161215dbddc0ca74a56d37d5
+Final HEAD: Phase 2J checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): security(web): authorize scripts per request rather than by category
+Files materially changed: new `lib/contentSecurityPolicy.ts`; new `proxy.ts`; `app/layout.tsx` reads the request nonce; `next.config.ts` gives up ownership of the CSP header; header contract suite expanded from 7 to 22 cases; new browser suite `tests/e2e/qa/content-security-policy.spec.ts`; one console-noise pattern added to `tests/e2e/qa/workspace-exploratory.spec.ts`; execution ledger and handoff
+Migrations: None
+Behavior changed: every HTML response now carries a complete Content-Security-Policy whose `script-src` is `'self' 'nonce-<per request>' 'strict-dynamic'`. Next 16 reads that nonce off the *request* header (`app-render/get-script-nonce-from-header.js`) and stamps it onto its own inline bootstrap and flight-data scripts, so no inline script executes unless the server authorized it. Also `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`, `form-action 'self'`, `frame-src 'none'`, `frame-ancestors 'none'`, `font-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src 'self' data: blob: https:`, and `connect-src 'self'` plus the parsed backend origin and its ws/wss form
+Architecture: `lib/contentSecurityPolicy.ts` is a pure builder — nonce plus configuration in, header string out — so the entire policy is asserted in unit tests instead of only observed in a browser. `proxy.ts` (Next 16's replacement for the deprecated `middleware.ts`; the old name still builds but warns and the two may not coexist) generates 128 bits from `crypto.getRandomValues` per request, overwrites the inbound `content-security-policy` and `x-nonce` request headers, and sets the response header. It matches documents only — `/api/*`, `/_next/static` and `/_next/image` are excluded, because a document policy on a JSON response buys nothing. `app/layout.tsx` reads `x-nonce` through `headers()` and applies it to the theme bootstrap script
+Static-rendering consequence (measured, proven necessary, NOT a mistake): prerendered routes went from 21 to 3 (`/_global-error`, `/favicon.ico`, `/robots.txt`). This was verified by experiment, not assumed — with `headers()` removed from the layout the build prerenders 21 routes again, and those pages are then served with build-time HTML whose inline scripts carry no nonce, so the client runtime never starts and the browser suite fails on hydration. A nonce policy therefore requires every HTML response to be rendered per request. The SEO-critical surfaces (`/jobs`, `/jobs/[id]`, `/talent`, `/talent/[id]`, `/u/[slug]`) were already dynamic and lost nothing; what became dynamic is `/faq`, `/privacy`, `/terms`, `/support`, `/auth*`, `/post*`, `/smart-typing-test` and the `/you/*` workspace pages
+Performance follow-up for Phase 11 (PERF-002): because every route is now dynamic, every `<Link>` prefetch in the header is a server render. That is a real cost and it is the reason one existing test changed. Consider `prefetch={false}` on navigation links, or a cached shell, when PERF-002 is worked
+Security assumptions: the nonce is server-generated, unique per response, never read from the request, never persisted; a client-supplied `content-security-policy` or `x-nonce` request header is overwritten before Next sees it. Configured origins are parsed by `new URL` and re-checked against an origin pattern, never interpolated — `https://api.example.com; script-src *` yields no source at all and `connect-src` falls back to `'self'`, which breaks the application loudly rather than widening the policy. Control characters are rejected before parsing, because the URL parser *deletes* tabs and newlines and would otherwise authorize a host nobody configured. `style-src 'unsafe-inline'` is a real, documented exception: a nonce cannot authorize a `style` attribute and this codebase sets `style={{…}}` in about three dozen components, so the alternative is no style policy rather than a stricter one — `script-src` gets no such exception, and a test asserts that. `img-src https:` is deliberate and confined: creators link work from arbitrary hosts, images cannot execute, and a test asserts that allowance appears in no other directive. Report-only is unreachable when `isStrictProductionEnv()` is true, by construction rather than by remembering
+Tests run: 22-case header/policy contract suite; six-case browser CSP suite; complete frontend unit suite; TypeScript; ESLint; production build; complete real-backend QA browser suite; targeted repeat runs of the affected spec. Backend untouched by this slice
+Exact results: header/policy contract 22 passed; browser CSP 6 passed with the policy enforcing; frontend unit 1,181 passed / 0 failed; TypeScript passed; ESLint 0 errors / 33 known warnings; production build passed; full QA suite 283 passed / 7 failed / 2 skipped, then the differing specs re-run serially; `workspace-exploratory.spec.ts` 12/12 across three repeats after the fix
+Non-vacuity: proven by two mutations, both reverted. Replacing `script-src` with `'self' 'unsafe-inline'` let an injected inline script execute and failed both the browser refusal test and the unit guard. Removing `'unsafe-inline'` from `style-src` produced real violations on public surfaces and failed the collector test. A third experiment (removing `headers()` from the layout) failed the hydration assertion, which is what proves the client-runtime check is not decoration
+Task-caused failures resolved: one. `workspace-exploratory.spec.ts:78` began failing about half the time. Diagnosed rather than assumed: an instrumented run showed `GET /api/auth/session :: net::ERR_ABORTED` immediately before the next-auth `CLIENT_FETCH_ERROR`, with a 200 on the very next poll. Per-request rendering makes pages slower to go idle, so a scripted four-navigation sequence now interrupts the session poll more often. The abort is the browser's, not the product's, so it joined that spec's existing environmental-noise list with the reason written down. Verified against the parent behaviour first: with the change neutralized the test passed 4/4, with it in place it failed 2/4 and then 4/4 — which is why this is recorded as task-caused rather than dismissed as flake
+Known flakes observed (not task-caused, passed on serial re-run): `qa-personas.spec.ts:602`, `workspace-interviews.spec.ts:246`. Two recorded baseline failures (`draft-assistant.spec.ts:581`, `workspace-performance.spec.ts:108`) passed in this run, so the recorded six-item QA baseline is itself partly non-deterministic
+Known limitation: `/_global-error` stays prerendered because `global-error.tsx` replaces the root layout and cannot read request headers, so its inline scripts carry no nonce and that page renders without hydrating. It is the last-resort error screen and no product flow depends on its interactivity
+Remaining risks: none in Phase 2 local scope; HSTS preload eligibility remains BLOCKED_EXTERNAL
+Next phase: Phase 2 certification, then Phase 3 (RATE-001)
+Important commands: `node --test --experimental-strip-types tests/securityHeaders.test.mjs`; `npx playwright test -c playwright.qa.config.ts tests/e2e/qa/content-security-policy.spec.ts`; `CSP_REPORT_ONLY=1 npx playwright test -c playwright.qa.config.ts …` to observe a policy change without enforcing it outside strict production
 ```
 
 ## Phase 2I atomic checkpoint (WEB-008A)

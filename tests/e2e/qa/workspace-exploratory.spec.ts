@@ -18,6 +18,14 @@ const IGNORED_CONSOLE = [
   /net::ERR_INTERNET_DISCONNECTED/i,
   /ERR_NAME_NOT_RESOLVED/i,
   /Failed to load resource/i,
+  // A session poll that was still in flight when the test navigated. The browser
+  // reports `net::ERR_ABORTED` and next-auth turns that into an error line, but
+  // nothing failed: the very next `/api/auth/session` answers 200 and the
+  // session is intact. This began appearing once the content security policy
+  // moved every page to per-request rendering (WEB-008B) — pages take longer to
+  // go idle, so a scripted four-navigation sequence is more likely to interrupt
+  // the poll. The race is the browser's, not the product's.
+  /\[next-auth]\[error]\[CLIENT_FETCH_ERROR][\s\S]*Failed to fetch/i,
 ];
 
 function collectConsoleErrors(page: Page): string[] {

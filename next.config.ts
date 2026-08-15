@@ -98,16 +98,16 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), payment=()",
           },
-          // The modern statement of "nobody frames this". `X-Frame-Options`
-          // stays because it is what older browsers read, and the two agree;
-          // `frame-ancestors` is the one a modern browser obeys, and it is the
-          // only directive shipped here. A full policy needs a decision about
-          // inline scripts that this slice does not make, and a half-considered
-          // `script-src` breaks the application rather than protecting it.
-          {
-            key: "Content-Security-Policy",
-            value: "frame-ancestors 'none'",
-          },
+          // The Content-Security-Policy is deliberately NOT here. One of its
+          // directives changes per request — `script-src` carries a nonce — so
+          // it is built in `middleware.ts` from `lib/contentSecurityPolicy.ts`
+          // and is the only place that header is set. Emitting a second static
+          // copy from this list would mean every response carried two policies
+          // and had to satisfy both, which is a very quiet way to break a page.
+          // `X-Frame-Options: DENY` above is the legacy half of
+          // `frame-ancestors 'none'`, and it still reaches the static asset
+          // responses that middleware does not run on.
+          //
           // Google sign-in is a redirect flow today, but a popup flow is one
           // configuration change away and strict `same-origin` silently severs
           // the opener that such a flow depends on. This keeps the isolation
