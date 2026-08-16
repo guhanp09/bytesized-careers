@@ -158,6 +158,16 @@ QA: craft-ambiguity (1) + post-job-later-steps (1) — FIXED, commit "fix(post-j
         as a real restriction on the next save. Rehydration now refuses the bare sentinel.
   31/31 post-job-later-steps pass; craft-ambiguity passes.
 
+QA: qa-personas (2) + draft-assistant (1) — FIXED, commit "test(qa): measure the bubble once it has landed"
+  qa-personas :488 was a strict-mode violation, not a product bug: job-apply-button renders twice
+  (desktop panel + mobile sticky bar) with exactly one visible per viewport, and every other spec
+  already scopes to `:visible`. 29/29 now, including :602 which the baseline had called flaky.
+  draft-assistant :581 was a measurement race, not a layout defect. `ui-bubble-in` animates
+  translateY(6px) -> 0 over 240ms; the test measured the typing bubble mid-flight while still
+  lifted, so the gap read -1.6px. Replaced the instantaneous read with expect.poll on the gap —
+  identical bounds, taken once the animation settles. Not a sleep: a deterministic wait for a
+  defined end state. 34/34.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

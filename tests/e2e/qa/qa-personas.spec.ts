@@ -500,7 +500,11 @@ test("a fresh job application appears in both inboxes and cannot be duplicated",
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]+$/);
   const jobHref = new URL(page.url()).pathname;
 
-  const applyButton = page.getByTestId("job-apply-button");
+  // The apply action renders twice — the desktop panel and the mobile sticky
+  // bar — with exactly one visible per viewport. Every other spec in this
+  // repository scopes to `:visible` for that reason; whether the duplicate
+  // test id should exist at all is CORRECT-006's question.
+  const applyButton = page.locator('[data-testid="job-apply-button"]:visible');
   await expect(applyButton).toHaveText(/Apply/);
   await applyButton.click();
   const modal = page.getByTestId("first-message-modal-job");

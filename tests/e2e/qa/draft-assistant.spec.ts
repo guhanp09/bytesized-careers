@@ -621,6 +621,19 @@ test.describe("checkpointed conversation", () => {
     });
     expect(chronological).toBe(true);
 
+    // The typing bubble enters with `ui-bubble-in`, which animates
+    // translateY(6px) -> 0 over 240ms. Measuring the instant it appears catches
+    // it mid-flight, still lifted, and reports a negative gap that the settled
+    // layout never has. Poll the gap instead of sleeping: the assertion is
+    // unchanged, only the moment it is taken.
+    const gapNow = async () => {
+      const replyRect = await reply.boundingBox();
+      const typingRect = await typing.boundingBox();
+      if (!replyRect || !typingRect) return null;
+      return typingRect.y - (replyRect.y + replyRect.height);
+    };
+    await expect.poll(gapNow, { timeout: 5_000 }).toBeGreaterThanOrEqual(0);
+
     const replyBox = await reply.boundingBox();
     const typingBox = await typing.boundingBox();
     const scrollBox = await page.getByTestId("conversation-scroll").boundingBox();
