@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-002B — Python version remediation, now unblocked. The packaging contract is fixed (production installs from `uv.lock`) and `uv` is obtainable locally: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Take the low-risk independent group first (click 8.3.3, idna 3.15, Mako 1.3.12, pyasn1 0.6.4, pydantic-settings 2.14.2, python-dotenv 1.2.2), then cryptography, then the FastAPI/Starlette pair. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-002C — cryptography. Three vulnerable production packages remain: cryptography (8 distinct issues; 46.0.6/46.0.7 fix some, others only in 48.0.1/49.0.0/50.0.0 which are outside the declared `<47.0.0` pin — so this slice must first separate "fixable inside the pin" from "needs the pin raised", and the pin exists for a reason worth understanding before removing), ecdsa 0.19.1 → 0.19.2 (arrives via python-jose; includes a Minerva timing attack on P-256), and starlette 0.52.1 → 1.x (10 issues incl. missing Host-header validation and StaticFiles UNC SSRF; a major bump gated behind FastAPI's supported range, so move FastAPI and Starlette together as DEP-002D). Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,28 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 3E atomic checkpoint (DEP-002B — the low-risk vulnerable group)
+
+```text
+Phase: Phase 3, atomic slice 3E / DEP-002B — six transitive/leaf packages with straightforward fixes
+Status: COMPLETE (DEP-002 remains IN_PROGRESS; cryptography, ecdsa and starlette remain)
+Initial HEAD: ee50d0938bee3f41a516d2d1c7174758001997ec
+Final HEAD: Phase 3E checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(backend): close six advisories the lock can fix on its own
+Files materially changed: `backend/uv.lock` only
+Migrations: None
+Versions: click 8.3.1 → 8.4.2; idna 3.11 → 3.18; mako 1.3.10 → 1.4.1; pyasn1 0.6.2 → 0.6.4; pydantic-settings 2.13.0 → 2.15.0; python-dotenv 1.2.1 → 1.2.2. Every one is at or above its earliest fixed version
+Advisories resolved (16): click PYSEC-2026-2132; idna GHSA-65pc-fj4g-8rjx + PYSEC-2026-215; mako GHSA-2h4p-vjrc-8xpq and GHSA-v92g-xgxw-vvmm (TemplateLookup path traversal) + 2; pyasn1 GHSA-8ppf-4f7h-5ppj, GHSA-hm4w-wwcw-mr6r, GHSA-jr27-m4p2-rc6r, GHSA-m4p7-r5rc-7g4j (quadratic OID parsing, unbounded recursion, long-form tag DoS) + 4; pydantic-settings GHSA-4xgf-cpjx-pc3j (NestedSecretsSettingsSource symlink escape); python-dotenv GHSA-mf9w-mj56-hr94 (symlink following in set_key) + 1
+Why these six together: none of them is constrained by `pyproject.toml`, so the existing ranges already permitted the fixed versions and the lock alone could move them. No manifest edit was needed, which is what makes this group low-risk and coherent as one slice
+Method: `uv lock --upgrade-package <name>` six times in one invocation, then `uv lock --check`, then `uv sync --all-groups` to bring `backend/.venv` in line with the lock. That sync also retired the pre-existing drift between the developer venv and the lock: uv reported exactly six removals and six additions, which confirms the venv was otherwise already consistent
+Lock delta: 18 insertions / 18 deletions — the six versions and their hashes, no collateral churn
+Vulnerabilities before/after, measured against the real production set (`uv sync --locked --no-dev` into a scratch environment, 52 packages): 9 vulnerable packages → 3. Remaining are cryptography, ecdsa and starlette, each of which needs its own slice
+Tests run: alembic heads (mako drives migration templates); focused config/auth/session/strong-auth/OAuth-refresh/trusted-identity/packaging suites; complete uncontended backend suite; production-set re-audit
+Exact results: alembic single head 0059_oauth_connection_events; focused 101 passed; complete backend 6,730 passed / 64 skipped / 0 failed in 319s — the expected 6,723 baseline plus the 7 packaging-contract tests, with skips unchanged; production audit 9 → 3 vulnerable packages
+Risk notes: mako 1.3 → 1.4 is a minor bump on the template engine alembic uses for migration scaffolding, so `alembic heads` was checked explicitly. pydantic-settings 2.13 → 2.15 is the highest-risk item, since the whole configuration system depends on it; the 16-case config suite and the full backend run cover it
+Next slice: DEP-002C — cryptography. Then DEP-002D — the FastAPI/Starlette pair
 ```
 
 ## Phase 3D atomic checkpoint (DEP-002A — the packaging contract)
