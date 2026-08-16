@@ -168,6 +168,21 @@ QA: qa-personas (2) + draft-assistant (1) — FIXED, commit "test(qa): measure t
   identical bounds, taken once the animation settles. Not a sleep: a deterministic wait for a
   defined end state. 34/34.
 
+QA: applicant-requirements (1) — FIXED, commit "test(qa): give the resume field a link, because it asks for one"
+  Diagnosis chain worth keeping: the ARIA snapshot showed no error (it does not render input
+  values), so instrumenting the network was decisive — NO POST fired at all, which ruled out the
+  server and pointed at client validation. Dumping the modal text showed "Resume or CV link —
+  Enter a valid link." Job 1's requirements grew 9 -> 11 in the fixture rewrite, adding `resume`,
+  and the test filler only treated `relevant_portfolio` as a URL field, so it typed prose into a
+  link input. The product was correct the whole time.
+  3/3 pass.
+
+PHASE 4 DETERMINISTIC FAILURES: 18 standard + 5 QA (23 total) -> 0.
+Of those 23, exactly ONE was a product defect (the remote-city bug, two layers). Two were real
+test-harness defects (pipeline centre click hitting a stopPropagation child; apply-button strict
+mode). One was a measurement race against the ui-bubble-in entry animation. The rest were
+expectations that had drifted from a rewritten demo fixture or from deliberate product decisions.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

@@ -146,7 +146,11 @@ async function satisfy(page: Page, key: string) {
           ? "3"
           : type === "date"
             ? "2026-12-01"
-            : key === "relevant_portfolio"
+            : // Link-valued requirements reject prose, and rightly so. The
+              // fixture rewrite added `resume` to this job, which is why a
+              // filler that only knew about the portfolio started leaving the
+              // modal open on "Enter a valid link" with no request ever sent.
+              key === "relevant_portfolio" || key === "resume"
               ? "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
               : "Answered by the candidate during QA.";
     await textbox.fill(value);
