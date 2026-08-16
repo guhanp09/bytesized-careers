@@ -51,12 +51,19 @@ class ImportReadiness:
     ready: bool
     enabled: bool
     problems: list[str] = field(default_factory=list)
+    #: Whether anything in this deployment is configured to rescue imports whose
+    #: worker went away. Reported separately from `ready` on purpose: an import
+    #: can still be started and finished in-request without it. What is missing
+    #: is recovery, and an operator should be able to see that distinctly rather
+    #: than reading a red light and looking for a broken provider.
+    sweeper_configured: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
             "ready": self.ready,
             "enabled": self.enabled,
             "problems": list(self.problems),
+            "sweeper_configured": self.sweeper_configured,
         }
 
 
@@ -79,12 +86,24 @@ def check_job_import_readiness() -> ImportReadiness:
         # authenticated, and configuration is not something to hand out.
         problems.append("The configured model is not on the allowlist.")
 
+    # In-process hosting is one way to run the sweep and a separate process is
+    # the other, and this cannot see the second. So it reports what it knows —
+    # "this API is hosting one" — rather than asserting none exists.
+    sweeper = bool(settings.job_import_sweeper_in_process)
+
     if not enabled:
         # Not a problem — a decision. Kept out of `problems` so a switched-off
         # feature does not read as a broken one on a dashboard.
-        return ImportReadiness(ready=False, enabled=False, problems=problems)
+        return ImportReadiness(
+            ready=False, enabled=False, problems=problems, sweeper_configured=sweeper
+        )
 
-    return ImportReadiness(ready=not problems, enabled=True, problems=problems)
+    return ImportReadiness(
+        ready=not problems,
+        enabled=True,
+        problems=problems,
+        sweeper_configured=sweeper,
+    )
 
 
 class UnsupportedModelError(Exception):

@@ -150,3 +150,25 @@ async def run_import_sweeper_forever(
             await asyncio.wait_for(signal.wait(), timeout=interval_seconds)
 
     logger.info("job_import_sweeper_stopped", extra={"worker": identity})
+
+
+async def _main() -> None:  # pragma: no cover - process entrypoint
+    """Run the sweep as its own process.
+
+    Preferred over hosting it in the API: a sweeper that shares a lifetime with
+    the web server also shares its restarts, and the rows it exists to rescue
+    are created by exactly those restarts.
+    """
+
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+
+    logging.basicConfig(level=logging.INFO)
+    await run_import_sweeper_forever(
+        SessionLocal,
+        interval_seconds=float(settings.job_import_sweeper_interval_seconds),
+    )
+
+
+if __name__ == "__main__":  # pragma: no cover - process entrypoint
+    asyncio.run(_main())

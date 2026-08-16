@@ -43,6 +43,7 @@ def _configured(monkeypatch):
     monkeypatch.setattr(config.settings, "openai_model", DEFAULT_ALLOWED_MODEL)
     monkeypatch.setattr(config.settings, "openai_model_allowlist", None)
     monkeypatch.setattr(config.settings, "job_import_enabled", True)
+    monkeypatch.setattr(config.settings, "job_import_sweeper_in_process", False)
     yield
 
 
@@ -179,3 +180,31 @@ class TestTheProbe:
             app.dependency_overrides.pop(get_job_import_provider, None)
 
         assert calls == []
+
+
+class TestQueueRecoveryIsReportedSeparately:
+    """An import can be started and finished in-request with no sweeper at all.
+
+    What is missing without one is RECOVERY: the row whose worker died and whom
+    nobody comes back to read. Folding that into `ready` would send an operator
+    hunting for a broken provider; reporting it separately says what is actually
+    absent.
+    """
+
+    def test_it_is_reported_and_does_not_make_the_deployment_unready(
+        self, monkeypatch
+    ) -> None:
+        readiness = check_job_import_readiness()
+
+        assert readiness.sweeper_configured is False
+        assert readiness.ready is True
+
+    def test_hosting_the_sweep_is_visible(self, monkeypatch) -> None:
+        monkeypatch.setattr(config.settings, "job_import_sweeper_in_process", True)
+
+        assert check_job_import_readiness().sweeper_configured is True
+
+    async def test_the_probe_reports_it(self, client: AsyncClient) -> None:
+        body = (await client.get(PROBE)).json()
+
+        assert "sweeper_configured" in body

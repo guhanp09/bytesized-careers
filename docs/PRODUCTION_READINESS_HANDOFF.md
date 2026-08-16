@@ -474,6 +474,39 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6G checkpoint (AI-001E + AI-006 — the sweep runs, and readiness can see it)
+
+```text
+SLICE: AI-001E (run the sweep) + AI-006 (queue readiness).
+COMMIT: "feat(import): run the sweep, and let readiness say whether anything will"
+MIGRATION: none. BROAD: full backend 7,001 passed / 64 skipped / 0 failed.
+COLLECTION: 7,048 -> 7,065 (+14 sweeper, +3 readiness). Accounted for.
+
+RUNNING IT: JOB_IMPORT_SWEEPER_IN_PROCESS (default FALSE) +
+JOB_IMPORT_SWEEPER_INTERVAL_SECONDS (default 30). Same posture as the email worker, for a
+sharper reason: a sweeper that shares a lifetime with the web server shares its restarts, and
+the stranded rows it exists to rescue are created by exactly those restarts. Own process:
+  python -m app.services.job_import_sweeper
+app/main.py shutdown now stops BOTH background loops through one list, so adding a third cannot
+leave the second unstopped.
+
+READINESS reports `sweeper_configured` SEPARATELY from `ready`, and that separation is the
+point: an import can be started and finished in-request with no sweeper at all. What is missing
+without one is RECOVERY. Folding it into `ready` would send an operator hunting for a broken
+provider when nothing is broken. The probe also cannot see a sweeper running as its own process,
+so it reports what it knows ("this API hosts one") rather than asserting none exists.
+Provider health is still deliberately NOT probed — a probe that called the provider would bill a
+request every time a load balancer looked.
+
+AI-001 is now IMPLEMENTED, not VALIDATED, and the ledger says why: live multi-worker concurrency
+cannot be raced here (no PostgreSQL harness, Docker absent). The contract is implemented and
+tested; the distributed race is not empirically proven.
+
+NEXT READY: AI-002 (idempotency — review against the EXISTING client_request_id contract rather
+than inventing a second one), then AI-003 quotas, AI-004 spend budget (now that
+processing_attempts is a durable per-draft record), AI-010 evaluation corpus.
+```
+
 ## Phase 6F checkpoint (AI-001D — the sweep for imports nobody is watching)
 
 ```text

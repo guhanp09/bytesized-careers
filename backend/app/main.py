@@ -20,6 +20,7 @@ from app.middleware.qa_audit import QaPersonaAuditMiddleware
 from app.middleware.request_body_limit import RequestBodyLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.notifications.runner import run_worker_forever
+from app.services.job_import_sweeper import run_import_sweeper_forever
 
 validate_production_settings()
 configure_logging(settings.log_level)
@@ -80,9 +81,10 @@ async def root() -> dict[str, str]:
     return {"service": settings.app_name, "version": "v1"}
 
 
-#: Set only when the API is hosting the email worker itself. Kept at module
+#: Set only when the API is hosting a background loop itself. Kept at module
 #: level so shutdown can stop exactly what startup began.
 _email_worker: dict[str, object] = {}
+_import_sweeper: dict[str, object] = {}
 
 
 @app.on_event("startup")
@@ -104,6 +106,19 @@ async def on_startup() -> None:
             )
         )
 
+    if settings.job_import_sweeper_in_process:
+        # Same convenience, same caveat as the email worker above. Off by
+        # default so deploying this code starts no loop nobody asked for.
+        sweep_stop = asyncio.Event()
+        _import_sweeper["stop"] = sweep_stop
+        _import_sweeper["task"] = asyncio.create_task(
+            run_import_sweeper_forever(
+                SessionLocal,
+                interval_seconds=settings.job_import_sweeper_interval_seconds,
+                stop=sweep_stop,
+            )
+        )
+
     logger.info("backend_startup", extra={"env": settings.app_env})
 
 
@@ -116,10 +131,11 @@ async def on_shutdown() -> None:
     costs one interval and avoids a message being attempted twice for no reason.
     """
 
-    stop = _email_worker.pop("stop", None)
-    task = _email_worker.pop("task", None)
-    if isinstance(stop, asyncio.Event):
-        stop.set()
-    if isinstance(task, asyncio.Task):
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+    for started in (_email_worker, _import_sweeper):
+        stop = started.pop("stop", None)
+        task = started.pop("task", None)
+        if isinstance(stop, asyncio.Event):
+            stop.set()
+        if isinstance(task, asyncio.Task):
+            with contextlib.suppress(asyncio.CancelledError):
+                await task

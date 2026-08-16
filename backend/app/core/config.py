@@ -252,6 +252,16 @@ class Settings(BaseSettings):
     openai_model_allowlist: str | None = Field(
         default=None, max_length=1024, alias="OPENAI_MODEL_ALLOWLIST"
     )
+    # The stranded-import sweep. Same posture as the email worker: the API can
+    # host it for local convenience, but its own process is preferable, because
+    # a sweeper sharing a lifetime with the web server also shares its restarts
+    # — and the rows it exists to rescue are created by exactly those restarts.
+    job_import_sweeper_in_process: bool = Field(
+        default=False, alias="JOB_IMPORT_SWEEPER_IN_PROCESS"
+    )
+    job_import_sweeper_interval_seconds: float = Field(
+        default=30.0, alias="JOB_IMPORT_SWEEPER_INTERVAL_SECONDS", gt=0
+    )
     job_import_prompt_version: str = Field(
         default="job-import-text-v6",
         min_length=1,

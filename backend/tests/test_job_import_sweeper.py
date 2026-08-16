@@ -280,10 +280,14 @@ class TestTheLoop:
         module_source = inspect.getsource(
             __import__("app.services.job_import_sweeper", fromlist=["x"])
         )
+        top_level = module_source.split("async def sweep_stranded_imports_once")[0]
 
+        # The loop takes whatever it is given.
         assert "session_factory()" in source_text
-        assert "from app.db.session import" not in module_source
-        assert "SessionLocal" not in module_source
+        assert "SessionLocal" not in source_text
+        # And nothing at module level binds the configured engine, so importing
+        # this module cannot drag the real database in behind a test.
+        assert "app.db.session" not in top_level
 
 
 @pytest.mark.parametrize("attempts", [0, 1, MAX_ATTEMPTS - 1])
