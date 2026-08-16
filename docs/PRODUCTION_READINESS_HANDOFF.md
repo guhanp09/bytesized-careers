@@ -58,6 +58,35 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5B checkpoint (EMAIL-001B — atomic claim primitive)
+
+```text
+Status: COMPLETE. Commit: "feat(email): claim outbox rows in one statement, not two"
+New: backend/app/repositories/email_outbox_repository.py
+     claim_due_emails(session, *, worker_id, limit, lease_seconds, now) -> list[EmailOutbox]
+     release_lease(session, row_id); eligible_predicate(now) exposed for testing.
+Claim is ONE `UPDATE ... WHERE id IN (SELECT ... LIMIT) RETURNING`, with
+`.with_for_update(skip_locked=True)` added on PostgreSQL only. Eligibility re-stated on the UPDATE
+as well as the subquery, so the claim stays correct on engines without row locking.
+Eligibility: status='queued' AND (next_attempt_at IS NULL OR <= now) AND (leased_until IS NULL OR <= now).
+`now` is injected everywhere — no test sleeps to watch a lease expire.
+Tests: 20 cases; 31 with the migration suite. Ruff clean.
+
+NON-VACUITY, and the reason the structural test exists: mutating the claim into a
+read-then-decide-then-write form left ALL 19 behavioural tests passing and was caught only by
+`TestTheClaimIsOneStatement`. SQLite serialises writes, so check-then-act is behaviourally
+invisible locally — the shape assertion is the only local defence against the RATE-001 defect
+being reintroduced here.
+
+STILL BLOCKED_ENVIRONMENT: true concurrent-claim proof needs PostgreSQL SKIP LOCKED. No local
+postgres binaries, Docker denied. The SQL contract and predicate are tested; two real workers
+racing are not.
+
+NEXT: EMAIL-001C/D — attempt accounting and bounded retry/backoff (mark_sent, mark_failed with
+retryable vs terminal classification, next_attempt_at scheduling). Then the provider abstraction,
+then migrating `_process_outbox_row` in backend/app/notifications/email.py onto the worker path.
+```
+
 ## Phase 5A checkpoint (EMAIL-001A — expand-only outbox lease schema)
 
 ```text
