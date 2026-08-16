@@ -131,6 +131,8 @@ Locally complete for everything the environment can hold. What remains is honest
 
 ## Phase 8 — Realtime and scalable shared state
 
+Locally complete and certified. The architecture was already the one this phase asks for — events are emitted after the database commit, authorization is per recipient, and the HTTP API stays authoritative — so the work was the seam a second instance plugs into, not a rewrite. What cannot be proven here is named: the broker adapter and real cross-process delivery need a broker (`BLOCKED_EXTERNAL`), and presence has no product surface to give TTL semantics to. Certification totals are in the handoff under "Phase 8 certification".
+
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | REALTIME-001 | HIGH | Shared event bus | RATE-001 | IMPLEMENTED | Cross-instance conversation/notification delivery and deduplication tests | NO | YES | Yes | Yes | "feat(realtime): give events a seam a second instance can plug into" — RealtimeBus seam, event envelope with a required id, per-connection at-least-once deduplication, publish failure never fails the write, and production REFUSES the process-local bus unless explicitly acknowledged. The Redis/NATS adapter itself and real cross-process delivery proof are BLOCKED_EXTERNAL |
