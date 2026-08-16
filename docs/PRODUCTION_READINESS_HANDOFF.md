@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-003 — the production dependency set. The clean production sync is done and verified; what remains is SBOM inspection, and the container build itself stays BLOCKED_ENVIRONMENT because Docker is unavailable here. After that, work the remaining Phase 3 ledger items, then Phase 4 (establish a fresh browser baseline on a quiet host — the historical 17/6 numbers are stale). DEP-002 is VALIDATED: the backend went from 9 production-reachable vulnerable packages to 0 actionable, with one residual (ecdsa Minerva) that has no upstream fix and is structurally unreachable.
+NEXT ATOMIC SLICE: RATE-004 request-body bounds — the highest-value locally implementable Phase 3 work left, and it does NOT depend on RATE-001. A specific defect is already located and written up below under "RATE-004 request-body bounds": nothing bounds an inbound request body, and the avatar 5 MiB check runs after the body is read, parsed and base64-decoded. Read that section before starting. DEP-003 also remains partly open — the clean production sync is verified, SBOM generation belongs with CI-002, and the container build stays BLOCKED_ENVIRONMENT because Docker is unavailable here. The clean production sync is done and verified; what remains is SBOM inspection, and the container build itself stays BLOCKED_ENVIRONMENT because Docker is unavailable here. After that, work the remaining Phase 3 ledger items, then Phase 4 (establish a fresh browser baseline on a quiet host — the historical 17/6 numbers are stale). DEP-002 is VALIDATED: the backend went from 9 production-reachable vulnerable packages to 0 actionable, with one residual (ecdsa Minerva) that has no upstream fix and is structurally unreachable.
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -57,6 +57,50 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
 ```
+
+## RATE-004 request-body bounds — defect located, not yet fixed (start here for Phase 3)
+
+Investigated at the end of Phase 3H and left deliberately unstarted, because a
+global ASGI middleware sits in front of all 6,731 tests and wanted more budget
+than remained. The finding is specific and the fix is well-shaped.
+
+```text
+Nothing bounds an inbound request body. `rg -n "max_body|content-length" backend/app`
+returns only `safe_outbound_fetch.py`, which bounds *outbound* responses (Phase 2A).
+There is no inbound equivalent.
+```
+
+The reachable path is avatar and banner upload. There are no `UploadFile`
+endpoints — the browser sends a base64 **data URL inside a JSON body**
+(`readFileAsDataUrl` in `components/you/YouHubClient.tsx` →
+`AvatarUploadRequest`). And:
+
+- `backend/app/schemas/profile.py:213` declares `data_url: str` with **no `max_length`**;
+- `backend/app/services/profile_service.py:1963` does check `MAX_AVATAR_UPLOAD_BYTES`
+  (5 MiB) — but only **after** `len(image_bytes)`, i.e. after the whole body has
+  been read, the JSON parsed, and the base64 decoded.
+
+So the size limit exists and is honest about intent, but it runs too late to
+protect memory: a multi-hundred-megabyte JSON body is fully materialised before
+anything rejects it. That is a denial-of-service surface on an authenticated but
+ordinary endpoint.
+
+**Shape of the fix.** An ASGI middleware that bounds the body *before* it is
+read: reject on `Content-Length` over the limit as a fast path, and also count
+bytes while streaming so a chunked request with no `Content-Length` cannot walk
+past it. Answer 413 in this application's canonical `{"error": {code, message}}`
+envelope, not FastAPI's default shape. Make the limit configuration with a
+server-side default.
+
+**Sizing it.** The largest legitimate body is an avatar/banner upload: 5 MiB
+decoded, roughly 6.7 MiB as base64, plus JSON overhead. Job-import source text is
+capped at 100,000 characters (`MAX_IMPORT_SOURCE_TEXT_LENGTH`), so ~100 KB. A
+10 MiB ceiling is generous for real traffic and still bounds the surface. Verify
+against the avatar tests before settling on a number.
+
+**Why it needs the full backend suite:** it is global middleware, so it is in
+front of every request every test makes. Expect to run the complete suite, and
+check the multipart-free assumption still holds first.
 
 ## Phase 3H atomic checkpoint (DEP-002E — the FastAPI/Starlette migration)
 
