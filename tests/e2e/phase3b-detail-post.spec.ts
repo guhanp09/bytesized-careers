@@ -32,7 +32,11 @@ test.describe("phase 3b detail and post surface polish", () => {
         name: /Long-form YouTube editor for evidence-led finance stories/i,
       }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "About the opportunity" })).toBeVisible();
+    // `aboutBrandLabel` names the hiring identity — "About the opportunity" was
+    // replaced by "About {brand}", which is a stronger thing to assert because
+    // it proves the job is attributed to a real identity rather than a generic
+    // header.
+    await expect(page.getByRole("heading", { name: "About Money & Mindset" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Creator context" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Reference videos" })).toBeVisible();
     const referenceRail = page.getByRole("region", { name: "Reference videos" });

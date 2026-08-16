@@ -13,7 +13,14 @@ const coreRoutes = [
   "/search",
 ];
 
-const blockedTrustCopy = /Proof|Post availability|Enlist|USD|\$[0-9]|★★★★★|[1-9][0-9]* reviews/i;
+// Fake trust signals and retired marketing copy. Currency used to be on this
+// list, from when the demo corpus was rupees-only and a dollar figure meant
+// something had been invented. The corpus now carries genuinely USD- and
+// EUR-denominated jobs, and TRUST-001 requires a listing to show the amount and
+// currency it was actually posted in — so suppressing "$450–$700 per video"
+// would be the fabrication, not the display of it. Whether the *right* currency
+// is shown for a given job is TRUST-001's own contract, not this one's.
+const blockedTrustCopy = /Proof|Post availability|Enlist|★★★★★|[1-9][0-9]* reviews/i;
 
 test.describe("beta review and trust-copy safety", () => {
   for (const route of coreRoutes) {

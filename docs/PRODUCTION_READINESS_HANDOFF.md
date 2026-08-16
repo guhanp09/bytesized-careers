@@ -95,6 +95,24 @@ candidate-job-experience (3 failures) — FIXED, commit "test(jobs): assert the 
   apply is a removed feature rather than a missing disclosure.
   7/7 pass serially.
 
+beta-review-safety (3) + phase3b-detail-post (1) — FIXED, commit "test(trust): stop treating a real price as a fake trust signal"
+  beta-review-safety: all three failures matched ONLY the `USD|\$[0-9]` clause — no fake-review or
+  retired-copy hits. That clause dates from a rupees-only demo corpus; the corpus now carries
+  genuinely USD/EUR jobs and TRUST-001 requires showing the posted amount and currency, so
+  suppressing "$450–$700 per video" would be the fabrication. Clause dropped, everything else kept.
+  Whether the correct currency is shown per job is TRUST-001's contract and remains NOT_STARTED.
+  phase3b :27: "About the opportunity" became `aboutBrandLabel` → "About {brand}". Asserting the
+  brand-named heading is stronger: it proves the job is attributed to a real hiring identity.
+
+  FINDING FOR TRUST-003 (marketplace metrics, NOT_STARTED) — not actioned here, deliberately.
+  `JobActionsPanel` renders StatTiles for Applicants / Views / Response rate, and listing cards
+  show "284 Views · 11 Applicants · 86% Response rate" plus talent-side "Currently viewing /
+  Interested recruiters / Response rate". These are fixture-seeded demo numbers. Two existing
+  tests actively assert they stay visible (phase3b :168 "keeping activity stats", :184 "persisted
+  job stats remain visible"), so removing them is a product-policy decision that belongs to
+  TRUST-003 with its own slice — not something to smuggle into a browser-test repair. Whoever
+  takes TRUST-003 should expect to change those two tests as part of it.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the
