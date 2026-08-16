@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db
 from app.core.job_import_readiness_check import check_job_import_readiness
 from app.health.service import check_db
+from app.realtime.bus import UnsafeRealtimeConfigurationError, build_realtime_bus
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -26,6 +27,39 @@ async def health_job_import() -> dict[str, object]:
     """
 
     return check_job_import_readiness().as_dict()
+
+
+@router.get("/realtime", summary="Realtime delivery readiness probe")
+async def health_realtime() -> dict[str, object]:
+    """What realtime can and cannot promise in this deployment.
+
+    Reported rather than inferred, because the failure it describes is
+    invisible: a process-local bus running on two instances produces no error at
+    any moment, only users who intermittently miss events. An operator looking
+    at a dashboard should be able to see that this instance delivers to its own
+    connections only.
+
+    Never reports a broker as healthy when none is configured, and never names
+    a URL or credential — this endpoint is unauthenticated.
+    """
+
+    try:
+        bus = build_realtime_bus()
+        configured = True
+        detail = None
+    except UnsafeRealtimeConfigurationError as exc:
+        bus = None
+        configured = False
+        detail = str(exc)
+
+    process_local = bus is None or getattr(bus, "name", "memory") == "memory"
+    return {
+        "configured": configured,
+        # Named honestly: "delivers only to this process" is the fact that
+        # matters, not whether an object was constructed.
+        "cross_instance": configured and not process_local,
+        "problem": detail,
+    }
 
 
 @router.get("/db", summary="Database connectivity probe")

@@ -917,6 +917,40 @@ the chunk was 13 bytes (CRC-verified). Nothing had ever parsed it, so it passed.
 valid generated PNG. If another image fixture starts failing, check the file before the parser.
 ```
 
+## Phase 8B checkpoint (REALTIME-003 + REALTIME-002 — degraded operation, and what typing already did)
+
+```text
+COMMIT: "feat(realtime): keep the record when the hint does not arrive"
+MIGRATION: none. BROAD: full backend 7,121 passed / 64 skipped / 0 failed.
+COLLECTION: 7,178 -> 7,185 (+5 degraded, +2 typing). Accounted for.
+
+REALTIME-003: the claim "realtime is a hint, not a record" is easy to make and easy to stop being
+true — one publish moved above a commit and a broker outage loses a message. So it is tested from
+the OUTSIDE: a completely broken bus, a real message sent through the real route, and then the
+message must exist, read back over HTTP, and still count as unread. That read-back IS the
+reconnect path, which is why no separate replay mechanism is needed.
+Mutation-proven: removing the publish try/except fails three tests, including both end-to-end.
+
+GET /api/v1/health/realtime -> {configured, cross_instance, problem}
+  `configured` and `cross_instance` are deliberately separate: an operator needs to distinguish
+  "a broker is delivering across instances" from "this process is talking to itself", and those
+  look identical from every other angle. Leaks no URL or credential — it is unauthenticated.
+
+REALTIME-002: typing ALREADY had a 6-second expiry, disconnect cleanup, and multi-tab handling
+("typing elsewhere") before this phase. Now pinned: a disconnect must tell the other side typing
+stopped, and the expiry must stay short — a stuck "typing…" is a lie that persists, and a
+long one is the same lie more slowly.
+PRESENCE HAS NO PRODUCT SURFACE. No endpoint, model or UI exposes online status. There is nothing
+to give TTL semantics to, and building one would be inventing a feature rather than hardening
+one. Recorded in the ledger as such rather than left looking unfinished.
+
+Test note: typing events are conversation-scoped, so a test recipient must SUBSCRIBE to the
+conversation before it can observe them. An unsubscribed socket sees nothing and the test reads
+as a missing feature.
+
+NEXT READY: Phase 8 certification, then Phase 9 (privacy/legal/moderation mechanics).
+```
+
 ## Phase 8A checkpoint (REALTIME-001 — the seam a second instance plugs into)
 
 ```text

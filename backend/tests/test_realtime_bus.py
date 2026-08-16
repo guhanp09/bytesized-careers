@@ -255,3 +255,58 @@ class TestProductionRefusesTheProcessLocalBus:
 
         with pytest.raises(UnsafeRealtimeConfigurationError, match="not implemented"):
             build_realtime_bus()
+
+
+class TestTypingCannotGetStuck:
+    """Typing is ephemeral, and the failure is a lie that persists.
+
+    A client that crashes mid-keystroke sends no "stopped typing". If the only
+    thing that clears the indicator is that message, the other person watches
+    "typing…" for ever and reasonably concludes a reply is coming.
+
+    The manager already handles this — a bounded expiry plus disconnect cleanup,
+    both predating this phase. These pin it so it cannot be removed quietly.
+    """
+
+    async def test_disconnecting_clears_typing_for_the_other_side(self) -> None:
+        manager = ConversationRealtimeManager()
+        sender_socket, recipient_socket = _Socket(), _Socket()
+        sender, recipient = uuid.uuid4(), uuid.uuid4()
+        conversation_id = str(uuid.uuid4())
+
+        await manager.connect(sender_socket, sender, "bearer")
+        await manager.connect(recipient_socket, recipient, "bearer")
+        # Typing events are conversation-scoped, so the other side only hears
+        # about them while it is actually looking at the thread.
+        await manager.subscribe(recipient_socket, conversation_id)
+        await manager.update_typing(
+            sender_socket,
+            conversation_id=conversation_id,
+            recipient_user_id=recipient,
+            is_typing=True,
+        )
+        recipient_socket.sent.clear()
+
+        await manager.disconnect(sender_socket)
+
+        cleared = [
+            event
+            for event in recipient_socket.sent
+            if event.get("type", "").startswith("conversation.typing")
+        ]
+        assert cleared, "a disconnect must tell the other side typing stopped"
+        assert cleared[-1].get("is_typing") is False
+
+    def test_the_expiry_is_bounded_and_short(self) -> None:
+        """Read from the source: a typing indicator that outlives a keystroke by
+        minutes is the same lie, more slowly."""
+
+        import inspect
+
+        expiry_source = inspect.getsource(ConversationRealtimeManager._expire_typing)
+
+        assert "asyncio.sleep(" in expiry_source
+        seconds = float(
+            expiry_source.split("asyncio.sleep(")[1].split(")")[0]
+        )
+        assert 0 < seconds <= 15
