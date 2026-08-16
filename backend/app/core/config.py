@@ -31,6 +31,21 @@ class Settings(BaseSettings):
     allow_memory_rate_limit_in_production: bool = Field(
         default=False, alias="ALLOW_MEMORY_RATE_LIMIT_IN_PRODUCTION"
     )
+    # What the process is willing to hold in memory for one request, enforced at
+    # the ASGI boundary before any parsing. The default covers ordinary JSON by a
+    # wide margin — the largest non-media payload is job-import source text at
+    # 100,000 characters — while the media ceiling exists for the two endpoints
+    # that accept a base64 data URL. Base64 costs 4/3, so the 8 MiB banner limit
+    # in `profile_service` needs roughly 10.7 MiB encoded once the data-URL
+    # prefix and JSON quoting are counted; 12 MiB leaves room without inviting
+    # anything larger. These bound the process; the decoded checks in the
+    # services bound the product, and neither substitutes for the other.
+    max_request_body_bytes: int = Field(
+        default=2 * 1024 * 1024, alias="MAX_REQUEST_BODY_BYTES", ge=64 * 1024
+    )
+    max_media_request_body_bytes: int = Field(
+        default=12 * 1024 * 1024, alias="MAX_MEDIA_REQUEST_BODY_BYTES", ge=64 * 1024
+    )
     # The addresses of the proxies that actually sit in front of this application,
     # as exact IPs or CIDR blocks, comma separated. Empty means "nothing is in
     # front of us", and forwarded headers are then ignored completely — because a
