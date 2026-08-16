@@ -137,6 +137,7 @@ def _safe_production_settings(**overrides: object) -> config.Settings:
         "STRONG_AUTH_SECRET_KEYS": json.dumps({"strong_auth_key": key}),
         "STRONG_AUTH_SECRET_ACTIVE_KEY_ID": "strong_auth_key",
         "FRONTEND_BASE_URL": "https://creatorjobs.example",
+        "MEDIA_PUBLIC_BASE_URL": "https://media.creatorjobs.example",
         "CORS_ORIGINS": '["https://creatorjobs.example"]',
         "DATABASE_URL": "postgresql+asyncpg://user:pass@database.example/creatorjobs",
         "EMAIL_MODE": "smtp",

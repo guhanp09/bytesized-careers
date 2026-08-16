@@ -798,6 +798,30 @@ mature component — a bigger change than this slice justifies. It is typechecke
 string it matches is asserted on the backend side.
 ```
 
+## Phase 7D checkpoint (MEDIA-004 — a request may not decide where media lives)
+
+```text
+COMMIT: "fix(media): stop letting a request decide where media lives"
+MIGRATION: none. BROAD: full backend 7,096 passed / 64 skipped / 0 failed. COLLECTION 7,157 -> 7,160.
+
+A REAL VULNERABILITY, and a STORED one rather than reflected. Uploads built their URL from
+`request.base_url`, which Starlette derives from the Host header. A request arriving with
+`Host: evil.example` therefore wrote `https://evil.example/media/avatars/...` into that profile
+row — persisted, and served to every later visitor of the profile. The attacker needed no access
+to the account, and the poisoned URL outlived the request that planted it.
+
+FIX: canonical_media_base_url() prefers MEDIA_PUBLIC_BASE_URL and falls back to the request only
+as a development convenience. validate_production_settings() now REFUSES TO BOOT in production
+without the setting, so the fallback cannot quietly become the production behaviour.
+A CDN hostname is simply what that setting holds; the CDN itself is external.
+Mutation-proven: preferring the request origin again fails two tests, including one that drives
+the real route with a hostile Host header.
+
+NOTE for whoever adds settings later: tests/test_config.py::_safe_production_settings is the
+fixture that must gain any new production requirement, or every production-validation test fails
+at once — which is what happened here and is the intended signal.
+```
+
 ## Phase 7C checkpoint (MEDIA-005 partial — replacement no longer orphans)
 
 ```text

@@ -70,6 +70,7 @@ from app.services.media_storage import (
     LocalMediaStorage,
     MediaStorage,
     build_object_key,
+    canonical_media_base_url,
     key_from_url,
 )
 from app.services.media_validation import InvalidImageError, prepare_upload
@@ -2005,7 +2006,11 @@ class ProfileService:
         # validated before any path is derived from it.
         storage = LocalMediaStorage(
             root=settings.media_root,
-            public_base_url=public_base_url,
+            # Configured origin, not the request's. `request.base_url` is built
+            # from the Host header, so a request carrying someone else's host
+            # would write THEIR domain into this profile's avatar URL and every
+            # later visitor would load it from there.
+            public_base_url=canonical_media_base_url(public_base_url),
             base_path=settings.media_base_path,
         )
         key = build_object_key(prefix="avatars", owner_id=user.id, extension=extension)
@@ -2015,7 +2020,7 @@ class ProfileService:
         # orphan rather than a profile pointing at a file that is gone.
         superseded = key_from_url(
             user.avatar_url,
-            public_base_url=public_base_url,
+            public_base_url=canonical_media_base_url(public_base_url),
             base_path=settings.media_base_path,
         )
         user.avatar_mode = "generic"
@@ -2077,7 +2082,11 @@ class ProfileService:
         # validated before any path is derived from it.
         storage = LocalMediaStorage(
             root=settings.media_root,
-            public_base_url=public_base_url,
+            # Configured origin, not the request's. `request.base_url` is built
+            # from the Host header, so a request carrying someone else's host
+            # would write THEIR domain into this profile's avatar URL and every
+            # later visitor would load it from there.
+            public_base_url=canonical_media_base_url(public_base_url),
             base_path=settings.media_base_path,
         )
         key = build_object_key(prefix="banners", owner_id=user.id, extension=extension)
@@ -2087,7 +2096,7 @@ class ProfileService:
         # orphan rather than a profile pointing at a file that is gone.
         superseded = key_from_url(
             user.banner_url,
-            public_base_url=public_base_url,
+            public_base_url=canonical_media_base_url(public_base_url),
             base_path=settings.media_base_path,
         )
         user.banner_url = stored.url

@@ -22,6 +22,7 @@ from app.services.media_storage import (
     InvalidObjectKeyError,
     LocalMediaStorage,
     build_object_key,
+    canonical_media_base_url,
     key_from_url,
     validate_object_key,
 )
@@ -317,3 +318,68 @@ class TestReplacingAnAvatarThroughTheApi:
         # was reachable.
         assert len(stored) == 1
         assert stored[0].name in second.json()["avatar_url"]
+
+
+class TestStoredUrlsCannotBePoisonedByAHostHeader:
+    """The vulnerability this closes is stored, not reflected.
+
+    `request.base_url` is built from the Host header. Using it meant a request
+    arriving with `Host: evil.example` wrote `https://evil.example/media/...`
+    into somebody's profile — persisted, then served to every later visitor of
+    that profile. The attacker needed no access to the account, and the poisoned
+    URL outlived the request that planted it.
+    """
+
+    def test_the_configured_origin_wins_over_the_request(self, monkeypatch) -> None:
+        from app.core import config
+
+        monkeypatch.setattr(
+            config.settings, "media_public_base_url", "https://media.creatorjobs.example"
+        )
+
+        assert (
+            canonical_media_base_url("https://evil.example/")
+            == "https://media.creatorjobs.example"
+        )
+
+    def test_without_configuration_it_falls_back_for_development(self, monkeypatch) -> None:
+        """A convenience for local work only — production refuses to boot
+        without the setting, which is asserted in test_config."""
+
+        from app.core import config
+
+        monkeypatch.setattr(config.settings, "media_public_base_url", None)
+
+        assert canonical_media_base_url("http://localhost:8000/") == "http://localhost:8000"
+
+    async def test_an_upload_stores_the_configured_origin(
+        self, client, monkeypatch, tmp_path
+    ) -> None:
+        from app.core import config
+        from tests.test_profile_features import _register_verify_login
+
+        monkeypatch.setattr(config.settings, "media_root", str(tmp_path))
+        monkeypatch.setattr(
+            config.settings, "media_public_base_url", "https://media.creatorjobs.example"
+        )
+
+        bearer = await _register_verify_login(
+            client, email="hostpoison@example.com", username="hostpoisonuser"
+        )
+        response = await client.post(
+            "/api/v1/me/avatar",
+            headers={"Authorization": f"Bearer {bearer}", "Host": "evil.example"},
+            json={
+                "file_name": "a.png",
+                "content_type": "image/png",
+                "data_url": (
+                    "data:image/png;base64,"
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+                ),
+            },
+        )
+
+        assert response.status_code == 200
+        stored_url = response.json()["avatar_url"]
+        assert stored_url.startswith("https://media.creatorjobs.example/")
+        assert "evil.example" not in stored_url

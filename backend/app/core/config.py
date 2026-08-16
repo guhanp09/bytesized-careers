@@ -278,6 +278,12 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
         alias="JOB_IMPORT_PROMPT_VERSION",
     )
+    # The origin stored media URLs are built from. Unset means "use the URL of
+    # whatever request happened to be uploading", which is the Host header — so
+    # a request carrying `Host: evil.example` writes an avatar URL pointing at
+    # evil.example into the database, permanently, and it is then served to
+    # everyone who views that profile. That is why production must set this.
+    media_public_base_url: str | None = Field(default=None, alias="MEDIA_PUBLIC_BASE_URL")
     media_root: str = Field(default=".local-data/media", alias="MEDIA_ROOT")
     media_base_path: str = Field(default="/media", alias="MEDIA_BASE_PATH")
 
@@ -350,6 +356,11 @@ def validate_production_settings() -> None:
         return
 
     failures: list[str] = []
+    if not (settings.media_public_base_url or "").strip():
+        failures.append(
+            "MEDIA_PUBLIC_BASE_URL must be set in production: without it, stored media URLs "
+            "are built from the request Host and a poisoned Host is persisted."
+        )
     if settings.jwt_secret.strip().lower() in UNSAFE_SECRET_VALUES:
         failures.append("JWT_SECRET must be set to a strong non-placeholder value.")
     if settings.jwt_access_token_expires_minutes > 60:

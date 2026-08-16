@@ -174,3 +174,25 @@ def key_from_url(url: str | None, *, public_base_url: str, base_path: str) -> st
         # A URL under our prefix that is not a key we would ever have written.
         # Refusing to act on it is the safe half of the answer.
         return None
+
+
+def canonical_media_base_url(request_base_url: str | None = None) -> str:
+    """The origin stored media URLs are built from.
+
+    `request.base_url` comes from the Host header. Using it means a request that
+    arrives carrying `Host: evil.example` writes `https://evil.example/media/...`
+    into somebody's profile — persisted, and then served to everyone who views
+    that profile afterwards. The attacker needs no access to the account and the
+    poisoned URL outlives the request that planted it.
+
+    So the configured origin wins whenever there is one. Falling back to the
+    request is a development convenience only, and production refuses to boot
+    without the setting rather than quietly relying on the fallback.
+    """
+
+    from app.core.config import settings
+
+    configured = (settings.media_public_base_url or "").strip()
+    if configured:
+        return configured.rstrip("/")
+    return (request_base_url or "").rstrip("/")
