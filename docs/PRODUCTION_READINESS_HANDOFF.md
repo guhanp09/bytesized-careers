@@ -991,6 +991,37 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9E checkpoint (MOD-002 partial — the audit log stays uneditable)
+
+```text
+COMMIT: "test(admin): stop the audit log from becoming editable"
+MIGRATION: none. BROAD: full backend 7,218 passed / 64 skipped / 0 failed.
+COLLECTION: 7,269 -> 7,282 (+13). Accounted for.
+
+NOTHING WAS REBUILT. The audit log already existed, is already written in the same transaction as
+the action, and already documents an append-only intent. What did not exist was anything that
+would notice if that stopped being true — and a convention in a docstring is exactly what erodes
+when someone adds "correct a typo in the reason" or a cleanup script.
+
+NOW ENFORCED: no source file issues update()/delete() against AdminAuditLog, and admin.py exposes
+no PATCH/PUT/DELETE audit route. Plus the actor FK is SET NULL rather than CASCADE, so an
+administrator cannot erase their own trail by deleting their account, and target_label is
+snapshotted at write time so an old entry stays legible without anyone editing it.
+The guard guards itself: a test asserts the scan actually finds the model, since a regex matching
+nothing would make every other assertion pass while checking nothing.
+Mutation-proven: injecting `update(AdminAuditLog)` into app/core/qa_personas.py fails it.
+
+STATED PLAINLY: this is NOT a database-level guarantee. There is no trigger and no revoked GRANT,
+so a structural test is weaker than a permission — and much stronger than a comment, because it
+fails in review rather than during an investigation. Retention and export are still open.
+
+TEST NOTE: ON DELETE SET NULL is applied by the DATABASE, so the ORM copy stays stale — re-read
+with populate_existing=True or the assertion tests the identity map instead.
+
+NEXT READY: MOD-001 profile/portfolio moderation, SUPPORT-001, LEGAL-001 (inventory only — the
+wording is external). Then Phase 10 CI/CD.
+```
+
 ## Phase 9D checkpoint (PRIV-002 partial — what an export may contain)
 
 ```text
