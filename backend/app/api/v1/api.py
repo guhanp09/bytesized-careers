@@ -23,6 +23,7 @@ from app.api.v1.routers.reviews import router as reviews_router
 from app.api.v1.routers.roles import router as roles_router
 from app.api.v1.routers.search import router as search_router
 from app.api.v1.routers.tools import router as tools_router
+from app.api.v1.routers.unsubscribe import router as unsubscribe_router
 from app.api.v1.routers.user_profile import router as user_profile_router
 from app.api.v1.routers.users import router as users_router
 
@@ -46,6 +47,7 @@ api_router.include_router(reviews_router)
 api_router.include_router(realtime_router)
 api_router.include_router(tools_router)
 api_router.include_router(user_profile_router)
+api_router.include_router(unsubscribe_router)
 api_router.include_router(users_router)
 api_router.include_router(dev_emails_router)
 api_router.include_router(dev_seed_router)

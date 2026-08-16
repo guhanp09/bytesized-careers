@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     # webhook refuses every request rather than accepting unsigned ones: an
     # unset secret must not become an open door onto the suppression list.
     email_webhook_secret: str | None = Field(default=None, alias="EMAIL_WEBHOOK_SECRET")
+    # Signs the unsubscribe links that go in emails. Separate from every other
+    # secret because its tokens deliberately never expire — they have to work
+    # from a two-year-old message — so rotating it invalidates outstanding
+    # links, and that should be a decision about unsubscribe links alone.
+    unsubscribe_token_secret: str | None = Field(
+        default=None, alias="UNSUBSCRIBE_TOKEN_SECRET"
+    )
     # Email delivery is a background job. The API can host it for convenience in
     # local development; in production a separate `python -m
     # app.notifications.runner` process is preferable, because a worker sharing

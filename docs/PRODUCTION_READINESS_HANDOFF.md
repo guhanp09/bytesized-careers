@@ -1028,9 +1028,23 @@ TWO TESTING LESSONS FROM THIS SLICE, both worth keeping:
    total and 357 skips for a run that actually had 15 failures. The count check now asserts the
    log contains no FAILED/ERROR before trusting the numbers.
 
-NEXT READY: the unsubscribe LINK (signed token so a link cannot unsubscribe an arbitrary account
-— a raw user id in a URL would let anyone unsubscribe anyone), then PRIV-002 export,
-PRIV-003 deletion.
+UNSUBSCRIBE LINK (same phase, next commit): app/services/unsubscribe_tokens.py + POST
+/api/v1/unsubscribe. UNSUBSCRIBE_TOKEN_SECRET, unset = refuse.
+  - HMAC over (user_id, category). The obvious version carries a raw user id, and anyone who saw
+    one URL could switch off a stranger's mail by changing it — no login, no trace, and a victim
+    who only notices when something they wanted stops arriving.
+  - NO EXPIRY, deliberately and unlike every other signed link here: it lives as long as the
+    email holding it, and someone clearing a two-year-old inbox is exactly who should be able to
+    use it. A test asserts the absence so a future "harden it" change has to argue with the
+    reason.
+  - Scoped to ONE category, so a digest's link cannot switch off everything.
+  - POST only. Mail clients and scanners follow links to prefetch them, so a GET that changes
+    state means being unsubscribed by your own spam filter. A test asserts GET does nothing.
+  - An essential category is refused even if a token names one.
+  Mutation-proven: removing the signature comparison fails four tests.
+
+NEXT READY: PRIV-002 export, PRIV-003 deletion. Both are large; decompose. Survey first — the
+admin panel already has an append-only audit rule and suspension enforcement.
 ```
 
 ## Phase 9A checkpoint (PRIV-001 — versioned legal acceptance)
