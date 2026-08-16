@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: the rest of RATE-004 — request timeouts and concurrency ceilings. The body-size half is done (Phase 3I). Read the ledger for what RATE-004 actually asks before implementing; the concurrency parts genuinely depend on RATE-001, which stays BLOCKED_EXTERNAL for want of any Redis. After that, Phase 4: establish a fresh browser baseline on a quiet host (check `uptime` and for stale next-server/playwright first). The historical 17/6 failure counts are stale — a Phase 0 baseline failure now passes, and a later run showed 448 passed / 22 failed with several of those reproducing only under parallel load. Still outstanding and small: `backend/.env.example` needs TRUSTED_PROXY_IPS and ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION — re-verified this session, the environment still denies both Read and Bash on `.env*` paths, so it stays BLOCKED_ENVIRONMENT.
+NEXT ATOMIC SLICE: Phase 4 defect fixing, starting from the freshly established baseline recorded below under "Phase 4 browser baseline" — 18 deterministic standard failures and 5 deterministic QA failures, both verified by serial re-run. Take them by family, not one test at a time: the three `adaptive-profile-overview` cases are one story, as are the three `candidate-job-experience` cases and the two `mobile-overflow` viewports. Read `beta-review-safety` and `phase3b-detail-post` carefully first — they concern fabricated marketplace metrics, and the product-truth rule means the right fix may be deleting a metric rather than making one appear. Also still open: the rest of RATE-004 (request timeouts; the concurrency half depends on RATE-001, still BLOCKED_EXTERNAL for want of any Redis), and `backend/.env.example` needs TRUSTED_PROXY_IPS and ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION — re-verified this session, the environment still denies Read and Bash on `.env*`, so BLOCKED_ENVIRONMENT stands.
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -57,6 +57,71 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
 ```
+
+## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
+
+Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the
+standard failures re-run serially with `--workers=1` to separate real defects
+from parallel-load flake. **Use this, not the Phase 0 numbers.**
+
+```text
+QA (real backend)        285 passed /  5 failed / 2 skipped   (19.1m)
+Standard (parallel)      447 passed / 23 failed               ( 7.0m)
+Standard (serial re-run) 214 passed / 18 failed               ( 6.4m)  <- the baseline
+```
+
+**QA — 5 deterministic failures, and this set is trustworthy.** Every one is
+from the original recorded Phase 0 list, and no new failure appeared even though
+host load reached 19 during the run, which is what makes it credible rather than
+lucky:
+
+```text
+applicant-requirements.spec.ts:173   submitted application modal never closes
+craft-ambiguity.spec.ts:76           persisted role snapshot lacks "Likely match"
+draft-assistant.spec.ts:581          typing indicator overlaps the submitted reply
+post-job-later-steps.spec.ts:669     onsite→remote retains the city instead of clearing
+qa-personas.spec.ts:488              duplicate job-apply-button test IDs
+```
+
+The historical sixth item, `workspace-performance.spec.ts:108`, **passes** —
+confirmed twice now. The recorded "6 QA failures" is genuinely 5.
+
+**Standard — 18 deterministic failures.** Five of the 23 parallel failures did
+not reproduce serially (`settings`, `listing-card-actions`, `seo-filter-routes`,
+`workspace-ia`, `you-applications`) and are parallel-load flake. One failure
+appeared only in the serial pass (`phase3b-detail-post.spec.ts:164`), which is
+the same family as `:27`. Grouped by what they are actually about:
+
+```text
+adaptive-profile-overview  :86 :134 :180   recruiter/agency profile views + entry links
+applications-pipeline      :286           pipeline row → chat dock handoff
+beta-review-safety         / /jobs /jobs/1  beta trust copy on three surfaces
+candidate-job-experience   :118 :168 :208  internal/external application behaviour
+mobile-overflow            390px 320px    /post-job horizontal overflow
+phase3a-polish             :31            search empty/results states
+phase3b-detail-post        :27 :164       job detail + card activity stats
+post-job-languages         :30            multi-screen Post Job
+smoke                      :69 :452       /jobs/1, external apply semantics
+```
+
+Failure types: 17 are assertion failures (`toBeVisible`, `element(s) not found`,
+`not.toContainText`) — genuine product contracts, not timing. Exactly one is a
+`page.goto` timeout and may be contention; re-check that one first.
+
+Two historical items no longer reproduce at all (`dev-data-source`,
+`talent-browse`), so the stale list was wrong in both directions.
+
+**Method note for whoever continues.** Host load moved from 3.8 at launch to 19
+during the QA run and was still ~14 during the serial pass. The serial numbers
+are usable anyway because `--workers=1` removes the contention sensitivity and
+because the failures are assertions rather than timeouts — but a genuinely quiet
+host would still be better before fixing the one timeout.
+
+**Note on `beta-review-safety` and `phase3b-detail-post`:** several of these
+concern *fabricated marketplace metrics* (response rates, activity stats). The
+standing product-truth rule says never invent job views, response rates or
+demand. Read those tests before "fixing" them — the correct fix may be removing
+a metric rather than making one appear.
 
 ## Phase 3I atomic checkpoint (RATE-004 — request-body bounds)
 
