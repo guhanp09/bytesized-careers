@@ -5,13 +5,13 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
-LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: Phase 5 — invite-only beta and durable transactional email. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). Read the Phase 5 ledger rows (INVITE-001/002, EMAIL-001..005) before implementing; EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
+LAST COMPLETED ATOMIC SLICE: Phase 5F (INVITE-002) — the invite gate is wired into BOTH signup paths and proven non-vacuous by mutation; INVITE-001, INVITE-002 and EMAIL-001 are RESOLVED
+NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-002 — route authentication email (invitation, verification, reset) through the durable outbox instead of the direct emitter, then EMAIL-003 (event email) and EMAIL-004 (bounce/suppression). Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
+CURRENT ALEMBIC HEAD: 0061_beta_invitations (single head; 0060_email_outbox_lease then 0061)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004. These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
@@ -56,6 +56,69 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 5F checkpoint (INVITE-002 — the gate is wired into both signup paths)
+
+```text
+Commit: "feat(invites): check the invitation at both signup doors"
+Status: COMPLETE. Registration is refused server-side when the beta gate is on and no valid
+        invitation is presented. No migration; behaviour is off by default.
+Setting: settings.invite_only_beta (env INVITE_ONLY_BETA), DEFAULT FALSE. Off = today's behaviour
+        exactly, which is why every existing environment is unaffected by deploying this.
+        NOTE: backend/.env.example could not be updated — that path is denied to tooling
+        (BLOCKED_ENVIRONMENT, already recorded). config.py carries the documentation instead.
+
+One gate, called twice:
+  require_invitation_for_signup(session, email=, token=) in beta_invitation_service.py
+    - returns None when the flag is off (the ONLY case where a missing token is acceptable)
+    - raises InvitationError otherwise, reusing invitation_problem() so the wording, and the
+      refusal to distinguish "wrong address" from "unknown token", are identical to redemption.
+  Call sites, both BEFORE create_user so no account exists when the answer is no:
+    - app/services/auth_service.py register_user()                  (password signup)
+    - app/services/auth_service.py _exchange_verified_google_oauth() (Google signup)
+  Redemption happens in the SAME transaction as user creation, so a crash cannot leave an
+  invitation burned with no account, or an account created from an unburned invitation.
+
+Schema/route: invitation_token (str|None, max_length=512) added to RegisterRequest and
+  OAuthGoogleExchangeRequest; router maps InvitationError -> HTTP 403.
+
+Two copies of an access rule drift and the weaker one becomes the way in. That is why this is a
+single function rather than a check written at each call site.
+
+ALSO IN THIS SLICE — single use is now enforced by the WRITE, not by a read:
+  redeem_invitation() previously read "not yet redeemed" and then wrote, which is check-then-act:
+  two requests carrying the same token can both pass the read before either writes. That is the
+  same defect class as the outbox claim (see Phase 5B) and it was closed the same way —
+    UPDATE beta_invitations SET redeemed_at=, redeemed_user_id=
+     WHERE id= AND redeemed_at IS NULL AND revoked_at IS NULL RETURNING id
+  No row back means someone else won, and the caller gets "already been used". The ORM copy is
+  refreshed afterwards because synchronize_session=False leaves it stale and the caller is handed
+  that object (the same trap that made the outbox retry counter read 0 forever).
+  Address binding already limited the practical exposure — an invitation is valid for one address,
+  and users.email is unique — but "another constraint happens to cover it" is not single use.
+  test_a_redemption_that_races_another_one_loses reproduces the interleaving by redeeming the row
+  out of band while a stale in-memory snapshot is held. Proven non-vacuous by mutation: restore
+  the read-then-write and the second redemption SUCCEEDS (pytest.raises reports DID NOT RAISE).
+
+Backend suite after this slice: 6,856 passed / 64 skipped / 0 failed, uncontended (was 6,845/64).
+Tests: tests/test_beta_invitations.py, 30 cases. TestRegistrationIsActuallyGated drives the real
+  route through the client fixture — a gate that exists but is not called is the usual way
+  "invite-only" turns out to be open.
+Non-vacuity PROVEN by mutation: replacing both require_invitation_for_signup calls with a stub
+  returning None makes the uninvited signup return 200 and fails
+  test_registration_is_refused_without_an_invitation. Restored; 3/3 pass.
+
+Two test traps paid for here:
+  - the API validates with EmailStr, which REFUSES reserved TLDs. `@example.test` (fine in the
+    service tests) is a 422 at the route. API-level tests use @example.com + a uuid suffix,
+    because users persist between runs and a fixed address hits a UNIQUE constraint.
+  - the autouse _isolate fixture must COMMIT its cleanup, not flush. A flush holds the write
+    transaction open, SQLite allows one writer, and the API's own connection then fails with
+    "database is locked" — which looks nothing like an invitation problem.
+
+NEXT (EMAIL-002): route auth email (invite, verification, reset) through the outbox instead of
+  the direct emitter, so delivery survives a crash. The invitation email is the first real sender.
 ```
 
 ## Phase 5E checkpoint (INVITE-001A — invitation model, migration, service)

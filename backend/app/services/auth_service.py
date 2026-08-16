@@ -41,6 +41,10 @@ from app.repositories.auth_repository import (
     OAuthAccountCollisionError,
 )
 from app.schemas.auth import OAuthGoogleExchangeRequest
+from app.services.beta_invitation_service import (
+    redeem_invitation,
+    require_invitation_for_signup,
+)
 from app.services.email_service import capture_dev_auth_email, send_auth_email
 from app.services.google_identity import (
     GoogleIdentityVerifierProtocol,
@@ -439,6 +443,7 @@ class AuthService:
         display_name: str | None = None,
         onboarding_intent: OnboardingIntent = "DECIDE_LATER",
         account_type: PublicAccountType | None = None,
+        invitation_token: str | None = None,
     ) -> RegisterResult:
         normalized_email = self.normalize_email(email)
         existing = await self.repository.get_user_by_email(normalized_email)
@@ -461,6 +466,13 @@ class AuthService:
                 return RegisterResult(created_new_user=False, verification_url=verification_url)
             raise EmailAlreadyExistsError("Email is already registered")
 
+        # Checked here rather than in the router: this is where an account comes
+        # into existence, and a gate that a second caller of this service could
+        # walk past is not a gate.
+        accepted_invitation = await require_invitation_for_signup(
+            self.repository.session, email=normalized_email, token=invitation_token
+        )
+
         normalized_username = await self._validate_available_username(username)
         now = datetime.now(UTC)
         user = await self.repository.create_user(
@@ -474,6 +486,17 @@ class AuthService:
             onboarding_intent=normalized_intent,
             onboarding_intent_selected_at=now,
         )
+        # Consumed in the same transaction that creates the account, so an
+        # invitation can never be spent without a user or a user created without
+        # spending it.
+        if accepted_invitation is not None:
+            await redeem_invitation(
+                self.repository.session,
+                token=invitation_token or "",
+                email=normalized_email,
+                user_id=user.id,
+            )
+
         token = await self.create_email_verification_token(user)
         await self.repository.commit()
         verification_url = self.log_email_verification_link(
@@ -748,6 +771,7 @@ class AuthService:
         identity: VerifiedGoogleIdentity,
     ) -> tuple[User, AuthTokenPair]:
         email = self.normalize_email(identity.email)
+        invitation_token = payload.invitation_token
         oauth_account = await self.repository.get_oauth_account_by_provider_subject(
             provider="google",
             provider_account_id=identity.subject,
@@ -801,6 +825,11 @@ class AuthService:
             )
 
         if user is None:
+            # The same gate as the password path. A closed beta that only checks
+            # one signup route is open through the other.
+            google_invitation = await require_invitation_for_signup(
+                self.repository.session, email=email, token=invitation_token
+            )
             user = await self.repository.create_user(
                 email=email,
                 username=normalized_username,
@@ -808,6 +837,13 @@ class AuthService:
                 password_hash=None,
                 email_verified_at=now,
             )
+            if google_invitation is not None:
+                await redeem_invitation(
+                    self.repository.session,
+                    token=invitation_token or "",
+                    email=email,
+                    user_id=user.id,
+                )
         else:
             if user.email_verified_at is None:
                 user.email_verified_at = now

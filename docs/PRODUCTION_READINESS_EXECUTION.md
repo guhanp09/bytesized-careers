@@ -89,9 +89,9 @@ Locally complete and certified. Every row below is `VALIDATED`; the certificatio
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| INVITE-001 | CRITICAL | Invitations | AUTH-001, AUTH-005 | NOT_STARTED | Email binding, expiry, single use, revocation, concurrency and audit tests | YES | NO | Yes | Yes | — |
-| INVITE-002 | CRITICAL | Registration policy | INVITE-001 | NOT_STARTED | Google and email/password enforcement; existing-user compatibility tests | YES | NO | Yes | Yes | — |
-| EMAIL-001 | CRITICAL | Outbox worker | DEP-002 | NOT_STARTED | Lease, concurrent claim, retry, crash recovery and idempotency tests | YES | YES | Yes | Yes | — |
+| INVITE-001 | CRITICAL | Invitations | AUTH-001, AUTH-005 | VALIDATED | Email binding, expiry, single use, revocation, concurrency and audit tests | YES | NO | Yes | Yes | b141919, then "feat(invites): check the invitation at both signup doors" for atomic single use |
+| INVITE-002 | CRITICAL | Registration policy | INVITE-001 | VALIDATED | Google and email/password enforcement; existing-user compatibility tests | NO | NO | Yes | Yes | "feat(invites): check the invitation at both signup doors" |
+| EMAIL-001 | CRITICAL | Outbox worker | DEP-002 | VALIDATED | Lease, concurrent claim, retry, crash recovery and idempotency tests | YES | YES | Yes | Yes | 95a1a66, ebaf659, 5e0ded7, 5a7725f |
 | EMAIL-002 | CRITICAL | Authentication email | EMAIL-001 | NOT_STARTED | Invite, verification, reset, expiry and delivery-failure tests | POSSIBLE | YES | Yes | Yes | — |
 | EMAIL-003 | HIGH | Event email | EMAIL-001 | NOT_STARTED | Application/hiring/safety notification state and retry tests | POSSIBLE | YES | Yes | Yes | — |
 | EMAIL-004 | HIGH | Bounce/suppression | EMAIL-001 | NOT_STARTED | Provider webhook signature, bounce, complaint and suppression tests | YES | YES | Yes | Yes | — |

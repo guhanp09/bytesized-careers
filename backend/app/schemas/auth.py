@@ -23,6 +23,8 @@ class RegisterRequest(BaseModel):
     onboarding_intent: OnboardingIntent = "DECIDE_LATER"
     # Deprecated compatibility input. Public users are not permanently talent/employer classified.
     account_type: PublicAccountType | None = None
+    #: Required only while the closed beta is on; the server decides, not the client.
+    invitation_token: str | None = Field(default=None, max_length=512)
 
 
 class VerifyEmailRequest(BaseModel):
@@ -81,6 +83,9 @@ class OAuthGoogleExchangeRequest(BaseModel):
     refresh_token: str | None = Field(default=None, max_length=16384)
     expires_at: int | None = None
     scope: str | None = Field(default=None, max_length=4096)
+    #: Only consulted while the closed beta is on, and only for an account that
+    #: does not exist yet. An established user signing in never needs one.
+    invitation_token: str | None = Field(default=None, max_length=512)
 
 
 class AuthUserRead(BaseModel):

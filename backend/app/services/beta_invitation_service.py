@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.beta_invitation import BetaInvitation
@@ -154,9 +154,29 @@ async def redeem_invitation(
         raise InvitationError(problem)
 
     assert invitation is not None  # narrowed by invitation_problem
-    invitation.redeemed_at = moment
-    invitation.redeemed_user_id = user_id
-    await session.flush()
+
+    # Single use is enforced by the WRITE, not by the read above. Reading
+    # "not yet redeemed" and then writing is two steps, and two requests
+    # carrying the same token can both pass the read before either writes —
+    # which is exactly how a one-use code gets used twice. The `redeemed_at IS
+    # NULL` predicate moves the decision into the statement, so the database
+    # picks one winner and the loser gets no row back.
+    claimed = await session.execute(
+        update(BetaInvitation)
+        .where(BetaInvitation.id == invitation.id)
+        .where(BetaInvitation.redeemed_at.is_(None))
+        .where(BetaInvitation.revoked_at.is_(None))
+        .values(redeemed_at=moment, redeemed_user_id=user_id)
+        .returning(BetaInvitation.id)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.scalar_one_or_none() is None:
+        raise InvitationError("This invitation has already been used.")
+
+    # `synchronize_session=False` leaves the in-memory copy stale, and the
+    # caller is handed this object. Refresh so what it reads is what was
+    # written, rather than the snapshot from before the update.
+    await session.refresh(invitation)
     return invitation
 
 
@@ -183,3 +203,36 @@ async def revoke_invitation(
     invitation.revoked_at = moment
     invitation.revoked_reason = reason
     await session.flush()
+
+
+async def require_invitation_for_signup(
+    session: AsyncSession,
+    *,
+    email: str,
+    token: str | None,
+    now: datetime | None = None,
+) -> BetaInvitation | None:
+    """The gate every signup path goes through.
+
+    One function rather than a check at each call site, because two copies of an
+    access rule drift and the weaker one becomes the way in. Both the password
+    and the Google paths call this before an account exists.
+
+    Returns the invitation that was accepted, so the caller can mark it redeemed
+    once it knows the user id. Returns `None` when the beta gate is off, which
+    is the only case where a missing token is acceptable.
+    """
+
+    from app.core.config import settings
+
+    if not settings.invite_only_beta:
+        return None
+
+    if not token:
+        raise InvitationError("An invitation is required to create an account right now.")
+
+    invitation = await find_by_token(session, token)
+    problem = invitation_problem(invitation, email=email, now=now)
+    if problem is not None:
+        raise InvitationError(problem)
+    return invitation

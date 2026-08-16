@@ -72,6 +72,7 @@ from app.services.auth_service import (
     InvalidVerificationTokenError,
     UsernameAlreadyTakenError,
 )
+from app.services.beta_invitation_service import InvitationError
 from app.services.email_service import EmailDeliveryError
 from app.services.google_identity import (
     GoogleIdentityConfigurationError,
@@ -198,7 +199,12 @@ async def register(
             display_name=payload.display_name,
             onboarding_intent=payload.onboarding_intent,
             account_type=payload.account_type,
+            invitation_token=payload.invitation_token,
         )
+    except InvitationError as exc:
+        # 403 rather than 400: the request is well-formed, the caller is simply
+        # not admitted to the closed beta yet.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except EmailAlreadyExistsError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidUsernameError as exc:

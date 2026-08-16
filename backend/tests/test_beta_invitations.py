@@ -14,16 +14,20 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
+from sqlalchemy import update as sa_update
 
+from app.core import config
 from app.models.beta_invitation import BetaInvitation
 from app.models.user import User
 from app.services.beta_invitation_service import (
     InvitationError,
+    find_by_token,
     hash_token,
     invitation_problem,
     issue_invitation,
     normalize_email,
     redeem_invitation,
+    require_invitation_for_signup,
     revoke_invitation,
 )
 
@@ -33,8 +37,16 @@ INVITEE = "invitee@example.test"
 
 @pytest_asyncio.fixture(autouse=True)
 async def _isolate(db_session):
+    """Start each test with no invitations from any earlier one.
+
+    Committed rather than flushed: a flush leaves the write transaction open,
+    and SQLite allows one writer, so the API tests below — which write through
+    their own connection — would fail with "database is locked" rather than
+    anything to do with invitations.
+    """
+
     await db_session.execute(delete(BetaInvitation))
-    await db_session.flush()
+    await db_session.commit()
     yield
 
 
@@ -156,6 +168,51 @@ class TestSingleUse:
 
         assert redeemed.redeemed_user_id == redeemer.id
 
+    async def test_a_redemption_that_races_another_one_loses(
+        self, db_session, redeemer
+    ) -> None:
+        """Two requests with the same token: exactly one may win.
+
+        The interleaving that matters is "both read, then both write". It is
+        reproduced here by loading the invitation, letting another actor redeem
+        the row underneath, and only then redeeming — the in-memory copy still
+        says "not yet used", which is precisely the stale read a racing request
+        would be working from. Enforcement therefore has to live in the write.
+        """
+
+        issued = await issue_invitation(db_session, email=INVITEE, now=T0)
+        await db_session.flush()
+
+        # Our request's view of the world, taken before the other one lands.
+        loaded = await find_by_token(db_session, issued.token)
+        assert loaded is not None and loaded.redeemed_at is None
+
+        other = User(email=f"other-{uuid.uuid4().hex[:8]}@example.test")
+        db_session.add(other)
+        await db_session.flush()
+
+        # The other request wins the row. `synchronize_session=False` keeps our
+        # stale snapshot stale, which is the whole point of the test.
+        await db_session.execute(
+            sa_update(BetaInvitation)
+            .where(BetaInvitation.id == loaded.id)
+            .values(redeemed_at=T0, redeemed_user_id=other.id)
+            .execution_options(synchronize_session=False)
+        )
+
+        with pytest.raises(InvitationError, match="already been used"):
+            await redeem_invitation(
+                db_session, token=issued.token, email=INVITEE, user_id=redeemer.id, now=T0
+            )
+
+        # And the winner keeps it — the loser must not overwrite the record of
+        # who actually used the invitation. `populate_existing` because the
+        # identity map is still holding the deliberately stale copy, and reading
+        # that back would only re-assert what this test set up.
+        settled = await db_session.get(BetaInvitation, loaded.id, populate_existing=True)
+        assert settled is not None
+        assert settled.redeemed_user_id == other.id
+
 
 class TestExpiry:
     async def test_an_expired_invitation_is_refused(self, db_session, redeemer) -> None:
@@ -235,3 +292,154 @@ class TestUnknownTokens:
             await redeem_invitation(
                 db_session, token="", email=INVITEE, user_id=redeemer.id, now=T0
             )
+
+
+class TestTheSignupGate:
+    """`require_invitation_for_signup` is the single gate both signup paths use.
+
+    One function rather than a check copied into each call site: two copies of
+    an access rule drift, and the weaker copy becomes the way in.
+    """
+
+    async def test_the_gate_is_open_when_the_beta_is_not_closed(
+        self, db_session, monkeypatch
+    ) -> None:
+        # Default posture. Existing environments are unchanged by this code
+        # arriving, which is why the flag defaults off.
+        monkeypatch.setattr(config.settings, "invite_only_beta", False)
+
+        assert await require_invitation_for_signup(
+            db_session, email=INVITEE, token=None, now=T0
+        ) is None
+
+    async def test_a_missing_token_is_refused_when_the_beta_is_closed(
+        self, db_session, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+
+        with pytest.raises(InvitationError, match="invitation is required"):
+            await require_invitation_for_signup(db_session, email=INVITEE, token=None, now=T0)
+
+    async def test_an_empty_token_is_refused(self, db_session, monkeypatch) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+
+        with pytest.raises(InvitationError):
+            await require_invitation_for_signup(db_session, email=INVITEE, token="", now=T0)
+
+    async def test_a_valid_invitation_opens_the_gate(self, db_session, monkeypatch) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+        issued = await issue_invitation(db_session, email=INVITEE, now=T0)
+
+        accepted = await require_invitation_for_signup(
+            db_session, email=INVITEE, token=issued.token, now=T0
+        )
+
+        assert accepted is not None and accepted.id == issued.invitation.id
+
+    async def test_someone_elses_invitation_does_not_open_the_gate(
+        self, db_session, monkeypatch
+    ) -> None:
+        # The forwarding case, checked at the gate rather than only at redeem.
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+        issued = await issue_invitation(db_session, email=INVITEE, now=T0)
+
+        with pytest.raises(InvitationError):
+            await require_invitation_for_signup(
+                db_session, email="gatecrasher@example.test", token=issued.token, now=T0
+            )
+
+    async def test_an_expired_invitation_does_not_open_the_gate(
+        self, db_session, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+        issued = await issue_invitation(db_session, email=INVITEE, expires_in_days=1, now=T0)
+
+        with pytest.raises(InvitationError, match="expired"):
+            await require_invitation_for_signup(
+                db_session,
+                email=INVITEE,
+                token=issued.token,
+                now=T0 + timedelta(days=2),
+            )
+
+    async def test_an_already_used_invitation_does_not_open_the_gate(
+        self, db_session, redeemer, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+        issued = await issue_invitation(db_session, email=INVITEE, now=T0)
+        await redeem_invitation(
+            db_session, token=issued.token, email=INVITEE, user_id=redeemer.id, now=T0
+        )
+
+        with pytest.raises(InvitationError, match="already been used"):
+            await require_invitation_for_signup(
+                db_session, email=INVITEE, token=issued.token, now=T0
+            )
+
+
+class TestRegistrationIsActuallyGated:
+    """End-to-end through the API, because the gate only counts if the route uses it.
+
+    Addresses here use a real TLD: the API validates with `EmailStr`, which
+    refuses reserved names like `.test` before any handler runs.
+
+    The service tests above prove the rule; these prove it is wired into the
+    path a real signup takes. A gate that exists and is not called is the most
+    common way "invite-only" turns out to be open.
+    """
+
+    async def test_registration_is_refused_without_an_invitation(
+        self, client, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+
+        suffix = uuid.uuid4().hex[:8]
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": f"crasher{suffix}",
+                "email": f"crasher{suffix}@example.com",
+                "password": "a-strong-password",
+            },
+        )
+
+        assert response.status_code == 403
+        assert "error" in response.json()
+
+    async def test_registration_succeeds_with_a_valid_invitation(
+        self, client, db_session, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(config.settings, "invite_only_beta", True)
+        suffix = uuid.uuid4().hex[:8]
+        issued = await issue_invitation(db_session, email=f"welcome{suffix}@example.com")
+        await db_session.commit()
+
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": f"welcomed{suffix}",
+                "email": f"welcome{suffix}@example.com",
+                "password": "a-strong-password",
+                "invitation_token": issued.token,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+
+    async def test_registration_is_open_when_the_beta_flag_is_off(
+        self, client, monkeypatch
+    ) -> None:
+        # The default posture, and the one every existing environment is in.
+        monkeypatch.setattr(config.settings, "invite_only_beta", False)
+
+        suffix = uuid.uuid4().hex[:8]
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": f"ordinary{suffix}",
+                "email": f"ordinary{suffix}@example.com",
+                "password": "a-strong-password",
+            },
+        )
+
+        assert response.status_code == 200, response.text
