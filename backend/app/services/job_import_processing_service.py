@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+from app.core.job_import_availability import refuse_if_disabled
 from app.models import JobImportDraft
 from app.schemas.job_import import JobImportProviderMetadata
 from app.services.job_import_provider import (
@@ -80,7 +81,12 @@ class JobImportProcessingService:
         )
         current = self._current_outcome(draft)
         if current is not None:
+            # Already prepared. Returned even while the kill switch is off,
+            # because reading a finished draft starts no provider work and
+            # taking it away helps nobody.
             return current
+
+        refuse_if_disabled(operation="job_import.process")
 
         request = await self.import_service.build_extraction_request(
             draft_id,

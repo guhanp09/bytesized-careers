@@ -234,6 +234,16 @@ class Settings(BaseSettings):
         le=3,
         alias="OPENAI_MAX_RETRIES",
     )
+    #: The kill switch for AI job import, and the only one that actually stops
+    #: anything. The frontend flag hides the entry point; it does not close the
+    #: API, so with that alone an incident — a cost spike, a bad prompt, provider
+    #: abuse — can only be ended by a deploy.
+    #:
+    #: Off stops NEW PROVIDER WORK. It deliberately does not confiscate work
+    #: already done: a recruiter whose draft is finished can still read it and
+    #: carry it into Post Job, because that draft exists and nothing is gained
+    #: by taking it away from them.
+    job_import_enabled: bool = Field(default=True, alias="JOB_IMPORT_ENABLED")
     job_import_prompt_version: str = Field(
         default="job-import-text-v6",
         min_length=1,

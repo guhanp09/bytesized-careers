@@ -34,6 +34,7 @@ from app.core.job_import_answer_shapes import (
     matching_choices,
     native_schema_constraints,
 )
+from app.core.job_import_availability import job_import_is_enabled
 from app.core.job_import_conversation import (
     MAX_PROVIDER_CONTINUATIONS,
     ConversationState,
@@ -1792,7 +1793,18 @@ class JobImportConversationService:
     # ------------------------------------------------------------------
 
     def may_call_provider(self, draft: JobImportDraft) -> bool:
-        """The single gate. Every provider call in this flow passes through it."""
+        """The single gate. Every provider call in this flow passes through it.
+
+        The kill switch is answered here rather than beside each caller, for the
+        same reason the state rules are: a second copy of "may we call the
+        provider" is a copy that drifts, and the weaker one becomes the way in.
+        Answering no leaves the conversation exactly as it is — the same
+        outcome as polling or reopening, both of which already resolve to
+        "read stored state and render it".
+        """
+
+        if not job_import_is_enabled():
+            return False
 
         return may_start_provider_stage(
             draft.conversation_state,  # type: ignore[arg-type]

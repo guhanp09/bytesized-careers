@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
 CURRENT PHASE: Phase 6 — AI Job Import hardening
-LAST COMPLETED ATOMIC SLICE: Phase 5I (EMAIL-004) — bounce/complaint suppression with an asymmetric rule (a hard bounce stops auth mail, a complaint does not) and a signed, replay-resistant delivery webhook. INVITE-001, INVITE-002, EMAIL-001, EMAIL-002, EMAIL-003 and EMAIL-004 are VALIDATED
-NEXT ATOMIC SLICE: Phase 6 — AI Job Import hardening. Read the Phase 6 ledger rows first, and the standing product constraint before touching anything: AI Job Import must REMAIN. It may not be removed, permanently disabled, reduced to literal extraction, given a disconnected review UI, or allowed to auto-publish; import is an input method, not a second job editor. Phase 5 is certified locally (see "Phase 5 certification"); EMAIL-005 stays BLOCKED_EXTERNAL, the invitation email is unwritten because nothing issues invitations over HTTP yet, and an operator view of failed/suppressed email rows belongs with the admin panel. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT — the path is denied to tooling, so new settings are documented in backend/app/core/config.py instead).
+LAST COMPLETED ATOMIC SLICE: Phase 6A (AI-011) — AI job import now has a runtime kill switch (JOB_IMPORT_ENABLED, default true) that closes both provider entry points without confiscating drafts already prepared
+NEXT ATOMIC SLICE: Phase 6 continues. Survey first rather than assuming: much of AI-004/005/009 is already implemented in app/integrations/openai/job_import_adapter.py (store=False, OPENAI_MAX_OUTPUT_TOKENS, a measured 90s timeout, one retry for transient failures only), and AI-008 inherits SafeOutboundFetcher from Phase 2. The real gaps look like AI-001 (durable import queue — processing is in-request today), AI-002 (idempotency), AI-003 (quotas/concurrency), AI-004's model allowlist and budget, AI-006 (boot readiness) and AI-010 (evaluation corpus). STANDING PRODUCT CONSTRAINT: AI Job Import must REMAIN — not removed, not permanently disabled, not reduced to literal extraction, no disconnected review UI, never auto-publishing. Import is an input method, not a second job editor. Also open: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004, TRUST-003, CORRECT-006, and backend/.env.example (BLOCKED_ENVIRONMENT — path denied to tooling, so new settings are documented in backend/app/core/config.py).
 CURRENT HEAD: the Phase 5 certification commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0062_email_suppressions (single head; 0060_email_outbox_lease, 0061_beta_invitations, 0062)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -473,6 +473,56 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 `SKIP LOCKED`.
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
+
+## Phase 6A checkpoint (AI-011 — the switch that actually turns AI job import off)
+
+```text
+Commit: "feat(import): give AI job import a switch that actually turns it off"
+Setting: JOB_IMPORT_ENABLED, DEFAULT TRUE. No migration.
+Taken out of order: the ledger lists AI-011 as depending on AI-001, but a kill switch is worth
+more BEFORE a durable queue exists than after, and it depends on nothing AI-001 provides.
+
+WHAT WAS ACTUALLY MISSING: `ENABLE_JOB_IMPORT` in lib/importJob/flag.ts hides the frontend entry
+point and leaves every /api/v1/job-imports route open. Anyone with a session or a saved request
+can still spend provider budget, so ending an incident meant shipping a deploy — the slowest
+response to the fastest kind of problem.
+
+WHAT "OFF" MEANS, deliberately narrow: no NEW provider work starts. It does NOT confiscate work
+already done. A prepared draft can still be read and carried into Post Job, because that draft
+exists, it cost what it cost, and taking it away helps nobody. Reading stored state has always
+resolved to "read stored state and render it" (the pause invariant), so this fits the existing
+model rather than bolting a second one beside it.
+
+TWO PROVIDER ENTRY POINTS, both closed:
+  app/services/job_import_processing_service.py  process()  -> refuse_if_disabled(), 503
+  app/services/job_import_conversation_service.py may_call_provider() -> False when disabled
+The check lives inside may_call_provider rather than beside its callers, for the same reason the
+state rules do: a second copy of "may we call the provider" drifts, and the weaker copy becomes
+the way in. app/core/job_import_availability.py is the one home for the switch, read at CALL time
+— captured at import time it would need a restart, and a switch that needs a restart is not one.
+
+UI: components/import-job/ImportJobPageClient.tsx maps JOB_IMPORT_DISABLED to its own sentence.
+This is required, not cosmetic. That component deliberately refuses to render backend prose for
+import failures, so without a case the refusal falls through to "try again" — the one thing that
+cannot work while the feature is off, and an invitation to keep retrying through the incident
+that caused it to be switched off. The backend message stays provider-neutral too; a test asserts
+it names no provider, model, or flag.
+
+TESTING LESSON WORTH KEEPING: the first version drove conversation/begin over HTTP and asserted
+the provider call count stayed at zero. It passed with the switch REMOVED — the fixture drafts
+sit in states that never start provider work, so the assertion could not fail. Replaced with a
+direct check on may_call_provider for the two states that DO start work (source_received,
+resuming), which fails correctly under mutation. The HTTP sweep is kept as a safety net for a
+future route that starts work without asking, and is labelled as exactly that.
+
+Non-vacuity PROVEN by mutation: removing refuse_if_disabled fails 3 tests; removing the
+conversation gate fails both parametrised gate tests.
+
+NOT COVERED BY A UNIT TEST, stated plainly: the frontend copy. readableImportError is private to
+ImportJobPageClient.tsx and is not exported, so reaching it would mean extracting it from a
+mature component — a bigger change than this slice justifies. It is typechecked, and the code
+string it matches is asserted on the backend side.
+```
 
 ## Phase 5 certification — LOCALLY COMPLETE
 

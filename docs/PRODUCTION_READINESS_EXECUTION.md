@@ -113,7 +113,7 @@ Locally complete and certified. Every row below is `VALIDATED` except EMAIL-005,
 | AI-008 | CRITICAL | Import SSRF | WEB-004, AI-001 | NOT_STARTED | URL import inherits complete outbound-fetch security suite | NO | NO | Yes | Yes | — |
 | AI-009 | HIGH | Provider privacy | AI-001 | NOT_STARTED | Payload minimization, log redaction, `store` configuration and retention-copy tests | NO | YES | Yes | Yes | — |
 | AI-010 | HIGH | Evaluation corpus | AI-001 | NOT_STARTED | Literal, inference, currency, ambiguity, conflict, missing, malformed, injection, long-input fixtures | NO | NO | Yes | Yes | — |
-| AI-011 | CRITICAL | Kill switch | AI-001 | NOT_STARTED | Runtime disable, in-flight behavior, UI message, audit and recovery tests | POSSIBLE | YES | Yes | Yes | — |
+| AI-011 | CRITICAL | Kill switch | AI-001 | VALIDATED | Runtime disable, in-flight behavior, UI message, audit and recovery tests | NO | NO | Yes | Yes | "feat(import): give AI job import a switch that actually turns it off" — JOB_IMPORT_ENABLED, default true; taken out of its AI-001 dependency because a kill switch is worth more before a durable queue than after |
 
 ## Phase 7 — Durable media storage
 

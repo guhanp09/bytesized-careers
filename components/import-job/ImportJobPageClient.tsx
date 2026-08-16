@@ -105,6 +105,13 @@ function readableImportError(error: unknown, sourceType: EntryMode): string {
     const detail = error instanceof BackendRequestError ? error.message?.trim() : "";
     if (detail) return detail;
   }
+  // Paused, not broken. Without its own case this lands in the generic failure
+  // copy below, which tells a recruiter to try again — the one thing that
+  // cannot work while the feature is switched off, and an invitation to keep
+  // retrying through whatever incident caused it to be switched off.
+  if (code === "JOB_IMPORT_DISABLED") {
+    return "Preparing drafts automatically is paused right now. You can write your job in the usual way, and anything already prepared is still here.";
+  }
   if (code === "JOB_IMPORT_URL_AUTH_REQUIRED") {
     return "This page blocks automated access. Paste the job text instead.";
   }
