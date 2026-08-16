@@ -143,7 +143,7 @@ Locally complete and certified. The architecture was already the one this phase 
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| PRIV-001 | CRITICAL | Legal acceptance | AUTH-005 | NOT_STARTED | Versioning, acceptance, reacceptance and audit tests | YES | NO | Yes | Yes | — |
+| PRIV-001 | CRITICAL | Legal acceptance | AUTH-005 | IMPLEMENTED | Versioning, acceptance, reacceptance and audit tests | YES | NO | Yes | Yes | "feat(legal): record which version someone agreed to, not that they agreed" — migration 0065, one row per (user, document, version), idempotent by unique constraint, superseded acceptance counts for nothing. Versions live in CODE so a running server cannot reference wording it does not ship. The document TEXT is LEGAL-001 and remains external; the API surface that presents outstanding documents is the next slice |
 | PRIV-002 | CRITICAL | Data export | PRIV-001, MEDIA-001 | NOT_STARTED | Reauthentication, complete archive, authorization and expiry tests | YES | YES | Yes | Yes | — |
 | PRIV-003 | CRITICAL | Account deletion | PRIV-001 | NOT_STARTED | Immediate hiding, suspension, anonymization/deletion, retry and exception tests | YES | YES | Yes | Yes | — |
 | PRIV-004 | HIGH | Retention/legal holds | PRIV-003 | NOT_STARTED | Policy scheduler, hold precedence, release and audit tests | YES | YES | Yes | Yes | — |

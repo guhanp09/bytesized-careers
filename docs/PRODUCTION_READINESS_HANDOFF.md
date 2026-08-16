@@ -991,6 +991,43 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9A checkpoint (PRIV-001 — versioned legal acceptance)
+
+```text
+COMMIT: "feat(legal): record which version someone agreed to, not that they agreed"
+MIGRATION: 0065_legal_acceptances, parents 0064, SINGLE HEAD, new table only.
+BROAD: full backend 7,137 passed / 64 skipped / 0 failed. COLLECTION 7,185 -> 7,201 (+16).
+
+WHY A TABLE AND NOT A FLAG: the question asked later is never "did they accept". It is "what did
+they accept, and when", usually by someone establishing whether a specific person saw a specific
+clause. A boolean overwritten at the next version change cannot answer that and cannot be
+reconstructed afterwards. Rows are written, never updated.
+
+THE RULE (app/core/legal_documents.py, pure): outstanding_documents(accepted) compares against
+the CURRENT version, so someone who accepted last year's terms is treated exactly like someone
+who accepted nothing. Anything softer lets a change to the terms take effect without agreement.
+Mutation-proven: relaxing it to "any acceptance counts" fails two tests.
+
+VERSIONS LIVE IN CODE, not in the database. A document's wording ships with the release that
+references it, so the version a running server asks for is always one whose text exists. A
+database-held current version could name a document this build cannot render.
+Versions are DATES (2026-06-01) rather than counters: acceptance records get read by people
+asking "what were they shown in June".
+
+IDEMPOTENT BY CONSTRUCTION: INSERT ... ON CONFLICT DO NOTHING on (user, document, version). A
+double-click or client retry is ONE agreement; a second row would suggest a separate act of
+consent that never happened. Not "select then insert", which races exactly the double-click it
+is meant to survive.
+
+DELIBERATELY ABSENT: any legal wording. A test asserts the module contains none — writing and
+reviewing the text is LEGAL-001/002 and external, and a build must not ship prose nobody
+approved. The version registry is the machinery that will carry whatever the wording becomes.
+
+NEXT READY: the acceptance API surface (present outstanding documents, record acceptance), then
+PRIV-006 notification consent, PRIV-002 export, PRIV-003 deletion. SURVEY FIRST — the admin
+panel already has an append-only audit rule and suspension enforcement.
+```
+
 ## Phase 8 certification — LOCALLY COMPLETE
 
 ```text
