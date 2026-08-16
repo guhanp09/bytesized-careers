@@ -474,6 +474,36 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6F checkpoint (AI-001D — the sweep for imports nobody is watching)
+
+```text
+SLICE: AI-001D. COMMIT: "feat(import): settle the imports nobody is watching"
+MIGRATION: none. FILES: app/services/job_import_sweeper.py (new),
+  settle_as_failed() added to job_import_execution_repository, tests/test_job_import_sweeper.py (14).
+FOCUSED: sweeper 14, plus claim/lease/terminal/checkpoint dependents green.
+
+THE DESIGN DECISION, and it is the whole slice: THE SWEEP NEVER CALLS THE PROVIDER.
+It settles a stranded attempt into processing_failed and schedules when it may be tried again;
+it does not try again itself. Re-running an import unattended would spend money for someone who
+is not there to see the result and hand them a draft they did not ask for. The recruiter, or
+their next request, decides whether to spend again.
+That also answers the kill-switch-while-queued question BY CONSTRUCTION rather than by a flag:
+an incident switch must stop provider work already queued, and a sweep that invokes no provider
+cannot violate that. Running it while the switch is off is actively useful — rows stop claiming
+to be in progress while the feature is paused. A test asserts both halves.
+
+SESSION FACTORY IS INJECTED, never imported. A worker that reaches for the configured engine
+cannot be pointed at a disposable database by a test — which is exactly how a test once wrote a
+row into dev.db. A structural test asserts the module never imports SessionLocal.
+
+NOT WIRED TO STARTUP YET. run_import_sweeper_forever exists and is tested; nothing runs it. That
+is the next slice, and it should follow the EMAIL_WORKER_IN_PROCESS pattern (off by default, own
+process preferred) rather than silently starting a second background loop in the API.
+
+NEXT READY: AI-001E — run the sweeper (setting + startup wiring, mirroring Phase 5), then AI-006
+queue readiness now that a queue exists, then AI-002 idempotency review against client_request_id.
+```
+
 ## Phase 6E checkpoint (AI-001C — the claim is wired into the request path)
 
 ```text

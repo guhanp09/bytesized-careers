@@ -244,6 +244,52 @@ async def schedule_retry_after_failure(
     return next_attempt_at
 
 
+async def settle_as_failed(
+    session: AsyncSession,
+    draft_id: uuid.UUID,
+    *,
+    now: datetime,
+    worker_id: str,
+) -> datetime | None:
+    """Write the truthful end state onto an attempt nobody finished.
+
+    Scoped to `worker_id` so this can only settle a row this sweep actually
+    claimed. Without that, a slow sweep could overwrite the state of an attempt
+    that has since been taken over and succeeded.
+
+    The status is set here rather than through the import service because the
+    service's transitions all take an owner and an attempt id, and a sweep has
+    neither: the recruiter is gone and the attempt that would have reported is
+    the one that died.
+    """
+
+    found = await session.execute(
+        select(JobImportDraft.processing_attempts).where(JobImportDraft.id == draft_id)
+    )
+    attempts = found.scalar_one_or_none()
+    if attempts is None:
+        return None
+
+    next_attempt_at = (
+        now + timedelta(seconds=retry_delay_seconds(attempts))
+        if attempts_remain(attempts)
+        else None
+    )
+    await session.execute(
+        update(JobImportDraft)
+        .where(JobImportDraft.id == draft_id)
+        .where(JobImportDraft.processing_worker_id == worker_id)
+        .values(
+            processing_status="processing_failed",
+            processing_worker_id=None,
+            processing_lease_expires_at=None,
+            processing_next_attempt_at=next_attempt_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return next_attempt_at
+
+
 async def release_expired_claim(
     session: AsyncSession,
     draft_id: uuid.UUID,
