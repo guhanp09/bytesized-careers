@@ -259,6 +259,35 @@ class JobImportDraft(Base):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Durable execution state for the extraction attempt.
+    #
+    # `processing_status == "processing"` used to be the whole story, and it
+    # cannot answer the only question that matters when something goes wrong:
+    # is an attempt running right now, or did the process holding it die forty
+    # minutes ago? Without an answer, a stranded draft polls forever and nothing
+    # can retry it — the recruiter's "loading" never ends and no operator can
+    # tell why.
+    #
+    # `processing_lease_expires_at` is the answer, and it is deliberately a
+    # clock rather than a worker announcing its own death: a process that
+    # crashes announces nothing. Attempts move out of provider_metadata JSON and
+    # into a column so the bound can be enforced and the stranded can be found
+    # by a query rather than by loading every row and parsing JSON.
+    processing_lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    #: Which worker holds it — for tracing who went quiet, never for deciding
+    #: ownership. Only the lease decides that.
+    processing_worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: Provider attempts, not requests. A retry reuses the draft, so the count
+    #: stays with the import and duplicate drafts cannot appear.
+    processing_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    #: When a failed attempt becomes eligible again. NULL means "not waiting".
+    processing_next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     applied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

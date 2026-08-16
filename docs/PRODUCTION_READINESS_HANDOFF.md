@@ -474,6 +474,46 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6C checkpoint (AI-001A — durable execution state for an import attempt)
+
+```text
+SLICE: AI-001A — schema + pure execution rules. No behaviour change yet.
+STATUS: committed. AI-001 stays IN_PROGRESS.
+COMMIT: "feat(import): let a stranded import be found and retried"
+MIGRATION: 0063_job_import_execution_lease, parents 0062, SINGLE HEAD. Expand only: four
+  nullable/defaulted columns + two indexes on job_import_drafts. No data statement, so schema and
+  code deploy in either order. Offline SQL render verified; no PostgreSQL harness (Docker absent).
+
+THE DEFECT: an import is a request-thread operation. If the process died mid-call the draft stayed
+at processing_status='processing' and nothing had reason to look at it again — the recruiter's
+screen said "preparing your draft" forever. That is worse than an error: it is indistinguishable
+from slow success, so nobody reports it and nothing retries it.
+
+NEW COLUMNS (job_import_drafts): processing_lease_expires_at, processing_worker_id,
+  processing_attempts, processing_next_attempt_at.
+  The lease EXPIRES rather than being released — a process that crashes releases nothing.
+  LEASE_SECONDS=300, deliberately > provider ceiling (90s) x2: reclaiming a merely-slow attempt
+  turns one import into two provider calls and two bills. A test pins that inequality.
+  attempts moved OUT of provider_metadata JSON into a column, because a bound in a JSON blob
+  cannot be enforced by a query and the rows worth finding are the ones nobody is loading.
+  Existing rows start at 0 — no backfill, since no consumer reads the column yet.
+
+RULES: app/core/job_import_execution.py — pure, no session. may_start_attempt / is_stranded /
+  lease_is_live / retry_delay_seconds. MAX_ATTEMPTS=5, backoff 30s..900s, deterministic.
+  Deliberately does NOT fold in the kill switch or ownership: three questions in one function is
+  a function trusted for none of them.
+
+TESTS: tests/test_job_import_execution_rules.py (20) + tests/test_job_import_execution_lease_migration.py (7).
+  The migration guard derives "columns some migration creates" by PARSING THE MIGRATION CHAIN,
+  never from the model — a model-derived baseline agrees with itself. Proven non-vacuous by
+  mutation: an injected model-only column fails it with assert not {'drift_probe'}.
+  It also guards its own parser (a regex matching nothing would make everything vacuously pass).
+
+NEXT READY: AI-001B — atomic claim (UPDATE ... WHERE eligible RETURNING; never read-then-write),
+  then AI-001C wiring, AI-001D worker + kill-switch-while-queued semantics.
+RESUME: cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_job_import_execution_rules.py -q
+```
+
 ## Phase 6B checkpoint (AI-004 partial, AI-006 partial — a model allowlist and a readiness probe)
 
 ```text
