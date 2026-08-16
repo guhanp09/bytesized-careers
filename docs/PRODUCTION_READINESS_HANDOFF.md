@@ -77,6 +77,24 @@ adaptive-profile-overview (3 failures) — FIXED, commit "test(profile): point t
   7/7 pass serially.
 ```
 
+candidate-job-experience (3 failures) — FIXED, commit "test(jobs): assert the application contract the product actually has"
+  Three separate causes, none a product defect:
+  (a) :118 expected "9 requested details"; the rewritten fixture gives job 1 eleven. Count updated.
+  (b) :168 asserted job 4 opens https://example.com/... in a new tab. That contract was
+      RETIRED on purpose — `applicationPreflightForJob` pins `mode: "internal"` and nulls
+      `externalUrl`, commenting that a stored external mode "belongs to some other hiring
+      process the platform never saw and cannot record" and that honouring it "let an old
+      record send candidates off the platform". The fixture still carries the old field, so
+      job 4 is the exact regression case; the test now asserts the stored URL never becomes a
+      link and no popup occurs. Safety property preserved, correctly aimed.
+  (c) :208 used `getByText(/^Apply by /)`. The deadline is now folded into the application
+      instructions by design ("a deadline is part of the instructions, not a row of its own"),
+      so the element starts with the how-to-apply sentence. Now asserts the deadline is visible
+      and has not lapsed, which is stricter than the anchor was.
+  A disclosure I briefly added to JobActionsPanel was reverted once the code showed external
+  apply is a removed feature rather than a missing disclosure.
+  7/7 pass serially.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

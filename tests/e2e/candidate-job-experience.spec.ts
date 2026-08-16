@@ -143,7 +143,7 @@ test.describe("candidate V3 job experience", () => {
     await expect(modal.getByRole("textbox", { name: "Expected rate amount" })).toBeFocused();
     await expect(modal.getByRole("region", { name: "Application overview" })).toContainText("Paid trial");
     await expect(modal.getByRole("region", { name: "Application overview" })).toContainText(
-      "9 requested details",
+      "11 requested details",
     );
     await expect(
       modal.getByRole("region", { name: "Application overview" }),
@@ -165,49 +165,48 @@ test.describe("candidate V3 job experience", () => {
     await expect(page).toHaveURL(/\/jobs\/1$/);
   });
 
-  test("external-only jobs open the declared site and never create an internal application", async ({
-    context,
+  test("a job stored with an external application mode still applies through CreatorJobs", async ({
     page,
   }) => {
-    await context.route("https://example.com/**", async (route) => {
-      await route.fulfill({ status: 200, contentType: "text/html", body: "<title>External application</title>" });
-    });
-
-    const internalApplicationPosts: string[] = [];
-    page.on("request", (request) => {
-      const url = new URL(request.url());
-      if (request.method() === "POST" && url.pathname === "/api/v1/jobs/4/applications") {
-        internalApplicationPosts.push(url.pathname);
-      }
-    });
+    // This used to assert the opposite: that job 4 sent the candidate to
+    // https://example.com/creatorjobs-demo/thumbnail-application in a new tab.
+    // That contract was deliberately retired. `applicationPreflightForJob` now
+    // pins `mode: "internal"` and drops `externalUrl`, and says why — a stored
+    // external mode "belongs to some other hiring process the platform never saw
+    // and cannot record", so honouring it is what "let an old record send
+    // candidates off the platform". The fixture still carries the old field,
+    // which makes job 4 the exact regression case worth keeping.
+    const offPlatformNavigations: string[] = [];
+    page.on("popup", (popup) => offPlatformNavigations.push(popup.url()));
 
     await page.goto("/jobs/4", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/jobs\/4$/);
-    await expect(page.getByText("Apply on an external site", { exact: true })).toBeVisible();
-    await expect(page.getByText("This opens another site. CreatorJobs does not receive or track the application.")).toBeVisible();
 
-    const externalAction = page.locator('a[data-testid="job-apply-button"]:visible');
-    await expect(externalAction).toHaveText("Continue to application");
-    await expect(externalAction).toHaveAttribute(
-      "href",
-      "https://example.com/creatorjobs-demo/thumbnail-application",
-    );
-    await expect(externalAction).toHaveAttribute("target", "_blank");
+    // The stored external URL must not become a link, anywhere on the page.
+    await expect(
+      page.locator('a[href="https://example.com/creatorjobs-demo/thumbnail-application"]')
+    ).toHaveCount(0);
+    await expect(page.locator('a[data-testid="job-apply-button"]')).toHaveCount(0);
 
-    const popupPromise = page.waitForEvent("popup");
-    await externalAction.click();
-    const externalPage = await popupPromise;
-    await expect(externalPage).toHaveURL("https://example.com/creatorjobs-demo/thumbnail-application");
-    await externalPage.close();
-    await expect(page).toHaveURL(/\/jobs\/4$/);
+    // What the candidate gets instead is the ordinary internal application.
+    const applyButton = page.locator('[data-testid="job-apply-button"]:visible');
+    await expect(applyButton).toHaveText("Apply");
+    await expect(applyButton).toBeEnabled();
 
-    await page.waitForTimeout(100);
-    expect(internalApplicationPosts).toEqual([]);
+    expect(offPlatformNavigations).toEqual([]);
   });
 
   test("published demo jobs keep a future deadline and an available application path", async ({ page }) => {
     await page.goto("/jobs/3", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText(/^Apply by /).first()).toBeVisible();
+    // The deadline is no longer its own row. `applicationPreflightForJob` folds
+    // it into the application instructions on purpose — "a deadline is part of
+    // the instructions, not a row of its own" — so the old `/^Apply by /` anchor
+    // can never match: the element now starts with the how-to-apply sentence.
+    // Still asserted, and slightly harder than before: the deadline is present
+    // AND has not lapsed, since an expired one renders as "Closed …" instead.
+    const deadlineText = page.getByText(/Apply by /).first();
+    await expect(deadlineText).toBeVisible();
+    await expect(deadlineText).not.toContainText(/Closed/i);
     await expect(page.locator('[data-testid="job-apply-button"]:visible')).toHaveText("Apply");
     await expect(page.locator('[data-testid="job-apply-button"]:visible')).toBeEnabled();
   });
