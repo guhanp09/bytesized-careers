@@ -190,3 +190,60 @@ class TestAFailedAttemptSaysWhenToTryAgain:
 
         assert retried.status_code == 200
         assert retried.json()["outcome"] == "processed"
+
+
+@pytest.mark.asyncio
+class TestARepeatNeverSpendsTwice:
+    """The property AI-002 is actually about, stated as a call count.
+
+    Creation idempotency already exists and is tested elsewhere: a duplicate
+    source or draft request returns the same record. What is asserted here is
+    the expensive half — that asking again for a draft that already exists does
+    not buy a second one.
+    """
+
+    async def test_processing_an_already_processed_draft_calls_nothing(
+        self,
+        client: AsyncClient,
+        provider_override,  # noqa: F811
+    ) -> None:
+        headers, _owner = await _auth(client, "import-lease-repeat")
+        _source, draft = await _source_and_draft(client, headers, "leaserepeat")
+        path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
+
+        class CountingProvider(FakeProvider):
+            calls = 0
+
+            async def extract(self, request):
+                CountingProvider.calls += 1
+                return await super().extract(request)
+
+        provider_override(CountingProvider())
+
+        first = await client.post(path, headers=headers, json={})
+        second = await client.post(path, headers=headers, json={})
+        third = await client.post(path, headers=headers, json={})
+
+        assert first.json()["outcome"] == "processed"
+        assert second.json()["outcome"] == "already_processed"
+        assert third.json()["outcome"] == "already_processed"
+        assert CountingProvider.calls == 1
+
+    async def test_a_repeat_does_not_consume_another_attempt(
+        self,
+        client: AsyncClient,
+        provider_override,  # noqa: F811
+    ) -> None:
+        """Attempts bound spend, so an answer that costs nothing must not spend
+        one — otherwise five refreshes would exhaust a working import."""
+
+        headers, _owner = await _auth(client, "import-lease-noattempt")
+        _source, draft = await _source_and_draft(client, headers, "leasenoattempt")
+        path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
+        provider_override(FakeProvider())
+
+        await client.post(path, headers=headers, json={})
+        await client.post(path, headers=headers, json={})
+        await client.post(path, headers=headers, json={})
+
+        assert (await _stored(draft["id"])).processing_attempts == 1
