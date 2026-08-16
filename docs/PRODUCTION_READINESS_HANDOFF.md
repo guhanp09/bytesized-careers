@@ -58,6 +58,37 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5E checkpoint (INVITE-001A — invitation model, migration, service)
+
+```text
+Status: COMPLETE for issue/redeem/revoke mechanics. Registration ENFORCEMENT (INVITE-002) is next.
+Commit: "feat(invites): bind an invitation to one address and one use"
+Migration: 0061_beta_invitations, parents 0060_email_outbox_lease, single head. New table only.
+New: backend/app/models/beta_invitation.py, backend/app/services/beta_invitation_service.py
+     issue_invitation -> IssuedInvitation(invitation, token)  [token returned ONCE, never stored]
+     find_by_token / invitation_problem(pure) / redeem_invitation / revoke_invitation
+Tests: 19 cases. Ruff clean on changed files.
+
+Security decisions, each aimed at a specific bypass:
+  - token stored as SHA-256 only; the raw value exists in the email and nowhere else, so a backup,
+    log or admin screen cannot leak a working credential. Nothing here can recover a token.
+  - invitation is BOUND to an email; a forwarded code is refused. Addresses compared casefolded
+    and trimmed so the same mailbox in different casing still works.
+  - "wrong address" returns the SAME message as "unknown token" — distinguishing them confirms the
+    code is real and hands over half the answer. A test asserts the two messages are identical.
+  - single use recorded via redeemed_at/redeemed_user_id, so a replay is refused by stored fact.
+  - expiry required; revocation keeps a reason for audit; revoking an ALREADY-REDEEMED invitation
+    is a deliberate no-op (it would imply un-creating the account, which this does not do).
+  - email indexed but NOT unique: re-inviting after expiry is ordinary, and uniqueness would force
+    deleting the audit trail or refusing a legitimate second invitation.
+
+Test note: redeemed_user_id is a real FK, so redemption tests need an actual User row — an invented
+uuid4 raises IntegrityError. That is the constraint doing its job; there is a `redeemer` fixture.
+
+NEXT (INVITE-002): enforce at registration. Both paths must check server-side — password signup in
+backend/app/api/v1/routers/auth.py register(), and the Google path. A UI-only gate is not a gate.
+```
+
 ## Phase 5D checkpoint (EMAIL-001E/F — provider seam and the worker)
 
 ```text

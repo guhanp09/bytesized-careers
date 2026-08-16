@@ -1,5 +1,6 @@
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.auth_session import AuthRefreshCredential, AuthSession
+from app.models.beta_invitation import BetaInvitation
 from app.models.conversation import Conversation, Message
 from app.models.email_outbox import EmailOutbox
 from app.models.email_verification_token import EmailVerificationToken
@@ -47,6 +48,7 @@ __all__ = [
     "AuthSession",
     "Conversation",
     "Message",
+    "BetaInvitation",
     "EmailOutbox",
     "EmailVerificationToken",
     "HiringIdentity",
