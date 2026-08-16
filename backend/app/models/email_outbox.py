@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -45,3 +45,27 @@ class EmailOutbox(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Delivery bookkeeping. Separate from the intent above: everything here is
+    # about the attempt to send, and a row is still a complete record of what
+    # the platform meant to send with all of it null.
+    #
+    # `leased_until` is the only thing that decides reclaimability — a worker
+    # that dies holding a lease strands nothing, because the lease lapses on a
+    # clock rather than on the worker announcing its own death. `leased_by` is
+    # for tracing which worker went quiet, never for deciding ownership.
+    leased_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    leased_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    #: Provider attempts, not enqueues. A retry reuses this row so the count
+    #: stays with the intent and duplicates cannot appear.
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: Set once the provider accepts the message, so a later bounce or complaint
+    #: can be matched back to it.
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

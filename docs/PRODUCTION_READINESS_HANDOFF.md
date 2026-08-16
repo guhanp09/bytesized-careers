@@ -58,6 +58,34 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5A checkpoint (EMAIL-001A — expand-only outbox lease schema)
+
+```text
+Status: COMPLETE. Commit: "feat(email): give the outbox the state a durable worker needs"
+HEAD before: e4bccb9b6844f315118c34480b7e840ff26f78a0
+Migration: 0060_email_outbox_lease, parents 0059_oauth_connection_events, single head preserved.
+Adds: leased_by, leased_until, attempts (NOT NULL server_default 0), next_attempt_at,
+      provider_message_id; indexes ix_email_outbox_claimable (status, next_attempt_at) and
+      ix_email_outbox_leased_until.
+Expand-only: every column nullable or defaulted, no status touched, no data statements — schema
+and worker can deploy in either order.
+Files: backend/alembic/versions/0060_email_outbox_lease.py, backend/app/models/email_outbox.py,
+       backend/tests/test_email_outbox_lease_migration.py (11 cases)
+Tests: 11 focused; complete backend 6,770 passed / 64 skipped / 0 failed (was 6,759 + 11); Ruff clean.
+
+MIGRATION EXECUTION IS BLOCKED_ENVIRONMENT — do not mistake this for validated.
+  No local postgres/psql/initdb binaries, Docker denied, and the chain contains a JSONB column
+  SQLite cannot compile (`jobs.platforms`), so `alembic upgrade head` cannot run locally at all.
+  Upgrade/downgrade/re-upgrade and SKIP LOCKED semantics all need disposable PostgreSQL.
+
+WHY THE PARITY TEST IS SHAPED THE WAY IT IS: tests build schema with create_all, so a column added
+to the model and forgotten in a migration passes all 6,770 tests and is absent in production.
+There is no other local signal, because migrations cannot execute. The test therefore compares the
+model's FULL column set against PRE_LEASE_COLUMNS plus what 0060 adds. A first version compared a
+hardcoded list to itself and passed a deliberately injected model-only column — verified by
+mutation, rewritten, and re-verified failing with `assert not {'drift_probe'}`.
+```
+
 ## Phase 5 gap analysis — EMAIL-001 durable outbox (research done, start here)
 
 Do not begin by designing an outbox. One already exists and is wired in; the gap is narrower
