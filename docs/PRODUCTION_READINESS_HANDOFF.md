@@ -58,6 +58,37 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5 gap analysis — EMAIL-001 durable outbox (research done, start here)
+
+Do not begin by designing an outbox. One already exists and is wired in; the gap is narrower
+than the ledger row implies.
+
+```text
+EXISTS: backend/app/models/email_outbox.py (EmailOutbox)
+  id, user_id, to_email, event_key, template_key, subject, preview, body, cta_url,
+  metadata_json, dedupe_key (UNIQUE -> idempotency already covered),
+  status (queued|mocked|sent|failed|skipped), error, created_at, processed_at
+  Consumers: app/db/qa_scenarios.py, app/api/v1/routers/dev_emails.py, app/api/v1/routers/admin.py
+  Auth emails deliberately bypass it and use email_service.send_auth_email.
+
+MISSING for EMAIL-001 ("lease, concurrent claim, retry, crash recovery, idempotency"):
+  - lease:   leased_until (timestamptz, nullable, indexed), leased_by (worker identity)
+  - retry:   attempts (int, default 0), next_attempt_at (timestamptz, indexed)
+  - provider: provider_message_id — needed later by EMAIL-004 to correlate bounces
+  - the atomic claim itself: SELECT ... FOR UPDATE SKIP LOCKED, or an UPDATE ... RETURNING
+    guarded on (status='queued' AND next_attempt_at <= now() AND (leased_until IS NULL OR
+    leased_until < now())). A read-then-write claim has the same defect RATE-001 is blocked on.
+```
+
+**Next slice is a migration**, so: `alembic heads` is `0059_oauth_connection_events` (single head)
+and the new revision parents it. Expand-only — add nullable columns with server defaults, leave
+`status` alone, and do not touch the three existing consumers in the same slice. The atomic claim
+and its concurrency tests are the slice after, and those want the disposable PostgreSQL harness
+(`backend/scripts/test_interaction_status_postgres.sh`) because SQLite will not exercise
+`SKIP LOCKED`.
+
+EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
+
 ## Phase 4 certification — LOCALLY COMPLETE
 
 ```text
