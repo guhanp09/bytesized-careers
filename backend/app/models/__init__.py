@@ -25,6 +25,7 @@ from app.models.marketplace import (
     TalentInterest,
     TalentListing,
 )
+from app.models.notification_preference import NotificationOptOut
 from app.models.oauth_account import OAuthAccount
 from app.models.oauth_connection_event import OAuthConnectionEvent
 from app.models.password_reset_token import PasswordResetToken
@@ -56,6 +57,7 @@ __all__ = [
     "EmailSuppression",
     "JobImportQuotaCounter",
     "LegalAcceptance",
+    "NotificationOptOut",
     "EmailVerificationToken",
     "HiringIdentity",
     "InteractionInterview",

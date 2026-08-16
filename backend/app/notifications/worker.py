@@ -21,6 +21,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.notification_consent import may_send as consent_allows
 from app.notifications.provider import EmailProvider, ProviderOutcome
 from app.repositories.email_outbox_delivery import (
     mark_retryable_failure,
@@ -29,6 +30,7 @@ from app.repositories.email_outbox_delivery import (
     mark_terminal_failure,
 )
 from app.repositories.email_outbox_repository import claim_due_emails
+from app.repositories.notification_preference_repository import opted_out_categories
 from app.services.email_suppression_service import may_send
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,17 @@ async def process_outbox_once(
         decision = await may_send(session, email=row.to_email, event_key=row.event_key)
         if not decision.allowed:
             await mark_suppressed(session, row_id, reason=decision.reason, now=now)
+            run.suppressed += 1
+            continue
+
+        # Consent, checked in the same place and for the same reason as
+        # suppression: an address can be unsubscribed after its mail is queued,
+        # and that queued mail is exactly what must not go out. Essential mail
+        # is unaffected — see notification_consent for why that asymmetry
+        # exists.
+        refused = await opted_out_categories(session, row.user_id)
+        if not consent_allows(row.event_key, opted_out_categories=refused):
+            await mark_suppressed(session, row_id, reason="Recipient opted out.", now=now)
             run.suppressed += 1
             continue
 

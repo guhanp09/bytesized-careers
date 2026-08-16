@@ -991,6 +991,48 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9B checkpoint (PRIV-006 — what a person can switch off)
+
+```text
+COMMIT: "feat(consent): let people switch off the mail we chose to send them"
+MIGRATION: 0066_notification_preferences, parents 0065, SINGLE HEAD, new table only.
+BROAD: full backend 7,161 passed / 64 skipped / 0 failed. COLLECTION 7,201 -> 7,225 (+24).
+
+THE ASYMMETRY, which mirrors the Phase 5 suppression rule deliberately:
+  ESSENTIAL (transactional + all auth mail) is always sent. Let someone unsubscribe from these
+  and they can lock themselves out of their own account by clicking a link at the bottom of an
+  email they did not want — the reset they request next never arrives and nothing explains why.
+  OPTIONAL (lifecycle, digest) is theirs to refuse completely.
+  An UNKNOWN event key is treated as ESSENTIAL. The failure directions are not symmetric: wrongly
+  sending one email is a nuisance, wrongly withholding a password reset is a lockout.
+  selectable_categories() never offers an essential one — a switch that does nothing is worse
+  than no switch, because the person believes they unsubscribed.
+
+STORED AS OPT-OUT: absence of a row means subscribed. The other way round, a category added next
+year arrives switched off for every existing account — a feature nobody can find, failing
+silently. A row per (user, category), idempotent, so a link clicked twice or prefetched by a mail
+client means one refusal.
+A user_id of None (mail to someone with no account, e.g. an invitation) has refused NOTHING;
+reading that as "refused everything" would stop the one message that matters most.
+
+ENFORCED IN THE WORKER, beside suppression and for the same reason: someone can unsubscribe after
+their mail is queued, and that queued mail is exactly what must not go out.
+Mutation-proven: removing the consent check fails the opted-out test.
+
+TWO TESTING LESSONS FROM THIS SLICE, both worth keeping:
+1. The Phase 5C outbox trap AGAIN: process_outbox_once claims the WHOLE table, so these tests
+   passed alone and failed in the suite by counting other tests' queued mail (claimed=10, sent=10).
+   Any test that runs the worker needs the autouse delete(EmailOutbox) fixture.
+2. The character-counting method used to verify collection movement is only valid on a log with
+   NO tracebacks — failure output is prose, and prose is full of "s" and "E". It reported 7,673
+   total and 357 skips for a run that actually had 15 failures. The count check now asserts the
+   log contains no FAILED/ERROR before trusting the numbers.
+
+NEXT READY: the unsubscribe LINK (signed token so a link cannot unsubscribe an arbitrary account
+— a raw user id in a URL would let anyone unsubscribe anyone), then PRIV-002 export,
+PRIV-003 deletion.
+```
+
 ## Phase 9A checkpoint (PRIV-001 — versioned legal acceptance)
 
 ```text
