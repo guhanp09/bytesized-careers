@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-002E — starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-002E — starlette, and it is a framework migration rather than a version bump: `fastapi 0.129.0` pins `starlette<1.0.0`, so Starlette 1.x requires FastAPI 0.141.1 (a twelve-minor jump). The compatibility research is already done and recorded below under "DEP-002E — starlette: the compatibility research"; start there. Give it its own session. Everything else in DEP-002 is done — the backend production audit went from 9 vulnerable packages to 1. Starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -57,6 +57,41 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
 ```
+
+## DEP-002E — starlette: the compatibility research, done (start here)
+
+The last vulnerable production package, and the only one left open. Do not
+attempt `uv lock --upgrade-package starlette`; it cannot move on its own.
+
+```text
+Current:  fastapi 0.129.0  requires  starlette<1.0.0,>=0.40.0   <- the actual blocker
+          starlette 0.52.1
+Target:   starlette 1.x    (10 advisories)
+Requires: fastapi 0.141.1  requires  starlette>=0.46.0          <- no upper bound
+```
+
+So this is a twelve-minor FastAPI jump (0.129 → 0.141) taken together with a
+Starlette major (0.52 → 1.x). It is a framework migration and deserves its own
+session, not the tail of another one.
+
+The advisories it closes are worth the work — they are the most serious findings
+left in the backend: `GHSA-86qp-5c8j-p5mr` and `PYSEC-2026-161`, missing Host
+header validation that poisons `request.url.path` and can bypass path-based
+checks; `GHSA-jp82-jpqv-5vv3`, unvalidated request path concatenated into the
+authority; `GHSA-wqp7-x3pw-xc5r`, SSRF and NTLM credential theft via UNC paths
+in StaticFiles; `GHSA-x746-7m8f-x49c`, arbitrary HTTP method dispatched to
+`HTTPEndpoint` attributes; `GHSA-82w8-qh3p-5jfq`, `request.form()` limits
+silently ignored.
+
+Before upgrading, read the FastAPI release notes across 0.129 → 0.141 and the
+Starlette 1.0 notes for breaking changes. This application's exposed surface is
+wide, so validate at least: dependency injection and `Depends` defaults; the
+custom error envelope `{"error": {...}}` and exception handlers; middleware
+ordering; CORS; lifespan/startup; WebSockets (`/ws/conversations` — realtime
+messaging is a live consumer); streaming responses; file upload; background
+tasks; and `TestClient` behaviour, since the whole 6,731-case suite runs through
+it and a TestClient change would look like mass product failure rather than a
+harness change.
 
 ## Phase 3G atomic checkpoint (DEP-002D — ecdsa, and making it unreachable)
 
