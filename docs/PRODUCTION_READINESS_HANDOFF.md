@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: resolve the backend packaging contract, then DEP-002. `uv.lock` is declared but `.venv` was built by plain `python -m venv` and no `uv` exists on this machine, so backend dependency remediation cannot currently be done coherently — the complete OSV inventory is banked below so that work starts from evidence. If that tooling decision is out of scope for the session, go to Phase 4 instead and establish a fresh serial browser baseline; the historical 17/6 numbers are demonstrably stale (a Phase 0 baseline failure, `workspace-performance.spec.ts:108`, now passes). Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-002B — Python version remediation, now unblocked. The packaging contract is fixed (production installs from `uv.lock`) and `uv` is obtainable locally: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Take the low-risk independent group first (click 8.3.3, idna 3.15, Mako 1.3.12, pyasn1 0.6.4, pydantic-settings 2.14.2, python-dotenv 1.2.2), then cryptography, then the FastAPI/Starlette pair. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -57,6 +57,36 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
 ```
+
+## Phase 3D atomic checkpoint (DEP-002A — the packaging contract)
+
+```text
+Phase: Phase 3, atomic slice 3D / DEP-002A — make the committed lock the thing production installs
+Status: COMPLETE (DEP-002 remains IN_PROGRESS; the version remediation itself is DEP-002B onward)
+Initial HEAD: f07ee415dfb23ee1e43f1da0a5a0a40499fbb3d4
+Final HEAD: Phase 3D checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): build(backend): install production from the lock, not from whatever resolves
+Files materially changed: `backend/Dockerfile`; new `backend/tests/test_packaging_contract.py`; `backend/README.md`; `PROJECT_STATUS.md`
+Migrations: None. Dependencies: no version changed in this slice — it changes which artifact decides versions
+DEFECT FIXED — production builds were not reproducible: the Dockerfile ran `COPY pyproject.toml README.md ./` followed by `uv sync --all-groups`. `uv.lock` was never copied, so every image build re-resolved the loose ranges in `pyproject.toml` from scratch. Two images built a week apart could ship different versions of every transitive dependency, and — the reason this blocks DEP-002 — pinning a security fix in the committed lock would have had no effect whatsoever on what shipped. This is almost certainly how the running environment drifted to `starlette 0.52.1` and `cryptography 46.0.5`
+SECOND DEFECT FIXED — `--all-groups` installed the dev group into the runtime image, so pytest, ruff and aiosqlite shipped to production
+Now: `COPY pyproject.toml uv.lock README.md ./` then `uv sync --locked --no-dev`. `--locked` (not `--frozen`) is deliberate: it fails the build when the lock disagrees with the manifest, turning "edited pyproject without relocking" into a build error instead of a silent re-resolution. `UV_NO_SYNC=1` is set so the entrypoint's `uv run` uses the environment baked at build time rather than trying to reconcile it — without that, `--no-dev` would make `uv run` attempt to install the missing dev group over the network during container start
+Packaging contract, now explicit and documented in `backend/README.md`: `pyproject.toml` declares, `uv.lock` resolves, production installs from the lock. To change a production dependency: edit `pyproject.toml`, then `uv lock --upgrade-package <name>`, then `uv lock --check`, then `uv sync --all-groups` locally. Never hand-edit the lock; never add `requirements.txt`. `PROJECT_STATUS.md` was pointing at a `requirements.txt` that does not exist and a `make run` target the Makefile does not define — both corrected, because a doc describing a second contract is how the first one gets ignored
+TOOLING: `uv` is obtainable here after all. `python3 -m venv <scratch> && <scratch>/bin/pip install uv` produced uv 0.12.5 in an isolated scratch venv that touches neither the project nor `backend/.venv`. Use `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths to keep it that way. This unblocks DEP-002 remediation — the previous session's blocker is resolved
+Verification performed: `uv lock --check` passes against the committed lock (62 packages resolved, exit 0), so the lock was already consistent with the manifest and is trustworthy as the authoritative resolution. `uv sync --locked --no-dev` was then run against a scratch environment and succeeded, installing 52 packages — that is the real production dependency set, and it is what the Dockerfile change now reproduces
+Tests: `tests/test_packaging_contract.py` 7 passed; `tests/test_config.py` 16 passed; Ruff clean on the new file
+Non-vacuity: proven. Reverting the Dockerfile to its previous three instructions failed exactly the four contract assertions and passed the three that are about file existence. Restored afterwards
+BLOCKED_ENVIRONMENT: the image itself was not built. Docker invocation is not permitted here, so these tests assert the build *instructions* rather than a successful build. The instruction correctness was verified out-of-band by running the equivalent `uv sync --locked --no-dev` locally, which is the strongest available substitute but is not the same as a green `docker build`
+Next slice: DEP-002B — begin version remediation now that the lock is authoritative and uv is available. Take the low-risk independent group first (click, idna, Mako, pyasn1, pydantic-settings, python-dotenv), then cryptography, then the FastAPI/Starlette pair
+```
+
+## DEP-002 production dependency inventory (52-package production-only set)
+
+Re-established against the true production set produced by
+`uv sync --locked --no-dev`, rather than the developer venv which mixes dev
+tooling in. Nine of 52 production packages carry advisories — the same nine the
+previous session identified, now confirmed as genuinely production-reachable
+(pytest, pip, Pygments and iniconfig correctly drop out as dev-only).
 
 ## DEP-002 Python vulnerability inventory (gathered, not yet remediated — reuse it)
 

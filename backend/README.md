@@ -94,8 +94,40 @@ refuse redirects, accept only JSON, and cap decoded responses at 64 KiB. Preview
 network/provider failures retain the existing manual-entry path; unsafe URLs are
 rejected before a request is made.
 
+## Dependency contract
+
+`pyproject.toml` declares what this service depends on. `uv.lock` records the
+one resolution that was actually reviewed, tested, and shipped. Both are
+committed, and the production image installs from the lock — not from the
+ranges — so a build today and a build next month install the same versions.
+
+**To change a production dependency:**
+
+```bash
+cd backend
+# 1. edit the version constraint in pyproject.toml, then:
+uv lock --upgrade-package <name>   # relock just that package, not everything
+uv lock --check                    # must pass: lock agrees with the manifest
+uv sync --all-groups               # bring your local environment in line
+APP_ENV=test uv run pytest         # then validate
+```
+
+Never edit `uv.lock` by hand, and never add a `requirements.txt` — a second
+dependency artifact means two answers to the same question.
+
+The production image (`Dockerfile`) installs with `uv sync --locked --no-dev`:
+`--locked` makes a manifest edited without relocking a build failure rather than
+a silent re-resolution, and `--no-dev` keeps pytest and ruff out of the runtime
+image. `UV_NO_SYNC=1` is set so the entrypoint's `uv run` uses the environment
+baked at build time instead of reaching for the network while starting.
+
+`tests/test_packaging_contract.py` asserts these properties. It reads the
+Dockerfile rather than building it, so it proves the instructions are right, not
+that the build succeeds — building needs a Docker daemon.
+
 ## Local Development (uv)
-Install dependencies:
+Install dependencies (the dev group is wanted locally; it is excluded from the
+production image):
 ```bash
 uv sync --all-groups
 ```

@@ -17,10 +17,12 @@ npm run dev  # Runs on http://localhost:3000
 ### Backend Setup
 ```bash
 cd backend
-# Install dependencies (using uv or pip)
-uv sync  # or pip install -r requirements.txt
+# Install dependencies. pyproject.toml + uv.lock are the only dependency
+# contract; there is no requirements.txt and adding one would create a second
+# answer to the same question. See backend/README.md "Dependency contract".
+uv sync --all-groups
 # Run backend server
-make run  # or python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+make dev  # or uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Environment Variables
