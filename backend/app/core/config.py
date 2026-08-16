@@ -252,6 +252,15 @@ class Settings(BaseSettings):
     openai_model_allowlist: str | None = Field(
         default=None, max_length=1024, alias="OPENAI_MODEL_ALLOWLIST"
     )
+    # How many import attempts one person may start per window. Enforced per
+    # USER rather than per draft: the cost being bounded is the provider's, and
+    # one person with fifty drafts is exactly the case a per-draft limit misses.
+    job_import_daily_quota: int = Field(
+        default=25, alias="JOB_IMPORT_DAILY_QUOTA", ge=1
+    )
+    job_import_quota_window_hours: int = Field(
+        default=24, alias="JOB_IMPORT_QUOTA_WINDOW_HOURS", ge=1, le=168
+    )
     # The stranded-import sweep. Same posture as the email worker: the API can
     # host it for local convenience, but its own process is preferable, because
     # a sweeper sharing a lifetime with the web server also shares its restarts

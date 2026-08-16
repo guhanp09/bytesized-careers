@@ -10,6 +10,7 @@ from app.models.interaction_interview import InteractionInterview
 from app.models.interaction_preference import InteractionUserPreference
 from app.models.job import Job
 from app.models.job_import import JobImportDraft, JobImportField, JobImportSource
+from app.models.job_import_quota import JobImportQuotaCounter
 from app.models.marketplace import (
     Entitlement,
     InteractionPrivateNote,
@@ -52,6 +53,7 @@ __all__ = [
     "BetaInvitation",
     "EmailOutbox",
     "EmailSuppression",
+    "JobImportQuotaCounter",
     "EmailVerificationToken",
     "HiringIdentity",
     "InteractionInterview",

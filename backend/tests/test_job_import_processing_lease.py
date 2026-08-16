@@ -247,3 +247,76 @@ class TestARepeatNeverSpendsTwice:
         await client.post(path, headers=headers, json={})
 
         assert (await _stored(draft["id"])).processing_attempts == 1
+
+
+@pytest.mark.asyncio
+class TestTheQuotaBindsTheRequestPath:
+    async def test_an_exhausted_quota_refuses_before_the_provider_is_called(
+        self,
+        client: AsyncClient,
+        provider_override,  # noqa: F811
+        monkeypatch,
+    ) -> None:
+        """429 rather than a silent success: the person is told, and nothing is
+        spent on their behalf."""
+
+        from app.core import config
+
+        monkeypatch.setattr(config.settings, "job_import_daily_quota", 1)
+
+        headers, _owner = await _auth(client, "import-quota-limit")
+        _source, first = await _source_and_draft(client, headers, "quotafirst")
+        _source_two, second = await _source_and_draft(client, headers, "quotasecond")
+
+        class CountingProvider(FakeProvider):
+            calls = 0
+
+            async def extract(self, request):
+                CountingProvider.calls += 1
+                return await super().extract(request)
+
+        provider_override(CountingProvider())
+
+        allowed = await client.post(
+            f"/api/v1/job-imports/drafts/{first['id']}/process", headers=headers, json={}
+        )
+        refused = await client.post(
+            f"/api/v1/job-imports/drafts/{second['id']}/process", headers=headers, json={}
+        )
+
+        assert allowed.status_code == 200
+        assert refused.status_code == 429
+        assert refused.json()["error"]["code"] == "JOB_IMPORT_QUOTA_EXCEEDED"
+        assert CountingProvider.calls == 1
+
+    async def test_a_repeat_that_calls_nothing_costs_no_quota(
+        self,
+        client: AsyncClient,
+        provider_override,  # noqa: F811
+        monkeypatch,
+    ) -> None:
+        """The unit stands for a provider call. Refreshing a finished draft
+        makes none, so it must not use one — otherwise reading your own draft
+        twice would lock you out of importing."""
+
+        from app.core import config
+
+        monkeypatch.setattr(config.settings, "job_import_daily_quota", 2)
+
+        headers, _owner = await _auth(client, "import-quota-refund")
+        _source, draft = await _source_and_draft(client, headers, "quotarefund")
+        path = f"/api/v1/job-imports/drafts/{draft['id']}/process"
+        provider_override(FakeProvider())
+
+        assert (await client.post(path, headers=headers, json={})).status_code == 200
+        for _ in range(4):
+            repeated = await client.post(path, headers=headers, json={})
+            assert repeated.json()["outcome"] == "already_processed"
+
+        # One unit left, so a different draft still imports.
+        _other_source, other = await _source_and_draft(client, headers, "quotaother")
+        second = await client.post(
+            f"/api/v1/job-imports/drafts/{other['id']}/process", headers=headers, json={}
+        )
+
+        assert second.status_code == 200

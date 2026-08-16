@@ -474,6 +474,45 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6H checkpoint (AI-002 proof + AI-003 quota; AI-004 partly blocked on a product decision)
+
+```text
+COMMITS: "test(import): prove a repeat never buys a second draft" (8e27b61)
+         "feat(import): bound how many imports one person may start"
+MIGRATION: 0064_job_import_quota_counters, parents 0063, SINGLE HEAD, new table only.
+BROAD: full backend 7,022 passed / 64 skipped / 0 failed. COLLECTION 7,065 -> 7,086 (+21, all new).
+
+AI-002: creation idempotency ALREADY existed (client_request_id) and was already tested —
+concurrent duplicate source/draft requests return one record. What was missing was the expensive
+half, now asserted as a CALL COUNT: a repeat after success calls no provider and consumes no
+attempt. No second identifier invented.
+
+AI-003 QUOTA — one statement, and that is the whole point:
+  UPDATE counters SET used = CASE WHEN window stale THEN 1 ELSE used + 1 END,
+                      window_started_at = CASE WHEN window stale THEN now ELSE unchanged END
+  WHERE user_id = :u AND (window stale OR used < :limit) RETURNING used
+  No row back = refused. Read-then-decide-then-write lets ten simultaneous requests all read
+  "3 of 20" and all proceed, and the window reset has the same trap: "reset if stale, then
+  increment" is two steps, and two requests at the rollover both reset and both start at one.
+  JOB_IMPORT_DAILY_QUOTA default 25, JOB_IMPORT_QUOTA_WINDOW_HOURS default 24.
+  PER USER, not per draft: the cost is the provider's, and one person with fifty drafts is
+  exactly what a per-draft limit misses.
+  Charged BEFORE the lease, refunded when no provider call happens — the unit stands for a call.
+  A repeat on a finished draft returns before the charge at all, so refreshing your own draft
+  cannot lock you out of importing. Both directions are tested through the route.
+  Refused with 429 JOB_IMPORT_QUOTA_EXCEEDED.
+  Mutation-proven: a read-then-write rewrite passes every behavioural test and fails only the
+  two structural ones. As with the claim, structure is the only witness on SQLite.
+
+AI-004 IS NOW SPLIT HONESTLY. Allowlist and output cap are done. Spend is bounded in ATTEMPTS,
+which is the unit this codebase can actually count. A budget denominated in CURRENCY is marked
+BLOCKED_PRODUCT_DECISION: it needs real per-model prices, and inventing them would produce a
+number that looks like control and is not.
+
+NEXT READY: AI-009 (provider privacy — inspect the actual payload; much may already hold),
+AI-010 (evaluation corpus incl. prompt injection), AI-005/AI-007/AI-008 survey-then-close.
+```
+
 ## Phase 6G checkpoint (AI-001E + AI-006 — the sweep runs, and readiness can see it)
 
 ```text

@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from app.core.config import settings
 from app.core.job_import_availability import refuse_if_disabled
 from app.core.job_import_execution import attempts_remain
 from app.models import JobImportDraft
@@ -13,6 +14,10 @@ from app.repositories.job_import_execution_repository import (
     claim_draft_for_processing,
     schedule_retry_after_failure,
     settle_finished_attempt,
+)
+from app.repositories.job_import_quota_repository import (
+    consume_import_quota,
+    release_import_quota,
 )
 from app.schemas.job_import import JobImportProviderMetadata
 from app.services.job_import_provider import (
@@ -108,6 +113,25 @@ class JobImportProcessingService:
                 "OpenAI processing currently supports normalized text sources only.",
             )
 
+        # Charged before ownership, so a request that is about to be refused for
+        # quota never takes a lease it would have to hand back. Refunded below
+        # if no provider call ends up happening — the unit stands for a call,
+        # not for an attempt to ask.
+        quota_now = datetime.now(UTC)
+        quota = await consume_import_quota(
+            self.import_service.repository.session,
+            owner_user_id,
+            limit=settings.job_import_daily_quota,
+            window=timedelta(hours=settings.job_import_quota_window_hours),
+            now=quota_now,
+        )
+        if not quota.allowed:
+            raise JobImportError(
+                "JOB_IMPORT_QUOTA_EXCEEDED",
+                "You have prepared as many drafts as this account can today.",
+                status_code=429,
+            )
+
         processing_attempt_id = uuid4()
         worker_id = f"request-{processing_attempt_id.hex[:12]}"
         # Durable ownership, taken before the status transition below. The
@@ -122,6 +146,10 @@ class JobImportProcessingService:
             now=datetime.now(UTC),
         )
         if leased is None:
+            # No provider call will happen, so the unit goes back.
+            await release_import_quota(
+                self.import_service.repository.session, owner_user_id, now=quota_now
+            )
             # Whatever the reason, this request must not call the provider.
             raced = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
             # The established contract answers the common cases: a draft already
