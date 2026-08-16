@@ -58,6 +58,35 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5C checkpoint (EMAIL-001C/D — attempts, retry, terminal states)
+
+```text
+Status: COMPLETE. Commit: "feat(email): bound the retries and separate the failures"
+New: backend/app/repositories/email_outbox_delivery.py
+     mark_sent / mark_retryable_failure / mark_terminal_failure / mark_suppressed,
+     retry_delay_seconds(attempts) pure function.
+     MAX_ATTEMPTS=5, BASE_RETRY_SECONDS=60, MAX_RETRY_SECONDS=3600, deterministic (no jitter —
+     untestable jitter is not worth it at this size; inject a source if contention ever needs it).
+State model: queued (claimable) -> sent | failed | skipped. Retry returns to `queued` with a future
+next_attempt_at rather than adding a "retrying" state that could disagree with the timestamp.
+Suppressed is separate from failed and consumes NO attempt — withheld on purpose vs attempted and
+rejected read differently to an operator.
+Tests: 21 cases; 52 across the three outbox suites. Ruff clean.
+
+REAL DEFECT FOUND BY THE LOOP TEST, worth remembering: mark_retryable_failure originally took the
+ORM row and read `row.attempts`. Every write here uses synchronize_session=False, so an instance
+the caller holds — including one from the claim's RETURNING — keeps its loaded value. A worker
+looping would have read a stale 0 forever, never reached MAX_ATTEMPTS, and the retry bound would
+not have existed despite every individual test passing. Now takes an id and re-reads.
+Re-reading is safe there and NOT safe in claim_due_emails: the caller already holds the lease, so
+exclusivity is established. The claim has no such guarantee and must stay one statement.
+
+NEXT: EMAIL-001E/F — provider abstraction (send -> message id | classified error) and moving
+`_process_outbox_row` in backend/app/notifications/email.py onto claim + delivery. Note that
+queue_notification_email already writes inside the caller's transaction, so the enqueue half of
+EMAIL-001F is already satisfied.
+```
+
 ## Phase 5B checkpoint (EMAIL-001B — atomic claim primitive)
 
 ```text
