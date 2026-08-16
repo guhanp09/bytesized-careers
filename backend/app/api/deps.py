@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.account_types import isAdmin
 from app.core.auth_assurance import has_fresh_strong_auth
 from app.core.config import settings
+from app.core.job_import_readiness_check import require_allowed_model
 from app.core.qa_personas import (
     is_qa_controller_email,
     parse_qa_token_claims,
@@ -115,7 +116,10 @@ def get_job_import_provider() -> JobImportExtractionProvider:
     return OpenAIJobImportAdapter(
         OpenAIJobImportConfig(
             api_key=api_key,
-            model=settings.openai_model,
+            # Checked here, at the last point before a model name can become a
+            # billed request. A probe reporting the problem is not enough:
+            # nothing forces anyone to read a probe first.
+            model=require_allowed_model(settings.openai_model),
             request_timeout_seconds=_viable_timeout_seconds(
                 settings.openai_request_timeout_seconds
             ),

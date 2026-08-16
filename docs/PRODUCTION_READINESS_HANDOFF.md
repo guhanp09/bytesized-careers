@@ -5,7 +5,7 @@
 ```text
 LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
 CURRENT PHASE: Phase 6 — AI Job Import hardening
-LAST COMPLETED ATOMIC SLICE: Phase 6A (AI-011) — AI job import now has a runtime kill switch (JOB_IMPORT_ENABLED, default true) that closes both provider entry points without confiscating drafts already prepared
+LAST COMPLETED ATOMIC SLICE: Phase 6B (AI-004 partial, AI-006 partial) — a model allowlist enforced where the provider is built, and a configuration-only readiness probe at GET /api/v1/health/job-import. Phase 6A delivered the runtime kill switch (JOB_IMPORT_ENABLED, default true)
 NEXT ATOMIC SLICE: Phase 6 continues. Survey first rather than assuming: much of AI-004/005/009 is already implemented in app/integrations/openai/job_import_adapter.py (store=False, OPENAI_MAX_OUTPUT_TOKENS, a measured 90s timeout, one retry for transient failures only), and AI-008 inherits SafeOutboundFetcher from Phase 2. The real gaps look like AI-001 (durable import queue — processing is in-request today), AI-002 (idempotency), AI-003 (quotas/concurrency), AI-004's model allowlist and budget, AI-006 (boot readiness) and AI-010 (evaluation corpus). STANDING PRODUCT CONSTRAINT: AI Job Import must REMAIN — not removed, not permanently disabled, not reduced to literal extraction, no disconnected review UI, never auto-publishing. Import is an input method, not a second job editor. Also open: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004, TRUST-003, CORRECT-006, and backend/.env.example (BLOCKED_ENVIRONMENT — path denied to tooling, so new settings are documented in backend/app/core/config.py).
 CURRENT HEAD: the Phase 5 certification commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0062_email_suppressions (single head; 0060_email_outbox_lease, 0061_beta_invitations, 0062)
@@ -473,6 +473,58 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 `SKIP LOCKED`.
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
+
+## Phase 6B checkpoint (AI-004 partial, AI-006 partial — a model allowlist and a readiness probe)
+
+```text
+Commit: "feat(import): refuse a model nobody chose, and say so before a recruiter waits"
+Both rows are IN_PROGRESS, not VALIDATED, and the ledger says which half is missing. Claiming
+either as complete would be the more comfortable lie.
+
+WHY AN ALLOWLIST. OPENAI_MODEL was a free-form string validated by a character pattern. A pattern
+cannot distinguish a typo from a different model: the typo failed every import SLOWLY, at the
+provider, after the recruiter had pasted a job and watched a progress bar, and a valid-but-
+unintended name SUCCEEDED — calling a model nobody chose, at whatever that model costs. The
+allowlist turns both into an answer available before any request is billed.
+  OPENAI_MODEL_ALLOWLIST, comma separated. Empty = the single shipped default.
+  Deliberately narrow: a deployment running another model must name it. Inventing a list of
+  plausible-looking model identifiers would be worse than useless — it would authorise calls to
+  models nobody has chosen.
+  Enforced in app/api/deps.get_job_import_provider, i.e. at the last point before a name can
+  become a billed request. Reporting it on the probe alone assumes somebody reads the probe
+  first, and nothing makes them.
+
+READINESS: GET /api/v1/health/job-import -> {ready, enabled, problems[]}
+  - configuration only, NO provider call: a probe that asked the provider would bill a request
+    every time a load balancer looked, and would report an outage nothing here could fix.
+  - always 200, including unready. A probe that 503s takes the whole process out of rotation
+    over one feature.
+  - switched off reports enabled:false with NO problems, so a deliberately paused feature does
+    not read as a broken one on a dashboard.
+  - does not echo the configured model or key; it is unauthenticated, and configuration is not
+    something to hand out. A test asserts neither value appears in the body.
+
+Nothing here refuses to boot. Import already has a kill switch, and taking the whole API down
+over one feature's configuration trades a small outage for a large one.
+
+Tests: tests/test_job_import_model_allowlist.py, 14 cases. Non-vacuity PROVEN by mutation:
+removing require_allowed_model from the provider factory fails the test that builds it with an
+unlisted model.
+
+NEAR-MISS WORTH RECORDING: these tests were first written to tests/test_job_import_readiness.py,
+which ALREADY EXISTED — 2,249 lines of it — and the write silently replaced the lot. Nothing
+failed: the suite stayed green, because the destroyed tests simply stopped existing. It was
+caught only by comparing the total against the previous run (6,930 collected where 6,977 was
+expected), and restored with git checkout. Two habits follow. Check whether a test file exists
+before writing one, and treat a DROP in the collected total as a failure, because a suite cannot
+report tests it no longer has.
+
+STILL MISSING, explicitly: AI-004's spend budget and thresholds need somewhere to record spend,
+which does not exist yet; AI-006's queue readiness cannot exist until AI-001 does. The
+token/output cap AI-004 asks for was already in the adapter before this work (max_output_tokens),
+and so was store=False, the measured 90s timeout and the single transient-only retry — which is
+why AI-005 and AI-009 should be surveyed before being implemented rather than after.
+```
 
 ## Phase 6A checkpoint (AI-011 — the switch that actually turns AI job import off)
 

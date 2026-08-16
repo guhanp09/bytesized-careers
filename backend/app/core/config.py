@@ -244,6 +244,14 @@ class Settings(BaseSettings):
     #: carry it into Post Job, because that draft exists and nothing is gained
     #: by taking it away from them.
     job_import_enabled: bool = Field(default=True, alias="JOB_IMPORT_ENABLED")
+    #: Models this deployment is willing to call, comma separated. Empty means
+    #: the single shipped default. `openai_model` alone was a pattern-checked
+    #: free-form string: a typo failed every import slowly at the provider, and
+    #: a valid-but-unintended name succeeded and called a model nobody chose, at
+    #: whatever that model costs. A pattern cannot tell those apart.
+    openai_model_allowlist: str | None = Field(
+        default=None, max_length=1024, alias="OPENAI_MODEL_ALLOWLIST"
+    )
     job_import_prompt_version: str = Field(
         default="job-import-text-v6",
         min_length=1,
