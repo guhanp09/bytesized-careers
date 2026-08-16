@@ -88,10 +88,14 @@ class TestClaimingOne:
 
         assert claimed is not None
         await db_session.refresh(draft)
-        assert draft.processing_status == "processing"
         assert draft.processing_worker_id == "worker-a"
         assert draft.processing_attempts == 1
         assert draft.processing_lease_expires_at is not None
+        # The claim takes OWNERSHIP and nothing else. processing_status belongs
+        # to the import lifecycle, whose own transition runs next and has its own
+        # allowed-from set — writing it here made that transition illegal from
+        # its own starting state.
+        assert draft.processing_status == "awaiting_processing"
 
     async def test_a_second_worker_gets_nothing(self, db_session, owner, source) -> None:
         """The property the whole module exists for."""
@@ -155,9 +159,16 @@ class TestClaimingOne:
             is None
         )
 
-    async def test_a_retry_that_is_not_due_is_not_claimed(
+    async def test_a_person_asking_again_does_not_wait_out_the_backoff(
         self, db_session, owner, source
     ) -> None:
+        """Backoff restrains automated retries, not a recruiter.
+
+        They pressed the button: they are watching, they want it now, and the
+        attempt ceiling still bounds what it can cost. Making a person sit out a
+        machine's delay would be the feature apologising for its retry policy.
+        """
+
         draft = await _draft(
             db_session,
             owner,
@@ -171,11 +182,40 @@ class TestClaimingOne:
             await claim_draft_for_processing(
                 db_session, draft.id, worker_id="worker-a", now=NOW
             )
+            is not None
+        )
+
+    async def test_the_schedule_is_honoured_when_the_caller_asks_for_it(
+        self, db_session, owner, source
+    ) -> None:
+        """The sweep's setting, checked on the same code path."""
+
+        draft = await _draft(
+            db_session,
+            owner,
+            source,
+            processing_status="processing_failed",
+            processing_attempts=1,
+            processing_next_attempt_at=NOW + timedelta(seconds=60),
+        )
+
+        assert (
+            await claim_draft_for_processing(
+                db_session,
+                draft.id,
+                worker_id="worker-a",
+                now=NOW,
+                honour_retry_schedule=True,
+            )
             is None
         )
         assert (
             await claim_draft_for_processing(
-                db_session, draft.id, worker_id="worker-a", now=NOW + timedelta(seconds=61)
+                db_session,
+                draft.id,
+                worker_id="worker-a",
+                now=NOW + timedelta(seconds=61),
+                honour_retry_schedule=True,
             )
             is not None
         )
@@ -364,7 +404,11 @@ class TestTheSqlRuleAndThePythonRuleAgree:
                         )
                         sql_says = (
                             await claim_draft_for_processing(
-                                db_session, draft.id, worker_id="w", now=NOW
+                                db_session,
+                                draft.id,
+                                worker_id="w",
+                                now=NOW,
+                                honour_retry_schedule=True,
                             )
                             is not None
                         )
@@ -431,7 +475,7 @@ class TestTheClaimIsOneStatement:
         single-row path and the sweep end up disagreeing."""
 
         for function in (claim_draft_for_processing, claim_stranded_drafts):
-            assert "processing_eligible(now)" in inspect.getsource(function)
+            assert "processing_eligible(now" in inspect.getsource(function)
 
     def test_the_batch_claim_rechecks_eligibility_in_the_write(self) -> None:
         """The subquery only proposes candidates. Without the second predicate
@@ -439,7 +483,7 @@ class TestTheClaimIsOneStatement:
 
         source_text = inspect.getsource(claim_stranded_drafts)
 
-        assert source_text.count("processing_eligible(now)") == 2
+        assert source_text.count("processing_eligible(now") == 2
 
     def test_postgres_skips_locked_rows(self) -> None:
         source_text = inspect.getsource(claim_stranded_drafts)

@@ -26,7 +26,7 @@ test drives both over the same matrix of row states and requires them to agree.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,12 +36,14 @@ from app.core.job_import_execution import (
     LEASE_SECONDS,
     MAX_ATTEMPTS,
     STARTABLE_STATUSES,
+    attempts_remain,
     lease_deadline,
+    retry_delay_seconds,
 )
 from app.models import JobImportDraft
 
 
-def processing_eligible(moment: datetime):
+def processing_eligible(moment: datetime, *, honour_retry_schedule: bool = True):
     """SQL for "an attempt may start on this row now".
 
     Deliberately excludes ownership and the kill switch: those are the caller's
@@ -49,30 +51,45 @@ def processing_eligible(moment: datetime):
     in here would hide an authorization check inside a queue query.
     """
 
-    return and_(
+    conditions = [
         JobImportDraft.deleted_at.is_(None),
         JobImportDraft.processing_attempts < MAX_ATTEMPTS,
+        # Nobody holds it. The lease alone decides ownership, which is why a
+        # row whose status still says `awaiting_processing` is not free while
+        # someone is already working on it.
         or_(
-            JobImportDraft.processing_next_attempt_at.is_(None),
-            JobImportDraft.processing_next_attempt_at <= moment,
+            JobImportDraft.processing_lease_expires_at.is_(None),
+            JobImportDraft.processing_lease_expires_at <= moment,
         ),
-        or_(
-            JobImportDraft.processing_status.in_(tuple(STARTABLE_STATUSES)),
-            # A stranded attempt: marked as running, with nobody running it.
-            and_(
-                JobImportDraft.processing_status == IN_FLIGHT_STATUS,
-                or_(
-                    JobImportDraft.processing_lease_expires_at.is_(None),
-                    JobImportDraft.processing_lease_expires_at <= moment,
-                ),
-            ),
+        # And the work is still wanted. A finished import must not be re-run:
+        # it would spend again and overwrite a draft the recruiter may have
+        # edited since.
+        JobImportDraft.processing_status.in_(
+            tuple(STARTABLE_STATUSES | {IN_FLIGHT_STATUS})
         ),
-    )
+    ]
+    if honour_retry_schedule:
+        # Only the sweep waits. See `may_start_attempt` for why a person asking
+        # again is not the thing backoff is protecting against.
+        conditions.append(
+            or_(
+                JobImportDraft.processing_next_attempt_at.is_(None),
+                JobImportDraft.processing_next_attempt_at <= moment,
+            )
+        )
+    return and_(*conditions)
 
 
 def _claim_values(worker_id: str, now: datetime, lease_seconds: int) -> dict:
+    """Ownership only. The claim deliberately does NOT write processing_status.
+
+    That column belongs to the import lifecycle, whose own transition — with its
+    own allowed-from set — runs immediately after this. Writing it here made
+    that transition illegal from its own starting state, which is a good
+    illustration of why the two axes are kept apart.
+    """
+
     return {
-        "processing_status": IN_FLIGHT_STATUS,
         "processing_worker_id": worker_id,
         "processing_lease_expires_at": lease_deadline(now, seconds=lease_seconds),
         "processing_attempts": JobImportDraft.processing_attempts + 1,
@@ -90,8 +107,13 @@ async def claim_draft_for_processing(
     worker_id: str,
     now: datetime,
     lease_seconds: int = LEASE_SECONDS,
+    honour_retry_schedule: bool = False,
 ) -> JobImportDraft | None:
     """Take ownership of one specific draft, or return None.
+
+    `honour_retry_schedule` defaults to False because this is the path a person
+    takes: they pressed the button, and a machine's backoff is not a reason to
+    refuse them. The sweep below defaults the other way.
 
     None means somebody else owns it, it has spent its attempts, its retry is
     not due, or it is finished — the caller cannot tell which, and does not need
@@ -101,7 +123,7 @@ async def claim_draft_for_processing(
     claimed = await session.execute(
         update(JobImportDraft)
         .where(JobImportDraft.id == draft_id)
-        .where(processing_eligible(now))
+        .where(processing_eligible(now, honour_retry_schedule=honour_retry_schedule))
         .values(**_claim_values(worker_id, now, lease_seconds))
         .returning(JobImportDraft)
         .execution_options(synchronize_session=False)
@@ -144,6 +166,82 @@ async def claim_stranded_drafts(
         .execution_options(synchronize_session=False)
     )
     return list(claimed.scalars().all())
+
+
+async def settle_finished_attempt(
+    session: AsyncSession,
+    draft_id: uuid.UUID,
+    *,
+    worker_id: str | None = None,
+) -> None:
+    """Let go of a lease once the attempt has produced its outcome.
+
+    Scoped to this worker when a `worker_id` is given, so a worker whose lease
+    lapsed mid-attempt cannot clear the lease of whoever took over from it.
+
+    The lease is cleared and no retry is scheduled: whatever this attempt
+    settled on — a draft, or a failure that will not be retried — is the answer,
+    and leaving a live lease behind would make the row look busy forever.
+    """
+
+    statement = update(JobImportDraft).where(JobImportDraft.id == draft_id)
+    if worker_id is not None:
+        statement = statement.where(JobImportDraft.processing_worker_id == worker_id)
+
+    await session.execute(
+        statement.values(
+            processing_worker_id=None,
+            processing_lease_expires_at=None,
+            processing_next_attempt_at=None,
+        ).execution_options(synchronize_session=False)
+    )
+
+
+async def schedule_retry_after_failure(
+    session: AsyncSession,
+    draft_id: uuid.UUID,
+    *,
+    now: datetime,
+    worker_id: str | None = None,
+) -> datetime | None:
+    """Release the lease and say when this import may be tried again.
+
+    Returns the scheduled time, or None when the attempts are spent — in which
+    case the row is simply left without a retry time, and no sweep will pick it
+    up again. That is the intended end: an import that has failed five times
+    will fail the sixth, and each attempt costs a provider call.
+
+    The attempt count is re-read here rather than carried in from the caller.
+    That is safe for the same narrow reason it was in the email outbox: the
+    caller holds the lease, so nothing else is writing this row. It would NOT be
+    safe in the claim, where the whole question is who gets to write.
+    """
+
+    found = await session.execute(
+        select(JobImportDraft.processing_attempts).where(JobImportDraft.id == draft_id)
+    )
+    attempts = found.scalar_one_or_none()
+    if attempts is None:
+        return None
+
+    next_attempt_at = (
+        now + timedelta(seconds=retry_delay_seconds(attempts))
+        if attempts_remain(attempts)
+        else None
+    )
+
+    statement = update(JobImportDraft).where(JobImportDraft.id == draft_id)
+    if worker_id is not None:
+        statement = statement.where(JobImportDraft.processing_worker_id == worker_id)
+
+    await session.execute(
+        statement.values(
+            processing_worker_id=None,
+            processing_lease_expires_at=None,
+            processing_next_attempt_at=next_attempt_at,
+        ).execution_options(synchronize_session=False)
+    )
+    return next_attempt_at
 
 
 async def release_expired_claim(

@@ -116,24 +116,47 @@ def is_stranded(snapshot: ExecutionSnapshot, *, now: datetime) -> bool:
     return not lease_is_live(snapshot, now=now)
 
 
-def may_start_attempt(snapshot: ExecutionSnapshot, *, now: datetime) -> bool:
+def may_start_attempt(
+    snapshot: ExecutionSnapshot,
+    *,
+    now: datetime,
+    honour_retry_schedule: bool = True,
+) -> bool:
     """Whether an extraction attempt may begin for this draft right now.
 
-    Deliberately excludes the kill switch and ownership. Those are different
-    questions asked by different callers, and folding them in here would make
-    this function answer three things and be trusted for none of them.
+    Two independent axes, and keeping them independent is the point.
+
+    The LEASE decides ownership. A live one means somebody is working on this,
+    whatever the status happens to say — and the status is briefly stale by
+    construction, because ownership is taken before the status transition that
+    follows it.
+
+    The STATUS decides whether the work is still wanted: an import that has
+    produced its draft, been applied, or been discarded is finished, and
+    re-running it would spend again and overwrite what the recruiter has since
+    edited.
+
+    Deliberately excludes the kill switch and who owns the draft. Those are
+    different questions asked by different callers, and folding them in here
+    would make this function answer four things and be trusted for none of them.
     """
 
     if not attempts_remain(snapshot.processing_attempts):
         return False
 
-    next_attempt_at = _as_utc(snapshot.processing_next_attempt_at)
-    if next_attempt_at is not None and next_attempt_at > now:
+    # Backoff restrains AUTOMATED retries. A recruiter pressing "try again" is
+    # not the hot loop backoff exists to prevent — they are watching, they want
+    # it now, and the attempt ceiling still bounds what it can cost. Making a
+    # person wait out a machine's delay would be the feature apologising for
+    # its own retry policy.
+    if honour_retry_schedule:
+        next_attempt_at = _as_utc(snapshot.processing_next_attempt_at)
+        if next_attempt_at is not None and next_attempt_at > now:
+            return False
+
+    if lease_is_live(snapshot, now=now):
         return False
 
-    if snapshot.processing_status in STARTABLE_STATUSES:
-        return True
-
-    # A stranded in-flight attempt is startable again precisely because its
-    # lease lapsed. Anything else — succeeded, applied, discarded — is not.
-    return is_stranded(snapshot, now=now)
+    return snapshot.processing_status in STARTABLE_STATUSES or (
+        snapshot.processing_status == IN_FLIGHT_STATUS
+    )

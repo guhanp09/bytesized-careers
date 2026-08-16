@@ -3,10 +3,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.core.job_import_availability import refuse_if_disabled
+from app.core.job_import_execution import attempts_remain
 from app.models import JobImportDraft
+from app.repositories.job_import_execution_repository import (
+    claim_draft_for_processing,
+    schedule_retry_after_failure,
+    settle_finished_attempt,
+)
 from app.schemas.job_import import JobImportProviderMetadata
 from app.services.job_import_provider import (
     JobImportExtractionProvider,
@@ -102,6 +109,47 @@ class JobImportProcessingService:
             )
 
         processing_attempt_id = uuid4()
+        worker_id = f"request-{processing_attempt_id.hex[:12]}"
+        # Durable ownership, taken before the status transition below. The
+        # existing mutation token serializes writers inside one transaction; it
+        # says nothing once the transaction ends, so a process that dies here
+        # used to leave a draft marked `processing` that nothing would ever look
+        # at again. The lease is what a later sweep can see has lapsed.
+        leased = await claim_draft_for_processing(
+            self.import_service.repository.session,
+            draft_id,
+            worker_id=worker_id,
+            now=datetime.now(UTC),
+        )
+        if leased is None:
+            # Whatever the reason, this request must not call the provider.
+            raced = await self.import_service.get_draft(draft_id, owner_user_id=owner_user_id)
+            # The established contract answers the common cases: a draft already
+            # `processing` returns `already_processing`, a finished one returns
+            # `already_processed`. Both are 200, and this must not quietly become
+            # a 409 for callers that already handle them.
+            raced_outcome = self._current_outcome(raced)
+            if raced_outcome is not None:
+                return raced_outcome
+
+            if not attempts_remain(raced.processing_attempts or 0):
+                # Said plainly rather than dressed up as "try again": five
+                # attempts have been spent, and the sixth would fail the same
+                # way while costing another provider call.
+                raise JobImportError(
+                    "JOB_IMPORT_ATTEMPTS_EXHAUSTED",
+                    "This import could not be prepared after several attempts.",
+                    status_code=409,
+                )
+
+            # The remaining case is the narrow window where ownership has been
+            # taken but the status transition has not landed yet.
+            raise JobImportError(
+                "JOB_IMPORT_ALREADY_PROCESSING",
+                "This draft is already being prepared.",
+                status_code=409,
+            )
+
         try:
             await self.import_service.begin_processing(
                 draft_id,
@@ -213,6 +261,11 @@ class JobImportProcessingService:
                 "The extraction result could not be persisted.",
                 status_code=500,
             ) from error
+
+        # The attempt produced a draft, so the lease has nothing left to protect.
+        # Released without a retry time: this import is done, and a row that
+        # still looks due would be picked up and spent again.
+        await self._release_lease(draft_id, retry=False)
         return JobImportProcessResult(outcome="processed", draft=completed)
 
     async def _fail_or_fall_back(
@@ -420,6 +473,32 @@ class JobImportProcessingService:
                 details["invalid_evidence_span_ids"] = bounded_ids
         return details
 
+    async def _release_lease(self, draft_id: UUID, *, retry: bool) -> None:
+        """Hand the row back once this attempt has an outcome.
+
+        Always attempted, including on the failure paths: a lease left behind
+        makes the draft look busy to every later sweep, which is the same
+        "nobody will ever look at this again" state the lease exists to end.
+
+        Not scoped to this worker's id on purpose. If the lease already lapsed
+        and someone else took over, `processing_worker_id` no longer matches and
+        the update simply affects nothing — which is the intended outcome, and
+        cheaper to reason about than a second read to find out.
+        """
+
+        session = self.import_service.repository.session
+        try:
+            if retry:
+                await schedule_retry_after_failure(
+                    session, draft_id, now=datetime.now(UTC)
+                )
+            else:
+                await settle_finished_attempt(session, draft_id)
+            await session.commit()
+        except Exception:  # noqa: BLE001 - releasing must not mask the outcome
+            await session.rollback()
+            logger.warning("job_import_lease_release_failed", extra={"draft_id": str(draft_id)})
+
     async def _mark_failed_if_current(
         self,
         draft_id: UUID,
@@ -439,6 +518,9 @@ class JobImportProcessingService:
                 expected_processing_attempt_id=processing_attempt_id,
                 provider_audit=provider_audit,
             )
+            # Scheduled rather than immediate: a provider that just failed is
+            # the worst possible thing to call again straight away.
+            await self._release_lease(draft_id, retry=True)
         except JobImportError as error:
             if error.code not in {
                 "JOB_IMPORT_DRAFT_NOT_FOUND",

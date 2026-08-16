@@ -474,6 +474,48 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6E checkpoint (AI-001C — the claim is wired into the request path)
+
+```text
+SLICE: AI-001C. COMMIT: "feat(import): take the import before calling the provider"
+MIGRATION: none. BROAD: full backend 6,984 passed / 64 skipped / 0 failed.
+COLLECTION: 7,018 -> 7,048 (+24 AI-001B claim tests, +6 new). Fully accounted for.
+
+HONEST SCOPE — read this before claiming AI-001 fixed "loading forever":
+app/core/job_import_attempt_liveness.py ALREADY settled a stale `processing` row when someone
+read it. That covers the recruiter who comes back and refreshes. What ownership adds, and what
+these tests cover, is narrower and real:
+  - two concurrent requests produce ONE provider call (previously bounded only by a
+    transaction-scoped mutation token, which says nothing once the transaction ends);
+  - attempts are bounded by the claim, counted AT CLAIM so a process that dies mid-attempt still
+    spent one — a crash reports nothing, so counting failures cannot bound a crash loop;
+  - a queryable lease, so a sweep can find stranded rows WITHOUT a reader;
+  - a failure schedules its own retry.
+
+TWO DESIGN CORRECTIONS FOUND BY THE EXISTING TESTS, both worth keeping:
+
+1. THE CLAIM MUST NOT WRITE processing_status. It did at first, and begin_processing's
+   allowed-from set is {awaiting_processing, processing_failed} — so the claim made the very next
+   transition illegal and every import failed. Ownership (lease) and lifecycle (status) are two
+   axes. The eligibility rule now reads: nobody holds the lease AND the work is still wanted.
+   This is also why the status is briefly stale by construction: ownership is taken first.
+
+2. BACKOFF BINDS THE SWEEP, NOT A PERSON. Scheduling a 30s retry after a failure made the
+   recruiter's "try again" wait out a machine's delay — an existing test caught it.
+   claim_draft_for_processing defaults honour_retry_schedule=False; claim_stranded_drafts
+   defaults True. A person pressing the button is watching, wants it now, and is already bounded
+   by the attempt ceiling and the route rate limit.
+
+CONTRACT PRESERVED: a second request while one is running still returns 200 with
+outcome="already_processing" (_current_outcome), NOT a 409. The new 409s are only for cases the
+old contract never had: JOB_IMPORT_ATTEMPTS_EXHAUSTED and the narrow window where ownership is
+taken but the status transition has not landed.
+
+NEXT READY: AI-001D — the sweeper that drains stranded imports (reuse the Phase 5 runner shape;
+give the worker an injectable session factory, NOT app.db.session directly), plus deciding
+kill-switch-while-queued semantics from the ledger.
+```
+
 ## Phase 6D checkpoint (AI-001B — the atomic claim)
 
 ```text
