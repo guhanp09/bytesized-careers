@@ -246,3 +246,68 @@ class TestWhatIsStillOwed:
         assert (await accepted_versions(db_session, person.id))[TERMS] == current_version(
             TERMS
         )
+
+
+class TestTheApiSurface:
+    """Where a person actually agrees, and what a client is allowed to say."""
+
+    async def _bearer(self, client, label: str) -> str:
+        from tests.test_messaging import _register_verified_login
+
+        return await _register_verified_login(
+            client, email=f"{label}@example.com", username=label
+        )
+
+    async def test_a_new_account_is_told_what_it_owes(self, client) -> None:
+        bearer = await self._bearer(client, "legal_status_user")
+
+        response = await client.get(
+            "/api/v1/me/legal", headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+        assert response.status_code == 200
+        assert set(response.json()["outstanding"]) == set(REQUIRED_DOCUMENTS)
+        assert response.json()["current_versions"][TERMS] == current_version(TERMS)
+
+    async def test_accepting_clears_it(self, client) -> None:
+        bearer = await self._bearer(client, "legal_accept_user")
+        headers = {"Authorization": f"Bearer {bearer}"}
+
+        accepted = await client.post(
+            "/api/v1/me/legal/accept",
+            headers=headers,
+            json={"documents": list(REQUIRED_DOCUMENTS)},
+        )
+
+        assert accepted.status_code == 200
+        assert accepted.json()["outstanding"] == []
+        assert accepted.json()["accepted"][TERMS] == current_version(TERMS)
+
+    async def test_the_client_cannot_choose_the_version(self, client) -> None:
+        """A client that could name a version could record agreement to
+        superseded wording, or to wording that does not exist, and the record
+        would be indistinguishable from a real acceptance."""
+
+        bearer = await self._bearer(client, "legal_version_user")
+
+        response = await client.post(
+            "/api/v1/me/legal/accept",
+            headers={"Authorization": f"Bearer {bearer}"},
+            json={"documents": [TERMS], "version": "1999-01-01"},
+        )
+
+        assert response.status_code == 422
+
+    async def test_an_unknown_document_is_refused(self, client) -> None:
+        bearer = await self._bearer(client, "legal_unknown_user")
+
+        response = await client.post(
+            "/api/v1/me/legal/accept",
+            headers={"Authorization": f"Bearer {bearer}"},
+            json={"documents": ["not_a_document"]},
+        )
+
+        assert response.status_code == 400
+
+    async def test_it_requires_authentication(self, client) -> None:
+        assert (await client.get("/api/v1/me/legal")).status_code in {401, 403}

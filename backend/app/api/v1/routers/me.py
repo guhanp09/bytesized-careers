@@ -3,8 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_me_service, get_profile_service
+from app.api.deps import get_current_user, get_db, get_me_service, get_profile_service
+from app.core.legal_documents import REQUIRED_DOCUMENTS, current_version
 from app.core.rate_limit import MARKETPLACE_ACTION_LIMIT, rate_limit
 from app.models import User
 from app.schemas import (
@@ -33,6 +36,11 @@ from app.schemas import (
     YouTubeChannelsResponse,
     YouTubeDisconnectResponse,
     YouTubeRefreshResponse,
+)
+from app.services.legal_acceptance_service import (
+    accepted_versions,
+    documents_awaiting_acceptance,
+    record_acceptance,
 )
 from app.services.me_service import (
     MeService,
@@ -495,4 +503,74 @@ async def read_my_organization_page(
         image_url=metadata.image_url,
         icon_url=metadata.icon_url,
         youtube_channel_id=metadata.youtube_channel_id,
+    )
+
+class LegalStatusResponse(BaseModel):
+    """What this person still has to accept, and what they already have."""
+
+    outstanding: list[str]
+    accepted: dict[str, str]
+    current_versions: dict[str, str]
+
+
+class LegalAcceptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Which documents are being accepted. Named explicitly rather than
+    #: "accept everything outstanding", so a client cannot agree on someone's
+    #: behalf to a document that appeared between the page load and the click.
+    documents: list[str] = Field(min_length=1, max_length=8)
+
+
+@router.get(
+    "/legal",
+    response_model=LegalStatusResponse,
+    summary="Which legal documents this account still needs to accept",
+)
+async def read_legal_status(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> LegalStatusResponse:
+    accepted = await accepted_versions(session, current_user.id)
+    return LegalStatusResponse(
+        outstanding=list(await documents_awaiting_acceptance(session, current_user.id)),
+        accepted=accepted,
+        current_versions={key: current_version(key) for key in REQUIRED_DOCUMENTS},
+    )
+
+
+@router.post(
+    "/legal/accept",
+    response_model=LegalStatusResponse,
+    summary="Record acceptance of the current version of one or more documents",
+)
+async def accept_legal_documents(
+    payload: LegalAcceptRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> LegalStatusResponse:
+    """Records agreement to the CURRENT version of each named document.
+
+    The version is never taken from the request. A client that could name one
+    could record agreement to superseded wording — or to wording that does not
+    exist — and the record would be indistinguishable from a real acceptance.
+    """
+
+    for document_key in payload.documents:
+        try:
+            await record_acceptance(
+                session, user_id=current_user.id, document_key=document_key
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unknown legal document.",
+            ) from exc
+    await session.commit()
+
+    accepted = await accepted_versions(session, current_user.id)
+    return LegalStatusResponse(
+        outstanding=list(await documents_awaiting_acceptance(session, current_user.id)),
+        accepted=accepted,
+        current_versions={key: current_version(key) for key in REQUIRED_DOCUMENTS},
     )
