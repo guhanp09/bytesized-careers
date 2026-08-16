@@ -101,6 +101,8 @@ Locally complete and certified. Every row below is `VALIDATED` except EMAIL-005,
 
 ## Phase 6 — AI Job Import production hardening
 
+Locally complete and certified, with two rows deliberately left open and named: AI-004's currency-denominated budget is `BLOCKED_PRODUCT_DECISION` (real per-model prices are a commercial input and must not be invented), and AI-001's live multi-worker race is unproven for want of a PostgreSQL harness (Docker absent). Certification totals are in the handoff under "Phase 6 certification". AI Job Import remains the same feature it was: source -> interpretation -> canonical draft -> the same Post Job flow -> human review -> publication.
+
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | AI-001 | CRITICAL | Durable import queue | RATE-001, WEB-004 | IMPLEMENTED | Enqueue, lease, retry, crash recovery, cancellation and queue outage tests | YES | NO | Yes | Yes | 0d75ac9 (state+rules), aeee4d3 (atomic claim), cb6d33d (wired), aa0b977 (sweep), plus sweeper wiring. Migration 0063. Live multi-worker concurrency is NOT proven — no PostgreSQL harness (Docker absent) — so the contract is implemented and tested, not empirically raced |

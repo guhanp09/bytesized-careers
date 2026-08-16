@@ -4,11 +4,11 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
-CURRENT PHASE: Phase 6 — AI Job Import hardening
-LAST COMPLETED ATOMIC SLICE: Phase 6B (AI-004 partial, AI-006 partial) — a model allowlist enforced where the provider is built, and a configuration-only readiness probe at GET /api/v1/health/job-import. Phase 6A delivered the runtime kill switch (JOB_IMPORT_ENABLED, default true)
-NEXT ATOMIC SLICE: Phase 6 continues. Survey first rather than assuming: much of AI-004/005/009 is already implemented in app/integrations/openai/job_import_adapter.py (store=False, OPENAI_MAX_OUTPUT_TOKENS, a measured 90s timeout, one retry for transient failures only), and AI-008 inherits SafeOutboundFetcher from Phase 2. The real gaps look like AI-001 (durable import queue — processing is in-request today), AI-002 (idempotency), AI-003 (quotas/concurrency), AI-004's model allowlist and budget, AI-006 (boot readiness) and AI-010 (evaluation corpus). STANDING PRODUCT CONSTRAINT: AI Job Import must REMAIN — not removed, not permanently disabled, not reduced to literal extraction, no disconnected review UI, never auto-publishing. Import is an input method, not a second job editor. Also open: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004, TRUST-003, CORRECT-006, and backend/.env.example (BLOCKED_ENVIRONMENT — path denied to tooling, so new settings are documented in backend/app/core/config.py).
-CURRENT HEAD: the Phase 5 certification commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
-CURRENT ALEMBIC HEAD: 0062_email_suppressions (single head; 0060_email_outbox_lease, 0061_beta_invitations, 0062)
+LAST COMPLETED PHASE: Phase 6 — AI Job Import production hardening (locally complete and certified; AI-004's currency budget is BLOCKED_PRODUCT_DECISION and AI-001/AI-003 live concurrency is BLOCKED_ENVIRONMENT). Phases 2, 4 and 5 were certified earlier under the same terms
+CURRENT PHASE: Phase 7 — Durable media storage
+LAST COMPLETED ATOMIC SLICE: Phase 6 certification. AI Job Import now has durable execution (migration 0063), a per-user quota (0064), a real kill switch, a model allowlist, a readiness probe and a pinned provider payload.
+NEXT ATOMIC SLICE: Phase 7 — durable media. Read the Phase 7 ledger rows first. Expect an object-storage abstraction with a local/test adapter, upload authorization, size/MIME/magic-byte verification, image re-encoding and metadata stripping, canonical asset identity and orphan cleanup. Live object-store provider verification stays BLOCKED_EXTERNAL. Do not store durable production media only on the application filesystem.
+CURRENT ALEMBIC HEAD: 0064_job_import_quota_counters (single head; 0060, 0061, 0062, 0063_job_import_execution_lease, 0064)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
 NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002; EMAIL_WEBHOOK_SECRET from EMAIL-004 (unset means the delivery webhook refuses everything, which is the intended fail-closed posture, not a bug). These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
@@ -796,6 +796,57 @@ NOT COVERED BY A UNIT TEST, stated plainly: the frontend copy. readableImportErr
 ImportJobPageClient.tsx and is not exported, so reaching it would mean extracting it from a
 mature component — a bigger change than this slice justifies. It is typechecked, and the code
 string it matches is asserted on the backend side.
+```
+
+## Phase 6 certification — LOCALLY COMPLETE
+
+```text
+Scope: AI Job Import production hardening. The feature is unchanged as a product — source text,
+interpretation, a canonical draft, the SAME Post Job flow, human review, publication. Nothing was
+made "safe" by making it useless: no inference was removed, no second review surface added, and
+no route can publish.
+
+  AI-001  IMPLEMENTED  durable execution: lease, atomic claim, bounded attempts, retry schedule,
+                       sweep. Live multi-worker race NOT proven (no PostgreSQL harness).
+  AI-002  VALIDATED    creation idempotency predates this work; the expensive half now asserted
+                       as a call count — a repeat buys no second draft and spends no attempt.
+  AI-003  IMPLEMENTED  per-user quota consumed in one statement, window reset inside it.
+                       Migration 0064. Same concurrency caveat as AI-001.
+  AI-004  IN_PROGRESS  allowlist + output cap done; spend bounded in ATTEMPTS. A budget in
+                       CURRENCY is BLOCKED_PRODUCT_DECISION — needs real per-model prices.
+  AI-005  VALIDATED    by survey: measured 90s timeout, one transient-only retry, retry-after.
+  AI-006  VALIDATED    /api/v1/health/job-import: credential, model, queue recovery. No provider
+                       call — a probe that asked the provider would bill a load balancer.
+  AI-007  VALIDATED    by survey: no route publishes; can_publish_directly asserted False in
+                       three suites; injection cannot write publication state.
+  AI-008  VALIDATED    by survey: URL import inherits SafeOutboundFetcher from Phase 2.
+  AI-009  VALIDATED    payload minimization PINNED — permitted fields enumerated so the payload
+                       fails when it grows; extra="forbid" proven; store=False asserted.
+  AI-010  IMPLEMENTED  large corpus predates this phase, including prompt injection.
+  AI-011  VALIDATED    real server-side kill switch (JOB_IMPORT_ENABLED).
+
+Evidence, uncontended and local:
+  backend      7,034 passed / 64 skipped / 0 failed   (Phase 6 start: 6,913 / 64)
+  frontend     1,181 passed / 0 failed;  tsc --noEmit exit 0
+  ruff         clean on every changed file
+  alembic      single head 0064_job_import_quota_counters; 0063 and 0064 render both ways offline
+
+Collection movement across the phase was checked at EVERY broad run and every delta accounted
+for: 6,977 -> 7,018 -> 7,048 -> 7,065 -> 7,086 -> 7,098. A drop is treated as a failure even at
+zero reported failures — that rule exists because a file overwrite once removed 47 tests silently.
+
+Three design decisions worth carrying forward:
+  - the sweep NEVER calls the provider. Unattended retries spend money for someone who is not
+    there to see the result, and it is what makes the sweep safe to run while the kill switch is
+    off — which is exactly when someone is trying to stop provider work.
+  - backoff restrains the machine, not the person. A recruiter pressing "try again" does not wait
+    out a delay the system invented for itself.
+  - ownership (lease) and lifecycle (status) are separate axes. Conflating them made the very
+    next state transition illegal and broke every import; the tests caught it immediately.
+
+Two structural lessons: on SQLite a read-then-write rewrite passes EVERY behavioural test for
+both the claim and the quota. Structure is the only witness there, which is why those tests
+exist and why they are mutation-checked.
 ```
 
 ## Phase 5 certification — LOCALLY COMPLETE
