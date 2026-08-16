@@ -125,7 +125,7 @@ Locally complete and certified, with two rows deliberately left open and named: 
 | MEDIA-002 | CRITICAL | Upload grants/quarantine | MEDIA-001, RATE-003 | NOT_STARTED | Grant expiry/scope, finalize, unauthorized access and cleanup tests | YES | YES | Yes | Yes | — |
 | MEDIA-003 | CRITICAL | Image validation | MEDIA-002 | IMPLEMENTED | Magic byte, decode, pixel/dimension/byte, malformed and metadata-strip tests | NO | NO | Yes | Yes | "feat(media): decide what an upload is from its bytes, not its label" — magic-byte sniffing, declared-vs-actual mismatch refused, pixel/dimension caps, EXIF/XMP/text stripping for PNG/JPEG/WebP. RE-ENCODING is NOT done: it needs an imaging library, which is a dependency decision. GIF metadata is passed through — recorded, and GIFs carry no EXIF |
 | MEDIA-004 | HIGH | Canonical delivery | MEDIA-001 | NOT_STARTED | Canonical/CDN URL and host-header poisoning tests | POSSIBLE | YES | Yes | Yes | — |
-| MEDIA-005 | HIGH | Object lifecycle | MEDIA-002 | NOT_STARTED | Replacement, orphan, deletion, retry and retention tests | YES | YES | Yes | Yes | — |
+| MEDIA-005 | HIGH | Object lifecycle | MEDIA-002 | IN_PROGRESS | Replacement, orphan, deletion, retry and retention tests | NO | YES | Yes | Yes | "feat(media): stop keeping the avatar someone replaced" — replacement now deletes the superseded object, resolved from the stored URL and refused if it does not look like a key we wrote. Deletion after commit and never able to fail the upload. STILL OPEN: account-deletion cascade and a sweep for objects orphaned by an earlier crash, both of which want a stored key column rather than URL parsing |
 
 ## Phase 8 — Realtime and scalable shared state
 

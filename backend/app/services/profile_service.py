@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import html
+import logging
 import re
 import secrets
 import unicodedata
@@ -65,7 +66,12 @@ from app.schemas.profile import (
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services import review_service
-from app.services.media_storage import LocalMediaStorage, build_object_key
+from app.services.media_storage import (
+    LocalMediaStorage,
+    MediaStorage,
+    build_object_key,
+    key_from_url,
+)
 from app.services.media_validation import InvalidImageError, prepare_upload
 from app.services.profile_rules import (
     DEFAULT_PRIVACY_SETTINGS,
@@ -149,6 +155,9 @@ AVATAR_UPLOAD_EXTENSIONS = {
 }
 MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024
+
+logger = logging.getLogger(__name__)
+
 
 
 class ProfileValidationError(Exception):
@@ -1930,6 +1939,22 @@ class ProfileService:
         await self.repository.session.refresh(user)
         return await self._build_profile_read(user)
 
+    @staticmethod
+    async def _discard_superseded_media(storage: MediaStorage, key: str | None) -> None:
+        """Remove the object a new upload replaced, after the row that named it.
+
+        Never allowed to fail the upload: the profile is already correct and the
+        person is waiting. A file that survives is a tidiness problem; an error
+        thrown here would be their upload appearing to fail after it worked.
+        """
+
+        if key is None:
+            return
+        try:
+            await storage.delete(key)
+        except Exception:  # noqa: BLE001 - cleanup must not fail a finished upload
+            logger.warning("media_superseded_delete_failed", extra={"key": key})
+
     async def upload_my_avatar(
         self,
         user: User,
@@ -1985,12 +2010,21 @@ class ProfileService:
         )
         key = build_object_key(prefix="avatars", owner_id=user.id, extension=extension)
         stored = await storage.put(key, image_bytes, content_type=facts.media_type)
+        # Whatever this replaces is now unreferenced. Noted before the row is
+        # updated and removed after it commits, so a crash in between leaves an
+        # orphan rather than a profile pointing at a file that is gone.
+        superseded = key_from_url(
+            user.avatar_url,
+            public_base_url=public_base_url,
+            base_path=settings.media_base_path,
+        )
         user.avatar_mode = "generic"
         user.avatar_youtube_channel_id = None
         user.avatar_url = stored.url
 
         await self.repository.commit()
         await self.repository.session.refresh(user)
+        await self._discard_superseded_media(storage, superseded)
         return await self._build_profile_read(user)
 
     async def upload_my_banner(
@@ -2048,10 +2082,19 @@ class ProfileService:
         )
         key = build_object_key(prefix="banners", owner_id=user.id, extension=extension)
         stored = await storage.put(key, image_bytes, content_type=facts.media_type)
+        # Whatever this replaces is now unreferenced. Noted before the row is
+        # updated and removed after it commits, so a crash in between leaves an
+        # orphan rather than a profile pointing at a file that is gone.
+        superseded = key_from_url(
+            user.banner_url,
+            public_base_url=public_base_url,
+            base_path=settings.media_base_path,
+        )
         user.banner_url = stored.url
 
         await self.repository.commit()
         await self.repository.session.refresh(user)
+        await self._discard_superseded_media(storage, superseded)
         return await self._build_profile_read(user)
 
     async def update_my_privacy(self, user: User, payload: PrivacyUpdateRequest) -> ProfileRead:

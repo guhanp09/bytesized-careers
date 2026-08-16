@@ -798,6 +798,33 @@ mature component — a bigger change than this slice justifies. It is typechecke
 string it matches is asserted on the backend side.
 ```
 
+## Phase 7C checkpoint (MEDIA-005 partial — replacement no longer orphans)
+
+```text
+COMMIT: "feat(media): stop keeping the avatar someone replaced"
+MIGRATION: none. BROAD: full backend 7,093 passed / 64 skipped / 0 failed.
+COLLECTION: 7,148 -> 7,157 (+9). Accounted for.
+
+THE DEFECT: replacing an avatar left the previous file on disk for ever. The row pointed
+somewhere new and nothing pointed at the old object, so nothing could ever decide to remove it.
+Storage that only grows is a bill that only grows, and every orphan is a copy of someone's face
+that outlived their decision to change it.
+
+HOW: key_from_url() resolves the superseded object from the stored URL, and returns None for
+anything that is not ours — a YouTube channel image, a pre-seam URL, or a path under our prefix
+that does not look like a key we would have written. That last case matters: a stored URL is
+data, and data that arrives looking like a traversal must not become a delete.
+ORDER: noted before the row changes, deleted AFTER it commits, so a crash in between leaves an
+orphan rather than a profile pointing at a file that is gone. Cleanup can never fail the upload —
+the profile is already correct and the person is waiting; a surviving file is tidiness, an error
+here would be their upload appearing to fail after it worked.
+Mutation-proven: removing the cleanup call fails the end-to-end test.
+
+STILL OPEN in MEDIA-005, and named rather than implied: deleting a person's objects when their
+account goes, and sweeping objects orphaned by an earlier crash. Both want a stored key column on
+the row rather than parsing it back out of a URL, which is a migration and a slice of its own.
+```
+
 ## Phase 7B checkpoint (MEDIA-001 — uploads go through a seam, not to a directory)
 
 ```text

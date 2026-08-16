@@ -22,6 +22,7 @@ from app.services.media_storage import (
     InvalidObjectKeyError,
     LocalMediaStorage,
     build_object_key,
+    key_from_url,
     validate_object_key,
 )
 
@@ -205,3 +206,114 @@ class TestTheLocalAdapterIsNotAProductionAnswer:
 
         documentation = " ".join((inspect.getdoc(Local) or "").split()).lower()
         assert "not a production answer" in documentation
+
+
+class TestFindingWhatAnUploadReplaced:
+    """Replacing an avatar used to leave the previous file on disk for ever.
+
+    The row pointed somewhere new and nothing pointed at the old object, so
+    nothing could ever decide to remove it. Storage that only grows is a bill
+    that only grows — and every orphan is a copy of someone's face that outlived
+    their decision to change it.
+    """
+
+    def test_our_own_url_resolves_to_its_key(self) -> None:
+        key = key_from_url(
+            "https://example.test/media/avatars/abc/deadbeef.png",
+            public_base_url="https://example.test",
+            base_path="/media/",
+        )
+
+        assert key == "avatars/abc/deadbeef.png"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            None,
+            "",
+            "https://yt3.googleusercontent.com/channel-avatar.jpg",
+            "https://other.example/media/avatars/abc/deadbeef.png",
+            "https://example.test/uploads/avatars/abc/deadbeef.png",
+        ],
+    )
+    def test_a_url_that_is_not_ours_is_left_alone(self, url: str | None) -> None:
+        """Avatars can legitimately live elsewhere — a YouTube channel image, a
+        URL from before this seam. "Not ours" is an ordinary answer."""
+
+        assert (
+            key_from_url(url, public_base_url="https://example.test", base_path="media")
+            is None
+        )
+
+    def test_a_hostile_path_under_our_prefix_is_not_acted_on(self) -> None:
+        """The refusal that matters: a stored URL is data, and data that arrives
+        looking like a traversal must not become a delete."""
+
+        assert (
+            key_from_url(
+                "https://example.test/media/../../etc/passwd",
+                public_base_url="https://example.test",
+                base_path="media",
+            )
+            is None
+        )
+
+    async def test_the_round_trip_holds(self, storage: LocalMediaStorage) -> None:
+        """What put() returns must be resolvable back to what delete() needs, or
+        cleanup silently does nothing."""
+
+        key = build_object_key(prefix="avatars", owner_id=uuid.uuid4(), extension="png")
+        stored = await storage.put(key, b"bytes", content_type="image/png")
+
+        resolved = key_from_url(
+            stored.url,
+            public_base_url=storage.public_base_url,
+            base_path=storage.base_path,
+        )
+
+        assert resolved == key
+        assert await storage.delete(resolved) is True
+
+
+@pytest.mark.asyncio
+class TestReplacingAnAvatarThroughTheApi:
+    """End to end, because the resolution and the deletion are separate steps
+    and either one being wrong leaves the file behind."""
+
+    async def test_the_previous_file_is_removed(self, client, monkeypatch, tmp_path) -> None:
+        from app.core import config
+        from tests.test_profile_features import _register_verify_login
+
+        monkeypatch.setattr(config.settings, "media_root", str(tmp_path))
+
+        bearer = await _register_verify_login(
+            client, email="orphan@example.com", username="orphanuser"
+        )
+        png_data_url = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+        )
+        upload = lambda: client.post(  # noqa: E731 - short local helper
+            "/api/v1/me/avatar",
+            headers={"Authorization": f"Bearer {bearer}"},
+            json={
+                "file_name": "a.png",
+                "content_type": "image/png",
+                "data_url": png_data_url,
+            },
+        )
+
+        first = await upload()
+        assert first.status_code == 200
+        first_url = first.json()["avatar_url"]
+
+        second = await upload()
+        assert second.status_code == 200
+        assert second.json()["avatar_url"] != first_url
+
+        stored = list(tmp_path.rglob("*.png"))
+
+        # Exactly one: the replacement. Before this, both survived and only one
+        # was reachable.
+        assert len(stored) == 1
+        assert stored[0].name in second.json()["avatar_url"]

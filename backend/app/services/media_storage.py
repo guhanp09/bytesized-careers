@@ -145,3 +145,32 @@ class LocalMediaStorage:
 
     async def exists(self, key: str) -> bool:
         return self._path_for(key).exists()
+
+
+def key_from_url(url: str | None, *, public_base_url: str, base_path: str) -> str | None:
+    """The object key a URL of ours refers to, or None if it is not ours.
+
+    Replacing an avatar used to leave the previous file on disk for ever: the
+    row pointed somewhere new and nothing pointed at the old object, so nothing
+    could ever decide to remove it. Storage that only grows is a bill that only
+    grows, and every orphan is a copy of someone's face that outlived their
+    decision to change it.
+
+    Returning None rather than raising is deliberate. Avatars can legitimately
+    be somewhere else entirely — a YouTube channel image, a URL from before this
+    seam existed — and "not ours" is an ordinary answer, not a failure.
+    """
+
+    if not url:
+        return None
+
+    prefix = f"{public_base_url.rstrip('/')}/{base_path.strip('/')}/"
+    if not url.startswith(prefix):
+        return None
+
+    try:
+        return validate_object_key(url[len(prefix) :])
+    except InvalidObjectKeyError:
+        # A URL under our prefix that is not a key we would ever have written.
+        # Refusing to act on it is the safe half of the answer.
+        return None
