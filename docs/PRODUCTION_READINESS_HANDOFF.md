@@ -798,6 +798,41 @@ mature component — a bigger change than this slice justifies. It is typechecke
 string it matches is asserted on the backend side.
 ```
 
+## Phase 7B checkpoint (MEDIA-001 — uploads go through a seam, not to a directory)
+
+```text
+COMMIT: "feat(media): put uploads behind a seam the filesystem does not own"
+MIGRATION: none. BROAD: full backend 7,084 passed / 64 skipped / 0 failed.
+COLLECTION: 7,123 -> 7,148 (+25 storage). Accounted for.
+
+WHY: media goes to the application's own filesystem, which works until there is a second instance
+or a redeploy onto fresh disk — then half the avatars are missing on half the requests. This does
+not fix that; an object store does. It makes the fix a CONSTRUCTOR SWAP rather than a rewrite,
+and pins the contract before the swap so the adapter has something to satisfy.
+
+app/services/media_storage.py:
+  MediaStorage protocol — url_for / put / delete / exists, and a test asserts it has not grown.
+    Every method here is one every future adapter must implement, and the ones that are easy on a
+    filesystem are the awkward ones on an object store.
+  LocalMediaStorage — what runs today; its docstring says plainly it is not a production answer,
+    and a test asserts the docstring still says so.
+  build_object_key(prefix, owner_id, extension) -> "prefix/owner-hex/random.ext"
+    Owner in the path so an object can be attributed and swept WITHOUT a database lookup — a
+    deletion that has to join back to a table stops happening when the table is what is being
+    cleaned up. Random suffix so knowing an account id does not let you enumerate its uploads.
+  validate_object_key — refused at EVERY entry point, not just put, plus an independent
+    is_relative_to check after resolution. The regex already excludes traversal; the second check
+    is for the day someone loosens the regex.
+
+The real object-store adapter (S3/R2) is BLOCKED_EXTERNAL: bucket, credentials, bill. A fake
+in-memory adapter satisfying the protocol is exercised in the tests, so substitutability is
+demonstrated rather than asserted.
+
+NEXT READY: MEDIA-005 (object lifecycle — replacement currently ORPHANS the previous avatar,
+which is now cheap to fix through the seam), then MEDIA-004 canonical delivery, MEDIA-002 upload
+grants. Then Phase 8.
+```
+
 ## Phase 7A checkpoint (MEDIA-003 — an upload is what its bytes say, not what it claims)
 
 ```text

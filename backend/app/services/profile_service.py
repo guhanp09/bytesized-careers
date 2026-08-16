@@ -7,7 +7,6 @@ import re
 import secrets
 import unicodedata
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
@@ -66,6 +65,7 @@ from app.schemas.profile import (
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services import review_service
+from app.services.media_storage import LocalMediaStorage, build_object_key
 from app.services.media_validation import InvalidImageError, prepare_upload
 from app.services.profile_rules import (
     DEFAULT_PRIVACY_SETTINGS,
@@ -1974,16 +1974,20 @@ class ProfileService:
             raise ProfileValidationError(str(exc)) from exc
         extension = facts.extension
 
-        avatars_dir = Path(settings.media_root) / "avatars"
-        avatars_dir.mkdir(parents=True, exist_ok=True)
-        file_name = f"{user.id}-{secrets.token_urlsafe(12)}.{extension}"
-        file_path = avatars_dir / file_name
-        file_path.write_bytes(image_bytes)
-
-        media_base_path = f"/{settings.media_base_path.strip('/')}"
+        # Through the storage seam rather than straight to a directory: the
+        # filesystem is where this goes today, not where it has to go. An
+        # object-store adapter is a constructor swap from here, and the key is
+        # validated before any path is derived from it.
+        storage = LocalMediaStorage(
+            root=settings.media_root,
+            public_base_url=public_base_url,
+            base_path=settings.media_base_path,
+        )
+        key = build_object_key(prefix="avatars", owner_id=user.id, extension=extension)
+        stored = await storage.put(key, image_bytes, content_type=facts.media_type)
         user.avatar_mode = "generic"
         user.avatar_youtube_channel_id = None
-        user.avatar_url = f"{public_base_url.rstrip('/')}{media_base_path}/avatars/{file_name}"
+        user.avatar_url = stored.url
 
         await self.repository.commit()
         await self.repository.session.refresh(user)
@@ -2033,14 +2037,18 @@ class ProfileService:
             raise ProfileValidationError(str(exc)) from exc
         extension = facts.extension
 
-        banners_dir = Path(settings.media_root) / "banners"
-        banners_dir.mkdir(parents=True, exist_ok=True)
-        file_name = f"{user.id}-{secrets.token_urlsafe(12)}.{extension}"
-        file_path = banners_dir / file_name
-        file_path.write_bytes(image_bytes)
-
-        media_base_path = f"/{settings.media_base_path.strip('/')}"
-        user.banner_url = f"{public_base_url.rstrip('/')}{media_base_path}/banners/{file_name}"
+        # Through the storage seam rather than straight to a directory: the
+        # filesystem is where this goes today, not where it has to go. An
+        # object-store adapter is a constructor swap from here, and the key is
+        # validated before any path is derived from it.
+        storage = LocalMediaStorage(
+            root=settings.media_root,
+            public_base_url=public_base_url,
+            base_path=settings.media_base_path,
+        )
+        key = build_object_key(prefix="banners", owner_id=user.id, extension=extension)
+        stored = await storage.put(key, image_bytes, content_type=facts.media_type)
+        user.banner_url = stored.url
 
         await self.repository.commit()
         await self.repository.session.refresh(user)
