@@ -28,12 +28,17 @@ test("post-job no longer asks recruiters for language requirements", async ({ pa
 });
 
 test("post-job gives trial, evaluation, applications, and references their own screens", async ({ page }) => {
-  // Screening questions live on the dedicated Evaluation screen.
+  // The Evaluation screen is the hiring *process*; screening questions moved to
+  // the Applications screen, next to the materials an applicant must include.
   await page.goto("/post-job?section=screening");
   await dismissHiringDialog(page);
 
   const form = page.locator("form");
   await expect(form.getByRole("heading", { name: "EVALUATION" })).toBeVisible();
+  await expect(form.getByRole("heading", { name: "Screening questions" })).toHaveCount(0);
+
+  await page.goto("/post-job?section=howToApply");
+  await dismissHiringDialog(page);
   await expect(form.getByRole("heading", { name: "Screening questions" })).toBeVisible();
   await form.getByRole("button", { name: /Add question/ }).click();
   const question = form.locator('section[id^="job-question-"]').first();
@@ -41,12 +46,10 @@ test("post-job gives trial, evaluation, applications, and references their own s
   await question.getByLabel("Question", { exact: true }).fill("Which sample best shows retention-led pacing?");
   await question.getByLabel("Response required").check();
   await question.getByLabel("Answer guidance", { exact: true }).fill("Name one sample and explain your role.");
-  await expect(form.getByText("What applicants must include")).toHaveCount(0);
-
-  // Public application requirements live on the dedicated Applications screen.
-  await page.goto("/post-job?section=howToApply");
-  await dismissHiringDialog(page);
-  await expect(form.getByRole("heading", { name: "APPLICATION REQUIREMENTS" })).toBeVisible();
+  // Public application requirements share this screen with screening.
+  // `.first()` because the heading renders twice on this screen; whether that
+  // duplication should exist at all is CORRECT-006's question, not this test's.
+  await expect(form.getByRole("heading", { name: "APPLICATION REQUIREMENTS" }).first()).toBeVisible();
   await expect(form.getByLabel("Public how-to-apply note")).toBeVisible();
   await expect(form.getByText("What applicants must include")).toBeVisible();
   await expect(form.getByTestId("custom-instruction-editor")).toHaveCount(0);

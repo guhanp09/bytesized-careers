@@ -35,7 +35,10 @@ test.describe("phase 3a polish surfaces", () => {
     await page.goto("/search?q=editor");
     await expect(page).toHaveURL(/\/jobs\?q=editor/);
     await expect(page.locator('div[role="link"]').first()).toBeVisible();
-    await expect(page.locator("body")).not.toContainText(/Proof|USD|\$[0-9]/);
+    // Currency dropped from this guard for the same reason as
+    // beta-review-safety: the demo corpus now carries genuinely USD/EUR jobs
+    // and TRUST-001 requires showing the posted currency.
+    await expect(page.locator("body")).not.toContainText(/Proof/);
   });
 
   test("notifications stay behind auth and public profiles stay marketplace-facing", async ({ page }) => {

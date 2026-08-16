@@ -113,6 +113,18 @@ beta-review-safety (3) + phase3b-detail-post (1) — FIXED, commit "test(trust):
   TRUST-003 with its own slice — not something to smuggle into a browser-test repair. Whoever
   takes TRUST-003 should expect to change those two tests as part of it.
 
+smoke (2) + phase3a-polish (1) + post-job-languages (1) — FIXED, commit "test(phase4): follow the screens and titles the product moved to"
+  smoke /jobs/1 route text: job 1 was retitled by the fixture rewrite ("Video editor for YouTube"
+  -> "Long-form YouTube editor for evidence-led finance stories").
+  smoke :452 and phase3a :31: the same two retirements already handled elsewhere — external apply
+  is pinned internal, and the currency clause is stale under TRUST-001.
+  post-job-languages :30: screening questions moved from the EVALUATION screen to APPLICATION
+  REQUIREMENTS (they sit beside the materials an applicant must include). The test now asserts the
+  separation in both directions: absent on Evaluation, present on Applications.
+  Noted, not fixed: the APPLICATION REQUIREMENTS heading renders twice on that screen, so the
+  assertion uses .first(). Whether that duplication should exist is CORRECT-006 (Duplicate UI
+  identity), which is NOT_STARTED and owns it.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

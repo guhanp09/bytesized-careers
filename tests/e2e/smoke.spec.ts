@@ -51,7 +51,7 @@ async function stubNoExistingApplication(page: Page, jobId: string) {
 const routeChecks = [
   { path: "/", text: "Recent Job Listings" },
   { path: "/jobs", text: "Video editor" },
-  { path: "/jobs/1", text: "Video editor for YouTube" },
+  { path: "/jobs/1", text: "Long-form YouTube editor" },
   { path: "/talent", text: "Retention editor" },
   { path: "/talent/mock-talent-retention-editor", text: "RETENTION EDITOR" },
   { path: "/u/aarav-mehta", text: "Aarav Mehta" },
@@ -449,25 +449,23 @@ test("job apply modal blocks an empty submit with calm inline validation", async
   await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
 });
 
-test("external job instructions link to the declared application site without an internal preflight", async ({ context, page }) => {
+test("a job stored with an external application mode keeps its instructions but applies internally", async ({ context, page }) => {
   await signInAsCandidate(context);
   await stubNoExistingApplication(page, "15");
-  // Mock job "15" is the deterministic external-application listing. Its
-  // instructions remain visible, but CreatorJobs must not open the internal
-  // first-message flow for an external application.
+  // Job 15 still carries an external application mode in the fixture, but
+  // `applicationPreflightForJob` pins every application to `internal` on
+  // purpose — a stored external mode "belongs to some other hiring process the
+  // platform never saw and cannot record". The instructions stay visible; the
+  // off-platform link must not.
   await page.goto("/jobs/15", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("job-apply-panel").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "How to apply" })).toBeVisible();
-  await expect(page.getByTestId("job-apply-requirements")).toHaveCount(0);
+  await expect(
+    page.locator('a[href="https://example.com/creatorjobs-demo/partnerships-application"]')
+  ).toHaveCount(0);
   const applyButton = page.getByTestId("job-apply-button").first();
-  await expect(applyButton).toHaveText("Continue to application");
-  await expect(applyButton).toHaveAttribute(
-    "href",
-    "https://example.com/creatorjobs-demo/partnerships-application"
-  );
-  await expect(applyButton).toHaveAttribute("target", "_blank");
-  await expect(page.getByTestId("first-message-modal-job")).toHaveCount(0);
+  await expect(applyButton).toHaveText("Apply");
 });
 
 test("talent hire opens the first-message requirements modal for recruiters", async ({ page }) => {
