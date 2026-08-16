@@ -80,9 +80,15 @@ test.describe("a title naming several crafts", () => {
     await openMultiCraft(page);
 
     const turn = await settledTurn(page);
+    // The chip carries a "Likely match" badge on its own line. That is
+    // presentation, not the role, and the draft correctly stores the role name
+    // alone — so compare against the label rather than the whole chip.
     const chosen = (
       await turn.locator('[data-testid^="conversation-option-"]').first().innerText()
-    ).trim();
+    )
+      .trim()
+      .split("\n")[0]
+      .trim();
     await turn.locator('[data-testid^="conversation-option-"]').first().click();
 
     // The craft was the only thing this page left open, so answering it should

@@ -1687,7 +1687,13 @@ export default function PostJobPage() {
         // `location` can still be material for remote work (for example,
         // "Remote, India"). Keep it in the frontend model instead of throwing
         // it away merely because the work mode is remote.
-        setCity(nextLocation);
+        //
+        // The bare string "Remote" is the exception: the payload writes it as a
+        // sentinel when a remote job has no geographic restriction, so reading
+        // it back into the candidate-location input would show storage
+        // bookkeeping as though the recruiter had typed it — and then persist it
+        // as a real restriction on the next save.
+        setCity(nextWorkMode === "Remote" && nextLocation.trim() === "Remote" ? "" : nextLocation);
         setExperienceLevel(nextExperience);
         setStartWithin((draft.start_timeframe as StartTimeframe) || "");
         setEngagementType(
@@ -3774,6 +3780,18 @@ export default function PostJobPage() {
               }}
               workMode={workMode}
               onWorkModeChange={(next) => {
+                // The city input means two different things either side of
+                // Remote: for On-site and Hybrid it is where the work happens,
+                // and for Remote it is an optional restriction on where a
+                // candidate may live. Carrying a value across that boundary
+                // keeps the text and silently changes what it claims — a job
+                // that moved from Hybrid in Kolkata to Remote would go on
+                // telling candidates Kolkata, a city nobody now has to be in.
+                // Crossing the boundary clears it; moving between On-site and
+                // Hybrid does not, because there the meaning is the same.
+                const crossesRemoteBoundary =
+                  (next === "Remote") !== (workMode === "Remote");
+                if (crossesRemoteBoundary && city) setCity("");
                 setWorkMode(next);
                 markPayloadDirty("work_mode", "location");
               }}

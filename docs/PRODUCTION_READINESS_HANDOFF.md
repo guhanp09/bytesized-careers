@@ -141,6 +141,23 @@ mobile-overflow (2) + applications-pipeline (1) — FIXED, commit "test(phase4):
 
 PHASE 4 STANDARD BASELINE NOW: 18 deterministic failures -> 0.
 
+QA: craft-ambiguity (1) + post-job-later-steps (1) — FIXED, commit "fix(post-job): stop a remote job from claiming a city"
+  craft-ambiguity :76 answered the baseline's open question (did presentation leak into selection,
+  or is the test stale?): neither exactly — the TEST read the option chip's whole innerText, which
+  now carries a "Likely match" badge on a second line, and compared it to
+  primary_role_name_snapshot. The product correctly stores "Video Editor". Expectation now takes
+  the label line.
+  post-job-later-steps :669 was a GENUINE PRODUCT DEFECT with two layers:
+    (1) onWorkModeChange never cleared the city when the mode crossed the Remote boundary, where
+        the field changes meaning — office location vs optional candidate restriction. A job moved
+        from Hybrid-in-Kolkata to Remote kept advertising Kolkata. Now cleared on crossing, and
+        deliberately NOT between On-site and Hybrid where the meaning is unchanged.
+    (2) Fixing (1) revealed the value becoming "Remote": the payload writes `location: "Remote"` as
+        a sentinel for "remote, no restriction", and rehydration copied it into the
+        candidate-location input — storage bookkeeping displayed as recruiter input, and persisted
+        as a real restriction on the next save. Rehydration now refuses the bare sentinel.
+  31/31 post-job-later-steps pass; craft-ambiguity passes.
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the
