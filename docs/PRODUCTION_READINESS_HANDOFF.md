@@ -4,9 +4,9 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
-CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
+CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: Phase 4 defect fixing, starting from the freshly established baseline recorded below under "Phase 4 browser baseline" — 18 deterministic standard failures and 5 deterministic QA failures, both verified by serial re-run. Take them by family, not one test at a time: the three `adaptive-profile-overview` cases are one story, as are the three `candidate-job-experience` cases and the two `mobile-overflow` viewports. Read `beta-review-safety` and `phase3b-detail-post` carefully first — they concern fabricated marketplace metrics, and the product-truth rule means the right fix may be deleting a metric rather than making one appear. Also still open: the rest of RATE-004 (request timeouts; the concurrency half depends on RATE-001, still BLOCKED_EXTERNAL for want of any Redis), and `backend/.env.example` needs TRUSTED_PROXY_IPS and ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION — re-verified this session, the environment still denies Read and Bash on `.env*`, so BLOCKED_ENVIRONMENT stands.
+NEXT ATOMIC SLICE: Phase 5 — invite-only beta and durable transactional email. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). Read the Phase 5 ledger rows (INVITE-001/002, EMAIL-001..005) before implementing; EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,31 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 4 certification — LOCALLY COMPLETE
+
+```text
+Certified at: Phase 4 certification commit (self-resolve with `git log -1 --format=%H`)
+TypeScript: PASS. ESLint: 0 errors / 33 known warnings.
+Frontend unit: 1,181 passed / 0 failed.
+Standard browser (parallel): 466 passed / 4 failed  (baseline was 447 / 23)
+QA browser (parallel):       289 passed / 1 failed / 2 skipped  (baseline was 285 / 5)
+Serial re-run of all 5:      32 passed / 0 failed  -> every one is parallel-load flake.
+
+DETERMINISTIC FAILURES: 23 -> 0.
+
+Contract reconciliation worth knowing about: `tests/jobCreationUiPolish.test.mjs` pins
+PostJobPage source and asserts "remote geography survives hydration", which reads as a
+contradiction of the QA contract that a remote job must drop its city. It is not. The polish test
+governs hydration and save; the QA test governs a work-mode change. Clearing lives in
+`onWorkModeChange` and fires only when the mode crosses the Remote boundary, and hydration strips
+only the bare "Remote" sentinel — a deliberately typed "Remote, India" survives both. The source
+assertions now state that reconciliation instead of either side being loosened.
+
+Known flaky under parallel load (pass serially, do not chase without reproducing serially first):
+  dev-tools.spec.ts:64, post-job-languages.spec.ts:30, settings.spec.ts:428,
+  talent-browse.spec.ts:73, qa/workspace-performance.spec.ts:108
 ```
 
 ## Phase 4 progress log (families resolved)

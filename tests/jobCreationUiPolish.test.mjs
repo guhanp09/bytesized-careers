@@ -44,13 +44,24 @@ test("remote geography survives imported-draft hydration, editing, preview, and 
   const page = read("components/PostJobPage.tsx");
   const form = read("components/post-job/PostJobForm.tsx");
 
-  assert.match(page, /setCity\(nextLocation\)/);
+  // Hydration keeps a real remote geography ("Remote, India") and drops only the
+  // bare "Remote", which the save path writes as a sentinel meaning "no
+  // restriction" — showing that back as candidate location presented storage
+  // bookkeeping as recruiter input and re-saved it as a genuine restriction.
+  assert.match(page, /nextWorkMode === "Remote" && nextLocation\.trim\(\) === "Remote" \? "" : nextLocation/);
   assert.match(page, /setCity\(typeof values\.location === "string" \? values\.location : ""\)/);
   assert.match(page, /workMode === "Remote"\s*\? city\.trim\(\) \|\| "Remote"/);
   assert.match(page, /location: city\.trim\(\) \|\| \(workMode === "Remote" \? "Remote" : ""\)/);
   assert.match(form, /label="Candidate location"/);
   assert.match(form, /Leave blank for worldwide/);
+  // The form still must not clear the field simply because Remote is selected —
+  // a deliberately typed remote geography has to survive editing. Clearing is
+  // owned by PostJobPage and happens only when the mode *crosses* the Remote
+  // boundary, where the field changes meaning from "where the work happens" to
+  // "where a candidate may live"; carrying a value across that is how a job
+  // moved from Hybrid-in-Kolkata to Remote kept advertising Kolkata.
   assert.doesNotMatch(form, /if \(next === "Remote"\) onCityChange\(""\)/);
+  assert.match(page, /crossesRemoteBoundary/);
 });
 
 test("Post Job keeps a calm decision hierarchy and an editable About the brand field", () => {
