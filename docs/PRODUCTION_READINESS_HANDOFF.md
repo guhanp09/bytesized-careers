@@ -58,6 +58,25 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 4 progress log (families resolved)
+
+```text
+adaptive-profile-overview (3 failures) — FIXED, commit "test(profile): point the recruiter views at identities that exist"
+  Cause: the demo marketplace fixture was rewritten. `finance-creator`/"Finance Channel" and
+  `example-agency`/"Example Creator Agency" no longer exist in fixtures/demo_job_marketplace.json;
+  the current identities are anika_demo/"Money & Mindset" (creator-led) and
+  northstar_demo/"Northstar Creator Agency" (agency, carries managed_by_agency_name).
+  Product contract was correct throughout — only the entities were stale.
+  Verified against the running mock server rather than inferred: /jobs/1 renders
+  /u/anika_demo?view=hiring and NO external channel link, because JobHero passes
+  channelExternalUrl only for agency posts. Job 1 used to be agency-posted, which is why the
+  old test asserted a YouTube href.
+  Coverage improved rather than reduced: the entry-point test now checks both branches —
+  a creator post (profile link only) and an agency post (/jobs/2: agency profile link plus
+  the channel's external page).
+  7/7 pass serially.
+```
+
 ## Phase 4 browser baseline — ESTABLISHED (this replaces the stale 17/6 numbers)
 
 Measured after RATE-004, at commit `d3036da`. Both matrices run in full, then the

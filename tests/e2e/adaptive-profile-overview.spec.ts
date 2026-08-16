@@ -84,10 +84,13 @@ test.describe("adaptive profile overview", () => {
   });
 
   test("Recruiter view uses the recruiter overview layout", async ({ page }) => {
-    await page.goto("/u/finance-creator?view=hiring");
+    // A creator-led channel that posts its own jobs, so no agency rail. The
+    // demo marketplace fixture was rewritten and "finance-creator" no longer
+    // exists; this is its equivalent identity, not a different contract.
+    await page.goto("/u/anika_demo?view=hiring");
     const main = page.getByRole("main");
 
-    await expect(page.getByRole("heading", { name: "Finance Channel", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Money & Mindset", exact: true })).toBeVisible();
     await expect(main.getByRole("button", { name: "Recruiter" })).toHaveAttribute("aria-pressed", "true");
     await expect(main.getByRole("button", { name: "Hiring" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Jobs", exact: true })).toBeVisible();
@@ -132,9 +135,11 @@ test.describe("adaptive profile overview", () => {
   });
 
   test("agency recruiter overview shows Hiring For identity rail", async ({ page }) => {
-    await page.goto("/u/example-agency?view=hiring");
+    // The fixture's agency identity — it carries `managed_by_agency_name`,
+    // which is what turns on the Hiring For rail.
+    await page.goto("/u/northstar_demo?view=hiring");
 
-    await expect(page.getByRole("heading", { name: "Example Creator Agency", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Northstar Creator Agency", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Recent Hires" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Hiring For" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Jobs" }).last()).toBeVisible();
@@ -183,13 +188,29 @@ test.describe("adaptive profile overview", () => {
     await page.getByRole("link", { name: "Aarav Mehta" }).click();
     await expect(page).toHaveURL(/\/u\/aarav-mehta\?view=talent$/);
 
+    // A creator-posted job points at that creator's hiring profile. It shows no
+    // external channel link, because `JobHero` only passes one through for
+    // agency posts — job 1 used to be agency-posted, which is why this once
+    // asserted a YouTube href.
     await page.goto("/jobs/1");
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.locator('a[href="https://www.youtube.com/@financecreator"]').first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Open Example Creator Agency CreatorJobs profile/ }).first()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: /Open Money & Mindset CreatorJobs profile/ }).first()).toHaveAttribute(
       "href",
-      "/u/example-agency?view=hiring"
+      "/u/anika_demo?view=hiring"
     );
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // And the agency branch, which is the half the old assertion covered: an
+    // agency post links to the agency profile *and* surfaces the channel's own
+    // external page.
+    await page.goto("/jobs/2");
+    await expect(page.getByRole("link", { name: /Open Northstar Creator Agency CreatorJobs profile/ }).first()).toHaveAttribute(
+      "href",
+      "/u/northstar_demo?view=hiring"
+    );
+    await expect(
+      page.locator('a[href="https://example.com/creatorjobs-demo/northstar"]').first()
+    ).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 });
