@@ -5,6 +5,7 @@ import json
 
 import pytest
 from jose import jwt
+from pydantic import ValidationError
 
 from app.core import config
 from app.core.security import create_access_token
@@ -319,3 +320,20 @@ def test_production_requires_a_decision_about_what_sits_in_front(
     )
     monkeypatch.setattr(config, "settings", acknowledged)
     config.validate_production_settings()
+
+
+def test_jwt_signing_stays_on_the_hmac_family() -> None:
+    """The asymmetric families are not merely unused; they are unreachable.
+
+    Tokens are signed with `jwt_secret`, a shared secret, so `RS256`/`ES256`
+    would be a misconfiguration. Refusing them also keeps `ecdsa` — a python-jose
+    dependency carrying a Minerva timing attack on P-256 that upstream will not
+    fix — off every code path this service can execute.
+    """
+
+    assert config.Settings().jwt_algorithm == "HS256"
+    assert config.Settings(JWT_ALGORITHM="HS512").jwt_algorithm == "HS512"
+
+    for rejected in ["ES256", "ES384", "ES512", "RS256", "EdDSA", "none", ""]:
+        with pytest.raises(ValidationError):
+            config.Settings(JWT_ALGORITHM=rejected)

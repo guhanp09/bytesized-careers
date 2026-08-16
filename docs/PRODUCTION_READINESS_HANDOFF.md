@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-002D — ecdsa 0.19.1 → 0.19.2 (DER length DoS plus a Minerva timing attack on P-256; arrives through python-jose and should be lock-only, like the Phase 3E group). Then DEP-002E — starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-002E — starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,27 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 3G atomic checkpoint (DEP-002D — ecdsa, and making it unreachable)
+
+```text
+Phase: Phase 3, atomic slice 3G / DEP-002D — ecdsa
+Status: COMPLETE (DEP-002 remains IN_PROGRESS; starlette is the last vulnerable production package)
+Initial HEAD: cfacdd61dfaf03838c564f11e503b60eedc8650e
+Final HEAD: Phase 3G checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(backend): patch ecdsa, then make the unpatchable part unreachable
+Files materially changed: `backend/uv.lock`, `backend/app/core/config.py`, `backend/tests/test_config.py`
+Migrations: None
+Version: ecdsa 0.19.1 → 0.19.2 (transitive, via python-jose)
+Advisories resolved: GHSA-9f5j-8jwj-x28g and PYSEC-2026-2467 — improper DER length validation, a denial of service
+RESIDUAL, and this is the important part: GHSA-wj6h-64fc-37mp / PYSEC-2026-1325, the Minerva timing attack on P-256, is NOT fixed in 0.19.2 and never will be. The OSV record carries `introduced: 0` with no fixed event, and the advisory text states plainly that "the python-ecdsa project considers side channel attacks out of scope for the project and there is no planned fix". Upgrading was therefore never going to clear this one, and no amount of version-chasing will
+Classification: NOT_REACHABLE_WITH_EVIDENCE, and the evidence is four-part. (1) The advisory itself scopes the flaw to `SigningKey.sign_digest()`, key generation and ECDH, and says "ECDSA signature verification is unaffected". (2) `jwt_algorithm` defaults to `HS256` and nothing in `backend/app` references ES256/ES384/ES512, EllipticCurve, SECP or ecdsa. (3) Empirically, `ecdsa` is absent from `sys.modules` after a complete python-jose HS256 encode-and-decode cycle — python-jose imports it lazily, so the module is not merely unused, it is not loaded. (4) The one hole in that argument was that `JWT_ALGORITHM` is environment-configurable, so a deployment could have selected ES256 and made the package reachable
+That hole is now closed structurally rather than documented: `jwt_algorithm` is a `Literal["HS256", "HS384", "HS512"]`, so the asymmetric families are rejected at configuration parse time. This is not a functional restriction — tokens are signed with `jwt_secret`, a shared secret, and an asymmetric algorithm with a shared secret is a misconfiguration rather than a choice. It converts "not reachable today" into "cannot become reachable", which is the difference between an exception and a guarantee
+Tests run: focused config suite; auth/session/strong-auth/OAuth-refresh/session-migration suites; complete uncontended backend suite; Ruff on both changed files; production-set re-audit
+Exact results: config 17 passed (including a new case asserting ES256/ES384/ES512/RS256/EdDSA/none/"" are all refused); focused auth 58 passed; complete backend 6,731 passed / 64 skipped / 0 failed in 319.78s — the 6,730 baseline plus the new case; Ruff clean
+Vulnerabilities before/after against the real production set: 2 vulnerable packages → 2, but ecdsa's open advisories drop from 4 to 2 and both survivors are now classified with evidence rather than outstanding
+Next slice: DEP-002E — starlette, the last one. 0.52.1 → 1.x, 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. It is a major gated behind FastAPI's supported Starlette range, so FastAPI and Starlette move together; validate middleware, auth, exception handlers, CORS, lifespan, streaming and TestClient behaviour before trusting the full suite
 ```
 
 ## Phase 3F atomic checkpoint (DEP-002C — cryptography)

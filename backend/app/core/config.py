@@ -53,7 +53,15 @@ class Settings(BaseSettings):
     )
 
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    # HMAC only, and the restriction is deliberate. Tokens are signed with
+    # `jwt_secret`, a shared secret — the asymmetric families need a key pair, so
+    # `RS256` or `ES256` here would be a misconfiguration rather than a choice.
+    # It also keeps the `ecdsa` package unreachable: it ships as a python-jose
+    # dependency and carries a Minerva timing attack on P-256 that upstream has
+    # said it will not fix, so the only durable answer is never to execute it.
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = Field(
+        default="HS256", alias="JWT_ALGORITHM"
+    )
     # Preserve the historical 14-day default for development/test compatibility.
     # Production boot requires this to be at most 60 minutes and requires the
     # persistent rotating session architecture below.
