@@ -991,6 +991,42 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9C checkpoint (PRIV-003 partial — asking to be deleted)
+
+```text
+COMMIT: "feat(privacy): let someone ask to be deleted, and act on the part that is theirs"
+MIGRATION: 0067_account_deletion_requests, parents 0066, SINGLE HEAD, new table only.
+BROAD: full backend 7,194 passed / 64 skipped / 0 failed. COLLECTION 7,244 -> 7,258 (+14).
+
+WHY NOT JUST DELETE THE ROW: an account is entangled with other people's records. Their messages
+are half of somebody else's conversation; their application is a decision a recruiter is in the
+middle of. Erasing that inside the request that asked for it resolves every one of those
+questions silently, in whatever way the query happened to be written, and irreversibly.
+
+WHAT HAPPENS IMMEDIATELY (all reversible, none destructive):
+  - the request is recorded, so nothing depends on someone remembering;
+  - the account is hidden by reusing `suspended_at` — every visibility and access check already
+    consults it, and a second flag would give two answers to "is this account active";
+  - every session is revoked through the EXISTING revocation, not a second implementation. A
+    session that survives the window between asking and completing is a stolen laptop still using
+    an account whose owner has said they are finished with it.
+
+BUG FOUND BY ITS OWN TEST, worth recording: the first version overwrote suspension_reason
+unconditionally. An account an administrator had suspended would have had that reason destroyed,
+and cancelling would then have LIFTED THE ADMIN SUSPENSION — asking to be deleted would have been
+a way out of being suspended. Now an already-suspended account is left exactly as it is, and
+cancel only lifts a suspension whose reason is the self-requested one.
+
+NOT BUILT, deliberately: erasure and anonymisation, because they need a RETENTION DURATION, and
+that is a legal and product decision. A number chosen here would look exactly like a number
+someone decided. A test asserts the service invents none. This is BLOCKED_PRODUCT_DECISION; the
+erasure pass becomes READY the moment a duration exists.
+
+NEXT READY: PRIV-002 export (deterministic archive, and it must not include another person's
+private messages), then MOD-002 audit-log integrity — survey first, the admin panel already has
+an append-only rule.
+```
+
 ## Phase 9B checkpoint (PRIV-006 — what a person can switch off)
 
 ```text

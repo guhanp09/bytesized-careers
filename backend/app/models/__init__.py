@@ -1,3 +1,4 @@
+from app.models.account_deletion import AccountDeletionRequest
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.auth_session import AuthRefreshCredential, AuthSession
 from app.models.beta_invitation import BetaInvitation
@@ -47,6 +48,7 @@ from app.models.username_history import UsernameHistory
 from app.models.youtube_channel import YouTubeChannel
 
 __all__ = [
+    "AccountDeletionRequest",
     "AdminAuditLog",
     "AuthRefreshCredential",
     "AuthSession",
