@@ -804,7 +804,7 @@ async def test_upload_banner_persists_and_appears_on_public_profile(client: Asyn
     bearer = await _register_verify_login(client, email="banner@example.com", username="banneruser")
     png_data_url = (
         "data:image/png;base64,"
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
     )
 
     upload = await client.post(

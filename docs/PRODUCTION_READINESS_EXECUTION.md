@@ -123,7 +123,7 @@ Locally complete and certified, with two rows deliberately left open and named: 
 |---|---|---|---|---|---|---|---|---|---|---|
 | MEDIA-001 | CRITICAL | Storage abstraction | WEB-006 | NOT_STARTED | Local adapter, object-key ownership and provider adapter contract tests | POSSIBLE | YES | Yes | Yes | — |
 | MEDIA-002 | CRITICAL | Upload grants/quarantine | MEDIA-001, RATE-003 | NOT_STARTED | Grant expiry/scope, finalize, unauthorized access and cleanup tests | YES | YES | Yes | Yes | — |
-| MEDIA-003 | CRITICAL | Image validation | MEDIA-002 | NOT_STARTED | Magic byte, decode, pixel/dimension/byte, malformed and metadata-strip tests | NO | NO | Yes | Yes | — |
+| MEDIA-003 | CRITICAL | Image validation | MEDIA-002 | IMPLEMENTED | Magic byte, decode, pixel/dimension/byte, malformed and metadata-strip tests | NO | NO | Yes | Yes | "feat(media): decide what an upload is from its bytes, not its label" — magic-byte sniffing, declared-vs-actual mismatch refused, pixel/dimension caps, EXIF/XMP/text stripping for PNG/JPEG/WebP. RE-ENCODING is NOT done: it needs an imaging library, which is a dependency decision. GIF metadata is passed through — recorded, and GIFs carry no EXIF |
 | MEDIA-004 | HIGH | Canonical delivery | MEDIA-001 | NOT_STARTED | Canonical/CDN URL and host-header poisoning tests | POSSIBLE | YES | Yes | Yes | — |
 | MEDIA-005 | HIGH | Object lifecycle | MEDIA-002 | NOT_STARTED | Replacement, orphan, deletion, retry and retention tests | YES | YES | Yes | Yes | — |
 

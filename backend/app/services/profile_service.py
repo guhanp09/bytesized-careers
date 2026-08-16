@@ -66,6 +66,7 @@ from app.schemas.profile import (
 )
 from app.schemas.profile_capabilities import ProfileCapabilities
 from app.services import review_service
+from app.services.media_validation import InvalidImageError, prepare_upload
 from app.services.profile_rules import (
     DEFAULT_PRIVACY_SETTINGS,
     can_change_username,
@@ -1949,8 +1950,7 @@ class ProfileService:
                 content_type = header_content_type
             encoded = encoded_body
 
-        extension = AVATAR_UPLOAD_EXTENSIONS.get(content_type)
-        if not extension:
+        if content_type not in AVATAR_UPLOAD_EXTENSIONS:
             raise ProfileValidationError("Avatar must be a PNG, JPG, WEBP, or GIF image.")
 
         try:
@@ -1962,6 +1962,17 @@ class ProfileService:
             raise ProfileValidationError("Avatar image is empty.")
         if len(image_bytes) > MAX_AVATAR_UPLOAD_BYTES:
             raise ProfileValidationError("Avatar image must be 5 MB or smaller.")
+
+        # The bytes decide what this is, not the caller: a mislabelled file
+        # would otherwise be stored under an extension that lies about it and
+        # served from this application's own origin. Camera metadata is removed
+        # here too — an avatar taken on a phone carries the coordinates of
+        # wherever it was taken, and nobody asked to publish those.
+        try:
+            image_bytes, facts = prepare_upload(image_bytes, declared_type=content_type)
+        except InvalidImageError as exc:
+            raise ProfileValidationError(str(exc)) from exc
+        extension = facts.extension
 
         avatars_dir = Path(settings.media_root) / "avatars"
         avatars_dir.mkdir(parents=True, exist_ok=True)
@@ -1998,8 +2009,7 @@ class ProfileService:
                 content_type = header_content_type
             encoded = encoded_body
 
-        extension = AVATAR_UPLOAD_EXTENSIONS.get(content_type)
-        if not extension:
+        if content_type not in AVATAR_UPLOAD_EXTENSIONS:
             raise ProfileValidationError("Banner must be a PNG, JPG, WEBP, or GIF image.")
 
         try:
@@ -2011,6 +2021,17 @@ class ProfileService:
             raise ProfileValidationError("Banner image is empty.")
         if len(image_bytes) > MAX_BANNER_UPLOAD_BYTES:
             raise ProfileValidationError("Banner image must be 8 MB or smaller.")
+
+        # The bytes decide what this is, not the caller: a mislabelled file
+        # would otherwise be stored under an extension that lies about it and
+        # served from this application's own origin. Camera metadata is removed
+        # here too — an avatar taken on a phone carries the coordinates of
+        # wherever it was taken, and nobody asked to publish those.
+        try:
+            image_bytes, facts = prepare_upload(image_bytes, declared_type=content_type)
+        except InvalidImageError as exc:
+            raise ProfileValidationError(str(exc)) from exc
+        extension = facts.extension
 
         banners_dir = Path(settings.media_root) / "banners"
         banners_dir.mkdir(parents=True, exist_ok=True)

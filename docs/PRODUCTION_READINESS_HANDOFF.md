@@ -798,6 +798,39 @@ mature component — a bigger change than this slice justifies. It is typechecke
 string it matches is asserted on the backend side.
 ```
 
+## Phase 7A checkpoint (MEDIA-003 — an upload is what its bytes say, not what it claims)
+
+```text
+COMMIT: "feat(media): decide what an upload is from its bytes, not its label"
+MIGRATION: none. BROAD: full backend 7,059 passed / 64 skipped / 0 failed.
+COLLECTION: 7,098 -> 7,123 (+25 media validation). Accounted for.
+
+TWO REAL DEFECTS, both live before this:
+  1. The stored file's extension came from the CALLER'S content_type. Anyone could declare
+     image/png, upload something else, and have it served from this application's own origin at
+     a .png path. What a browser does with same-origin bytes depends on how it sniffs them, and
+     "depends" is not a security property.
+  2. Bytes were stored exactly as received, EXIF included. A creator uploading an avatar taken on
+     a phone was publishing the GPS coordinates of where they took it, next to their face.
+
+NOW: app/services/media_validation.py — sniff the format from the bytes, refuse a declared type
+that disagrees, derive the extension from the sniffed type, cap PIXELS as well as bytes (a
+200-byte PNG can declare 60,000x60,000; the byte ceiling cannot see that at all), and strip
+metadata. Fails CLOSED: a container it cannot parse is refused, because "we could not tell" and
+"it is fine" are different answers.
+
+NOT DONE, and it is the strongest version: RE-ENCODING. Decoding and re-emitting neutralises
+anything hiding in a container this code parses correctly but a decoder reads differently. It
+needs an imaging library (no Pillow in the venv), which is a dependency decision against a locked
+contract, not a coding one. Everything above is what can be done exactly with no new dependency.
+GIF metadata is passed through — its extensions interleave with frame data and a wrong rewrite
+corrupts the image; GIFs carry no EXIF, so the exposure that motivated this is absent there.
+
+FOUND ON THE WAY: the banner test fixture was a CORRUPT PNG — its IDAT length field said 11 while
+the chunk was 13 bytes (CRC-verified). Nothing had ever parsed it, so it passed. Replaced with a
+valid generated PNG. If another image fixture starts failing, check the file before the parser.
+```
+
 ## Phase 6 certification — LOCALLY COMPLETE
 
 ```text
