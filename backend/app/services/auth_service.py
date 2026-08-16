@@ -36,6 +36,7 @@ from app.core.security import (
 )
 from app.middleware.request_id import get_request_id
 from app.models import AuthRefreshCredential, AuthSession, User
+from app.notifications.email import queue_auth_email
 from app.repositories.auth_repository import (
     AuthRepository,
     OAuthAccountCollisionError,
@@ -45,7 +46,7 @@ from app.services.beta_invitation_service import (
     redeem_invitation,
     require_invitation_for_signup,
 )
-from app.services.email_service import capture_dev_auth_email, send_auth_email
+from app.services.email_service import capture_dev_auth_email
 from app.services.google_identity import (
     GoogleIdentityVerifierProtocol,
     VerifiedGoogleIdentity,
@@ -357,19 +358,40 @@ class AuthService:
         )
         return token
 
-    def log_email_verification_link(
+    def emit_email_verification_link(
         self,
         *,
         email: str,
         token: str,
+        user_id: UUID | None = None,
         request_id: str | None = None,
     ) -> str | None:
+        """Queue the verification email and return the link when dev may see it.
+
+        Queued rather than sent: this runs before the caller commits, so the
+        promise to email lands in the same transaction as the account or token
+        it is about. Nothing here talks to a provider, which is why a mail
+        outage can no longer fail a signup that otherwise succeeded.
+        """
+
         encoded_token = quote(token, safe="")
         verification_url = f"{settings.frontend_base_url.rstrip('/')}/auth/verify?token={encoded_token}"
         text_body = (
             "Verify your CreatorJobs account by opening this link:\n\n"
             f"{verification_url}\n\n"
             "If you did not create a CreatorJobs account, you can ignore this email."
+        )
+        queue_auth_email(
+            self.repository.session,
+            to_email=email,
+            subject="Verify your CreatorJobs email",
+            text_body=text_body,
+            event_key="auth.verification",
+            cta_url=verification_url,
+            user_id=user_id,
+            # The token is single-issue, so this is unique per real send and a
+            # repeated enqueue of the same one is refused by the database.
+            dedupe_key=f"auth.verification:{token}",
         )
         if self._should_log_verification_link():
             capture_dev_auth_email(
@@ -388,27 +410,40 @@ class AuthService:
             )
             return verification_url
 
-        send_auth_email(
-            to_email=email,
-            subject="Verify your CreatorJobs email",
-            text_body=text_body,
-        )
         logger.info("[auth] Verification token created for %s", email)
         return None
 
-    def log_password_reset_link(
+    def emit_password_reset_link(
         self,
         *,
         email: str,
         token: str,
+        user_id: UUID | None = None,
         request_id: str | None = None,
     ) -> str | None:
+        """Queue the reset email. See `emit_email_verification_link`.
+
+        Reset mail is the case where inline sending hurt most: someone locked
+        out of their account is waiting on it, and the old path had no record
+        that it was owed once the process moved on.
+        """
+
         encoded_token = quote(token, safe="")
         reset_url = f"{settings.frontend_base_url.rstrip('/')}/auth/reset?token={encoded_token}"
         text_body = (
             "Reset your CreatorJobs password by opening this link:\n\n"
             f"{reset_url}\n\n"
             "This link expires in 1 hour. If you did not request this, you can ignore this email."
+        )
+        queue_auth_email(
+            self.repository.session,
+            to_email=email,
+            subject="Reset your CreatorJobs password",
+            text_body=text_body,
+            event_key="auth.password_reset",
+            cta_url=reset_url,
+            user_id=user_id,
+            dedupe_key=f"auth.password_reset:{token}",
         )
         if self._should_log_verification_link():
             capture_dev_auth_email(
@@ -426,11 +461,6 @@ class AuthService:
             )
             return reset_url
 
-        send_auth_email(
-            to_email=email,
-            subject="Reset your CreatorJobs password",
-            text_body=text_body,
-        )
         logger.info("[auth] Password reset token created for %s", email)
         return None
 
@@ -457,12 +487,13 @@ class AuthService:
                     existing.onboarding_intent = normalized_intent
                     existing.onboarding_intent_selected_at = datetime.now(UTC)
                 token = await self.create_email_verification_token(existing)
-                await self.repository.commit()
-                verification_url = self.log_email_verification_link(
+                verification_url = self.emit_email_verification_link(
                     email=existing.email,
                     token=token,
+                    user_id=existing.id,
                     request_id=get_request_id(),
                 )
+                await self.repository.commit()
                 return RegisterResult(created_new_user=False, verification_url=verification_url)
             raise EmailAlreadyExistsError("Email is already registered")
 
@@ -498,12 +529,13 @@ class AuthService:
             )
 
         token = await self.create_email_verification_token(user)
-        await self.repository.commit()
-        verification_url = self.log_email_verification_link(
+        verification_url = self.emit_email_verification_link(
             email=user.email,
             token=token,
+            user_id=user.id,
             request_id=get_request_id(),
         )
+        await self.repository.commit()
         return RegisterResult(created_new_user=True, verification_url=verification_url)
 
     async def resend_verification_for_email(self, *, email: str) -> None:
@@ -513,12 +545,13 @@ class AuthService:
             return
 
         token = await self.create_email_verification_token(user)
-        await self.repository.commit()
-        self.log_email_verification_link(
+        self.emit_email_verification_link(
             email=user.email,
             token=token,
+            user_id=user.id,
             request_id=get_request_id(),
         )
+        await self.repository.commit()
 
     async def request_password_reset_for_email(self, *, email: str) -> str | None:
         normalized_email = self.normalize_email(email)
@@ -543,12 +576,14 @@ class AuthService:
             token=token,
             expires_at=expires_at,
         )
-        await self.repository.commit()
-        return self.log_password_reset_link(
+        reset_url = self.emit_password_reset_link(
             email=user.email,
             token=token,
+            user_id=user.id,
             request_id=get_request_id(),
         )
+        await self.repository.commit()
+        return reset_url
 
     async def reset_password(self, *, token: str, password: str) -> User:
         candidate = await self.repository.get_password_reset_token(token)

@@ -11,8 +11,14 @@ from conftest import (
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
-from app.models import AuthSession, EmailVerificationToken, PasswordResetToken, User
-from app.services import auth_service
+from app.models import (
+    AuthSession,
+    EmailOutbox,
+    EmailVerificationToken,
+    PasswordResetToken,
+    User,
+)
+from app.services import auth_service, email_service
 from app.services.email_service import EmailDeliveryError
 from app.services.youtube_service import YouTubeChannelResult
 
@@ -462,10 +468,19 @@ async def test_password_reset_expired_token_is_rejected(client: AsyncClient) -> 
     assert confirm.status_code == 400
 
 
-async def test_password_reset_email_failure_returns_safe_error(
+async def test_password_reset_survives_an_email_provider_outage(
     client: AsyncClient,
     monkeypatch,
 ) -> None:
+    """A provider outage must not fail the request or lose the email.
+
+    This used to answer 503: the reset token had been created and committed, the
+    inline send failed, and the person locked out of their account was told to
+    try again — with nothing anywhere recording that an email was owed. The
+    request now records durable intent and returns normally; the worker owns
+    delivery and its retries.
+    """
+
     email = "reset-email-failure@example.com"
     password = "supersecure123"
 
@@ -478,15 +493,28 @@ async def test_password_reset_email_failure_returns_safe_error(
     def fail_send_auth_email(**_kwargs) -> None:
         raise EmailDeliveryError("SMTP unavailable")
 
+    # SMTP mode so nothing takes the local link-logging shortcut, and the
+    # provider is down for the whole request.
     monkeypatch.setattr(auth_service.settings, "email_mode", "smtp")
-    monkeypatch.setattr(auth_service, "send_auth_email", fail_send_auth_email)
+    monkeypatch.setattr(email_service, "send_auth_email", fail_send_auth_email)
 
     request = await client.post("/api/v1/auth/password-reset/request", json={"email": email})
-    assert request.status_code == 503
-    assert (
-        request.json()["error"]["message"]
-        == "Email delivery is temporarily unavailable. Please try again shortly."
-    )
+    assert request.status_code == 200
+
+    async with TestSessionLocal() as session:
+        queued = (
+            await session.execute(
+                select(EmailOutbox)
+                .where(EmailOutbox.to_email == email)
+                .where(EmailOutbox.event_key == "auth.password_reset")
+            )
+        ).scalars().all()
+
+    assert len(queued) == 1
+    assert queued[0].status == "queued"
+    # The link has to be in the row, or the durable record is of an email that
+    # cannot be sent later.
+    assert "/auth/reset?token=" in (queued[0].body or "")
 
 
 async def test_verified_google_oauth_exchange_and_refresh_channels(

@@ -5,13 +5,13 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 5 — Invite-only beta and durable transactional email
-LAST COMPLETED ATOMIC SLICE: Phase 5F (INVITE-002) — the invite gate is wired into BOTH signup paths and proven non-vacuous by mutation; INVITE-001, INVITE-002 and EMAIL-001 are RESOLVED
-NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-002 — route authentication email (invitation, verification, reset) through the durable outbox instead of the direct emitter, then EMAIL-003 (event email) and EMAIL-004 (bounce/suppression). Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
+LAST COMPLETED ATOMIC SLICE: Phase 5G (EMAIL-002) — verification and password-reset mail is queued inside the transaction instead of sent inline, and app/notifications/runner.py drains the queue. INVITE-001, INVITE-002, EMAIL-001 and EMAIL-002 are VALIDATED
+NEXT ATOMIC SLICE: Phase 5 continues at EMAIL-003 — route event email (application, hiring, safety) through the same queue — then EMAIL-004 (bounce/suppression), which also owes the failure visibility that EMAIL-002's removed 503 used to provide. The invitation email is still unwritten because nothing issues invitations over HTTP yet. Phase 4 is locally certified: 23 deterministic browser failures are 0, and the 5 that still fail under parallel load all pass serially (list recorded below under "Phase 4 certification"). EMAIL-005 (domain authentication) is BLOCKED_EXTERNAL and must not hold up the durable outbox work. Still open elsewhere: RATE-001 (BLOCKED_EXTERNAL, no Redis), the rest of RATE-004 (timeouts/concurrency), TRUST-003 (marketplace metrics — StatTiles for Applicants/Views/Response rate, and two tests currently assert they stay visible), CORRECT-006 (duplicate job-apply-button and APPLICATION REQUIREMENTS identities), and backend/.env.example (BLOCKED_ENVIRONMENT).
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0061_beta_invitations (single head; 0060_email_outbox_lease then 0061)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
-NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004. These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
+NEW ENVIRONMENT VARIABLES: backend GOOGLE_CLIENT_ID; backend GOOGLE_CLIENT_SECRET; GOOGLE_OAUTH_EXCHANGE_SECRET shared only between NextAuth and FastAPI; OAUTH_CREDENTIAL_KEYS; OAUTH_CREDENTIAL_ACTIVE_KEY_ID; OAUTH_CREDENTIAL_WRITE_MODE; ALLOW_OAUTH_PLAINTEXT_COMPATIBILITY_IN_PRODUCTION; AUTH_SESSION_MODE; ALLOW_LEGACY_REFRESH_COMPATIBILITY_IN_PRODUCTION; REFRESH_REUSE_GRACE_SECONDS; ADMIN_STRONG_AUTH_REQUIRED; ADMIN_STRONG_AUTH_MAX_AGE_MINUTES; STRONG_AUTH_SECRET_KEYS; STRONG_AUTH_SECRET_ACTIVE_KEY_ID; INVITE_ONLY_BETA (default false — leaving it unset preserves open registration exactly); MAX_REQUEST_BODY_BYTES and MAX_MEDIA_REQUEST_BODY_BYTES from RATE-004; EMAIL_WORKER_IN_PROCESS (default false) and EMAIL_WORKER_INTERVAL_SECONDS (default 5) from EMAIL-002. These are documented in backend/app/core/config.py rather than backend/.env.example, which tooling may not read or write (BLOCKED_ENVIRONMENT)
 NEW DEPENDENCIES: backend now declares its already-locked runtime `httpx==0.28.1` and `httpcore==1.0.9` usage directly; no package version changed
 NEW SERVICES: app.services.safe_outbound_fetch shared public-URL boundary; docs/PRODUCTION_READINESS_OUTBOUND_FETCH.md complete caller inventory; plus all previously documented OAuth/session/strong-auth services
 OUTSTANDING EXTERNAL REQUIREMENTS: authenticated GitHub fetch/protection inspection; matching production GOOGLE_OAUTH_EXCHANGE_SECRET provisioning; real Google consent-screen scope configuration/verification and live login/incremental-consent/reconnect/refresh/revoke/outage drill; real OAuth/strong-auth keyring provisioning plus rotation drills; hosted credential backfill/encrypted-only verification; a physical authenticator-device drill and lost-all-factors support procedure; email DNS/provider; managed Postgres/Redis/storage; counsel approval; accessibility review; backup/restore; staging soak
@@ -56,6 +56,63 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 5G checkpoint (EMAIL-002 — auth email goes through the outbox, and something drains it)
+
+```text
+Status: COMPLETE for verification and password reset. The invitation email itself is NOT written
+        yet: nothing issues invitations over HTTP, so there is no place to send it from. The
+        event key `auth.invitation` is reserved for whatever admin path issues them.
+Migration: NONE. Reuses the email_outbox table and the 0060 lease columns.
+
+WHAT CHANGED, and why it is not just plumbing:
+  Auth email used to be sent inline, AFTER the transaction committed:
+      create token -> commit -> send_auth_email()   <- a network call, in the request
+  Two failures follow and neither shows up in a happy-path test.
+    1. a crash between the commit and the send loses an email nobody knows is owed. The account
+       exists and nothing will ever tell its owner how to verify it.
+    2. a provider outage raises inside the request, so a signup that fully succeeded reports
+       failure to the person who made it. Reset was worse: the person is locked out and waiting.
+  Now:
+      create token -> queue_auth_email() -> commit    (worker delivers, on its own schedule)
+  The enqueue is INSIDE the transaction, so the promise to email lands with the thing it is
+  about, or not at all. auth_service.log_* were renamed emit_* because they no longer log — they
+  queue. Local link capture and the returned verification_url are unchanged.
+
+REMOVED (deliberately, not overlooked): the three `except EmailDeliveryError -> 503` handlers in
+  routers/auth.py. Nothing in those paths can raise it any more, and a handler for a failure that
+  cannot happen implies a failure mode that does not exist. The old test asserting 503 on SMTP
+  failure was REWRITTEN, not deleted — it now asserts the better contract: the request succeeds,
+  the row is queued, and the link is in the row. Losing the immediate 503 does mean a
+  misconfigured SMTP is quieter; EMAIL-004 owns making failed rows visible.
+
+THE QUEUE NOW DRAINS. app/notifications/runner.py:
+  run_worker_forever(session_factory, provider=, interval_seconds=, stop=asyncio.Event)
+    - a FRESH session per pass; a long-lived one holds a transaction open across the sleep and
+      turns an idle worker into a lock holder
+    - a pass that raises is logged and the loop continues; the claimed rows are unharmed because
+      an unfinished lease lapses on its own
+    - the interval is `wait_for(stop.wait(), timeout=)`, NOT `sleep()`, so shutdown costs the
+      pass in flight rather than a full interval
+    - build_provider() returns the mock unless real_delivery_enabled(); an incompletely
+      configured deployment records mail rather than half-sending it
+  Two ways to run it:
+    python -m app.notifications.runner            (preferred in production: its own lifetime)
+    EMAIL_WORKER_IN_PROCESS=true                  (local convenience; app/main.py startup)
+  In-process is OFF by default. A worker sharing a lifetime with the web server shares its
+  restarts and deploys.
+
+Tests: tests/test_auth_email_durability.py (8) + tests/test_email_worker_runner.py (8).
+Non-vacuity PROVEN by mutation, twice:
+  - restore an inline send inside queue_auth_email -> both TestNoProviderIsContactedDuringARequest
+    tests fail. The counting test exists because "the request succeeded" would still pass if the
+    send happened inline and worked.
+  - drop the runner's try/except and use sleep() instead of the event wait -> the raising-pass
+    test and the shutdown-latency test both fail.
+
+NEXT (EMAIL-003): route event email (application, hiring, safety) through the same queue, then
+  EMAIL-004 for bounce/suppression and the visibility that the removed 503 used to provide.
 ```
 
 ## Phase 5F checkpoint (INVITE-002 — the gate is wired into both signup paths)

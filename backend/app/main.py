@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from app.db.session import SessionLocal, engine
 from app.middleware.qa_audit import QaPersonaAuditMiddleware
 from app.middleware.request_body_limit import RequestBodyLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
+from app.notifications.runner import run_worker_forever
 
 validate_production_settings()
 configure_logging(settings.log_level)
@@ -77,9 +80,46 @@ async def root() -> dict[str, str]:
     return {"service": settings.app_name, "version": "v1"}
 
 
+#: Set only when the API is hosting the email worker itself. Kept at module
+#: level so shutdown can stop exactly what startup began.
+_email_worker: dict[str, object] = {}
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     await sync_dev_sqlite_schema(engine)
     async with SessionLocal() as session:
         await seed_roles_if_missing(session)
+
+    if settings.email_worker_in_process:
+        # Convenience for local development, where a second process to drain the
+        # outbox is friction that ends with someone concluding email is broken.
+        stop = asyncio.Event()
+        _email_worker["stop"] = stop
+        _email_worker["task"] = asyncio.create_task(
+            run_worker_forever(
+                SessionLocal,
+                interval_seconds=settings.email_worker_interval_seconds,
+                stop=stop,
+            )
+        )
+
     logger.info("backend_startup", extra={"env": settings.app_env})
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    """Ask the worker to stop and wait for the pass it is in the middle of.
+
+    Cancelling outright would abandon a claimed row mid-attempt. That is
+    survivable — the lease lapses and another worker picks it up — but waiting
+    costs one interval and avoids a message being attempted twice for no reason.
+    """
+
+    stop = _email_worker.pop("stop", None)
+    task = _email_worker.pop("task", None)
+    if isinstance(stop, asyncio.Event):
+        stop.set()
+    if isinstance(task, asyncio.Task):
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

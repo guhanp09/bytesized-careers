@@ -73,7 +73,6 @@ from app.services.auth_service import (
     UsernameAlreadyTakenError,
 )
 from app.services.beta_invitation_service import InvitationError
-from app.services.email_service import EmailDeliveryError
 from app.services.google_identity import (
     GoogleIdentityConfigurationError,
     GoogleIdentityProviderUnavailableError,
@@ -211,11 +210,6 @@ async def register(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except UsernameAlreadyTakenError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except EmailDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email delivery is temporarily unavailable. Please try again shortly.",
-        ) from exc
 
     if result.created_new_user:
         return AuthStatusResponse(
@@ -258,13 +252,7 @@ async def resend_verification(
     _limit: None = rate_limit(AUTH_EMAIL_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> ResendVerificationResponse:
-    try:
-        await service.resend_verification_for_email(email=payload.email)
-    except EmailDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email delivery is temporarily unavailable. Please try again shortly.",
-        ) from exc
+    await service.resend_verification_for_email(email=payload.email)
     return ResendVerificationResponse(
         ok=True,
         message="If an account exists for this email, we sent a verification link.",
@@ -282,13 +270,7 @@ async def request_password_reset(
     _limit: None = rate_limit(AUTH_EMAIL_LIMIT),
     service: AuthService = Depends(get_auth_service),
 ) -> PasswordResetResponse:
-    try:
-        reset_url = await service.request_password_reset_for_email(email=payload.email)
-    except EmailDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email delivery is temporarily unavailable. Please try again shortly.",
-        ) from exc
+    reset_url = await service.request_password_reset_for_email(email=payload.email)
     return PasswordResetResponse(
         ok=True,
         message="If an account exists for this email, we sent a password reset link.",

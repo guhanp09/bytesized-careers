@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # that is checked on the server for every signup path — a client-side gate
     # is not a gate.
     invite_only_beta: bool = Field(default=False, alias="INVITE_ONLY_BETA")
+    # Email delivery is a background job. The API can host it for convenience in
+    # local development; in production a separate `python -m
+    # app.notifications.runner` process is preferable, because a worker sharing
+    # a lifetime with the web server also shares its restarts and deploys.
+    email_worker_in_process: bool = Field(default=False, alias="EMAIL_WORKER_IN_PROCESS")
+    email_worker_interval_seconds: float = Field(
+        default=5.0, alias="EMAIL_WORKER_INTERVAL_SECONDS", gt=0
+    )
     # The addresses of the proxies that actually sit in front of this application,
     # as exact IPs or CIDR blocks, comma separated. Empty means "nothing is in
     # front of us", and forwarded headers are then ignored completely — because a

@@ -7,8 +7,11 @@ Phase 1 keeps real delivery OFF. Every notification email is written to the
 * SmtpEmailAdapter (deferred) — only used when ``EMAIL_DELIVERY_ENABLED=true`` and
   ``EMAIL_MODE=smtp``; reuses the existing SMTP path in ``email_service``.
 
-This keeps auth emails (verification / password reset) completely separate and
-unchanged — they continue through ``email_service.send_auth_email``.
+Authentication mail (verification, password reset, invitation) now goes through
+the same table via ``queue_auth_email``. It used to send inline after the
+transaction committed, which meant a crash in between lost an email nobody knew
+was owed, and a provider outage failed a request that had already succeeded.
+The local development link capture is unchanged and still immediate.
 """
 
 from __future__ import annotations
@@ -90,3 +93,56 @@ def queue_notification_email(session: AsyncSession, payload: EmailPayload) -> Em
     )
     session.add(row)
     return row
+
+
+#: Authentication mail, named so a later suppression rule can tell the mail a
+#: person is waiting on from the mail the platform decided to send them.
+AUTH_EVENT_KEYS = frozenset({"auth.verification", "auth.password_reset", "auth.invitation"})
+
+
+def queue_auth_email(
+    session: AsyncSession,
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    event_key: str,
+    cta_url: str | None = None,
+    user_id: UUID | None = None,
+    dedupe_key: str | None = None,
+) -> EmailOutbox:
+    """Record an authentication email as durable intent instead of sending it.
+
+    Verification and reset mail used to go out inline, after the transaction had
+    already committed. Two things were wrong with that. A crash between the
+    commit and the send loses the email with no record that it was owed — the
+    account exists and nothing will ever tell its owner how to verify it. And a
+    provider outage raises inside the request, so a signup that fully succeeded
+    reports failure to the person who made it.
+
+    Writing a row instead makes the send a consequence of the transaction rather
+    than a step inside it: if the account exists, so does the intent to mail it,
+    and the worker retries on its own schedule.
+
+    Called with the caller's session and deliberately not flushed, so the row
+    lands with the domain change or not at all.
+    """
+
+    if event_key not in AUTH_EVENT_KEYS:
+        # A typo here would file authentication mail under a name nothing else
+        # recognises, which is invisible until someone is waiting on an email.
+        raise ValueError(f"Unknown authentication email event: {event_key!r}")
+
+    return queue_notification_email(
+        session,
+        EmailPayload(
+            to_email=to_email,
+            subject=subject,
+            event_key=event_key,
+            template_key=event_key.replace(".", "_"),
+            body=text_body,
+            cta_url=cta_url,
+            user_id=user_id,
+            dedupe_key=dedupe_key,
+        ),
+    )
