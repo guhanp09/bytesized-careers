@@ -5,8 +5,8 @@
 ```text
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
-LAST COMPLETED ATOMIC SLICE: Phase 3A (RATE-002) — client identity is derived from the socket peer and a configured proxy set, not from whatever the caller wrote in X-Forwarded-For
-NEXT ATOMIC SLICE: DEP-001 / DEP-002 (dependency audits and controlled upgrades) — the next work that is fully completable in this environment. RATE-001 is BLOCKED_EXTERNAL here for want of any Redis (no server binary, no redis/fakeredis package, Docker not permitted), and RATE-003/004/005 all sit behind the limiter primitive it provides. Two things are outstanding and small: `backend/.env.example` still needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands that touch `.env*` paths, so it could not be done from here), and `RedisRateLimitBackend.hit` has a recorded check-then-act race that must become one atomic server-side operation before that backend is trusted
+LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
+NEXT ATOMIC SLICE: resolve the backend packaging contract, then DEP-002. `uv.lock` is declared but `.venv` was built by plain `python -m venv` and no `uv` exists on this machine, so backend dependency remediation cannot currently be done coherently — the complete OSV inventory is banked below so that work starts from evidence. If that tooling decision is out of scope for the session, go to Phase 4 instead and establish a fresh serial browser baseline; the historical 17/6 numbers are demonstrably stale (a Phase 0 baseline failure, `workspace-performance.spec.ts:108`, now passes). Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -57,6 +57,64 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
 ```
+
+## DEP-002 Python vulnerability inventory (gathered, not yet remediated — reuse it)
+
+Established by querying the OSV batch API directly against the 62 installed
+packages, rather than installing a scanner into the backend virtualenv, which
+would have changed the environment the test suite runs in. The script used is
+reproducible: POST `https://api.osv.dev/v1/querybatch` with
+`{"package":{"name":N,"ecosystem":"PyPI"},"version":V}` per package.
+
+```text
+PRODUCTION-REACHABLE (9 packages, current version -> earliest fixed version)
+  click             8.3.1   -> 8.3.3     1 issue                       (uvicorn)
+  cryptography     46.0.5   -> 46.0.7    8 distinct issues, PARTIAL    (direct)
+                                          Bleichenbacher oracle in PKCS#7 EnvelopedData,
+                                          wildcard-DNS verifier escape, incomplete DNS name
+                                          constraints, buffer overflow on non-contiguous
+                                          buffers, vulnerable OpenSSL in wheels.
+                                          46.0.6/46.0.7 fix some; others are only fixed in
+                                          48.0.1 / 49.0.0 / 50.0.0, which are OUTSIDE the
+                                          declared `cryptography>=46.0.5,<47.0.0` pin.
+                                          Splitting "fixed within 46.x" from "needs a major"
+                                          is the first real task here.
+  ecdsa            0.19.1   -> 0.19.2    2 issues (DER length DoS; Minerva timing attack on
+                                          P-256). Arrives via python-jose.
+  idna              3.11    -> 3.15      2 issues                      (httpx/anyio)
+  Mako             1.3.10   -> 1.3.12    3 issues (path traversal in TemplateLookup) (alembic)
+  pyasn1            0.6.2   -> 0.6.4     8 issues (quadratic OID parsing, unbounded recursion,
+                                          long-form tag DoS)           (google-auth, python-jose)
+  pydantic-settings 2.13.0  -> 2.14.2    1 issue (NestedSecretsSettingsSource symlink escape)
+  python-dotenv     1.2.1   -> 1.2.2     2 issues (symlink following in set_key)
+  starlette        0.52.1   -> 1.3.1     10 issues, MAJOR BUMP         (fastapi)
+                                          Host-header validation missing (poisons
+                                          request.url.path), SSRF/NTLM via UNC paths in
+                                          StaticFiles, arbitrary method dispatch to
+                                          HTTPEndpoint attributes, form() limits ignored.
+                                          Gated behind a FastAPI upgrade that accepts
+                                          starlette 1.x — this is a framework migration and
+                                          deserves its own slice with the full backend suite.
+
+DEV-ONLY (lower priority, not shipped): pytest 9.0.2, pip 24.2, Pygments 2.19.2
+```
+
+**Why no remediation was attempted, and what must be decided first.** The
+repository declares `backend/uv.lock`, but `backend/.venv/pyvenv.cfg` shows the
+environment was built by `/opt/anaconda3/bin/python3 -m venv` at
+`/tmp/creatorjobs-backend-venv` — a plain pip venv, not a uv-managed one. So the
+lock and the environment the tests actually run against are already two
+different things, and there is no `uv` binary anywhere on this machine to
+regenerate the lock surgically. Changing `pyproject.toml` alone would leave the
+lock inconsistent; `pip install`-ing into `.venv` would fix nothing the
+repository records, because the venv is untracked. Either action would look like
+remediation while changing nothing a deployment would use.
+
+The next agent should resolve the tooling contract first — install `uv` and
+confirm `uv lock --check` reproduces the current lock, or decide the project is
+pip/requirements-based and make that explicit — and only then remediate, one
+`uv lock --upgrade-package <name>` at a time, installing the same version into
+the venv so the tests genuinely exercise it. Do not mass-upgrade.
 
 ## Phase 3C atomic checkpoint (DEP-001B)
 
