@@ -4,10 +4,10 @@
 
 ```text
 LAST COMPLETED PHASE: Phase 5 — Invite-only beta and durable transactional email (locally complete and certified; EMAIL-005 remains BLOCKED_EXTERNAL). Phases 2 and 4 were certified earlier under the same terms
-LAST COMPLETED PHASE: Phase 6 — AI Job Import production hardening (locally complete and certified; AI-004's currency budget is BLOCKED_PRODUCT_DECISION and AI-001/AI-003 live concurrency is BLOCKED_ENVIRONMENT). Phases 2, 4 and 5 were certified earlier under the same terms
-CURRENT PHASE: Phase 7 — Durable media storage
-LAST COMPLETED ATOMIC SLICE: Phase 6 certification. AI Job Import now has durable execution (migration 0063), a per-user quota (0064), a real kill switch, a model allowlist, a readiness probe and a pinned provider payload.
-NEXT ATOMIC SLICE: Phase 7 — durable media. Read the Phase 7 ledger rows first. Expect an object-storage abstraction with a local/test adapter, upload authorization, size/MIME/magic-byte verification, image re-encoding and metadata stripping, canonical asset identity and orphan cleanup. Live object-store provider verification stays BLOCKED_EXTERNAL. Do not store durable production media only on the application filesystem.
+LAST COMPLETED PHASE: Phase 7 — Durable media storage (locally complete and certified; the object-store adapter is BLOCKED_EXTERNAL and MEDIA-002 is DEFERRED_WITH_RATIONALE). Phases 2, 4, 5 and 6 were certified earlier under the same terms
+CURRENT PHASE: Phase 8 — Realtime and scalable shared state
+LAST COMPLETED ATOMIC SLICE: Phase 7 certification. Media now goes through a storage seam, is validated by its bytes rather than its label, has its camera metadata stripped, no longer orphans on replacement, and can no longer have its stored URL poisoned by a Host header.
+NEXT ATOMIC SLICE: Phase 8 — realtime and shared state. Read the Phase 8 ledger rows first. RATE-001's Redis blocker does NOT block Phase 8 entirely: implement the abstraction, the contracts and everything provable locally, and mark only real shared-infrastructure execution proof as blocked. Expect conversation event distribution, notifications, presence, reconnection, duplicate delivery, ordering/idempotency and multi-instance behaviour.
 CURRENT ALEMBIC HEAD: 0064_job_import_quota_counters (single head; 0060, 0061, 0062, 0063_job_import_execution_lease, 0064)
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
 IMPORTANT NEW ARCHITECTURE (2B): portfolio HTML preview and YouTube/Vimeo oEmbed now call `SafeOutboundFetcher` instead of their own DNS/redirect logic; oEmbed additionally requires an exact built-in endpoint constant, refuses every redirect, accepts only JSON, and caps decoded bodies at 64 KiB, while HTML previews accept only HTML/plain text within 512 KiB; provider host detection matches a domain or its subdomains rather than any suffix, so `notyoutube.com` is no longer treated as YouTube; each metadata field extracted from an untrusted page is length-clamped; unsafe URLs are refused before any request and network/provider failure still returns the manual-entry response. IMPORTANT ARCHITECTURE (2A): `SafeOutboundFetcher` is the one backend boundary for user-influenced public GETs: strict HTTP(S)/80-or-443 URL normalization; public-only IPv4/IPv6 plus tunnel-address checks; DNS answers are copied into an httpcore network backend that connects only to those IPs while the original host remains the HTTP Host/TLS SNI/certificate identity; the connected peer is checked; every redirect gets fresh validation and a fresh cookie-free one-connection pool; environment proxies are ignored; decoded response bytes, content type, redirects, DNS/connect/read/total time, URL length, and header surface are bounded. PublicJobUrlFetcher and PublicBrandUrlFetcher preserve their product parsing/error/retry contracts on top. The Phase 1 verified identity, durable session, encrypted credential, and administrator TOTP architecture remains unchanged
@@ -915,6 +915,42 @@ corrupts the image; GIFs carry no EXIF, so the exposure that motivated this is a
 FOUND ON THE WAY: the banner test fixture was a CORRUPT PNG — its IDAT length field said 11 while
 the chunk was 13 bytes (CRC-verified). Nothing had ever parsed it, so it passed. Replaced with a
 valid generated PNG. If another image fixture starts failing, check the file before the parser.
+```
+
+## Phase 7 certification — LOCALLY COMPLETE
+
+```text
+Scope: durable media. Two real defects were found and fixed here, neither of which was on the
+ledger as a known bug — they were found by reading the upload path.
+
+  MEDIA-001  IMPLEMENTED   MediaStorage seam + LocalMediaStorage + owner-scoped unguessable keys
+                           validated at every entry point. Object-store adapter BLOCKED_EXTERNAL.
+  MEDIA-002  DEFERRED_WITH_RATIONALE  grants/quarantine protect a direct-to-bucket architecture
+                           that does not exist here; every byte is validated before storage.put.
+  MEDIA-003  IMPLEMENTED   format decided by BYTES, mismatch refused, pixel caps, EXIF/XMP/text
+                           stripped. Re-encoding not done: needs an imaging library.
+  MEDIA-004  IMPLEMENTED   stored URLs come from MEDIA_PUBLIC_BASE_URL; production will not boot
+                           without it.
+  MEDIA-005  IN_PROGRESS   replacement no longer orphans. Account-deletion cascade and an orphan
+                           sweep remain, and want a stored key column.
+
+THE TWO DEFECTS, stated plainly because they were live:
+  1. The stored file's extension came from the caller's declared content_type, so anything could
+     be uploaded as image/png and served from this application's own origin at a .png path.
+  2. Stored media URLs were built from the request Host header, so a poisoned Host was PERSISTED
+     into a profile and served to every later visitor. Stored, not reflected.
+  A third, smaller: an avatar taken on a phone published its GPS coordinates. Now stripped.
+
+Evidence, uncontended and local:
+  backend      7,096 passed / 64 skipped / 0 failed   (Phase 7 start: 7,034)
+  frontend     1,181 passed / 0 failed;  tsc --noEmit exit 0
+  ruff         clean on every changed file
+  alembic      single head 0064; Phase 7 added no migration
+  collection   7,098 -> 7,123 -> 7,148 -> 7,157 -> 7,160, every delta accounted for
+
+Found on the way, worth knowing: a test fixture PNG was CORRUPT — its IDAT length field disagreed
+with the chunk by two bytes (CRC-verified). Nothing had ever parsed it, so it passed for as long
+as it existed. If an image fixture starts failing after a parser change, check the file first.
 ```
 
 ## Phase 6 certification — LOCALLY COMPLETE
