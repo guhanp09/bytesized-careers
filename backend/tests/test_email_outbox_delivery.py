@@ -16,7 +16,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+import pytest_asyncio
+from sqlalchemy import delete, select
 
 from app.models import EmailOutbox
 from app.repositories.email_outbox_delivery import (
@@ -32,6 +33,21 @@ from app.repositories.email_outbox_delivery import (
 from app.repositories.email_outbox_repository import claim_due_emails
 
 T0 = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+
+@pytest_asyncio.fixture(autouse=True)
+async def _isolate_outbox(db_session):
+    """Start each test from an empty outbox.
+
+    `claim_due_emails` asks the whole table what is due, which is correct for a
+    worker and unhelpful for a test: rows another test left behind show up in the
+    result and assertions about "nothing was claimable" become assertions about
+    the rest of the suite. These tests pass in isolation and failed only in the
+    full run, which is exactly that shape.
+    """
+    await db_session.execute(delete(EmailOutbox))
+    await db_session.flush()
+    yield
+
 
 
 async def _queue(session, **overrides) -> EmailOutbox:

@@ -58,6 +58,22 @@ Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               not belong in connect-src.
 ```
 
+## Phase 5C-fix (outbox test isolation) — read this before writing more outbox tests
+
+```text
+Commit: "test(email): give the outbox suites their own empty table"
+The broad checkpoint after three green focused runs produced 21 failures, all in the new outbox
+suites, all passing in isolation. Cause was scope, not product: `claim_due_emails` asks the WHOLE
+table what is due — right for a worker, wrong for an assertion. `assert claim_due_emails(...) == []`
+actually means "nothing anywhere in the database is claimable", so any outbox row another test left
+behind broke it.
+Fixed with an autouse fixture in both modules that deletes EmailOutbox rows before each test —
+real isolation rather than looser assertions.
+Full backend after the fix: 6,811 passed / 64 skipped / 0 failed.
+Lesson for the next outbox test: assert about the row under test, or empty the table first. Never
+assert about the global claim result.
+```
+
 ## Phase 5C checkpoint (EMAIL-001C/D — attempts, retry, terminal states)
 
 ```text
