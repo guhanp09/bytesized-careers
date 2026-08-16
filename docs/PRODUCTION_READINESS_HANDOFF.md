@@ -6,7 +6,7 @@
 LAST COMPLETED PHASE: Phase 2 — Core web security boundaries (locally complete and certified; listed external gates remain)
 CURRENT PHASE: Phase 3 — Dependencies, rate limiting, and request safety
 LAST COMPLETED ATOMIC SLICE: Phase 3C (DEP-001B) — `next` 16.2.6 → 16.3.1; the frontend production audit now reports zero findings
-NEXT ATOMIC SLICE: DEP-002C — cryptography. Three vulnerable production packages remain: cryptography (8 distinct issues; 46.0.6/46.0.7 fix some, others only in 48.0.1/49.0.0/50.0.0 which are outside the declared `<47.0.0` pin — so this slice must first separate "fixable inside the pin" from "needs the pin raised", and the pin exists for a reason worth understanding before removing), ecdsa 0.19.1 → 0.19.2 (arrives via python-jose; includes a Minerva timing attack on P-256), and starlette 0.52.1 → 1.x (10 issues incl. missing Host-header validation and StaticFiles UNC SSRF; a major bump gated behind FastAPI's supported range, so move FastAPI and Starlette together as DEP-002D). Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
+NEXT ATOMIC SLICE: DEP-002D — ecdsa 0.19.1 → 0.19.2 (DER length DoS plus a Minerva timing attack on P-256; arrives through python-jose and should be lock-only, like the Phase 3E group). Then DEP-002E — starlette 0.52.1 → 1.x, the last vulnerable production package: 10 issues including missing Host-header validation that poisons `request.url.path` and SSRF/NTLM via UNC paths in StaticFiles. That one is a major gated behind FastAPI's supported Starlette range, so move FastAPI and Starlette together and validate middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour before trusting the full suite. Tooling is available: `python3 -m venv <scratch> && <scratch>/bin/pip install uv` gives uv 0.12.5; drive it with `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` pointed at scratch paths so it never touches `backend/.venv`. Still outstanding and small: `backend/.env.example` needs `TRUSTED_PROXY_IPS` and `ALLOW_DIRECT_CLIENT_IPS_IN_PRODUCTION` (this environment refuses commands touching `.env*` paths). RATE-001 remains BLOCKED_EXTERNAL for want of any Redis, and its `RedisRateLimitBackend.hit` check-then-act race must become one atomic server-side operation before that backend is trusted
 CURRENT HEAD: Phase 2D-2 checkpoint commit (run `git rev-parse HEAD`; the tracked document cannot contain its own commit hash)
 CURRENT ALEMBIC HEAD: 0059_oauth_connection_events
 CURRENT ALEMBIC CURRENT: local configured SQLite is unversioned; disposable PostgreSQL upgrade/downgrade/re-upgrade reached 0059 successfully
@@ -56,6 +56,26 @@ default-src   'self'; object-src 'none'; base-uri 'self'; form-action 'self'.
 Not needed    No fonts.googleapis.com, no gstatic, no analytics script. Google
               Places and YouTube Data API are called server-side only, so they do
               not belong in connect-src.
+```
+
+## Phase 3F atomic checkpoint (DEP-002C — cryptography)
+
+```text
+Phase: Phase 3, atomic slice 3F / DEP-002C — the credential-encryption library
+Status: COMPLETE (DEP-002 remains IN_PROGRESS; ecdsa and starlette remain)
+Initial HEAD: 3c61a18b6f410472947af44ab2964844f2c66e71
+Final HEAD: Phase 3F checkpoint commit (self-resolve with `git log -1 --format=%H`)
+Commit(s): deps(backend): raise the cryptography floor past the oracle
+Files materially changed: `backend/pyproject.toml`, `backend/uv.lock`
+Migrations: None
+Version: cryptography 46.0.5 → 50.0.0; the declared constraint moves from `>=46.0.5,<47.0.0` to `>=50.0.0,<51.0.0`
+Advisories resolved (11, all of them): GHSA-g6cj-pr64-35w5 PKCS#7 EnvelopedData Bleichenbacher oracle (fixed only in 50.0.0); GHSA-jwv3-5hgf-82ww exponential X.509 path building via duplicate self-signed intermediates and GHSA-m2h6-j472-rp4c wildcard DNS escape from permittedSubtrees (both 49.0.0); GHSA-537c-gmf6-5ccf vulnerable OpenSSL bundled in wheels (48.0.1); GHSA-m959-cc7f-wv43, GHSA-p423-j2cm-9vmq and the PYSEC duplicates
+WHY THE PIN WAS RAISED RATHER THAN RESPECTED — this was the judgement call of the slice, and the evidence is: (1) `git log -S` shows `<47.0.0` arrived in e18f580 "security(auth): encrypt stored OAuth credentials", i.e. as a conservative major-version guard introduced alongside the feature, not in response to a known incompatibility; (2) nothing downstream caps it — `python-jose[cryptography]` asks only for `>=3.4.0` and google-auth does not bound it either, so the pin was the sole constraint; (3) this codebase touches exactly two symbols from the library, `AESGCM` and `InvalidTag`, in `app/core/oauth_credentials.py` and `app/core/strong_auth_secrets.py`, and that API has been stable since cryptography 2.x. A within-pin bump to 46.0.7 would have closed only 4 of 11 and left the Bleichenbacher oracle, both X.509 escapes and the OpenSSL issue in place. The `<51.0.0` bound is kept deliberately so the *next* major remains an explicit decision rather than a resolver's
+Validation appropriate to a security-critical library: the AESGCM round trip and InvalidTag-on-tampered-AAD were exercised directly before any suite ran; then OAuth credential encryption/decryption, the credential migration, the rotation CLI, strong-auth TOTP secrets, strong-auth lifecycle, administrator strong auth and session tests; then the complete uncontended backend suite
+Exact results: direct AESGCM/InvalidTag smoke passed; focused crypto/credential/session 58 passed; complete backend 6,730 passed / 64 skipped / 0 failed in 314.60s — identical to the pre-upgrade run, so the major bump changed no observable behaviour
+Vulnerabilities before/after against the real production set: 3 vulnerable packages → 2
+Remaining and why: ecdsa 0.19.1 → 0.19.2 (DER length DoS and a Minerva timing attack on P-256), which arrives through python-jose and should be a small lock-only slice; starlette 0.52.1 → 1.x (10 issues incl. missing Host-header validation poisoning `request.url.path`, and SSRF/NTLM via UNC paths in StaticFiles), which is a major gated behind FastAPI's supported range and must move as a FastAPI+Starlette pair
+Next slice: DEP-002D — ecdsa (small), then DEP-002E — the FastAPI/Starlette pair (framework, needs the full suite plus attention to middleware, auth, exception handlers, CORS, lifespan and TestClient behaviour)
 ```
 
 ## Phase 3E atomic checkpoint (DEP-002B — the low-risk vulnerable group)
