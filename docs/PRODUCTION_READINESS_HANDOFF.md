@@ -474,6 +474,44 @@ and its concurrency tests are the slice after, and those want the disposable Pos
 
 EMAIL-005 (SPF/DKIM/DMARC, real provider) stays BLOCKED_EXTERNAL and must not gate any of this.
 
+## Phase 6D checkpoint (AI-001B — the atomic claim)
+
+```text
+SLICE: AI-001B — one-statement claim + stranded sweep. Not wired into the request path yet.
+COMMIT: "feat(import): claim an import in one statement, not two"
+MIGRATION: none. FILES: app/repositories/job_import_execution_repository.py (new),
+  tests/test_job_import_execution_claim.py (new, 24 cases).
+
+CONTRACT:
+  claim_draft_for_processing(session, draft_id, worker_id=, now=)  -> draft | None
+  claim_stranded_drafts(session, worker_id=, limit=, now=)         -> [draft]
+  release_expired_claim(session, draft_id, now=)                   -> bool
+  All three are UPDATE ... WHERE eligible ... RETURNING. Never read-then-write: two callers both
+  reading a draft as free and both writing is one import becoming two provider calls and two
+  bills. Same defect class as RATE-001 and the invite redemption.
+  The batch claim re-checks eligibility INSIDE the write; the subquery only proposes candidates.
+  PostgreSQL adds FOR UPDATE SKIP LOCKED so a second worker steps over rather than queues.
+
+ATTEMPTS ARE COUNTED AT CLAIM, not at failure. A process that dies mid-attempt reports nothing,
+so counting failures would let a crash loop retry forever — and the attempt may already have
+reached the provider and been billed. Counting claims makes the ceiling bound spend.
+
+DRIFT GUARD: the eligibility rule exists twice (pure Python for callers, SQL for atomicity).
+TestTheSqlRuleAndThePythonRuleAgree writes all 189 state combinations, offers each to the claim,
+and compares against may_start_attempt. It also asserts the matrix produces BOTH answers, so an
+all-ineligible matrix cannot pass vacuously.
+
+MUTATION RESULT WORTH KNOWING: rewriting the claim as select-then-decide-then-write passes EVERY
+behavioural test — SQLite on one connection cannot show the race — and is caught only by
+TestTheClaimIsOneStatement. Structural tests are not optional here; they are the only witness.
+Live concurrency proof remains unavailable (no PostgreSQL harness, Docker absent): the CONTRACT is
+implemented and tested, the distributed race is not empirically proven. Do not claim otherwise.
+
+NEXT READY: AI-001C — wire the claim into the processing path (lease on start, release/settle on
+finish, failure -> bounded retry schedule), then AI-001D worker + kill-switch-while-queued.
+RESUME: cd backend && APP_ENV=test .venv/bin/python -m pytest tests/test_job_import_execution_claim.py -q
+```
+
 ## Phase 6C checkpoint (AI-001A — durable execution state for an import attempt)
 
 ```text
