@@ -991,6 +991,36 @@ REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, 
 building).
 ```
 
+## Phase 9D checkpoint (PRIV-002 partial — what an export may contain)
+
+```text
+COMMIT: "feat(privacy): export what someone owns, and nothing that is not theirs"
+MIGRATION: none. BROAD: full backend 7,205 passed / 64 skipped / 0 failed.
+COLLECTION: 7,258 -> 7,269 (+11). Accounted for.
+
+THE HARD PART IS THE WORD "THEIR", and there are two traps.
+  A conversation is attached to this account, so the obvious export walks the relationship and
+  hands over the WHOLE THREAD — including everything the other person wrote. They were present
+  for those messages, which is not the same as owning them, and the counterparty never agreed to
+  appear in somebody's download folder. Messages are filtered to sender_user_id.
+  Mutation-proven: widening the filter to "conversations they took part in" fails the test.
+
+  A row-by-row dump of the account includes the PASSWORD HASH. That is not their data in any
+  useful sense — it is the means of being them, in a file that gets emailed, saved to Downloads
+  and occasionally forwarded. The account section names every field by hand; a test asserts it
+  uses no reflection, because reflection exports whatever column someone adds in six months.
+
+Both are asserted against the SERIALISED output rather than the code, since that is where a
+leak actually shows up.
+
+STILL OPEN (the remaining test names in the ledger row describe exactly this): reauthentication
+before export, an expiring download link, and async archive generation. What is built is the
+CONTENT rule, which is the part that is dangerous to get wrong.
+
+NEXT READY: MOD-002 audit-log integrity (survey first — the admin panel already has an
+append-only rule), then MOD-001, SUPPORT-001, LEGAL-001. Then Phase 10.
+```
+
 ## Phase 9C checkpoint (PRIV-003 partial — asking to be deleted)
 
 ```text
