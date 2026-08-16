@@ -133,7 +133,7 @@ Locally complete for everything the environment can hold. What remains is honest
 
 | ID | Severity | Subsystem | Dependencies | Status | Tests required | Migration | Infra | Blocks beta | Blocks unrestricted | Resolving commit |
 |---|---|---|---|---|---|---|---|---|---|---|
-| REALTIME-001 | HIGH | Shared event bus | RATE-001 | NOT_STARTED | Cross-instance conversation/notification delivery and deduplication tests | NO | YES | Yes | Yes | — |
+| REALTIME-001 | HIGH | Shared event bus | RATE-001 | IMPLEMENTED | Cross-instance conversation/notification delivery and deduplication tests | NO | YES | Yes | Yes | "feat(realtime): give events a seam a second instance can plug into" — RealtimeBus seam, event envelope with a required id, per-connection at-least-once deduplication, publish failure never fails the write, and production REFUSES the process-local bus unless explicitly acknowledged. The Redis/NATS adapter itself and real cross-process delivery proof are BLOCKED_EXTERNAL |
 | REALTIME-002 | HIGH | Ephemeral presence | REALTIME-001 | NOT_STARTED | Typing/presence TTL, disconnect, reconnect and instance-switch tests | NO | YES | Yes | Yes | — |
 | REALTIME-003 | HIGH | Degraded operation | REALTIME-001 | NOT_STARTED | Redis unavailable/recovery and durable HTTP reconciliation tests | NO | YES | Yes | Yes | — |
 

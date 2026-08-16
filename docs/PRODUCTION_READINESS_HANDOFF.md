@@ -917,6 +917,46 @@ the chunk was 13 bytes (CRC-verified). Nothing had ever parsed it, so it passed.
 valid generated PNG. If another image fixture starts failing, check the file before the parser.
 ```
 
+## Phase 8A checkpoint (REALTIME-001 — the seam a second instance plugs into)
+
+```text
+COMMIT: "feat(realtime): give events a seam a second instance can plug into"
+MIGRATION: none. BROAD: full backend 7,114 passed / 64 skipped / 0 failed.
+COLLECTION: 7,160 -> 7,178 (+18 realtime bus). Accounted for.
+
+WHAT WAS ALREADY RIGHT — do not rebuild it: app/realtime/events.py emits only AFTER the database
+commit, payloads already carry event_id, and authorization (including the blocking check) is
+decided server-side per recipient. The architecture the phase asks for was already the one in
+place: DB commit -> durable truth -> realtime hint -> client reconciles.
+
+WHAT WAS MISSING: publish_to_user delivered only to sockets in THIS process. With a second
+instance that fails silently — someone connected to instance 2 never sees a message sent through
+instance 1, nothing errors, and the symptom is a conversation that looks dead until reload.
+
+NOW: app/realtime/bus.py
+  RealtimeEvent(event_id REQUIRED, user_id, payload, conversation_id) — an event without an id
+    cannot be deduplicated, and "usually unique" is not an identity.
+  RealtimeBus protocol + InProcessRealtimeBus (exactly the previous behaviour).
+  DeliveryDeduplicator — PER CONNECTION, not per user: two tabs are two audiences. Bounded
+    OrderedDict (256) because an unbounded set lives as long as an idle socket; a redelivered
+    event is refreshed so it cannot age out and arrive again as new.
+  publish_to_user never raises: the message is already committed and the client reconciles over
+    HTTP, so a broker hiccup must not report a failed send.
+  build_realtime_bus() REFUSES in production unless ALLOW_PROCESS_LOCAL_REALTIME_IN_PRODUCTION.
+    Two instances each talking to themselves look healthy from every angle. Configuring a bus
+    name that is not implemented also refuses rather than falling back — silent process-local
+    delivery wearing the name "redis" is the exact failure, disguised.
+
+Mutation-proven: removing the dedupe check fails the duplicate-delivery test.
+
+BLOCKED: the Redis/NATS adapter and real cross-process delivery proof (no broker available).
+The CONTRACT is implemented and tested; multi-process delivery is not empirically proven.
+
+NEXT READY: REALTIME-003 (degraded operation — reconnect reconciliation over HTTP), then
+REALTIME-002 (typing/presence TTL; typing expiry already exists in the manager, check before
+building).
+```
+
 ## Phase 7 certification — LOCALLY COMPLETE
 
 ```text

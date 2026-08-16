@@ -8,13 +8,23 @@ implement the same methods without changing marketplace or messaging services.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import WebSocket
+
+from app.realtime.bus import (
+    DeliveryDeduplicator,
+    InProcessRealtimeBus,
+    RealtimeBus,
+    RealtimeEvent,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,10 +34,19 @@ class _Connection:
     subscriptions: set[str] = field(default_factory=set)
     typing_conversations: set[str] = field(default_factory=set)
     typing_recipients: dict[str, UUID] = field(default_factory=dict)
+    #: What this connection has already been sent. Per connection because two
+    #: tabs are two audiences, and an event delivered to one is not delivered to
+    #: the other.
+    delivered: DeliveryDeduplicator = field(default_factory=DeliveryDeduplicator)
 
 
 class ConversationRealtimeManager:
-    def __init__(self) -> None:
+    def __init__(self, bus: RealtimeBus | None = None) -> None:
+        # Publishing goes through the bus so a shared broker can be swapped in
+        # without every caller learning about it. The in-process bus hands the
+        # event straight back, which is exactly the previous behaviour.
+        self._bus: RealtimeBus = bus or InProcessRealtimeBus()
+        self._bus.set_local_delivery(self._deliver_locally)
         self._connections: dict[UUID, set[WebSocket]] = defaultdict(set)
         self._by_socket: dict[WebSocket, _Connection] = {}
         self._typing_expiry_tasks: dict[tuple[WebSocket, str], asyncio.Task[None]] = {}
@@ -128,7 +147,57 @@ class ConversationRealtimeManager:
         *,
         conversation_id: str | None = None,
     ) -> None:
-        await self._send_many(await self._targets(user_id, conversation_id=conversation_id), payload)
+        """Hand the event to the bus, which decides which processes see it.
+
+        A publish that fails must not fail the caller: the database already
+        holds the truth and the client reconciles over HTTP, so losing a hint is
+        a delay rather than a loss. Raising here would turn a broker hiccup into
+        a failed message send.
+        """
+
+        event = RealtimeEvent(
+            event_id=self._event_identity(user_id, payload),
+            user_id=user_id,
+            payload=payload,
+            conversation_id=conversation_id,
+        )
+        try:
+            await self._bus.publish(event)
+        except Exception:  # noqa: BLE001 - a hint is never worth failing a write
+            logger.warning(
+                "realtime_publish_failed",
+                extra={"event_type": payload.get("type"), "user_id": str(user_id)},
+            )
+
+    @staticmethod
+    def _event_identity(user_id: UUID, payload: dict[str, Any]) -> str:
+        """The id a duplicate of this event would share.
+
+        Most payloads already carry one. The fallback is scoped per user and
+        type rather than random, because a random id deduplicates nothing —
+        which would be worse than no dedupe at all, since it would look like it
+        was working.
+        """
+
+        declared = payload.get("event_id")
+        if isinstance(declared, str) and declared:
+            return f"{user_id}:{declared}"
+        return f"{user_id}:{payload.get('type', 'event')}:{uuid4()}"
+
+    async def _deliver_locally(self, event: RealtimeEvent) -> None:
+        """Send to this process's sockets, skipping any that already had it."""
+
+        sockets = await self._targets(event.user_id, conversation_id=event.conversation_id)
+        fresh: list[WebSocket] = []
+        async with self._lock:
+            for socket in sockets:
+                connection = self._by_socket.get(socket)
+                if connection is None:
+                    continue
+                if connection.delivered.is_duplicate(event.event_id):
+                    continue
+                fresh.append(socket)
+        await self._send_many(fresh, event.payload)
 
     async def publish_to_participants(
         self,
@@ -190,7 +259,7 @@ class ConversationRealtimeManager:
             "sender_user_id": str(sender_id),
             "is_typing": is_typing,
             "expires_at": (
-                datetime.now(timezone.utc).timestamp() + 6 if is_typing else None
+                datetime.now(UTC).timestamp() + 6 if is_typing else None
             ),
         }
         await self.publish_to_user(recipient_user_id, event, conversation_id=conversation_id)

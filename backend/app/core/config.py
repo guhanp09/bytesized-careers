@@ -283,6 +283,14 @@ class Settings(BaseSettings):
     # a request carrying `Host: evil.example` writes an avatar URL pointing at
     # evil.example into the database, permanently, and it is then served to
     # everyone who views that profile. That is why production must set this.
+    # Which realtime bus moves events between instances. "memory" delivers only
+    # to connections held by THIS process, which is correct for one instance and
+    # silently wrong for two: each would serve half a conversation with no error
+    # anywhere. Production therefore refuses it unless explicitly acknowledged.
+    realtime_bus: Literal["memory"] = Field(default="memory", alias="REALTIME_BUS")
+    allow_process_local_realtime_in_production: bool = Field(
+        default=False, alias="ALLOW_PROCESS_LOCAL_REALTIME_IN_PRODUCTION"
+    )
     media_public_base_url: str | None = Field(default=None, alias="MEDIA_PUBLIC_BASE_URL")
     media_root: str = Field(default=".local-data/media", alias="MEDIA_ROOT")
     media_base_path: str = Field(default="/media", alias="MEDIA_BASE_PATH")
